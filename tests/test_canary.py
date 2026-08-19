@@ -1,6 +1,7 @@
 """Wave B — canary runner (scripts/canary.py).
 
-Covers: all-20 green on the real repo, manifest tamper refusal, an intentionally
+Covers: all-21 green on the real repo (T6 fold-in adds `promotion-eval-namespace`,
+capability `eval-namespace-isolation`), manifest tamper refusal, an intentionally
 broken fixture canary failing loud, record mode writing pinned-schema rows to a
 TMP ledger (never the real one), and diff-guard detection.
 """
@@ -24,7 +25,7 @@ EVALS_DIR = REPO_ROOT / "evals"
 # --------------------------------------------------------------------------- #
 def test_all_canaries_pass_on_healthy_repo():
     report = canary.run_all(EVALS_DIR, REPO_ROOT)
-    assert len(report.results) == 20, [r.id for r in report.results]
+    assert len(report.results) == 21, [r.id for r in report.results]
     assert report.all_pass, [(r.id, r.details) for r in report.failures]
 
 
@@ -120,7 +121,7 @@ def test_record_mode_writes_pinned_schema_to_tmp_ledger(tmp_path):
     report = canary.run_all(EVALS_DIR, REPO_ROOT, record=True, record_root=record_root)
     assert report.all_pass
     rows = promotion.read_grades(record_root)
-    assert len(rows) == 20
+    assert len(rows) == 21
     want_fields = set(grade.REQUIRED_FIELDS) | {"ts"}
     for row in rows:
         assert set(row) == want_fields

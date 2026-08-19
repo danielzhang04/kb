@@ -408,6 +408,62 @@ def _check_triage(inp, expected, repo_root):
     return (label == expected["label"]), f"label={label}"
 
 
+def _check_eval_namespace_isolation(inp, expected, repo_root):
+    """`scripts/agent_evals.py`'s core guarantee (T5/T6), pinned as a permanent
+    Proving Grounds regression: a hermetic per-agent eval suite is seeded and
+    blessed in a tmp tree, run+recorded N times (worker=eval-suite,
+    task_type=eval:<agent_id>:<card_id>), and the target agent's OWN real
+    task_type/tier promotion verdict must be byte-identical to the zero-rows
+    baseline — eval rows can never move an agent's own autonomy."""
+    import agent_evals
+    import promotion
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        agent_id = inp.get("agent_id", "demo-agent")
+        card_id = inp.get("card_id", "smoke")
+        (root / "ANCHOR.md").write_text("x\n", encoding="utf-8")
+        suite = root / "evals" / "agents" / agent_id
+        suite.mkdir(parents=True)
+        card_text = (
+            "---\n"
+            f"id: {card_id}\n"
+            "capability: agent-baseline\n"
+            "judge: file-exists\n"
+            'rubric_version: "1"\n'
+            "k: 1\n"
+            "source: curated\n"
+            "immutable: true\n"
+            "tier: T1\n"
+            "input:\n"
+            "  path: ANCHOR.md\n"
+            "---\n"
+            f"# {card_id}\n"
+        )
+        (suite / f"{card_id}.md").write_text(card_text, encoding="utf-8")
+        agent_evals.update_manifest(root, agent_id)
+
+        record_root = root / "ledgerhome"
+        repeats = int(inp.get("repeats", 40))
+        for _ in range(repeats):
+            report = agent_evals.run_suite(root, agent_id, record=True,
+                                           record_root=record_root)
+            if not report.passed:
+                return False, f"seeded eval suite unexpectedly red: {report.reason}"
+        rows = promotion.read_grades(record_root)
+        if len(rows) != repeats:
+            return False, f"expected {repeats} recorded rows, got {len(rows)}"
+
+        real_task_type = inp.get("real_task_type", "build")
+        real_tier = inp.get("real_tier", "T2")
+        baseline = promotion.status(agent_id, "kb", real_task_type, real_tier, [],
+                                    frozen=False)
+        verdict = promotion.status(agent_id, "kb", real_task_type, real_tier, rows,
+                                   frozen=False)
+        want = expected.get("verdict", baseline)
+        ok = (verdict == baseline == want)
+        return ok, f"baseline={baseline} verdict={verdict} rows={len(rows)}"
+
+
 CHECKERS = {
     "card-parse": _check_card_parse,
     "routing-resolution": _check_routing,
@@ -417,6 +473,7 @@ CHECKERS = {
     "ledger-shard": _check_ledger,
     "reconcile-quarantine": _check_reconcile,
     "triage-taxonomy": _check_triage,
+    "eval-namespace-isolation": _check_eval_namespace_isolation,
 }
 
 

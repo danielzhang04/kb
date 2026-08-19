@@ -9,15 +9,20 @@ and the CLI's human-gated manifest re-bless.
 No model calls anywhere in this file (model-judge tier is Task 6).
 """
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 import promotion
+import scripts.agent_evals as agent_evals
 from scripts.agent_evals import (
     INSPECTOR_ID,
     EVAL_WORKER,
+    FLEET_SUITE_ID,
+    _run_for_bless,
     load_cards,
     main,
     run_suite,
@@ -90,7 +95,12 @@ def test_readme_is_not_manifested(tmp_path):
     _smoke_suite(tmp_path)
     manifest = (suite_dir(tmp_path, "demo-agent") / "MANIFEST.sha256").read_text(
         encoding="utf-8")
-    assert "smoke.md" in manifest and "README.md" not in manifest
+    # Entry lines are "<hash>  <relpath>" — check the ENTRY set, not a bare
+    # substring match (the header comment legitimately mentions "README.md"
+    # by name to explain the exclusion).
+    entries = [ln for ln in manifest.splitlines() if ln and not ln.startswith("#")]
+    names = [ln.split()[-1] for ln in entries]
+    assert "smoke.md" in names and "README.md" not in names
 
 
 def test_unknown_agent_is_a_refusal_not_a_crash(tmp_path):
@@ -200,8 +210,10 @@ def test_pytest_judge_runs_the_named_test_file(tmp_path):
 
 
 def test_unknown_judge_fails_loud_instead_of_passing(tmp_path):
+    # NOTE: `judge: model` is a REAL (excluded-by-default) judge as of T6 — use
+    # a genuinely unregistered judge name here instead.
     _seed_suite(tmp_path, "demo-agent",
-                {"smoke": _card_text("smoke", "model", {"prompt": "hi"})})
+                {"smoke": _card_text("smoke", "not-a-real-judge", {"prompt": "hi"})})
     report = run_suite(tmp_path, "demo-agent")
     assert report.passed is False
     assert "judge" in report.cards[0].reason.lower()
@@ -301,3 +313,469 @@ def test_cli_blocks_on_the_preamble_gate(tmp_path, monkeypatch):
     _smoke_suite(tmp_path)
     monkeypatch.setattr(preamble, "check", lambda *a, **k: ["STOP file present"])
     assert main(["run", "demo-agent", "--repo", str(tmp_path)]) != 0
+
+
+def test_cli_survives_a_unicode_reason_under_legacy_cp1252_stdio(tmp_path):
+    """Re-review blocker: a card `reason` embedding a non-cp1252 character
+    (`→`/`中`) must never crash `print()` inside `main()` on a legacy Windows
+    console. A REAL subprocess with `PYTHONIOENCODING=cp1252` reproduces that
+    console's starting encoding; `_force_utf8_stdio()` must override it before
+    anything prints, so the CLI reaches its intended exit code (0 — the card
+    genuinely PASSES here) instead of crashing with an unhandled
+    UnicodeEncodeError."""
+    unicode_name = "→ 中.md"  # "→ 中.md"
+    (tmp_path / unicode_name).write_text("hi\n", encoding="utf-8")
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "file-exists", {"path": unicode_name})})
+
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "cp1252"
+    env.pop("ANTHROPIC_API_KEY", None)
+    res = subprocess.run(
+        [sys.executable, "-m", "scripts.agent_evals", "run", "demo-agent",
+         "--repo", str(tmp_path)],
+        cwd=str(REPO_ROOT), capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=30, env=env)
+    assert "Traceback" not in res.stderr, res.stderr
+    assert "UnicodeEncodeError" not in res.stderr, res.stderr
+    assert res.returncode == 0, (res.returncode, res.stdout, res.stderr)
+    assert "→" in res.stdout  # the unicode char actually made it to stdout
+
+
+# --------------------------------------------------------------------------- #
+# Residual — run_suite's manifest-skip is module-private, unreachable publicly #
+# --------------------------------------------------------------------------- #
+def test_run_suite_has_no_public_verify_kwarg(tmp_path):
+    """A casual `run_suite(..., verify=False)` must be impossible — the only
+    escape hatch is `_skip_verify` (leading underscore, module-private), and
+    the only sanctioned caller of THAT is `_run_for_bless`."""
+    _smoke_suite(tmp_path, bless=False)
+    with pytest.raises(TypeError):
+        run_suite(tmp_path, "demo-agent", verify=False)
+
+
+# --------------------------------------------------------------------------- #
+# Task 6 — judge: model (mocked; never a live model call)                     #
+# --------------------------------------------------------------------------- #
+def test_model_judge_argv_and_env_never_calls_a_live_model(tmp_path, monkeypatch):
+    prompt_text = "judge this card\nwith a second line\n"
+    (tmp_path / "PROMPT.md").write_text(prompt_text, encoding="utf-8")
+    _seed_suite(tmp_path, "demo-agent", {"judged": _card_text(
+        "judged", "model", {"prompt_file": "PROMPT.md"})})
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+
+        class _R:
+            returncode = 0
+            stdout = "PASS\nthe card looks right\n"
+            stderr = ""
+
+        return _R()
+
+    monkeypatch.setattr(agent_evals.subprocess, "run", fake_run)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-never-reach-the-subprocess")
+
+    report = run_suite(tmp_path, "demo-agent", include_model_judged=True)
+    assert report.passed is True, [(c.id, c.reason) for c in report.cards]
+    assert report.cards[0].hermetic is False
+
+    assert len(calls) == 1
+    cmd, kwargs = calls[0]
+    # argv[2] is the prompt TEXT, not the path — the model must not need
+    # filesystem access to read its own prompt.
+    assert cmd[0:2] == ["claude", "-p"]
+    assert cmd[2] == prompt_text
+    assert str(tmp_path) not in cmd[2]
+    # the model is PINNED, never left to whatever the CLI defaults to.
+    assert "--model" in cmd and cmd[cmd.index("--model") + 1] == "claude-sonnet-5"
+    # every built-in tool is disabled ("" per `claude --help`) — a judge only
+    # ever needs to read a prompt and emit a verdict line.
+    assert "--tools" in cmd and cmd[cmd.index("--tools") + 1] == ""
+    assert "--output-format" in cmd and cmd[cmd.index("--output-format") + 1] == "text"
+
+    env = kwargs.get("env")
+    assert env is not None
+    assert "ANTHROPIC_API_KEY" not in env
+
+    # cwd is a FRESH temp dir, never the repo the judge is running suites in —
+    # a write-capable tool (even if one somehow ran) could not touch the repo.
+    cwd = kwargs.get("cwd")
+    assert cwd is not None
+    cwd_resolved = Path(cwd).resolve()
+    assert cwd_resolved != Path(tmp_path).resolve()
+    assert not str(cwd_resolved).startswith(str(Path(tmp_path).resolve()))
+
+
+def test_model_judge_fail_verdict(tmp_path, monkeypatch):
+    (tmp_path / "PROMPT.md").write_text("judge this card\n", encoding="utf-8")
+    _seed_suite(tmp_path, "demo-agent", {"judged": _card_text(
+        "judged", "model", {"prompt_file": "PROMPT.md"})})
+
+    def fake_run(cmd, **kwargs):
+        class _R:
+            returncode = 0
+            stdout = "FAIL\nmissing the required section\n"
+            stderr = ""
+
+        return _R()
+
+    monkeypatch.setattr(agent_evals.subprocess, "run", fake_run)
+    report = run_suite(tmp_path, "demo-agent", include_model_judged=True)
+    assert report.passed is False
+    assert "FAIL" in report.cards[0].reason
+
+
+def test_model_judged_cards_excluded_by_default(tmp_path, monkeypatch):
+    (tmp_path / "README.md").write_text("hello\n", encoding="utf-8")
+    (tmp_path / "PROMPT.md").write_text("x\n", encoding="utf-8")
+    _seed_suite(tmp_path, "demo-agent", {
+        "smoke": _card_text("smoke", "file-exists", {"path": "README.md"}),
+        "judged": _card_text("judged", "model", {"prompt_file": "PROMPT.md"}),
+    })
+
+    def boom(*a, **k):
+        raise AssertionError("judge: model must not run unless include_model_judged=True")
+
+    monkeypatch.setattr(agent_evals.subprocess, "run", boom)
+
+    report = run_suite(tmp_path, "demo-agent")
+    assert [c.id for c in report.cards] == ["smoke"]
+    assert report.passed is True
+
+    record_root = tmp_path / "ledgerhome"
+    run_suite(tmp_path, "demo-agent", record=True, record_root=record_root)
+    rows = promotion.read_grades(record_root)
+    assert len(rows) == 1 and rows[0]["task_type"] == "eval:demo-agent:smoke"
+
+
+# --------------------------------------------------------------------------- #
+# Task 6 — judge hardening: env popped, path containment, private bless helper #
+# --------------------------------------------------------------------------- #
+def test_output_contains_judge_env_never_carries_anthropic_api_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-be-popped")
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "output-contains",
+        {"command": [sys.executable, "-c",
+                     "import os,sys; sys.stdout.write('CLEAN' if not "
+                     "os.environ.get('ANTHROPIC_API_KEY') else 'DIRTY')"],
+         "contains": "CLEAN"})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is True, [c.reason for c in report.cards]
+
+
+def test_pytest_judge_env_never_carries_anthropic_api_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-be-popped")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_env_clean.py").write_text(
+        "import os\n\n\ndef test_env_clean():\n"
+        "    assert not os.environ.get('ANTHROPIC_API_KEY')\n", encoding="utf-8")
+    _seed_suite(tmp_path, "demo-agent", {"envcheck": _card_text(
+        "envcheck", "pytest", {"test_file": "tests/test_env_clean.py"})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is True, [c.reason for c in report.cards]
+
+
+def test_output_contains_expect_empty_passes_on_empty_output(tmp_path):
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "output-contains",
+        {"command": [sys.executable, "-c", "pass"], "expect_empty": True})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is True, [c.reason for c in report.cards]
+
+
+def test_output_contains_expect_empty_fails_on_nonempty_output(tmp_path):
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "output-contains",
+        {"command": [sys.executable, "-c", "print('not empty')"], "expect_empty": True})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is False
+    assert "expected empty output" in report.cards[0].reason
+
+
+def test_output_contains_env_parent_sees_the_real_ambient_environment(tmp_path, monkeypatch):
+    """Task 6 fold-in 6: without `input.env: parent`, `output-contains` always
+    measures this runner's OWN `_clean_env()` scrub — vacuous for a card whose
+    whole point is to inspect the REAL fleet environment. With `env: parent`,
+    a sentinel `ANTHROPIC_API_KEY` in the parent process must be visible to the
+    probe (and cause a FAIL); its absence must make the probe pass."""
+    probe_input = {
+        "command": [sys.executable, "-c",
+                   "import os,sys; sys.stdout.write('CLEAN' if not "
+                   "os.environ.get('ANTHROPIC_API_KEY') else 'DIRTY')"],
+        "contains": "CLEAN", "env": "parent"}
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "output-contains", probe_input)})
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    clean_report = run_suite(tmp_path, "demo-agent")
+    assert clean_report.passed is True, [c.reason for c in clean_report.cards]
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-sentinel-should-be-visible")
+    dirty_report = run_suite(tmp_path, "demo-agent")
+    assert dirty_report.passed is False, [c.reason for c in dirty_report.cards]
+
+
+def test_output_contains_env_default_stays_cleaned_even_with_sentinel_set(tmp_path, monkeypatch):
+    """The DEFAULT (`env` omitted, or `env: cleaned`) must still pop the key —
+    this is the existing hardening test's inverse: a sentinel key in the
+    parent must NOT leak through when a card does not ask for `env: parent`."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-sentinel-should-be-popped")
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "output-contains",
+        {"command": [sys.executable, "-c",
+                     "import os,sys; sys.stdout.write('CLEAN' if not "
+                     "os.environ.get('ANTHROPIC_API_KEY') else 'DIRTY')"],
+         "contains": "CLEAN"})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is True, [c.reason for c in report.cards]
+
+
+def test_cost_under_cap_signal_reads_the_same_gate_preamble_uses(tmp_path):
+    """Unit-level proof that the comparison the real `cost-under-cap` fleet
+    card's probe performs (`ledger.cost_today(root) < preamble._daily_limit
+    (root)`) is the SAME signal `preamble.check`'s own budget gate uses — the
+    real card's actual subprocess plumbing is proven end-to-end by
+    `test_real_fleet_suite_is_green_against_fyt_runner` below, against the
+    real repo (which has a real `scripts/` dir on disk for the subprocess to
+    import from; an isolated tmp fixture does not)."""
+    import ledger
+    import preamble as preamble_module
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "budget.yaml").write_text(
+        "daily_subscription_usd_limit: 1.00\n", encoding="utf-8")
+    assert ledger.cost_today(tmp_path) < preamble_module._daily_limit(tmp_path)
+    ledger.append(tmp_path, "cost", "w", {"usd": "5.00"})
+    assert ledger.cost_today(tmp_path) >= preamble_module._daily_limit(tmp_path)
+
+
+def test_output_contains_judge_python_token_resolves_to_the_running_interpreter(tmp_path):
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "output-contains",
+        {"command": ["{python}", "-c", "print('kb-eval-marker')"],
+         "contains": "kb-eval-marker"})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is True, [c.reason for c in report.cards]
+
+
+def test_file_exists_judge_rejects_an_absolute_path_escape(tmp_path):
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "file-exists", {"path": str(Path(__file__).resolve())})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is False
+    assert "escapes repo root" in report.cards[0].reason
+
+
+def test_file_exists_judge_rejects_a_dotdot_escape(tmp_path):
+    (tmp_path / "README.md").write_text("hello\n", encoding="utf-8")
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "file-exists", {"path": "../README.md"})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is False
+    assert "escapes repo root" in report.cards[0].reason
+
+
+def test_pytest_judge_rejects_an_absolute_test_file_escape(tmp_path):
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "pytest", {"test_file": str(Path(__file__).resolve())})})
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is False
+    assert "escapes repo root" in report.cards[0].reason
+
+
+def test_run_for_bless_bypasses_manifest_verification(tmp_path):
+    _smoke_suite(tmp_path, bless=False)
+    refused = run_suite(tmp_path, "demo-agent")
+    assert refused.passed is False and "manifest" in refused.reason.lower()
+
+    bypassed = _run_for_bless(tmp_path, "demo-agent")
+    assert bypassed.passed is True
+
+
+# --------------------------------------------------------------------------- #
+# Task 6 fold-in 1 — the shared _fleet baseline suite                         #
+# --------------------------------------------------------------------------- #
+def _fleet_suite(repo_root: Path, *, bless=True) -> Path:
+    d = suite_dir(repo_root, FLEET_SUITE_ID)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "README.md").write_text("readme is never manifested\n", encoding="utf-8")
+    (repo_root / "memory").mkdir(exist_ok=True)
+    (repo_root / "memory" / "demo-agent.md").write_text(
+        "# demo-agent — lessons\n", encoding="utf-8")
+    (d / "memory-file-exists.md").write_text(_card_text(
+        "memory-file-exists", "file-exists", {"path": "memory/{agent_id}.md"}),
+        encoding="utf-8")
+    (d / "no-api-key-in-env.md").write_text(_card_text(
+        "no-api-key-in-env", "output-contains",
+        {"command": ["{python}", "-c", "print('CLEAN')"], "contains": "CLEAN"}),
+        encoding="utf-8")
+    if bless:
+        update_manifest(repo_root, FLEET_SUITE_ID)
+    return d
+
+
+def test_fleet_suite_runs_against_target_agent_and_records_fleet_namespace(tmp_path):
+    _fleet_suite(tmp_path)
+    record_root = tmp_path / "ledgerhome"
+    report = run_suite(tmp_path, "demo-agent", fleet=True, record=True,
+                       record_root=record_root)
+    assert report.passed, [(c.id, c.reason) for c in report.cards]
+    assert {c.id for c in report.cards} == {"memory-file-exists", "no-api-key-in-env"}
+
+    rows = promotion.read_grades(record_root)
+    task_types = {r["task_type"] for r in rows}
+    assert task_types == {"eval:demo-agent:fleet-memory-file-exists",
+                          "eval:demo-agent:fleet-no-api-key-in-env"}
+    # the fleet run must never collide with the agent's own suite namespace
+    assert "eval:demo-agent:memory-file-exists" not in task_types
+
+
+def test_fleet_suite_fails_for_an_agent_with_no_memory_file(tmp_path):
+    _fleet_suite(tmp_path)
+    report = run_suite(tmp_path, "some-other-agent", fleet=True)
+    assert report.passed is False
+    failing = {c.id: c for c in report.cards}["memory-file-exists"]
+    assert failing.passed is False
+    assert "some-other-agent.md" in failing.reason
+
+
+def test_fleet_suite_tamper_refuses_regardless_of_target(tmp_path):
+    d = _fleet_suite(tmp_path)
+    (d / "no-api-key-in-env.md").write_text(_card_text(
+        "no-api-key-in-env", "output-contains",
+        {"command": ["{python}", "-c", "print('CLEAN')"], "contains": "CLEAN",
+         "tampered": True}), encoding="utf-8")
+    report = run_suite(tmp_path, "demo-agent", fleet=True)
+    assert report.passed is False and "manifest" in report.reason.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Task 6 fold-in 7 — no-worker-commits-on-main (needs a real origin/main ref)   #
+# --------------------------------------------------------------------------- #
+def _git(repo, *args):
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _repo_with_fake_origin_main(tmp_path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "T")
+    _git(repo, "config", "commit.gpgsign", "false")
+    _git(repo, "config", "core.autocrlf", "false")
+    (repo / "README.md").write_text("hi\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "base")
+    # No real remote needed — `git log <ref>` only needs the ref to resolve.
+    _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    return repo
+
+
+def _no_worker_commits_card(agent_id_token="{agent_id}"):
+    return _card_text("no-worker-commits-on-main", "output-contains", {
+        "command": ["git", "log", "origin/main", f"--author={agent_id_token}",
+                   "--oneline", "-1"],
+        "expect_empty": True})
+
+
+def test_no_worker_commits_on_main_passes_when_no_such_author(tmp_path):
+    repo = _repo_with_fake_origin_main(tmp_path)
+    d = suite_dir(repo, FLEET_SUITE_ID)
+    d.mkdir(parents=True)
+    (d / "no-worker-commits-on-main.md").write_text(_no_worker_commits_card(),
+                                                     encoding="utf-8")
+    update_manifest(repo, FLEET_SUITE_ID)
+
+    report = run_suite(repo, "demo-agent", fleet=True)
+    assert report.passed is True, [c.reason for c in report.cards]
+
+
+def test_no_worker_commits_on_main_fails_when_the_agent_id_authored_a_commit(tmp_path):
+    repo = _repo_with_fake_origin_main(tmp_path)
+    (repo / "sneaky.md").write_text("x\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "-c", "user.name=demo-agent", "-c", "user.email=demo-agent@example.com",
+        "commit", "-m", "an agent pushed straight to main")
+    _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+    d = suite_dir(repo, FLEET_SUITE_ID)
+    d.mkdir(parents=True)
+    (d / "no-worker-commits-on-main.md").write_text(_no_worker_commits_card(),
+                                                     encoding="utf-8")
+    update_manifest(repo, FLEET_SUITE_ID)
+
+    report = run_suite(repo, "demo-agent", fleet=True)
+    assert report.passed is False
+    assert "expected empty output" in report.cards[0].reason
+
+
+def test_cli_fleet_bless_writes_the_fleet_manifest_not_the_targets(tmp_path, capsys,
+                                                                    _no_preamble):
+    d = _fleet_suite(tmp_path, bless=False)
+    (tmp_path / "memory").mkdir(exist_ok=True)
+    (tmp_path / "memory" / "demo-agent.md").write_text(
+        "# demo-agent — lessons\n", encoding="utf-8")
+    rc = main(["run", "demo-agent", "--fleet", "--repo", str(tmp_path), "--update-manifest"])
+    assert rc == 0, capsys.readouterr()
+    assert (d / "MANIFEST.sha256").exists()
+    assert not (suite_dir(tmp_path, "demo-agent")).exists()
+
+
+def test_cli_fleet_run_records_under_the_target_agent_id(tmp_path, _no_preamble):
+    _fleet_suite(tmp_path)
+    record_root = tmp_path / "ledgerhome"
+    assert main(["run", "demo-agent", "--fleet", "--repo", str(tmp_path), "--record",
+                "--record-root", str(record_root)]) == 0
+    rows = promotion.read_grades(record_root)
+    assert len(rows) == 2
+    assert all(r["task_type"].startswith("eval:demo-agent:fleet-") for r in rows)
+
+
+# --------------------------------------------------------------------------- #
+# Task 6 fold-in 4 — ladder pin (worker="eval-suite" itself)                   #
+# --------------------------------------------------------------------------- #
+def test_eval_suite_worker_can_earn_its_own_namespace_autonomy_pin(tmp_path):
+    """Pins CURRENT `promotion.status()` behavior for `worker='eval-suite'`
+    itself: `status()` is a pure function keyed on `(worker, project, task_type,
+    tier)` with no notion of which worker id "means" an eval runner, so 10
+    trusted, T1-passing rows recorded under `worker='eval-suite'` for a fixed
+    `task_type`/`tier` key DO cross that key's own autonomy bar. This is
+    orthogonal to (and does not weaken) the isolation guarantee above: eval
+    rows can never count toward an agent's OWN task types (worker=<agent-id>) —
+    only toward the reserved `eval-suite`/`eval:<agent>:<card>` key pins here.
+    Whether the dashboard's autonomy ladder should ever surface or ACT on an
+    "eval-suite is autonomous at eval:x:y" verdict is an explicit DEFERRED
+    question — this test only pins the mechanical fact, it does not endorse
+    wiring it into anything."""
+    _smoke_suite(tmp_path)
+    record_root = tmp_path / "ledgerhome"
+    for _ in range(10):  # T1 window
+        assert run_suite(tmp_path, "demo-agent", record=True,
+                         record_root=record_root).passed
+    rows = promotion.read_grades(record_root)
+    assert len(rows) == 10
+
+    verdict = promotion.status(EVAL_WORKER, "kb", "eval:demo-agent:smoke", "T1", rows,
+                               frozen=False)
+    assert verdict == promotion.AUTONOMOUS
+
+    # ...but the SAME rows still never move demo-agent's own key (re-pin of the
+    # isolation guarantee, at the exact tier/window this test exercises).
+    own_verdict = promotion.status("demo-agent", "kb", "eval:demo-agent:smoke", "T1",
+                                   rows, frozen=False)
+    assert own_verdict == promotion.QUEUES_FOR_ME
+
+
+# --------------------------------------------------------------------------- #
+# the real committed _fleet suite (blessed, human-witnessed)                   #
+# --------------------------------------------------------------------------- #
+def test_real_fleet_suite_is_green_against_fyt_runner():
+    report = run_suite(REPO_ROOT, "fyt-runner", fleet=True)
+    assert report.passed, (report.reason, [(c.id, c.reason) for c in report.cards])
+    assert {c.id for c in report.cards} == {
+        "def-parses-in-roster-shape", "memory-file-exists", "no-api-key-in-env",
+        "no-worker-commits-on-main", "cost-under-cap"}
+    assert all(c.hermetic for c in report.cards)  # no judge:model card in _fleet

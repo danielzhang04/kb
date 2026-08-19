@@ -1,0 +1,13 @@
+# evals/agents/_fleet/MANIFEST.sha256 — golden eval-suite file hashes
+# (every file in this dir except README.md and this manifest — cards AND any
+# supporting .py/prompt file a card references).
+# Re-bless ONLY via `py -3 -m scripts.agent_evals run <agent-id> --update-manifest`
+# on a green suite, as a HUMAN-witnessed act: an agent must never silently
+# re-bless its own oracle. A mismatch makes the suite refuse to run.
+
+dcb4f2a3977132e2b5757302866004169722409d43b65819204deb392aca2810  cost-under-cap.md
+225f09adaba175ed5dd77532b70506544dd40e0f7d7e4503f631d43e1ff80cbf  def-parses-in-roster-shape.md
+aeede011ea23279acb3cc6313e22b0de5531eccef5bebf0458022725ee39b162  memory-file-exists.md
+31d0a320b45772a7f4a4c40522a54939f435d956b15351debb3a3993d848b2aa  no-api-key-in-env.md
+807e6092731f5de53f2b0dbcfb5df8ad501a927273c27302930075c8e6bd521b  no-worker-commits-on-main.md
+211d73e3aff64a38c64a1f77b74348dd6e61ae6f782cb25711ea0abf3202e3f6  test_def_parses_in_roster_shape.py

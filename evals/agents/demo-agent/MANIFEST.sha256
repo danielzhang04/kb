@@ -1,4 +1,6 @@
-# evals/agents/demo-agent/MANIFEST.sha256 — golden eval-card hashes.
+# evals/agents/demo-agent/MANIFEST.sha256 — golden eval-suite file hashes
+# (every file in this dir except README.md and this manifest — cards AND any
+# supporting .py/prompt file a card references).
 # Re-bless ONLY via `py -3 -m scripts.agent_evals run <agent-id> --update-manifest`
 # on a green suite, as a HUMAN-witnessed act: an agent must never silently
 # re-bless its own oracle. A mismatch makes the suite refuse to run.
