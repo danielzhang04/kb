@@ -17,8 +17,10 @@
  * spawn) the gate modules already expose for their own unit tests.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { verifySession } from '../auth/session.ts';
+import { mintSession, verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
+import { bindAttribution } from '../auth/operator.ts';
+import type { OperatorRequestLike } from '../auth/operator.ts';
 import { rateLimit, lockout, rateLimitHook } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 
@@ -66,8 +68,30 @@ export function verifiedSession(req: FastifyRequest): { token: string; claims: S
  * preserving the origin -> rate-limit -> session order. It is NOT applied to the auth ceremony routes
  * (which mint the very session this checks — gating them on a session would be circular) nor to the
  * health/readiness probes, static assets, or the auth ceremony routes.
+ *
+ * THE MODE SEAM. When `sessionConfig.operatorAuth` is set (`tailnet` mode — see `auth/mode.ts`), the
+ * request's transport is the credential and there is no session to present: the authenticator proves the
+ * operator, and this function MINTS a session for them. Because what it stashes is a genuine signed
+ * session, every downstream consumer is unchanged — `verifiedSession(req).claims.sub`, the `sessionToken`
+ * threaded into launches, and the gate modules that independently re-verify it all keep working. That is
+ * why this is the only place either mode is branched on, and why no route file knows a mode exists.
+ * Any client-supplied bearer is IGNORED in that mode: honouring one would reintroduce a forgeable
+ * credential beside the unforgeable transport proof.
  */
 export function requireSession(sessionConfig: SessionConfig) {
+  const operatorAuth = sessionConfig.operatorAuth;
+  if (operatorAuth) {
+    return async function preHandlerRequireOperator(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+      const result = operatorAuth.authenticate(req as unknown as OperatorRequestLike);
+      if (!result.ok) {
+        // 403, not 401: there is no credential the client could supply to change this answer.
+        reply.code(403).send({ error: 'forbidden', reason: result.reason });
+        return;
+      }
+      bindAttribution(result.attribution);
+      verifiedByReq.set(req, mintSession(result.subject, sessionConfig));
+    };
+  }
   return async function preHandlerRequireSession(req: FastifyRequest, reply: FastifyReply): Promise<void> {
     const token = sessionToken(req);
     if (!token) {

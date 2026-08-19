@@ -29,12 +29,15 @@ import {
 } from './webauthn.ts';
 import type { WebAuthnUser } from './webauthn.ts';
 import { mintSessionFromVerifiedAssertion } from './session.ts';
+import { OPERATOR_SUBJECT } from './mode.ts';
 import { findCredential, rememberChallenge, consumeChallenge } from './credentialStore.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
 
-/** The single-operator identity this daemon mints sessions for (loopback, one human). */
-const OPERATOR: WebAuthnUser = { id: 'operator', name: 'operator', displayName: 'kb operator' };
+/** The single-operator identity this daemon mints sessions for (loopback, one human). The id is shared
+ *  with `auth/mode.ts#OPERATOR_SUBJECT` so both auth modes mint sessions for the SAME subject and all
+ *  subject-keyed durable state stays continuous across a mode switch. */
+const OPERATOR: WebAuthnUser = { id: OPERATOR_SUBJECT, name: 'operator', displayName: 'kb operator' };
 
 function asRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};

@@ -15,6 +15,7 @@ import type { LockoutGuard } from '../security/ratelimit.ts';
 import type { WebAuthnConfig } from '../auth/webauthn.ts';
 import type { WebAuthnCredential } from '@simplewebauthn/server';
 import { appendAudit as realAppendAudit } from '../audit/log.ts';
+import { attributionLabel, currentAttribution } from '../auth/operator.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log.ts';
 import type { GitRunner, PrOpener } from '../write/branch.ts';
 import type { CoordinationPublication } from '../write/outbox.ts';
@@ -175,10 +176,28 @@ export interface SurfaceContext {
   naming?: NamingRegistry;
 }
 
+/**
+ * Stamp the request's operator attribution into an audit event, when there is one.
+ *
+ * In `win32-desktop` mode nothing is ever attributed and the event is returned by IDENTITY — the row is
+ * byte-identical to before this existed. In `tailnet` mode the auth middleware bound the proxy-supplied
+ * tailnet identity for this request, and it is recorded here, in the single funnel every route already
+ * writes rows through, rather than being threaded through ~30 call sites.
+ *
+ * This is attribution ONLY. `owner` (the session subject) still decides authority; the identity is never
+ * read back as an authentication input.
+ */
+function attributed(event: AuditEvent): AuditEvent {
+  const attribution = currentAttribution();
+  if (!attribution) return event;
+  return { ...event, detail: { ...event.detail, tailnetIdentity: attributionLabel(attribution) } };
+}
+
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
 export function auditFn(ctx: SurfaceContext): AppendAuditFn {
-  if (ctx.appendAudit) return ctx.appendAudit;
-  return (repoRoot, event, options = {}) => realAppendAudit(repoRoot, event, {
+  const append = ctx.appendAudit;
+  if (append) return (repoRoot, event, options) => append(repoRoot, attributed(event), options);
+  return (repoRoot, event, options = {}) => realAppendAudit(repoRoot, attributed(event), {
     ...options,
     publication: ctx.coordinationPublication,
     outboxRoot: ctx.outboxRoot,
