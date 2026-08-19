@@ -133,3 +133,29 @@ Cutover window is quiescent + Daniel-scheduled; do not start it unprompted.
 - `memory/claude-boss.md` (2026-08-19 lessons)
 - Boss tasklist: 10 tasks (#10 Phase 0 done; #1–8 pending in phase order; #9 drain)
 - PR #130 body (security-review record); PR bodies for workflow-platform (Phase 1)
+
+## TONIGHT EXECUTION STATUS (2026-08-19 overnight, boss session f43d4736 autonomous)
+Daniel authorized running Phases 1–2 through the night unattended; prep Phase 3; he reviews +
+merges in the morning, then Phases 3–8 run WITH him. Governance = boss NEVER merges; all overnight
+work terminates PR-ready. keep-awake ARMED (supervisor pid 32180 + pid-only lease `boss-overnight`
+on pid 44508 — cannot idle-expire while this terminal stays open).
+
+- **Phase 1 — DONE building.** PR #131 open (`claude/workflow-platform` tip `84ae392e`, 26 ahead of
+  main). 3 live-proof defects resolved (d3 real launch-projection bug fixed at launch.ts:406 seed-only
+  attempts, guard intact; d2 manager→claude; d1 already upstream). Opus adversarial review running
+  (agent `afdd1db`) → verdict to be posted as PR comment; FIX-THEN-SHIP triggers a codex fix + reverify.
+  MORNING GATE: Daniel merges #131.
+- **Phase 2 — building (4 stages, codex-driven, adversarial review built in).** Recon finding: main has
+  the systemd unit but NONE of the runtime port (platform/ resolvers, agent_runner.sh/.py, codex_dispatch
+  POSIX ctrl, noReparse.posix all ABSENT); the "cherry-pick 7" shorthand understates it — 2 commits
+  (75a9a00a systemd, 8ebc337f PTY) bundle VM-adds with desktop-deletes and must be hand-split.
+  S0 port manifest running (codex-deep read-only, bg `bvqt7pbsh`, brief in scratchpad
+  phase2-stage0-manifest-brief.md). Then boss-review manifest → S1 build (fresh worktree off main) →
+  S1b outbox co-writer rework (promote_vm_outbox.py) → S2 independent adversarial review → PR-ready.
+  Multi-day; may not finish overnight. MORNING GATE: Daniel merges.
+- **Phase 3 — PREP only tonight** (execution needs Daniel's Tailscale console): URL wiring worklist
+  (kb.tail82dd4f→kb.command), pin 3 runbook caveats, draft admin-console runbook. URL LOCKED =
+  `kb.command.ts.net` (see Decisions-locked above).
+- Resume: on any context refresh, re-read this section + the boss tasklist + the two scratchpad briefs;
+  harvest completed workers via their ops `queue/done` cards. Next boss actions are event-driven
+  (worker completion notifications): post P1 review verdict; review S0 manifest then dispatch S1.
