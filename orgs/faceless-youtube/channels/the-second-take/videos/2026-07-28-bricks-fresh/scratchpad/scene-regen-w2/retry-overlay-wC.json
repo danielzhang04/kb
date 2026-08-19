@@ -1,0 +1,22 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L18",
+      "character": "drive-maker",
+      "name": "fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979",
+      "defect": "pose",
+      "instruction": "The previous attempt drew both arms hanging relaxed at the sides, ignoring the pose reference entirely. Redraw with the CARRYING stance clearly asymmetric: one arm bent, that hand raised to hip/waist height in a firm gripping fist as if clutching a handle at that height; the other arm may hang naturally. The bent, weight-bearing arm is the load-bearing detail — do not default to a neutral standing pose."
+    },
+    {
+      "kind": "step1",
+      "shot": "L19",
+      "character": "drive-maker",
+      "name": "fig-drive-maker--hold-both-hands--expr-greedy--14b7da15",
+      "defect": "pose",
+      "instruction": "The previous attempt drew both arms hanging relaxed at the sides, ignoring the pose reference entirely. Redraw with BOTH arms bent forward at the elbow, both hands brought together in front of the body at roughly waist height in a firm double-fisted grip, as if gripping a long shaft held out in front. Do not default to a neutral standing pose with arms at the sides."
+    }
+  ]
+}

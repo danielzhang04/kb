@@ -1,0 +1,1368 @@
+[
+  {
+    "shot_id": "L26",
+    "file": "assets/scenes/L26.png",
+    "technique": "(c) Character-free scene \u2014 place plate root, zero-seed under bible descriptor + style suffix",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L26.png (sha256 14f29160fcfe45dbff5e122673292877d36fd19996c466e042d8f8187495d918, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L26 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L26.png in this checkout"
+  },
+  {
+    "shot_id": "L28",
+    "file": "assets/scenes/L28.png",
+    "technique": "(c) Character-free scene \u2014 cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "palette/light span warm-neutrals fix (defect: content, changed_spans: 1)",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "WARM-NEUTRALS DOCTRINE REMINT (2026-08-18, commit 33676421) -- regenerated against the current style-bible (S2b warm-tinted neutrals, S5 fore/mid/background depth read) seeding the reminted scene-style-tile + lettering-marker-italic; warm-retry (defect: content, exact-replace on the palette/light span, changed_spans: 1); promoted from _staging/L28-warmretry.png (sha256 7a8a9509f00db13b6d0bb1d808ce4bda15f23fad84234d909237f36923339578, verified match on copy: True); old pixels archived at scratchpad/plate-regen/old/L28.png; fresh-eyes doctrine review in scratchpad/plate-regen/progress.md (all axes clean, warm-bias confirmed by Pillow R-B measurement)."
+  },
+  {
+    "shot_id": "L29",
+    "file": "assets/scenes/L29.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-delighted GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; promoted from _staging/L29.png (sha256 374765b638907d2ab11e24c39ca4f78a793c11f202e027f1f760ec173eaf2c08, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L29 (round-1 pass, all-clean)"
+  },
+  {
+    "shot_id": "L30",
+    "file": "assets/scenes/L30.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-terry-johnson--action-armscrossed--expr-thinking.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`terry-johnson` STEP-1 fig-terry-johnson--action-armscrossed--expr-thinking GENERATE; promoted from _staging/L30.png (sha256 ca239f74e39782e4fe1a8c946550a87bf78d64816854bfb11a5c97fd62dcc25a, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L30 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L30.png in this checkout"
+  },
+  {
+    "shot_id": "L31",
+    "file": "assets/scenes/L31.png",
+    "technique": "(e) Seeded delta-chain \u2014 in-chain parent + held figure canonical(s)",
+    "seeds": [
+      {
+        "path": "_staging/L30.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+        "role": "canonical",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "`terry-johnson` delta -> parent + canonical; promoted from _staging/L31.png (sha256 1870c3e36383e279120c304bead0a2eb3ec262b05a027273179dd2f4ace6904a, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L31 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L31.png in this checkout"
+  },
+  {
+    "shot_id": "L35",
+    "file": "assets/scenes/L35.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-celebrate--expr-delighted GENERATE; promoted from _staging/L35.png (sha256 ea94d3b2000fe0035857d6e10bbad8af16ac136621bbd2937f282f451ac8967e, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L35 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L35.png in this checkout"
+  },
+  {
+    "shot_id": "L36",
+    "file": "assets/scenes/L36.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-greedy.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-greedy GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; promoted from _staging/L36.png (sha256 8ff7d98979d0fa6a12f53e14903072f4d4814810d57e58420242e8ff17105eb2, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L36 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L36.png in this checkout"
+  },
+  {
+    "shot_id": "L37",
+    "file": "assets/scenes/L37.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-salute--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-salute--expr-delighted GENERATE; promoted from _staging/L37.png (sha256 95b784cc553ceb5a091ce7e6dfe54b11de2913ef8755a4736c083e30f493b020, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L37 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L37.png in this checkout"
+  },
+  {
+    "shot_id": "L40",
+    "file": "assets/scenes/L40.png",
+    "technique": "(c) Character-free scene \u2014 place plate root, zero-seed under bible descriptor + style suffix",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L40.png (sha256 8035806635ac468e37a45a473277409832ac9e9325ec24398986916158423980, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L40 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L40.png in this checkout"
+  },
+  {
+    "shot_id": "L41",
+    "file": "assets/scenes/L41.png",
+    "technique": "(e) Seeded delta-chain \u2014 in-chain parent + held figure canonical(s)",
+    "seeds": [
+      {
+        "path": "_staging/L40.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); promoted from _staging/L41.png (sha256 d69ea12a4d639f8595a19c6ccc7d5a7cd52a3939605388567919445e33a2aad3, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L41 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L41.png in this checkout"
+  },
+  {
+    "shot_id": "L42",
+    "file": "assets/scenes/L42.png",
+    "technique": "(e) Seeded delta-chain \u2014 in-chain parent + held figure canonical(s)",
+    "seeds": [
+      {
+        "path": "_staging/L41.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "notes": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); promoted from _staging/L42.png (sha256 d081cef08f9c5d8f721ee81ee5e3588a49834d6bd0e68c03c274485f2f6e3268, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L42 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L42.png in this checkout"
+  },
+  {
+    "shot_id": "L43",
+    "file": "assets/scenes/L43.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-base--point-at-thing--expr-deadpan--l43-30b903d1.png",
+        "role": "figure",
+        "character": "base"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`base` STEP-1 fig-base--point-at-thing--expr-deadpan--l43-30b903d1 GENERATE; promoted from _staging/L43.png (sha256 62988264a1663cbe0f408574fd5aba8f427070b31279d787f4b5043a9205a485, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L43 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L43.png in this checkout"
+  },
+  {
+    "shot_id": "L50",
+    "file": "assets/scenes/L50.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-hq-banker--action-offering--expr-deadpan.png",
+        "role": "figure",
+        "character": "hq-banker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`hq-banker` STEP-1 fig-hq-banker--action-offering--expr-deadpan GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; promoted from _staging/L50.png (sha256 e5973625da869a6b9e7a1e63c9861c83c2dffc2293182f1c7edbbd6f85fed192, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L50 (round-1 pass, all-clean)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L50.png in this checkout"
+  },
+  {
+    "shot_id": "L27",
+    "file": "assets/scenes/L27.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce.png",
+        "role": "figure",
+        "character": "base"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him\" -> to: \"hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him, BOTH of his hands closed on the sheet's leading edge and BOTH drawn as full rig hands - three finger\"",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`base` STEP-1 fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce REUSED; RETRY overlay from `L27`; promoted from _staging/L27-fix.png (sha256 c11fd5449906392c2ed4538ab730e9d2066125d42c9077f1cb25b32bca9640cb, verified match on copy: True) to canonical assets/scenes/L27.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L27-fix (retry round 1, pass)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L27.png in this checkout"
+  },
+  {
+    "shot_id": "L32",
+    "file": "assets/scenes/L32.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-base--action-recoil--expr-shock--l32-36f3a4e9.png",
+        "role": "figure",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"a fire bucket on the floor stage-right\" -> to: \"one small unmarked fire bucket set well back on the floor stage-right, drawn completely BLANK - no stencilled word, no letter, no number, no label and no marking of any kind on it, and no lettering an\"",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`base` STEP-1 fig-base--action-recoil--expr-shock--l32-36f3a4e9 REUSED; RETRY overlay from `L32`; promoted from _staging/L32-fix.png (sha256 13f8c5fce2eec7d2acfed72d309253a080ba3254a0c83ce53e96d150648ceece, verified match on copy: True) to canonical assets/scenes/L32.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L32-fix (retry round 1, pass)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L32.png in this checkout"
+  },
+  {
+    "shot_id": "L33",
+    "file": "assets/scenes/L33.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--expr-smug.png",
+        "role": "figure",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/handshake.png",
+        "role": "interaction",
+        "character": null
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"both holding the same plane at a matching eye line and an equal relative head scale\" -> to: \"both holding the same plane at a matching eye line and an equal relative head scale. The man in the tan blazer is drawn exactly as his own reference sheet draws him and is not re-invented for this fra\"",
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "`ibm-suit` STEP-1 fig-ibm-suit--expr-smug REUSED; `miniscribe-rep` STEP-1 fig-miniscribe-rep--expr-delighted REUSED; RETRY overlay from `L33`; promoted from _staging/L33-fix.png (sha256 77ea9d2d1fbf5b864b7c9f5df5ebdfb610a6c12500951835b33c9a864726a2e0, verified match on copy: True) to canonical assets/scenes/L33.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L33-fix (retry round 1, pass)"
+  },
+  {
+    "shot_id": "L44",
+    "file": "assets/scenes/L44.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png",
+        "role": "figure",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"the tote rack stage-left half empty, the roller door shut\" -> to: \"the tote rack stage-left now VISIBLY HALF EMPTY and plainly different from the full rack of the seeded plate - its upper shelves stripped down to bare metal, tote bins left only on the lower shelves -\"",
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "`ibm-suit` STEP-1 fig-ibm-suit--action-thumbsdown--expr-annoyed REUSED; RETRY overlay from `L44`; promoted from _staging/L44-fix.png (sha256 14e0d54990d900623072f58e920d49631b0d726f2a09756a367b4ebb7ff6adf2, verified match on copy: True) to canonical assets/scenes/L44.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L44-fix (retry round 1, pass)"
+  },
+  {
+    "shot_id": "L46",
+    "file": "assets/scenes/L46.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png",
+        "role": "figure",
+        "character": "base"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door\" -> to: \"over at the stage-LEFT side of the floor and walking AWAY from the camera, straight DOWN the length of the assembly floor toward the roller door at the far end, his back three-quarters to us and the d\"",
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "`base` STEP-1 fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718 REUSED; RETRY overlay from `L46`; promoted from _staging/L46-fix.png (sha256 a9ffb5cc70e5248ace3be1cf224f175e2c8dd556aca226b2ff88affd066592d7, verified match on copy: True) to canonical assets/scenes/L46.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L46-fix (retry round 1, pass)"
+  },
+  {
+    "shot_id": "L47",
+    "file": "assets/scenes/L47.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Through the glass the as\" -> to: \"already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He st\"",
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "`terry-johnson` STEP-1 fig-terry-johnson--carry-by-handle--expr-crestfallen REUSED; RETRY overlay from `L47`; promoted from _staging/L47-fix.png (sha256 f018b80791bfc4816c797fa6fc2ada4f5f12ae72882ea99027274645baccf0c8, verified match on copy: True) to canonical assets/scenes/L47.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L47-fix (retry round 1, pass)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L47.png in this checkout"
+  },
+  {
+    "shot_id": "L48",
+    "file": "assets/scenes/L48.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-slump--expr-worried.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "parked",
+    "parked_reasons": [
+      "fidelity: missing verdict",
+      "style: missing verdict",
+      "rig: missing verdict",
+      "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--def769f5` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
+    ],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittin\" -> to: \"alone stage-centre on the assembly floor in a real SLUMP that the drawing must execute, not an upright stand: his shoulders visibly DROPPED and rounded well below their normal line, his head hanging f\"",
+    "parent_depth": 1,
+    "lineage": 1,
+    "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-slump--expr-worried REUSED; RETRY overlay from `L48`; promoted from _staging/L48-fix.png (sha256 bcd28e1eefe5841e0f04b27768861f896ed03f23e7cd2782a7f13da8b7b68f7e, verified match on copy: True) to canonical assets/scenes/L48.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L48-fix (retry round 1, pass)"
+  },
+  {
+    "shot_id": "L49",
+    "file": "assets/scenes/L49.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-hq-banker--action-armscrossed--expr-skeptical.png",
+        "role": "figure",
+        "character": "hq-banker"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 from: \"A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops.\" -> to: \"This is the SAME office as the following shot and every surface must match it: a plain oak plank floor with no carpet of any colour, walls of oak raised-and-fielded paneling behind him, oak drawer cab\"",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`hq-banker` STEP-1 fig-hq-banker--action-armscrossed--expr-skeptical REUSED; RETRY overlay from `L49`; promoted from _staging/L49-fix.png (sha256 b3f1965df42d35c4356a1e5b9ab0986e51d40fc77ae3ce3e05452a153f9f79ff, verified match on copy: True) to canonical assets/scenes/L49.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L49-fix (retry round 1, pass)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L49.png in this checkout"
+  },
+  {
+    "shot_id": "L34",
+    "file": null,
+    "technique": "(e) Seeded delta-chain \u2014 in-chain parent + held figure canonical(s)",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L33.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+        "role": "canonical",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "flagged": false,
+    "review_status": "parked",
+    "parked_reasons": [
+      "fidelity: missing verdict",
+      "style: missing verdict",
+      "rig: missing verdict",
+      "delta_discipline: canonical-expression leak PERSISTS on `miniscribe-rep` after P9 - on a beat whose prose authors NO expression change (\"everything else exactly as established\"), his eyes went from closed happy-squint to wide open with pupils and his mouth from open grin to small closed smile; `ibm-suit` resolved the identical spec correctly. Measured vs the verified parent L33: miniscribe-rep face interior 43.70% changed, ibm-suit head 10.21%, place regions 3.28-3.82%, authored roller-door delta 50.67%. P9 DID fix the hair half of the 6c2 leak (hair core 37.58% -> 6.51%) but not the expression half (face interior 29.79% -> 43.70%). Candidate frame left at visual-kit/_staging/L34.png, NOT promoted. Not re-rolled: the 6c2 record's standing diagnosis is that place, ibm-suit and the authored delta are all correct and a fresh roll risks all three to fix one face, and P9's seed-role expression-authority prose is already present in the assembled prompt, so the gap is spec-side, not a generator lottery."
+    ],
+    "retry_cause": null,
+    "parent_depth": 2,
+    "lineage": 1,
+    "notes": "PARKED \u2014 candidate at visual-kit/_staging/L34.png (sha256 c004fcb6b35d583208dd6db600994992a7e2a66d97110a681d134011a2a94e91), NOT promoted, left in place per instruction. Verdict FAIL per scratchpad/6c2-w2verify-r2.json#L34 (wave-2 retry round 2, final round) \u2014 re-mint against the now-verified assets/scenes/L33.png parent (chain-parent resolution law; lineage reset 2\u21921 confirms C-11 under a verified parent). Diagnosed next move: spec gap \u2014 seed_roles lacks expression authority; fix preamble in a doctrine window, do NOT re-roll \u2014 place, ibm-suit and the authored delta are all correct and a fresh roll risks all three."
+  },
+  {
+    "shot_id": "L38",
+    "file": "assets/scenes/L38.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+        "role": "figure",
+        "character": "base"
+      },
+      {
+        "path": "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`base` STEP-1 fig-base--action-armscrossed--expr-deadpan--l38-3412012a GENERATE; `miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-pleading GENERATE; promoted from _staging/L38.png (sha256 59d4619e5d92e81ef3cd9cada11a1dfc8ca6c2419ba23a8e32b2ff5b6202a095, verified match on copy: True); verify record scratchpad/6c2-w2verify-r2.json#L38 (wave-2 retry round 2 / final round, pass \u2014 fresh root, first verification, outside the L26-L37 and L39-L50 slices)"
+  },
+  {
+    "shot_id": "L39",
+    "file": null,
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "flagged": false,
+    "review_status": "parked",
+    "parked_reasons": [
+      "fidelity: missing verdict",
+      "style: missing verdict",
+      "rig: missing verdict",
+      "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
+    ],
+    "retry_cause": "r1 defect (stencil on wrong panel, notes staged on roof) targeted by exact overlay replace \u2014 from: \"Across the truck's rear panel runs the stencilled figure '600 MILLION'.\" -> to: \"The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut...\"; 3 of 4 correctives landed (stencil placement, notes bulge, bare roof) but the 4th (closed-mouth smirk) did not, and the re-roll introduced 2 new rig regressions (nose, ear) on a face the rejected prior held clean",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "PARKED \u2014 candidate at visual-kit/_staging/L39-fix.png (sha256 272b616e0dd15dbcb0d5717c1aaeda158174ec763305cb2e6b5ddf202e3e33ab), NOT promoted, left in place per instruction. Verdict FAIL per scratchpad/6c2-w2verify-r2.json#L39-fix (wave-2 retry round 2, final round), superseding the original FAIL at scratchpad/6c2-w2verify-b.json#L39 (stencil on wrong panel + notes on roof \u2014 now fixed). Diagnosed next move: face-only corrective on the CURRENT staging prose \u2014 restate the staging verbatim and append the rig law explicitly ('his face carries NO nose and NO ear of any kind ... mouth CLOSED in a small smirk with no teeth showing, under half-lidded angled eyes'). Do NOT re-roll the whole frame \u2014 the stencil surface and load-bed staging are now exactly right and a fresh whole re-roll risks both. Systemic signal (flagged, not actioned this pass): if a third attempt also drifts the mouth open, expr-greedy under physical-effort action reliably pulls the mouth open, and the fix belongs in the figure card/critic layer, not this frame's prose."
+  },
+  {
+    "shot_id": "L45",
+    "file": "assets/scenes/L45.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-recoil--expr-shock.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect fixed by exact replace \u2014 corrective: both hands drawn as matched 4-digit rig hands (thumb + 3 fingers, never five digits), both boots planted flat and whole on solid rock behind the lip with the ground-gone bite in front of them, neither boot over the void and no part of him falling",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-shock REUSED; RETRY overlay from `L45`; promoted from _staging/L45-fix.png (sha256 d7195187dc9cefcfab102e345eaab8df41908288e23055a330a3bd28a50ae0a2, verified match on copy: True) to canonical assets/scenes/L45.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r2.json#L45-fix (wave-2 retry round 2 / final round, pass \u2014 corrective re-roll of the L45 rejected prior at _staging/_rejected-6c2-w2r1/L45.png, sha256 d3a3cb3a..., ship-it verdict; ink_law flagged non-blocking, a batch-level ochre-scene note not a per-frame defect)",
+    "note": "`verified` withdrawn on emit: no frame at assets/scenes/L45.png in this checkout"
+  },
+  {
+    "shot_id": "L169",
+    "review_status": "verified",
+    "parked_reasons": [],
+    "file": "assets/scenes/L169.png"
+  },
+  {
+    "shot_id": "L84",
+    "file": "assets/scenes/L84.png",
+    "technique": "(c) Character-free scene \u2014 cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor; W24 re-promotion supersedes the prior scene bytes; promoted from _staging/L84-w22.png (sha256 3ec6ff9fadbd66eb63d1e52573bb2073185830dda6235b0dbe916f7b244b62cd, verified match on copy: True); verify record scratchpad/taste-forensics/w23-verdicts-A.json + w23-verdicts-B.json (boss-adjudicated clean)"
+  },
+  {
+    "shot_id": "L114",
+    "file": "assets/scenes/L114.png",
+    "technique": "(c) Character-free scene \u2014 cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "WARM-NEUTRALS DOCTRINE REMINT (2026-08-18, commit 33676421) -- regenerated against the current style-bible (S2b warm-tinted neutrals, S5 fore/mid/background depth read) seeding the reminted scene-style-tile + lettering-marker-italic; straight regen, no retry needed; promoted from _staging/L114.png (sha256 72bc339bbe1d06200f237e09fdd83c4d38b999e9837f51476bbc7c6d05c64057, verified match on copy: True); old pixels archived at scratchpad/plate-regen/old/L114.png; fresh-eyes doctrine review in scratchpad/plate-regen/progress.md (all axes clean, warm-bias confirmed by Pillow R-B measurement)."
+  },
+  {
+    "shot_id": "L198",
+    "file": "assets/scenes/L198.png",
+    "technique": "(c) Character-free scene \u2014 cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "WARM-NEUTRALS DOCTRINE REMINT (2026-08-18, commit 33676421) -- regenerated against the current style-bible (S2b warm-tinted neutrals, S5 fore/mid/background depth read) seeding the reminted scene-style-tile; straight regen, no retry needed; promoted from _staging/L198.png (sha256 ce3043b113b73c3f7d6772dddff30f41b52dcd1221f961a2831369e9634b815a, verified match on copy: True); old pixels archived at scratchpad/plate-regen/old/L198.png; fresh-eyes doctrine review in scratchpad/plate-regen/progress.md (all axes clean, warm-bias confirmed by Pillow R-B measurement)."
+  },
+  {
+    "shot_id": "L65",
+    "file": "assets/scenes/L65.png",
+    "technique": "(c) Character-free scene \u2014 cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "WARM-NEUTRALS DOCTRINE REMINT (2026-08-18, commit 33676421) -- regenerated against the current style-bible (S2b warm-tinted neutrals, S5 fore/mid/background depth read) seeding the reminted scene-style-tile; straight regen, no retry needed; promoted from _staging/L65.png (sha256 00159d2332cd8b3110d9feb47db7b62fa85ffa3c5030e283bb130d5706f014f4, verified match on copy: True); old pixels archived at scratchpad/plate-regen/old/L65.png; fresh-eyes doctrine review in scratchpad/plate-regen/progress.md (all axes clean, warm-bias confirmed by Pillow R-B measurement)."
+  },
+  {
+    "shot_id": "L112",
+    "file": "assets/scenes/L112.png",
+    "technique": "(c) Character-free scene \u00e2\u20ac\u201d cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "WARM-NEUTRALS DOCTRINE REMINT (2026-08-18, commit 33676421) -- regenerated against the current style-bible (S2b warm-tinted neutrals, S5 fore/mid/background depth read) seeding the reminted scene-style-tile; straight regen, no retry needed; promoted from _staging/L112.png (sha256 8b2fb52975eab57277bfd4645d052ae27ecfa03d3c74e9bdcabf2df226b9c710, verified match on copy: True); old pixels archived at scratchpad/plate-regen/old/L112.png; fresh-eyes doctrine review in scratchpad/plate-regen/progress.md (all axes clean, warm-bias confirmed by Pillow R-B measurement)."
+  },
+  {
+    "shot_id": "L86",
+    "file": "assets/scenes/L86.png",
+    "technique": "(c) Character-free scene \u2014 cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "palette/light span warm-neutrals fix (defect: content, changed_spans: 1)",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "WARM-NEUTRALS DOCTRINE REMINT (2026-08-18, commit 33676421) -- regenerated against the current style-bible (S2b warm-tinted neutrals, S5 fore/mid/background depth read) seeding the reminted scene-style-tile + lettering-marker-italic; warm-retry (defect: content, exact-replace on the palette/light span, changed_spans: 1) -- first attempt read grey-teal (measured R-B -1.4), retry corrected to warm (measured R-B +40.2); lettering ink verified by Pillow colour-distance sampling against locked #241a12 (302px match, 0px near the red #d7402b accent -- an initial by-eye misread of the small preview was retracted by measurement); promoted from _staging/L86-warmretry.png (sha256 2a2b1bd9ab81823821db75a197bf984264d24464d4b1d485985dcf4c8bf73333, verified match on copy: True); old pixels archived at scratchpad/plate-regen/old/L86.png; fresh-eyes doctrine review in scratchpad/plate-regen/progress.md."
+  },
+  {
+    "shot_id": "L01",
+    "file": "assets/scenes/L01.png",
+    "technique": "(b) Seeded composition -- locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). `pc-boxy` canonical + `expr-delighted` seeded directly, no pose primitive. Round-1 clean, no retry needed. sha256=de3bff31d5630813a98a06dd74cd1476a895d676ef0573693f7f93ff948e526f."
+  },
+  {
+    "shot_id": "L02",
+    "file": "assets/scenes/L02.png",
+    "technique": "(c) Character-free scene -- cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect (fidelity: unrequested lettering) fixed by exact replace -- from: \"with a cropped ticket-booth corner stage-left\" -> to: \"with a cropped ticket-booth corner stage-left, its window glass bare and blank, no signage, no lettering, no text of any kind on the booth\" (changed_spans: 1)",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). RETRY overlay `L02-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L02-fix-w2.png to canonical assets/scenes/L02.png. sha256=046946793d1ac5519c3d068ae9c70b40807486a9e0254a41a6bc4fca8e553d03."
+  },
+  {
+    "shot_id": "L06",
+    "file": "assets/scenes/L06.png",
+    "technique": "(b) Seeded composition -- locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+        "role": "prop",
+        "character": "prop-beige-pc"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). Re-authoring recast this shot's subject from `pc-boxy` to plain `prop-beige-pc` (unpersonified-object convention, matching L08/L15) -- seeds updated accordingly from the stale pre-re-author entry. `prop-beige-pc` match-prop canonical + crowd-exemplar seeded. Round-1 clean, no retry needed. sha256=ed1aed150e0e7c2ee97e8e5e8f60e95bb9d1ae56183ef975289f5668bfcb2ecb."
+  },
+  {
+    "shot_id": "L09",
+    "file": "assets/scenes/L09.png",
+    "technique": "(c) Character-free scene -- cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect (fidelity: unrequested 'CLOSED' sign on the shutter, not authored anywhere in still_prompt) fixed by exact replace -- from: \"midground a shuttered shop door at the near end with a dense line of grinning figures\" -> to: \"midground a bare unlettered shuttered shop door, no sign, no text, no lettering anywhere on the shutter, at the near end with a dense line of grinning figures\" (changed_spans: 1)",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). RETRY overlay `L09-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L09-fix-w2.png to canonical assets/scenes/L09.png. sha256=a22a148da86d8aaf6a127182f738d0c59bb0fd015cce5670a7512f83af106452."
+  },
+  {
+    "shot_id": "L18",
+    "file": "assets/scenes/L18.png",
+    "technique": "(d) One-shot single-character",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png",
+        "role": "figure",
+        "character": "drive-maker"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`drive-maker` STEP-1 fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979 REUSED",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L19",
+    "file": "assets/scenes/L19.png",
+    "technique": "(d) One-shot single-character",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png",
+        "role": "figure",
+        "character": "drive-maker"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`drive-maker` STEP-1 fig-drive-maker--hold-both-hands--expr-greedy--14b7da15 REUSED",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L20",
+    "file": "assets/scenes/L20.png",
+    "technique": "(b) Seeded composition \u2014 locked character(s) in composed environment (crowd)",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-present--expr-smug--5e51ec13.png",
+        "role": "figure",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`drive-maker` STEP-1 fig-drive-maker--action-present--expr-smug--5e51ec13 REUSED",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L21",
+    "file": "assets/scenes/L21.png",
+    "technique": "(e) Seeded delta-chain \u2014 supply-stall delta",
+    "seeds": [
+      {
+        "path": "_staging/L20.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`drive-maker` delta -> parent + canonical",
+    "parent_depth": 1,
+    "lineage": 1
+  },
+  {
+    "shot_id": "L23",
+    "file": "assets/scenes/L23.png",
+    "technique": "(e) Seeded delta-chain \u2014 packing-bay base",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png",
+        "role": "figure",
+        "character": "brick-foreman"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-deadpan--7be06d45 REUSED",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L24",
+    "file": "assets/scenes/L24.png",
+    "technique": "(e) Seeded delta-chain \u2014 packing-bay delta",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L23.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`brick-foreman` delta -> parent + canonical",
+    "parent_depth": 1,
+    "lineage": 1
+  },
+  {
+    "shot_id": "L25",
+    "file": "assets/scenes/L25.png",
+    "technique": "(e) Seeded delta-chain \u2014 packing-bay delta (lettering)",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L24.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`brick-foreman` delta -> parent + canonical; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived",
+    "parent_depth": 1,
+    "lineage": 1
+  },
+  {
+    "shot_id": "L10",
+    "file": "assets/scenes/L10.png",
+    "technique": "(d) One-shot single-character \u2014 pc-boxy at desk with prop-drive",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-talking.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L10.png",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L11",
+    "file": "assets/scenes/L11.png",
+    "technique": "(b) Seeded composition \u2014 locked character in composed environment [bedside-table stage BASE]",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L11.png",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L12",
+    "file": "assets/scenes/L12.png",
+    "technique": "(e) Seeded delta-chain \u2014 in-chain parent + held canonical [bedside-table stage DELTA]",
+    "seeds": [
+      {
+        "path": "_staging/L11.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L12.png",
+    "parent_depth": 1,
+    "lineage": 1
+  },
+  {
+    "shot_id": "L13",
+    "file": "assets/scenes/L13.png",
+    "technique": "(c) Character-free scene \u2014 cast-free composition, prop-drive blown up, scene-style-tile seeded",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette + temperature); worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L13.png",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L14",
+    "file": "assets/scenes/L14.png",
+    "technique": "(b) Seeded composition \u2014 locked character in composed environment (standalone base, re-authored no-grip action)",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-caught.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L14.png",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L15",
+    "file": "assets/scenes/L15.png",
+    "technique": "(c) Character-free scene \u2014 crowd-bearing composition (no cast, crowd exemplar + props)",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+        "role": "prop",
+        "character": "prop-beige-pc"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: no cast \u2014 the scene composes from the place; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L15.png",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L03",
+    "file": "assets/scenes/L03.png",
+    "technique": "(c) Character-free scene -- cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "r1 defect (rig: crowd hair/head-tone bounded-variety over the 2-3 cap) fixed by exact replace -- from: \"foreground a wall of raised applauding hands and shoulders fills the lower third, midground\" -> to: \"...fills the lower third, every crowd figure sharing the same two flat head tones and the same one repeating hairstyle silhouette across the whole group, midground\" (changed_spans: 1)",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). RETRY overlay `L03-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L03-fix-w2.png to canonical assets/scenes/L03.png. sha256=add3397af9d76af1d037f389e25d4d7982b5823917af469afaa55f71f9edfeb5."
+  },
+  {
+    "shot_id": "L04",
+    "file": "assets/scenes/L04.png",
+    "technique": "(c) Character-free scene -- cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": "r1 defects (fidelity: unrequested 'SALE' tag; style: '1983' lettering in a digital/printed font, not marker-hand; rig: shutter drawn with hairline ridge lines finer than rig outline) fixed by ONE combined exact replace spanning the shutter/cartons/lettering clauses (changed_spans: 1) -- see retry-overlay-wA.json#L04 for the full from/to.",
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). LETTERING -- text-bearing prompt; SS5 exemplar `lettering-marker-italic` derived. STYLE TILE -- cast-free frame; SS5 anchor `scene-style-tile` derived. RETRY overlay `L04-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L04-fix-w2.png to canonical assets/scenes/L04.png. sha256=cb6f36a550e4d59ecee01dad21aa03ad3841ff2be348081eedce066ad28fc947."
+  },
+  {
+    "shot_id": "L05",
+    "file": "assets/scenes/L05.png",
+    "technique": "(b) Seeded composition -- locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). `pc-boxy` canonical + `expr-surprised` seeded directly. Round-1 clean, no retry needed. sha256=a7ddce096386fa8e891456e2ecf577d21c44cb6887476a82f4045d13d906c2b1."
+  },
+  {
+    "shot_id": "L07",
+    "file": "assets/scenes/L07.png",
+    "technique": "(b) Seeded composition -- locked character(s) in composed environment",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+        "role": "prop",
+        "character": "prop-beige-pc"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). Subject is `prop-beige-pc` (unpersonified object) per re-authored still_prompt, not pc-boxy as the stale pre-re-author entry had. `prop-beige-pc` match-prop canonical + crowd-exemplar seeded. Round-1 clean, no retry needed. sha256=ca3c647a717ef9e34f8cfdfe580662a3efdefc176dbd3fb4d4eaedb5b95a0dd8."
+  },
+  {
+    "shot_id": "L08",
+    "file": "assets/scenes/L08.png",
+    "technique": "(c) Character-free scene -- cast-free composition",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+        "role": "prop",
+        "character": "prop-beige-pc"
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). `prop-beige-pc` match-prop canonical + crowd-exemplar seeded (four flying units, matching the shot's established design). Round-1 clean, no retry needed. sha256=be7c05dc2f606933874cf81b03d1c96104e3e90fbd1072379e1cdf51cd19c201."
+  },
+  {
+    "shot_id": "L22",
+    "file": "assets/scenes/L22.png",
+    "technique": "(d) One-shot single-character",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png",
+        "role": "figure",
+        "character": "brick-foreman"
+      }
+    ],
+    "flagged": false,
+    "review_status": "unreviewed",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "`brick-foreman` STEP-1 fig-brick-foreman--back-to-viewer--4ff569f7 REUSED",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L16",
+    "file": "assets/scenes/L16.png",
+    "technique": "(b) Seeded composition \u2014 locked characters in composed environment [pc-ring stage BASE; FIRST rival-pc appearance]",
+    "seeds": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+        "role": "canonical",
+        "character": "rival-pc"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: `pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L16.png",
+    "parent_depth": 0,
+    "lineage": 0
+  },
+  {
+    "shot_id": "L17",
+    "file": "assets/scenes/L17.png",
+    "technique": "(e) Seeded delta-chain \u2014 in-chain parent + held canonicals [pc-ring stage DELTA]",
+    "seeds": [
+      {
+        "path": "_staging/L16.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+        "role": "canonical",
+        "character": "rival-pc"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "flagged": false,
+    "review_status": "verified",
+    "parked_reasons": [],
+    "retry_cause": null,
+    "notes": "why: `pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L17.png",
+    "parent_depth": 1,
+    "lineage": 1
+  }
+]

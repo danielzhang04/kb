@@ -74,6 +74,13 @@
       "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
       "no_hands": true
     },
+    "rival-pc": {
+      "role": "Personified rival desktop computer \u2014 pc-boxy's opposite number in the market-share bout; a FACED machine character (not a human), same no-hand family as pc-boxy. Appears L16-L17.",
+      "head_tone": "#8b93a0",
+      "costume": "PINNED canonical form: slate-grey desktop computer case, same no-hand boxy build as pc-boxy but narrower and a head taller, a pair of stacked vent slots ribbing its front panel above its own cartoon eyes and mouth, short stubby arms and legs. NOTE: a personified OBJECT \u2014 never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
+      "base": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+      "no_hands": true
+    },
     "auditor-rep": {
       "role": "The outside AUDITOR personified \u2014 the accounting firm's man sent to verify MiniScribe's inventory; the figure the brick-filled cartons were staged for. Appears L141-L143, L145, L147, L166, L201, L202, L213, L242.",
       "head_tone": "#bc8b62",
@@ -650,6 +657,14 @@
       "kind": "environment",
       "tag": "style anchor",
       "note": "Warm-neutrals doctrine remint (2026-08-18, commit 33676421): 1980s home-electronics retail shop interior, fore/mid/background depth read, committed warm palette (golden oak, cream, warm amber). Supersedes the 2026-08-05 computer-shop anchor (archived at videos/2026-07-28-bricks-fresh/scratchpad/plate-regen/old/scene-style-tile.png). Seeded into every CAST-FREE plate/scene gen; contributes ONLY line register + palette saturation AND temperature, never content, layout, or the depicted place."
+    },
+    {
+      "name": "rival-pc",
+      "file": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+      "character": "rival-pc",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png"
     }
   ]
 }

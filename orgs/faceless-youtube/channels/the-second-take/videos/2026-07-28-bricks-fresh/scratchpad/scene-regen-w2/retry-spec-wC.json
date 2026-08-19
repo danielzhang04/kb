@@ -1,0 +1,78 @@
+[
+  {
+    "name": "fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+        "role": "pose",
+        "character": "drive-maker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: walking a loaded hand truck of flat cartons down a service ramp. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew both arms hanging relaxed at the sides, ignoring the pose reference entirely. Redraw with the CARRYING stance clearly asymmetric: one arm bent, that hand raised to hip/waist height in a firm gripping fist as if clutching a handle at that height; the other arm may hang naturally. The bent, weight-bearing arm is the load-bearing detail \u2014 do not default to a neutral standing pose.",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `drive-maker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `drive-maker` holds in the parent scene, and no other figure's. The THIRD image is the `carry-by-handle` pose reference for `drive-maker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: walking a loaded hand truck of flat cartons down a service ramp. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew both arms hanging relaxed at the sides, ignoring the pose reference entirely. Redraw with the CARRYING stance clearly asymmetric: one arm bent, that hand raised to hip/waist height in a firm gripping fist as if clutching a handle at that height; the other arm may hang naturally. The bent, weight-bearing arm is the load-bearing detail \u2014 do not default to a neutral standing pose.",
+    "retry_authority": {
+      "kind": "step1-remint",
+      "changed_spans": 1,
+      "defect": "pose",
+      "character": "drive-maker"
+    },
+    "why": "STEP-1-only retry for `drive-maker` from `L18`"
+  },
+  {
+    "name": "fig-drive-maker--hold-both-hands--expr-greedy--14b7da15",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+        "role": "expression",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+        "role": "pose",
+        "character": "drive-maker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew both arms hanging relaxed at the sides, ignoring the pose reference entirely. Redraw with BOTH arms bent forward at the elbow, both hands brought together in front of the body at roughly waist height in a firm double-fisted grip, as if gripping a long shaft held out in front. Do not default to a neutral standing pose with arms at the sides.",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-greedy` expression reference for `drive-maker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `drive-maker` holds in the parent scene, and no other figure's. The THIRD image is the `hold-both-hands` pose reference for `drive-maker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew both arms hanging relaxed at the sides, ignoring the pose reference entirely. Redraw with BOTH arms bent forward at the elbow, both hands brought together in front of the body at roughly waist height in a firm double-fisted grip, as if gripping a long shaft held out in front. Do not default to a neutral standing pose with arms at the sides.",
+    "retry_authority": {
+      "kind": "step1-remint",
+      "changed_spans": 1,
+      "defect": "pose",
+      "character": "drive-maker"
+    },
+    "why": "STEP-1-only retry for `drive-maker` from `L19`"
+  }
+]

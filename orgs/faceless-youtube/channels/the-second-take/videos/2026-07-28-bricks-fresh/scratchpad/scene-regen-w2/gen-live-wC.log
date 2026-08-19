@@ -1,0 +1,21 @@
+  [1/12] fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979: START provider call
+  [1/12] fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979: OK -> _staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png
+  [2/12] L18: skip (seed awaits review) — L18: figure `fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [3/12] fig-drive-maker--hold-both-hands--expr-greedy--14b7da15: START provider call
+  [3/12] fig-drive-maker--hold-both-hands--expr-greedy--14b7da15: OK -> _staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png
+  [4/12] L19: skip (seed awaits review) — L19: figure `fig-drive-maker--hold-both-hands--expr-greedy--14b7da15` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [5/12] L20: START provider call
+  [5/12] L20: OK -> _staging/L20.png
+  [6/12] L21: START provider call
+  [6/12] L21: OK -> _staging/L21.png
+  [7/12] fig-brick-foreman--back-to-viewer--4ff569f7: START provider call
+  [7/12] fig-brick-foreman--back-to-viewer--4ff569f7: OK -> _staging/fig-brick-foreman--back-to-viewer--4ff569f7.png
+  [8/12] L22: skip (seed awaits review) — L22: figure `fig-brick-foreman--back-to-viewer--4ff569f7` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [9/12] fig-brick-foreman--action-shrug--expr-deadpan--7be06d45: START provider call
+  [9/12] fig-brick-foreman--action-shrug--expr-deadpan--7be06d45: OK -> _staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png
+  [10/12] L23: skip (seed awaits review) — L23: figure `fig-brick-foreman--action-shrug--expr-deadpan--7be06d45` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [11/12] L24: START provider call
+  [11/12] L24: OK -> _staging/L24.png
+  [12/12] L25: START provider call
+  [12/12] L25: OK -> _staging/L25.png
+  == 8 generated, 0 failed, 0 skipped, 4 held for review ==

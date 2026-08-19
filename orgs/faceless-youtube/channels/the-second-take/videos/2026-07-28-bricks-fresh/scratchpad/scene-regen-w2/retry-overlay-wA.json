@@ -1,0 +1,46 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L02",
+      "name": "L02-fix-w2",
+      "defect": "content",
+      "replace": {
+        "from": "with a cropped ticket-booth corner stage-left",
+        "to": "with a cropped ticket-booth corner stage-left, its window glass bare and blank, no signage, no lettering, no text of any kind on the booth"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L03",
+      "name": "L03-fix-w2",
+      "defect": "content",
+      "replace": {
+        "from": "foreground a wall of raised applauding hands and shoulders fills the lower third, midground",
+        "to": "foreground a wall of raised applauding hands and shoulders fills the lower third, every crowd figure sharing the same two flat head tones and the same one repeating hairstyle silhouette across the whole group, midground"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L04",
+      "name": "L04-fix-w2",
+      "defect": "content",
+      "replace": {
+        "from": "midground its half-raised shutter over a window stacked with beige computer cartons under a striped awning, a parked hatchback at the kerb further along stage-right, background the pavement continuing past a cropped lamp post at the frame edge. Cool blue dawn air with one warm amber shop-glow spilling out from under the shutter, blue-taupe-amber palette. Propped in that doorway light, a chalk sandwich board carrying the single chalked line '1983'.",
+        "to": "midground its half-raised shutter, the shutter's slats drawn as a small number of THICK bands at the same medium-thick rig outline weight as the rest of the scene, over a window stacked with plain beige computer cartons under a striped awning, no price tags, no stickers, no labels on any carton, a parked hatchback at the kerb further along stage-right, background the pavement continuing past a cropped lamp post at the frame edge. Cool blue dawn air with one warm amber shop-glow spilling out from under the shutter, blue-taupe-amber palette. Propped in that doorway light, a chalk sandwich board carrying the single line '1983' in loose hand-scrawled marker chalk lettering with a visible lean and baseline wobble -- plainly hand-drawn, never a clean printed or digital font."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L09",
+      "name": "L09-fix-w2",
+      "defect": "content",
+      "replace": {
+        "from": "midground a shuttered shop door at the near end with a dense line of grinning figures",
+        "to": "midground a bare unlettered shuttered shop door, no sign, no text, no lettering anywhere on the shutter, at the near end with a dense line of grinning figures"
+      }
+    }
+  ]
+}

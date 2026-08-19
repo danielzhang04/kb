@@ -1,0 +1,388 @@
+[
+  {
+    "name": "fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+        "role": "pose",
+        "character": "drive-maker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: walking a loaded hand truck of flat cartons down a service ramp. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `drive-maker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `drive-maker` holds in the parent scene, and no other figure's. The THIRD image is the `carry-by-handle` pose reference for `drive-maker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: walking a loaded hand truck of flat cartons down a service ramp. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `drive-maker` (carry-by-handle / expr-deadpan)"
+  },
+  {
+    "name": "L18",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`drive-maker`, `expr-deadpan`, `carry-by-handle`, walking a loaded hand truck of flat cartons down a service ramp. Seen from the loading dock looking down the ramp's length: foreground a bollard cropped at the lower-right, midground drive-maker descending stage-right with the hand truck, background a breeze-block wall running the full width behind him, a roller shutter half down stage-left, bins and a pallet stack through the depth, a bright strip of plaza sky over the roofline the only trace left of the crowd. Umber-brown-amber palette, cool shade with one warm bulb over the shutter.",
+    "payload": "`drive-maker`, `expr-deadpan`, `carry-by-handle`, walking a loaded hand truck of flat cartons down a service ramp. Seen from the loading dock looking down the ramp's length: foreground a bollard cropped at the lower-right, midground drive-maker descending stage-right with the hand truck, background a breeze-block wall running the full width behind him, a roller shutter half down stage-left, bins and a pallet stack through the depth, a bright strip of plaza sky over the roofline the only trace left of the crowd. Umber-brown-amber palette, cool shade with one warm bulb over the shutter.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png",
+        "role": "figure",
+        "character": "drive-maker"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979 GENERATE"
+  },
+  {
+    "name": "fig-drive-maker--hold-both-hands--expr-greedy--14b7da15",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+        "role": "expression",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+        "role": "pose",
+        "character": "drive-maker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-greedy` expression reference for `drive-maker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `drive-maker` holds in the parent scene, and no other figure's. The THIRD image is the `hold-both-hands` pose reference for `drive-maker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `drive-maker` (hold-both-hands / expr-greedy)"
+  },
+  {
+    "name": "L19",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`drive-maker`, `expr-greedy`, `hold-both-hands`, both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Seen from above looking down into the heap: foreground the drift of loose banknotes spreading across the lower frame, midground drive-maker planted centre pulling the rake through them, background a bare loading bay -- corrugated tin walls, a shuttered bay door, flat cartons stacked to the ceiling stage-left and stage-right so the money lies in a canyon of stock. Green-brown-amber palette, one hard work lamp from stage-right.",
+    "payload": "`drive-maker`, `expr-greedy`, `hold-both-hands`, both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Seen from above looking down into the heap: foreground the drift of loose banknotes spreading across the lower frame, midground drive-maker planted centre pulling the rake through them, background a bare loading bay -- corrugated tin walls, a shuttered bay door, flat cartons stacked to the ceiling stage-left and stage-right so the money lies in a canyon of stock. Green-brown-amber palette, one hard work lamp from stage-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png",
+        "role": "figure",
+        "character": "drive-maker"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--hold-both-hands--expr-greedy--14b7da15 GENERATE"
+  },
+  {
+    "name": "L20",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set. The SECOND image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\n`drive-maker`, `expr-smug`, `action-present`, behind a plank counter stage-right, holding a pick and a shovel out across the counter toward the buyers. Seen at a three-quarter angle across the stall rather than square-on: foreground a water butt cropped at the lower-left, midground the counter with drive-maker and the reaching prospectors, background a canvas awning overhead, barrels and coils of rope stacked behind him, a bare brown hillside beyond. A press of grinning prospectors in muddy hats and mud-caked coats reaches up for the tools from the far side of the counter. Ochre-brown-cream palette, hard high sun.",
+    "payload": "`drive-maker`, `expr-smug`, `action-present`, behind a plank counter stage-right, holding a pick and a shovel out across the counter toward the buyers. Seen at a three-quarter angle across the stall rather than square-on: foreground a water butt cropped at the lower-left, midground the counter with drive-maker and the reaching prospectors, background a canvas awning overhead, barrels and coils of rope stacked behind him, a bare brown hillside beyond. A press of grinning prospectors in muddy hats and mud-caked coats reaches up for the tools from the far side of the counter. Ochre-brown-cream palette, hard high sun.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-present--expr-smug--5e51ec13.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-present--expr-smug--5e51ec13.png",
+        "role": "figure",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--action-present--expr-smug--5e51ec13 REUSED"
+  },
+  {
+    "name": "L21",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change. Never the pose, and never the face: the parent image owns it outright. The THIRD image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\n`drive-maker`, `expr-smug`, `action-present`, behind the plank counter as established, the three-quarter stall view, prospectors still pressing in on the far side, ochre-brown-cream palette under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin; everything else exactly as established.",
+    "payload": "`drive-maker`, `expr-smug`, `action-present`, behind the plank counter as established, the three-quarter stall view, prospectors still pressing in on the far side, ochre-brown-cream palette under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L20.png",
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L20.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`drive-maker` delta -> parent + canonical"
+  },
+  {
+    "name": "fig-brick-foreman--back-to-viewer--4ff569f7",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/base/back-to-viewer.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/back-to-viewer.png",
+        "role": "pose",
+        "character": "brick-foreman"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: small in the one lit opening along a long row of roller-shutter loading bays receding at an oblique angle rather than square-on. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `back-to-viewer` pose reference for `brick-foreman` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: small in the one lit opening along a long row of roller-shutter loading bays receding at an oblique angle rather than square-on. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `brick-foreman` (back-to-viewer / no expr)"
+  },
+  {
+    "name": "L22",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`brick-foreman`, `back-to-viewer`, small in the one lit opening along a long row of roller-shutter loading bays receding at an oblique angle rather than square-on. Every other shutter down the row is down with its face left completely blank; foreground the wet concrete apron and a cropped kerb puddle at the lower frame, midground the row of shutters running back diagonally into the depth, background warm amber light spilling from that single open bay across the apron toward the viewer under a low grey sky. Umber-amber-cream palette.",
+    "payload": "`brick-foreman`, `back-to-viewer`, small in the one lit opening along a long row of roller-shutter loading bays receding at an oblique angle rather than square-on. Every other shutter down the row is down with its face left completely blank; foreground the wet concrete apron and a cropped kerb puddle at the lower frame, midground the row of shutters running back diagonally into the depth, background warm amber light spilling from that single open bay across the apron toward the viewer under a low grey sky. Umber-amber-cream palette.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png",
+        "role": "figure",
+        "character": "brick-foreman"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`brick-foreman` STEP-1 fig-brick-foreman--back-to-viewer--4ff569f7 GENERATE"
+  },
+  {
+    "name": "fig-brick-foreman--action-shrug--expr-deadpan--7be06d45",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-shrug.png",
+        "role": "pose",
+        "character": "brick-foreman"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left, shrugging square to the viewer beside a shoulder-high stack of sealed brown cartons on a wooden pallet. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `brick-foreman` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `brick-foreman` holds in the parent scene, and no other figure's. The THIRD image is the `action-shrug` pose reference for `brick-foreman` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left, shrugging square to the viewer beside a shoulder-high stack of sealed brown cartons on a wooden pallet. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `brick-foreman` (action-shrug / expr-deadpan)"
+  },
+  {
+    "name": "L23",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`brick-foreman`, `expr-deadpan`, `action-shrug`, stage-left, shrugging square to the viewer beside a shoulder-high stack of sealed brown cartons on a wooden pallet. Camera holds slightly off-centre on him rather than a mirrored symmetric frame: foreground a pallet corner cropped at the lower-right, midground brick-foreman and the carton stack, background a breeze-block wall carrying a bare bracket with nothing hung on it, a wooden trestle bearing a tape roll and a knife stage-right, running back into the bay's depth. Umber-brown-cream palette, flat even work light.",
+    "payload": "`brick-foreman`, `expr-deadpan`, `action-shrug`, stage-left, shrugging square to the viewer beside a shoulder-high stack of sealed brown cartons on a wooden pallet. Camera holds slightly off-centre on him rather than a mirrored symmetric frame: foreground a pallet corner cropped at the lower-right, midground brick-foreman and the carton stack, background a breeze-block wall carrying a bare bracket with nothing hung on it, a wooden trestle bearing a tape roll and a knife stage-right, running back into the bay's depth. Umber-brown-cream palette, flat even work light.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png",
+        "role": "figure",
+        "character": "brick-foreman"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-deadpan--7be06d45 GENERATE"
+  },
+  {
+    "name": "L24",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change. Never the pose, and never the face: the parent image owns it outright.\n\n`brick-foreman`, `expr-deadpan`, `hold-one-hand`, at the trestle in the breeze-block packing bay as established, the same off-centre camera hold, umber-brown-cream palette under the flat work light. Only this changes: he lowers one red clay brick in one hand toward an open flat carton set square on the trestle, the brick the largest single object in frame at chest height, its rough clay face and frog hollow catching the light, a second open carton waiting stage-right; everything else exactly as established.",
+    "payload": "`brick-foreman`, `expr-deadpan`, `hold-one-hand`, at the trestle in the breeze-block packing bay as established, the same off-centre camera hold, umber-brown-cream palette under the flat work light. Only this changes: he lowers one red clay brick in one hand toward an open flat carton set square on the trestle, the brick the largest single object in frame at chest height, its rough clay face and frog hollow catching the light, a second open carton waiting stage-right; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L23.png",
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L23.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`brick-foreman` delta -> parent + canonical"
+  },
+  {
+    "name": "L25",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change. Never the pose, and never the face: the parent image owns it outright. The THIRD image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\n`brick-foreman`, `expr-deadpan`, `hold-one-hand`, at the trestle in the packing bay as established, the same off-centre camera hold, the red clay brick and the flat cartons as established, umber-brown-cream palette under the flat work light. Only this changes: the carton in front of him is taped shut and its top face now carries the stencilled words 'HARD DRIVE'; everything else exactly as established.",
+    "payload": "`brick-foreman`, `expr-deadpan`, `hold-one-hand`, at the trestle in the packing bay as established, the same off-centre camera hold, the red clay brick and the flat cartons as established, umber-brown-cream palette under the flat work light. Only this changes: the carton in front of him is taped shut and its top face now carries the stencilled words 'HARD DRIVE'; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L24.png",
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L24.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "`brick-foreman` delta -> parent + canonical; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  }
+]

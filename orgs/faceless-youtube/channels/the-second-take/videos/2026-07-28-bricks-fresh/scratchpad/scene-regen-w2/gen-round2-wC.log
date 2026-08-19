@@ -1,0 +1,9 @@
+  [1/4] L18: START provider call
+  [1/4] L18: OK -> _staging/L18.png
+  [2/4] L19: START provider call
+  [2/4] L19: OK -> _staging/L19.png
+  [3/4] L22: START provider call
+  [3/4] L22: OK -> _staging/L22.png
+  [4/4] L23: START provider call
+  [4/4] L23: OK -> _staging/L23.png
+  == 4 generated, 0 failed, 0 skipped, 0 held for review ==

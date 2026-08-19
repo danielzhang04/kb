@@ -1,0 +1,36 @@
+[
+  {
+    "name": "L24",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change. Never the pose, and never the face: the parent image owns it outright.\n\n`brick-foreman`, `expr-deadpan`, `hold-one-hand`, at the trestle in the breeze-block packing bay as established, the same off-centre camera hold, umber-brown-cream palette under the flat work light. Only this changes: he lowers one red clay brick in one hand toward an open flat carton set square on the trestle, the brick the largest single object in frame at chest height, its rough clay face and frog hollow catching the light, a second open carton waiting stage-right; everything else exactly as established.",
+    "payload": "`brick-foreman`, `expr-deadpan`, `hold-one-hand`, at the trestle in the breeze-block packing bay as established, the same off-centre camera hold, umber-brown-cream palette under the flat work light. Only this changes: he lowers one red clay brick in one hand toward an open flat carton set square on the trestle, the brick the largest single object in frame at chest height, its rough clay face and frog hollow catching the light, a second open carton waiting stage-right; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L23.png",
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L23.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`brick-foreman` delta -> parent + canonical"
+  }
+]

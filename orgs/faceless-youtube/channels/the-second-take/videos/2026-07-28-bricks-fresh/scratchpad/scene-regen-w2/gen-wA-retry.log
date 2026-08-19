@@ -1,0 +1,9 @@
+  [1/4] L02-fix-w2: START provider call
+  [1/4] L02-fix-w2: OK -> _staging/L02-fix-w2.png
+  [2/4] L03-fix-w2: START provider call
+  [2/4] L03-fix-w2: OK -> _staging/L03-fix-w2.png
+  [3/4] L04-fix-w2: START provider call
+  [3/4] L04-fix-w2: OK -> _staging/L04-fix-w2.png
+  [4/4] L09-fix-w2: START provider call
+  [4/4] L09-fix-w2: OK -> _staging/L09-fix-w2.png
+  == 4 generated, 0 failed, 0 skipped, 0 held for review ==

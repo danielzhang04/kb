@@ -1,0 +1,114 @@
+[
+  {
+    "name": "L18",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`drive-maker`, `expr-deadpan`, `carry-by-handle`, walking a loaded hand truck of flat cartons down a service ramp. Seen from the loading dock looking down the ramp's length: foreground a bollard cropped at the lower-right, midground drive-maker descending stage-right with the hand truck, background a breeze-block wall running the full width behind him, a roller shutter half down stage-left, bins and a pallet stack through the depth, a bright strip of plaza sky over the roofline the only trace left of the crowd. Umber-brown-amber palette, cool shade with one warm bulb over the shutter.",
+    "payload": "`drive-maker`, `expr-deadpan`, `carry-by-handle`, walking a loaded hand truck of flat cartons down a service ramp. Seen from the loading dock looking down the ramp's length: foreground a bollard cropped at the lower-right, midground drive-maker descending stage-right with the hand truck, background a breeze-block wall running the full width behind him, a roller shutter half down stage-left, bins and a pallet stack through the depth, a bright strip of plaza sky over the roofline the only trace left of the crowd. Umber-brown-amber palette, cool shade with one warm bulb over the shutter.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png",
+        "role": "figure",
+        "character": "drive-maker"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979 REUSED"
+  },
+  {
+    "name": "L19",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`drive-maker`, `expr-greedy`, `hold-both-hands`, both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Seen from above looking down into the heap: foreground the drift of loose banknotes spreading across the lower frame, midground drive-maker planted centre pulling the rake through them, background a bare loading bay -- corrugated tin walls, a shuttered bay door, flat cartons stacked to the ceiling stage-left and stage-right so the money lies in a canyon of stock. Green-brown-amber palette, one hard work lamp from stage-right.",
+    "payload": "`drive-maker`, `expr-greedy`, `hold-both-hands`, both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes toward himself into a growing heap at his boots. Seen from above looking down into the heap: foreground the drift of loose banknotes spreading across the lower frame, midground drive-maker planted centre pulling the rake through them, background a bare loading bay -- corrugated tin walls, a shuttered bay door, flat cartons stacked to the ceiling stage-left and stage-right so the money lies in a canyon of stock. Green-brown-amber palette, one hard work lamp from stage-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png",
+        "role": "figure",
+        "character": "drive-maker"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--hold-both-hands--expr-greedy--14b7da15 REUSED"
+  },
+  {
+    "name": "L22",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`brick-foreman`, `back-to-viewer`, small in the one lit opening along a long row of roller-shutter loading bays receding at an oblique angle rather than square-on. Every other shutter down the row is down with its face left completely blank; foreground the wet concrete apron and a cropped kerb puddle at the lower frame, midground the row of shutters running back diagonally into the depth, background warm amber light spilling from that single open bay across the apron toward the viewer under a low grey sky. Umber-amber-cream palette.",
+    "payload": "`brick-foreman`, `back-to-viewer`, small in the one lit opening along a long row of roller-shutter loading bays receding at an oblique angle rather than square-on. Every other shutter down the row is down with its face left completely blank; foreground the wet concrete apron and a cropped kerb puddle at the lower frame, midground the row of shutters running back diagonally into the depth, background warm amber light spilling from that single open bay across the apron toward the viewer under a low grey sky. Umber-amber-cream palette.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png",
+        "role": "figure",
+        "character": "brick-foreman"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`brick-foreman` STEP-1 fig-brick-foreman--back-to-viewer--4ff569f7 REUSED"
+  },
+  {
+    "name": "L23",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`brick-foreman`, `expr-deadpan`, `action-shrug`, stage-left, shrugging square to the viewer beside a shoulder-high stack of sealed brown cartons on a wooden pallet. Camera holds slightly off-centre on him rather than a mirrored symmetric frame: foreground a pallet corner cropped at the lower-right, midground brick-foreman and the carton stack, background a breeze-block wall carrying a bare bracket with nothing hung on it, a wooden trestle bearing a tape roll and a knife stage-right, running back into the bay's depth. Umber-brown-cream palette, flat even work light.",
+    "payload": "`brick-foreman`, `expr-deadpan`, `action-shrug`, stage-left, shrugging square to the viewer beside a shoulder-high stack of sealed brown cartons on a wooden pallet. Camera holds slightly off-centre on him rather than a mirrored symmetric frame: foreground a pallet corner cropped at the lower-right, midground brick-foreman and the carton stack, background a breeze-block wall carrying a bare bracket with nothing hung on it, a wooden trestle bearing a tape roll and a knife stage-right, running back into the bay's depth. Umber-brown-cream palette, flat even work light.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png",
+        "role": "figure",
+        "character": "brick-foreman"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-deadpan--7be06d45 REUSED"
+  }
+]

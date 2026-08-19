@@ -1,0 +1,48 @@
+{
+  "figures": {
+    "_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png": {
+      "canonical_sha256": "0658b29b7e7c68fc91a00a53a7c83b0f2abfef9982088e54c7b6999896816001",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png": {
+      "canonical_sha256": "9230de9bc90976913f4741c4bffbbd038348dbf6d255ddacdac4fbae07c7adc6",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png": {
+      "canonical_sha256": "247e780c650cf4ea03b21170102366912be083b9a5619f2fddedb39f45f0d138",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png": {
+      "canonical_sha256": "c03601694042e203834c51287739ad2ce9d5f5ccdf8c697c1bfda7f701db085c",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    }
+  }
+}
