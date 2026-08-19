@@ -1,6 +1,21 @@
-# MORNING REPORT — Wave-2 overnight run (2026-08-19)
+# MORNING REPORT — Wave-2 overnight run + W3 extension (2026-08-19)
 
-**Branch:** `claude/agent-platform-w1` @ `1365c5a` (pushed; remote == local)
+**W3 EXTENSION (same day, Daniel-directed):** two more units landed after the overnight run —
+**W3-1 agent versioning + def schema depth** (`64a044d`): defs carry `version`/`io`/`defaults`
+(backward-compatible, python↔TS parity test-pinned), `agent_factory bump` (byte-exact),
+"def changed without version bump" drift warning in eval_trigger, dispatch records stamp a
+pre-spawn-pinned `agent_version: <id>@v<n>` beside kit_sha, roster shows the version badge;
+card-schema paste-block in `docs/proposals/agent-versioning.md`. **W3-2 maintainer eval
+forecast** (`6319322`): proposals now carry real git-style diffs; with `--forecast` the
+maintainer sandbox-applies each diff in a temp worktree and runs the affected agent's evals
+(forecast-safe judges only — arbitrary card commands never execute; nothing records to real
+ledgers), attaching completed/refused/skipped/error results to the proposal for the human.
+Both sol-adversarially reviewed (3 HIGH each fixed — incl. a reviewer-live-confirmed patch-path
+wall bypass and a post-spawn provenance bug); sweep **1390/0** + typecheck boss-verified;
+:4630 relaunched on this build. Wave-3 remainder (run-pinning in the workflow engine) belongs
+to the workflow-platform branch.
+
+**Branch:** `claude/agent-platform-w1` @ `64a044d` (pushed; remote == local)
 **Working root:** standalone clone `C:/Users/danie/kb-clones/agent-platform-w2` (moved off the
 linked worktree mid-run for your cloud migration — nothing of this run touches `C:/Users/danie/kb/.git`)
 **Spec/plan:** `docs/superpowers/specs/2026-08-19-wave2-overnight-design.md` · `docs/superpowers/plans/2026-08-19-wave2-overnight.md`
