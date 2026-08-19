@@ -116,9 +116,10 @@
 }
 
 .mc-palette__opt--selected {
-  background: var(--accent-quiet);
-  color: var(--fg-primary);
-  border-left-color: var(--accent-strong);
+  background: var(--ink);
+  border-color: var(--ink);
+  border-left-color: var(--ink);
+  color: var(--paper);
 }
 
 .mc-palette__opt--disabled {
@@ -139,7 +140,7 @@
 }
 
 .mc-palette__opt--selected .mc-palette__opt-icon {
-  color: var(--accent);
+  color: var(--paper);
 }
 
 .mc-palette__opt-label {

@@ -62,7 +62,7 @@ const STATE_CHIP: Record<LoopState, { label: string; dot: string; badge: string 
   blocked: { label: 'blocked', dot: 'blocked', badge: 'blocked' },
   working: { label: 'running', dot: 'running', badge: 'running' },
   done: { label: 'done', dot: 'done', badge: 'done' },
-  approvals: { label: 'needs you', dot: 'blocked', badge: 'blocked' },
+  approvals: { label: 'needs you', dot: 'blocked', badge: 'blocked mc-badge--attention' },
   approved: { label: 'approved', dot: 'done', badge: 'done' },
   rejected: { label: 'rejected', dot: 'error', badge: 'error' },
 };

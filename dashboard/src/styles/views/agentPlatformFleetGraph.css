@@ -79,7 +79,15 @@
 }
 
 .fg-node--selected {
-  border-color: var(--accent-strong);
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.fg-node--selected .fg-node__name,
+.fg-node--selected .fg-node__meta,
+.fg-node--selected .fg-node__role {
+  color: var(--paper);
 }
 
 /* The "you clicked this one's predecessor" flash — a wash, not a hue. */

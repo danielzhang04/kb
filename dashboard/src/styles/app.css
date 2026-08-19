@@ -51,9 +51,8 @@
  * so no tier reads as "quieter" than another and the highest risk is no longer the faintest chip.
  * When adding a legend colour: measure it on --bg-elevated in BOTH themes first.
  *
- * STATUS: --status-running and --status-done share one green ON PURPOSE. "Currently fine" and
- * "finished fine" are one signal to an operator scanning a fleet; splitting them is a product
- * decision, not a palette one, and is deliberately NOT taken here.
+ * STATUS: running and done deliberately share the same muted ink signal. They are normal fleet
+ * states, not a decorative colour system.
  *
  * MODEL (U16): the routing legend, mapping governance/model-routing.yaml's aliases onto the tier ramp
  * so cost weight reads on the gradient the eye already learned for risk:
@@ -100,21 +99,23 @@
    * the work the background delta used to do. The one surviving warmth in the app is --mc-accent. ---- */
   --bg-sunken: #151512; /* code gutters / inputs / terminal — deepest well */
   --bg-base: #151512; /* app shell — neutral near-black */
-  --bg-panel: #242420; /* cards / sidebar / panes — workhorse */
-  --bg-elevated: #242420; /* popovers / palette / hover — raised surface (the legend's measuring stick) */
+  --bg-panel: #26261f; /* cards / sidebar / panes — workhorse */
+  --bg-elevated: #26261f; /* popovers / palette / hover — raised surface */
 
   /* ---- Color: foreground (neutral off-white / neutral gray) ---- */
   --fg-primary: #efeee8;
   --fg-dim: #b4b4ac;
   --fg-faint: #8d8d85; /* 4.93:1 on the NEW darker --bg-elevated #201f1c (was 4.85:1 at #9a9790/#2d2b27) */
+  --ink: #efeee8;
+  --paper: #151512;
 
   /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
    * selection, KPI tiles, buttons, links, focus, tab underlines, left-borders) so redefining them here
    * neutralises every consumer at once. Semantic status colour lives in the separate tokens below. ---- */
-  --accent-strong: #efeee8; /* buttons / links / focus / active underline+border */
-  --accent: #b4b4ac; /* active nav icon tint / secondary */
-  --accent-quiet: #514c28; /* selected wash — field-guide mark */
+  --accent-strong: var(--ink); /* buttons / links / focus / active underline+border */
+  --accent: var(--fg-dim); /* active nav icon tint / secondary */
+  --accent-quiet: var(--bg-elevated); /* selected wash */
 
   /* ---- Color: hairlines (the Claude "super thin white outline" — a low-alpha white line is how a
    * surface is defined on near-black, NOT a background-lightness difference). --hairline is the resting
@@ -124,8 +125,8 @@
    * --border / --border-strong are kept as aliases so every existing consumer inherits at once.
    * Field-guide restyle 2026-08-18: both alphas step up (0.10 -> 0.12, 0.16 -> 0.18) because the surface
    * ladder flattened — the edge is now the primary separator, not a secondary one. ---- */
-  --hairline: #3b3b36;
-  --hairline-strong: #3b3b36;
+  --hairline: #484841;
+  --hairline-strong: #686862;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -138,27 +139,24 @@
    * FIELD-GUIDE RESTYLE (2026-08-18): not one legend VALUE changed, but --bg-elevated did (#2d2b27 ->
    * #201f1c), so every ratio below was re-measured against the new surface. All moved UP — the darker
    * elevated surface is strictly kinder to this palette. The quoted numbers are the new ones. ---- */
-  --error: #ec7264; /* was 4.82:1 on the old --bg-elevated, now 5.62:1 */
-  --warning: #e0a040; /* was 6.24:1, now 7.28:1 */
-  --success: #5cae7e; /* was 5.25:1, now 6.13:1 */
+  --error: #c97867; /* rust — the sole hue */
+  --warning: var(--error);
+  --success: var(--fg-dim);
 
   /* ---- Color: status (fleet card state — semantic, kept) ---- */
-  --status-running: #5cae7e;
-  --status-done: #5cae7e; /* deliberately the SAME green as --status-running — see the STATUS note below */
-  --status-blocked: #ec7264; /* mirrors --error */
-  --status-idle: #9a9790; /* was the twin of --fg-faint; --fg-faint moved to #8d8d85 in the field-guide
-                           * restyle and the status legend is explicitly OUT of scope for that pass, so
-                           * this now holds the old value on purpose. 5.65:1 on --bg-elevated — over the
-                           * bar. Re-twinning it is a legend decision for a future U-pass, not a restyle. */
+  --status-running: var(--fg-dim);
+  --status-done: var(--fg-dim);
+  --status-blocked: var(--error);
+  --status-idle: var(--fg-faint);
 
   /* ---- Color: risk tier (semantic, kept — escalating warmth = risk). The three now sit at comparable
    * luminance (4.5-5.2:1) and are told apart by HUE, not by lightness: warm grey -> amber -> burnt
    * orange-red. Before this pass t3 (the highest risk) was the LEAST readable chip in the app at
    * 3.01:1 — the legend was inverted against its own meaning. t3 also moved a few degrees toward
    * orange (hue 10deg -> 16deg) so a risk chip stays distinguishable from an --error chip (hue 6deg). ---- */
-  --tier-t1: #9a9184; /* was 4.55:1 on the old --bg-elevated, now 5.30:1 */
-  --tier-t2: #c9922e; /* was 5.14:1, now 5.99:1 */
-  --tier-t3: #e2764f; /* was 4.67:1, now 5.45:1 */
+  --tier-t1: var(--fg-faint);
+  --tier-t2: var(--fg-dim);
+  --tier-t3: var(--error);
 
   /* ---- Color: model weight (U16 — the routing legend). These are ALIASES of the risk-tier ramp, not a
    * new hue family: "which model is this costing us" reads on the same cheap->expensive gradient the eye
@@ -238,8 +236,8 @@
    * docs/superpowers/plans/2026-08-05-accent-swatches.md — #d9c7a8 dark / #6b5b41 light, low-chroma
    * sand deliberately distinct from the saturated amber/tier chips. --mc-accent-fg is the text colour
    * that sits ON a filled accent; --bg-base is correct in both themes. ---- */
-  --mc-accent: #efeee8;
-  --mc-accent-fg: var(--bg-base);
+  --mc-accent: var(--ink);
+  --mc-accent-fg: var(--paper);
 
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
    * neutral black low-opacity, never colored/glow).
@@ -269,10 +267,12 @@
   :root {
     --bg-sunken: #fbfbf8;
     --bg-base: #fbfbf8;
-    --bg-panel: #f4f3ee;
-    --bg-elevated: #f4f3ee;
+    --bg-panel: #f1f1ec;
+    --bg-elevated: #f1f1ec;
 
     --fg-primary: #11110f;
+    --ink: #151512;
+    --paper: #fbfbf8;
     /* Neutralised from #5c5749 after MEASURING it: 5.00:1 on the new --bg-elevated #f2f2ee, so it clears
      * the 4.5:1 bar and the reference's value can be taken as-is. (It is a lighter grey than the value it
      * replaces — the new elevated surface being lighter than the old #f3efe7 is what pays for it.) */
@@ -281,32 +281,32 @@
      * imported — the legend rule outranks fidelity to the reference. 4.67:1 here (was 4.57:1). */
     --fg-faint: #8d8d86;
 
-    --accent-strong: #11110f;
+    --accent-strong: var(--ink);
     --accent: #686862;
-    --accent-quiet: #d9d9d2;
-    --mc-accent: #11110f;
+    --accent-quiet: var(--bg-elevated);
+    --mc-accent: var(--ink);
 
     /* Light hairline is a dark low-alpha line. Both alphas step up with dark's (0.10 -> 0.11,
      * 0.16 -> 0.16 unchanged in shape) because the light surface ladder flattened too. */
-    --hairline: #d9d9d2;
-    --hairline-strong: #d9d9d2;
+    --hairline: #c5c5bf;
+    --hairline-strong: #686862;
     --border: var(--hairline);
     --border-strong: var(--hairline-strong);
 
     /* Legend-legibility pass (U16), re-measured 2026-08-18 on light's NEW --bg-elevated #f2f2ee (was
      * #f3efe7). No legend VALUE changed; every ratio moved up because the new surface is lighter. */
-    --error: #c4322a; /* was 4.77:1, now 4.88:1 */
-    --warning: #946115; /* was 4.60:1, now 4.70:1 */
-    --success: #25794c; /* was 4.67:1, now 4.78:1 */
+    --error: #a1543f; /* rust — the sole hue */
+    --warning: var(--error);
+    --success: var(--fg-dim);
 
-    --status-running: #25794c;
-    --status-done: #25794c; /* deliberately the SAME green as --status-running — see the STATUS note above */
-    --status-blocked: #c4322a; /* mirrors --error */
-    --status-idle: #726c5a; /* mirrors --fg-faint (still true in light — light's faint was kept) */
+    --status-running: var(--fg-dim);
+    --status-done: var(--fg-dim);
+    --status-blocked: var(--error);
+    --status-idle: var(--fg-faint);
 
-    --tier-t1: #6d6559; /* was 5.01:1, now 5.12:1 */
-    --tier-t2: #8f611b; /* was 4.70:1, now 4.81:1 */
-    --tier-t3: #b03d28; /* was 5.17:1, now 5.28:1 */
+    --tier-t1: var(--fg-faint);
+    --tier-t2: var(--fg-dim);
+    --tier-t3: var(--error);
 
     --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
     --shadow-overlay: 0 25px 80px rgba(30, 25, 20, 0.16);
@@ -318,35 +318,37 @@
 :root[data-theme='light'] {
   --bg-sunken: #fbfbf8;
   --bg-base: #fbfbf8;
-  --bg-panel: #f4f3ee;
-  --bg-elevated: #f4f3ee;
+  --bg-panel: #f1f1ec;
+  --bg-elevated: #f1f1ec;
 
   --fg-primary: #11110f;
+  --ink: #151512;
+  --paper: #fbfbf8;
   --fg-dim: #686862;
   --fg-faint: #8d8d86;
 
-  --accent-strong: #11110f;
+  --accent-strong: var(--ink);
   --accent: #686862;
-  --accent-quiet: #d9d9d2;
-  --mc-accent: #11110f;
+  --accent-quiet: var(--bg-elevated);
+  --mc-accent: var(--ink);
 
-  --hairline: #d9d9d2;
-  --hairline-strong: #d9d9d2;
+  --hairline: #c5c5bf;
+  --hairline-strong: #686862;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  --error: #c4322a;
-  --warning: #946115;
-  --success: #25794c;
+  --error: #a1543f;
+  --warning: var(--error);
+  --success: var(--fg-dim);
 
-  --status-running: #25794c;
-  --status-done: #25794c;
-  --status-blocked: #c4322a;
-  --status-idle: #726c5a;
+  --status-running: var(--fg-dim);
+  --status-done: var(--fg-dim);
+  --status-blocked: var(--error);
+  --status-idle: var(--fg-faint);
 
-  --tier-t1: #6d6559;
-  --tier-t2: #8f611b;
-  --tier-t3: #b03d28;
+  --tier-t1: var(--fg-faint);
+  --tier-t2: var(--fg-dim);
+  --tier-t3: var(--error);
 
   --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
   --shadow-overlay: 0 25px 80px rgba(30, 25, 20, 0.16);
@@ -356,35 +358,37 @@
 :root[data-theme='dark'] {
   --bg-sunken: #151512;
   --bg-base: #151512;
-  --bg-panel: #242420;
-  --bg-elevated: #242420;
+  --bg-panel: #26261f;
+  --bg-elevated: #26261f;
 
   --fg-primary: #efeee8;
+  --ink: #efeee8;
+  --paper: #151512;
   --fg-dim: #b4b4ac;
   --fg-faint: #8d8d85;
 
-  --accent-strong: #efeee8;
-  --accent: #b4b4ac;
-  --accent-quiet: #514c28;
-  --mc-accent: #efeee8;
+  --accent-strong: var(--ink);
+  --accent: var(--fg-dim);
+  --accent-quiet: var(--bg-elevated);
+  --mc-accent: var(--ink);
 
-  --hairline: #3b3b36;
-  --hairline-strong: #3b3b36;
+  --hairline: #484841;
+  --hairline-strong: #686862;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  --error: #ec7264;
-  --warning: #e0a040;
-  --success: #5cae7e;
+  --error: #c97867;
+  --warning: var(--error);
+  --success: var(--fg-dim);
 
-  --status-running: #5cae7e;
-  --status-done: #5cae7e;
-  --status-blocked: #ec7264;
-  --status-idle: #9a9790;
+  --status-running: var(--fg-dim);
+  --status-done: var(--fg-dim);
+  --status-blocked: var(--error);
+  --status-idle: var(--fg-faint);
 
-  --tier-t1: #9a9184;
-  --tier-t2: #c9922e;
-  --tier-t3: #e2764f;
+  --tier-t1: var(--fg-faint);
+  --tier-t2: var(--fg-dim);
+  --tier-t3: var(--error);
 
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.24);
   --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.35);
@@ -673,15 +677,18 @@ button {
 }
 
 .mc-nav-item:hover:not(.mc-nav-item--disabled) {
-  background: var(--bg-elevated);
-  color: var(--fg-primary);
+  background: var(--paper);
+  border-color: var(--ink);
+  border-left-color: var(--ink);
+  color: var(--ink);
 }
 
 .mc-nav-item--active {
-  background: var(--accent-quiet);
-  color: var(--fg-primary);
-  border-left-color: var(--mc-accent);
-  font-weight: 500;
+  background: var(--ink);
+  border-color: var(--ink);
+  border-left-color: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
 }
 
 .mc-nav-item--disabled {
@@ -698,7 +705,12 @@ button {
 }
 
 .mc-nav-item--active .mc-nav-item__icon {
-  color: var(--accent);
+  color: var(--paper);
+}
+
+.mc-nav-item--active .mc-nav-item__hint,
+.mc-nav-item--active .mc-nav-item__badge {
+  color: var(--paper);
 }
 
 .mc-nav-item__label {
@@ -1026,13 +1038,13 @@ button {
 }
 
 .mc-badge--running {
-  color: var(--status-running);
-  border-color: var(--status-running);
+  color: var(--fg-dim);
+  border-color: var(--border-strong);
 }
 
 .mc-badge--done {
-  color: var(--status-done);
-  border-color: var(--status-done);
+  color: var(--fg-dim);
+  border-color: var(--border-strong);
 }
 
 .mc-badge--blocked {
@@ -1043,6 +1055,13 @@ button {
 .mc-badge--error {
   color: var(--error);
   border-color: var(--error);
+}
+
+.mc-badge--attention {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+  font-weight: 650;
 }
 
 /* ---- Status dot — the app's ONE state indicator (Phase 6). Same shape, same size, same tone mapping
@@ -1069,7 +1088,8 @@ button {
 
 /* Waiting on a person — the one amber state; it must not read as a failure. */
 .mc-status-dot--waiting {
-  background: var(--warning);
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--ink);
 }
 
 .mc-status-dot--blocked,
@@ -1168,6 +1188,13 @@ button {
   background: var(--mc-accent);
   border-color: var(--mc-accent);
   color: var(--mc-accent-fg);
+}
+
+.mc-btn--primary:hover:not(:disabled),
+.mc-btn--primary:focus-visible {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .mc-btn--quiet {

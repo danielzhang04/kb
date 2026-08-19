@@ -140,15 +140,17 @@
 }
 
 .v-composer__chip:hover {
-  background: var(--bg-elevated);
-  color: var(--fg-primary);
+  background: var(--paper);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
-/* Active chip = the neutral "selected wash" (a raised tint, not a colour). */
+/* Active filter chips use the same hard ink inversion as the sidebar. */
 .v-composer__chip--active {
-  background: var(--accent-quiet);
-  border-color: var(--border-strong);
-  color: var(--fg-primary);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+  font-weight: 650;
 }
 
 .v-composer__type-note {
