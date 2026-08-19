@@ -10,6 +10,7 @@ import datetime
 import fnmatch
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -260,6 +261,16 @@ INSPECTOR_IDENTITY = "inspector@agents.local"
 # never hides an integrity problem the way silently over-detecting would.
 UNKNOWN_TIER_ACTION = "wake-me:unknown-tier"
 
+# Task 7 -- the same fail-loud posture for a MALFORMED CRON schedule. A
+# `schedule:` value with exactly five whitespace-separated fields can only ever
+# have been meant as cron (no legacy form -- `daily`, `weekly:<day>`, bare
+# `weekly` -- contains whitespace at all), so when it does not parse, that is a
+# typo, not a form this dispatcher does not know. Silently inert is exactly how
+# a cadence goes missing for months, so it wakes a human on the same
+# one-card-per-(action,target) terms as UNKNOWN_TIER above. The cadence still
+# does not fire: loud AND non-firing, never a guessed correction.
+MALFORMED_CRON_ACTION = "wake-me:malformed-schedule"
+
 
 def _unknown_tier_target(project: str, cadence: dict) -> str:
     return f"{project}:{cadence.get('name', '<unnamed>')}"
@@ -292,6 +303,28 @@ def _emit_unknown_tier_wake(repo_root: Path, project: str, cadence: dict) -> Pat
         "dispatcher until a human fixes its HEARTBEAT.md `tier` field.\n"
     )
     card = cards.new_card(project=project, action=UNKNOWN_TIER_ACTION, target=target,
+                          risk_tier="T1", body=body)
+    return cards.save(card, Path(repo_root) / "queue")
+
+
+def _emit_malformed_cron_wake(repo_root: Path, project: str, cadence: dict) -> Path | None:
+    """Mirror of _emit_unknown_tier_wake for an unparseable 5-field `schedule:`."""
+    target = _unknown_tier_target(project, cadence)
+    if _wake_already_filed(repo_root, MALFORMED_CRON_ACTION, target):
+        return None
+    name = cadence.get("name", "<unnamed>")
+    body = (
+        "## Work order\n\n"
+        f"Cadence `{name}` in project `{project}` declares a `schedule` of "
+        f"{cadence.get('schedule')!r}: five fields, so it was meant as cron, but "
+        "it does not parse as one (fields are `M H DoM Mon DoW`; `*`, lists "
+        "`a,b`, ranges `a-b`, steps `*/n`, and `mon`..`sun` / `0-6` for the "
+        "day-of-week). Fail-closed: this cadence does not fire at all until a "
+        "human fixes its HEARTBEAT.md `schedule` string. Timing lives inside "
+        "that string and nowhere else — a sibling YAML key would bypass the "
+        "standing-authorization byte-compare.\n"
+    )
+    card = cards.new_card(project=project, action=MALFORMED_CRON_ACTION, target=target,
                           risk_tier="T1", body=body)
     return cards.save(card, Path(repo_root) / "queue")
 
@@ -475,8 +508,172 @@ def parse_heartbeat(path: Path) -> list[dict]:
     return data.get("cadences", [])
 
 
-def due(cadence: dict, today: datetime.date, repo_root: Path | None = None) -> bool:
-    """True iff `cadence` is scheduled for `today`.
+# --------------------------------------------------------------------------- #
+# Task 7 -- 5-field cron inside the `schedule:` string (spec s5)               #
+# --------------------------------------------------------------------------- #
+#
+# The `schedule:` string additionally accepts standard 5-field cron
+# ("M H DoM Mon DoW", LOCAL time) alongside `daily` / `weekly:<day>`. Timing
+# lives INSIDE that one string and never in a sibling YAML key, because
+# promotion._CADENCE_FIELDS byte-compares `schedule` against main: any re-time
+# therefore voids standing authorization automatically.
+#
+# Fire rule is Claude routines' rule verbatim -- skip-not-replay: when the
+# dispatcher ticks, a cadence fires at most ONCE for the most recent occurrence
+# that has already passed TODAY. Occurrences missed while the machine was off
+# are skipped, never replayed (Codex Automations' catch-up semantics are
+# deliberately NOT built -- spec s5 / Non-goals).
+#
+# Anything that is not a well-formed 5-field cron expression parses as None and
+# falls through to the legacy branch, where it is INERT exactly like
+# `schedule: monthly` or bare `schedule: weekly` are today. Parsing NEVER
+# raises: a typo in one org's heartbeat must not take the fleet's clock down.
+_CRON_DOW = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
+
+
+@dataclass(frozen=True)
+class CronSpec:
+    """A parsed 5-field cron expression. Pure data; no clock, no timezone."""
+    minutes: frozenset
+    hours: frozenset
+    doms: frozenset
+    months: frozenset
+    dows: frozenset            # cron numbering: 0 == Sunday
+    dom_star: bool             # day-of-month field was `*` (unrestricted)
+    dow_star: bool             # day-of-week field was `*` (unrestricted)
+    expr: str                  # the original string, for display/narration
+
+
+def _cron_atom(text: str, lo: int, hi: int, names: dict | None) -> int | None:
+    text = text.strip().lower()
+    if names and text in names:
+        value = names[text]
+    elif text.isdigit():
+        value = int(text)
+    else:
+        return None
+    return value if lo <= value <= hi else None
+
+
+def _cron_field(text: str, lo: int, hi: int, names: dict | None = None) -> frozenset | None:
+    """One comma-separated cron field -> the set of values it selects.
+
+    Accepts `*`, `a`, `a-b`, `*/n`, `a-b/n` (and names where `names` is given).
+    Returns None -- never raises -- for anything malformed or out of range.
+    """
+    values: set[int] = set()
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            return None
+        step = 1
+        if "/" in item:
+            item, _, step_text = item.partition("/")
+            if not step_text.isdigit() or int(step_text) < 1:
+                return None
+            step = int(step_text)
+            item = item.strip()
+        if item == "*":
+            start, end = lo, hi
+        else:
+            bounds = item.split("-")
+            if len(bounds) > 2:
+                return None
+            parsed = [_cron_atom(b, lo, hi, names) for b in bounds]
+            if any(v is None for v in parsed):
+                return None
+            start = parsed[0]
+            end = parsed[1] if len(parsed) == 2 else parsed[0]
+            if end < start:
+                return None
+        values.update(range(start, end + 1, step))
+    return frozenset(values) or None
+
+
+def parse_cron(expr) -> CronSpec | None:
+    """Parse a 5-field cron expression; None means "not cron -> legacy form"."""
+    if not isinstance(expr, str):
+        return None
+    fields = expr.split()
+    if len(fields) != 5:
+        return None
+    minute, hour, dom, month, dow = fields
+    minutes = _cron_field(minute, 0, 59)
+    hours = _cron_field(hour, 0, 23)
+    doms = _cron_field(dom, 1, 31)
+    months = _cron_field(month, 1, 12)
+    dows = _cron_field(dow, 0, 7, _CRON_DOW)
+    if None in (minutes, hours, doms, months, dows):
+        return None
+    # cron accepts 7 as Sunday alongside 0; normalise so matching is one lookup.
+    dows = frozenset(0 if d == 7 else d for d in dows)
+    # The star flags follow Vixie's own test: a field STARTING with `*` (`*`,
+    # `*/n`) sets the flag -- not only a bare `*`. Keying off a bare `*` would
+    # have left `0 0 13 * */2` with neither flag set, OR-ing its day fields and
+    # firing on every stepped weekday as well as the 13th.
+    return CronSpec(minutes=minutes, hours=hours, doms=doms, months=months, dows=dows,
+                    dom_star=dom.strip().startswith("*"),
+                    dow_star=dow.strip().startswith("*"), expr=expr)
+
+
+def malformed_cron(schedule) -> bool:
+    """True for a `schedule:` that was MEANT as cron but does not parse.
+
+    Five whitespace-separated fields is the tell: no legacy form (`daily`,
+    `weekly:<day>`, bare `weekly`) contains whitespace at all, so this can only
+    be a typo -- which run() wakes a human about rather than leaving inert.
+    """
+    return (isinstance(schedule, str) and len(schedule.split()) == 5
+            and parse_cron(schedule) is None)
+
+
+def _cron_day_matches(spec: CronSpec, day: datetime.date) -> bool:
+    """The Vixie day rule, verbatim: the day-of-month and day-of-week fields are
+    OR-ed when BOTH are restricted, and AND-ed when either starts with `*`.
+
+    The AND branch is what makes a lone `*` degenerate correctly (it matches
+    every value, so the other field decides) while still honouring a narrowing
+    step like `*/2` instead of silently discarding it.
+    """
+    if day.month not in spec.months:
+        return False
+    dom_hit = day.day in spec.doms
+    dow_hit = ((day.weekday() + 1) % 7) in spec.dows   # Mon=0 (py) -> Sun=0 (cron)
+    if spec.dom_star or spec.dow_star:
+        return dom_hit and dow_hit
+    return dom_hit or dow_hit
+
+
+def cron_matches(spec: CronSpec | None, when: datetime.datetime) -> bool:
+    """True iff `when` (to the minute, local time) is an occurrence of `spec`."""
+    if spec is None:
+        return False
+    return (when.minute in spec.minutes and when.hour in spec.hours
+            and _cron_day_matches(spec, when.date()))
+
+
+def latest_occurrence(spec: CronSpec | None, now: datetime.datetime) -> datetime.datetime | None:
+    """Most recent occurrence <= `now`, SAME DAY only; None if none has passed.
+
+    Same-day only is the skip-not-replay rule made structural: dispatch already
+    never replays past days, so an occurrence that did not happen today simply
+    never happened.
+    """
+    if spec is None or not _cron_day_matches(spec, now.date()):
+        return None
+    for hour in sorted(spec.hours, reverse=True):
+        if hour > now.hour:
+            continue
+        for minute in sorted(spec.minutes, reverse=True):
+            if hour == now.hour and minute > now.minute:
+                continue
+            return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return None
+
+
+def due(cadence: dict, today: datetime.date, repo_root: Path | None = None,
+        now: datetime.datetime | None = None) -> bool:
+    """True iff `cadence` is scheduled for `today` (and, for cron, by `now`).
 
     `repo_root` is optional (default None) so every pre-D1.1 call site (two
     positional args, no repo awareness) keeps working unchanged. When
@@ -484,12 +681,25 @@ def due(cadence: dict, today: datetime.date, repo_root: Path | None = None) -> b
     this cadence's beat -- and only this one; it can never trigger or widen a
     schedule, only skip it. Presence-only check: the marker's contents (if
     any) are never read/parsed.
+
+    `now` is likewise optional (default: the local wall clock) and is consulted
+    ONLY by the cron branch, which needs a time of day the `today` date has no
+    room for. A cron cadence is due iff an occurrence has already passed today
+    -- and because dispatch is a same-day scheduler with no backfill, an
+    injected `today` that is not the clock's own day never fires cron at all.
+    The legacy `daily`/`weekly:<day>` branches below are untouched by `now`.
     """
     if repo_root is not None:
         name = cadence.get("name")
         if name and (Path(repo_root) / "queue" / "paused" / name).exists():
             return False
     schedule = cadence.get("schedule", "")
+    spec = parse_cron(schedule)
+    if spec is not None:
+        when = now or datetime.datetime.now()
+        if when.date() != today:
+            return False
+        return latest_occurrence(spec, when) is not None
     if schedule == "daily":
         return True
     if schedule.startswith("weekly:"):
@@ -512,13 +722,41 @@ def _heartbeats(repo_root: Path):
 
 
 def run(repo_root: Path, tier: str, agent_id: str,
-        today: datetime.date | None = None, session_id: str | None = None) -> list[Path]:
+        today: datetime.date | None = None, session_id: str | None = None,
+        now: datetime.datetime | None = None) -> list[Path]:
     today = today or datetime.date.today()
+    # Task 7: one clock reading per run, shared by due()'s cron branch, the
+    # occurrence dedup key and the `dispatched_at` stamp, so a run that straddles
+    # a minute boundary cannot fire for one occurrence and record another.
+    now = now or datetime.datetime.now()
     # ledger.append shards by wall-clock day (ledger._shard); read the same shard so
     # idempotency holds even when `today` is injected for scheduling (tests, backfill).
     ledger_day = datetime.date.today().isoformat()
-    ran = {(r['project'], r['cadence'])
-           for r in ledger.read_day(repo_root, "dispatch", ledger_day)}
+    dispatched_rows = ledger.read_day(repo_root, "dispatch", ledger_day)
+    ran = {(r['project'], r['cadence']) for r in dispatched_rows}
+    # Task 7 -- occurrence-level dedup for cron cadences, generalizing `ran`
+    # (which stays exactly as it was for the legacy per-day forms).
+    #
+    # A stamp WITHOUT a "T" names a whole DAY, not an occurrence: it is either a
+    # legacy daily/weekly row (`scheduled_for` = the date), or a row that lost
+    # the column entirely -- written before this field existed, or into a shard
+    # whose header was pinned at creation (ledger.append fixes a shard's columns
+    # on the first append and drops extras from later ones). All of those
+    # normalise to `''`, the day-wide marker, which the cron guard below treats
+    # as matching EVERY occurrence of that (project, cadence) today. So the bias
+    # is always to skip:
+    #   * a cadence re-timed from `daily` to cron mid-day cannot fire a second
+    #     time on the strength of its new form, and
+    #   * when a shard's header predates this field, a cron cadence fires at
+    #     most once and its remaining occurrences are suppressed for the REST OF
+    #     THAT DAY (the next day gets a fresh shard, with the column). That is a
+    #     real cost, accepted deliberately: a missed occurrence is skipped, never
+    #     replayed, whereas a duplicate dispatch would double-run live work.
+    ran_occurrences = set()
+    for row in dispatched_rows:
+        stamp = row.get('scheduled_for') or ''
+        ran_occurrences.add((row['project'], row['cadence'],
+                             stamp if 'T' in stamp else ''))
     # Task 4.1 -- depends-on DAG release pass. Runs unconditionally (not
     # tier-gated): it concerns existing queue/ DAG state, not heartbeat
     # cadences, and is fully additive to the per-cadence loop below.
@@ -541,9 +779,30 @@ def run(repo_root: Path, tier: str, agent_id: str,
             if cadence.get("tier") not in ("cloud", "desktop"):
                 _emit_unknown_tier_wake(repo_root, project, cadence)
                 continue
-            key = (project, cadence['name'])
-            if cadence.get("tier") != tier or key in ran or not due(cadence, today, repo_root):
+            # Task 7 -- an intended-cron typo is LOUD and non-firing, never
+            # silently inert. Filed before the tier filter (like the unknown-tier
+            # wake above) so whichever dispatcher ticks first surfaces it, however
+            # the broken cadence is tiered; _wake_already_filed keeps it to one card.
+            if malformed_cron(cadence.get("schedule", "")):
+                _emit_malformed_cron_wake(repo_root, project, cadence)
                 continue
+            key = (project, cadence['name'])
+            spec = parse_cron(cadence.get("schedule", ""))
+            # Legacy forms: the pre-Task-7 guard, unchanged (per-day dedup).
+            if cadence.get("tier") != tier or (spec is None and key in ran):
+                continue
+            if not due(cadence, today, repo_root, now=now):
+                continue
+            if spec is None:
+                # Additive: legacy rows now name the day they fired for, so every
+                # row has the field and old rows (absent it) still dedup by key.
+                scheduled_for = today.isoformat()
+            else:
+                # due() just proved an occurrence has passed today.
+                scheduled_for = latest_occurrence(spec, now).isoformat()
+                if ((*key, scheduled_for) in ran_occurrences
+                        or (*key, '') in ran_occurrences):
+                    continue
             # Task 5.2 -- optional `agent:` cadence key routes card ownership to a
             # named worker (backward-compatible: absent `agent:` keeps the current
             # dispatcher, agent_id, as owner). `owner` is what cards.claim() below
@@ -637,6 +896,9 @@ def run(repo_root: Path, tier: str, agent_id: str,
             # only (never the inspect sibling: a future fresh session grades it).
             # Mirrors the stamp_session line below.
             cards.stamp_routing(card, routed.runtime, routed.model)
+            # Task 7 -- which occurrence this card is, and when it was actually
+            # cut. The two differ whenever the dispatcher ticks late.
+            cards.stamp_schedule(card, scheduled_for, now.isoformat(timespec="seconds"))
             # D1.1: `session_id` is populated ONLY for the cloud self-executing
             # carve-out case (the dispatcher claiming a card for its OWN
             # already-running session, per the Task D1.1 scope note above the
@@ -648,7 +910,10 @@ def run(repo_root: Path, tier: str, agent_id: str,
             emitted.append(cards.save(card, Path(repo_root) / "queue"))
             ledger.append(repo_root, "dispatch", agent_id,
                           {"date": today.isoformat(), "cadence": cadence["name"],
-                           "project": project, "card": card.meta["id"]})
+                           "project": project, "card": card.meta["id"],
+                           # Task 7: the dedup key's third component -- the
+                           # occurrence fired for (cron) or the day (legacy).
+                           "scheduled_for": scheduled_for})
 
             if cadence.get("inspect"):
                 try:
@@ -667,6 +932,12 @@ def run(repo_root: Path, tier: str, agent_id: str,
                     print(f"WARN: skipping inspect sibling for {project}/{cadence['name']}: {err}")
                 else:
                     cards.claim(sibling, INSPECTOR_IDENTITY)
+                    # Task 7: the sibling belongs to the SAME occurrence as the
+                    # work card it grades (spec s5: every dispatched card records
+                    # the stamps), unlike routing, which is deliberately not
+                    # stamped here because a future fresh session grades it.
+                    cards.stamp_schedule(sibling, scheduled_for,
+                                         now.isoformat(timespec="seconds"))
                     # D1.1: the sibling's `session-id` stays null on purpose --
                     # it is graded in a DIFFERENT, future inspector session that
                     # does not exist yet at dispatch time (same reasoning as
