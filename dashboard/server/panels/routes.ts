@@ -13,6 +13,7 @@ import { buildAtlasPanel } from './atlas.ts';
 import { buildAutonomyLadderPanel } from './autonomyLadder.ts';
 import { buildLoopStatusPanel } from './loopStatus.ts';
 import { registerSchedulesPanel } from './schedules.ts';
+import { registerGradesHistoryPanel } from './gradesHistory.ts';
 import type { AtlasWorkerOptions } from './atlas.ts';
 import type { SchedulesRouteOptions } from './schedules.ts';
 
@@ -58,6 +59,9 @@ export function registerPanels(
   // plus the governed edit/pause writes. The dashboard is the EDITOR, never the owner of a schedule:
   // edits go out as a PR a human merges, and there is no unpause route anywhere (spec §5).
   registerSchedulesPanel(app, repoRoot, schedules);
+  // Grades history — bounded per-identity task grades and eval evidence. It is a read-only timeline;
+  // the route deliberately carries no promotion decision or grade mutation surface.
+  registerGradesHistoryPanel(app, repoRoot);
   // Quartermaster — usage rollup (per-model steps, model mix, card/dispatch counts). USD suppressed.
   app.get('/api/panels/usage', async () => buildUsagePanel(repoRoot));
   // Atlas — voice worker mirror: worker /state passthrough (OFFLINE-explicit) + transcript history + cards.

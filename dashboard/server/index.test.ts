@@ -72,7 +72,7 @@ describe('server', () => {
     '/api/registry', '/api/registry/skills', '/api/registry/connections',
     '/api/index', '/api/ledgers/slices', '/api/dag', '/api/routing',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
-    '/api/panels/health', '/api/panels/usage', '/api/panels/atlas', '/api/panels/schedules',
+    '/api/panels/health', '/api/panels/usage', '/api/panels/atlas', '/api/panels/schedules', '/api/panels/grades-history?agent=codex-worker',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
     '/api/human-inbox', '/api/approvals', '/api/composer/sessions', '/api/composer/sessions/example',
     '/api/control/proposals', '/api/control/execution', '/api/control/runs', '/api/control/runs/example',
