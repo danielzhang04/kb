@@ -1,0 +1,983 @@
+{
+  "shots": [
+    {
+      "id": "L112",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "So the managers put their heads together",
+      "vo_text": "So the managers put their heads together",
+      "stage": "offsite-warehouse",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A wide view from the raised loading threshold into the approved rented off-site warehouse, with a cropped ochre pallet jack and kraft cartons anchoring the foreground, an open cream concrete floor and two worktables occupying the midground, and amber roof trusses, stacked packing stock, and a closed roller door receding through the background. Warm warehouse cream, kraft tan, tobacco brown, and muted olive dominate under amber sodium fixtures; pale industrial blue appears only in the thin daylight at the high windows. The reserved floor reads as a concealed staging ground waiting for the plan.",
+      "notes": "Locked reuse of the approved L112 environment. The image precedes the script's warehouse disclosure; see flagged-A3.md. [F-06]"
+    },
+    {
+      "id": "L113",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and came up with a brilliant plan. They rented",
+      "vo_text": "and came up with a brilliant plan. They rented a warehouse near headquarters, and went shopping at a local company:",
+      "stage": "managers-plan",
+      "stage_role": "base",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "A high three-quarter view across a scarred honey-oak planning table, with a cropped blank warehouse key tag, an unlettered route sheet, and a single brick-shaped sample filling the foreground. In the midground, a genuine mass of worried middle managers in cream shirts and muted brown ties leans inward around the table as one collective decision, their simple held expressions tight and conspiratorial; further managers repeat smaller and recede behind chair backs, filing cabinets, and a room divider into the rear zone. Warm cream, honey oak, tobacco brown, and brick clay dominate under hard amber office light; muted blue comes only from a distant window. The converging bodies and empty center of the plan make collective fear, not any invented individual, the subject.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Genuine manager mass; small/receding rear-zone figures sit behind table and office geometry. [F-23]"
+    },
+    {
+      "id": "L114",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "the Colorado Brick Company.",
+      "vo_text": "the Colorado Brick Company.",
+      "place": "colorado-brick-company",
+      "stage": "brick-yard-plate",
+      "stage_role": "base",
+      "place_owner": "COLORADO BRICK",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A cast-free wide establishing view of the working brick yard from just inside its timber gate, with a cropped wheelbarrow, clay dust, and the corner of a strapped brick stack anchoring the foreground, orderly rust-red brick lanes and a mustard forklift filling the midground, and kilns, cream sheds, and smaller stock rows receding to low Colorado foothills in the background. Warm clay red, dusty ochre, warehouse cream, and tobacco brown dominate in clear late-afternoon light; muted blue is confined to the distant sky. Above the gate, a plain owner board carries dark warm-brown ink reading 'COLORADO BRICK'",
+      "notes": "Cast-free qualifying place plate at working occupancy; supplied owner literal is sourced and payload-last. [F-06]"
+    },
+    {
+      "id": "L115",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "They bought 26,000 bricks,",
+      "vo_text": "They bought",
+      "place": "colorado-brick-company",
+      "place_anchor": "assets/scenes/L114.png",
+      "stage": "brick-purchase",
+      "stage_role": "base",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-offering`, `expr-worried`, stands stage-left facing right, and `brick-co-seller`, `action-offering`, `expr-deadpan`, stands stage-right facing left; they use the legal `handoff` geometry to hold opposite sides of one blank purchase sheet on the same midground plane, at a matching eye-line and equal head scale, both faces unobscured above the paper. A low aisle view uses a cropped brick stack and wheelbarrow handles in the foreground, the two figures and purchase sheet in the midground, and warm clay stock lanes, a mustard forklift, and cream sheds receding behind them; the entrance board is cropped above the frame. Warm clay red, dusty ochre, kraft tan, and warehouse cream dominate under amber afternoon sun, with muted blue only in distant sky. The full stride of open ground beneath the shared paper makes the ordinary purchase feel absurdly formal.",
+      "notes": "Fresh legal two-cast base with interaction template, approved place anchor, plane/eye-line/head-scale clauses, and no unsupported paper lettering. [F-05] [F-06]"
+    },
+    {
+      "id": "L116",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "26,000 bricks, handpicked to match",
+      "vo_text": "26,000 bricks,",
+      "place": "colorado-brick-company",
+      "stage": "brick-purchase",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ the purchased brick stock fills the yard depth"
+      ],
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-offering`, `expr-worried`, remains stage-left facing right and `brick-co-seller`, `action-offering`, `expr-deadpan`, remains stage-right facing left, on the same midground plane at a matching eye-line and equal head scale, both faces clear above the same blank purchase sheet. The held low aisle view keeps the cropped brick stack and wheelbarrow handles in the foreground, the two figures in the midground, and warm clay lanes, cream sheds, and the mustard forklift behind them under amber afternoon sun. The purchased rust-red brick stock now repeats densely through the entire background to the kiln, making quantity read through countable depth; only the brick stock changes, everything else exactly as established.",
+      "notes": "One-change countable-mass delta; quantity is depicted by repeated stock rather than rendered numerals. [F-05] [F-06]"
+    },
+    {
+      "id": "L117",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "handpicked to match the weight",
+      "vo_text": "handpicked to match",
+      "stage": "weight-size-match",
+      "stage_role": "base",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "A body-scale three-quarter view of a long honey-oak inspection bench, with a cropped brass balance foot and two parallel measuring rails anchoring the foreground. In the midground, one plain rust-red clay brick and one real `prop-drive` nested in an open kraft carton occupy opposite brass weighing pans, their complete silhouettes separated by a wide strip of bare bench; the scale bar remains visibly tipped and the size frames remain offset. Warm clay red, kraft tan, honey oak, and aged brass dominate under amber workshop lamps, while muted blue appears only as cool daylight at a distant high window. Cream shelves and simplified packing tools recede through the background, leaving deliberate air around the two comparison objects.",
+      "notes": "Figureless comparison is subject-earned; the prop and brick hold full silhouettes with reserved change space. [F-07]"
+    },
+    {
+      "id": "L118",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "the weight and size of a real",
+      "vo_text": "the weight and size of",
+      "stage": "weight-size-match",
+      "stage_role": "delta",
+      "changed_elements": [
+        "= the brick and boxed-drive size frames align"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The same honey-oak inspection bench holds the rust-red brick and the real `prop-drive` in its open kraft carton on opposite brass pans, their full silhouettes separated by the same bare strip; the brass scale bar stays tipped. The cropped balance foot and parallel rails remain foreground, the objects remain midground, and cream shelves and packing tools recede behind them under warm amber workshop lamps with cool light confined to the distant high window. The two measuring frames now meet at identical width and height around the brick and boxed drive; only the size alignment changes, everything else exactly as established.",
+      "notes": "One-change dimension alignment delta; no measurement glyphs are authored. [F-07]"
+    },
+    {
+      "id": "L119",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "a real boxed hard drive. They",
+      "vo_text": "a real boxed hard drive.",
+      "stage": "weight-size-match",
+      "stage_role": "delta",
+      "changed_elements": [
+        "= the balance settles level"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The same honey-oak inspection bench holds the matched rust-red brick and real `prop-drive` in its open kraft carton on opposite brass pans, their identical measuring frames and full silhouettes separated by the same bare strip. The cropped balance foot and rails stay foreground, both objects stay midground, and warm cream shelves recede behind them beneath amber workshop lamps with cool light confined to the high window. The brass balance bar now rests exactly horizontal with both pans at equal height; only the balance state changes, everything else exactly as established.",
+      "notes": "One-change weight-equivalence delta; composition carries equality without rendered figures or labels. [F-07]"
+    },
+    {
+      "id": "L120",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "They put the bricks in boxes,",
+      "vo_text": "They put the bricks in boxes,",
+      "stage": "serial-boxing",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-both-hands`, `expr-worried`, stands at the center packing bench, facing three-quarter right with his face clear above his hands, carrying a rust-red brick in one hand and holding an open kraft drive carton steady in the other within the primitive's two-hand presentation. A waist-high view uses a cropped carton flap and paper twine in the foreground, the foreman and wide bare receiving space on the bench in the midground, and warm cream shelving, blank tag stock, and stacked cartons receding into the background. Kraft tan, clay red, warehouse cream, and tobacco brown dominate under amber task lamps; muted blue comes only from a distant high window. The open box and brick hold the full action at body scale.",
+      "notes": "Fresh seeded-figure base; the bodily act conforms to `hold-both-hands` and all tag stock is blank. [F-05] [F-07]"
+    },
+    {
+      "id": "L121",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "gave each one a serial number,",
+      "vo_text": "gave each one a serial number,",
+      "stage": "serial-boxing",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ the brick is enclosed by the kraft carton"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-both-hands`, `expr-worried`, remains centered at the same packing bench facing three-quarter right, his face clear, with the same two-hand presentation held over the receiving space. The cropped flap and twine remain foreground, the foreman and carton remain midground, and cream shelves, blank tag stock, and stacked cartons recede behind under warm amber task lamps with cool light confined to the high window. The rust-red brick is now fully seated inside the open kraft carton beneath his held hands; only the brick's enclosure changes, everything else exactly as established.",
+      "notes": "One-change enclosure delta; serial glyphs are not yet depicted. [F-05] [F-07]"
+    },
+    {
+      "id": "L122",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "because hard drives have serial numbers,",
+      "vo_text": "because hard drives have serial numbers,",
+      "stage": "serial-boxing",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ sequential blank tag shapes attach to the carton row"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-both-hands`, `expr-worried`, remains centered at the same packing bench facing three-quarter right, his face clear, with the enclosed brick carton held in the same two-hand presentation. The cropped flap and twine remain foreground, the foreman and carton row remain midground, and warm cream shelves and stacked kraft stock recede behind beneath amber task lamps with cool light confined to the high window. A neat sequence of small cream tag shapes is now attached to the carton row, every tag face deliberately blank and unlettered; only the blank tag sequence changes, everything else exactly as established.",
+      "notes": "One-change serial-tag delta; unsupported glyph fields are authored as blank surfaces rather than fabricated values. [F-05]"
+    },
+    {
+      "id": "L123",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and shrink wrapped them onto pallets,",
+      "vo_text": "and shrink wrapped them onto pallets,",
+      "stage": "pallet-booking",
+      "stage_role": "base",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-worried`, stands stage-left facing right with his face unobscured, presenting an ordinary timber pallet stacked with identical kraft cartons in a tight rectangular load; three horizontal binding bands in muted pale blue, dark brown, and ochre distinguish this load without a backticked prop slug. A high loading-bay view places a cropped roll of clear wrapping film and pallet corner in the foreground, the foreman and unwrapped load in the midground, and cream warehouse uprights, spare cartons, and amber lamps receding through the background. Kraft tan, ochre, tobacco brown, and warehouse cream dominate; pale blue is limited to the binding band and cool dock light. Clear air around the load reserves its complete silhouette for the wrapping change.",
+      "notes": "Fresh base; ordinary pallet described concretely under FLAGGED-NEED #2, with exact cross-stage identity not guaranteed. [F-07]"
+    },
+    {
+      "id": "L124",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "premium Colorado clay sitting on the books",
+      "vo_text": "premium Colorado clay sitting on",
+      "stage": "pallet-booking",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ clear shrink-wrap encloses the full pallet load"
+      ],
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-worried`, remains stage-left facing right with his face clear, presenting the same ordinary timber pallet and its kraft-carton rectangle marked by muted pale-blue, dark-brown, and ochre binding bands. The cropped film roll and pallet corner remain foreground, the foreman and load remain midground, and cream uprights, spare cartons, and amber lamps recede behind with cool light confined to the dock opening. One taut clear shrink-wrap skin now encloses the entire pallet load from base to top; only the wrapping changes, everything else exactly as established.",
+      "notes": "One-change wrapping delta. The concrete pallet description is repeated without inventing a prop slug. [F-07]"
+    },
+    {
+      "id": "L125",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "the books as inventory. Perfectly",
+      "vo_text": "the books as inventory.",
+      "stage": "pallet-booking",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a blank inventory-ledger tile receives the intact load"
+      ],
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-worried`, remains stage-left facing right with his face clear, presenting the same fully wrapped ordinary timber pallet, its kraft-carton rectangle and muted pale-blue, dark-brown, and ochre binding bands unchanged. The cropped film roll and pallet corner remain foreground, the foreman and load remain midground, and cream uprights and amber lamps recede behind with cool dock light held distant. A large cream ledger tile with ruled but blank, unlettered cells now slides beneath the intact pallet silhouette as its inventory footing; only the ledger tile changes, everything else exactly as established.",
+      "notes": "One-change inventory-booking delta; the ledger remains blank and unlettered. [F-08]"
+    },
+    {
+      "id": "L126",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Perfectly indistinguishable. My Peloton bike",
+      "vo_text": "Perfectly indistinguishable.",
+      "stage": "indistinguishable-boxes",
+      "stage_role": "base",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A low shelf-level comparison gives two open kraft drive cartons equal dominance on a warm honey-oak bench, one revealing a real `prop-drive` and the other revealing a rust-red brick. A cropped shelf lip and loose packing cord frame the foreground, the twin blank cartons occupy the midground at identical outside size and height with generous air between them, and cream stock shelves, amber lamps, and smaller carton pairs recede through the background. Kraft tan, honey oak, warehouse cream, and clay red dominate under warm amber light; muted blue appears only at a distant dock window. Every visible surface and tag face is blank and unlettered, while the matched outer silhouettes make the opposed contents look perversely interchangeable.",
+      "notes": "Figureless ironic counterpoint is earned by the indistinguishable object mechanism. [F-07]"
+    },
+    {
+      "id": "L127",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "My Peloton bike is a scam,",
+      "vo_text": "My Peloton bike",
+      "stage": "indistinguishable-boxes",
+      "stage_role": "delta",
+      "changed_elements": [
+        "= both carton lids close over their different contents"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The same warm honey-oak bench holds the two blank kraft drive cartons at identical outside size and height, the real `prop-drive` in one and the rust-red brick in the other. The cropped shelf lip and packing cord remain foreground, both cartons remain midground with the same open air between them, and cream stock shelves and amber lamps recede behind with cool light confined to the dock window. Both lids now close completely over the different contents so only two identical blank silhouettes remain; only the lid state changes, everything else exactly as established.",
+      "notes": "One-change concealment delta collapses the visible distinction without fabricating labels. [F-07]"
+    },
+    {
+      "id": "L128",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "is a scam, but these guys?",
+      "vo_text": "is a scam,",
+      "stage": "peloton-cutaway",
+      "stage_role": "base",
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "still_prompt": "A generic modern exercise bike stands alone in an immaculate apartment corner, framed wide with comic air, its full silhouette chained by a thin cord to an oversized empty coin slot at floor level. A cropped warm-ochre yoga mat anchors the foreground, the bike and absurd coin slot occupy the midground, and honey-oak shelving, a cream wall, and one leafy plant recede through the background. Warm cream, honey oak, ochre, and muted olive dominate under amber apartment lamps; cool cyan comes only from the small powered display. The blank screen and unused saddle hold a dry, brand-free modern scam aside.",
+      "notes": "Generic evergreen Peloton analogy without brand marks or a product likeness; no requested lettering."
+    },
+    {
+      "id": "L129",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "but these guys? Next level.",
+      "vo_text": "but these guys? Next level.",
+      "stage": "heist-upgrade",
+      "stage_role": "base",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-deadpan`, stands stage-left facing right with his face clear, presenting an absurdly meticulous caper board whose cream route cards, strings, and carton silhouettes are all blank and unlettered. A close body-scale view uses a cropped rust-red brick and brass desk lamp in the foreground, the foreman and orderly board in the midground, and kraft carton columns, cream warehouse walls, and an intentionally bare arched wall recess receding behind. Warm clay red, kraft tan, tobacco brown, and brass dominate under amber task light; muted blue appears only through a distant high window. The tiny serious board turns an amateur packing job into theatrical criminal planning.",
+      "notes": "Fresh seeded-figure base; the heist analogy is generic and does not depict a film likeness."
+    },
+    {
+      "id": "L130",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "This was Ocean's Eleven level stuff.",
+      "vo_text": "This was Ocean's Eleven level stuff.",
+      "stage": "heist-upgrade",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a monumental brass vault door fills the reserved recess"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-deadpan`, remains stage-left facing right with his face clear, presenting the same blank caper board. The cropped brick and brass lamp remain foreground, the foreman and board remain midground, and kraft carton columns and cream walls recede behind under warm amber task light with cool light held at the high window. A monumental circular brass vault door now fills the reserved arched wall recess and dwarfs the little brick operation; only the vault door changes, everything else exactly as established.",
+      "notes": "One-change premium-heist escalation; no film characters, logos, or quoted title are drawn."
+    },
+    {
+      "id": "L131",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Then they shipped it, because a pallet sitting",
+      "vo_text": "Then they shipped it, because a pallet sitting in your own warehouse isn't a sale, and Wiles wanted sales.",
+      "stage": "sales-demand",
+      "stage_role": "base",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `point-at-thing`, `expr-smug`, stands dominant stage-left facing right, his planted point and clear face directing the same ordinary timber pallet of kraft cartons toward an open loading door; muted pale-blue, dark-brown, and ochre binding bands mark the wrapped load. A low view from behind a cropped brass floor track puts Wiles and the pallet in the midground, with a mustard forklift, cream dock walls, and the open exit receding through the background. Warm kraft tan, tobacco brown, ochre, and warehouse cream dominate under amber dock lamps; cool blue is confined to exterior daylight beyond the door. The long empty strip between the pallet and exit makes movement out of the building the demanded sale.",
+      "notes": "Fresh Wiles base on the registered point primitive; business-only costume and no medical coding. [F-09] [F-23]"
+    },
+    {
+      "id": "L132",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Some of the pallets went overseas to Singapore.",
+      "vo_text": "Some of the pallets went overseas to Singapore.",
+      "stage": "return-customer-contract",
+      "stage_role": "base",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-offering`, `expr-worried`, stands stage-left facing right and `return-customer`, `action-offering`, `expr-deadpan`, stands stage-right facing left; they use the legal `handoff` geometry to hold opposite sides of one blank shipping sheet on the same dock plane, at a matching eye-line and equal head scale, both faces clear. A wide dockside view uses a cropped coil of cargo rope and kraft carton corner in the foreground, the two figures, blank sheet, and an ordinary timber pallet of kraft cartons in the midground, and warm cream warehouse doors, a rust-red cargo hull, and smaller dock stock receding through the background. Kraft tan, clay red, ochre, and warehouse cream dominate under amber dock light; muted blue is confined to water and distant sky. The long open strip between the pallet and cargo hull makes overseas departure the held relation.",
+      "notes": "Fresh legal two-cast interaction base with plane/eye-line/head-scale clauses; return-customer appears at the start of the locked contract stage. [F-09]"
+    },
+    {
+      "id": "L133",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Others went out to customers who had agreed in advance",
+      "vo_text": "Others went out to customers who had agreed in advance",
+      "stage": "return-customer-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ clear shrink-wrap seals the full customer pallet"
+      ],
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-offering`, `expr-worried`, remains stage-left facing right and `return-customer`, `action-offering`, `expr-deadpan`, remains stage-right facing left, on the same dock plane at a matching eye-line and equal head scale, both faces clear above the same blank shipping sheet. The cargo rope and carton corner remain foreground, the figures, sheet, and ordinary timber pallet remain midground, and cream doors, rust-red hull, and smaller dock stock recede behind under warm amber light with cool blue confined to water and sky. One taut clear shrink-wrap skin now seals the entire customer pallet from base to top; only the wrapping condition changes, everything else exactly as established.",
+      "notes": "One-change wrapped-pallet condition; no interaction slug appears on the delta. [F-09]"
+    },
+    {
+      "id": "L134",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "to leave the pallets wrapped and mail them back",
+      "vo_text": "to leave the pallets wrapped and mail them back a few weeks later.",
+      "stage": "return-customer-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a blank return-route card joins the shipping sheet"
+      ],
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-offering`, `expr-worried`, remains stage-left facing right and `return-customer`, `action-offering`, `expr-deadpan`, remains stage-right facing left, on the same dock plane at a matching eye-line and equal head scale, both faces clear above the blank shipping sheet. The cargo rope remains foreground, the figures and fully wrapped ordinary pallet remain midground, and cream doors, rust-red hull, and smaller dock stock recede behind under warm amber light with cool blue confined to water and sky. A second cream card with one simple looping route line and every glyph field blank now clips beside the shipping sheet; only the return-route card changes, everything else exactly as established.",
+      "notes": "One-change mail-back agreement delta; the route card is graphic and deliberately unlettered. [F-09] [F-24]"
+    },
+    {
+      "id": "L135",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Either Wiles was one charismatic guy,",
+      "vo_text": "Either Wiles was one charismatic guy,",
+      "stage": "charisma-or-cash",
+      "stage_role": "base",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-present`, `expr-smug`, stands stage-left facing right and `return-customer`, `action-armscrossed`, `expr-skeptical`, stands stage-right facing left, on the same midground plane at a matching eye-line and equal head scale; both faces stay unobscured across a broad bare table gap, with Wiles's gold tie clip as his only identity tag. A slightly low view uses a cropped tobacco-brown chair back and brass lamp foot in the foreground, the two figures and empty honey-oak tabletop in the midground, and cream wall panels, amber sconces, and one set of blinds receding behind. Warm honey oak, tobacco brown, cream, and muted olive dominate under amber office light; cool blue is confined to the thin daylight beyond the blinds. The untouched space between them makes persuasion, rather than contact, the subject.",
+      "notes": "Fresh two-cast base with plane/eye-line/head-scale clauses and no unsupported contact primitive; Wiles stays business-only."
+    },
+    {
+      "id": "L136",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "or there was money changing hands under the table.",
+      "vo_text": "or there was money changing hands under the table.",
+      "stage": "charisma-or-cash",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one ambiguous blind-shadow divides the open table gap"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-present`, `expr-smug`, remains stage-left facing right and `return-customer`, `action-armscrossed`, `expr-skeptical`, remains stage-right facing left, on the same midground plane at a matching eye-line and equal head scale, both faces clear across the bare honey-oak table gap. The cropped chair and brass lamp stay foreground, the figures and untouched tabletop stay midground, and cream panels, amber sconces, and blinds recede behind with cool daylight held beyond them. One deep diagonal shadow from the blinds now cuts across the open space between their hands and continues beneath the table, implying a second reading without showing a payment; only the shadow changes, everything else exactly as established.",
+      "notes": "One-change ambiguity delta; the image does not assert an unsourced bribe."
+    },
+    {
+      "id": "L137",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Either way, the same bricks counted as a sale",
+      "vo_text": "Either way, the same bricks counted as a sale",
+      "stage": "quarter-loop",
+      "stage_role": "base",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "still_prompt": "A clean top-down plan fills the frame: at lower-left, a warm-cream warehouse tile with an amber loading door; at center, an ochre quarter-ring with blank ruled cells; at upper-right, a tobacco-brown customer dock tile. In the foreground zone near the bottom edge, a cropped brass route compass and kraft packing cord anchor the plan; across the mid-zone, one ordinary timber pallet token of kraft cartons, distinguished by muted pale-blue, dark-brown, and ochre binding bands, sits on the outbound clay-red route; smaller dock blocks recede toward the upper background edge. Warm cream, kraft tan, ochre, and clay red dominate, with muted blue confined to the single binding band. Open paper space around the outbound token makes its first counted role unambiguous without lettering.",
+      "notes": "Figureless plan-view mechanism is subject-earned. Pallet identity is concrete prose under FLAGGED-NEED #2, not an invented slug. [F-09] [F-24]"
+    },
+    {
+      "id": "L138",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "in one quarter, came home,",
+      "vo_text": "in one quarter, came home,",
+      "stage": "quarter-loop",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ the same pallet token returns to the warehouse tile"
+      ],
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "still_prompt": "The same top-down plan holds the warm-cream warehouse tile lower-left, the blank ochre quarter-ring at center, and the tobacco-brown customer dock upper-right. The cropped brass compass and kraft cord remain at the bottom foreground edge, the clay-red route remains across the mid-zone, and smaller dock blocks recede toward the upper background. The same ordinary timber pallet token of kraft cartons, still marked by muted pale-blue, dark-brown, and ochre binding bands, now sits back at the warehouse loading door at the end of the return route; only the pallet token's position changes, everything else exactly as established.",
+      "notes": "One-token return delta; exact cross-stage pixel identity remains flagged, while the in-chain parent preserves this plan token. [F-09] [F-24]"
+    },
+    {
+      "id": "L139",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and got counted as inventory in the next.",
+      "vo_text": "and got counted as inventory in the next.",
+      "stage": "quarter-loop",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ the same pallet token moves into the next-quarter inventory cell"
+      ],
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "still_prompt": "The same top-down plan holds the warm-cream warehouse tile lower-left, the blank ochre quarter-ring at center, and the tobacco-brown customer dock upper-right. The cropped brass compass and kraft cord remain at the bottom foreground edge, the clay-red route remains across the mid-zone, and smaller dock blocks recede toward the upper background. The same ordinary timber pallet token of kraft cartons, still marked by muted pale-blue, dark-brown, and ochre binding bands, now sits inside the next blank ruled inventory cell of the quarter-ring; only the pallet token's position changes, everything else exactly as established.",
+      "notes": "One-token inventory-role delta; the double count is carried spatially with no labels or invented values. [F-24]"
+    },
+    {
+      "id": "L140",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "So how does a warehouse full of bricks pass an audit?",
+      "vo_text": "So how does a warehouse full of bricks pass an audit?",
+      "stage": "audit-question",
+      "stage_role": "base",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-armscrossed`, `expr-skeptical`, stands foreground-left facing right with his face and round spectacles unobscured, appraising a sealed field of identical kraft cartons. A wide view from behind a cropped clipboard corner and brass floor rail places the auditor against generous foreground air, the first carton wall in the midground, and ever-smaller sealed stacks receding between cream warehouse uprights into the rear depth. Warm kraft tan, tobacco brown, warehouse cream, and ochre dominate beneath amber industrial lamps; cool blue comes only through far dock windows. The tiny auditor against the unopened mass turns the audit question into a scale problem.",
+      "notes": "Fresh auditor entrance on a base; the reserved mid-video peak opens on the performing subject. [F-11]"
+    },
+    {
+      "id": "L141",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Well, MiniScribe's outside accounting firm was Coopers & Lybrand,",
+      "vo_text": "Well, MiniScribe's outside accounting firm was Coopers & Lybrand,",
+      "stage": "test-count-pull",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-present`, `expr-deadpan`, stands foreground-right facing left with his face clear, presenting the full sealed carton field as the object of inspection. A chest-height aisle view uses a cropped blank count sheet and carton corner in the foreground, the auditor beside one reserved empty sampling bay in the midground, and warm cream uprights carrying hundreds of kraft cartons smaller and tighter through the background. Kraft tan, warehouse cream, tobacco brown, and muted olive dominate under amber overhead lamps; cool blue is confined to distant dock windows. The one empty bay against the full depth reserves the sample without opening the mass.",
+      "notes": "Fresh stage base with the auditor on a registered presentation primitive; firm identity is carried by cast, not unrequested lettering. [F-11]"
+    },
+    {
+      "id": "L142",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "one of the giants, and nobody there is opening",
+      "vo_text": "one of the giants, and nobody",
+      "stage": "test-count-pull",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one sealed sample carton occupies the reserved bay"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-present`, `expr-deadpan`, remains foreground-right facing left with his face clear, presenting the sealed carton field. The cropped blank count sheet and carton corner remain foreground, the auditor and reserved sampling bay remain midground, and warm cream uprights packed with smaller kraft cartons recede behind under amber lamps with cool light confined to dock windows. One sealed kraft sample carton now sits alone inside the reserved bay, separated from the untouched mass by bare floor; only the sample carton changes, everything else exactly as established.",
+      "notes": "One-change sample pull delta; the carton remains sealed. [F-11]"
+    },
+    {
+      "id": "L143",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "there is opening all those boxes.",
+      "vo_text": "there is opening all those boxes.",
+      "stage": "test-count-pull",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a brass count frame encloses only the sample carton"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-present`, `expr-deadpan`, remains foreground-right facing left with his face clear, presenting the same sealed carton field. The cropped blank count sheet remains foreground, the auditor and lone sealed sample remain midground, and warm cream uprights packed with smaller kraft cartons recede behind under amber lamps with cool light confined to dock windows. One thick brass counting frame now encloses only the isolated sample carton while the full background mass stays outside it; only the count frame changes, everything else exactly as established.",
+      "notes": "One-change counted-subset delta; no boxes are depicted as opened. [F-11]"
+    },
+    {
+      "id": "L144",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "What they do instead is called a test count.",
+      "vo_text": "What they do instead is called a test count.",
+      "stage": "unopened-majority",
+      "stage_role": "base",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `point-at-thing`, `expr-deadpan`, stands foreground-left facing right with his face clear, holding a point toward one open sample carton containing a real `prop-drive`. A low wide aisle view uses a cropped clipboard and the open carton flap in the foreground, the auditor and single sample in the midground, and a dominant wall of sealed kraft cartons receding smaller behind warehouse uprights into the rear depth. Warm kraft tan, warehouse cream, tobacco brown, and ochre dominate beneath amber industrial lamps; cool blue is confined to the far loading door. Generous air isolates the tiny tested sample beneath the much larger unopened field.",
+      "notes": "Fresh base; auditor performs the sampling mechanism while the object scale makes the imbalance. [F-11]"
+    },
+    {
+      "id": "L145",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "They pull a sample, count it,",
+      "vo_text": "They pull a sample, count it,",
+      "stage": "unopened-majority",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ sealed carton banks fill the far aisle depth"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `point-at-thing`, `expr-deadpan`, remains foreground-left facing right with his face clear, pointing toward the same open sample carton and real `prop-drive`. The cropped clipboard and carton flap stay foreground, the auditor and single sample stay midground, and the warm cream uprights hold the existing sealed kraft wall beneath amber lamps with cool light confined to the far door. Additional sealed carton banks now repeat behind the first wall until they fill the entire far aisle depth and dwarf the sample; only the unopened background mass changes, everything else exactly as established.",
+      "notes": "One-change scale delta; the unopened majority gains depth rather than a floating number. [F-11]"
+    },
+    {
+      "id": "L146",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and if the sample matches the paperwork,",
+      "vo_text": "and if the sample matches",
+      "stage": "sample-paper-match",
+      "stage_role": "base",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `hold-paper-by-sides`, `expr-skeptical`, stands centered facing front with his face and spectacles clear above one cream count sheet whose ruled cells are blank and unlettered. A straight-on desk-scale view uses a cropped open sample carton and real `prop-drive` in the foreground, the auditor and held sheet in the midground, and warm cream shelving, sealed kraft cartons, and amber lamps receding through the background. Kraft tan, warehouse cream, honey oak, and tobacco brown dominate; muted blue comes only through a distant dock window. The sample and paper occupy equal visual blocks on opposite sides of his torso, with a broad blank alignment lane reserved between them.",
+      "notes": "Fresh auditor base on the registered paper-hold primitive; paperwork remains ruled but blank. [F-11]"
+    },
+    {
+      "id": "L147",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "the paperwork, everything else in the building",
+      "vo_text": "the paperwork,",
+      "stage": "sample-paper-match",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a brass alignment bridge joins sample and paper blocks"
+      ],
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `hold-paper-by-sides`, `expr-skeptical`, remains centered facing front with his face and spectacles clear above the same cream count sheet, its ruled cells blank and unlettered. The cropped open sample carton and real `prop-drive` remain foreground, the auditor and held sheet remain midground, and warm cream shelving and sealed kraft cartons recede behind under amber lamps with cool light confined to the dock window. One thick brass alignment bridge now spans the reserved lane between the sample block and the paper block at equal height; only the alignment bridge changes, everything else exactly as established.",
+      "notes": "One-change paper-match delta; visual alignment carries the match without fabricated totals. [F-11]"
+    },
+    {
+      "id": "L148",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "everything else in the building gets a pass.",
+      "vo_text": "everything else in the building gets a pass.",
+      "stage": "warehouse-pass",
+      "stage_role": "base",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A very wide warehouse cross-section turns one tiny accepted sample into a ridiculous proxy for the whole building. A cropped open kraft carton and real `prop-drive` sit inside a small muted-olive approval tray in the foreground; a full cream warehouse frame and dense sealed-carton aisles occupy the midground; still smaller stacks, amber lamps, and loading doors recede through the background. Warm kraft tan, warehouse cream, tobacco brown, and muted olive dominate under amber industrial light, with cool blue confined to far dock windows. The sample uses only a sliver of the frame while the untested building mass owns nearly everything else.",
+      "notes": "Figureless unmasking is subject-earned by the sampling mechanism; no pass lettering is requested. [F-11] [F-13]"
+    },
+    {
+      "id": "L149",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "It's the TSA.",
+      "vo_text": "It's the TSA.",
+      "stage": "warehouse-pass",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ muted-olive clearance tabs spread across every sealed stack"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The same wide warehouse cross-section holds the cropped open sample and real `prop-drive` in its muted-olive tray foreground, the cream warehouse frame and dense sealed-carton aisles in the midground, and smaller stacks, amber lamps, and dock doors receding behind with cool light confined to the far windows. Small blank muted-olive clearance tabs now repeat across every sealed stack from front aisle to rear door, extending the sample's approval over the whole untouched building; only the clearance tabs change, everything else exactly as established.",
+      "notes": "One-change pass-state spread; the TSA aside stays generic and text-free. [F-11] [F-13]"
+    },
+    {
+      "id": "L150",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "And a box with a brick in it weighs exactly what a box",
+      "vo_text": "And a box with a brick in it weighs exactly what a box",
+      "stage": "weight-equivalence",
+      "stage_role": "base",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "A symmetrical desk-scale tableau centers a heavy brass balance already level, with one closed blank kraft carton on each pan and generous air around both complete silhouettes. A cropped brass balance foot and clay-red packing chip anchor the foreground, the equal cartons and horizontal beam occupy the midground, and warm cream warehouse shelves, honey-oak braces, and amber lamps recede through the background. Kraft tan, aged brass, clay red, and warehouse cream dominate; muted blue is confined to a distant high window. The unseen real `prop-drive` occupies the right carton and the hidden brick occupies the left, while identical height and equilibrium make the boxes read as one object duplicated.",
+      "notes": "Figureless equilibrium base reserves the concealed-content reveal; no weighing myth is asserted beyond sourced physical equivalence. [F-07] [F-11]"
+    },
+    {
+      "id": "L151",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "with a hard drive in it weighs.",
+      "vo_text": "with a hard drive in it weighs.",
+      "stage": "weight-equivalence",
+      "stage_role": "delta",
+      "changed_elements": [
+        "= the left carton gains a cutaway revealing its brick"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The same symmetrical brass balance remains exactly level with one blank kraft carton on each pan and generous air around both silhouettes. The cropped balance foot and clay-red packing chip remain foreground, the equal cartons and horizontal beam remain midground, and warm cream shelves and amber lamps recede behind with cool light confined to the high window. A single clean cutaway now opens through the left carton wall to reveal the snug rust-red brick while the right carton stays closed around the real `prop-drive` and the equilibrium holds; only the left-carton cutaway changes, everything else exactly as established.",
+      "notes": "One-change mid-video payoff reveal; it shows sourced size/weight matching without claiming auditors weighed boxes. [F-07] [F-11]"
+    },
+    {
+      "id": "L152",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "And this wasn't a one time thing.",
+      "vo_text": "And this wasn't a one time thing.",
+      "stage": "quarterly-ratchet",
+      "stage_role": "base",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, stands dominant foreground-left facing right with his face and gold tie clip clear, looming beside one tall dark-ochre target block with generous empty headroom above it. A low conference-table view uses a cropped brass lamp and honey-oak table edge in the foreground, Wiles and the target block in the midground, and a genuine mass of worried managers in cream shirts and brown ties receding smaller behind chairs, binders, and room dividers into the rear zone. Warm honey oak, cream, tobacco brown, dark ochre, and muted olive dominate under hard amber office light; muted blue comes only through a distant window. The managers' simple worried expressions and hunched group attitude make recurring pressure visible behind the boss.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Fresh Wiles-plus-crowd base; genuine manager mass is small/receding behind table geometry with authored worried attitude. [F-04] [F-23]"
+    },
+    {
+      "id": "L153",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Each quarter, Wiles raised sales targets",
+      "vo_text": "Each quarter, Wiles raised sales targets",
+      "stage": "quarterly-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ the dark-ochre target block rises into the reserved headroom"
+      ],
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, remains dominant foreground-left facing right with his face and gold tie clip clear beside the same dark-ochre target block. The cropped brass lamp and honey-oak edge remain foreground, Wiles and the target remain midground, and the genuine worried manager mass remains small and receding behind chairs, binders, and dividers under warm amber light with cool blue confined to the window. The dark-ochre target block now rises into the previously empty upper space above the managers; only the target position changes, everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change raised-target delta; dark ochre preserves the A3 lock's tighter red reserve. [F-04] [F-23]"
+    },
+    {
+      "id": "L154",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and management came up with better ways to meet them.",
+      "vo_text": "and management came up with better ways to meet them.",
+      "stage": "quarterly-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a stacked column of blank workaround cards rises behind the managers"
+      ],
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, remains dominant foreground-left facing right with his face and gold tie clip clear beside the elevated dark-ochre target block. The cropped brass lamp and honey-oak edge remain foreground, Wiles and the target remain midground, and the genuine worried manager mass remains small and receding behind chairs and dividers under warm amber light with cool blue confined to the window. A tall kraft stack of blank, unlettered workaround cards now rises behind the managers until it nearly meets the target height; only the workaround stack changes, everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change workaround escalation; crowd remains a genuine smaller rear-zone mass with worried attitude. [F-23]"
+    },
+    {
+      "id": "L155",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "They started padding their inventory with broken drives",
+      "vo_text": "They started padding their inventory with broken drives",
+      "stage": "junk-padding",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-worried`, stands stage-left facing right with his face clear, presenting a low honey-oak sorting tray filled with visibly cracked and incomplete `prop-drive` units. A bench-height view uses a cropped bent drive casing and kraft inventory card in the foreground, the foreman and broken-drive tray in the midground, and warm cream factory shelving, ochre bins, and amber work lamps receding through the background. Honey oak, warehouse cream, tobacco brown, and muted olive dominate; cool blue is confined to a distant inspection lamp. A wide empty tray extension on the right reserves the escalation without turning the foreman into background furniture.",
+      "notes": "Fresh foreman base; the concrete broken-drive mechanism is the subject and uses the registered prop. [F-10]"
+    },
+    {
+      "id": "L156",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and factory scrap, and whatever else was lying around,",
+      "vo_text": "and factory scrap, and whatever else was lying around,",
+      "stage": "junk-padding",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ factory scrap fills the reserved tray extension"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-worried`, remains stage-left facing right with his face clear, presenting the same honey-oak sorting tray and broken `prop-drive` units. The cropped bent casing and blank kraft card remain foreground, the foreman and tray remain midground, and warm cream shelving, ochre bins, and amber lamps recede behind with cool light confined to the inspection lamp. Bent brackets, rejected platters, and short cable offcuts now fill the reserved right-hand tray extension; only the factory scrap changes, everything else exactly as established.",
+      "notes": "One-change scrap-padding delta; concrete factory waste, not a generic junk cloud. [F-10]"
+    },
+    {
+      "id": "L157",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and the junk padding grew",
+      "vo_text": "and the junk padding grew",
+      "stage": "junk-padding",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ miscellaneous rejected stock fills the final empty bin"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `action-present`, `expr-worried`, remains stage-left facing right with his face clear, presenting the same honey-oak sorting tray with broken `prop-drive` units and factory scrap. The cropped bent casing and blank kraft card remain foreground, the foreman and tray remain midground, and warm cream shelving, ochre bins, and amber lamps recede behind with cool light confined to the inspection lamp. Rejected foam blocks, dented blank casings, and loose packing spacers now fill the final empty bin at the tray's far end; only the miscellaneous rejected stock changes, everything else exactly as established.",
+      "notes": "One-change final padding delta; no new recurring prop is invented. [F-10]"
+    },
+    {
+      "id": "L158",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "to more than twice what",
+      "vo_text": "to more than twice what",
+      "stage": "twice-the-bricks",
+      "stage_role": "base",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "A straight-on comparison wall gives one compact rust-red brick-value column stage-left and one kraft-and-ochre junk-value column stage-right, each built from large countable blocks with full silhouettes. A cropped brass floor rule and broken drive casing anchor the foreground, both columns occupy the midground, and a warm cream wall carries one thick dark-brown horizontal guide at exactly twice the brick column's height while amber lamps and shelving recede behind. Warm clay red, kraft tan, ochre, and warehouse cream dominate; cool blue is confined to a distant inspection window. The junk column stops below the fixed guide, with generous open space above reserved for the layered extension.",
+      "notes": "Figureless value comparison is subject-earned. The fixed 1:2 geometry is precomposed for a layered-path extension, not a prose-only measured resize. [F-10]"
+    },
+    {
+      "id": "L159",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "the bricks were worth.",
+      "vo_text": "the bricks were worth.",
+      "stage": "twice-the-bricks",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a discrete junk-column layer extends beyond the fixed double-height guide"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The same straight-on comparison wall holds the compact rust-red brick-value column stage-left and the kraft-and-ochre junk-value column stage-right, with the cropped brass rule and broken casing foreground, both columns midground, and the warm cream wall, fixed dark-brown double-height guide, amber lamps, and shelving behind. A discrete added stack of large junk blocks now carries the right column above the fixed guide while the brick column stays unchanged; only the layered junk extension changes, everything else exactly as established.",
+      "notes": "One-change layered-path extension beyond the fixed 1:2 guide; not routed as a measured whole-frame prose resize. [F-10]"
+    },
+    {
+      "id": "L160",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "One of the executives even brought his own family",
+      "vo_text": "One of the executives even brought his own family",
+      "stage": "family-night-pack",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-both-hands`, `expr-worried`, stands at a midnight packing bench facing three-quarter right with his face clear, holding a rust-red brick and open kraft carton within the registered two-hand packing tableau. A bench-height view uses a cropped roll of twine and carton flap in the foreground, the foreman and one deliberately empty adjacent packing station in the midground, and warm cream shelves, a few blank cartons, and amber task lamps receding through the background. Kraft tan, clay red, tobacco brown, and warehouse cream dominate; cool blue comes only through the dark high windows. The empty second station reserves the unresolved family place without casting an invented person.",
+      "notes": "FLAGGED-NEED #1: locked `brick-foreman` is the only shown person; the unavailable family relative is neither invented nor crowd-demoted. Family identity is soft/contested in research."
+    },
+    {
+      "id": "L161",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "in at night to help pack the boxes.",
+      "vo_text": "in at night to help pack the boxes.",
+      "stage": "family-night-pack",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ packed kraft cartons accumulate behind both stations"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-both-hands`, `expr-worried`, remains at the same midnight packing bench facing three-quarter right with his face clear, holding the same brick and carton; the adjacent station remains empty. The cropped twine and flap stay foreground, the foreman and two stations stay midground, and warm cream shelves and amber task lamps recede behind with cool blue confined to the high windows. Finished kraft cartons now accumulate in orderly rows behind both stations into the background; only the packed-carton quantity changes, everything else exactly as established.",
+      "notes": "One-change packing-volume delta under FLAGGED-NEED #1; no unseeded family figure is added."
+    },
+    {
+      "id": "L162",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "The original bring your kid to work.",
+      "vo_text": "The original bring your kid to work.",
+      "stage": "family-night-pack",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a child-sized lunchbox appears at the empty station"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-both-hands`, `expr-worried`, remains at the same midnight packing bench facing three-quarter right with his face clear, holding the same brick and carton; the adjacent station remains physically empty. The cropped twine and flap stay foreground, the foreman and two stations stay midground, and finished kraft cartons, warm cream shelves, and amber task lamps recede behind with cool blue confined to the high windows. One small ochre lunchbox now sits on the empty station beneath its lamp, implying the missing family helper without depicting an unapproved person; only the lunchbox changes, everything else exactly as established.",
+      "notes": "One-change counterpoint under FLAGGED-NEED #1; this is the closest locked-asset restage and does not claim which family member attended."
+    },
+    {
+      "id": "L163",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "And in 1988, right in the middle of all this,",
+      "vo_text": "And in 1988, right in the middle of all this,",
+      "stage": "best-managed-irony",
+      "stage_role": "base",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, stands centered facing front with his face clear, presenting a polished brass industry trophy whose cream plaque is blank and unlettered. A formal waist-high view uses a cropped honey-oak podium edge and one ochre ribbon tail in the foreground, the representative and trophy in the midground, and warm cream office panels, amber sconces, and a broad empty service opening receding through the background. Honey oak, brass, cream, ochre, and tobacco brown dominate; muted blue appears only as distant window light. The proud figure and pristine blank award occupy a clean island of air prepared for the contradiction.",
+      "notes": "Fresh MiniScribe entrance on a base; the sourced 1988 honor is represented without exceeding lettering limits or inventing copy. [F-28]"
+    },
+    {
+      "id": "L164",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "MiniScribe was named the best managed company",
+      "vo_text": "MiniScribe was named the best managed company",
+      "stage": "best-managed-irony",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brick-filled drive cartons move through the service opening"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, remains centered facing front with his face clear, presenting the same polished brass trophy and blank cream plaque. The cropped honey-oak podium and ochre ribbon remain foreground, the representative and trophy remain midground, and warm cream panels and amber sconces recede behind with cool light confined to the window. A conveyor of open kraft drive cartons, each visibly holding a rust-red brick, now runs through the reserved service opening behind the award tableau; only the fraudulent inventory activity changes, everything else exactly as established.",
+      "notes": "One-change unmasking delta; the fraud remains active behind the sourced honor. [F-05] [F-28]"
+    },
+    {
+      "id": "L165",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "in the disk drive industry. The irony.",
+      "vo_text": "in the disk drive industry. The irony.",
+      "stage": "best-managed-irony",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a towering brick-carton stack dwarfs the trophy"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, remains centered facing front with his face clear, presenting the same polished brass trophy and blank cream plaque while the brick-filled carton conveyor remains visible through the service opening. The cropped honey-oak podium and ribbon stay foreground, the representative and award stay midground, and warm cream panels and amber sconces recede behind with cool light confined to the window. A towering column of blank kraft cartons and rust-red bricks now rises beside the podium until the trophy reads tiny beneath it; only the dominant brick-carton stack changes, everything else exactly as established.",
+      "notes": "One-change scale reversal makes the fraud, not the honor, own the payload. [F-05] [F-28]"
+    },
+    {
+      "id": "L166",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "What finally killed it wasn't the auditors,",
+      "vo_text": "What finally killed it wasn't the auditors,",
+      "stage": "wrong-watchdogs",
+      "stage_role": "base",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-armscrossed`, `expr-deadpan`, stands foreground-left facing right with his face and spectacles clear beside an intact ordinary timber pallet of sealed kraft cartons, their muted pale-blue, dark-brown, and ochre binding bands undisturbed. A low loading-bay view uses a cropped blank clipboard and brass floor rail in the foreground, the auditor and wrapped pallet in the midground, and cream warehouse uprights, more sealed loads, and amber lamps receding through the background. Kraft tan, warehouse cream, tobacco brown, and muted olive dominate; cool blue comes only through distant dock windows. The untouched pallet occupies more space than the motionless watchdog, showing the audit route still asleep.",
+      "notes": "Fresh auditor base; intact sealed inventory defeats the watchdog without pass lettering. [F-11] [F-13] [F-14]"
+    },
+    {
+      "id": "L167",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and it wasn't a regulator.",
+      "vo_text": "and it wasn't a regulator.",
+      "stage": "wrong-watchdogs",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a blank external inspection barrier remains outside the pallet lane"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-armscrossed`, `expr-deadpan`, remains foreground-left facing right with his face and spectacles clear beside the same intact wrapped pallet and its ochre, dark-brown, and muted pale-blue binding bands. The cropped blank clipboard and brass rail stay foreground, the auditor and pallet stay midground, and cream uprights, sealed loads, and amber lamps recede behind with cool light confined to dock windows. A cream external inspection barrier with every surface blank and unlettered now stands beyond the far loading door, physically outside the pallet lane and mechanism; only the external barrier changes, everything else exactly as established.",
+      "notes": "One-change regulator stand-in; no agency name, logo, or invented enforcement action. [F-14]"
+    },
+    {
+      "id": "L168",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "It was a layoff.",
+      "vo_text": "It was a layoff.",
+      "stage": "wrong-watchdogs",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a twin-route warning panel stays visibly dormant"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-armscrossed`, `expr-deadpan`, remains foreground-left facing right with his face and spectacles clear beside the intact wrapped pallet; the blank external inspection barrier remains beyond the loading door. The cropped clipboard and brass rail stay foreground, the auditor and pallet stay midground, and cream uprights, sealed loads, and amber lamps recede behind with cool light confined to dock windows. A simple twin-route brass warning panel now sits between the auditor and external barrier with both large indicator windows dark and unlit, leaving both watchdog paths dormant; only the warning panel changes, everything else exactly as established.",
+      "notes": "One-change dual-watchdog non-trigger; layoff is spoken but withheld visually for the fresh worker entrance at L169. [F-14]"
+    },
+    {
+      "id": "L169",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Right before Christmas, MiniScribe cut a batch",
+      "vo_text": "Right before Christmas, MiniScribe cut a batch",
+      "stage": "christmas-layoff",
+      "stage_role": "base",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "still_prompt": "A genuine mass of worried employees in muted work coats fills a factory-exit corridor, the nearest row at body scale and further rows receding smaller behind locker ends and door frames with simple downturn expressions and a slumped group attitude. A wide exit view uses a cropped kraft lunch sack and plain coat hook in the foreground, the employee mass across the midground, and warm cream lockers, amber ceiling lamps, a drooping evergreen wreath, and a partly open loading door through the background. Warehouse cream, kraft tan, tobacco brown, and muted olive dominate; cool blue comes only from winter light through the open door. The Christmas layoff lands as collective human cost.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Fresh collective-employee base; the plural batch bears the human-cost beat and Christmas context is disclosed on its own anchor. [F-14]"
+    },
+    {
+      "id": "L170",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "of employees loose, and some of the people",
+      "vo_text": "of employees loose, and some of the people",
+      "stage": "christmas-layoff",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ all vacated coat hooks fill the corridor wall"
+      ],
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine worried employee mass in the factory-exit corridor, with the cropped kraft lunch sack foreground, nearest employees across the midground, further rows receding smaller behind locker ends and door frames, and the warm cream lockers, amber lamps, drooping evergreen wreath, and winter-blue loading doorway behind. Keep the warehouse cream, kraft tan, tobacco brown, and muted olive palette and the group's simple downturn expressions and slumped attitude. Fill the entire corridor wall with vacated plain coat hooks, each fully empty; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One completed environmental change makes the scale of the employee loss visible while the genuine mass remains the subject. [F-14]"
+    },
+    {
+      "id": "L171",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "holding pink slips were the same people who had been packing the bricks.",
+      "vo_text": "holding pink slips were the same people who had been packing the bricks.",
+      "stage": "christmas-layoff",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ blank clay-red pink slips appear in every employee's hands"
+      ],
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine worried employee mass in the factory-exit corridor, with the cropped kraft lunch sack foreground, nearest employees across the midground, further rows receding smaller behind locker ends and door frames, and the entirely vacant coat-hook wall, warm cream lockers, amber lamps, drooping evergreen wreath, and winter-blue loading doorway behind. Keep the warehouse cream, kraft tan, tobacco brown, and muted olive palette and the group's simple downturn expressions and slumped attitude. Add one blank clay-red pink slip to every employee's hands, all sheets fully visible and unlettered; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change pink-slip reveal; the same plural workers who packed bricks remain the performing subject and no singular proxy is imposed. [F-14]"
+    },
+    {
+      "id": "L172",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "They went home, picked up the phone,",
+      "vo_text": "They went home,",
+      "stage": "whistleblower-call",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`line-worker`, `action-slump`, `expr-worried`, stands foreground-left facing right with his face clear beside a small honey-oak telephone table, while a clay-red receiver rests in its cradle and the blank layoff sheet lies beneath it. A quiet body-scale home view uses a cropped kraft lunch sack and chair edge in the foreground, the worker and phone table in the midground, and warm cream wallpaper, a tobacco-brown coat hook, and one dark window receding through the background. Honey oak, warm cream, tobacco brown, and muted olive dominate under one amber table lamp; cool blue comes only from winter night beyond the window. The unused receiver and worker's held slump make the decision to call the next action, not an invisible motion.",
+      "notes": "Fresh line-worker base at home; the phone receiver and layoff sheet carry the sourced exposure setup without lettering. [F-14]"
+    },
+    {
+      "id": "L173",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "picked up the phone, and called",
+      "vo_text": "picked up the phone,",
+      "stage": "whistleblower-call",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ line-worker changes to `hold-one-hand` with the receiver"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`line-worker`, `hold-one-hand`, `expr-worried`, remains foreground-left facing right with his face clear beside the same honey-oak telephone table, now holding the clay-red receiver beside his head within the registered one-hand pose; the blank layoff sheet remains beneath the phone. The cropped kraft lunch sack and chair edge stay foreground, the worker and table stay midground, and warm cream wallpaper, tobacco-brown hook, and dark window recede behind under the amber lamp with cool blue confined to winter night outside. The receiver has moved from its cradle into his held hand; only the worker's receiver-holding pose changes, everything else exactly as established.",
+      "notes": "One changed seeded pose on a legal delta; phone action conforms to `hold-one-hand`. [F-14]"
+    },
+    {
+      "id": "L174",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "and called the Denver newspapers.",
+      "vo_text": "and called the Denver newspapers.",
+      "stage": "whistleblower-call",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ a stack of local newspapers occupies the far end of the call line"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`line-worker`, `hold-one-hand`, `expr-worried`, remains foreground-left facing right with his face clear, holding the clay-red receiver beside his head at the same honey-oak telephone table; the blank layoff sheet stays beneath the phone. The cropped kraft lunch sack and chair edge stay foreground, the worker and table stay midground, and warm cream wallpaper, tobacco-brown hook, and dark window recede behind under the amber lamp with cool blue confined outside. A neat stack of folded local newspapers with blank, unlettered masthead fields now occupies a small lit shelf at the far end of the receiver cord's visual line; only the newspaper target changes, everything else exactly as established.",
+      "notes": "One-change newspaper target; Denver is carried by VO and notes rather than generated masthead lettering. [F-14]"
+    },
+    {
+      "id": "L175",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Best exit interview in American history.",
+      "vo_text": "Best exit",
+      "stage": "exit-interview",
+      "stage_role": "base",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "`line-worker`, `hold-one-hand`, `expr-deadpan`, stands stage-left facing right with his face clear, holding the clay-red phone receiver beside his head across from an empty tobacco-brown corporate interview chair. A wide office cutaway uses a cropped blank personnel folder and brass desk corner in the foreground, the worker, phone, empty chair, and one blank interview form in the midground, and warm cream partitions, unused coat hooks, and amber ceiling lamps receding through the background. Warm cream, honey oak, tobacco brown, and muted olive dominate; clay red is confined to the whistleblower phone and cool blue comes only through a distant winter window. The empty chair and full stride of air make the call outside the company the actual exit interview.",
+      "notes": "Fresh worker base for the idiom-pun; no HR cast or undisclosed final-peak element enters early. [F-14]"
+    },
+    {
+      "id": "L176",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "interview in American history.",
+      "vo_text": "interview in American history.",
+      "stage": "exit-interview",
+      "stage_role": "delta",
+      "changed_elements": [
+        "= the local newspaper stack entirely replaces the unused interview form"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`line-worker`, `hold-one-hand`, `expr-deadpan`, remains stage-left facing right with his face clear, holding the clay-red receiver across from the same empty tobacco-brown corporate interview chair. The cropped blank personnel folder and brass desk corner stay foreground, the worker, phone, and empty chair stay midground, and warm cream partitions, unused hooks, and amber lamps recede behind with cool light confined to the winter window. A folded stack of local newspapers with blank masthead fields now entirely occupies the interview form's former place on the desk, and nothing of the form remains on that cleared surface; only the desk payload changes, everything else exactly as established.",
+      "notes": "One-change punchline delta; the paper outlet replaces the unused corporate channel without rendered lettering. [F-14]"
+    }
+  ]
+}

@@ -1,0 +1,738 @@
+{
+  "shots": [
+    {
+      "id": "L66",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "Wiles ran MiniScribe with",
+      "vo_text": "Wiles ran MiniScribe with fear. He",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "Tall windows and a low credenza stretch the established Los Angeles office into a shallow L, while the honey-oak desk sits as an island beneath a broad band of clear wall and sky. `qt-wiles`, `action-powerstance`, `expr-deadpan`, occupies about one fifth of the frame behind that desk, facing front with his face clear above the telephone; palms outside and the far return wall make the remote command post feel larger than him. Balanced cream, oak, muted olive, and charcoal sit under firm late-afternoon light. His solitary position at the center of the office is the control payload.",
+      "notes": "Fresh seeded entrance on the approved L65 office plate; Wiles is subordinated to the office scale. [F-03]",
+      "place": "los-angeles-office",
+      "stage": "fear-office",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L65.png"
+    },
+    {
+      "id": "L67",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "set sales targets. Hit",
+      "vo_text": "set sales targets. Hit them, and",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "The window wall, desk island, low credenza, and large upper field of the Los Angeles office hold their established proportions; `qt-wiles`, `action-powerstance`, `expr-deadpan`, remains a one-fifth-height figure behind the desk. A single cream quota sheet now stands on the credenza, its ruled face blank and unlettered and its upper edge cut by one red target line; only this changes; everything else exactly as established.",
+      "notes": "One target object arrives only as the narration names sales targets. [F-04]",
+      "place": "los-angeles-office",
+      "stage": "fear-office",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one blank quota sheet with a red target line"
+      ]
+    },
+    {
+      "id": "L68",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "you got a fat bonus.",
+      "vo_text": "you got a fat bonus. Miss",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "A brass balance stands alone in a high-ceilinged counting hall, with a narrow bridge crossing behind it and empty wall space surrounding the mechanism. Far beyond the scale, `qt-wiles`, `action-armscrossed`, `expr-deadpan`, reads at roughly fifteen percent of frame height from a raised landing. One pan carries thin blank quota cards; the opposite pan sinks under a thick stack of golden envelopes. Restrained brass, parchment, tobacco, and charcoal are picked out by one hard pool of amber light. The heavy envelope stack is the entire promise.",
+      "notes": "Standalone physicalized bonus beat; the world and scale dominate Wiles. [F-04]",
+      "stage": "bonus-scale",
+      "stage_role": "base"
+    },
+    {
+      "id": "L69",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "them, and your head",
+      "vo_text": "them, and your head was on the chopping",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A long brass rail crosses a spare tribunal room from left wall to right wall, leaving a tall unused volume above it. `qt-wiles`, `action-armscrossed`, `expr-deadpan`, stands on a distant side platform at about one fifth of frame height, facing a cream employee marker stopped short of a single red notch. Repeated wall ribs and the rail's diminishing ties establish the room's length and keep the clean gap visually dominant. Cream, brass, brown, and warm charcoal stay restrained under directional ceiling light. The visible distance between marker and notch is the missed target.",
+      "notes": "Fresh base for the miss; target gap is staged before the consequence. [F-04]",
+      "stage": "missed-target",
+      "stage_role": "base"
+    },
+    {
+      "id": "L70",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "block. And when you",
+      "vo_text": "block. And when you hit them, he",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "The tribunal room, long brass rail, distant side platform, and high unused wall remain fixed; `qt-wiles`, `action-armscrossed`, `expr-deadpan`, continues to judge the stopped cream marker. A round wooden chopping block now sits directly beneath that marker as an inert office-display pedestal, with the red notch still beyond reach; only this changes; everything else exactly as established.",
+      "notes": "Safe idiom tableau: inert block, marker, and distance; no weapon or body. [F-04]",
+      "stage": "missed-target",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ inert chopping-block pedestal beneath the missed marker"
+      ]
+    },
+    {
+      "id": "L71",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "raised them, so the",
+      "vo_text": "raised them, so the next quarter",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "A narrow industrial stairwell rises through three open landings around a vertical quota ratchet, with daylight occupying the upper third and the lowest landing held in shadow. `qt-wiles`, `point-at-thing`, `expr-smug`, stands at the bottom landing at roughly eighteen percent of frame height, holding his point toward a cream achievement bar locked against one red tooth. Muted brass, concrete cream, tobacco, and charcoal create a balanced warm register. The vast empty stair volume above the achieved bar reserves the next demand.",
+      "notes": "Fresh mechanism base; Wiles is contained by the vertical world rather than enlarged. [F-04]",
+      "stage": "raised-target-loop",
+      "stage_role": "base"
+    },
+    {
+      "id": "L72",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "was even harder. He",
+      "vo_text": "was even harder. He once",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "The stairwell, three open landings, upper daylight, and bottom-positioned `qt-wiles`, `point-at-thing`, `expr-smug`, stay fixed around the vertical ratchet. One additional red tooth now locks into the next landing above the achieved cream bar, leaving the top landing still open; only this changes; everything else exactly as established.",
+      "notes": "The next-quarter difficulty lands as one higher tooth; no body rescale. [F-04]",
+      "stage": "raised-target-loop",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one higher red quota tooth"
+      ]
+    },
+    {
+      "id": "L73",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "made two managers stand",
+      "vo_text": "made two managers stand up in the middle of a team",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "still_prompt": "A sunken conference chamber wraps tiered seating around a clear central floor, its curved walls and ceiling coffers leaving a generous open bowl in the middle. A genuine mass of managers occupies the tiers in two ordered banks, all planted upright with worried faces and rigid shoulders; the nearest ranks remain below one quarter of frame height and the upper ranks step higher through the architecture. Tobacco wood, cream plaster, muted teal, and charcoal sit under stark meeting lights. The two-bank collective stand makes intimidation a human act rather than a pair of empty chairs.",
+      "notes": "Genuine mass-action restage keeps people bearing the reported incident without inventing manager cast. [Q-01]",
+      "stage": "empty-manager-chairs",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L74",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "meeting and fired them",
+      "vo_text": "meeting and fired them on the spot,",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "The conference chamber's tiered banks, clear central floor, and high coffered ceiling form a wide intimidation arena. `qt-wiles`, `action-accuse`, `expr-deadpan`, stands on the central floor at about one quarter of frame height, facing the manager mass; the crowd holds two rigid banks above him with worried expressions and a braced group posture. His face is isolated against a plain cream wall panel, clear of railings and heads. Tobacco, cream, muted teal, and charcoal remain subdued under hard overhead light. Wiles's accusation cuts across the occupied room.",
+      "notes": "Fresh named-cast base with the manager mass present and performing. [Q-01]",
+      "stage": "control-firing",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L75",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "just to show everyone",
+      "vo_text": "just to show everyone who was in control.",
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "still_prompt": "The tiered conference chamber, open central floor, and `qt-wiles`, `action-accuse`, `expr-deadpan`, hold their geometry beneath the coffered ceiling. The worried manager mass stays planted in two occupied banks, but a hard aisle of light now divides both banks and points toward Wiles as the sole command position; only this changes; everything else exactly as established.",
+      "notes": "One lighting relation turns the firing into a demonstration of control while keeping managers on screen. [Q-01]",
+      "stage": "control-firing",
+      "stage_role": "delta",
+      "changed_elements": [
+        "hard aisle light points both manager banks toward Wiles"
+      ],
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L76",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "What a dick. Now,",
+      "vo_text": "What a dick. Now, the targets",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The established assembly floor opens as three staggered production terraces beneath a sawtooth roof, with drive benches on the lowest level, packing tables above, and loading doors at the far end. Repeated columns and overhead trusses make the building read as a full factory while the central roof bays leave broad breathing room. Cream machinery, ochre cartons, tobacco steel, muted teal, and charcoal sit in balanced industrial light. The finite length of the working line is clearly visible from intake to loading door.",
+      "notes": "Standalone factory mechanism stays outside the recurring-place inventory, matching the locked plan. [F-23]",
+      "stage": "impossible-production",
+      "stage_role": "base"
+    },
+    {
+      "id": "L77",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "Wiles handed out didn't",
+      "vo_text": "Wiles handed out didn't care much what the company",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The three factory terraces, sawtooth roof, repeated columns, drive benches, packing tables, and far loading doors remain fixed at working occupancy. A single red quota beam now spans the hall above every terrace, extending beyond the last loading door while the physical line ends below it; only this changes; everything else exactly as established.",
+      "notes": "One oversized quota beam makes the handed-out demand indifferent to capacity. [F-04] [F-23]",
+      "stage": "impossible-production",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ red quota beam extends past the factory's working length"
+      ]
+    },
+    {
+      "id": "L78",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "could actually build and",
+      "vo_text": "could actually build and sell. So four",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The sawtooth-roof factory keeps its three staffed terraces, repeated columns, finite loading doors, and red quota beam projecting beyond the building. Finished cream drive cartons now stop in a short orderly block at the final packing table, leaving the unreachable length beneath the quota beam physically empty; only this changes; everything else exactly as established.",
+      "notes": "The completed output is finite and countable against the impossible demand. [F-23]",
+      "stage": "impossible-production",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ finite block of finished cartons stops beneath the overlong quota"
+      ]
+    },
+    {
+      "id": "L79",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "times a year, a",
+      "vo_text": "times a year, a room full of middle",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The established conference-room variant is seen lengthwise from a side doorway: a long tobacco table crosses two window bays, teal chairs line both sides, and winter sky occupies nearly half the glass wall above the furniture. Plain cream folders and closed file boxes sit at working intervals, every paper face blank and unlettered. Cream, tobacco, muted teal, and pale winter blue remain controlled under firm ceiling light. Four equal table sections divide the room into a quarterly rhythm.",
+      "notes": "Cast-free reset on the approved L84 variant; the architecture carries the quarterly recurrence.",
+      "place": "miniscribe-building",
+      "stage": "conference-variant",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L84.png"
+    },
+    {
+      "id": "L80",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "managers in Colorado sat",
+      "vo_text": "managers in Colorado sat there needing a",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "still_prompt": "Two window bays, the long table, and four repeated ceiling coffers give the established conference room a deep, orderly grid. A genuine manager mass sits in compact groups along both sides, each figure between one tenth and one fifth of frame height; worried faces turn inward and shoulders lean toward the vacant table center while the winter sky keeps the upper glass open. Tobacco, cream, muted teal, and pale blue stay subdued. The occupied room is visibly waiting on an answer.",
+      "notes": "Managers remain a genuine collective subject at world scale. [F-23]",
+      "place": "miniscribe-building",
+      "stage": "number-room",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L84.png",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L81",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "number they didn't have,",
+      "vo_text": "number they didn't have, and wrote one down",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The two-bay conference room, long table, open winter glass, and inward-leaning manager mass hold their positions in restrained tobacco, cream, teal, and pale blue. A large cream sheet now lies alone in the vacant center section, its ruled surface entirely blank and unlettered; only this changes; everything else exactly as established.",
+      "notes": "The absence is a positive blank surface, and the manager mass still bears the need. [F-23]",
+      "place": "miniscribe-building",
+      "stage": "number-room",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one blank ruled sheet in the vacant table center"
+      ],
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L82",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "anyway. Then in January",
+      "vo_text": "anyway. Then in January",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The conference room's window bays, ceiling grid, long table, and worried manager mass remain fixed around the blank central sheet. One thick upward bar now occupies the sheet while every glyph field stays blank and unlettered; the managers hold a reluctant, closed-shoulder group attitude around it; only this changes; everything else exactly as established.",
+      "notes": "The invented value arrives only after the narration says they wrote one down. [F-12] [F-23]",
+      "place": "miniscribe-building",
+      "stage": "number-room",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one unnumbered upward bar on the blank sheet"
+      ],
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L83",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "1987, MiniScribe's outside accountants",
+      "vo_text": "1987, MiniScribe's outside",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A warehouse cross-aisle opens between two long rack walls, with yellow floor lanes meeting at a T-junction and high clerestory panels holding a broad strip of clear light above the stock. Cream and ochre cartons fill the steel bays at working density; pallet openings break the lower rhythm and a cream end wall closes the distance. Tobacco steel, muted brass, cream, and charcoal remain balanced. At the far junction, one red-ink ownership board reads exactly \"MINISCRIBE\".",
+      "notes": "Approved L86 warehouse variant reset; cast stays absent until the accountants' entrance. [F-01] [F-11]",
+      "place": "miniscribe-building",
+      "stage": "warehouse-variant",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png"
+    },
+    {
+      "id": "L84",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "accountants came in to",
+      "vo_text": "accountants came in to audit the books,",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "still_prompt": "A side aisle branches from the warehouse T-junction through stocked rack portals, with yellow lanes underfoot and clerestory light opening the upper half of the view. A genuine audit team occupies the threshold and two deeper rack portals with focused faces and squared, paused postures; one member holds a charcoal case at their side. Cream stock, tobacco steel, brass lanes, and charcoal clothing stay restrained. The planted team owns the arrival.",
+      "notes": "Held threshold tableau replaces travel-in-progress and gives the crowd a focused group attitude. [F-11]",
+      "place": "miniscribe-building",
+      "stage": "auditors-arrive",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L85",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "which means somebody counts",
+      "vo_text": "which means somebody counts what your books say is",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The side aisle, rack portals, clerestory light, and planted audit team remain fixed in their focused squared posture. A waist-high counting table now occupies one open bay, carrying a blank ledger, pencil cup, and adding machine with every glyph surface plain and unlettered; only this changes; everything else exactly as established.",
+      "notes": "The counting station lands as its own readable beat, eliminating the former seven-second tableau. [F-11]",
+      "place": "miniscribe-building",
+      "stage": "auditors-arrive",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one counting table in an open rack bay"
+      ],
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L86",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "sitting in the warehouse.",
+      "vo_text": "sitting in the warehouse. So the accountants set",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The warehouse side aisle, high light band, stocked portals, counting table, and planted audit team keep their established geometry. Blank ruled ledgers now occupy a sequence of waist-high stations through the rack openings, while the focused crowd holds still around them; only this changes; everything else exactly as established.",
+      "notes": "A sequence of stations turns paper claims into a warehouse-scale process. [F-11]",
+      "place": "miniscribe-building",
+      "stage": "auditors-arrive",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ blank ledgers extend across the counting stations"
+      ],
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L87",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "up in the building,",
+      "vo_text": "up in the building, everybody started counting,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "An elevated inventory catwalk cuts across three stocked rack canyons in the established warehouse, with clerestory light filling the broad roof volume and counting stations separated along the floor below. A genuine team works below with focused faces and deliberate, planted postures, while one member on the catwalk holds a blank cream count sheet. Cream stock, ochre cartons, tobacco steel, muted brass, and charcoal remain controlled. The whole building has become a counting instrument.",
+      "notes": "The audit comparison uses a distinct catwalk-and-rack-canyon warehouse vantage, redistributing MiniScribe place use. [F-11]",
+      "place": "miniscribe-building",
+      "stage": "books-versus-shelves",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L88",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "and all those numbers",
+      "vo_text": "and all those numbers the managers had been writing",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The elevated catwalk, three stocked rack canyons, clerestory roof volume, and separated audit stations remain fixed. The focused team maintains its deliberate posture below while the blank count sheet rests open on the catwalk rail. A muted-brass bracket now encloses one complete shelf bay as the physical sample; only this changes; everything else exactly as established.",
+      "notes": "One sampled bay makes the test-count method legible without claiming every box was opened. [F-11]",
+      "place": "miniscribe-building",
+      "stage": "books-versus-shelves",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one complete shelf bay enclosed by a counting bracket"
+      ],
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L89",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "down finally got held",
+      "vo_text": "down finally got held up against what was",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The catwalk, high clerestory volume, three rack canyons, bracketed sample bay, and focused audit team hold their geometry. The ruled edge of the blank count paper now extends into a tall cream column beside the bracketed physical shelf, visibly exceeding the carton stack while every glyph field remains unlettered; only this changes; everything else exactly as established.",
+      "notes": "Paper claim and physical stock become one readable comparison. [F-11] [F-12]",
+      "place": "miniscribe-building",
+      "stage": "books-versus-shelves",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ paper column exceeds the bracketed physical stock"
+      ],
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L90",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "actually on the shelves.",
+      "vo_text": "actually on the shelves.",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "still_prompt": "An open ledger becomes a warehouse floor seen from high above: one page supports an orderly block of ochre drive cartons, while the facing page carries an equal-sized clean outline cut into the paper. The book's gutter runs like an aisle between the two halves, and a distant tobacco shelf silhouette closes the top edge beneath a broad band of amber light. Cream, ochre, tobacco, brass, and charcoal remain restrained. The carton block and its empty twin footprint balance exactly before the shortage is named.",
+      "notes": "Exempt object base establishes the physical referent before the sourced amount. [F-08]",
+      "stage": "four-million-gap",
+      "stage_role": "base"
+    },
+    {
+      "id": "L91",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "Four million dollars of",
+      "vo_text": "Four million dollars of product that was supposed to be",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "still_prompt": "The overhead ledger floor, central gutter, ochre carton block, equal clean outline, distant shelf edge, and restrained cream-tobacco palette remain fixed. The outlined page now opens into a single deep red inventory void whose inner edge reads exactly \"FOUR MILLION\"; only this changes; everything else exactly as established.",
+      "notes": "The sourced amount appears only on its spoken beat and stays glued to the missing inventory. [F-08]",
+      "stage": "four-million-gap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ red inventory void labelled FOUR MILLION"
+      ]
+    },
+    {
+      "id": "L92",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "sitting there, wasn't. Awkward.",
+      "vo_text": "sitting there, wasn't.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The ledger floor, gutter aisle, ochre carton block, distant shelf edge, and red void remain fixed in restrained cream, tobacco, brass, and charcoal. The void now spreads across the entire facing page and dwarfs the surviving stock, its inner edge still reading exactly \"FOUR MILLION\"; only this changes; everything else exactly as established.",
+      "notes": "Completion state makes absence dominate while carrying the literal exactly. [F-08]",
+      "stage": "four-million-gap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "inventory void expands across the entire facing page"
+      ]
+    },
+    {
+      "id": "L93",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "Awkward. And coming up",
+      "vo_text": "Awkward. And coming up short",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "The established conference room narrows toward winter windows beyond the long table, leaving the center aisle open between two chair lines and a large quiet field above the seated scale. `auditor-rep`, `action-armscrossed`, `expr-deadpan`, stands at frame-left facing right; `brick-foreman`, `action-recoil`, `expr-caught`, stands at frame-right facing left. Both occupy the same floor plane at a matching eye-line and equal relative head scale, each about one quarter of frame height, with both faces clear against plain wall panels. One empty file-box footprint separates them. The gap is the accusation.",
+      "notes": "Human reaction moves to the conference variant, balancing place anchors; topology is fully pinned. [F-08]",
+      "place": "miniscribe-building",
+      "stage": "awkward-gap",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L84.png"
+    },
+    {
+      "id": "L94",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "like that meant somebody",
+      "vo_text": "like that meant somebody was getting fired,",
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "still_prompt": "The narrowing conference room, winter windows, long table, open center aisle, and separated file-box footprint remain fixed. `auditor-rep`, `action-armscrossed`, `expr-deadpan`, and `brick-foreman`, `action-recoil`, stay on the same floor plane at a matching eye-line and equal relative head scale, facing each other at one-quarter-frame height with clear faces. `brick-foreman` now carries `expr-fear`; only this changes; everything else exactly as established.",
+      "notes": "One seeded expression change lands the firing threat on the person it pressures. [F-04] [F-23]",
+      "place": "miniscribe-building",
+      "stage": "awkward-gap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "brick-foreman expression changes from caught to fear"
+      ]
+    },
+    {
+      "id": "L95",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "so instead of reporting",
+      "vo_text": "so instead of reporting it, they wrote",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A records alcove branches from the established conference room, with floor-to-ceiling file bays on one side, winter glass on the other, and a narrow worktable centered under a pool of hard light. `brick-foreman`, `hold-paper-by-sides`, `expr-worried`, stands at about one quarter of frame height behind the table, holding a thin cream count sheet square to the viewer; its ruled fields are blank and unlettered. A red termination folder lies closed at the far end of the table, beyond a long strip of bare wood. The truthful sheet remains the only report in his hands.",
+      "notes": "Fresh human-decision base keeps the real sheet through the reporting choice. [F-12] [F-23]",
+      "place": "miniscribe-building",
+      "stage": "better-number",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L84.png"
+    },
+    {
+      "id": "L96",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "down a better number.",
+      "vo_text": "down a better number. The real sheets were",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The records alcove, tall file bays, winter glass, narrow worktable, distant red termination folder, and `brick-foreman`, `hold-paper-by-sides`, `expr-worried`, hold their proportions under the hard work light. The thin truthful sheet in his held pose is now replaced by one thicker cream sheet carrying a single bold upward bar while every glyph field remains blank and unlettered; only this changes; everything else exactly as established.",
+      "notes": "The better sheet appears only when the narration speaks the better number. [F-12]",
+      "place": "miniscribe-building",
+      "stage": "better-number",
+      "stage_role": "delta",
+      "changed_elements": [
+        "better-number sheet replaces the truthful sheet"
+      ]
+    },
+    {
+      "id": "L97",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "locked in the accountants' own",
+      "vo_text": "locked in the accountants' own boxes, so they",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A secure records room extends through three steel cage bays beneath a high strip of clerestory light, with a waist-high evidence table running across the nearest bay. A continuous row of matching charcoal accountant lockboxes sits sealed on the table, every latch facing the aisle and every lid blank. Cream walls, tobacco steel, muted brass, and charcoal stay restrained. The uninterrupted locked row is the obstacle.",
+      "notes": "Countable lockbox row establishes the obstacle before the disclosed break-in state. [F-12]",
+      "place": "miniscribe-building",
+      "stage": "lockbox-breakin",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L84.png"
+    },
+    {
+      "id": "L98",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "popped the boxes open",
+      "vo_text": "popped the boxes open with Allen wrenches and paper",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The three cage bays, clerestory strip, evidence table, and continuous lockbox row remain fixed in cream, tobacco steel, muted brass, and charcoal. Every lid now rests fully open with a short Allen wrench lying at its turned latch, the row reading as one completed break-in state; only this changes; everything else exactly as established.",
+      "notes": "The row opens as one countable state change with the disclosed tool. [F-12]",
+      "place": "miniscribe-building",
+      "stage": "lockbox-breakin",
+      "stage_role": "delta",
+      "changed_elements": [
+        "sealed lockbox row becomes fully open with Allen wrenches at the latches"
+      ]
+    },
+    {
+      "id": "L99",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "clips, took the real",
+      "vo_text": "clips, took the real count out and",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A low audit cabinet sits beneath a wall of square records cubbies, with two document slots cut into its cream top and a tray of bent paper clips resting beside the open lockbox. `brick-foreman`, `hold-paper-by-sides`, `expr-caught`, stands at body scale behind the cabinet, holding the real blank count sheet flat at chest height; the audited slot is visibly empty and the other slot remains closed. Cream, tobacco, ochre, and charcoal stay restrained under one hard lamp. The removed real sheet is the payload.",
+      "notes": "Fresh re-base keeps both hands on one primitive-compatible sheet while the paper clips sit independently. [F-12]",
+      "stage": "sheet-swap",
+      "stage_role": "base"
+    },
+    {
+      "id": "L100",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "put the fake one",
+      "vo_text": "put the fake one in, and blamed the whole",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The records cubbies, low cream cabinet, two document slots, open lockbox, paper-clip tray, and `brick-foreman`, `hold-paper-by-sides`, `expr-caught`, remain fixed under the hard lamp. One thicker fake sheet now occupies the formerly empty audited slot, its ruled surface blank and unlettered; only this changes; everything else exactly as established.",
+      "notes": "The fake sheet arrives only on the spoken insertion beat. [F-12]",
+      "stage": "sheet-swap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ fake sheet in the empty audited slot"
+      ]
+    },
+    {
+      "id": "L101",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "gap on a typo.",
+      "vo_text": "gap on a typo. The audit came",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The cubby wall, low cabinet, open lockbox, paper-clip tray, held real sheet, and fake sheet in the audited slot retain their exact arrangement. The fake sheet's ruled columns now shift one position out of alignment while every glyph field remains blank and unlettered; only this changes; everything else exactly as established.",
+      "notes": "One visible transposition carries the typo excuse without invented wording. [F-12]",
+      "stage": "sheet-swap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "fake sheet ruling shifts into a transposed layout"
+      ]
+    },
+    {
+      "id": "L102",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "back clean. Not exactly",
+      "vo_text": "back clean. Not exactly Ocean's Eleven",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A long institutional corridor terminates in a bright warehouse doorway, with locked file cabinets lining one wall and a broad clear ceiling field making the passage feel ceremonially empty. `auditor-rep`, `action-present`, `expr-deadpan`, stands centered at roughly one quarter of frame height, presenting a closed cream audit report whose cover is blank and unlettered. One hard amber pool isolates him against subdued tobacco and charcoal. The immaculate report is the false clean result.",
+      "notes": "Standalone clean-audit base; the report, not a stamp mechanism, bears the outcome. [F-12] [F-13]",
+      "stage": "clean-audit",
+      "stage_role": "base"
+    },
+    {
+      "id": "L103",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "level, but pretty close.",
+      "vo_text": "level, but pretty close.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "The long corridor, locked cabinet wall, bright warehouse doorway, and `auditor-rep`, `action-present`, `expr-deadpan`, remain fixed around the pristine blank report. A tiny bent paper clip now sits alone on the broad floor between the camera and the auditor, absurdly slight against the ceremonial space; only this changes; everything else exactly as established.",
+      "notes": "One mundane object supplies the heist undercut without borrowing film imagery. [F-12] [F-13]",
+      "stage": "clean-audit",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one tiny bent paper clip on the broad corridor floor"
+      ]
+    },
+    {
+      "id": "L104",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "But a clean audit",
+      "vo_text": "But a clean audit doesn't lower next quarter's",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "A monumental quota press rises through an open three-storey records hall, its brass uprights crossing balconies and leaving a large light well above the card carriage. `qt-wiles`, `action-powerstance`, `expr-smug`, stands on the lowest balcony at roughly fifteen percent of frame height, facing front with his face clear between the rails. A compressed stack of blank cream cards sits low in the mechanism and one red target block rests above it. Restrained brass, cream, tobacco, and charcoal keep the hall imposing. The clean report feeds a machine built only to climb.",
+      "notes": "Fresh target-ratchet base uses architectural scale rather than a large Wiles figure. [F-04] [F-23]",
+      "stage": "target-ratchet",
+      "stage_role": "base"
+    },
+    {
+      "id": "L105",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "target, it raises it.",
+      "vo_text": "target, it raises it. So the",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The three-storey records hall, open light well, brass quota press, low card carriage, and balcony-scale `qt-wiles`, `action-powerstance`, `expr-smug`, remain fixed in restrained cream, tobacco, brass, and charcoal. The single red target block now ratchets one balcony higher into the light well; only this changes; everything else exactly as established.",
+      "notes": "One target rise lands on the spoken result. [F-04] [F-23]",
+      "stage": "target-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "red target block ratchets one balcony higher"
+      ]
+    },
+    {
+      "id": "L106",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "fake numbers had to",
+      "vo_text": "fake numbers had to keep climbing too,",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The open records hall, brass press, raised red target block, balconies, and small `qt-wiles`, `action-powerstance`, `expr-smug`, keep their established scale. The blank cream card carriage now rises through the lower balcony until it nearly meets the target, each card carrying only an unnumbered bar; only this changes; everything else exactly as established.",
+      "notes": "The fake paper climbs only after the target has risen. [F-23]",
+      "stage": "target-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "blank false-card carriage rises toward the target"
+      ]
+    },
+    {
+      "id": "L107",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "and a swapped count",
+      "vo_text": "and a swapped count sheet wasn't going to",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "A thin cream count sheet spans two stone supports like a bridge inside an otherwise empty measuring chamber. Above it hangs the broad shadow of a pallet-sized load, while the chamber walls step outward and the high ceiling leaves a large field of unoccupied air around the fragile paper. Restrained cream, tobacco, muted brass, and charcoal emphasize the mismatch. The sheet bows visibly under a burden it cannot carry.",
+      "notes": "Stage-less imbalance root separates paper insufficiency from the later tactile warehouse chain. [F-23]"
+    },
+    {
+      "id": "L108",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "carry that much weight.",
+      "vo_text": "carry that much weight. They needed",
+      "shot_class": "symbolic-stand-in-object",
+      "source": "ai-gen",
+      "still_prompt": "A heavy empty carton frame stands upright in a vast inspection bay, its full silhouette surrounded by open floor and high clerestory light. The former count sheet lies flat beneath it like a postage stamp, while loading-door ribs and yellow lanes establish the scale of a real object that can occupy space. Cream board, ochre floor paint, tobacco steel, and charcoal remain subdued. Physical product, not paper, is now the missing counterweight.",
+      "notes": "A second root turns the need into a concrete object before the auditor enters. [F-23]"
+    },
+    {
+      "id": "L109",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "product. Something an auditor",
+      "vo_text": "product. Something an auditor",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A warehouse inspection cross-bay opens between tall rack walls, with yellow lanes encircling one waist-high cream carton and clerestory light filling the upper third. `auditor-rep`, `hold-both-hands`, `expr-skeptical`, stands beside the carton at roughly one fifth of frame height, holding both sides of the single object while his face stays clear against a plain cream end wall. Stocked racks continue through two side portals in restrained ochre, tobacco, brass, and charcoal. The tactile carton is the product paper could not replace.",
+      "notes": "Fresh auditor base uses one two-hand act on one object and keeps the figure inside the warehouse scale. [F-11] [F-23]",
+      "place": "miniscribe-building",
+      "stage": "need-product",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png"
+    },
+    {
+      "id": "L110",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "could walk up to,",
+      "vo_text": "could walk up to, put his hands",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The inspection cross-bay, tall rack walls, clerestory band, yellow lanes, and `auditor-rep`, `hold-both-hands`, `expr-skeptical`, remain fixed around the waist-high cream carton. A short unobstructed lane now runs from the central aisle directly to the object, bounded by brass floor studs and wide enough for the held approach; only this changes; everything else exactly as established.",
+      "notes": "One clear path makes the walk-up geometry readable while the held two-hand contact stays feasible. [F-11]",
+      "place": "miniscribe-building",
+      "stage": "need-product",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ unobstructed inspection lane to the carton"
+      ]
+    },
+    {
+      "id": "L111",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "on, and tick off",
+      "vo_text": "on, and tick off a list.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The warehouse cross-bay, rack portals, clerestory light, clear inspection lane, and `auditor-rep`, `hold-both-hands`, `expr-skeptical`, stay fixed with both hands on the waist-high cream carton. A compact sideboard of empty check squares now stands beside the object at elbow height, every glyph field blank and unlettered; only this changes; everything else exactly as established.",
+      "notes": "One checklist surface completes the tactile audit requirement without inventing text. [F-11]",
+      "place": "miniscribe-building",
+      "stage": "need-product",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ elbow-height sideboard of blank check squares"
+      ]
+    }
+  ]
+}

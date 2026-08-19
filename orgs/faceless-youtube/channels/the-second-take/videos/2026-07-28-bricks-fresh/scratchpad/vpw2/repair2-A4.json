@@ -1,0 +1,996 @@
+{
+  "shots": [
+    {
+      "id": "L177",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "The papers ran it.",
+      "vo_text": "The papers ran it. In February",
+      "shot_class": "diegetic-device",
+      "source": "ai-gen",
+      "stage": "papers-break-story",
+      "stage_role": "base",
+      "still_prompt": "A narrow Denver breakfast room opens from a tall window at left to a scarred oak table at right, its chair backs and wall shelves giving the room clear depth. On the table, a spread newspaper sits in a pool of winter light beside a cooling coffee cup; its columns are short dark unreadable rules and its single large illustration shows a red clay brick inside a hard-drive carton. Newsprint cream, honey oak, clay red, and charcoal hold the exposure beat.",
+      "notes": "Concrete newspaper exposure beat; every glyph field remains unreadable. [F-14]"
+    },
+    {
+      "id": "L178",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "1989 a new management team",
+      "vo_text": "1989 a new management team took over",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "A view from the lower records-room stair looks up through two glazed office doorways to a mezzanine landing. The incoming management group clusters on that landing with folders tucked against their jackets, cautious faces caught between the brass handrail and a bright archive door; a vacant reception desk and its telephone dominate the lower room. Tobacco brown, paper cream, muted blue, and charcoal make the February takeover feel like an arrival into somebody else's machinery.",
+      "notes": "Generic management-team setup only; Rifenburgh remains undisclosed. [F-15]"
+    },
+    {
+      "id": "L179",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "from Wiles, under a guy",
+      "vo_text": "from Wiles, under a guy named",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The executive suite is organized around a broad vacant desk, an empty steel-grey leadership chair, and filing bays that continue through two open doorframes. The incoming management group stands mid-room at modest scale, paused around the unoccupied chair with wary faces and folders ready; a long strip of window light crosses the floor between them and the desk. Warm cream, walnut, muted brass, and steel grey make the absence at the top carry the handover.",
+      "notes": "Wiles's vacated position is visible; Rifenburgh is still absent before his naming words. [F-15]"
+    },
+    {
+      "id": "L180",
+      "duration_s": 2.9,
+      "synthetic": false,
+      "vo_ref": "Richard Rifenburgh, and they went",
+      "vo_text": "Richard Rifenburgh, and they went looking.",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "rifenburgh-takeover",
+      "stage_role": "base",
+      "still_prompt": "`rifenburgh-ceo`, `action-present`, `expr-worried`, presents a closed investigation folder from the threshold of the archive vault. A wheeled file cart occupies the near corner, waist-high cabinets step around a square support pier, and a clerk bridge crosses beneath high windows at the back; the bright doorway behind Rifenburgh isolates his three-quarter profile from every cabinet edge. Paper cream, charcoal, tobacco brown, and muted blue focus the newly named manager on the search ahead.",
+      "notes": "Fresh Rifenburgh reveal lands on his name; no entrance by delta. [F-15]"
+    },
+    {
+      "id": "L181",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "What they found, in their",
+      "vo_text": "What they found, in their own words, was a",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "run-amok-files",
+      "stage_role": "base",
+      "still_prompt": "`rifenburgh-ceo`, `hold-paper-by-sides`, `expr-worried`, holds one cream evidence sheet below his unobscured face at the end of a long oak archive table. File cabinets form parallel walls toward a shadowed doorway; a task lamp isolates the lone sheet while most of the tabletop remains bare. Rifenburgh occupies a modest central scale inside the room, with paper cream, oak, muted amber, and forensic charcoal making the first discovered page feel dangerously small.",
+      "notes": "The performing investigator bears the discovery beat. [F-15]"
+    },
+    {
+      "id": "L182",
+      "duration_s": 2,
+      "synthetic": false,
+      "vo_ref": "massive fraud inside a company",
+      "vo_text": "massive fraud inside a company run",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "run-amok-files",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ evidence files occupy the entire table"
+      ],
+      "still_prompt": "`rifenburgh-ceo`, `hold-paper-by-sides`, `expr-worried`, remains at the end of the long oak archive table, the evidence sheet held below his features and the task lamp keeping his head isolated against the shadowed doorway. The tabletop is now entirely occupied by an unruly fan of cream files, buckled folders, and loose adding-machine tape; only this changes, everything else exactly as established.",
+      "notes": "One evidence-mass change delivers the company-run-amok finding without extra lettering. [F-15]"
+    },
+    {
+      "id": "L183",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "amok. They had to go",
+      "vo_text": "amok. They had to go back and redo the books all",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "books-rewound",
+      "stage_role": "base",
+      "still_prompt": "Seen almost straight down from the archive balcony, a circular accounting vault wraps closed cream ledgers around a central brass date arm. A drafting desk, adding machine, and rolling ladder interrupt the concentric shelves at three distinct points, while the arm begins beside the newest volumes and has an empty stop waiting across the floor. Warm paper cream, walnut, tarnished brass, and charcoal turn the whole room into a mechanism ready to run backward.",
+      "notes": "Date-free restatement base; 1986 remains undisclosed. [F-15]"
+    },
+    {
+      "id": "L184",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "the way to 1986.",
+      "vo_text": "the way to 1986.",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "books-rewound",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ chronology rail ends at 1986"
+      ],
+      "still_prompt": "The circular ledger vault, balcony view, drafting desk, rolling ladder, and central brass date arm hold their exact positions. The arm now sweeps across the floor and locks against one cream stop bearing the exact charcoal year \"1986\"; only this changes, everything else exactly as established.",
+      "notes": "The dated stop appears only on the spoken year. [F-15]"
+    },
+    {
+      "id": "L185",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "MiniScribe had owned up to",
+      "vo_text": "MiniScribe had owned up to one bad quarter at the end of 1988,",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "fourteen-versus-forty",
+      "stage_role": "base",
+      "still_prompt": "An accounting chamber rises in stepped tiers around a brass balance beam, with ledger shelves on the left and a much larger empty correction bay on the right. One modest clay-red loss block rests on the left pan beneath a single quarter tab; the opposing pan hangs vacant over open floor. Paper cream, walnut, brass, clay red, and charcoal give the admitted bad quarter a deliberately incomplete scale.",
+      "notes": "Reported-loss base with both amounts still withheld. [F-16]"
+    },
+    {
+      "id": "L186",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "a loss of 14 million",
+      "vo_text": "a loss of 14 million",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "fourteen-versus-forty",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ reported block receives 14 MILLION DOLLARS"
+      ],
+      "still_prompt": "The stepped accounting chamber, ledger shelves, brass beam, vacant correction bay, and modest left-pan loss block remain fixed. The reported block now bears the exact charcoal value \"14 MILLION DOLLARS\"; only this changes, everything else exactly as established.",
+      "notes": "Supplied reported loss is verbatim and sourced. [F-16]"
+    },
+    {
+      "id": "L187",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "dollars. The real number was",
+      "vo_text": "dollars. The real number",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "fourteen-versus-forty",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ correction bay opens behind the empty right pan"
+      ],
+      "still_prompt": "The loss block marked \"14 MILLION DOLLARS\", stepped ledger shelves, brass beam, and empty right pan stay unchanged. Behind that vacant pan, a tall correction bay now opens through the wall with room for a much larger mass; only this changes, everything else exactly as established.",
+      "notes": "The correction is anticipated spatially while the real amount remains undisclosed. [F-16]"
+    },
+    {
+      "id": "L188",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "was closer to 40. Hell",
+      "vo_text": "was closer to 40.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "A tall correction bay, broad strip of open accounting floor, shelving grids, and ceiling beams make one monumental charcoal loss block tower over an ankle-high clay-red block beside the brass scale. Paper cream, walnut, clay red, and charcoal keep the size gap measurable; the two blocks bear the exact values \"14 MILLION DOLLARS\" and \"40 MILLION DOLLARS\".",
+      "notes": "The real loss appears only on the spoken forty line; both literals are sourced. [F-16]"
+    },
+    {
+      "id": "L189",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "Hell of a typo. By",
+      "vo_text": "Hell of a typo. By the time the accountants finished redoing",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "hell-of-a-typo",
+      "stage_role": "base",
+      "still_prompt": "A vast cream accounting page stretches across a drafting table beneath a hanging lamp, its ruled fields blank and unlettered. One towering correction block crushes the page near the binding while a single tiny red caret sits at the opposite edge, isolated by most of the empty sheet. Warm cream, honey oak, muted brass, charcoal, and the lone red mark make the catastrophic restatement read as an absurdly minor edit.",
+      "notes": "Dry typo punchline with no unsupported lettering. [F-16]"
+    },
+    {
+      "id": "L190",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "the books, MiniScribe was worth",
+      "vo_text": "the books, MiniScribe was worth about",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "negative-worth",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-slump`, `expr-crestfallen`, holds a collapsed stance on the brass balcony of an accounting shaft, facing the zero rail across the void. Finished ledgers form retaining walls below and a suspended service cage hangs far beneath his shoes; a narrow window bay behind him gives his bowed profile a clean silhouette. Warm cream, tarnished brass, umber, and charcoal establish the completed books while the empty shaft waits to measure how far below zero the company falls.",
+      "notes": "The base withholds the negative-worth result until its amount is spoken. [F-16]"
+    },
+    {
+      "id": "L191",
+      "duration_s": 1.6,
+      "synthetic": false,
+      "vo_ref": "88 million dollars less than",
+      "vo_text": "88 million dollars less than",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "negative-worth",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ value marker hangs below zero"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-slump`, `expr-crestfallen`, remains on the brass balcony above the ledger-lined shaft, his bowed profile still isolated by the narrow window bay and the zero rail fixed across the void. A heavy marker now hangs beside the distant service cage and bears the exact cream value \"88 MILLION DOLLARS\"; only this changes, everything else exactly as established.",
+      "notes": "Below-zero state and amount arrive together on the spoken value. [F-16]"
+    },
+    {
+      "id": "L192",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "nothing. That September the company",
+      "vo_text": "nothing. That September the company filed for",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "From the upper gallery of a bankruptcy rotunda, `miniscribe-rep`, `action-slump`, `expr-crestfallen`, is seen marooned on a lower landing between descending ledger terraces and a sealed courthouse gate. The curved balustrade keeps his bowed head unobstructed against the pale central well, where a brass value weight bears the exact cream amount \"88 MILLION DOLLARS\".",
+      "notes": "Fresh bankruptcy cut follows the completed negative-worth chain. [F-16][F-17]"
+    },
+    {
+      "id": "L193",
+      "duration_s": 2.9,
+      "synthetic": false,
+      "vo_ref": "bankruptcy, and then came the",
+      "vo_text": "bankruptcy, and then came the lawyers.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "A bankrupt office tower stands at the center of a broad courthouse plaza, its windows dark and its front doors chained. From three surrounding arcades, streams of cream claim folders advance along separate stone paths toward the building like an orderly paper siege; the open sky and plaza occupy nearly half the view. Sandstone cream, courthouse oak, muted brass, clay red, and charcoal turn the arriving lawyers into architecture rather than a lineup.",
+      "notes": "Bankruptcy-to-lawyers transition; no invented legal literal. [F-17][F-18]"
+    },
+    {
+      "id": "L194",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "The people who had bought",
+      "vo_text": "The people who had bought MiniScribe bonds on the",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "still_prompt": "`bond-investor`, `hold-paper-by-sides`, `expr-worried`, stands beside a curtained bay window in an ordinary living room, the bond sheet held at chest level while the open curtain gives his features an uncluttered backdrop. A worn armchair and low cabinet sit between him and the near edge of a long rug; behind, a bookcase and the darker hall doorway carry the home away in stages. Fawn, faded olive, walnut, cream, and charcoal keep the buyer human-sized against the household he put at risk.",
+      "notes": "Fresh bondholder entrance restores the human-cost subject. [F-18]"
+    },
+    {
+      "id": "L195",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "strength of those fake numbers",
+      "vo_text": "strength of those fake numbers were out for",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "stage": "bondholder-loss",
+      "stage_role": "base",
+      "still_prompt": "`bond-investor`, `hold-paper-by-sides`, `expr-worried`, holds the cream bond beside a cold bay window, his head framed by the gap between the curtain and a tall bookcase. The document hovers over a conspicuously bare patch in the long rug, while the worn chair, low cabinet, and dark hall doorway make the room feel intact everywhere except beneath the promise. Fawn, faded olive, walnut, cream, and charcoal keep the vanished support personal.",
+      "notes": "Fresh base stages the unsupported bond without making a slow delta outlast its setup. [F-18]"
+    },
+    {
+      "id": "L196",
+      "duration_s": 1.6,
+      "synthetic": false,
+      "vo_ref": "blood. They sued everybody. In",
+      "vo_text": "blood. They sued",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "sue-everybody",
+      "stage_role": "base",
+      "still_prompt": "Viewed diagonally from above the legal table, `bond-investor`, `hold-paper-by-sides`, `expr-worried`, anchors its near end with the bond below his features. Cream claim folders occupy every chair around the table, continue onto the sill of each courthouse arch, and stack at the closed double doors; the oval pool of bare floor around the investor protects his head and shoulders from the paper siege. Oiled oak, aged paper, fawn cloth, dull brass, and charcoal make the lawsuit multiply through the architecture.",
+      "notes": "Broad liability is staged without inventing named defendants. [F-18][F-19]"
+    },
+    {
+      "id": "L197",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "everybody. In February 1992 a",
+      "vo_text": "everybody. In February 1992 a jury came",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "courtroom-plate",
+      "stage_role": "base",
+      "still_prompt": "A cast-free Texas courtroom stands ready at working occupancy. Two counsel tables angle toward a wedge of bare floor before the witness rail; the jury box climbs beside the raised oak bench, gallery benches fill the opposite wall, and tall winter windows break the chamber into bright vertical bays. Case folders, water glasses, and legal pads sit where proceedings need them while that open wedge waits for the verdict. Dark oak, parchment, oxblood leather, muted brass, and winter blue establish charged anticipation.",
+      "notes": "Cast-free courtroom environment begins the contiguous verdict visit. [F-18]"
+    },
+    {
+      "id": "L198",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "back with more than 550",
+      "vo_text": "back with more than 550",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "jury-award",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "`bond-investor`, `hold-paper-by-sides`, `expr-surprised`, stands alone in the wedge of open floor between the counsel tables, the bond below his features and a tall window bay behind his head. Across the witness rail, the sober jury mass fills the stepped box with attentive expressions; the raised bench and gallery balconies tower above both, leaving a broad empty award footprint between buyer and judge. Dark oak, parchment, fawn cloth, brass, and winter blue make one ordinary investor look exposed inside the institution.",
+      "notes": "Fresh investor-and-jury base; the amount remains for the next cut. [F-18]"
+    },
+    {
+      "id": "L199",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "million dollars. Not even Jordan",
+      "vo_text": "million dollars.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "jury-award",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ award block fills the central floor"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "`bond-investor`, `hold-paper-by-sides`, `expr-surprised`, remains alone between the angled counsel tables, with the attentive jury in the stepped box, the tall window bay behind his head, and the broad award footprint unchanged. A colossal cream award block now occupies that footprint and bears the exact charcoal value \"550 MILLION DOLLARS\"; only this changes, everything else exactly as established.",
+      "notes": "The award amount arrives after it is spoken and remains sourced. [F-18]"
+    },
+    {
+      "id": "L200",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "Not even Jordan Belfort had",
+      "vo_text": "Not even Jordan Belfort had to fork up that much",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "jury-award",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ empty flashy suit hangs beneath the award"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The small `bond-investor`, `hold-paper-by-sides`, `expr-surprised`, the attentive jury mass, high-window courtroom, and immense block marked \"550 MILLION DOLLARS\" remain fixed. A single empty flashy striped suit now hangs from a distant coat stand beneath the award mass as a likeness-free scale joke; only this changes, everything else exactly as established.",
+      "notes": "The modern aside uses an empty costume stand, not a real-person likeness. [F-18]"
+    },
+    {
+      "id": "L201",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "cash. Two hundred million of",
+      "vo_text": "cash. Two hundred million of it was",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "auditor-punishment",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "A low diagonal view crosses the courtroom from beneath the jury rail toward a zigzag counsel table set on two stair landings. A genuine outside-accountant group recoils along those landings, nearer members braced against chair backs and others tucked under the balcony, all gathered around one red-edged ledger; an oak case board hangs beneath the bench above them. Deep umber, aged paper, black-brown suits, brass, and a cold window stripe aim the punishment at the profession.",
+      "notes": "Plural accountants are the performing subject; no amount appears early. [F-18]"
+    },
+    {
+      "id": "L202",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "punishment aimed straight at Coopers",
+      "vo_text": "punishment aimed straight at Coopers &",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "auditor-punishment",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ 200 MILLION pointer targets the accountants"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The low diagonal courtroom, zigzag counsel table, two stair landings, red-edged ledger, guarded accountant group, and blank oak case board stay in place. A heavy cream block bearing the exact charcoal value \"TWO HUNDRED MILLION\" now drops one red pointer between the chair backs toward the entire group; only this changes, everything else exactly as established.",
+      "notes": "The punitive share is supplied verbatim and sourced. [F-18]"
+    },
+    {
+      "id": "L203",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "Lybrand, the accountants who had",
+      "vo_text": "Lybrand, the accountants who had signed off on a",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "auditor-punishment",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ audit ledger with red approval seal occupies the case board"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The accountant group remains braced along the two stair landings around the red-edged ledger, with the pointer from \"TWO HUNDRED MILLION\" aimed between the chair backs and every person held in the same recoil. The oak case board now carries one closed audit ledger whose ruled fields are blank and unlettered except for a single unlettered red approval seal pressed across its cover; only this changes, everything else exactly as established.",
+      "notes": "One signed-ledger addition keeps the amount carried and the sign-off legible without invented names. [F-18]"
+    },
+    {
+      "id": "L204",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "warehouse full of bricks. Hambrecht",
+      "vo_text": "warehouse full of bricks.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A courtroom evidence wall rises above an empty counsel table, its three oak panels framed by the high bench. The central panel opens onto a warehouse loading ramp: rack bays stack sealed cartons beneath crane rails, pallets wait beside square columns, and one carton at the ramp lip opens around a red clay brick. On the table below, a tiny audit ledger with a red approval seal is dwarfed by the warehouse world it approved. Warehouse brown, dark oak, paper cream, clay red, and charcoal carry the mismatch.",
+      "notes": "Standalone warehouse-evidence payoff; no new lettering. [F-05][F-18]"
+    },
+    {
+      "id": "L205",
+      "duration_s": 3,
+      "synthetic": false,
+      "vo_ref": "Hambrecht & Quist got hit",
+      "vo_text": "Hambrecht & Quist got hit too, which was ironic,",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "bank-installation-irony",
+      "stage_role": "base",
+      "still_prompt": "`hq-banker`, `action-offering`, `expr-worried`, offers one edge of a plain appointment folder from the left; `qt-wiles`, `action-present`, `expr-smug`, presents the receiving edge from the right; the legal `handoff` holds them on one plane, one eye-line, and matching head scale. They meet inside a square of window light between two stone piers, each head protected by its own pale wall bay; teller cages step toward a revolving door where a red liability cord loops back to the banker's shoes.",
+      "notes": "Fresh legal two-cast base; the bank's original installation and returned liability share one world. [F-22]"
+    },
+    {
+      "id": "L206",
+      "duration_s": 3,
+      "synthetic": false,
+      "vo_ref": "since they sent Wiles in",
+      "vo_text": "since they sent Wiles in to begin with.",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "bank-installation-irony",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ evidence bracket encloses the appointment folder"
+      ],
+      "still_prompt": "`hq-banker`, `action-offering`, `expr-worried`, and `qt-wiles`, `action-present`, `expr-smug`, retain the appointment-folder transfer on one plane, one eye-line, and matching head scale inside the deep stone bank hall; the liability cord still runs from the court doors to the banker. One red evidence bracket now encloses the folder between them; only this changes, everything else exactly as established.",
+      "notes": "One bracket change makes the installation itself the ironic case payload. [F-22]"
+    },
+    {
+      "id": "L207",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "Days later, the judge threw",
+      "vo_text": "Days later, the judge threw",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "judge-reversal",
+      "stage_role": "base",
+      "still_prompt": "`trial-judge`, `sit`, `expr-deadpan`, sits fully supported against a high-backed oak chair behind the bench, facing forward. A tall apse of pilasters and winter windows rises behind him, the chair back isolates his head from the clockwork above, and one cream verdict document rests upright within reach on the otherwise bare bench. Black-brown robe, dark oak, parchment, muted brass, and cool window light establish the judge before the reversal.",
+      "notes": "Fresh judge entrance establishes the supported seated figure on “Days later”; the consequence is reserved for the next cut. [F-19]"
+    },
+    {
+      "id": "L208",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "the whole thing out. Not",
+      "vo_text": "the whole thing out. Not enough evidence",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "judge-reversal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "verdict document turns entirely face-down"
+      ],
+      "still_prompt": "`trial-judge`, `sit`, `expr-deadpan`, remains fully supported against the high-backed oak chair, with the pilastered apse, winter windows, bare bench, and unobstructed head held in place. The cream verdict document now lies entirely face-down beneath his reach; only this changes, everything else exactly as established.",
+      "notes": "The face-down verdict lands on “the whole thing out”; seat and support stay inherited. [F-19]"
+    },
+    {
+      "id": "L208B",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "to support it, he said,",
+      "vo_text": "to support it, he said, and just like that",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "judge-reversal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ empty evidence tray appears beside the face-down verdict"
+      ],
+      "still_prompt": "`trial-judge`, `sit`, `expr-deadpan`, remains fully supported against the high-backed oak chair, with the verdict entirely face-down, the pilastered apse, winter windows, bare bench, and unobstructed head held in place. One shallow evidence tray now appears beside the verdict and sits visibly empty; only this changes, everything else exactly as established.",
+      "notes": "Separate insufficient-evidence aftermath lands on the judge's stated support test; one empty tray is the chain's second and final delta. [F-19]"
+    },
+    {
+      "id": "L209",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "the 550 million evaporated. It",
+      "vo_text": "the 550 million evaporated. It was the",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "verdict-evaporates",
+      "stage_role": "base",
+      "still_prompt": "`bond-investor`, `hold-both-hands`, `expr-surprised`, cups both hands around empty air on the broad courtroom floor, his head isolated against the pale panel of a closed doorway. A rectangular scuff and a few settled paper flecks mark the missing award; the high bench, jury rail, gallery balconies, and enormous bare floor make that absence own the institution. Dark oak, parchment, fawn, dull brass, and cold window light turn the vanished verdict into architecture.",
+      "notes": "The award is already gone on the spoken evaporation; supplied carried amount remains sourced. [F-19]"
+    },
+    {
+      "id": "L210",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "ultimate ragebait. Congratulations! Just kidding.",
+      "vo_text": "ultimate ragebait. Congratulations!",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "ragebait-switch",
+      "stage_role": "base",
+      "still_prompt": "`bond-investor`, `action-celebrate`, `expr-delighted`, celebrates on the lower courthouse stair beneath a suspended blank flip-board. Twin window bays, the empty award plinth, and the gallery balcony remain visible behind him, while the central stone pier gives his delighted head an uncluttered backing; one taut cord runs from the board up into the rafters. Honeyed oak, pale stone, fawn cloth, muted brass, and a bright winter shaft sell the apparent win as a rigged reveal.",
+      "notes": "Ragebait setup stays blank until the reversal words. [F-19]"
+    },
+    {
+      "id": "L211",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "Just kidding. The parties settled",
+      "vo_text": "Just kidding. The parties",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "ragebait-switch",
+      "stage_role": "delta",
+      "changed_elements": [
+        "blank card changes to JUST KIDDING"
+      ],
+      "still_prompt": "`bond-investor`, `action-celebrate`, `expr-delighted`, remains on the lower stair beneath the suspended flip-board, with the twin window bays, empty award plinth, gallery balcony, and pale pier held around his unobstructed head. The one board now carries the exact charcoal reversal \"JUST KIDDING\"; only this changes, everything else exactly as established.",
+      "notes": "The supplied reversal appears only after its words are spoken. [F-19]"
+    },
+    {
+      "id": "L212",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "settled a few months after",
+      "vo_text": "settled a few months after that for about 128",
+      "shot_class": "symbolic-stand-in-object",
+      "source": "ai-gen",
+      "still_prompt": "Three stone payment chutes descend from separate balcony alcoves into one empty brass basin sunk below the floor of a settlement chamber. Curved oak rails follow each chute, high windows catch only the basin rim, and the broad cream wall above remains sober and bare. Warm oak, limestone cream, tarnished brass, and a thin steel-blue window light make compromise look like institutional plumbing.",
+      "notes": "Figure-free settlement base keeps payer identities undisclosed. [F-19]"
+    },
+    {
+      "id": "L213",
+      "duration_s": 2.9,
+      "synthetic": false,
+      "vo_ref": "million, paid out by the",
+      "vo_text": "million, paid out by the executives,",
+      "shot_class": "symbolic-stand-in-object",
+      "source": "ai-gen",
+      "stage": "settlement-payers",
+      "stage_role": "base",
+      "still_prompt": "Three stone payment channels descend from separate upper galleries into one compact brass basin at the floor of a broad settlement chamber. Oak rails, cream walls, and high windows make the real pool look modest inside the institution; the basin bears the exact charcoal value \"128 MILLION\".",
+      "notes": "Fresh settlement base supplies the spoken amount without a slow delta. [F-19]"
+    },
+    {
+      "id": "L214",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "the bank, and the accountants.",
+      "vo_text": "the bank, and the accountants.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "partial-recovery",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "A vast courthouse payout hall places one small brass basin at the center of a floor once sized for a much larger award, its pale rectangular outline still visible around it. Executives form a worried mass along one gallery, a bank cage occupies the second, and sober accountants queue along the third, all smaller through the hall's columns and stair landings. The modest real pool against the missing headline footprint bears the exact charcoal value \"128 MILLION\".",
+      "notes": "All payer categories have now been spoken; the real settlement is contrasted with the vanished award. [F-19]"
+    },
+    {
+      "id": "L215",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "As for Wiles, a federal",
+      "vo_text": "As for Wiles, a federal jury",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "federal-conviction",
+      "stage_role": "base",
+      "still_prompt": "`qt-wiles`, `action-recoil`, `expr-surprised`, recoils in the counsel well of a federal courtroom, facing a jury box across the witness rail. A stone pier behind his shoulder keeps his expression readable; the raised bench stands to one side, a blank seal field hangs above, and an open custody door waits directly behind the verdict stand. Parchment, dark oak, steel grey, muted brass, and charcoal establish the proceeding before its result lands.",
+      "notes": "Fresh Wiles base on his named federal-jury line; no conviction text appears early. [F-20]"
+    },
+    {
+      "id": "L216",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "convicted him in 1994 of",
+      "vo_text": "convicted him in 1994 of",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "federal-conviction",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ federal verdict seals the stand"
+      ],
+      "still_prompt": "`qt-wiles`, `action-recoil`, `expr-surprised`, remains in the counsel well facing the jury box, with the stone pier behind his head, raised bench, blank seal field, and open custody door fixed around the bare verdict stand. A red-sealed federal verdict now occupies the stand; only this changes, everything else exactly as established.",
+      "notes": "One verdict addition lands on the spoken conviction. [F-20]"
+    },
+    {
+      "id": "L217",
+      "duration_s": 2,
+      "synthetic": false,
+      "vo_ref": "securities fraud and insider trading,",
+      "vo_text": "securities fraud and insider",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "federal-conviction",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ charge docket joins the verdict"
+      ],
+      "still_prompt": "`qt-wiles`, `action-recoil`, `expr-surprised`, remains beside the red-sealed verdict in the federal counsel well, his expression still isolated by the stone pier and the jury box, raised bench, and custody door unchanged. A second cream docket now joins the stand and bears the exact charcoal charge \"INSIDER TRADING\"; only this changes, everything else exactly as established.",
+      "notes": "One supplied charge addition completes the conviction chain. [F-20]"
+    },
+    {
+      "id": "L218",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "trading, and he went to",
+      "vo_text": "trading, and he went to prison.",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-slump`, `expr-crestfallen`, holds a defeated stance just inside a prison intake gate, his profile cut cleanly against the lit inspection booth. Barred catwalks cross overhead, cell fronts stack along the far wall, and a sequence of ceiling lamps compresses the space toward a steel door; a property counter blocks the near corner. Steel grey, warm cream, umber, and charcoal make the institution close around him.",
+      "notes": "Standalone prison consequence after the conviction chain. [F-20]"
+    },
+    {
+      "id": "L219",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "Karma for being a dick,",
+      "vo_text": "Karma for being a dick, I guess. His",
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "stage": "karma-cutaway",
+      "stage_role": "base",
+      "still_prompt": "Seen from the guard-tower balcony, `qt-wiles`, `action-armscrossed`, `expr-deadpan`, stands alone on the painted center circle of a prison exercise court. A courthouse gavel shadow reaches across the concrete to his boots; high walls, barred galleries, and a rectangular skylight surround him, while the pale wall beneath that skylight keeps his head legible. Warm stone cream, steel grey, umber, muted brass, and charcoal deliver the dry judgment.",
+      "notes": "Documented conviction supports the reaction; no invented humiliation. [F-20]"
+    },
+    {
+      "id": "L220",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "defense was that he had",
+      "vo_text": "defense was that he had no idea any of this was",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "ignorance-defense",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "A low diagonal view begins behind the witness rail where `qt-wiles`, `action-accuse`, `expr-deadpan`, points across a sunken counsel well at a genuine executive mass. Wiles is planted against a pale oak pier so his expression stays unobstructed; the worried executives occupy stair landings beneath the tall windows, shoulders drawn inward at several depths. Dark oak, aged paper, steel grey, brass, and cool window light stage blame as a gulf.",
+      "notes": "Fresh Wiles-plus-crowd defense base; the attributed claim is not endorsed. [F-20]"
+    },
+    {
+      "id": "L221",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "happening and the people below",
+      "vo_text": "happening and the people below him",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "ignorance-defense",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ defense paper appears beside Wiles"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "`qt-wiles`, `action-accuse`, `expr-deadpan`, remains behind the witness rail, planted against the pale oak pier and facing the worried executive mass on the stair landings across the sunken counsel well. A cream defense paper now appears on a stand beside him bearing the exact charcoal claim \"NO IDEA\"; only this changes, everything else exactly as established.",
+      "notes": "One attributed defense-paper addition; supplied literal is verbatim. [F-20]"
+    },
+    {
+      "id": "L222",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "did it on their own.",
+      "vo_text": "did it on their own. The people below",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "ignorance-defense",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ blame arrow settles on the executive mass"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "`qt-wiles`, `action-accuse`, `expr-deadpan`, the defense paper marked \"NO IDEA\", the witness rail, sunken counsel well, pale oak pier, and worried executive mass on the stair landings remain fixed. One red blame arrow now crosses the well from Wiles and settles on the group; only this changes, everything else exactly as established.",
+      "notes": "One directional change finishes Wiles's attributed blame. [F-20]"
+    },
+    {
+      "id": "L223",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "him testified that he knew,",
+      "vo_text": "him testified that he knew, and it came out that",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "testimony-conflict",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "`qt-wiles`, `action-armscrossed`, `expr-worried`, stands isolated against a pale stone pier at one end of the courtroom transept, turned toward a genuine executive witness mass. The witnesses fill stacked boxes along the opposite wall, serious faces and planted testimony postures separated by oak rails and short stairs; cream testimony cords span the bare central floor and converge at Wiles's shoes. Dark oak, limestone cream, steel grey, tarnished brass, and cold clerestory light make the room contradict him.",
+      "notes": "Fresh testimony-conflict base; the plural witnesses perform the claim. [F-20]"
+    },
+    {
+      "id": "L224",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "he'd sold a big block of",
+      "vo_text": "he'd sold a big block of his own MiniScribe shares",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "insider-sale",
+      "stage_role": "base",
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, holds a cream share certificate beside the mail cart at the near end of an executive office. Glass doors open onto an elevator landing, diagonal spring light crosses the parquet between them, and intact filing grids cover the wall behind; a thick block of matching certificates rests on the cart while a blank wall panel preserves his profile. Mahogany, paper cream, brass, steel grey, and charcoal make the exit route visible before the sale.",
+      "notes": "Fresh sale base; the shares are intact and the later holes remain withheld. [F-21]"
+    },
+    {
+      "id": "L225",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "in the spring of 1988,",
+      "vo_text": "in the spring of 1988, right",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "insider-sale",
+      "stage_role": "delta",
+      "changed_elements": [
+        "share block moves through the outbound doors"
+      ],
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, remains beside the mail cart, with the glass doors, diagonal spring light, parquet floor, intact filing grids, and blank panel behind his profile held in place. The entire block of cream share certificates now sits on the elevator landing beyond the glass doors; only this changes, everything else exactly as established.",
+      "notes": "One whole-block move fixes the sale before the shortfall reveal. [F-21]"
+    },
+    {
+      "id": "L226",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "before the holes started showing.",
+      "vo_text": "before the holes started showing.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "insider-sale",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ shortfall holes open in the wall grid"
+      ],
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, remains beside the now-empty mail cart after the certificate block has crossed onto the elevator landing, with the glass doors and diagonal spring light unchanged. Several large dark shortfall holes now open through the previously intact filing grid behind him; only this changes, everything else exactly as established.",
+      "notes": "One rear-wall reveal preserves the sourced chronology. [F-21]"
+    },
+    {
+      "id": "L227",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "Several of the men who",
+      "vo_text": "Several of the men who actually ran the scheme",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "immunity-testimony",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "Viewed from the gallery corner, a genuine executive witness mass fills the stepped witness boxes along one courtroom wall, tense but cooperative faces aimed toward an empty legal table below. Oak rails and short stairs separate the clusters, a brass gallery balustrade cuts across the near corner, and high windows leave the exchange exposed to cold daylight. Dark oak, aged paper, brown-grey suits, muted brass, and winter blue keep the plural scheme runners collective.",
+      "notes": "Crowd tier is earned by the genuine plural witness mass. [F-20]"
+    },
+    {
+      "id": "L228",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "testified in exchange for immunity.",
+      "vo_text": "testified in exchange for immunity.",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "immunity-testimony",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ immunity papers occupy the legal table"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The gallery-corner view, planted executive witness mass, stepped boxes, oak rails, short stairs, brass balustrade, and empty legal table remain fixed. A compact fan of cream papers now occupies the table and bears the exact charcoal word \"IMMUNITY\"; only this changes, everything else exactly as established.",
+      "notes": "One paper addition supplies the spoken exchange verbatim. [F-20]"
+    },
+    {
+      "id": "L229",
+      "duration_s": 1.6,
+      "synthetic": false,
+      "vo_ref": "In the end MiniScribe was",
+      "vo_text": "In the end MiniScribe was",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "still_prompt": "A stripped MiniScribe loading hall opens down a shallow ramp to a high roll-up door, with vacant rack bays, bare pallet pads, and ceiling trusses exposing the company-sized shell. One abandoned hard-drive carton sits at the ramp foot under a hanging work lamp; every wall surface is blank and unlettered. Warm cream, warehouse brown, muted brass, clay ochre, and charcoal show disappearance alone, with the buyer still absent.",
+      "notes": "MiniScribe's disappearance lands before any rival or transfer is shown. [F-17]"
+    },
+    {
+      "id": "L230",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "gone, a rival drive maker",
+      "vo_text": "gone, a rival drive maker called",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A liquidation warehouse is split by an overhead crane track and a broad loading ramp. A reduced stack of drives and cream asset cartons waits behind a wire cage on the lower floor; beyond the roll-up door, an empty receiving dock holds the opposite end of the track, but the rival remains outside the frame. Warm cream, warehouse brown, muted brass, steel grey, and charcoal prepare the purchase without disclosing Maxtor early.",
+      "notes": "Buyer-free setup on the generic rival phrase; Maxtor remains undisclosed. [F-17]"
+    },
+    {
+      "id": "L231",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "Maxtor bought what was left,",
+      "vo_text": "Maxtor bought what was left,",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "maxtor-remains",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-slump`, `expr-crestfallen`, stands at the wire-cage door; `drive-maker`, `action-offering`, `expr-deadpan`, offers the receiving edge from the roll-up-door threshold; the legal `handoff` places them on one plane, one eye-line, and matching head scale. Separate pale door panels keep both expressions unobstructed, the overhead crane track joins their positions, and the remaining drive stack sits between them on the loading ramp.",
+      "notes": "Fresh two-cast buyer reveal lands on Maxtor's name; no early transfer. [F-17]"
+    },
+    {
+      "id": "L232",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "Wiles lost his Doctor Fix It",
+      "vo_text": "Wiles lost his Doctor Fix It title forever",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "wiles-sentence",
+      "stage_role": "base",
+      "still_prompt": "`qt-wiles`, `action-armscrossed`, `expr-worried`, stands beneath the barred catwalk of a prison intake hall, his head isolated against a blank cream inspection wall. A discarded title card lies on the floor before the property counter, while service windows and repeating cell doors lead toward the locked inner gate; the card bears the exact charcoal nickname \"DOCTOR FIX IT\".",
+      "notes": "Business nickname only; no medical costume or prop. [F-02][F-20]"
+    },
+    {
+      "id": "L233",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "and was sentenced to three",
+      "vo_text": "and was sentenced to three years in prison,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "wiles-sentence",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ THREE YEARS sentence slab fills the intake arch"
+      ],
+      "still_prompt": "`qt-wiles`, `action-armscrossed`, `expr-worried`, remains beneath the barred catwalk, with the fallen \"DOCTOR FIX IT\" card, property counter, service windows, repeating cell doors, and blank inspection wall held around his unobstructed head. A heavy cream slab now fills the locked inner gate and bears the exact charcoal term \"THREE YEARS\"; only this changes, everything else exactly as established.",
+      "notes": "One supplied sentence addition; the Maxtor transfer has already landed on its own named beat. [F-20]"
+    },
+    {
+      "id": "L234",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "and the investors collected about",
+      "vo_text": "and the investors collected about a quarter of what a jury had promised",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "investor-quarter",
+      "stage_role": "base",
+      "still_prompt": "From a courthouse balcony, four sunken stone courts divide the plaza below. `bond-investor`, `hold-both-hands`, `expr-crestfallen`, stands on the nearest stair landing holding one brass recovery token beneath an open balustrade that leaves his head unobstructed; three matching tokens occupy the other courts beyond fountains, colonnades, and tall doors. The single token in hand remains visibly only one part of the promised field.",
+      "notes": "Fresh investor base pre-bounds the exact quarter relation. [F-18][F-19]"
+    },
+    {
+      "id": "L235",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "them. The big winner was",
+      "vo_text": "them. The big winner was probably",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "investor-quarter",
+      "stage_role": "delta",
+      "changed_elements": [
+        "- three unrecovered tokens via layered removal"
+      ],
+      "still_prompt": "`bond-investor`, `hold-both-hands`, `expr-crestfallen`, remains on the nearest stair landing holding one brass recovery token, with the balcony view, fountains, colonnades, tall doors, and four sunken courts fixed. His token now occupies the near court while the other three courts stand empty, their bare stone centers making the unrecovered share explicit; only this changes, everything else exactly as established.",
+      "notes": "Exact majority removal stays routed to the layered path. [F-18][F-19]"
+    },
+    {
+      "id": "L236",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "the Colorado Brick Company, who",
+      "vo_text": "the Colorado Brick Company, who scored a major",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "place": "colorado-brick-company",
+      "place_anchor": "assets/scenes/L114.png",
+      "stage": "brick-company-winner",
+      "stage_role": "base",
+      "still_prompt": "`brick-co-seller`, `action-thumbsup`, `expr-delighted`, gives a planted thumbs-up from the lip of a loading ramp beside the brick kiln. A pale shed wall behind him preserves his delighted expression; pallet stacks terrace down the yard, covered drying sheds flank the ramp, and the kiln chimney rises into a broad amber sky. On the approved back wall, the sign remains in #241a12 ink reading \"COLORADO BRICK\".",
+      "notes": "Fresh seller return uses approved same-place L114; carried owner literal is sourced. [F-06]"
+    },
+    {
+      "id": "L237",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "payday selling bricks to a",
+      "vo_text": "payday selling bricks to a tech company.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "place": "colorado-brick-company",
+      "stage": "brick-company-winner",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ payment-envelope pile fills one empty pallet"
+      ],
+      "still_prompt": "`brick-co-seller`, `action-thumbsup`, `expr-delighted`, remains at the kiln-side loading ramp, with the pale shed wall behind his head, terraced pallet stacks, covered drying sheds, broad amber sky, and approved sign \"COLORADO BRICK\" in #241a12 ink unchanged. One empty pallet now carries a broad pile of cream payment envelopes; only this changes, everything else exactly as established.",
+      "notes": "One payday addition completes the seller's last-laugh beat. [F-06]"
+    },
+    {
+      "id": "L238",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "And the scheme itself was",
+      "vo_text": "And the scheme itself was never caught.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-armscrossed`, `expr-worried`, stands at a breached inspection gateway on the warehouse mezzanine, his head isolated against a pale loading-column bay. Below him, a ramp passes sealed pallets and stacked rack bays toward the far truck doors; at the ramp lip, one open carton exposes a red clay brick. The broken gate bears the exact charcoal word \"AUDIT\".",
+      "notes": "Fresh auditor base; HR stays undisclosed. [F-11][F-12][F-13]"
+    },
+    {
+      "id": "L239",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "It beat the audit, it",
+      "vo_text": "It beat the audit, it beat the count sheets.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "scheme-beats-checks",
+      "stage_role": "base",
+      "still_prompt": "Seen from the warehouse catwalk, `auditor-rep`, `action-armscrossed`, `expr-worried`, stands between two separate dock gates, his head unobstructed against the pale wall above the ramp. Crane rails, stacked rack bays, sealed pallets, and an open brick carton fill the floor below; one broken gate bears \"AUDIT\" and the other bears the exact charcoal words \"COUNT SHEETS\".",
+      "notes": "Fresh base gives both spoken barriers one held world; HR remains fully withheld. [F-11][F-12][F-13]"
+    },
+    {
+      "id": "L240",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "What it didn't survive was HR.",
+      "vo_text": "What it didn't survive was HR. If",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "hr-peak",
+      "stage_role": "base",
+      "still_prompt": "`hr-officer`, `action-powerstance`, `expr-deadpan`, holds a planted stance at the payroll window of a personnel-office mezzanine, facing an open doorway over the warehouse loading floor. A blank cabinet end behind her keeps her expression unobstructed; filing walls and a time clock occupy the office, while pallet stacks, crane rails, and truck doors spread below beneath a winter skylight. Warm cream, rust red, walnut, clay ochre, brass, and charcoal make HR the quiet barrier above the machine.",
+      "notes": "Fresh HR entrance lands on the naming line and stays world-scaled. [F-14][F-23]"
+    },
+    {
+      "id": "L241",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "MiniScribe had just kept a",
+      "vo_text": "MiniScribe had just kept a few more people on",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "hr-peak",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ short payroll-card row fills the bridge rail"
+      ],
+      "still_prompt": "`hr-officer`, `action-powerstance`, `expr-deadpan`, remains at the payroll window, with the blank cabinet end behind her head, filing walls, time clock, winter skylight, open warehouse doorway, and loading floor unchanged. A compact set of identical blank cream payroll cards now fills one section of the mezzanine rail; only this changes, everything else exactly as established.",
+      "notes": "A visible row replaces the prior bare three-card count without inventing an exact employee number. [F-14][F-23]"
+    },
+    {
+      "id": "L242",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "the payroll through Christmas, who",
+      "vo_text": "the payroll through Christmas,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "hr-peak",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ Christmas payroll ribbon spans the card row"
+      ],
+      "still_prompt": "`hr-officer`, `action-powerstance`, `expr-deadpan`, remains at the payroll window beside the compact set of blank payroll cards, with the filing walls, time clock, winter skylight, open warehouse doorway, and pallet stacks held around the blank cabinet backing her head. One restrained evergreen-and-cream ribbon now spans the entire set of cards; only this changes, everything else exactly as established.",
+      "notes": "One Christmas-context addition refreshes the counterfactual without adding a literal. [F-14][F-23]"
+    },
+    {
+      "id": "L243",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "who knows how many more years",
+      "vo_text": "who knows how many more years they would've",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A high oblique exterior view takes in the MiniScribe warehouse complex under a long winter sky: the personnel mezzanine glows above active packing bays, roof monitors repeat across successive annexes, and small freight trucks wait at several dock aprons. Open carton stacks and pallet lifts keep the operation working all the way to the far boundary. Warehouse brown, paper cream, clay red, muted brass, and charcoal let the hypothetical years belong to the size of the continuing world.",
+      "notes": "First half of the final counterfactual: continued years are staged as a still-operating warehouse complex, not a stretched corridor. [F-14][F-23]"
+    },
+    {
+      "id": "L243B",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "gone on selling those bricks.",
+      "vo_text": "gone on selling those bricks.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "At dawn, three loading ramps open beneath the warehouse canopy while sealed hard-drive cartons travel from pallet lifts into waiting freight trucks. One carton on each ramp stands open around a red clay brick, and the trucks point toward separate roads beyond the yard; the personnel mezzanine is only a small dark bridge above the outbound work. Warehouse brown, paper cream, clay red, muted brass, and charcoal finish on brick sales leaving the building.",
+      "notes": "Second final cut lands outbound brick sales on their own spoken words; no static frame carries the full counterfactual tail. [F-14][F-23]"
+    }
+  ]
+}

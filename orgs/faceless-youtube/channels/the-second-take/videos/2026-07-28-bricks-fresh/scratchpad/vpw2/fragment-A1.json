@@ -1,0 +1,1036 @@
+{
+  "shots": [
+    {
+      "id": "L01",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "We're in the 1980s.",
+      "vo_text": "We're in the 1980s.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "eighties-mall",
+      "stage_role": "base",
+      "still_prompt": "A wide 1980s suburban mall concourse seen from just above bench height, with a cropped brass planter and oak bench anchoring the foreground, cream terrazzo and warm-oak shopfronts filling the midground, and small shoppers in period jackets receding behind kiosks and balcony rails into the rear zone. The genuine shopper mass is relaxed and curious, dressed in warm mustard, cream, rust, and muted teal beneath amber ceiling fixtures; cooler blue light comes only from distant electronics displays.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Era-establishing crowd base; the mass remains small and rear-zone behind real concourse geometry."
+    },
+    {
+      "id": "L02",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "Home to big hair, Pac-Man,",
+      "vo_text": "Home to big hair,",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "stage": "eighties-mall",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ crowd attitude and repeating big-hair silhouettes"
+      ],
+      "still_prompt": "The same wide 1980s mall concourse from just above bench height, with the same cropped brass planter and oak bench in front, cream terrazzo and warm-oak kiosks through the middle, and the same small shoppers receding behind rails into the rear zone under amber fixtures. The warm mustard, cream, rust, and muted-teal palette holds, with cool display light only in the distance; the shoppers now hold an amused, buoyant attitude and 2–3 repeating high-volume hair silhouettes, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change crowd-attitude delta; rear-zone scale and squat crowd-rig declaration retained."
+    },
+    {
+      "id": "L03",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "Pac-Man, and one of the",
+      "vo_text": "Pac-Man, and one of the funniest corporate scams that you've never heard of.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "eighties-mall",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ maze-chase arcade cabinet at the payload corner"
+      ],
+      "still_prompt": "The same wide 1980s mall concourse from just above bench height, with the same cropped brass planter and oak bench in front, cream terrazzo and warm-oak kiosks through the middle, and amused small shoppers with repeating big-hair silhouettes receding behind rails into the rear zone under amber fixtures. The warm mustard, cream, rust, and muted-teal palette holds; one chunky maze-chase arcade cabinet now occupies the near-right payload corner, its cool blue screen showing a simple yellow disk moving through a maze, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Opening scam setup uses a period game cue without lettering, logo, or premature brick/company disclosure. Locked three-shot chain caps this delta at 3.0s despite the longer VO span."
+    },
+    {
+      "id": "L04",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "It's 1983, and the personal",
+      "vo_text": "It's 1983, and the personal computer",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "pc-store-arrival",
+      "stage_role": "base",
+      "still_prompt": "`pc-boxy`, `expr-deadpan`, stands newly arrived on a low cream display plinth at center-left in a 1983 home-electronics shop, its face panel unobscured and angled toward the browsing aisle. A cropped oak counter and coiled power lead frame the foreground, boxed beige computers and amber task lamps occupy the midground, and a genuine buyer mass in period coats stays small and receding behind display islands in the rear zone. Warm cream, golden oak, rust, and muted teal dominate; cool cyan appears only as light from active monitor glass, with clear air around `pc-boxy` as the reveal payload.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Seeded-machine entrance is a fresh base; retail crowd is already present at small rear-zone scale."
+    },
+    {
+      "id": "L05",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "had only been invented a few",
+      "vo_text": "had only been invented a few years earlier.",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "stage": "pc-store-arrival",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ rear buyers cluster toward the new computer display"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-deadpan`, remains on the same low cream plinth at center-left, face panel unobscured toward the aisle. The same cropped oak counter and coiled power lead frame the foreground, the same boxed beige computers and amber task lamps hold the midground, and the same period buyers remain small and receding behind display islands in the rear zone. Warm cream, golden oak, rust, and muted teal dominate, with cyan only from monitor light; the rear buyers now cluster curiously toward the new computer display while staying smaller through intervening counters, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change crowd-position delta; named machine was present on the base and remains load-bearing."
+    },
+    {
+      "id": "L06",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "They were all the craze.",
+      "vo_text": "They were all the craze.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "pc-store-arrival",
+      "stage_role": "delta",
+      "changed_elements": [
+        "- boxed computers from the front shelf bays"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-deadpan`, remains on the same low cream plinth at center-left, face panel unobscured toward the aisle. The same cropped oak counter and coiled power lead frame the foreground, the same amber task lamps and shelf bank hold the midground, and the same curious period buyers cluster small and receding behind display islands in the rear zone. Warm cream, golden oak, rust, and muted teal dominate, with cyan only from monitor light; the front shelf bays now stand visibly empty around a few separated purchased-unit gaps, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change stock-departure delta; buyer crowd and seeded `pc-boxy` both pre-exist."
+    },
+    {
+      "id": "L07",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "Anybody with money was buying one,",
+      "vo_text": "Anybody with money was buying one,",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "pc-craze",
+      "stage_role": "base",
+      "still_prompt": "A wide electronics retail floor is composed as a giant floor balance: a neat island of repeated `prop-beige-pc` units occupies the near-left platform, while an eager genuine buyer mass queues along the larger right platform. A cropped brass scale pivot anchors the foreground, oak display islands and cream cartons occupy the middle, and the buyers continue smaller and receding behind counters and hanging lamps into the rear zone. Warm amber, golden oak, cream, rust, and muted teal lead the frame; cool blue is limited to motivated monitor light, and the two platforms begin nearly level.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Demand-scale base; small rear buyers repeat behind physical retail geometry rather than replacing it."
+    },
+    {
+      "id": "L08",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "and they were flying off the shelves.",
+      "vo_text": "and they were flying off the shelves.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "pc-craze",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ retail balance tilts sharply toward buyer demand"
+      ],
+      "still_prompt": "The same electronics retail floor remains composed as one giant balance, with the same `prop-beige-pc` island on the left platform and the same eager buyer mass on the right. The same cropped brass pivot anchors the foreground, oak display islands and cream cartons occupy the middle, and the buyers continue smaller and receding behind counters into the rear zone. Warm amber, golden oak, cream, rust, and muted teal lead, with blue only from monitor light; the floor balance now tilts sharply down beneath buyer demand so the computer-stock side reads visibly small and high, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One mechanical tilt carries the imbalance without asking a delta to delete or precisely rearrange most inventory."
+    },
+    {
+      "id": "L09",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "It was like when Apple released the iPhone.",
+      "vo_text": "It was like when Apple released the iPhone.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "iphone-cutaway",
+      "stage_role": "base",
+      "still_prompt": "A hard-cut modern product-launch tableau with no people: a single blank black glass smartphone stands upright on a warm cream pedestal, enormous and simple against a deep rust showroom wall. A cropped white charging cable arcs across the foreground, the phone and one amber spotlight own the midground, and empty muted-teal rope stanchions recede toward small cool display lights in the background. The warm cream, rust, amber, and dark-brown palette dominates, the blue is motivated showroom light only, and every product surface is blank and unlettered.",
+      "notes": "Modern analogy is a figureless deadpan cutaway; no brand logo, lettering, or real-person depiction."
+    },
+    {
+      "id": "L10",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "Well, computers run on these things",
+      "vo_text": "Well, computers run on these things",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "drive-desk",
+      "stage_role": "base",
+      "still_prompt": "`pc-boxy`, `expr-thinking`, stands beside a full-silhouette `prop-drive` on a broad oak technician's desk, face panel turned toward the drive and fully visible. A cropped beige keyboard and thick cable occupy the foreground, the computer and drive share the midground at clear relative scale, and cream shelving with chunky spare parts recedes into a warm workshop background. Golden oak, warm cream, tobacco brown, and muted teal commit the scene; a small cool-blue pool comes only from the active monitor, with open air separating the computer from the drive as the payload.",
+      "notes": "Fresh desk-scale mechanism base; machine character uses expression only, never a human pose seed."
+    },
+    {
+      "id": "L11",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "called hard drives. A hard drive",
+      "vo_text": "called hard drives.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "drive-desk",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ computer switches to a dark powered-off state"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-thinking`, remains beside the same full-silhouette `prop-drive` on the broad oak technician's desk, face panel turned toward it and unobscured. The same cropped beige keyboard and thick cable occupy the foreground, computer and drive share the midground, and cream shelving with chunky parts recedes behind them. Golden oak, warm cream, tobacco brown, and muted teal hold the frame; the computer is now visibly powered off with its monitor glass dark and the former cool light gone, only this changes; everything else exactly as established.",
+      "notes": "One-change power-state delta; both seeded subjects pre-exist on the base."
+    },
+    {
+      "id": "L12",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "A hard drive is the part",
+      "vo_text": "A hard drive is the part of your computer",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "drive-desk",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ retained file-and-application tokens visible within the drive"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-thinking`, remains powered off beside the same full-silhouette `prop-drive` on the broad oak technician's desk, face panel turned toward it and unobscured. The same cropped beige keyboard and thick cable occupy the foreground, computer and drive share the midground, and cream shelving with chunky parts recedes behind them. Golden oak, warm cream, tobacco brown, and muted teal hold the frame; simple cream paper shapes and small amber application tiles are now visibly retained inside a clean cutaway window in the drive, only this changes; everything else exactly as established.",
+      "notes": "One-change mechanism reveal; tokens are unlettered diegetic objects rather than captions."
+    },
+    {
+      "id": "L13",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "that remembers things after you",
+      "vo_text": "that remembers things after",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "memory-inside",
+      "stage_role": "base",
+      "still_prompt": "A single `prop-drive` stands in full silhouette on a warm cream demonstration block, large enough to reveal one simple amber memory chamber inside it. A cropped oak tabletop edge anchors the foreground, the drive owns the midground with generous air around its outline, and two chunky muted-teal storage racks step smaller into a softly lamp-lit background. Warm cream, amber, golden oak, and tobacco brown lead the palette, with a small cool reflection motivated by an off-frame monitor; the memory chamber is empty and ready to receive the payload.",
+      "notes": "Figureless mechanism base is earned by the drive itself being the sentence subject."
+    },
+    {
+      "id": "L14",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "you switch it off: your files,",
+      "vo_text": "you switch it off: your files,",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "memory-inside",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ stack of retained file tokens in the memory chamber"
+      ],
+      "still_prompt": "The same single `prop-drive` stands in full silhouette on the warm cream demonstration block, with the same amber memory chamber visible inside. The same cropped oak tabletop edge anchors the foreground, the drive owns the midground with generous air, and the same chunky muted-teal storage racks step smaller into the lamp-lit background. Warm cream, amber, golden oak, and tobacco brown lead, with one cool monitor reflection; a neat stack of blank cream file cards now sits securely inside the memory chamber, only this changes; everything else exactly as established.",
+      "notes": "One-change retained-files delta; every card surface is positively blank."
+    },
+    {
+      "id": "L15",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "your applications, and your private collections.",
+      "vo_text": "your applications, and your private collections.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "memory-inside",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ discreet locked private-collection token beside the retained files"
+      ],
+      "still_prompt": "The same single `prop-drive` stands in full silhouette on the warm cream demonstration block, with the same amber memory chamber and blank cream file cards visible inside. The same cropped oak tabletop edge anchors the foreground, the drive owns the midground with generous air, and chunky muted-teal storage racks step smaller into the lamp-lit background. Warm cream, amber, golden oak, and tobacco brown lead, with one cool monitor reflection; one small closed rust portfolio with a brass heart-shaped lock now sits discreetly beside the retained files, only this changes; everything else exactly as established.",
+      "notes": "Private-collection joke remains euphemistic, unlettered, and one-change; no explicit content."
+    },
+    {
+      "id": "L16",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "Every computer needs one.",
+      "vo_text": "Every computer needs one.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "every-pc-needs-one",
+      "stage_role": "base",
+      "still_prompt": "A paired `prop-beige-pc` and `prop-drive` sit together on a low oak pallet in the foreground, followed by a repeating midground row of computer-and-drive pairs that makes the dependency immediately countable. Behind the row, a genuine mass of eager retail buyers stays small and receding through display arches and stacked cartons into the rear zone, grinning and leaning toward the merchandise. Warm cream, golden oak, amber, rust, and muted teal dominate under warm shop lamps; cool blue comes only from the monitor glass, with one clear empty pairing slot left at the far end.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Object dependency bears the frame; genuine demand mass remains small behind pallets, arches, and cartons."
+    },
+    {
+      "id": "L17",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "So while the computer companies",
+      "vo_text": "So while the computer",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "every-pc-needs-one",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ buyer mass stretches far beyond the finite paired stock"
+      ],
+      "still_prompt": "The same paired `prop-beige-pc` and `prop-drive` sit together on the low oak pallet in front, followed by the same finite midground row of computer-and-drive pairs. The same retail buyers remain small and receding behind display arches and stacked cartons in the rear zone, with warm cream, golden oak, amber, rust, and muted teal under shop lamps and blue only from monitor glass; the eager buyer mass now stretches in many smaller overlapping rows far beyond the last paired unit, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change scale delta; the rear crowd multiplies through overlap and recession rather than moving into the foreground."
+    },
+    {
+      "id": "L18",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "companies were out front fighting like",
+      "vo_text": "companies were out front",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "pc-market-ring",
+      "stage_role": "base",
+      "still_prompt": "`pc-boxy`, `expr-smug`, occupies stage-left facing right; `rival-pc`, `expr-skeptical`, occupies stage-right facing left. The two machine characters share one midground plane on the contest platform, meet the same eye-line through their front-panel faces, and read at the same relative head scale through those face panels despite `rival-pc` being slightly taller; both faces remain unobscured. A cropped brass footlight fills the foreground, warm-oak retail tiers step behind them, and cream display arches recede into the background. Warm amber, cream, oak, rust, and muted teal dominate, with cool light motivated only by their screens and a full stride of open platform between them.",
+      "notes": "Fresh two-cast base; same plane, eye-line, and relative head/face-panel scale stated. Machine cast use expressions only."
+    },
+    {
+      "id": "L19",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "fighting like Samsung and Apple",
+      "vo_text": "fighting like Samsung and Apple",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "pc-market-ring",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brass contest rope dividing the platform"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-smug`, remains stage-left facing right; `rival-pc`, `expr-skeptical`, remains stage-right facing left. They hold the same midground plane on the contest platform, matched front-panel eye-line and the same relative head scale through their face panels, with both faces unobscured and a full stride between them. The cropped brass footlight stays in front, warm-oak retail tiers step behind, and cream arches recede in back under warm amber, cream, oak, rust, and muted teal, with cool screen light only; one thick brass contest rope now divides the platform between them, only this changes; everything else exactly as established.",
+      "notes": "One-change rivalry marker; no interaction template is misused on the machine pair."
+    },
+    {
+      "id": "L20",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "fight over the phone market,",
+      "vo_text": "fight over the phone market,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "pc-market-ring",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ overlooked hard-drive pallet outside the contest light"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-smug`, remains stage-left facing right; `rival-pc`, `expr-skeptical`, remains stage-right facing left. They hold the same midground plane on the contest platform at matched front-panel eye-line and the same relative head scale through their face panels, both faces unobscured, with the same brass contest rope between them. Warm-oak retail tiers and cream arches recede behind under warm amber, cream, rust, and muted teal, with cool screen light only; a cropped pallet of repeated `prop-drive` units now sits quietly in the near foreground outside the rivals' pool of light, only this changes; everything else exactly as established.",
+      "notes": "One-change counterpoint puts the beneficiary trade outside the rivalry spotlight; two-cast topology remains stated."
+    },
+    {
+      "id": "L21",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "the hard drive manufacturers were quietly",
+      "vo_text": "the hard drive manufacturers were quietly",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "drive-maker-reveal",
+      "stage_role": "base",
+      "still_prompt": "`drive-maker`, `hold-both-hands`, `expr-smug`, stands planted in a warm warehouse doorway carrying one `prop-drive` level and secure at chest height, his face angled toward camera and fully clear. A cropped crate corner and coil of packing twine anchor the foreground, the figure and held drive dominate the middle, and orderly cream cartons step smaller between golden-oak posts into the background. Tobacco brown, warm cream, amber, rust, and muted teal commit the palette under one warm loading lamp, with generous negative space around the quiet beneficiary and the held drive.",
+      "notes": "Seeded-figure reveal is a fresh base; the bodily act conforms to `hold-both-hands`."
+    },
+    {
+      "id": "L22",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "raking it in. They were",
+      "vo_text": "raking it in.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "drive-maker-reveal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ quiet stacks of warm-gold coins around the loading plinth"
+      ],
+      "still_prompt": "`drive-maker`, `hold-both-hands`, `expr-smug`, remains planted in the same warm warehouse doorway carrying the same `prop-drive` level at chest height, face angled toward camera and unobscured. The same cropped crate and packing twine anchor the foreground, the figure and held drive dominate the middle, cream cartons step smaller between golden-oak posts behind him, and tobacco brown, warm cream, amber, rust, and muted teal hold under one loading lamp; several restrained stacks of warm-gold coins now sit around the base of his plinth, only this changes; everything else exactly as established.",
+      "notes": "One-change money accumulation; gold stays a warm material color, not the semantic red accent."
+    },
+    {
+      "id": "L23",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "They were the people selling",
+      "vo_text": "They were the people",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "supply-stall",
+      "stage_role": "base",
+      "still_prompt": "`drive-maker`, `action-offering`, `expr-smug`, stands behind a broad timber supply stall, offering one `prop-drive` toward the open aisle while his face remains unobscured. A cropped shovel blade and pick handle cross the foreground, the seller, counter bins, and offered drive fill the midground, and a genuine mass of hopeful buyers stays small and receding behind stacked crates and awning posts in the rear zone, leaning forward with simple grins. Warm gold, tobacco brown, cream, rust, and muted teal dominate beneath amber market lamps; the supply seller bears the frame, not an unattended stall.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Person-subject is performed by seeded cast; genuine gold-rush buyer mass remains smaller behind stall geometry."
+    },
+    {
+      "id": "L24",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "selling picks and shovels in",
+      "vo_text": "selling picks and shovels",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "supply-stall",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ expanded tool-and-drive stock across the stall"
+      ],
+      "still_prompt": "`drive-maker`, `action-offering`, `expr-smug`, remains behind the same broad timber supply stall, offering the same `prop-drive` toward the aisle with face unobscured. The same cropped shovel blade and pick handle cross the foreground, the same counter bins fill the middle, and hopeful buyers remain small and receding behind stacked crates and awning posts in the rear zone. Warm gold, tobacco brown, cream, rust, and muted teal hold under amber lamps; repeated pick heads, shovel blades, and `prop-drive` units now fill the stall shelves edge-to-edge, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change stock expansion; crowd expression and rear-zone distance remain authored."
+    },
+    {
+      "id": "L25",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "in the gold rush.",
+      "vo_text": "in the gold rush.",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "stage": "supply-stall",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ buyer line extends deeper through the market"
+      ],
+      "still_prompt": "`drive-maker`, `action-offering`, `expr-smug`, remains behind the same broad timber stall offering one `prop-drive`, face unobscured. The same cropped shovel and pick cross the foreground, expanded pick, shovel, and `prop-drive` stock fills the midground shelves, and buyers remain small and receding behind crates and awning posts. Warm gold, tobacco brown, cream, rust, and muted teal hold under amber lamps; the hopeful buyer line now continues in ever-smaller overlapping groups through several stalls into the far rear zone, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change crowd-depth delta; the mass remains genuinely small/receding behind multiple layers of market geometry."
+    },
+    {
+      "id": "L26",
+      "duration_s": 6.5,
+      "synthetic": false,
+      "vo_ref": "And one of those companies packed",
+      "vo_text": "And one of those companies packed 26,000... well, the title gives it away... red clay bricks into little boxes",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "stage": "brick-hook",
+      "stage_role": "base",
+      "still_prompt": "One cream hard-drive carton sits alone on a warm oak inspection table, lid folded open to reveal a single dense red-clay brick where the machine should be. A cropped packing strap and carton flap frame the foreground, the box and brick fill the midground at near-life scale, and bare amber warehouse lamps with muted-teal shelving recede softly into a dark tobacco-brown background. Warm cream, oak, amber, and rust dominate, the brick supplies the one semantic red punch, generous negative space isolates the fake, and the carton face carries the supplied product literal 'HARD DRIVE'.",
+      "notes": "Opening peak base; literal `HARD DRIVE` is supplied by the script and the brick fact is supported by [F-05]. Long hold is earned by the title-joke pause within the locked two-shot reveal."
+    },
+    {
+      "id": "L27",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "labelled hard drive, and sold",
+      "vo_text": "labelled hard drive, and sold them to customers around the world. Here is the story of that company.",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "stage": "brick-hook",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ 26,000 brick-filled cartons occupy the warehouse depth"
+      ],
+      "still_prompt": "The same cream carton remains open on the same warm oak inspection table, its single red-clay brick visible and its face carrying the supplied product literal 'HARD DRIVE'. The same cropped packing strap and flap frame the foreground, amber lamps and muted-teal shelving recede through the tobacco-brown warehouse, and the warm cream, oak, amber, and rust palette holds; repeated brick-filled cartons now fill the midground aisles and diminish to the rear wall around one attached count tag reading '26,000', only this changes; everything else exactly as established.",
+      "notes": "Count-mass peak supported by [F-05]; company identity remains entirely undisclosed. Locked two-shot range leaves a long real VO span, while the authored delta estimate stays at the 3.0s cap."
+    },
+    {
+      "id": "L28",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "The company was MiniScribe,",
+      "vo_text": "The company was MiniScribe,",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "miniscribe-plate",
+      "stage_role": "base",
+      "place_owner": "MINISCRIBE",
+      "still_prompt": "A cast-free wide assembly floor operates at working occupancy inside a Colorado hard-drive plant: a cropped conveyor end, drive tray, and cable spool anchor the foreground; cream workbenches, chunky assembly machines, and stacked component bins fill the middle; small focused assembly workers recede behind posts, stock racks, and amber task lamps into the rear zone. Warm cream, golden oak, tobacco brown, rust, and muted teal commit the palette, with cool blue motivated only by test monitors; over the main entrance, one cream owner board bears the supplied literal in dark warm-brown ink (#241a12): 'MINISCRIBE'.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Qualifying cast-free plate at working occupancy; owner literal and company identity supported by [F-01]. Rear workers remain small behind machinery and posts."
+    },
+    {
+      "id": "L29",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "a hard drive manufacturer out of",
+      "vo_text": "a hard drive manufacturer",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "miniscribe-reveal",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-powerstance`, `expr-smug`, stands newly revealed on the factory's central aisle, body angled three-quarter toward camera and face fully clear above the conveyor line. A cropped hard-drive tray and oak guardrail anchor the foreground, the figure and cream assembly benches fill the middle, and chunky machines, component racks, and amber task lamps recede into the background; the owner board lies outside this tighter crop. Warm cream, golden oak, tobacco brown, rust, and muted teal lead, with cool test-monitor light only and open space around the company's personified lead.",
+      "notes": "Seeded company-character entrance is a fresh base on the already disclosed place."
+    },
+    {
+      "id": "L30",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "out of Colorado, founded in 1980",
+      "vo_text": "out of Colorado, founded in 1980",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "miniscribe-reveal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brass Colorado silhouette mounted behind the company figure"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-powerstance`, `expr-smug`, remains on the same central factory aisle, three-quarter toward camera with face unobscured above the conveyor. The same cropped drive tray and oak guardrail anchor the foreground, cream assembly benches fill the middle, and chunky machines, racks, and amber lamps recede behind under warm cream, golden oak, tobacco brown, rust, and muted teal, with cool test-monitor light only; one simple brass silhouette of Colorado now hangs on the wall directly behind him, only this changes; everything else exactly as established.",
+      "notes": "One-change Colorado cue, supported by [F-01] and [F-25]; no additional place or lettering invented."
+    },
+    {
+      "id": "L31",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "by a guy named Terry Johnson.",
+      "vo_text": "by a guy named Terry Johnson.",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "terry-reveal",
+      "stage_role": "base",
+      "still_prompt": "`terry-johnson`, `action-present`, `expr-deadpan`, stands newly revealed beside an early hard-drive prototype on a waist-high oak workbench, presenting it toward the factory aisle with his face turned three-quarter toward camera and unobscured. A cropped drafting ruler and drive casing anchor the foreground, Terry and the prototype own the middle, and cream benches, tobacco-brown posts, component bins, and amber task lamps recede into the background. Warm cream, golden oak, amber, tobacco brown, and muted teal commit the scene, with cool light only from a distant test monitor and clean air around the founder reveal.",
+      "notes": "Named founder entrance is a standalone fresh base, supported by [F-25]."
+    },
+    {
+      "id": "L32",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "And they were HOT. IBM",
+      "vo_text": "And they were HOT.",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "founding-growth",
+      "stage_role": "base",
+      "still_prompt": "`terry-johnson`, `action-present`, `expr-delighted`, stands stage-left presenting an early drive; `miniscribe-rep`, `action-powerstance`, `expr-smug`, stands stage-right facing him. They share the same foreground plane on the assembly platform, meet one eye-line, and read at matching head scale, both faces clear above the bench. A cropped drive tray anchors the foreground, the founder and company figure with a warm-oak workbench fill the middle, and a small focused assembly-worker mass recedes behind conveyors, posts, and stock racks into the rear zone. Warm cream, golden oak, amber, rust, and muted teal dominate, with cool light only from test monitors; the hot supplier is embodied by the founder-company partnership.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Fresh two-cast base with plane, eye-line, and head-scale clauses; worker mass is already present rear-zone before later deltas."
+    },
+    {
+      "id": "L33",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "IBM picked MiniScribe to supply",
+      "vo_text": "IBM picked MiniScribe to supply",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "founding-growth",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ completed drive units fill the production conveyors"
+      ],
+      "still_prompt": "`terry-johnson`, `action-present`, `expr-delighted`, remains stage-left presenting the early drive; `miniscribe-rep`, `action-powerstance`, `expr-smug`, remains stage-right facing him. They hold the same foreground plane on the assembly platform at one eye-line and matching head scale, both faces clear. The same cropped drive tray anchors the foreground, small focused workers remain receding behind conveyors, posts, and racks in the rear zone, and warm cream, golden oak, amber, rust, and muted teal dominate with cool test-monitor light only; completed `prop-drive` units now fill every midground conveyor lane, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change production delta; IBM is heard but its seeded personification waits for the locked fresh base L35. Two-cast topology retained."
+    },
+    {
+      "id": "L34",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "hard drives for their PCs,",
+      "vo_text": "hard drives for their PCs,",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "founding-growth",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ demand mass fills the loading-bay depth"
+      ],
+      "still_prompt": "`terry-johnson`, `action-present`, `expr-delighted`, remains stage-left presenting the early drive; `miniscribe-rep`, `action-powerstance`, `expr-smug`, remains stage-right facing him. They hold the same foreground plane on the assembly platform at one eye-line and matching head scale, both faces clear. The cropped drive tray anchors the foreground, completed `prop-drive` units fill the midground conveyors, and warm cream, golden oak, amber, rust, and muted teal dominate with cool test-monitor light only; the rear loading bay now holds a dense but small receding mass of eager buyers behind stacked cartons and posts, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change demand-depth delta; mass remains small behind cartons and posts, with two-cast topology intact."
+    },
+    {
+      "id": "L35",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "and within four years the company",
+      "vo_text": "and within four years the company",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "ibm-contract",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-offering`, `expr-smug`, stands stage-left offering a blank cream contract folder; `ibm-suit`, `action-offering`, `expr-skeptical`, stands stage-right receiving the same folder through the two-person `handoff` geometry. They share one midground plane on the deal platform, meet the same eye-line, and read at matching head scale, with both faces unobscured and the folder clear between them. A cropped conveyor rail anchors the foreground, the deal and oak table fill the middle, and cream assembly benches, amber lamps, and stock racks recede into the background. Warm cream, golden oak, navy, amber, tobacco brown, and muted teal commit the palette, with cool light only from distant test monitors; the institutional handoff bears the frame.",
+      "notes": "Fresh legal two-cast interaction base: exactly two seeded figures, same plane/eye-line/head scale, `handoff` only here. IBM/contract history supported by [F-26] and [F-29]."
+    },
+    {
+      "id": "L36",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "was making 125 million dollars",
+      "vo_text": "was making 125 million dollars",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "ibm-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ ordered stack of blank contract folders on the deal table"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-offering`, `expr-smug`, remains stage-left offering the blank cream folder; `ibm-suit`, `action-offering`, `expr-skeptical`, remains stage-right receiving it across the same deal platform. They hold one plane, matched eye-line and head scale, with both faces and the folder unobscured. The same cropped conveyor rail anchors the foreground, the oak deal table fills the middle, and cream benches, amber lamps, and stock racks recede behind under warm cream, golden oak, navy, amber, tobacco brown, and muted teal, with cool test-monitor light only; an ordered stack of blank cream contract folders now occupies the table beside the handoff, only this changes; everything else exactly as established.",
+      "notes": "One-change order-stack delta; interaction template is carried only as inherited base geometry, and two-cast topology remains explicit."
+    },
+    {
+      "id": "L37",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "a year. And at their",
+      "vo_text": "a year. And at their",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "stage": "ibm-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ 125-million revenue block rises behind the contract stack"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-offering`, `expr-smug`, remains stage-left and `ibm-suit`, `action-offering`, `expr-skeptical`, remains stage-right across the same deal platform, sharing one plane, matched eye-line and head scale with both faces clear. The cropped conveyor rail stays in front, the two figures, blank folder handoff, and ordered contract stack fill the middle, and cream benches, amber lamps, and stock racks recede behind under warm cream, golden oak, navy, amber, tobacco brown, and muted teal; one large warm-gold revenue block now rises behind the folders bearing the supplied literal '125 MILLION', only this changes; everything else exactly as established.",
+      "notes": "Revenue literal supported by [F-26]; one-change number-to-referent delta, with two-cast topology retained."
+    },
+    {
+      "id": "L38",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "peak in 1988, they were",
+      "vo_text": "peak in 1988, they",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "peak-revenue",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, stands dominant on a low oak presentation dais, face angled toward camera and unobscured as he presents a broad factory loading bay. Two empty cream comparison plinths crop into the foreground, the company figure and rows of shipped `prop-drive` cartons fill the middle, and a genuine customer mass remains small and receding behind loading rails, pallet stacks, and amber posts into the rear zone, leaning forward with eager smiles. Warm cream, golden oak, amber, rust, tobacco brown, and muted teal dominate, with cool light only from warehouse indicator lamps; broad scale belongs to the company lead and its demand.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Crowd-multiplication chosen to keep the beat on its locked place; rear customer mass is smaller behind loading geometry. Peak-year/revenue context supported by [F-28]."
+    },
+    {
+      "id": "L39",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "were selling to giants like Compaq",
+      "vo_text": "were selling to giants like Compaq",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "stage": "peak-revenue",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ 600-million revenue tower on the factory comparison plinth"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, remains dominant on the same oak dais, face clear toward camera as he presents the loading bay. The same two cream comparison plinths crop into the foreground, shipped `prop-drive` cartons fill the middle, and eager customers remain small and receding behind rails, pallets, and amber posts in the rear zone. Warm cream, golden oak, amber, rust, tobacco brown, and muted teal dominate, with cool indicator light only; a towering warm-gold revenue block now stands on the left plinth bearing the supplied literal '600 MILLION', only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Reported peak literal supported by [F-28]; no Compaq cast or logo invented."
+    },
+    {
+      "id": "L40",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "and making over 600 million",
+      "vo_text": "and making over 600 million dollars a year.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "peak-revenue",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ modern social-platform revenue tower on the comparison plinth"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, remains dominant on the same oak dais, face unobscured toward camera. The cropped foreground comparison plinth still carries the warm-gold block marked '600 MILLION', shipped `prop-drive` cartons fill the middle, and eager customers remain small and receding behind rails, pallets, and amber posts in the rear zone under warm cream, golden oak, amber, rust, tobacco brown, and muted teal, with cool indicator light only; a slightly taller modern revenue tower made from blank warm-orange conversation tiles now occupies the right plinth, only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Approximate Reddit comparison supported by [F-30] and [F-31]; visual uses an unbranded comparison object, not a logo or invented cast."
+    },
+    {
+      "id": "L41",
+      "duration_s": 5.5,
+      "synthetic": false,
+      "vo_ref": "Accounting for inflation, that's almost",
+      "vo_text": "Accounting for inflation, that's almost as much money as Reddit makes today. Or so they said.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "reported-ledger",
+      "stage_role": "base",
+      "still_prompt": "A polished cream revenue ledger lies open on a broad warm-oak accounting desk, its ruled columns filled by orderly stacks of warm-gold coins instead of readable writing. A cropped brass calculator and pencil cup anchor the foreground, the immaculate ledger fills the midground at artifact scale, and symmetrical tobacco-brown filing cabinets with amber desk lamps recede into the background. Warm cream, golden oak, amber, tobacco brown, and muted teal commit the palette, with generous air around the suspiciously perfect book and every paper surface blank and unlettered.",
+      "notes": "Figureless artifact base is earned by the reported ledger being the subject; the long comparison/aside hold remains under the ~8s densify threshold."
+    },
+    {
+      "id": "L42",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "Now rewind four years.",
+      "vo_text": "Now rewind four years.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "reported-ledger",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ polished ledger page peels back to expose a false red underlayer"
+      ],
+      "still_prompt": "The same polished cream revenue ledger remains on the broad warm-oak accounting desk, with the same cropped brass calculator and pencil cup in front, the ledger filling the middle, and symmetrical tobacco-brown filing cabinets with amber lamps receding behind. Warm cream, golden oak, amber, tobacco brown, and muted teal hold, every paper surface remaining blank and unlettered; the immaculate top page is now peeled back at one corner to expose one dense red false layer beneath it, only this changes; everything else exactly as established.",
+      "notes": "One-change unmasking delta; red appears only as the semantic fraud layer."
+    },
+    {
+      "id": "L43",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "At the end of 1984,",
+      "vo_text": "At the end of 1984,",
+      "shot_class": "diegetic-device",
+      "source": "ai-gen",
+      "stage": "reported-ledger",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ 1984 brass date card beside the exposed ledger"
+      ],
+      "still_prompt": "The same cream ledger remains on the broad warm-oak accounting desk with its polished page peeled back over the red false layer. The same cropped brass calculator and pencil cup anchor the foreground, the ledger fills the middle, and tobacco-brown filing cabinets with amber lamps recede behind under warm cream, golden oak, amber, tobacco brown, and muted teal; one small brass desk date card now stands beside the ledger bearing the supplied literal '1984', only this changes; everything else exactly as established.",
+      "notes": "Chronology literal supported by [F-26]; one-change date-device delta."
+    },
+    {
+      "id": "L44",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "IBM slashed its orders, and MiniScribe",
+      "vo_text": "IBM slashed its orders, and",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "factory-exit",
+      "stage_role": "base",
+      "still_prompt": "`line-worker`, `hold-paper-by-sides`, `expr-crestfallen`, stands stage-left holding one blank cream dismissal sheet; `terry-johnson`, `walk-right`, `expr-crestfallen`, holds a departing step at stage-right toward the open factory doors. They share the same near-midground plane in the exit lane, a lowered eye-line toward the doors, and matching head scale, with both faces clear in three-quarter view. A cropped stopped conveyor and empty drive tray anchor the foreground, the two figures and oak door frame fill the middle, and cream workstations with amber lamps recede behind. Muted warm cream, tobacco brown, olive, and old gold lead the aftermath palette; cool pale light is motivated only by winter daylight through the doorway.",
+      "notes": "Fresh two-cast aftermath base with plane, shared eye-line, and head scale explicit; human cost and founder departure supported by [F-26] and [F-27]."
+    },
+    {
+      "id": "L45",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "MiniScribe fell off a cliff.",
+      "vo_text": "MiniScribe fell off a cliff. They let a quarter of their people go, and Terry Johnson was out the door.",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "factory-exit",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ one lamp in each four-station bank goes dark"
+      ],
+      "still_prompt": "`line-worker`, `hold-paper-by-sides`, `expr-crestfallen`, remains stage-left with the blank dismissal sheet; `terry-johnson`, `walk-right`, `expr-crestfallen`, remains stage-right toward the open doors. They hold the same near-midground plane in the exit lane, lowered eye-line, and matching head scale, both faces clear. The stopped conveyor and empty drive tray remain in front, the oak doorway fills the middle, and cream workstation banks recede behind under muted warm cream, tobacco brown, olive, and old gold, with cool winter light only at the door; one task lamp in every four-station bank is now dark through the depth of the factory, only this changes; everything else exactly as established.",
+      "notes": "One-change quantified absence state carries the sourced 26-percent layoff [F-26] without adding or removing unplanned figures. Locked two-shot stage keeps the estimate at the 3.0s delta cap."
+    },
+    {
+      "id": "L46",
+      "duration_s": 4.1,
+      "synthetic": false,
+      "vo_ref": "By 1985 the company was in",
+      "vo_text": "By 1985 the company was in real trouble, so their bankers at",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "hq-bailout",
+      "stage_role": "base",
+      "still_prompt": "`hq-banker`, `action-offering`, `expr-skeptical`, stands stage-left offering a blank cream rescue folder; `miniscribe-rep`, `action-offering`, `expr-worried`, stands stage-right receiving it through the two-person `handoff` geometry. They share one midground plane on the oak conference platform, meet one eye-line, and read at matching head scale, with both faces and the folder unobscured. A cropped brass table rail anchors the foreground, the deal fills the middle, and tobacco-brown panelling, amber lamps, and one empty executive chair centered behind them recede into the background. Warm cream, oak, amber, brown, and muted teal dominate, with a small cool pool motivated by a shaded window.",
+      "notes": "Fresh legal two-cast `handoff` base with plane, eye-line, and relative head scale; empty turnaround chair is reserved from the base. Rescue context supported by [F-27]."
+    },
+    {
+      "id": "L47",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "Hambrecht & Quist put about",
+      "vo_text": "Hambrecht & Quist put about 20 million dollars in",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "stage": "hq-bailout",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ 20-million rescue block on the conference table"
+      ],
+      "still_prompt": "`hq-banker`, `action-offering`, `expr-skeptical`, remains stage-left and `miniscribe-rep`, `action-offering`, `expr-worried`, remains stage-right across the same blank-folder handoff. They hold one midground plane on the oak conference platform, matched eye-line and head scale, both faces clear. The cropped brass rail stays in front, the centered empty executive chair remains behind, and tobacco-brown panelling with amber lamps recedes under warm cream, oak, amber, brown, and muted teal, with cool window light only; one warm-gold rescue block now sits on the table bearing the supplied literal '20 MILLION', only this changes; everything else exactly as established.",
+      "notes": "Approximate rescue literal supported by [F-27]; one-change number object and two-cast topology retained. Authored delta estimate stays at 3.0s under the locked chain."
+    },
+    {
+      "id": "L48",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "and sent their own turnaround guy",
+      "vo_text": "and sent their own turnaround guy to run it.",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "hq-bailout",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ empty executive chair slides to the banker's side"
+      ],
+      "still_prompt": "`hq-banker`, `action-offering`, `expr-skeptical`, remains stage-left and `miniscribe-rep`, `action-offering`, `expr-worried`, remains stage-right across the same blank-folder handoff. They hold one midground plane on the oak conference platform, matched eye-line and head scale, both faces clear. The cropped brass rail stays in front, the warm-gold block marked '20 MILLION' remains on the table, and tobacco-brown panelling with amber lamps recedes under warm cream, oak, amber, brown, and muted teal, with cool window light only; the empty executive chair has now slid from neutral center to directly behind the banker's shoulder, only this changes; everything else exactly as established.",
+      "notes": "One-change control-transfer delta; chair movement is feasible and the two seeded figures remain on the base geometry."
+    },
+    {
+      "id": "L49",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "They brought in the man,",
+      "vo_text": "They brought in the man,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "turnaround-chair",
+      "stage_role": "base",
+      "still_prompt": "`hq-banker`, `action-present`, `expr-deadpan`, stands stage-left presenting a large empty executive chair at center, his face three-quarter toward camera and unobscured. A cropped brass desk corner and unused blotter anchor the foreground, the banker and chair fill the middle, and warm-oak panelling, cream filing cabinets, and amber lamps recede into the background. Warm cream, oak, amber, tobacco brown, and muted teal commit the office, with cool light motivated only by the shaded window; the empty chair carries the unnamed-savior suspense with generous air around it.",
+      "notes": "Fresh re-base for the unnamed-savior setup; Wiles remains entirely absent before his naming anchor."
+    },
+    {
+      "id": "L50",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "the myth, the legend: Q.T.",
+      "vo_text": "the myth, the legend:",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "turnaround-chair",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ sealed blank candidate dossier on the blotter"
+      ],
+      "still_prompt": "`hq-banker`, `action-present`, `expr-deadpan`, remains stage-left presenting the same large empty executive chair at center, face three-quarter toward camera and unobscured. The same cropped brass desk corner and unused blotter anchor the foreground, the banker and chair fill the middle, and warm-oak panelling, cream filing cabinets, and amber lamps recede behind under warm cream, oak, amber, tobacco brown, and muted teal, with cool shaded-window light only; one sealed cream candidate dossier with a blank unlettered cover now rests on the blotter, only this changes; everything else exactly as established.",
+      "notes": "One-change candidate-dossier delta; Wiles remains undisclosed in pixels until L51."
+    },
+    {
+      "id": "L51",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "Q.T. Wiles. You know",
+      "vo_text": "Q.T. Wiles. You know",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "wiles-reveal",
+      "stage_role": "base",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, stands newly revealed on a low oak executive dais, body square to camera and face fully unobscured beneath one amber ceiling lamp. A cropped brass desk rail and closed cream dossier anchor the foreground, Wiles and an empty high-backed chair fill the middle, and tobacco-brown panelling, muted-teal filing cabinets, and repeated office doors recede into the background. Warm cream, golden oak, amber, tobacco brown, and muted teal dominate, with cool light only from a shaded window; his ordinary steel-grey business suit and dominant stance carry the naming reveal.",
+      "notes": "Wiles enters on his naming words as a fresh base; he is a businessman only, with no medical costume or prop. Identity supported by [F-02]."
+    },
+    {
+      "id": "L52",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "that Gordon Ramsay show where",
+      "vo_text": "that Gordon Ramsay show where",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "wiles-reveal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ executive dais rises into a dominant second tier"
+      ],
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, remains square to camera with face fully unobscured under the same amber ceiling lamp. The same cropped brass desk rail and closed cream dossier anchor the foreground, Wiles and the empty high-backed chair fill the middle, and tobacco-brown panelling, muted-teal filing cabinets, and office doors recede behind under warm cream, golden oak, amber, tobacco brown, and muted teal, with cool shaded-window light only; the broad oak dais now rises into a dominant second tier beneath him and the chair, only this changes; everything else exactly as established.",
+      "notes": "One-change dominance delta; no character entrance, camera move, or medical signifier."
+    },
+    {
+      "id": "L53",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "he goes around reinventing failing restaurants?",
+      "vo_text": "he goes around reinventing failing restaurants?",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "wiles-reveal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ miniature failing-restaurant table on the executive dais"
+      ],
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, remains square to camera on the same raised oak dais, face unobscured beneath the amber ceiling lamp. The cropped brass desk rail and closed cream dossier stay in front, the high-backed chair holds the middle, and tobacco-brown panelling, muted-teal filing cabinets, and office doors recede behind under warm cream, golden oak, amber, tobacco brown, and muted teal, with cool shaded-window light only; one tiny crooked restaurant table with cold plates and a drooping cream tablecloth now sits at the edge of his executive dais, only this changes; everything else exactly as established.",
+      "notes": "One-change analogy bridge. The later business nickname is withheld until its spoken L56 anchor, preserving disclosure order despite the plan table's compressed description."
+    },
+    {
+      "id": "L54",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "Wiles was the Gordon Ramsay",
+      "vo_text": "Wiles was the Gordon Ramsay",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "kitchen-rescue",
+      "stage_role": "base",
+      "still_prompt": "`tv-chef`, `point-at-thing`, `expr-worried`, stands newly revealed at stage-left in a generic failing restaurant kitchen, holding a clear point toward an empty stainless pass while his face remains three-quarter to camera and unobscured. A cropped copper saucepan and cream towel anchor the foreground, the chef and pass fill the middle, and warm-oak shelves, amber heat lamps, stacked plain plates, and one muted-teal service door recede into the background. Warm cream, copper, amber, oak, and tobacco brown lead the palette, with cooler light motivated only by the service doorway; the host is an archetype with no likeness-specific trait.",
+      "notes": "Fresh generic chef-host base; explicitly not a depiction or likeness of the real named cook."
+    },
+    {
+      "id": "L55",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "of the business world, an investment",
+      "vo_text": "of the business world, an investment",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "kitchen-rescue",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ entire failing dinner service appears on the kitchen pass"
+      ],
+      "still_prompt": "`tv-chef`, `point-at-thing`, `expr-worried`, remains stage-left pointing toward the same stainless pass, face three-quarter to camera and unobscured. The cropped copper saucepan and cream towel stay in front, the chef and pass fill the middle, and warm-oak shelves, amber heat lamps, plain plates, and the muted-teal service door recede behind under warm cream, copper, amber, oak, and tobacco brown, with cool doorway light only; the entire failed dinner service now occupies the pass as one collapsed risotto mound, two untouched plates, and one smoking pan, only this changes; everything else exactly as established.",
+      "notes": "One-change kitchen-problem delta; the generic host stays on the base and no real-person likeness is requested."
+    },
+    {
+      "id": "L56",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "banker they called Doctor Fix It.",
+      "vo_text": "banker they called Doctor Fix It.",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "wiles-match",
+      "stage_role": "base",
+      "hard_cut": true,
+      "still_prompt": "`qt-wiles`, `point-at-thing`, `expr-smug`, replaces the chef in the identical stage-left body-scale composition, holding a clear point toward an empty warm-oak document pass while his face remains three-quarter to camera and unobscured. A cropped brass calculator and cream memo pad anchor the foreground, Wiles and the pass fill the middle, and tobacco-brown shelving, amber desk lamps, blank folders, and one muted-teal office door recede into the background. Warm cream, golden oak, amber, steel grey, tobacco brown, and muted teal dominate, with cool light motivated only by the office doorway; one modest brass business plaque on the pass bears the supplied nickname 'DOCTOR FIX IT'.",
+      "notes": "Fresh hard-cut Wiles base matches the chef composition without an entrance delta. Nickname is a sourced business moniker [F-02], never a medical identity."
+    },
+    {
+      "id": "L57",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "Instead of shitting on your risotto,",
+      "vo_text": "Instead of shitting on your risotto,",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "quarterly-statements",
+      "stage_role": "base",
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, stands behind a broad warm-oak desk holding one blank cream statement square to his torso, face angled toward camera and unobscured. A small brass turntable with a tired bowl of risotto occupies the foreground, Wiles and the statement fill the middle, and tobacco-brown filing cabinets, amber lamps, and blank cream folders recede into the background. Warm cream, golden oak, amber, steel grey, tobacco brown, and muted teal commit the palette, with cool light only from a shaded window; the absurd restaurant item remains visually separate from the held business paper.",
+      "notes": "Fresh Wiles base conforms to `hold-paper-by-sides`; papers and turntable surfaces are positively blank."
+    },
+    {
+      "id": "L58",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "he's reading your quarterly statements.",
+      "vo_text": "he's reading your quarterly statements.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "quarterly-statements",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ brass turntable rotates from risotto to statement stack"
+      ],
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, remains behind the same broad warm-oak desk holding the same blank cream statement, face angled toward camera and unobscured. The same brass turntable occupies the foreground, Wiles fills the middle, and tobacco-brown filing cabinets, amber lamps, and blank cream folders recede behind under warm cream, golden oak, amber, steel grey, tobacco brown, and muted teal, with cool shaded-window light only; the turntable has now rotated to present a neat stack of blank quarterly statement pages where the risotto faced camera, only this changes; everything else exactly as established.",
+      "notes": "One physical rotation handles the replacement beat without asking a sticky delta to erase and redraw separate objects."
+    },
+    {
+      "id": "L59",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "And, like Doctor Strange with his many sanctums,",
+      "vo_text": "And, like Doctor Strange with his many",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "quarterly-statements",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ oak business desk extends into a dominant conference-length plane"
+      ],
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, remains holding the same blank cream statement, face angled toward camera and unobscured. The brass turntable anchors the foreground, Wiles and the blank quarterly pages fill the middle, tobacco-brown filing cabinets and amber lamps recede behind, and warm cream, golden oak, amber, steel grey, tobacco brown, and muted teal hold with cool shaded-window light only; the warm-oak desk now extends past Wiles into a dominant conference-length plane that diminishes toward the background, only this changes; everything else exactly as established.",
+      "notes": "One-change scale transform makes the business world own the frame; Wiles remains on the base and all paper stays unlettered."
+    },
+    {
+      "id": "L60",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "sanctums, Doctor Fix It ran",
+      "vo_text": "sanctums, Doctor Fix It",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "many-sanctums",
+      "stage_role": "base",
+      "still_prompt": "`qt-wiles`, `action-present`, `expr-smug`, stands at the threshold of one warm-oak office doorway, presenting the room beyond while his face remains three-quarter to camera and unobscured. A cropped brass doorstop and cream dossier anchor the foreground, Wiles and the doorway fill the middle, and an orderly executive office with tobacco-brown shelves, amber lamps, and muted-teal cabinets recedes into the background. Warm cream, golden oak, amber, steel grey, tobacco brown, and muted teal dominate, with cool light motivated only by a distant window; the single doorway has generous negative space around it as the sanctum premise.",
+      "notes": "Fresh base for the many-offices idiom; no superhero likeness, costume, logo, or invented cast."
+    },
+    {
+      "id": "L61",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "ran several other companies at",
+      "vo_text": "ran several other companies at",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "many-sanctums",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ repeated company doorways recede beyond the first office"
+      ],
+      "still_prompt": "`qt-wiles`, `action-present`, `expr-smug`, remains at the same warm-oak office threshold presenting the room beyond, face three-quarter to camera and unobscured. The same cropped brass doorstop and cream dossier anchor the foreground, Wiles and the first doorway fill the middle, and tobacco-brown shelves, amber lamps, and muted-teal cabinets recede under warm cream, golden oak, amber, steel grey, tobacco brown, and muted teal, with cool window light only; several more distinct warm-oak company doorways now repeat smaller through the background depth beyond the first, only this changes; everything else exactly as established.",
+      "notes": "One-change office multiplication; no new place id or company lettering is invented."
+    },
+    {
+      "id": "L62",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "the same time, this one",
+      "vo_text": "the same time, this",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "stage": "remote-map",
+      "stage_role": "base",
+      "still_prompt": "`qt-wiles`, `3q-turn-right`, `expr-smug`, stands at the lower edge of a giant warm-cream business map table, turned three-quarter right so his face stays visible above the table rim. A cropped brass compass and oak table lip anchor the foreground, Wiles and several chunky unlettered company-building tokens occupy the middle at readable scale, and the map's ochre roads and muted-teal water shapes diminish toward a softly lamp-lit office background. Warm cream, golden oak, amber, rust, tobacco brown, and muted teal dominate, with cool light motivated only by a distant window; the several firm tokens remain loosely clustered around him.",
+      "notes": "Fresh plan-view base; named face remains visible at body scale and the exempt class declares no place."
+    },
+    {
+      "id": "L63",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "one from an office out",
+      "vo_text": "one from an office",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "stage": "remote-map",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ Colorado factory token moves far from the Los Angeles office token"
+      ],
+      "still_prompt": "`qt-wiles`, `3q-turn-right`, `expr-smug`, remains at the lower edge of the same giant warm-cream business map table, face visible above the rim. The same cropped brass compass and oak lip anchor the foreground, the same chunky unlettered firm tokens occupy the middle, and ochre roads with muted-teal water shapes diminish toward the lamp-lit office background under warm cream, golden oak, amber, rust, tobacco brown, and muted teal, with cool window light only; the factory token now sits far across the map on a simple Colorado-shaped block while Wiles's office token stays by the southern California coast, only this changes; everything else exactly as established.",
+      "notes": "One-change location separation, supported by [F-01] and [F-03]; no place or label invented."
+    },
+    {
+      "id": "L64",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "out in Los Angeles. Full remote,",
+      "vo_text": "out in Los Angeles.",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "stage": "remote-map",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ long copper phone line connects Los Angeles and Colorado tokens"
+      ],
+      "still_prompt": "`qt-wiles`, `3q-turn-right`, `expr-smug`, remains at the lower edge of the same giant warm-cream business map table, face visible above the rim. The brass compass and oak lip stay in front, the unlettered office and factory tokens occupy the middle at their established separation, and ochre roads with muted-teal water diminish into the lamp-lit background under warm cream, golden oak, amber, rust, tobacco brown, and muted teal; one long copper phone line now spans the distance between the two tokens, only this changes; everything else exactly as established.",
+      "notes": "One-change remote-connection delta; Wiles's remote-management fact is supported by [F-03]."
+    },
+    {
+      "id": "L65",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "Full remote, forty years early.",
+      "vo_text": "Full remote, forty years early.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "place": "los-angeles-office",
+      "stage": "la-office-plate",
+      "stage_role": "base",
+      "owner_ambiguity": true,
+      "still_prompt": "A cast-free late-1980s Los Angeles executive office sits mid-work under warm afternoon sun: a cropped brass phone cord, oak desk corner, and open blank memo pad anchor the foreground; a substantial oak desk, active multi-line telephone, cream folders, swivel chair, and amber task lamp fill the middle; tobacco-brown shelves, muted-teal filing cabinets, venetian-window shadow bands, and a second worktable recede into the background. Warm cream, honey oak, amber, tobacco brown, rust, and muted teal commit the palette, with cool blue limited to motivated telephone indicator light; every wall, glass panel, folder, and desk surface is blank and unlettered, leaving ownership intentionally ambiguous.",
+      "notes": "Qualifying cast-free plate at working occupancy with `owner_ambiguity: true`; remote Los Angeles office supported by [F-03]. No seeded figure entrance."
+    }
+  ]
+}

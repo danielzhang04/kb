@@ -1,0 +1,1023 @@
+{
+  "shots": [
+    {
+      "id": "L01",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "We're in the 1980s.",
+      "vo_text": "We're in the 1980s. Home to",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "eighties-mall",
+      "stage_role": "base",
+      "still_prompt": "A two-level suburban mall opens beneath a broad ribbed skylight, its cream terrazzo concourse bending past oak kiosks and a sunken planter court. Period shoppers occupy several distances between balcony rails and shop portals, with the nearest group below kiosk height and the far groups reduced by the architecture; mustard, rust, cream, and muted teal sit under amber fixtures while electronics windows supply the only cool light.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Era-establishing crowd base; the mass remains small and rear-zone behind real concourse geometry."
+    },
+    {
+      "id": "L02",
+      "duration_s": 2.9,
+      "synthetic": false,
+      "vo_ref": "big hair, Pac-Man, and",
+      "vo_text": "big hair, Pac-Man, and one of the funniest corporate",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "stage": "eighties-mall",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ crowd attitude and repeating big-hair silhouettes"
+      ],
+      "still_prompt": "The skylit mall, curved concourse, planter court, and tiered balconies hold their geometry. Across those levels the shopper mass now shares a buoyant pose, with a handful of high-volume 1980s hairstyles repeating from the kiosk line to the upper rail; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change crowd-attitude delta; rear-zone scale and squat crowd-rig declaration retained."
+    },
+    {
+      "id": "L03",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "scams that you've never",
+      "vo_text": "scams that you've never heard of.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "eighties-mall",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ anomalous computer carton with oversized rust-red block shadow"
+      ],
+      "still_prompt": "The skylit mall keeps its curved concourse, sunken planter, oak kiosks, balcony rails, and buoyant shoppers across both levels. One blank cream computer carton now occupies the near kiosk, but the rust-red block shadow beneath it is far too heavy and square for the compact package; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Corporate-scam promise now lands as a withheld package anomaly inside the held mall world; no company or brick is disclosed."
+    },
+    {
+      "id": "L04",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "It's 1983, and the",
+      "vo_text": "It's 1983, and the personal computer",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "pc-store-arrival",
+      "stage_role": "base",
+      "still_prompt": "`pc-boxy`, `expr-deadpan`, stands on a demonstration bench beneath a mezzanine stair, its face panel turned toward the shop entrance while the low lamp shelf stops below the screen. Seen diagonally from the landing, the 1983 electronics shop opens past a repair counter to a tall window bay and a back wall packed with beige machines; curious buyers lean at the counter and gather farther beneath the windows, with cream, oak, rust, and muted teal warmed by task lamps and cyan confined to monitor glass.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Seeded-machine entrance is a fresh base; retail crowd is already present at small rear-zone scale."
+    },
+    {
+      "id": "L05",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "had only been invented",
+      "vo_text": "had only been invented a few years earlier.",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "stage": "pc-store-arrival",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ curious buyers collect beneath the stair and around the repair counter"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-deadpan`, the demonstration bench, mezzanine stair, repair counter, window bay, and packed back wall remain fixed. Curious buyers now collect beneath the stair and around the far end of the counter, leaning toward the new machine while the lamp shelf stays below its screen; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change crowd-position delta; named machine was present on the base and remains load-bearing."
+    },
+    {
+      "id": "L06",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "They were all the",
+      "vo_text": "They were all the craze.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "pc-store-arrival",
+      "stage_role": "delta",
+      "changed_elements": [
+        "- boxed computers from the back-wall shelving"
+      ],
+      "still_prompt": "`pc-boxy`, `expr-deadpan`, the demonstration bench, mezzanine stair, repair counter, and window bay hold their positions. Separated purchase gaps now break through the boxed beige stock on the back-wall shelving; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change stock-departure delta; buyer crowd and seeded `pc-boxy` both pre-exist."
+    },
+    {
+      "id": "L07",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "Anybody with money was",
+      "vo_text": "Anybody with money was buying one,",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "pc-craze",
+      "stage_role": "base",
+      "still_prompt": "A long retail hall becomes a floor balance: a compact island of repeated `prop-beige-pc` units rests on the left platform while a buyer queue bends around counters on the larger right platform. Brass structure near the camera gives way to oak islands and then high cream arches, so the eager crowd occupies several measured layers beneath a largely open ceiling; amber, cream, rust, and muted teal lead, with blue only in powered screens.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Demand-scale base; small rear buyers repeat behind physical retail geometry rather than replacing it."
+    },
+    {
+      "id": "L08",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "and they were flying",
+      "vo_text": "and they were flying off the shelves.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "pc-craze",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ retail balance tilts sharply toward buyer demand"
+      ],
+      "still_prompt": "The retail hall keeps its brass balance structure, oak islands, high arches, computer island, and layered buyer queue. The platform now sinks beneath demand while the finite computer side rises light and sparse; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One mechanical tilt carries the imbalance without asking a delta to delete or precisely rearrange most inventory."
+    },
+    {
+      "id": "L09",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "It was like when",
+      "vo_text": "It was like when Apple released the iPhone.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "iphone-cutaway",
+      "stage_role": "base",
+      "still_prompt": "From the upper stair of an unbranded modern launch hall, a curved ramp descends around one black-glass smartphone on a cream platform below. Eager buyers with expectant expressions pack the ramp, gather behind the mezzanine rail, and press toward the single product anchor, while tall window bays and an open atrium keep the demand mass inside a much larger world; every wall, garment, barrier, and product surface is blank and unlettered.",
+      "notes": "The unbranded launch analogy is carried by demand at several architectural depths around one generic product anchor.",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L10",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "Well, computers run on",
+      "vo_text": "Well, computers run on these things called",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "drive-desk",
+      "stage_role": "base",
+      "still_prompt": "A technician's workshop is organized by a broad oak bench, a cable trench, and shelving that steps back between square posts. `pc-boxy`, `expr-thinking`, and a full-silhouette `prop-drive` share the middle of that bench at readable scale, the machine's face panel turned clearly toward the drive; cream, tobacco brown, and muted teal sit under warm task light, with one cool monitor pool.",
+      "notes": "Fresh desk-scale mechanism base; machine character uses expression only, never a human pose seed."
+    },
+    {
+      "id": "L11",
+      "duration_s": 1.6,
+      "synthetic": false,
+      "vo_ref": "hard drives. A hard",
+      "vo_text": "hard drives. A hard",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "drive-desk",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ computer switches to a dark powered-off state"
+      ],
+      "still_prompt": "The workshop's oak bench, cable trench, square posts, and stocked shelving remain unchanged around `pc-boxy`, `expr-thinking`, and the full `prop-drive`. The computer is now powered down, its monitor glass dark and the former cool pool extinguished; only this changes; everything else exactly as established.",
+      "notes": "One-change power-state delta; both seeded subjects pre-exist on the base."
+    },
+    {
+      "id": "L12",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "drive is the part",
+      "vo_text": "drive is the part of your computer that remembers",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "drive-desk",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ retained file-and-application tokens visible within the drive"
+      ],
+      "still_prompt": "The same bench line and deep shelving bays hold `pc-boxy`, `expr-thinking`, beside the full `prop-drive`, both silhouettes clear against the cream work wall. A cutaway window now reveals blank file cards and amber application tiles retained inside the drive; only this changes; everything else exactly as established.",
+      "notes": "One-change mechanism reveal; tokens are unlettered diegetic objects rather than captions."
+    },
+    {
+      "id": "L13",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "things after you switch",
+      "vo_text": "things after you switch it",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "memory-inside",
+      "stage_role": "base",
+      "still_prompt": "A demonstration alcove is built around a waist-high cream block, two offset storage racks, and a tall empty wall that gives the device room to read. One full-silhouette `prop-drive` occupies the block with an amber chamber visible inside; oak, cream, tobacco brown, and muted teal are lit by a directional task lamp and a restrained monitor reflection.",
+      "notes": "Figureless mechanism base is earned by the drive itself being the sentence subject."
+    },
+    {
+      "id": "L14",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "off: your files, your",
+      "vo_text": "off: your files, your",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "memory-inside",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ stack of retained file tokens in the memory chamber"
+      ],
+      "still_prompt": "The demonstration block, offset racks, tall wall, and full `prop-drive` stay fixed. A neat stack of blank cream file cards now sits securely inside the amber chamber; only this changes; everything else exactly as established.",
+      "notes": "One-change retained-files delta; every card surface is positively blank."
+    },
+    {
+      "id": "L15",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "applications, and your private",
+      "vo_text": "applications, and your private",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "memory-inside",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ discreet locked private-collection token beside the retained files"
+      ],
+      "still_prompt": "The same alcove keeps its clear device silhouette, open wall, and storage-rack depth, with the blank file cards already inside. One closed rust portfolio bearing a small brass heart-shaped lock now rests beside those files; only this changes; everything else exactly as established.",
+      "notes": "Private-collection joke remains euphemistic, unlettered, and one-change; no explicit content."
+    },
+    {
+      "id": "L16",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "collections. Every computer needs",
+      "vo_text": "collections. Every computer needs",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "every-pc-needs-one",
+      "stage_role": "base",
+      "still_prompt": "A warehouse-like computer showroom runs through repeated oak arches, pallet bays, and a high cream ceiling. One `prop-beige-pc` paired with one `prop-drive` begins a line of matched pairs, while eager buyers wait beyond the last arch in overlapping groups; warm cream, oak, amber, rust, and muted teal frame one conspicuously empty pairing slot.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Object dependency bears the frame; genuine demand mass remains small behind pallets, arches, and cartons."
+    },
+    {
+      "id": "L17",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "one. So while the",
+      "vo_text": "one. So while the",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "every-pc-needs-one",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ buyer mass fills the staircase and passes the final arch"
+      ],
+      "still_prompt": "The arched showroom and its finite computer-drive pairs remain fixed, each pair occupying its own lit bay. The eager buyer mass now fills the staircase, crowds the cashier booth, and continues through the final arch beyond the available machines; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change scale delta; the rear crowd multiplies through overlap and recession rather than moving into the foreground."
+    },
+    {
+      "id": "L18",
+      "duration_s": 1.7,
+      "synthetic": false,
+      "vo_ref": "computer companies were out",
+      "vo_text": "computer companies were out front fighting",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "pc-market-ring",
+      "stage_role": "base",
+      "still_prompt": "A retail contest platform sits inside a tall circular market hall, ringed by stepped oak seating and cream arches with a clear central void. `pc-boxy`, `expr-smug`, holds stage-left facing right and `rival-pc`, `expr-skeptical`, holds stage-right facing left; they share one plane, matched face-panel eye-line, and equal relative head scale, both faces unobscured across a full stride of space.",
+      "notes": "Fresh two-cast base; same plane, eye-line, and relative head/face-panel scale stated. Machine cast use expressions only."
+    },
+    {
+      "id": "L19",
+      "duration_s": 1.6,
+      "synthetic": false,
+      "vo_ref": "like Samsung and Apple",
+      "vo_text": "like Samsung and Apple fight over",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "pc-market-ring",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brass contest rope dividing the platform"
+      ],
+      "still_prompt": "The circular hall, stepped seating, cream arches, and `pc-boxy`, `expr-smug`, with `rival-pc`, `expr-skeptical`, remain on their shared plane with matched face-panel eye-line and equal relative head scale. One thick brass contest rope now divides the open platform between them; only this changes; everything else exactly as established.",
+      "notes": "One-change rivalry marker; no interaction template is misused on the machine pair."
+    },
+    {
+      "id": "L20",
+      "duration_s": 2.9,
+      "synthetic": false,
+      "vo_ref": "the phone market, the",
+      "vo_text": "the phone market, the hard drive manufacturers were",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "pc-market-ring",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ overlooked hard-drive pallet outside the contest light"
+      ],
+      "still_prompt": "The market ring stays fixed around `pc-boxy`, `expr-smug`, and `rival-pc`, `expr-skeptical`, their shared plane, eye-line, and relative head scale preserved. A low pallet of repeated `prop-drive` units now occupies the unlit service edge outside the contest circle; only this changes; everything else exactly as established.",
+      "notes": "One-change counterpoint puts the beneficiary trade outside the rivalry spotlight; two-cast topology remains stated."
+    },
+    {
+      "id": "L21",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "quietly raking it in.",
+      "vo_text": "quietly raking it in. They were the people",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`drive-maker`, `hold-both-hands`, `expr-smug`, stands beneath the hoist beam on a loading-ramp landing, carrying one `prop-drive` level at chest height and turning three-quarter toward the dock. Timber posts rise past him to clerestory windows and a tall freight door, while the ramp rail stays below his shoulders and restrained coin stacks collect on the dock scale; cream, brown, rust, and muted teal hold under amber lamps.",
+      "notes": "Drive-maker reveal stays inside a deep working loading hall; figure scale is subordinate to the architecture.",
+      "stage": "drive-maker-reveal",
+      "stage_role": "base"
+    },
+    {
+      "id": "L22",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "selling picks and shovels",
+      "vo_text": "selling picks and shovels in the gold rush.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "`drive-maker`, `action-offering`, `expr-smug`, works beneath the middle awning of a timber market arcade, offering one `prop-drive` across a corner counter. A ramp climbs behind the stall toward stacked shovel heads and hanging pick blades under the rafters, while hopeful buyers with simple grins gather at the arcade entrance and beside the outer posts; cream canvas, tobacco timber, rust metal, and muted teal sit in warm market light.",
+      "notes": "The sellers and hopeful buyers are genuine performers in the picks-and-shovels idiom; crowd declaration now matches occupancy.",
+      "stage": "supply-stall",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L23",
+      "duration_s": 2.9,
+      "synthetic": false,
+      "vo_ref": "And one of those",
+      "vo_text": "And one of those companies packed 26,000...",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "From a packing-warehouse mezzanine, stacked cream cartons climb around a loading ramp, a pallet lift, and three clerestory window bays. One closed sample carton rests on the oak inspection platform beside the ramp while the much larger stock fills pallet racks from the dock floor to the lift beam; a count card attached to the sample bears the supplied literal '26,000'.",
+      "notes": "Object-led brick-hook base; crowd seed removed. Sourced 26,000 count supported by [F-05].",
+      "stage": "brick-hook",
+      "stage_role": "base"
+    },
+    {
+      "id": "L24",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "well, the title gives",
+      "vo_text": "well, the title gives it away... red",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "The mezzanine view, loading ramp, pallet lift, clerestory windows, inspection platform, and stacked carton stock remain fixed. The sample carton is now open, exposing one dense red-clay brick beneath its folded flaps; only this changes; everything else exactly as established.",
+      "notes": "Object-led sample-carton reveal; crowd seed removed and one feasible delta retained.",
+      "stage": "brick-hook",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ sample carton opens to reveal one red-clay brick"
+      ]
+    },
+    {
+      "id": "L25",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "clay bricks into little",
+      "vo_text": "clay bricks into little boxes labelled hard",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "The loading ramp, pallet lift, inspection platform, stacked stock, and open sample carton hold, with its red-clay brick visible against the cream packaging. Additional cartons beside the ramp and beneath the lift beam now stand open with the same brick payload; only this changes; everything else exactly as established.",
+      "notes": "Object-led repeated brick payload; crowd seed removed and the one-change completion remains on the loading-ramp set [F-05].",
+      "stage": "brick-hook",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ matching brick payload appears in selected cartons beside the loading ramp"
+      ]
+    },
+    {
+      "id": "L26",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "drive, and sold them",
+      "vo_text": "drive, and sold them to customers around the world.",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "still_prompt": "An oak labelling bench spans the lower edge of a tall carton wall, leaving a clear band of warehouse structure above it. One sealed cream carton faces the viewer beside a red-clay brick and packing strap, its product panel bearing the supplied literal 'HARD DRIVE'.",
+      "notes": "Fresh labelling insert on the spoken label beat; `HARD DRIVE` is supplied by the script.",
+      "hard_cut": true
+    },
+    {
+      "id": "L27",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "Here is the story",
+      "vo_text": "Here is the story of that company.",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "still_prompt": "A top-down world-shipping table fills a broad dispatch room: one cluster of cream cartons leaves the warehouse token along branching copper routes toward several blank port blocks. The room's outer floor remains open around the route network, and the carton faces turn edge-on so their glyph panels are hidden; warm oak and cream carry the map while the red-clay cargo is implied by one cutaway sample at the origin.",
+      "notes": "Fresh world-sale tableau separates distribution from the count reveal; carton label panels are physically hidden.",
+      "hard_cut": true
+    },
+    {
+      "id": "L28",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "The company was MiniScribe,",
+      "vo_text": "The company was MiniScribe, a hard",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "place_owner": "MINISCRIBE",
+      "still_prompt": "From a high corner beneath the sawtooth roof, a Colorado assembly hall descends diagonally through a forked conveyor, a test-booth cluster, pallet lifts, component racks, and an overhead service bridge. Focused assembly workers occupy the conveyor stations, the test booths, and the dock apron at distinct depths under amber task lamps, with cool light confined to monitor glass; above the entrance, a cream owner board in dark warm-brown ink (#241a12) bears the supplied literal 'MINISCRIBE'.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "MiniScribe plate uses the assembly hall's own conveyor fork, bridge, test booths, pallet lifts, and dock apron; owner literal remains payload-last.",
+      "stage": "miniscribe-plate",
+      "stage_role": "base"
+    },
+    {
+      "id": "L29",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "drive manufacturer out of",
+      "vo_text": "drive manufacturer out of Colorado,",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "miniscribe-reveal",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-powerstance`, `expr-smug`, stands on the inspection platform where the forked conveyor passes beneath an overhead service bridge. The platform rail ends below his jacket buttons and a pale service door isolates his three-quarter head, while drive trays, component bins, pallet lifts, and the sawtooth roof make the company figure only one working element inside the active plant; warm industrial light holds across cream, oak, rust, and muted teal.",
+      "notes": "Company reveal is staged against the approved L28 plant geometry, with figure size carried by the inspection platform and machinery relation."
+    },
+    {
+      "id": "L30",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "founded in 1980 by",
+      "vo_text": "founded in 1980 by a guy named",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "miniscribe-reveal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brass Colorado silhouette mounted behind the inspection platform"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-powerstance`, `expr-smug`, remains on the inspection platform above the forked conveyor, with the service bridge, pale door, drive trays, component bins, and pallet lift unchanged. A simple brass silhouette of Colorado now mounts on the wall panel directly behind the platform; only this changes; everything else exactly as established.",
+      "notes": "One-change Colorado cue, supported by [F-01] and [F-25]; no additional place or lettering invented."
+    },
+    {
+      "id": "L31",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "Terry Johnson. And they",
+      "vo_text": "Terry Johnson. And they",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "terry-reveal",
+      "stage_role": "base",
+      "still_prompt": "`terry-johnson`, `action-present`, `expr-deadpan`, stands beside an oak prototype bench, presenting an early drive toward the open rolling doorway. Drafting tables step toward a long window bay behind him, overhead cable trays cross the lab, and one pale frosted pane sits directly behind his head while the bench remains below his elbows; cream, oak, muted teal, and amber practical light define the founder's working world.",
+      "notes": "Founder reveal uses the prototype lab's rolling doorway, bench, drafting tables, cable trays, and window bay."
+    },
+    {
+      "id": "L32",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "were HOT. IBM picked",
+      "vo_text": "were HOT. IBM",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "founding-growth",
+      "stage_role": "base",
+      "still_prompt": "`terry-johnson`, `action-present`, `expr-delighted`, and `miniscribe-rep`, `action-powerstance`, `expr-smug`, hold opposite ends of the same transfer bridge on one plane, meeting one eye-line at equal head scale; separate pale dock openings frame their heads above the waist-high rail. From the factory floor below, the bridge crosses a forked conveyor between roof trusses, component racks, and three loading ramps, while focused workers populate the test booths and dock apron.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Low factory-floor view retains legal two-cast plane, eye-line, and head-scale topology on the transfer bridge."
+    },
+    {
+      "id": "L33",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "picked MiniScribe to supply",
+      "vo_text": "picked MiniScribe to supply hard",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "founding-growth",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ completed drive units fill the dispatch belts"
+      ],
+      "still_prompt": "`terry-johnson`, `action-present`, `expr-delighted`, and `miniscribe-rep`, `action-powerstance`, `expr-smug`, remain on the transfer-bridge plane at one eye-line and equal head scale, their heads held between separate dock openings above the rail. The forked conveyor, roof trusses, component racks, loading ramps, and worker activity hold below. Completed `prop-drive` units now fill every dispatch belt leading toward the docks; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change production delta; IBM is heard but its seeded personification waits for the locked fresh base L35. Two-cast topology retained."
+    },
+    {
+      "id": "L34",
+      "duration_s": 1.6,
+      "synthetic": false,
+      "vo_ref": "drives for their PCs,",
+      "vo_text": "drives for their PCs,",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "founding-growth",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ demand mass fills the loading-bay depth"
+      ],
+      "still_prompt": "The same production wing and conveyor grid hold `terry-johnson` and `miniscribe-rep` on one plane at matched eye-line and head scale. Buyer teams now occupy the far loading bays behind pallet stacks, their eager posture readable across several dock openings; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One-change demand-depth delta; mass remains small behind cartons and posts, with two-cast topology intact."
+    },
+    {
+      "id": "L35",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "and within four years",
+      "vo_text": "and within four years the company was making",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "ibm-contract",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-offering`, `expr-smug`, and `ibm-suit`, `action-offering`, `expr-skeptical`, meet through the two-person `handoff` across one diagonal table plane, at one eye-line and matching head scale; the low blank contract folder leaves each head against a separate winter window pane. Oak wall panels rise behind the window bay, teal chairs flank the table, and four closed blank contract binders step toward the far end under restrained amber light.",
+      "notes": "The four-year contract run begins on 'and within four years'; the amount is withheld for L36. Legal fresh-base `handoff` topology retained [F-26] [F-29].",
+      "place_anchor": "assets/scenes/L84.png"
+    },
+    {
+      "id": "L36",
+      "duration_s": 3.1,
+      "synthetic": false,
+      "vo_ref": "125 million dollars a",
+      "vo_text": "125 million dollars a year.",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "ibm-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ revenue block marked '125 MILLION' on the deal table"
+      ],
+      "still_prompt": "`miniscribe-rep` and `ibm-suit` remain across the diagonal table on one plane, at one eye-line and matching head scale, with the low contract folder, winter window panes, teal chairs, oak panels, and four closed binders unchanged. A warm-gold revenue block now rises at the table's center bearing the supplied literal '125 MILLION'; only this changes; everything else exactly as established.",
+      "notes": "The sourced 125-million payload lands on its own spoken amount [F-26]; metadata names the same sole change."
+    },
+    {
+      "id": "L37",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "And at their peak",
+      "vo_text": "And at their peak in 1988,",
+      "shot_class": "diegetic-device",
+      "source": "ai-gen",
+      "stage": "ibm-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brass year marker marked '1988' beside the revenue block"
+      ],
+      "still_prompt": "`miniscribe-rep` and `ibm-suit` remain on one table plane, at one eye-line and matching head scale, separated by the low folder and the warm-gold block marked '125 MILLION'. The diagonal oak table, four closed binders, teal chairs, and winter window bay hold. A small brass year marker now stands beside the revenue block bearing the supplied literal '1988'; only this changes; everything else exactly as established.",
+      "notes": "The peak-year marker lands on the spoken 1988 phrase while carrying '125 MILLION' under L-1 [F-26].",
+      "place": "miniscribe-building"
+    },
+    {
+      "id": "L38",
+      "duration_s": 1.3,
+      "synthetic": false,
+      "vo_ref": "they were selling to",
+      "vo_text": "they were selling to giants like",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "stage": "peak-revenue",
+      "stage_role": "base",
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, stands at a shipping console inside a raised dock doorway, three-quarter toward the loading floor; the console ends below his chest and the pale door recess sets his head apart from the machinery. Looking back from that doorway, three loading ramps fan toward the forked conveyor beneath roof trusses, customer teams wait behind safety gates with eager expressions, and shipped `prop-drive` cartons ride pallet lifts toward the apron.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The approved L28 loading wing is recomposed around three ramps, a raised dock doorway, pallet lifts, and customer teams [F-28]."
+    },
+    {
+      "id": "L39",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "Compaq and making over",
+      "vo_text": "Compaq and making over",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "peak-revenue",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ oversized blank buyer order on the central dock scale"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, remains at the raised shipping console above the three loading ramps, with customer teams behind the safety gates, the forked conveyor, roof trusses, pallet lifts, and shipped cartons unchanged. One exceptionally large blank buyer order now occupies the central dock scale; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The Compaq/customer order lands on 'Compaq and making over'; the amount remains withheld until L40.",
+      "place": "miniscribe-building"
+    },
+    {
+      "id": "L40",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "600 million dollars a",
+      "vo_text": "600 million dollars a year.",
+      "shot_class": "diegetic-device",
+      "source": "ai-gen",
+      "stage": "peak-revenue",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ revenue tower marked '600 MILLION' on the dock scale"
+      ],
+      "still_prompt": "`miniscribe-rep`, `action-present`, `expr-smug`, the raised shipping console, three loading ramps, eager customer teams, forked conveyor, pallet lifts, shipped cartons, and oversized blank buyer order all remain fixed. A warm-gold revenue tower now rises from the dock scale bearing the supplied literal '600 MILLION'; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The sourced 600-million payload lands on its own spoken amount [F-28]; metadata names the same sole change.",
+      "place": "miniscribe-building"
+    },
+    {
+      "id": "L41",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "Accounting for inflation, that's",
+      "vo_text": "Accounting for inflation, that's almost as much money as Reddit",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "reported-ledger",
+      "stage_role": "base",
+      "still_prompt": "A long accounting gallery is built around a broad oak ledger desk, symmetrical filing walls, and a high band of empty cream plaster. On the desk, a gold revenue tower and a slightly taller stack of blank warm-orange conversation tiles form the modern comparison, while a polished ledger waits beneath them with ruled pages and blank writing fields; amber lamps warm the suspiciously perfect arrangement.",
+      "notes": "The modern comparison first appears on the inflation/Reddit beat [F-30] [F-31]; blank ledger prepares the reported-number reversal."
+    },
+    {
+      "id": "L42",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "makes today. Or so",
+      "vo_text": "makes today. Or so they said. Now",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "reported-ledger",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ polished ledger page peels back to expose a false red underlayer"
+      ],
+      "still_prompt": "The accounting gallery, filing walls, comparison towers, and polished blank ledger remain fixed. The immaculate top page now lifts at one corner to reveal a dense red false layer underneath; only this changes; everything else exactly as established.",
+      "notes": "One-change unmasking delta; red appears only as the semantic fraud layer."
+    },
+    {
+      "id": "L43",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "rewind four years. At",
+      "vo_text": "rewind four years. At the end of 1984,",
+      "shot_class": "diegetic-device",
+      "source": "ai-gen",
+      "stage": "reported-ledger",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ ledger rewind dial turns the page stack back to '1984'"
+      ],
+      "still_prompt": "The accounting gallery, comparison towers, polished ledger, lifted top page, and exposed red underlayer remain fixed. A brass rewind dial now rotates the page stack backward until its small window bears the supplied literal '1984'; only this changes; everything else exactly as established.",
+      "notes": "The rewind and supplied '1984' payload are one integrated dial change on their spoken words [F-26]."
+    },
+    {
+      "id": "L44",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "IBM slashed its orders,",
+      "vo_text": "IBM slashed its orders, and",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "still_prompt": "Using the approved conference-room variant, the long table runs toward winter windows beneath a wide band of blank wall. One towering IBM order stack at the table's far end has been cut down to a thin remainder, while empty chairs and untouched cream folders preserve the decision-room scale; the scene stays in muted cream, tobacco brown, teal, and cold window light.",
+      "notes": "IBM order reduction is isolated before any employee or Terry consequence; approved L84 conference geometry used [F-26].",
+      "hard_cut": true,
+      "place_anchor": "assets/scenes/L84.png"
+    },
+    {
+      "id": "L45",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "MiniScribe fell off a",
+      "vo_text": "MiniScribe fell off a cliff.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "place": "miniscribe-building",
+      "still_prompt": "A vast assembly building appears as a long sectional world: the IBM order stack at one end has collapsed into a thin ledge while conveyors and lamped workstation banks descend toward a dark loading court. The architecture, rather than a person, carries the company's cliff edge in drained cream, tobacco brown, olive, and winter grey.",
+      "notes": "MiniScribe's cliff consequence is isolated before the layoff and Terry disclosures [F-26].",
+      "hard_cut": true,
+      "place_anchor": "assets/scenes/L28.png"
+    },
+    {
+      "id": "L46",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "They let a quarter",
+      "vo_text": "They let a quarter of their people go,",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "still_prompt": "From the overhead crane catwalk, the assembly building breaks into four lamped workstation banks around a forked conveyor and a sunken loading court. A genuine employee mass holds a grim, planted attitude across the stations and stair landings while one station in every four sits dark and vacant; sawtooth trusses and hanging utilities dominate the upper structure as warm industrial cream and brown drain toward olive and winter grey.",
+      "notes": "The plural layoff beat is borne by a genuine employee mass seen from the plant's crane catwalk [F-26].",
+      "hard_cut": true,
+      "place": "miniscribe-building",
+      "place_anchor": "assets/scenes/L28.png",
+      "figures": {
+        "crowd": true
+      }
+    },
+    {
+      "id": "L47",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "and Terry Johnson was",
+      "vo_text": "and Terry Johnson was out the door.",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "still_prompt": "`terry-johnson`, `walk-right`, `expr-crestfallen`, holds a departing step on the concrete threshold of the personnel door, turning three-quarter toward the pale winter parking court. The bright door glass isolates his head while the time clock, stopped conveyor, locker bank, and broad loading canopy remain behind him in muted cream, olive, and tobacco brown.",
+      "notes": "Terry's named exit is staged at the plant's personnel door with the time clock and stopped conveyor behind him [F-27].",
+      "stage": "factory-exit",
+      "stage_role": "base",
+      "hard_cut": true,
+      "place": "miniscribe-building",
+      "place_anchor": "assets/scenes/L28.png"
+    },
+    {
+      "id": "L48",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "By 1985 the company",
+      "vo_text": "By 1985 the company was in real trouble,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`miniscribe-rep`, `action-slump`, `expr-worried`, occupies the empty space beside a nearly bare drive tray, turned toward an oversized oak desk whose low top stays beneath his shoulders. Tall filing walls close around a shaded window panel that sets off his worried expression, while an unused carpet path stretches to the distant doorway under thin amber light and muted cream, brown, and teal.",
+      "notes": "Company-trouble bridge precedes the first banker image; no banker is disclosed early.",
+      "hard_cut": true
+    },
+    {
+      "id": "L49",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "so their bankers at",
+      "vo_text": "so their bankers at Hambrecht & Quist put about",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`hq-banker`, `action-offering`, `expr-skeptical`, stands at the near corner of a long oak conference table, turned three-quarter toward an empty high-backed chair while offering a blank rescue folder across the polished surface. The folder remains below his shoulders and a tall cream wall panel isolates his head; brass table rails, a shaded window bay, tobacco oak, muted teal, and restrained amber light make the unoccupied chair the proposal's destination.",
+      "notes": "The banker body bears the spoken banker clause; the company remains undisclosed as a figure. [F-27]",
+      "stage": "hq-bailout",
+      "stage_role": "base"
+    },
+    {
+      "id": "L50",
+      "duration_s": 1.6,
+      "synthetic": false,
+      "vo_ref": "20 million dollars in",
+      "vo_text": "20 million dollars in and",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "still_prompt": "The conference chamber, reserved chair, blank-folder handoff, and matched two-figure geometry hold. One warm-gold rescue block now occupies the table beside them bearing the supplied literal '20 MILLION', only this changes; everything else exactly as established.",
+      "notes": "One-change candidate-dossier delta; Wiles remains undisclosed in pixels until L51.",
+      "stage": "hq-bailout",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ 20-million rescue block on the conference table"
+      ]
+    },
+    {
+      "id": "L51",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "sent their own turnaround",
+      "vo_text": "sent their own turnaround guy to run it.",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "The panelled chamber and two figures remain fixed around the folder and the block marked '20 MILLION'. The empty executive chair now slides from the far end to the banker's side of the table; only this changes; everything else exactly as established.",
+      "notes": "Wiles enters on his naming words as a fresh base; he is a businessman only, with no medical costume or prop. Identity supported by [F-02].",
+      "stage": "hq-bailout",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ empty executive chair moves to the banker's side"
+      ]
+    },
+    {
+      "id": "L52",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "They brought in the",
+      "vo_text": "They brought in the man, the myth, the legend:",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`hq-banker`, `action-present`, `expr-deadpan`, stands beneath the transom of an executive-office doorway, presenting an empty high-backed chair set inside the tall window bay across the room. A sealed blank dossier rests on the oak blotter, filing cabinets climb to the picture rail, and the banker's head falls against the plain door glass while the chair's silhouette owns the open carpet between desk and window.",
+      "notes": "The unnamed-savior setup is carried by the doorway, blotter, filing wall, tall window bay, and empty chair; Wiles remains undisclosed.",
+      "stage": "turnaround-chair",
+      "stage_role": "base"
+    },
+    {
+      "id": "L53",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "Q.T. Wiles. You know",
+      "vo_text": "Q.T. Wiles. You know",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, stands newly revealed on the low oak dais, square to a view from the bottom step. A high amber transom separates his head from broad cream wall panels, while repeated office doors, a shaded upper window, and the empty carpet below the dais build the executive suite around his steel-grey suit.",
+      "notes": "Wiles enters on his naming words from the dais steps, using the suite's transom and repeated doors rather than a generic scale clause [F-02].",
+      "stage": "wiles-reveal",
+      "stage_role": "base"
+    },
+    {
+      "id": "L54",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "that Gordon Ramsay show",
+      "vo_text": "that Gordon Ramsay show where he goes around reinventing",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, remains square on the oak dais beneath the amber transom, with the cream panels, office doors, shaded upper window, and empty carpet unchanged. A tiny crooked restaurant table with cold plates now occupies one corner of the dais; only this changes; everything else exactly as established.",
+      "notes": "Restaurant analogy expands within the held office before the generic chef hard cut.",
+      "stage": "wiles-reveal",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ miniature failing-restaurant table on the dais"
+      ]
+    },
+    {
+      "id": "L55",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "failing restaurants? Wiles was",
+      "vo_text": "failing restaurants? Wiles was the",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`tv-chef`, `point-at-thing`, `expr-worried`, stands behind a stainless service pass in a counter-height close view, pointing toward a collapsed risotto mound while a square order window frames his expression above the low shelf. Two prep tables, hanging pans, a high pantry doorway, and amber heat lamps fill the kitchen behind him; two untouched plates and one smoking pan complete the failed service.",
+      "notes": "The restaurant rescue is an intimate service-pass view whose order window, prep tables, pans, and pantry carry the kitchen geometry.",
+      "stage": "kitchen-rescue",
+      "stage_role": "base"
+    },
+    {
+      "id": "L56",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Gordon Ramsay of the",
+      "vo_text": "Gordon Ramsay of the business world,",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`tv-chef`, `point-at-thing`, `expr-worried`, remains behind the stainless pass, with the square order window above the low shelf, two prep tables, hanging pans, high pantry doorway, and amber heat lamps fixed. The collapsed risotto, two untouched plates, and smoking pan now occupy the entire service pass; only this changes; everything else exactly as established.",
+      "notes": "The failed-service payload stays one feasible kitchen delta.",
+      "stage": "kitchen-rescue",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ entire failed dinner service on the pass"
+      ]
+    },
+    {
+      "id": "L57",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "an investment banker they",
+      "vo_text": "an investment banker they called Doctor",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `point-at-thing`, `expr-smug`, stands at a square records hatch in a counter-height view, pointing toward blank turnaround files spread across an oak document pass. The hatch frame separates his head from a pale glass panel while filing cabinets, a brass trolley, and a tall office doorway replace the kitchen's pans and pantry behind his ordinary steel-grey suit.",
+      "notes": "The banker comparison deliberately echoes the preceding service-pass framing through an office records hatch and document pass.",
+      "stage": "wiles-match",
+      "stage_role": "base",
+      "hard_cut": true
+    },
+    {
+      "id": "L58",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "Fix It. Instead of",
+      "vo_text": "Fix It. Instead of shitting on",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, stands behind an oak desk in a high view from the filing mezzanine, holding one blank cream statement below his chin and turning three-quarter up toward the landing. Filing cabinets wrap the room beneath tall cream walls, a brass turntable sits at the desk's far corner, and a tired risotto bowl rests separately on it under amber task light.",
+      "notes": "The quarterly-statements setup uses a filing-mezzanine view and keeps the held page below Wiles's expression.",
+      "stage": "quarterly-statements",
+      "stage_role": "base"
+    },
+    {
+      "id": "L59",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "your risotto, he's reading",
+      "vo_text": "your risotto, he's reading your quarterly",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "The records room, filing bays, `qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, held blank statement, and brass turntable remain fixed. The turntable now presents a neat stack of blank quarterly statement pages where the risotto faced the viewer; only this changes; everything else exactly as established.",
+      "notes": "One-change scale transform makes the business world own the frame; Wiles remains on the base and all paper stays unlettered.",
+      "stage": "quarterly-statements",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ turntable rotates from risotto to statement stack"
+      ]
+    },
+    {
+      "id": "L60",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "statements. And, like Doctor",
+      "vo_text": "statements. And, like Doctor Strange",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, remains below the filing mezzanine, looking up with the blank statement held beneath his chin; the surrounding cabinets, tall walls, brass turntable, and statement stack remain fixed. The oak desk now extends past two cabinet banks into a long decision table, making the office system engulf the figure; only this changes; everything else exactly as established.",
+      "notes": "Fresh base for the many-offices idiom; no superhero likeness, costume, logo, or invented cast.",
+      "stage": "quarterly-statements",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ oak desk extends into a long decision table"
+      ]
+    },
+    {
+      "id": "L61",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "with his many sanctums,",
+      "vo_text": "with his many sanctums, Doctor Fix",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-present`, `expr-smug`, stands beside the first threshold of an octagonal office lobby, viewed from the upper landing as he presents a furnished executive room. A warm door panel isolates his head, the central stairwell opens behind the balustrade, and five paneled recesses wait around the remaining lobby walls under amber lamps and muted-teal cabinetry.",
+      "notes": "The sanctums beat uses the octagonal lobby's upper landing, stairwell, balustrade, first office, and waiting wall recesses.",
+      "stage": "many-sanctums",
+      "stage_role": "base"
+    },
+    {
+      "id": "L62",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "It ran several other",
+      "vo_text": "It ran several other companies at the",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-present`, `expr-smug`, remains beside the first threshold beneath the upper landing, with the octagonal lobby, central stairwell, balustrade, furnished room, and five paneled recesses unchanged. Additional warm-oak company doorways now occupy the waiting recesses, each revealing a distinct office interior; only this changes; everything else exactly as established.",
+      "notes": "Fresh plan-view base; named face remains visible at body scale and the exempt class declares no place.",
+      "stage": "many-sanctums",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ company doorways occupy the lobby recesses"
+      ]
+    },
+    {
+      "id": "L63",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "same time, this one",
+      "vo_text": "same time, this one",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "still_prompt": "Overhead plan view: `qt-wiles`, `3q-turn-right`, `expr-smug`, stands on the cream floor beside the lower edge of a business map table, the table rim reaching his chest while his head falls against the open floor. The ochre-road and muted-teal-water map fills the high-ceilinged planning room between chunky unlettered company tokens, with the Colorado block and southern-California coast separated across branching routes.",
+      "notes": "The remote-management beat is a true overhead plan-view; Wiles's scale is carried by the chest-high table rim and map extent.",
+      "stage": "remote-map",
+      "stage_role": "base"
+    },
+    {
+      "id": "L64",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "from an office out",
+      "vo_text": "from an office out in Los Angeles. Full",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "still_prompt": "Overhead plan view: `qt-wiles`, `3q-turn-right`, `expr-smug`, remains beside the lower map edge with his head against the cream floor, while the table rim, ochre roads, muted-teal water, and unlettered company tokens hold. One factory token now occupies the Colorado block far across the branching routes from an office token beside the southern-California coast; only this changes; everything else exactly as established.",
+      "notes": "One-change remote-connection delta; Wiles's remote-management fact is supported by [F-03].",
+      "stage": "remote-map",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ factory token moves to the Colorado block away from the Los Angeles office token"
+      ]
+    },
+    {
+      "id": "L65",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "remote, forty years early.",
+      "vo_text": "remote, forty years early.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "place": "los-angeles-office",
+      "stage": "la-office-plate",
+      "stage_role": "base",
+      "owner_ambiguity": true,
+      "still_prompt": "A cast-free late-1980s Los Angeles office is arranged from an oak desk and active multi-line telephone through filing bays to a second worktable beneath tall venetian windows. Broad cream wall panels and an open strip of carpet give the room breathing space; amber afternoon light warms honey oak, tobacco brown, rust, and muted teal, while every wall, folder, glass panel, and desktop stays blank and unlettered, leaving ownership intentionally ambiguous.",
+      "notes": "Qualifying cast-free plate at working occupancy with `owner_ambiguity: true`; remote Los Angeles office supported by [F-03]. No seeded figure entrance."
+    }
+  ]
+}

@@ -1,0 +1,740 @@
+{
+  "shots": [
+    {
+      "id": "L66",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "Wiles ran MiniScribe with",
+      "vo_text": "Wiles",
+      "place": "los-angeles-office",
+      "stage": "fear-office",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L65.png",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-deadpan`, stands behind the broad executive desk in the established Los Angeles office, facing front with his face clear above the telephone. Wide low vantage from behind the cropped tobacco-brown visitor chair; the honey-oak desk and black telephone fill the midground, while tall windows, palms, and cream walls recede behind him. Warm cream, honey oak, tobacco brown, and muted olive dominate under hard amber office light; pale cyan appears only as daylight through the windows. Wiles alone occupies the command position, his planted stance making control of the distant Colorado company the payload.",
+      "notes": "Fresh seeded-figure entrance on a base, re-anchored after the A1 boundary to Wiles's first spoken line and anchored to the approved L65 office plate. [F-03]"
+    },
+    {
+      "id": "L67",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "ran MiniScribe with fear.",
+      "vo_text": "ran MiniScribe with fear.",
+      "place": "los-angeles-office",
+      "stage": "fear-office",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ blank target sheet rises behind Wiles"
+      ],
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "Hold the established Los Angeles office with `qt-wiles`, `action-powerstance`, `expr-deadpan`, behind the honey-oak desk, the cropped visitor chair foreground, telephone midground, and palm windows behind. Keep the warm cream, tobacco brown, and muted olive palette under hard amber office light, with pale cyan only in the exterior daylight. Add one oversized blank target sheet on a stand directly behind Wiles, its ruled surface unlettered and one red line looming above his shoulders; only this changes; everything else exactly as established.",
+      "notes": "One semantic addition; the red accent is reserved for quota alarm. [F-04]"
+    },
+    {
+      "id": "L68",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "He set sales targets.",
+      "vo_text": "He set sales targets.",
+      "place": "los-angeles-office",
+      "stage": "fear-office",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ telephone network becomes visibly subordinate"
+      ],
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "Hold the established Los Angeles office, the blank target sheet with its single red line, and `qt-wiles`, `action-powerstance`, `expr-deadpan`, dominant behind the honey-oak desk. Keep the cropped visitor chair in the foreground, Wiles and the original telephone in the midground, palm windows in the background, and the warm cream, tobacco brown, and muted olive palette under hard amber light with cool daylight confined outside. Extend the desk telephone into a tidy descending network of smaller black phones on a low console receding behind the desk, every dial and label field blank; only this changes; everything else exactly as established.",
+      "notes": "The phone network physicalizes remote command without adding people or lettering. [F-03] [F-04]"
+    },
+    {
+      "id": "L69",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "Hit them, and you",
+      "vo_text": "Hit them,",
+      "stage": "bonus-scale",
+      "stage_role": "base",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-armscrossed`, `expr-deadpan`, stands centered behind a waist-high brass balance scale, facing front and unobscured. Tight low-angle tableau with a cropped stack of blank quota cards in the foreground, the scale in the midground, and Wiles occupying the dark tobacco-brown background like a judge. Warm brass, cream paper, tobacco brown, and muted gold sit under a hard amber pool of light, with charcoal confined to Wiles's suit. One pan holds the thin blank target cards and the other holds a single fat golden bonus envelope, leaving clean air around the unequal promise.",
+      "notes": "Exempt physicalized-imbalance root; Wiles is present on the base so later deltas are not entrances. [F-04]"
+    },
+    {
+      "id": "L70",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "and you got a fat",
+      "vo_text": "and you",
+      "stage": "bonus-scale",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ bonus-envelope side swells into a fat stack"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `action-armscrossed`, `expr-deadpan`, behind the brass scale, with cropped blank quota cards foreground, the two pans midground, and his tobacco-brown judging silhouette behind. Keep the warm brass, cream, tobacco, and muted-gold palette under the same hard amber pool. Multiply the lone golden bonus envelope into a fat, weighty stack that pulls its pan decisively down; only this changes; everything else exactly as established.",
+      "notes": "One scale change makes the bonus physically irresistible. [F-04]"
+    },
+    {
+      "id": "L71",
+      "duration_s": 1.8,
+      "synthetic": false,
+      "vo_ref": "got a fat bonus.",
+      "vo_text": "got a fat bonus.",
+      "stage": "bonus-scale",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ Wiles becomes the dominant judge of the scale"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "Hold the brass scale with its thin blank target-card pan and fat golden bonus-envelope pan, cropped cards foreground, and `qt-wiles`, `action-armscrossed`, `expr-deadpan`, behind it. Keep the warm brass, cream, tobacco, and muted-gold palette under hard amber light. Enlarge Wiles's held judging silhouette until his shoulders dominate the upper background while the scale remains fully readable below; only this changes; everything else exactly as established.",
+      "notes": "The final delta makes the reward conditional on Wiles, not on an abstract scale. [F-04]"
+    },
+    {
+      "id": "L72",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "Miss them, and your",
+      "vo_text": "Miss them, and",
+      "stage": "missed-target",
+      "stage_role": "base",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-armscrossed`, `expr-deadpan`, occupies a raised tobacco-brown judging platform at frame-right, facing left toward a mechanical quota board. Oblique wide view: foreground a small cream employee peg sits low on a brass track; midground the track stops below one red target notch; background Wiles towers beneath hard amber office light. Warm cream, brass, tobacco brown, and muted ochre dominate, with charcoal pressure shapes behind Wiles. The tiny peg has plainly stopped short of the red notch, leaving a deliberate strip of empty track between them.",
+      "notes": "The missed target is an object relationship; Wiles remains the institutional judge. [F-04]"
+    },
+    {
+      "id": "L73",
+      "duration_s": 1.9,
+      "synthetic": false,
+      "vo_ref": "your head was on",
+      "vo_text": "your head was",
+      "stage": "missed-target",
+      "stage_role": "delta",
+      "changed_elements": [
+        "employee peg flips from reward state to red termination state"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `action-armscrossed`, `expr-deadpan`, on the raised platform, the brass quota track, the low cream peg, the red target notch, and the empty gap between them. Keep the warm cream, brass, tobacco, and muted-ochre palette under hard amber light. Flip the small cream employee peg into a flat red termination marker hanging below the track; only this changes; everything else exactly as established.",
+      "notes": "One state change; red is used only for termination alarm. [F-04]"
+    },
+    {
+      "id": "L74",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "on the chopping block.",
+      "vo_text": "on the chopping block.",
+      "stage": "missed-target",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ wooden chopping block appears beneath the termination marker"
+      ],
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `action-armscrossed`, `expr-deadpan`, above the brass quota track, the missed red notch, and the red termination marker hanging below. Keep the warm cream, brass, tobacco, and muted-ochre palette under hard amber light. Add one clean round wooden chopping block directly beneath the dangling marker, presented as an office-display pedestal rather than an act of violence; only this changes; everything else exactly as established.",
+      "notes": "Analysis-not-gore idiom: an inert block and marker, with no body or weapon. [F-04]"
+    },
+    {
+      "id": "L75",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "And when you hit them,",
+      "vo_text": "And when you hit them,",
+      "stage": "raised-target-loop",
+      "stage_role": "base",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `point-at-thing`, `expr-smug`, stands stage-left in three-quarter view, holding his point at a wall-sized brass quota ratchet. Wide side vantage with a cropped gear tooth foreground, Wiles and one cream achievement bar aligned in the midground, and a tobacco-brown wall receding behind. Warm brass, cream, tobacco brown, and muted gold dominate under hard amber light. The cream bar rests exactly against one red target tooth, with generous blank wall above reserving room for the mechanism to climb.",
+      "notes": "Fresh mechanism base includes Wiles before any deltas and reserves vertical room for both raises. [F-04]"
+    },
+    {
+      "id": "L76",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "he raised them, so the",
+      "vo_text": "he raised them, so",
+      "stage": "raised-target-loop",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ new higher target tooth rises above the achieved bar"
+      ],
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `point-at-thing`, `expr-smug`, beside the brass quota ratchet, with the cropped gear tooth foreground, achieved cream bar midground, tobacco wall behind, and blank vertical room above. Keep the warm brass, cream, tobacco, and muted-gold palette under hard amber light. Raise one new red target tooth above the achieved bar, leaving the completed tooth fixed below; only this changes; everything else exactly as established.",
+      "notes": "First measured state change is a single higher target, not a whole chart redraw. [F-04]"
+    },
+    {
+      "id": "L77",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "the next quarter was even",
+      "vo_text": "the next quarter was even harder.",
+      "stage": "raised-target-loop",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ next-quarter target tooth rises higher again"
+      ],
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `point-at-thing`, `expr-smug`, the brass ratchet, the achieved cream bar, and the first raised red target tooth, with the same warm brass, cream, tobacco, and muted-gold palette under hard amber light. Add one further red target tooth at the top of the reserved wall space, visibly higher than the first while all lower states remain fixed; only this changes; everything else exactly as established.",
+      "notes": "Second and final delta completes the ratchet with one added target state. [F-04]"
+    },
+    {
+      "id": "L78",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "He once made two managers",
+      "vo_text": "He once made two managers",
+      "stage": "empty-manager-chairs",
+      "stage_role": "base",
+      "shot_class": "symbolic-stand-in-object",
+      "source": "ai-gen",
+      "still_prompt": "Wide high-corner view of an occupied-role meeting tableau without individuated people: foreground a cropped tobacco-brown conference table edge and two cream folders; midground two upright chairs each carry a plain manager's jacket over the back and a closed blank file on the seat; background a horseshoe of additional chairs and stacked files recedes under hard office light. Warm tobacco brown, cream, brass, and muted olive dominate, while charcoal shadows press inward. The paired dressed chairs read as two jobs summoned out of the group, with open floor held in front of them.",
+      "notes": "Figureless symbolic setup is earned by the paired roles as objects; the actual firing relationship arrives on the fresh cast-bearing base at L80. [Q-01]"
+    },
+    {
+      "id": "L79",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "stand up in the middle",
+      "vo_text": "stand up in the middle",
+      "stage": "empty-manager-chairs",
+      "stage_role": "delta",
+      "changed_elements": [
+        "hard meeting light isolates the two dressed chairs"
+      ],
+      "shot_class": "symbolic-stand-in-object",
+      "source": "ai-gen",
+      "still_prompt": "Hold the conference-table edge and cream folders foreground, the two jacketed manager chairs midground, and the horseshoe of chairs and files receding behind in warm tobacco, cream, brass, and muted olive. Narrow the hard amber ceiling light into one stark pool that isolates only the paired chairs and their open floor from the darker room; only this changes; everything else exactly as established.",
+      "notes": "One lighting-state change turns a mundane meeting arrangement into intimidation theater. [Q-01]"
+    },
+    {
+      "id": "L80",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "of a team meeting and fired them",
+      "vo_text": "of a team meeting and fired them on the spot,",
+      "stage": "control-firing",
+      "stage_role": "base",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-accuse`, `expr-deadpan`, stands large in the foreground at frame-left, facing right with his face clear and his held accusation aimed across the conference table. Midground, the table points toward a fully occupied rear row of managers; background, the genuine mass holds a stiff worried whole-body attitude behind real chair backs and tabletop overlap, every figure much smaller than Wiles and receding deeper toward the wall. Low diagonal room vantage; warm tobacco brown, cream, and muted olive dominate under hard amber office light, with charcoal pressure shadows and one red termination folder on the table as the semantic accent.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Reported intimidation scene, staged as relationship rather than likeness or humiliation. Rear-zone crowd is small through table-and-chair geometry and carries a worried attitude. [Q-01]"
+    },
+    {
+      "id": "L81",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "just to show everyone who",
+      "vo_text": "just to show everyone who was in control. What a dick.",
+      "stage": "control-firing",
+      "stage_role": "delta",
+      "changed_elements": [
+        "two spaces in the rear manager row become visibly vacant"
+      ],
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `action-accuse`, `expr-deadpan`, dominant foreground-left, the conference table receding through the midground, the red termination folder, and the small worried manager mass behind chair-back and tabletop overlap. Keep the warm tobacco, cream, and muted-olive room under hard amber light. Leave exactly two adjacent chairs in the rear manager row starkly vacant while the remaining crowd holds its stiff worried attitude around the gaps; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Crowd remains rear-zone and visibly smaller; the two vacancies are the one semantic change and carry the narrator's aside. [Q-01]"
+    },
+    {
+      "id": "L82",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "Now, the targets Wiles handed",
+      "vo_text": "Now, the targets Wiles handed out didn't care much",
+      "stage": "impossible-production",
+      "stage_role": "base",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "Wide oblique cutaway of a hard-drive production line treated as a physical argument. Foreground, a cropped honey-oak target block presses down from above; midground, a short row of cream drive cartons rides a brass conveyor through compact assembly stations; background, stocked shelves and muted-olive machines recede under hard amber factory light. Warm cream, honey oak, brass, tobacco brown, and muted olive dominate. The target block already spans the conveyor's full working width while the modest physical output remains plainly countable beneath it.",
+      "notes": "Exempt imbalance root; the subject is target capacity versus real production, so no figure is added. [F-23]"
+    },
+    {
+      "id": "L83",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "what the company could actually",
+      "vo_text": "what the company could actually build and sell.",
+      "stage": "impossible-production",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ target block extends beyond the production line's capacity"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "Hold the cropped honey-oak target block foreground, cream drive cartons and brass conveyor midground, stocked shelves and muted-olive machines behind, all under hard amber factory light in the same warm cream, honey-oak, brass, tobacco, and olive palette. Extend the single target block far past both ends of the complete production line so its overhang dominates the frame while output stays unchanged; only this changes; everything else exactly as established.",
+      "notes": "One qualitative scale change; the full line remains visible so the excess reads without a percentage. [F-23]"
+    },
+    {
+      "id": "L84",
+      "duration_s": 2.1,
+      "synthetic": false,
+      "vo_ref": "So four times a year,",
+      "vo_text": "So four times a year,",
+      "place": "miniscribe-building",
+      "stage": "conference-variant",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L84.png",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "Cast-free wide corner view of the established conference-room variant at working occupancy. Foreground, one cropped teal chair back and the tobacco-brown edge of the long table frame the view; midground, matched chairs, plain cream folders, and two closed unlettered file boxes occupy the full table; background, a coat stand, closed door, and winter parking-lot windows complete the room, with every visible wall and door surface blank and unlettered. Warm cream, tobacco brown, and muted teal dominate under firm amber ceiling light; the only cool tone is winter daylight entering through the glass. Clear table depth and repeated chairs reserve real geometry for the manager meeting to follow.",
+      "notes": "Approved cast-free L84 conference variant reused as a non-plate place anchor; cool is confined to motivated winter window light."
+    },
+    {
+      "id": "L85",
+      "duration_s": 3.0,
+      "synthetic": false,
+      "vo_ref": "a room full of middle",
+      "vo_text": "a room full of middle managers in Colorado sat there needing a number they didn't have, and wrote one down anyway.",
+      "place": "miniscribe-building",
+      "stage": "number-room",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L84.png",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "still_prompt": "Wide table-height view inside the established conference room. Foreground, a large blank cream count sheet and untouched pencil occupy the near table corner; midground, the long tobacco-brown table and repeating teal chair backs lead toward a genuine mass of managers; background, the managers sit small and receding behind the real table-and-chair geometry, leaning together with worried faces and a reluctant whole-body huddle, while winter windows sit beyond them. Warm cream, tobacco brown, muted teal, and ochre dominate under firm amber ceiling light; pale blue exists only in the exterior daylight. The blank sheet in the foreground is the missing number the whole room is being pushed to invent.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The plural managers are genuine mass action. Rear-zone crowd is small through a long table, repeated chair backs, overlap, and recession; its worried attitude is explicitly authored. [F-23]"
+    },
+    {
+      "id": "L86",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "Then in January 1987,",
+      "vo_text": "Then in January 1987,",
+      "place": "miniscribe-building",
+      "stage": "warehouse-variant",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "Cast-free wide central-aisle view of the established warehouse variant at working occupancy. Foreground, cropped pallet corners and yellow floor lanes pull inward; midground, tall steel racks carry cream, ochre, and tobacco cartons on both sides; background, the aisle terminates at a warm cream wall beneath firm industrial light. Warm cream, ochre, tobacco brown, muted brass, and warm charcoal dominate; cooler light exists only inside the overhead fixtures. The far ownership mark is red ink and reads exactly \"MINISCRIBE\", while every carton face remains blank and unlettered.",
+      "notes": "Approved cast-free L86 warehouse variant reused. The established owner literal is carried character-for-character where the anchored view redraws it. [F-01] [F-11]"
+    },
+    {
+      "id": "L87",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "MiniScribe's outside accountants came in",
+      "vo_text": "MiniScribe's outside accountants came in",
+      "place": "miniscribe-building",
+      "stage": "auditors-arrive",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png",
+      "shot_class": "crowd-multiplication",
+      "source": "ai-gen",
+      "still_prompt": "A genuine group of outside accountants enters the established warehouse aisle carrying plain charcoal cases, their restrained work clothes and focused deadpan expressions making the group read as one arriving audit team. Low aisle vantage: a cropped pallet corner and yellow lane mark the foreground, the accountants occupy the broad midground, and further members recede smaller behind stocked cream-and-tobacco racks beneath the far red-ink ownership mark reading exactly \"MINISCRIBE\". Warm cream, ochre, tobacco brown, muted brass, and warm charcoal dominate under firm industrial light. The arriving accounting team fills the aisle without hiding its working depth.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The plural outside accountants are staged as genuine collective action on a fresh base, not collapsed into a named lead. [F-11]"
+    },
+    {
+      "id": "L88",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "to audit the books, which means",
+      "vo_text": "to audit the books, which means",
+      "place": "miniscribe-building",
+      "stage": "auditors-arrive",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one counting station appears beside the arriving accountants"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine outside-accountant group entering the established warehouse aisle, with cropped pallet foreground, accountants across the broad midground, and further deadpan members receding smaller behind stocked cream-and-tobacco racks under firm industrial light. Keep the warm cream, ochre, tobacco, brass, and warm-charcoal palette and the far ownership mark reading exactly \"MINISCRIBE\". Add one waist-high counting station beside the group with a blank ledger, pencil cup, and compact adding machine, every glyph surface plain and unlettered; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One integrative station addition; the plural team remains the performing subject and the books remain blank rather than fabricating values. [F-11]"
+    },
+    {
+      "id": "L89",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "somebody counts what your books say",
+      "vo_text": "somebody counts what your books say is sitting in the warehouse.",
+      "place": "miniscribe-building",
+      "stage": "auditors-arrive",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ blank counting ledgers appear across every station"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine outside-accountant group around the counting station in the established warehouse, with cropped pallet foreground, the focused team across the broad midground, and further deadpan members receding smaller behind stocked cream-and-tobacco racks under firm industrial light. Keep the warm cream, ochre, tobacco, brass, and warm-charcoal palette and the far ownership mark reading exactly \"MINISCRIBE\". Add blank ruled counting ledgers across every station in the occupied aisle, all paper surfaces unlettered; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The plural accounting team performs the count collectively; the second delta adds only the blank ledgers. [F-11]"
+    },
+    {
+      "id": "L90",
+      "duration_s": 2.5,
+      "synthetic": false,
+      "vo_ref": "So the accountants set up in the building,",
+      "vo_text": "So the accountants set up in the building,",
+      "place": "miniscribe-building",
+      "stage": "books-versus-shelves",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "A genuine group of accountants sets up beside one loaded warehouse bay, holding blank count sheets and compact adding machines with focused deadpan expressions and an orderly group attitude. Medium-wide side vantage: a cropped carton corner fills the foreground, the accounting team and one full rack bay share the midground, and further members recede smaller behind warm-toned racks beneath the far ownership mark reading exactly \"MINISCRIBE\". Warm cream, ochre, tobacco brown, muted brass, and warm charcoal dominate under firm industrial light. The pristine blank papers sit visibly smaller than the physical wall of cartons they claim to describe.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Fresh collective-accountant base for the comparison mechanism; class stays non-exempt so the approved warehouse place can anchor it. [F-11]"
+    },
+    {
+      "id": "L91",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "everybody started counting, and all",
+      "vo_text": "everybody started counting, and all",
+      "place": "miniscribe-building",
+      "stage": "books-versus-shelves",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one sampled shelf bay is physically bracketed"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine accountant group beside the loaded bay, with cropped carton foreground, the focused team and rack midground, further members receding smaller behind warm-toned racks, and blank count sheets smaller than the physical stock. Keep the warm cream, ochre, tobacco, brass, and warm-charcoal palette under firm industrial light and the far ownership mark reading exactly \"MINISCRIBE\". Add one chunky muted-brass counting bracket around a single sample bay, its surface plain and unlettered; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One physical sample marker evokes collective counting without claiming every box was checked. [F-11]"
+    },
+    {
+      "id": "L92",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "those numbers the managers had been writing down",
+      "vo_text": "those numbers the managers had been writing down finally got held up",
+      "place": "miniscribe-building",
+      "stage": "books-versus-shelves",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ paper total visibly diverges from the sampled shelf total"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine accountant group beside the bracketed sample bay, with cropped carton foreground, the focused team and loaded rack midground, blank sheets in their hands, and further members receding smaller behind warm-toned racks. Keep the warm cream, ochre, tobacco, brass, and warm-charcoal palette under firm industrial light and the far ownership mark reading exactly \"MINISCRIBE\". Extend the blank papers' ruled tally edges into one tall cream paper stack while the bracketed physical shelf remains visibly short, creating one clean divergence between claimed total and stock; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The managers' claimed paper total is held against stock by the genuine accounting team without inventing a numeral. [F-11] [F-12]"
+    },
+    {
+      "id": "L93",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "against what was actually on",
+      "vo_text": "against what was actually on the shelves.",
+      "stage": "four-million-gap",
+      "stage_role": "base",
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "still_prompt": "Wide frontal object tableau with a giant open cream ledger forming the floor of a warehouse-scale balance. Foreground, a cropped ledger corner and thick blank ruled pages create depth; midground, one compact mass of ochre drive cartons occupies the left page while the right page holds a matching empty carton footprint; background, a tobacco-brown shelf silhouette and hard amber light isolate the comparison. Warm cream, ochre, tobacco brown, brass, and warm charcoal dominate. The empty footprint is exactly the same shape as the missing carton mass, turning the ledger into a physical inventory claim.",
+      "notes": "Exempt object root establishes the referent before the sourced amount appears. [F-08]"
+    },
+    {
+      "id": "L94",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "Four million dollars of product",
+      "vo_text": "Four million dollars of product that was",
+      "stage": "four-million-gap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ sourced four-million-dollar gap opens in the ledger"
+      ],
+      "shot_class": "number-glued-to-object",
+      "source": "ai-gen",
+      "still_prompt": "Hold the giant open cream ledger, cropped page corner foreground, compact ochre carton mass on the left page, matching empty footprint on the right, tobacco shelf silhouette behind, and hard amber light in the warm cream, ochre, tobacco, brass, and warm-charcoal palette. Open the empty footprint into one deep red inventory gap whose inner edge alone reads exactly \"FOUR MILLION\"; only this changes; everything else exactly as established.",
+      "notes": "One semantic gap addition with the sourced amount glued to its referent; red is reserved for missing-inventory alarm. [F-08]"
+    },
+    {
+      "id": "L95",
+      "duration_s": 2.2,
+      "synthetic": false,
+      "vo_ref": "supposed to be sitting there,",
+      "vo_text": "supposed to be sitting there, wasn't.",
+      "stage": "four-million-gap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "the missing-inventory side becomes the dominant empty mass"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "Hold the giant cream ledger, cropped page foreground, compact ochre carton mass at left, red gap at right, tobacco shelf silhouette behind, and hard amber light in the warm cream, ochre, tobacco, brass, and warm-charcoal palette. Expand the red gap until it owns the entire right page and dwarfs the surviving stock, its inner edge still reading exactly \"FOUR MILLION\"; only this changes; everything else exactly as established.",
+      "notes": "Completion state is explicit and the carried literal is re-quoted character-for-character. [F-08]"
+    },
+    {
+      "id": "L96",
+      "duration_s": 1.5,
+      "synthetic": false,
+      "vo_ref": "Awkward.",
+      "vo_text": "Awkward.",
+      "place": "miniscribe-building",
+      "stage": "awkward-gap",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-armscrossed`, `expr-deadpan`, stands frame-left facing right; `brick-foreman`, `action-recoil`, `expr-caught`, stands frame-right facing left, his face clear of the nearby rack. Both occupy the same midground plane at a matching eye-line and equal relative head scale, separated by one empty pallet footprint. Medium-wide warehouse-aisle view with a cropped blank count sheet on a carton in the foreground, the two men and empty footprint midground, and warm stocked racks receding behind. Warm cream, ochre, tobacco brown, and warm charcoal dominate under firm industrial light; the empty space between them bears the accusation.",
+      "notes": "Fresh two-cast base; explicit plane, eye-line, and relative-head-scale topology. The gap, not dialogue or lettering, carries the awkwardness. [F-08]"
+    },
+    {
+      "id": "L97",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "And coming up short like that",
+      "vo_text": "And coming up short like that",
+      "place": "miniscribe-building",
+      "stage": "awkward-gap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "brick-foreman's expression changes from caught to fear"
+      ],
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "still_prompt": "Hold `auditor-rep`, `action-armscrossed`, `expr-deadpan`, frame-left and `brick-foreman`, `action-recoil`, frame-right on the same midground plane, matching eye-line, and equal relative head scale, with cropped blank sheet foreground, empty pallet footprint between them, and warm stocked racks behind. Keep the warm cream, ochre, tobacco, and warm-charcoal palette under firm industrial light. Change only `brick-foreman` to `expr-fear`, his recoil and the two-body geometry fixed; only this changes; everything else exactly as established.",
+      "notes": "One seeded expression change; the firing threat lands on the person it pressures. [F-04] [F-23]"
+    },
+    {
+      "id": "L98",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "meant somebody was getting fired,",
+      "vo_text": "meant somebody was getting fired,",
+      "stage": "better-number",
+      "stage_role": "base",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-paper-by-sides`, `expr-worried`, stands alone behind a narrow tobacco-brown worktable, holding the real cream count sheet square to the viewer while its ruled fields remain blank and unlettered. Slight high-angle body-scale view: foreground a cropped red termination folder hangs over the table edge, midground the foreman and sheet sit under hard amber light, and a bare warm-charcoal wall leaves pressure space behind him. Warm cream, tobacco brown, ochre, and muted brass dominate. The truthful sheet is physically thin and small against the termination folder below it.",
+      "notes": "Fresh single-cast base; the human decision bears the frame, with no fabricated numeral. [F-12] [F-23]"
+    },
+    {
+      "id": "L99",
+      "duration_s": 2.0,
+      "synthetic": false,
+      "vo_ref": "so instead of reporting it,",
+      "vo_text": "so instead of reporting it,",
+      "stage": "better-number",
+      "stage_role": "delta",
+      "changed_elements": [
+        "better-number sheet replaces the real sheet"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "Hold `brick-foreman`, `hold-paper-by-sides`, `expr-worried`, behind the tobacco worktable, the cropped red termination folder foreground, and the bare warm-charcoal wall behind under hard amber light in the same warm cream, tobacco, ochre, and brass palette. Replace the thin real sheet in his held pose with one thicker cream sheet whose single upward bar is bold but unnumbered, every other field blank and unlettered; only this changes; everything else exactly as established.",
+      "notes": "The exact figure remains omitted; the one changed object is the falsified sheet. [F-12]"
+    },
+    {
+      "id": "L100",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "they wrote down a better number.",
+      "vo_text": "they wrote down a better number.",
+      "stage": "better-number",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ termination pressure shadow dominates the wall"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "Hold `brick-foreman`, `hold-paper-by-sides`, `expr-worried`, with the thick unnumbered better sheet, tobacco worktable, cropped red termination folder, and bare wall under hard amber light in the warm cream, tobacco, ochre, and brass palette. Cast one enormous red chopping-block-shaped shadow up the wall behind him until it owns the background while his body and sheet remain fixed; only this changes; everything else exactly as established.",
+      "notes": "The single red pressure shape makes survival, not arithmetic, the cause of the falsification. [F-04] [F-12] [F-23]"
+    },
+    {
+      "id": "L101",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "The real sheets were locked",
+      "vo_text": "The real sheets were locked in the accountants' own boxes,",
+      "stage": "lockbox-breakin",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "A genuine small group of worried managers gathers around a waist-high tobacco-brown table holding three locked charcoal accountant boxes, their restrained office clothes and tense hunched attitude reading as collective concealment. Medium-wide three-quarter vantage: a cropped table corner creates foreground depth, the managers and locked boxes fill the midground, and plain cream shelving plus a hard amber work lamp complete the background. Warm cream, tobacco brown, ochre, brass, and warm charcoal dominate. Every latch faces the group, and every lid and paper surface is blank and unlettered.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Fresh crowd base for the plural managers' break-in; the tools remain undisclosed until their own line. [F-12]"
+    },
+    {
+      "id": "L102",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "so they popped the boxes",
+      "vo_text": "so they popped the boxes open",
+      "stage": "lockbox-breakin",
+      "stage_role": "delta",
+      "changed_elements": [
+        "all accountant-box locks open entirely"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine worried manager group around the tobacco-brown table, with the cropped table corner foreground, three locked charcoal accountant boxes and managers midground, and plain cream shelves plus hard amber work lamp behind in the warm cream, tobacco, ochre, brass, and warm-charcoal palette. Turn every box latch entirely to the open position and lift all lids just clear of their rims; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "One completed lock-state change across the plural boxes; the collective managers remain the performing subject. [F-12]"
+    },
+    {
+      "id": "L103",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "with Allen wrenches and paper clips,",
+      "vo_text": "with Allen wrenches and paper clips,",
+      "stage": "lockbox-breakin",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ Allen wrenches and paper clips appear beside the opened boxes"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "Hold the genuine worried manager group around the tobacco-brown table, with the cropped table corner foreground, three entirely opened charcoal accountant boxes and managers midground, and plain cream shelves plus hard amber work lamp behind in the warm cream, tobacco, ochre, brass, and warm-charcoal palette. Add short Allen wrenches and bent paper clips laid beside the open latches, all tools fully visible at table scale; only this changes; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "Second and final delta adds the newly disclosed tools; the real count sheet remains for the following sheet-swap stage. [F-12]"
+    },
+    {
+      "id": "L104",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "took the real count out",
+      "vo_text": "took the real count out",
+      "stage": "sheet-swap",
+      "stage_role": "base",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "`brick-foreman`, `hold-paper-by-sides`, `expr-caught`, stands behind a low cream audit cabinet, holding the real count sheet flat at chest height while its ruled fields remain blank and unlettered. Medium high three-quarter view: foreground the open cabinet edge and two clearly separated document slots are fully visible; midground the foreman and held sheet remain at body scale; background a tobacco-brown wall and hard amber lamp leave the scene uncluttered. Warm cream, tobacco brown, ochre, brass, and warm charcoal dominate. The audited slot is plainly empty, with enough clean space reserved for one incoming sheet.",
+      "notes": "Fresh re-base for the pose and slot geometry; the incoming sheet is absent until its VO line. [F-12]"
+    },
+    {
+      "id": "L105",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "and put the fake one in,",
+      "vo_text": "and put the fake one in, and blamed the whole gap on a typo.",
+      "stage": "sheet-swap",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ fake sheet occupies the empty audited slot"
+      ],
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "Hold `brick-foreman`, `hold-paper-by-sides`, `expr-caught`, with the real blank count sheet at chest height, open cream audit cabinet foreground, two document slots visible, tobacco wall behind, and hard amber lamp in the warm cream, tobacco, ochre, brass, and warm-charcoal palette. Insert one thicker fake sheet into the formerly empty audited slot, its ruled columns slightly transposed but every glyph field blank and unlettered; only this changes; everything else exactly as established.",
+      "notes": "The fake sheet is added into pre-reserved empty space, avoiding an exact whole-frame replacement; the transposed ruling carries the typo excuse without invented text. [F-12]"
+    },
+    {
+      "id": "L106",
+      "duration_s": 3.8,
+      "synthetic": false,
+      "vo_ref": "The audit came back clean.",
+      "vo_text": "The audit came back clean. Not exactly Ocean's Eleven level, but pretty close.",
+      "stage": "clean-audit",
+      "stage_role": "base",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-present`, `expr-deadpan`, stands centered at the exit of a warm institutional corridor, presenting one closed cream audit report whose cover is completely blank and unlettered. Medium-low body-scale view: foreground a single bent paper clip lies absurdly tiny on the tobacco-brown floor; midground the auditor and pristine report sit under hard amber light; background a row of locked charcoal file boxes recedes toward the warehouse door. Warm cream, tobacco brown, ochre, and warm charcoal dominate. The immaculate report and toy-sized paper clip form the entire dry heist counterpoint.",
+      "notes": "Standalone base: the false clean result is the payload, with a generic heist counterpoint rather than named-film imagery. [F-12] [F-13]"
+    },
+    {
+      "id": "L107",
+      "duration_s": 2.4,
+      "synthetic": false,
+      "vo_ref": "But a clean audit doesn't lower",
+      "vo_text": "But a clean audit doesn't lower",
+      "stage": "target-ratchet",
+      "stage_role": "base",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "`qt-wiles`, `action-powerstance`, `expr-smug`, stands centered behind a tall brass ratchet press, facing front with his face clear above the mechanism. Low wide tableau with a cropped gear tooth foreground, a compressed stack of blank cream target cards in the midground press, and Wiles filling the tobacco-brown background. Warm brass, cream, tobacco brown, and muted ochre dominate under hard amber light, while one red target block sits at the top of the press. Blank vertical space above the card stack reserves room for both the quota and the fiction to climb.",
+      "notes": "Fresh Wiles base before the two ratchet deltas; all card faces remain unlettered. [F-04] [F-23]"
+    },
+    {
+      "id": "L108",
+      "duration_s": 2.3,
+      "synthetic": false,
+      "vo_ref": "next quarter's target, it raises it.",
+      "vo_text": "next quarter's target, it raises it.",
+      "stage": "target-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ red target block ratchets upward"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `action-powerstance`, `expr-smug`, behind the brass ratchet press, with cropped gear foreground, blank cream card stack midground, tobacco wall behind, and the warm brass, cream, tobacco, and ochre palette under hard amber light. Ratchet the single red target block one full tooth upward into the reserved space while the card stack stays fixed; only this changes; everything else exactly as established.",
+      "notes": "One mechanical target raise, with red used only for quota alarm. [F-04] [F-23]"
+    },
+    {
+      "id": "L109",
+      "duration_s": 2.8,
+      "synthetic": false,
+      "vo_ref": "So the fake numbers had to keep climbing too,",
+      "vo_text": "So the fake numbers had to keep climbing too,",
+      "stage": "target-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ fake-number card stack rises after the target"
+      ],
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "still_prompt": "Hold `qt-wiles`, `action-powerstance`, `expr-smug`, the brass press, raised red target block, cropped gear foreground, tobacco wall behind, and the warm brass, cream, tobacco, and ochre palette under hard amber light. Grow the compressed blank cream card stack upward until it nearly reaches the raised target block, each card marked only by one unnumbered rising bar; only this changes; everything else exactly as established.",
+      "notes": "Second and final delta makes the false paper chase the raised quota without inventing values. [F-23]"
+    },
+    {
+      "id": "L110",
+      "duration_s": 2.7,
+      "synthetic": false,
+      "vo_ref": "and a swapped count sheet",
+      "vo_text": "and a swapped count sheet wasn't going to carry that much weight. They needed product.",
+      "place": "miniscribe-building",
+      "stage": "need-product",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L86.png",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "still_prompt": "`auditor-rep`, `action-armscrossed`, `expr-skeptical`, stands frame-left in the established warehouse aisle, facing right toward an empty pallet reserve with his face unobscured. Wide side vantage: foreground one thin blank count sheet bends over the edge of a cropped pallet jack; midground the auditor and empty yellow-outlined pallet space share the frame; background warm cream, ochre, and tobacco cartons recede behind steel racks. Warm cream, ochre, tobacco brown, muted brass, and warm charcoal dominate under firm industrial light. The flimsy sheet cannot occupy the full pallet-sized absence in front of him.",
+      "notes": "Fresh auditor base on the approved warehouse variant; the object/place mechanism bears the need for physical product. [F-11] [F-23]"
+    },
+    {
+      "id": "L111",
+      "duration_s": 2.6,
+      "synthetic": false,
+      "vo_ref": "Something an auditor could walk",
+      "vo_text": "Something an auditor could walk up to, put his hands on, and tick off a list.",
+      "place": "miniscribe-building",
+      "stage": "need-product",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ inspection-height pallet checklist target appears"
+      ],
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "still_prompt": "Hold `auditor-rep`, `action-armscrossed`, `expr-skeptical`, frame-left facing the empty yellow-outlined pallet reserve, with thin blank sheet on the cropped pallet jack foreground, warm stocked racks behind, and the warm cream, ochre, tobacco, brass, and warm-charcoal palette under firm industrial light. Add one inspection-height cream pallet frame inside the reserved outline, carrying a chunky sideboard of empty check squares with every glyph field blank and unlettered, within easy body-scale reach of the auditor; only this changes; everything else exactly as established.",
+      "notes": "One physical inspection target appears; the auditor was already present on the base, so no seeded entrance occurs on a delta. [F-11]"
+    }
+  ]
+}

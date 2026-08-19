@@ -1,0 +1,955 @@
+{
+  "shots": [
+    {
+      "id": "L112",
+      "synthetic": false,
+      "duration_s": 4.1,
+      "vo_ref": "So the managers put their heads together",
+      "vo_text": "So the managers put their heads together and came up with a brilliant plan.",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "managers-plan",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "Viewed from the planning room's window gallery, a long diagonal table cuts across the parquet below while tall sash windows, file alcoves, and an untouched sweep of floor establish the Colorado office. Worried middle managers in late-1980s shirts and muted ties gather tightly at the table; smaller tense clusters hover under the windows and between chair backs. Every body angles toward one blank sheet at the table's center, making the collective decision the payload.",
+      "notes": "Managers remain the performing subject; the warehouse is undisclosed. [F-23]"
+    },
+    {
+      "id": "L113",
+      "synthetic": false,
+      "duration_s": 4.1,
+      "vo_ref": "They rented a warehouse near headquarters, and",
+      "vo_text": "They rented a warehouse near headquarters, and went shopping at a local company:",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "offsite-warehouse",
+      "stage_role": "base",
+      "still_prompt": "A rented concrete warehouse stretches from a raised loading threshold to three distant roller doors, its roof trusses dividing a broad volume of open floor from occupied packing bays along the walls. Kraft cartons, two worktables, a pallet jack, and stacked supplies establish a concealed operation under sodium lamps, while pale evening light enters through high windows. An unmarked route sheet and one clay sample wait on the nearest table, linking the newly disclosed space to an unnamed local supplier.",
+      "notes": "Warehouse appears only after the narration says it was rented; supplier branding remains undisclosed. [F-06]"
+    },
+    {
+      "id": "L114",
+      "synthetic": false,
+      "duration_s": 2.3,
+      "vo_ref": "the Colorado Brick Company. They bought 26,000",
+      "vo_text": "the Colorado Brick Company.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "place": "colorado-brick-company",
+      "stage": "brick-yard-plate",
+      "stage_role": "base",
+      "place_owner": "COLORADO BRICK",
+      "still_prompt": "A ground-level wide from beside a kiln mouth looks across a working brick yard: a loaded wheelbarrow crops the foreground, staggered clay stacks step toward open drying sheds, and two kiln chimneys rise beyond an uninterrupted band of sky. Dusty ochre ground, cream timber, muted blue distance, bricks, and tools carry the industrial scale. The dark-brown entrance board reads exactly \"COLORADO BRICK\".",
+      "notes": "Cast-free recurring-place plate at working occupancy; owner literal is sourced. [F-06]"
+    },
+    {
+      "id": "L115",
+      "synthetic": false,
+      "duration_s": 2.7,
+      "vo_ref": "They bought 26,000 bricks, handpicked to match",
+      "vo_text": "They bought 26,000 bricks,",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "place": "colorado-brick-company",
+      "place_anchor": "assets/scenes/L114.png",
+      "stage": "brick-purchase",
+      "stage_role": "base",
+      "still_prompt": "Framed low from behind a cropped brick stack, the kiln forecourt opens between a loading ramp and cream drying sheds under broad afternoon sky. `brick-foreman`, `action-offering`, `expr-worried`, and `brick-co-seller`, `action-offering`, `expr-deadpan`, stand on the same sunlit forecourt plane, facing each other at a matching eye-line and equal head scale; the pale kiln wall isolates their profiles while `handoff` holds one blank purchase sheet between them. Towering stock stacks and loaded wheelbarrows make the transaction feel small beside the purchase.",
+      "notes": "Fresh two-cast base; the mass conveys 26,000 without asking the renderer to letter a number. [F-05] [F-06]"
+    },
+    {
+      "id": "L116",
+      "synthetic": false,
+      "duration_s": 1.6,
+      "vo_ref": "handpicked to match the weight and size",
+      "vo_text": "handpicked to match the weight and size",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "weight-size-match",
+      "stage_role": "base",
+      "still_prompt": "A long calibration hall is organized by floor grids, overhead measuring rails, and two isolated plinths with open space around their silhouettes. One rust-red brick occupies the left plinth and one closed carton sized for `prop-drive` occupies the right, each centered beneath a brass dimension frame. The unequal raw materials wait inside identical architectural bays, making comparison rather than clutter the payload.",
+      "notes": "Object-led comparison; exact matching is not yet delivered. [F-07]"
+    },
+    {
+      "id": "L117",
+      "synthetic": false,
+      "duration_s": 2.2,
+      "vo_ref": "of a real boxed hard drive. They",
+      "vo_text": "of a real boxed hard drive.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "weight-size-match",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ dimension frames align around both objects"
+      ],
+      "still_prompt": "The calibration hall holds its floor grids, overhead rails, open void, brick on the left plinth, and `prop-drive` carton on the right. Both brass dimension frames now align to one shared height and width around the two silhouettes; only this changes, everything else exactly as established.",
+      "notes": "One feasible alignment change completes the size comparison. [F-07]"
+    },
+    {
+      "id": "L118",
+      "synthetic": false,
+      "duration_s": 1.7,
+      "vo_ref": "They put the bricks in boxes, gave",
+      "vo_text": "They put the bricks in boxes,",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "serial-boxing",
+      "stage_role": "base",
+      "still_prompt": "A body-scale side view crosses a packing bench beneath steel trusses, with an open carton fixed under a task lamp, finished cartons stacked in square wall cubbies, and a roller shutter beyond the benches. `brick-foreman`, `action-present`, `expr-worried`, stands three-quarter right against the pale shutter, presenting the open carton; a rust-red brick is already seated fully inside it, visible between the folded flaps. The completed brick-in-box state bears the packing beat.",
+      "notes": "Completed brick-in-box tableau; the open carton stays fixed on the bench. [F-05] [F-07]"
+    },
+    {
+      "id": "L119",
+      "synthetic": false,
+      "duration_s": 1.7,
+      "vo_ref": "gave each one a serial number, because",
+      "vo_text": "gave each one a serial number,",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "serial-boxing",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ one blank cream paper tab attaches to the carton"
+      ],
+      "still_prompt": "The trussed packing bay, task-lit bench, open carton containing its seated brick, wall cubbies, and `brick-foreman`, `action-present`, `expr-worried`, remain fixed. A cream paper tab, its entire surface blank and unlettered, now attaches to the carton's side; only this changes, everything else exactly as established.",
+      "notes": "The supplied-text risk is resolved through a positively blank tag surface. [F-05]"
+    },
+    {
+      "id": "L120",
+      "synthetic": false,
+      "duration_s": 2.3,
+      "vo_ref": "because hard drives have serial numbers, and",
+      "vo_text": "because hard drives have serial numbers,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "serial-boxing",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ matching blank paper tabs repeat across the finished cartons"
+      ],
+      "still_prompt": "Steel trusses, the task-lit bench, `brick-foreman`, `action-present`, `expr-worried`, and the open carton with its seated brick and blank cream paper tab hold steady. Matching paper tabs, every surface blank and unlettered, now repeat across the finished cartons stacked in the square wall cubbies; only this changes, everything else exactly as established.",
+      "notes": "Serial-number logic is visible without fabricated glyphs. [F-05]"
+    },
+    {
+      "id": "L121",
+      "synthetic": false,
+      "duration_s": 2.5,
+      "vo_ref": "and shrink wrapped them onto pallets, premium",
+      "vo_text": "and shrink wrapped them onto pallets,",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "pallet-booking",
+      "stage_role": "base",
+      "still_prompt": "A loading shed is divided by heavy timber posts into deep pallet bays, with one ordinary timber pallet isolated under a hanging work lamp and ample floor around it. Three tiers of identical kraft cartons form a countable brick on the pallet, their edges squared and every panel blank. Clear shrink film binds the entire load into one rigid shipping unit.",
+      "notes": "Ordinary pallet remains concrete prose under FLAGGED-NEED #2. [F-07]"
+    },
+    {
+      "id": "L122",
+      "synthetic": false,
+      "duration_s": 1.8,
+      "vo_ref": "premium Colorado clay sitting on the books",
+      "vo_text": "premium Colorado clay sitting on the books",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "pallet-booking",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ ledger-shaped platform appears beneath the pallet"
+      ],
+      "still_prompt": "The timber-post loading shed holds the isolated, fully wrapped pallet of blank kraft cartons beneath its work lamp. A giant cream ledger-shaped platform with ruled but unlettered surfaces now supports the pallet from below; only this changes, everything else exactly as established.",
+      "notes": "The physicalized books remain blank; no unsourced value is drawn. [F-08]"
+    },
+    {
+      "id": "L123",
+      "synthetic": false,
+      "duration_s": 1.7,
+      "vo_ref": "as inventory. Perfectly indistinguishable. My Peloton bike",
+      "vo_text": "as inventory.",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "pallet-booking",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brass inventory bay closes around the ledger platform"
+      ],
+      "still_prompt": "Timber posts, the work lamp, wrapped kraft load, and blank ledger platform remain fixed in the loading shed. A brass warehouse bay now closes neatly around the platform and pallet as an inventory slot; only this changes, everything else exactly as established.",
+      "notes": "The object enters inventory without fabricated lettering. [F-08]"
+    },
+    {
+      "id": "L124",
+      "synthetic": false,
+      "duration_s": 2.1,
+      "vo_ref": "Perfectly indistinguishable. My Peloton bike is a",
+      "vo_text": "Perfectly indistinguishable.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "indistinguishable-boxes",
+      "stage_role": "base",
+      "still_prompt": "A quiet inspection gallery uses twin archways, mirrored lamp pools, and two bare stone plinths separated by a broad strip of empty floor. One sealed kraft drive carton stands on each plinth, their dimensions, seams, weight dials, and blank surfaces perfectly matched from the outside. Symmetry makes the two closed boxes externally indistinguishable.",
+      "notes": "Closed exteriors deliver the payoff; contradictory contents stay hidden. [F-07]"
+    },
+    {
+      "id": "L125",
+      "synthetic": false,
+      "duration_s": 1.8,
+      "vo_ref": "My Peloton bike is a scam, but",
+      "vo_text": "My Peloton bike is a scam, but these",
+      "shot_class": "symbolic-stand-in-object",
+      "source": "ai-gen",
+      "stage": "peloton-cutaway",
+      "stage_role": "base",
+      "hard_cut": true,
+      "still_prompt": "An intimate three-quarter view in a modern exercise studio puts a generic stationary bicycle's flywheel and an absurdly oversized brass coin chute across the lower foreground. Tall window bays and a long polished floor open behind the machine under one cool morning light pool. The mundane billing apparatus carries the scam aside.",
+      "notes": "Generic modern cutaway; no branded likeness or unsupported text."
+    },
+    {
+      "id": "L126",
+      "synthetic": false,
+      "duration_s": 2.2,
+      "vo_ref": "guys? Next level. This was Ocean's Eleven",
+      "vo_text": "guys? Next level.",
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "stage": "peloton-cutaway",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ freight-pallet shadow towers behind the bicycle"
+      ],
+      "still_prompt": "The tall-windowed exercise studio, open floor, generic stationary bicycle, brass coin chute, and cool lamp pool remain fixed. A huge squared freight-pallet shadow now towers on the wall behind the bicycle; only this changes, everything else exactly as established.",
+      "notes": "The scale jump answers 'next level' without introducing the heist setting early."
+    },
+    {
+      "id": "L127",
+      "synthetic": false,
+      "duration_s": 2.8,
+      "vo_ref": "This was Ocean's Eleven level stuff. Then",
+      "vo_text": "This was Ocean's Eleven level stuff.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "heist-upgrade",
+      "stage_role": "base",
+      "hard_cut": true,
+      "still_prompt": "A low-angle wide from the floor of a mock-security hall looks past a cropped museum rope toward brass laser frames, high catwalks, and one carton pedestal under a vast dark ceiling. `brick-foreman`, `action-present`, `expr-deadpan`, stands on the raised security dais, his head backed by a blank lit panel as he presents a brick-shaped token beside an absurdly meticulous blank caper board. The enormous apparatus devoted to one carton supplies the premium-heist joke.",
+      "notes": "Evergreen visual pun; no copyrighted character likeness."
+    },
+    {
+      "id": "L128",
+      "synthetic": false,
+      "duration_s": 1.7,
+      "vo_ref": "Then they shipped it, because a pallet",
+      "vo_text": "Then they shipped it, because a pallet sitting",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "sales-demand",
+      "stage_role": "base",
+      "still_prompt": "From the truck apron, a low diagonal view looks up a raised loading ramp toward six warehouse doors and a side mezzanine under open sky. One wrapped pallet waits at the ramp lip in the foreground while trucks occupy the farther doors. `qt-wiles`, `point-at-thing`, `expr-smug`, stands above on the mezzanine, three-quarter toward the camera against a pale wall, his held point targeting the pallet at the threshold. Ramp, door, and pallet turn shipment into a visible crossing.",
+      "notes": "Fresh Wiles base; shipment is a held threshold tableau. [F-09]"
+    },
+    {
+      "id": "L129",
+      "synthetic": false,
+      "duration_s": 2.2,
+      "vo_ref": "in your own warehouse isn't a sale,",
+      "vo_text": "in your own warehouse isn't a sale,",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "sales-demand",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ wrapped pallet moves fully beyond the warehouse threshold"
+      ],
+      "still_prompt": "The raised loading ramp, six warehouse doors, waiting trucks, wrapped pallet, and `qt-wiles`, `point-at-thing`, `expr-smug`, on the side mezzanine retain their scale and positions. The wrapped pallet now sits entirely beyond the warehouse threshold on the outdoor truck apron; only this changes, everything else exactly as established.",
+      "notes": "One location change separates warehouse stock from a sale. [F-09]"
+    },
+    {
+      "id": "L130",
+      "synthetic": false,
+      "duration_s": 2.4,
+      "vo_ref": "and Wiles wanted sales. Some of the",
+      "vo_text": "and Wiles wanted sales.",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "sales-demand",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ tall brass sales column rises beside Wiles"
+      ],
+      "still_prompt": "Warehouse doors, outdoor pallet, waiting trucks, raised ramp, and `qt-wiles`, `point-at-thing`, `expr-smug`, remain fixed beneath the mezzanine wall. A tall brass sales column now rises beside Wiles, his held point aligning it with the departing load; only this changes, everything else exactly as established.",
+      "notes": "The target appears on the spoken sales beat without lettering. [F-23]"
+    },
+    {
+      "id": "L131",
+      "synthetic": false,
+      "duration_s": 2.5,
+      "vo_ref": "Some of the pallets went overseas to",
+      "vo_text": "Some of the pallets went overseas to Singapore.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "hard_cut": true,
+      "still_prompt": "A high oblique view from a quay crane takes in low cargo sheds, a rust-red freighter turning through the harbor channel, and a distant Singapore skyline beneath an expansive pale sky. Several wrapped pallets sit in the ship's open hold, each small beside the hull, water, and port machinery. Cargo, ship, and port architecture alone bear the overseas departure.",
+      "notes": "Customer-free Singapore shipment; disclosure is limited to the spoken destination. [F-09]"
+    },
+    {
+      "id": "L132",
+      "synthetic": false,
+      "duration_s": 1.7,
+      "vo_ref": "Others went out to customers who had",
+      "vo_text": "Others went out to customers who had agreed",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "return-customer-contract",
+      "stage_role": "base",
+      "still_prompt": "Seen from the open mouth of a delivery truck, a covered receiving dock frames a central agreement table, an unwrapped customer pallet parked beside it, stacked empties under the canopy, and a mail door across the concrete apron. `brick-foreman`, `action-offering`, `expr-worried`, and `return-customer`, `action-offering`, `expr-deadpan`, stand on the same dock plane, facing each other at a matching eye-line and equal head scale; separate canopy posts frame their heads while `handoff` holds one blank agreement sheet between them. The reserved unwrapped pallet makes the prearranged customer deal concrete.",
+      "notes": "Fresh two-cast base after the narration says customers. [F-09]"
+    },
+    {
+      "id": "L133",
+      "synthetic": false,
+      "duration_s": 2.5,
+      "vo_ref": "in advance to leave the pallets wrapped",
+      "vo_text": "in advance to leave the pallets wrapped",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "return-customer-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ clear wrap seals the customer pallet"
+      ],
+      "still_prompt": "The covered receiving dock, agreement table, mail door, unwrapped customer pallet, and matched `brick-foreman`, `action-offering`, `expr-worried`, with `return-customer`, `action-offering`, `expr-deadpan`, hold their shared plane, eye-line, and equal head scale between separate canopy posts. Clear wrap now seals the entire customer pallet beside them; only this changes, everything else exactly as established.",
+      "notes": "One visible condition becomes binding. [F-09]"
+    },
+    {
+      "id": "L134",
+      "synthetic": false,
+      "duration_s": 2.2,
+      "vo_ref": "and mail them back a few weeks",
+      "vo_text": "and mail them back a few weeks later.",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "stage": "return-customer-contract",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ return route stripe connects the pallet to the mail door"
+      ],
+      "still_prompt": "The receiving dock, wrapped customer pallet, blank agreement, mail door, and matched `brick-foreman`, `action-offering`, `expr-worried`, with `return-customer`, `action-offering`, `expr-deadpan`, retain one dock plane, matching eye-line, and equal head scale beneath the canopy. A single clay-red floor stripe now loops from the pallet across the concrete apron to the mail door; only this changes, everything else exactly as established.",
+      "notes": "The return agreement is physicalized without fabricated mail labels. [F-09] [F-24]"
+    },
+    {
+      "id": "L135",
+      "synthetic": false,
+      "duration_s": 2.7,
+      "vo_ref": "Either Wiles was one charismatic guy, or",
+      "vo_text": "Either Wiles was one charismatic guy,",
+      "shot_class": "staged-interaction",
+      "source": "ai-gen",
+      "stage": "charisma-or-cash",
+      "stage_role": "base",
+      "still_prompt": "Viewed through the warehouse office's open glass door, a narrow table bridges the room while loading docks and stacked freight occupy the lower gallery beyond the windows. `qt-wiles`, `action-present`, `expr-smug`, and `return-customer`, `action-armscrossed`, `expr-skeptical`, stand on the same office plane across a full table-width gap at a matching eye-line and equal head scale; Wiles is backed by cream blinds and the customer by an uncluttered glass panel. His confident presentation against the customer's guarded posture carries the charisma possibility.",
+      "notes": "Fresh two-cast relationship base; no unsupported contact primitive. [F-09]"
+    },
+    {
+      "id": "L136",
+      "synthetic": false,
+      "duration_s": 2.8,
+      "vo_ref": "or there was money changing hands under",
+      "vo_text": "or there was money changing hands under the table.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "charisma-or-cash",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ ambiguous dark shadow divides the open table gap"
+      ],
+      "still_prompt": "The open glass door, cream blinds, narrow table, loading gallery, and matched `qt-wiles`, `action-present`, `expr-smug`, with `return-customer`, `action-armscrossed`, `expr-skeptical`, hold one office plane, matching eye-line, and equal head scale against their separate window panels. An ambiguous dark shadow now divides the otherwise empty space beneath the table; only this changes, everything else exactly as established.",
+      "notes": "Positive visible ambiguity omits payment and currency nouns from the image prompt. [F-09]"
+    },
+    {
+      "id": "L137",
+      "synthetic": false,
+      "duration_s": 1.9,
+      "vo_ref": "Either way, the same bricks counted as",
+      "vo_text": "Either way, the same bricks counted as a sale",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "stage": "quarter-loop",
+      "stage_role": "base",
+      "still_prompt": "A top-down industrial district is divided into three large architectural courts: an outbound dock, a road loop, and an inventory hall, with generous blank ground separating them. One wrapped kraft pallet token with a chipped clay-red corner sits at the outbound gate beside a brass sale counter whose face is blank. The unique corner mark establishes the unit that will travel.",
+      "notes": "Figureless mechanism; concrete identity substitutes for unavailable prop canonical. [F-09] [F-24]"
+    },
+    {
+      "id": "L138",
+      "synthetic": false,
+      "duration_s": 1.8,
+      "vo_ref": "in one quarter, came home, and got",
+      "vo_text": "in one quarter, came home,",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "stage": "quarter-loop",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ marked pallet token returns along the road loop"
+      ],
+      "still_prompt": "The three industrial courts, blank ground, outbound gate, inventory hall, and brass counter remain fixed in plan view. The wrapped pallet token with its chipped clay-red corner now occupies the returning side of the road loop; only this changes, everything else exactly as established.",
+      "notes": "The same physical mark carries unit identity through return. [F-24]"
+    },
+    {
+      "id": "L139",
+      "synthetic": false,
+      "duration_s": 2.2,
+      "vo_ref": "and got counted as inventory in the",
+      "vo_text": "and got counted as inventory in the next.",
+      "shot_class": "map-plan-view",
+      "source": "ai-gen",
+      "stage": "quarter-loop",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ marked pallet token moves into the next inventory bay"
+      ],
+      "still_prompt": "Outbound dock, road loop, blank brass counter, and inventory hall keep the same plan geometry. The wrapped pallet token with its chipped clay-red corner now sits inside the next open inventory bay; only this changes, everything else exactly as established.",
+      "notes": "The same unit completes the double-count loop. [F-24]"
+    },
+    {
+      "id": "L140",
+      "synthetic": false,
+      "duration_s": 2.5,
+      "vo_ref": "So how does a warehouse full of",
+      "vo_text": "So how does a warehouse full of bricks pass an audit?",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "stage": "audit-question",
+      "stage_role": "base",
+      "still_prompt": "A wide view from the opposite catwalk crosses a warehouse nave of three bridge levels, repeated steel bays, and sealed carton fields rising toward a high clerestory. `auditor-rep`, `action-armscrossed`, `expr-skeptical`, stands alone on the entry bridge, three-quarter toward the camera against a pale masonry pier while the stock mass fills the floors beneath him. One solitary checker against building-sized inventory makes the audit question legible.",
+      "notes": "Reserved mid-video peak opens with world scale and a performing auditor. [F-11]"
+    },
+    {
+      "id": "L141",
+      "synthetic": false,
+      "duration_s": 1.8,
+      "vo_ref": "Well, MiniScribe's outside accounting firm was Coopers",
+      "vo_text": "Well, MiniScribe's outside",
+      "shot_class": "personified-character",
+      "source": "ai-gen",
+      "still_prompt": "A low-angle view from the accounting lobby floor follows a central stair through two file balconies to cool skylights. `auditor-rep`, `carry-by-handle`, `expr-deadpan`, pauses on the upper landing with a closed inspection case, his features separated from the architecture by the bright stairwell opening behind him. The surrounding galleries make the outside-accountant role unmistakable.",
+      "notes": "Generic outside-accounting setup; firm name remains undisclosed. [F-11]"
+    },
+    {
+      "id": "L142",
+      "synthetic": false,
+      "duration_s": 2.4,
+      "vo_ref": "accounting firm was Coopers & Lybrand, one",
+      "vo_text": "accounting firm was Coopers & Lybrand,",
+      "shot_class": "diegetic-device",
+      "source": "ai-gen",
+      "still_prompt": "From the foot of broad stone steps, the monumental office entrance and stacked file balconies tower above a landing washed by clerestory light. `auditor-rep`, `carry-by-handle`, `expr-deadpan`, stands at the doorway with his closed inspection case, outlined against the unadorned cream doors. The dark-brass lintel reads exactly \"COOPERS & LYBRAND\".",
+      "notes": "Firm reveal lands on its spoken name; literal is sourced. [F-11]"
+    },
+    {
+      "id": "L143",
+      "synthetic": false,
+      "duration_s": 1.9,
+      "vo_ref": "one of the giants, and nobody there",
+      "vo_text": "one of the giants, and nobody there",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "unopened-majority",
+      "stage_role": "base",
+      "still_prompt": "A high diagonal view from an overhead bridge looks into a warehouse canyon of sealed carton walls and a single inspection platform tucked into one steel bay. `auditor-rep`, `action-armscrossed`, `expr-deadpan`, stands beside the sample table below, his three-quarter profile isolated by its pale surface while unopened stock fills every bay beyond. The giant firm is embodied by one human checkpoint swallowed by the inventory.",
+      "notes": "The figure sits inside the world; unopened stock bears the argument. [F-11]"
+    },
+    {
+      "id": "L144",
+      "synthetic": false,
+      "duration_s": 2,
+      "vo_ref": "is opening all those boxes. What they",
+      "vo_text": "is opening all those boxes.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "unopened-majority",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ intact paper bands seal every visible carton lid"
+      ],
+      "still_prompt": "Carton walls, overhead bridges, roof trusses, sample table, and `auditor-rep`, `action-armscrossed`, `expr-deadpan`, retain their proportions, with his profile held against the pale counting surface. Intact cream paper bands now seal every visible carton lid across the warehouse canyon; only this changes, everything else exactly as established.",
+      "notes": "Positive sealed surfaces convey the unopened majority. [F-11]"
+    },
+    {
+      "id": "L145",
+      "synthetic": false,
+      "duration_s": 2.3,
+      "vo_ref": "What they do instead is called a",
+      "vo_text": "What they do instead is called a test count.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "test-count-pull",
+      "stage_role": "base",
+      "still_prompt": "From a ceiling gantry, a steep diagonal view reduces one central counting table to a small island inside thousands of sealed cartons stacked in gridded wall bays. `auditor-rep`, `action-present`, `expr-skeptical`, stands behind the table, turned three-quarter toward the sample carton with the pale tabletop separating his head and arms from the stock wall. His held presentation targets that single box, defining a test count against the full building.",
+      "notes": "Sampling mechanism is documented; no weighing claim is introduced. [F-11]"
+    },
+    {
+      "id": "L146",
+      "synthetic": false,
+      "duration_s": 1.7,
+      "vo_ref": "They pull a sample, count it, and",
+      "vo_text": "They pull a sample, count it,",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "test-count-pull",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ one sample carton moves onto the counting table"
+      ],
+      "still_prompt": "The gridded wall bays, sealed carton mass, open gallery floor, and `auditor-rep`, `action-present`, `expr-skeptical`, remain fixed around the central table. One sample carton now sits entirely on the counting surface beneath his held presentation; only this changes, everything else exactly as established.",
+      "notes": "One countable sample is pulled from the mass. [F-11]"
+    },
+    {
+      "id": "L147",
+      "synthetic": false,
+      "duration_s": 2.1,
+      "vo_ref": "and if the sample matches the paperwork,",
+      "vo_text": "and if the sample matches the paperwork,",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "sample-paper-match",
+      "stage_role": "base",
+      "still_prompt": "A close body-scale view from the corner of a stone evidence table lets a sample carton, a ruled but unlettered sheet, and matching brass tick blocks fill the foreground. `auditor-rep`, `hold-paper-by-sides`, `expr-skeptical`, stands behind them with his upper body framed by tall blank ledger shelves; the sample and paperwork share the tabletop plane. Equal tick totals make the paper match visible while every sheet field stays blank and unlettered.",
+      "notes": "Paper and sample align without fabricated totals. [F-11]"
+    },
+    {
+      "id": "L148",
+      "synthetic": false,
+      "duration_s": 2.3,
+      "vo_ref": "everything else in the building gets a",
+      "vo_text": "everything else in the building gets a pass.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "warehouse-pass",
+      "stage_role": "base",
+      "still_prompt": "A high sectional cutaway fills the frame with three warehouse floors of sealed stock, cross-braced gantries, roof trusses, and a bright clerestory void. One accepted sample carton rests on a tiny lit plinth at the foundation while a single muted-green route climbs through every untouched floor. The tiny test authorizing the enormous building is the counterpoint.",
+      "notes": "Figurelessness is subject-earned; the sample blesses the building. [F-11] [F-13]"
+    },
+    {
+      "id": "L149",
+      "synthetic": false,
+      "duration_s": 1.7,
+      "vo_ref": "It's the TSA. And a box with",
+      "vo_text": "It's the TSA.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "hard_cut": true,
+      "still_prompt": "A ground-level view from the mouth of an airport screening machine looks past one sealed kraft carton on an oversized tray toward an immense barrel-roof hall, empty inspection tables, and queue rails fanning across the floor. Cool overhead light leaves the neighboring search table bare. One ordinary box confronting a disproportionate security apparatus carries the TSA aside.",
+      "notes": "Standalone modern aside; hard cut separates it from the warehouse chain."
+    },
+    {
+      "id": "L150",
+      "synthetic": false,
+      "duration_s": 2.4,
+      "vo_ref": "And a box with a brick in",
+      "vo_text": "And a box with a brick in it weighs exactly",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "weight-equivalence",
+      "stage_role": "base",
+      "still_prompt": "A tall testing hangar is centered on a giant brass balance, with twin loading platforms, wall calibration marks left blank, and open floor around the apparatus. Two sealed kraft cartons rest level on opposite pans; a clean cutaway in the left carton reveals one rust-red brick while the right carton remains closed. The perfectly horizontal beam carries equal weight.",
+      "notes": "The brick is disclosed on the spoken brick line; no audit-weighing claim is made. [F-07] [F-11]"
+    },
+    {
+      "id": "L151",
+      "synthetic": false,
+      "duration_s": 2.7,
+      "vo_ref": "what a box with a hard drive",
+      "vo_text": "what a box with a hard drive in it weighs.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "weight-equivalence",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ right carton cutaway reveals prop-drive"
+      ],
+      "still_prompt": "The testing hangar, open floor, giant balance, level beam, and left carton cutaway holding its rust-red brick remain fixed. A clean cutaway in the right carton now reveals `prop-drive` while both pans stay exactly level; only this changes, everything else exactly as established.",
+      "notes": "The spoken hard drive completes the comparison as one cutaway change. [F-07]"
+    },
+    {
+      "id": "L152",
+      "synthetic": false,
+      "duration_s": 2,
+      "vo_ref": "And this wasn't a one time thing.",
+      "vo_text": "And this wasn't a one time thing.",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "quarterly-ratchet",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "An overhead view from the clerestory looks down into a circular management chamber divided into four sunken quarterly bays around a raised control bridge. `qt-wiles`, `action-present`, `expr-smug`, occupies the bridge hub, his head isolated against the light central floor; worried managers cluster at separate worktables below, their stiff postures visible through the radial rails. The repeating wheel of rooms makes the fraud a cycle rather than a one-time stunt.",
+      "notes": "Scale argument uses multiple occupied distances and a genuine manager mass. [F-23]"
+    },
+    {
+      "id": "L153",
+      "synthetic": false,
+      "duration_s": 2.8,
+      "vo_ref": "Each quarter, Wiles raised sales targets and",
+      "vo_text": "Each quarter, Wiles raised sales targets",
+      "shot_class": "register-shift-infographic",
+      "source": "ai-gen",
+      "stage": "quarterly-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ clay-red target column rises through all quarter bays"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The circular chamber, four sunken bays, radial rails, worried manager groups, and `qt-wiles`, `action-present`, `expr-smug`, retain their levels and postures around the light central floor. One clay-red target column now rises through the center of all four bays; only this changes, everything else exactly as established.",
+      "notes": "One target-state change lands on the spoken rise. [F-23]"
+    },
+    {
+      "id": "L154",
+      "synthetic": false,
+      "duration_s": 3,
+      "vo_ref": "and management came up with better ways",
+      "vo_text": "and management came up with better ways to meet them.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "quarterly-ratchet",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ improvised workaround stacks fill each manager bay"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The four-bay chamber, raised clay-red target column, broad floor, and `qt-wiles`, `action-present`, `expr-smug`, hold while worried managers remain in tense groups behind the lower rails. Stacks of mismatched cartons, blank sheets, and scrap now fill the reserved work zones in every manager bay; only this changes, everything else exactly as established.",
+      "notes": "The manager mass performs the response rather than disappearing behind objects. [F-23]"
+    },
+    {
+      "id": "L155",
+      "synthetic": false,
+      "duration_s": 2.4,
+      "vo_ref": "They started padding their inventory with broken",
+      "vo_text": "They started padding their inventory with broken drives",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "junk-padding",
+      "stage_role": "base",
+      "still_prompt": "A close body-scale view from inside an open parts cage places bent housings and cable offcuts around the foreground edges, with roof monitors, repair benches, and intact inventory racks visible through the mesh behind. `brick-foreman`, `hold-both-hands`, `expr-worried`, stands just outside the cage carrying one broken `prop-drive` with both hands, his head backed by a cream safety panel. The damaged drive crossing from repair bench to inventory cage is the payload.",
+      "notes": "Primitive-compatible two-hand act; the foreman represents the managers' physical work. [F-10]"
+    },
+    {
+      "id": "L156",
+      "synthetic": false,
+      "duration_s": 1.6,
+      "vo_ref": "and factory scrap, and whatever else was",
+      "vo_text": "and factory scrap,",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "junk-padding",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ factory scrap fills the first reserved cage"
+      ],
+      "still_prompt": "Mesh cage edges, roof monitors, repair benches, intact racks, and `brick-foreman`, `hold-both-hands`, `expr-worried`, carrying the broken `prop-drive` remain fixed. Bent housings, cable offcuts, and metal trimmings now fill the first reserved cage compartment; only this changes, everything else exactly as established.",
+      "notes": "Specific scrap replaces mechanism commentary. [F-10]"
+    },
+    {
+      "id": "L157",
+      "synthetic": false,
+      "duration_s": 2.2,
+      "vo_ref": "and whatever else was lying around, and",
+      "vo_text": "and whatever else was lying around,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "junk-padding",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ miscellaneous junk fills the second reserved cage"
+      ],
+      "still_prompt": "The repair hall, occupied first cage compartment, intact racks, and `brick-foreman`, `hold-both-hands`, `expr-worried`, with the broken `prop-drive` keep their positions behind the foreground mesh. Empty reels, dented bins, obsolete brackets, and cracked trays now fill the second reserved cage compartment; only this changes, everything else exactly as established.",
+      "notes": "Concrete junk inventory carries the escalation. [F-10]"
+    },
+    {
+      "id": "L158",
+      "synthetic": false,
+      "duration_s": 1.9,
+      "vo_ref": "and the junk padding grew to more",
+      "vo_text": "and the junk padding grew to more than twice",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "twice-the-bricks",
+      "stage_role": "base",
+      "still_prompt": "An open measurement court is bounded by two warehouse towers and a high bridge, with one clay plinth left empty and a junk column rising on the opposite side. A fixed brass guide spans the court at twice the empty plinth's height; the junk column already breaks above that guide into open sky. The architecture makes 'more than twice' visible before its comparison noun arrives.",
+      "notes": "Layer-friendly fixed boundary; the brick referent remains undisclosed until the next cut. [F-10]"
+    },
+    {
+      "id": "L159",
+      "synthetic": false,
+      "duration_s": 1.6,
+      "vo_ref": "what the bricks were worth. One of",
+      "vo_text": "what the bricks were worth.",
+      "shot_class": "physicalized-imbalance",
+      "source": "ai-gen",
+      "stage": "twice-the-bricks",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ clay brick-value block occupies the empty comparison plinth"
+      ],
+      "still_prompt": "The warehouse towers, high bridge, fixed double-height guide, and junk column extending above it remain unchanged in the measurement court. A compact clay brick-value block now occupies the empty comparison plinth beneath the guide; only this changes, everything else exactly as established.",
+      "notes": "The spoken brick value completes the ratio without a measured prose resize. [F-10]"
+    },
+    {
+      "id": "L160",
+      "synthetic": false,
+      "duration_s": 1.9,
+      "vo_ref": "One of the executives even brought his",
+      "vo_text": "One of the executives even brought his own family",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "family-night-pack",
+      "stage_role": "base",
+      "still_prompt": "A high wide from the shuttered loading door looks across a night packing nave where isolated task lamps pick out separate carton benches beneath steel trusses. `packing-executive`, `action-present`, `expr-worried`, and `family-packer`, `hold-both-hands`, `expr-deadpan`, stand on the same illuminated work-island plane at a matching eye-line and equal head scale; the executive is backed by a pale shutter panel and the helper by dark open floor, holding one flat carton with both hands beside the presented bench. Their shared station makes the family relationship visible inside the sleeping factory.",
+      "notes": "Critic-required cast correction: two new story-bearer canonicals need Pass-1 minting; the generic family identity preserves the sourced ambiguity. [F-10]"
+    },
+    {
+      "id": "L161",
+      "synthetic": false,
+      "duration_s": 2.5,
+      "vo_ref": "in at night to help pack the",
+      "vo_text": "in at night to help pack the boxes.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "family-night-pack",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ row of sealed cartons accumulates beside the family station"
+      ],
+      "still_prompt": "The trussed night nave, isolated lamp pools, dark floor, and matched `packing-executive`, `action-present`, `expr-worried`, with `family-packer`, `hold-both-hands`, `expr-deadpan`, retain one work-island plane, matching eye-line, and equal head scale at the shared bench. A compact stack of sealed cartons now accumulates beside their station; only this changes, everything else exactly as established.",
+      "notes": "The family helper performs the packing beat rather than being replaced by an object. [F-10]"
+    },
+    {
+      "id": "L162",
+      "synthetic": false,
+      "duration_s": 1.5,
+      "vo_ref": "The original bring your kid to work.",
+      "vo_text": "The original bring your kid",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "family-night-pack",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ low wooden step appears at the family helper's station"
+      ],
+      "still_prompt": "Steel trusses, lamp pools, compact carton stack, dark factory floor, and the matched `packing-executive`, `action-present`, `expr-worried`, with `family-packer`, `hold-both-hands`, `expr-deadpan`, remain on one work-island plane at a matching eye-line and equal head scale. A low wooden step now appears beneath the family helper's side of the bench, turning the domestic help into the kid-at-work counterpoint; only this changes, everything else exactly as established.",
+      "notes": "The punchline is staged through the present helper, never through an empty lunchbox. [F-10]"
+    },
+    {
+      "id": "L163",
+      "synthetic": false,
+      "duration_s": 1.5,
+      "vo_ref": "to work. And in 1988, right in",
+      "vo_text": "to work.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "hard_cut": true,
+      "still_prompt": "A wide from an overhead maintenance balcony looks down the length of a dark night assembly hall, its trusses and silent conveyors enclosing one distant task-lamp pool. `packing-executive`, `action-present`, `expr-worried`, and `family-packer`, `hold-both-hands`, `expr-deadpan`, share the same lit work-island plane at a matching eye-line and equal head scale; their costume silhouettes and expressions remain readable against the pale bench while the helper stands on the low wooden step. One family workstation swallowed by the dormant factory completes 'to work.'",
+      "notes": "Fresh re-base preserves both human story-bearers after the two-delta cap. [F-10]"
+    },
+    {
+      "id": "L164",
+      "synthetic": false,
+      "duration_s": 2.7,
+      "vo_ref": "And in 1988, right in the middle",
+      "vo_text": "And in 1988, right in the middle of all this,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "best-managed-irony",
+      "stage_role": "base",
+      "still_prompt": "A low-angle view from beside a blank awards plinth looks up through a two-level company atrium to gallery windows exposing brick cartons moving on active packing lines. `miniscribe-rep`, `action-present`, `expr-smug`, stands midway up the central stair, three-quarter toward the camera with his head against the open cream balustrade beneath a restrained 1988 brass dateline disc. The waiting plinth beside the working fraud carries the tense pre-award contrast.",
+      "notes": "The 1988 context lands without revealing the award wording. [F-28]"
+    },
+    {
+      "id": "L165",
+      "synthetic": false,
+      "duration_s": 2.1,
+      "vo_ref": "MiniScribe was named the best managed company",
+      "vo_text": "MiniScribe was named the best managed company",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "best-managed-irony",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ award plaque appears on the blank plinth"
+      ],
+      "still_prompt": "The two-level atrium, side packing lines, blank wall surfaces, and `miniscribe-rep`, `action-present`, `expr-smug`, keep their proportions around the central plinth. A polished brass plaque now occupies the plinth and reads exactly \"BEST MANAGED\"; only this changes, everything else exactly as established.",
+      "notes": "Award wording is a short verbatim script literal. [F-28]"
+    },
+    {
+      "id": "L166",
+      "synthetic": false,
+      "duration_s": 1.9,
+      "vo_ref": "in the disk drive industry. The irony.",
+      "vo_text": "in the disk drive industry.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "best-managed-irony",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ brick-carton arch rises behind the award"
+      ],
+      "still_prompt": "The formal atrium, brass plaque reading \"BEST MANAGED\", visible packing lines, and `miniscribe-rep`, `action-present`, `expr-smug`, remain fixed. A towering arch of brick-filled cartons now rises behind the waist-high award plinth and makes the honor visually subordinate; only this changes, everything else exactly as established.",
+      "notes": "The industry honor is undercut by the mechanism it rewarded. [F-28]"
+    },
+    {
+      "id": "L167",
+      "synthetic": false,
+      "duration_s": 1.5,
+      "vo_ref": "The irony. What finally killed it wasn't",
+      "vo_text": "The irony. What",
+      "shot_class": "reaction-shot",
+      "source": "ai-gen",
+      "hard_cut": true,
+      "still_prompt": "Framed through the legs of an immense brick-carton arch, a long corporate hall opens toward high windows and a tiny award plinth. `miniscribe-rep`, `action-armscrossed`, `expr-deadpan`, stands beside the plaque with his three-quarter profile set against an empty cream wall while the fraudulent structure encloses him. The deadpan company representative under his own honor carries the irony.",
+      "notes": "Fresh reaction base after the two-delta cap. [F-28]"
+    },
+    {
+      "id": "L168",
+      "synthetic": false,
+      "duration_s": 1.6,
+      "vo_ref": "finally killed it wasn't the auditors, and",
+      "vo_text": "finally killed it wasn't the auditors,",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "wrong-watchdogs",
+      "stage_role": "base",
+      "still_prompt": "A high wide from the open loading door takes in a warehouse inspection court, an interior audit bridge, a sealed-pallet floor, and an exterior checkpoint beyond the building. `auditor-rep`, `action-armscrossed`, `expr-deadpan`, stands on the bridge with his head backed by a pale clerestory panel while intact loads occupy the levels below. The auditor remains visibly stranded on the official route that failed to kill the scheme.",
+      "notes": "Auditor remains the performing non-solution, not the layoff consequence. [F-14]"
+    },
+    {
+      "id": "L169",
+      "synthetic": false,
+      "duration_s": 1.6,
+      "vo_ref": "and it wasn't a regulator. It was",
+      "vo_text": "and it wasn't a regulator.",
+      "shot_class": "ironic-counterpoint",
+      "source": "ai-gen",
+      "stage": "wrong-watchdogs",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ second closed inspection gate appears at the exterior checkpoint"
+      ],
+      "still_prompt": "The audit bridge, sealed-pallet floor, open loading door, exterior checkpoint, and `auditor-rep`, `action-armscrossed`, `expr-deadpan`, retain their scale, his profile still isolated by the pale clerestory. A second closed brass inspection gate now spans the exterior checkpoint beyond the door, its indicator windows dark; only this changes, everything else exactly as established.",
+      "notes": "A separate dormant route embodies the regulator without invented human cast. [F-14]"
+    },
+    {
+      "id": "L170",
+      "synthetic": false,
+      "duration_s": 2.7,
+      "vo_ref": "It was a layoff. Right before Christmas,",
+      "vo_text": "It was a layoff. Right before Christmas,",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "stage": "christmas-layoff",
+      "stage_role": "base",
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "A high diagonal view from the factory mezzanine looks down a broad exit ramp toward glass doors, with dark assembly bays flanking the floor and one restrained holiday garland crossing a steel beam overhead. A genuine mass of laid-off employees descends in staggered clusters, holding stunned, tight-shouldered postures behind intervening railings; one employee carries a blank cream slip at chest height. The human exodus visibly delivers the layoff.",
+      "notes": "Layoff consequence lands on the spoken word; crowd is a genuine employee mass. [F-14]"
+    },
+    {
+      "id": "L171",
+      "synthetic": false,
+      "duration_s": 2.3,
+      "vo_ref": "MiniScribe cut a batch of employees loose,",
+      "vo_text": "MiniScribe cut a batch of employees loose,",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "stage": "christmas-layoff",
+      "stage_role": "delta",
+      "changed_elements": [
+        "~ assembly stations across the hall go dark"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "The steel-beamed exit ramp, glass doors, holiday garland, staggered employee clusters, and intervening railings retain their positions. Every assembly bay flanking the ramp now sits dark beneath unlit task lamps; only this changes, everything else exactly as established.",
+      "notes": "The cut becomes visible in the workplace architecture. [F-14]"
+    },
+    {
+      "id": "L172",
+      "synthetic": false,
+      "duration_s": 2,
+      "vo_ref": "and some of the people holding pink",
+      "vo_text": "and some of the people holding pink slips were the same",
+      "shot_class": "aftermath-palette-turn",
+      "source": "ai-gen",
+      "stage": "christmas-layoff",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ muted pink slips appear throughout the employee mass"
+      ],
+      "figures": {
+        "crowd": true
+      },
+      "still_prompt": "Cold beams, glass exits, dark assembly bays, restrained garland, and the stunned employee mass remain fixed across the ramp. Muted pink slips with blank surfaces now appear in the hands of workers throughout the mass; only this changes, everything else exactly as established.",
+      "notes": "Blank slips identify the affected insiders without fabricated text. [F-14]"
+    },
+    {
+      "id": "L173",
+      "synthetic": false,
+      "duration_s": 2.3,
+      "vo_ref": "people who had been packing the bricks.",
+      "vo_text": "people who had been packing the bricks.",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "hard_cut": true,
+      "still_prompt": "A close body-scale view from behind an open brick carton puts its rust-red contents and folded flaps across the lower foreground, with silent conveyor frames and tall carton racks enclosing the packing bay. `line-worker`, `hold-paper-by-sides`, `expr-worried`, stands beyond the box against a pale shutter, holding a blank pink slip above a finished wrapped load. The same worker caught inside the brick mechanism makes the insider connection visible.",
+      "notes": "Fresh human base ties the pink slip to a brick packer. [F-14]"
+    },
+    {
+      "id": "L174",
+      "synthetic": false,
+      "duration_s": 2,
+      "vo_ref": "They went home, picked up the phone,",
+      "vo_text": "They went home, picked up the phone,",
+      "shot_class": "literal",
+      "source": "ai-gen",
+      "stage": "whistleblower-call",
+      "stage_role": "base",
+      "still_prompt": "An intimate side view through a dark kitchen doorway frames a modest living room around a wall phone, a narrow entry table, and a broad unoccupied wall under one cool lamp. `line-worker`, `hold-one-hand`, `expr-worried`, stands beside the table with the receiver in one hand, his three-quarter profile isolated by the pale wall; the blank pink slip lies flat below. The private home call replaces the vast factory world.",
+      "notes": "The receiver conforms to `hold-one-hand`; the call begins at home. [F-14]"
+    },
+    {
+      "id": "L175",
+      "synthetic": false,
+      "duration_s": 1.9,
+      "vo_ref": "and called the Denver newspapers. Best exit",
+      "vo_text": "and called the Denver newspapers.",
+      "shot_class": "diegetic-device",
+      "source": "ai-gen",
+      "stage": "whistleblower-call",
+      "stage_role": "delta",
+      "changed_elements": [
+        "+ two blank newsprint bundles fill the call-target tray"
+      ],
+      "still_prompt": "The modest room, dark kitchen doorway, pale wall, pink slip, and `line-worker`, `hold-one-hand`, `expr-worried`, holding the receiver retain their scale and three-quarter orientation. Two cream newsprint bundles with blank mastheads now fill the call-target tray beneath the phone line; only this changes, everything else exactly as established.",
+      "notes": "Denver newspapers are represented without inventing a masthead. [F-14]"
+    },
+    {
+      "id": "L176",
+      "synthetic": false,
+      "duration_s": 2.6,
+      "vo_ref": "Best exit interview in American history. The",
+      "vo_text": "Best exit interview in American history.",
+      "shot_class": "idiom-pun",
+      "source": "ai-gen",
+      "stage": "exit-interview",
+      "stage_role": "base",
+      "hard_cut": true,
+      "still_prompt": "A low wide from the open street door looks back through a corporate exit corridor to an unused interview room, high office windows, and an idle chair under a cold ceiling lamp. `line-worker`, `action-thumbsup`, `expr-deadpan`, stands at the threshold between a wall phone and a loose trail of blank newspapers, his profile set against daylight while the vacant interview chair remains deep inside. Choosing the press over that empty room carries the punchline.",
+      "notes": "Human performer bears the exit-interview joke. [F-14]"
+    }
+  ]
+}
