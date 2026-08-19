@@ -147,7 +147,13 @@ def load_canaries(canary_dir: Path) -> list[Canary]:
 # Manifest (immutability anchor)                                              #
 # --------------------------------------------------------------------------- #
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    """Hash a golden text card in its checkout-independent LF form.
+
+    Canary cards are UTF-8 Markdown.  Their manifest is an oracle for text
+    content, not for Git's platform-specific CRLF checkout representation.
+    """
+    content = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(content).hexdigest()
 
 
 def _manifest_entries(evals_dir: Path, subdir: str = CANARY_SUBDIR) -> list[tuple[str, str]]:

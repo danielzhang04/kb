@@ -525,8 +525,28 @@ def _suite_files(directory: Path) -> list[Path]:
     return out
 
 
+_TEXT_MANIFEST_SUFFIXES = frozenset({
+    ".cfg", ".css", ".csv", ".html", ".ini", ".js", ".json", ".md",
+    ".ps1", ".py", ".sh", ".toml", ".ts", ".tsv", ".txt", ".xml",
+    ".yaml", ".yml",
+})
+
+
+def _suite_file_hash(path: Path) -> str:
+    """Hash a golden suite file, canonicalizing CRLF only for text artifacts.
+
+    Cards and text support files are checked for semantic content across Git
+    checkout EOL settings.  Other support files may be binary fixtures, whose
+    bytes remain an exact tamper anchor.
+    """
+    content = Path(path).read_bytes()
+    if Path(path).suffix.lower() in _TEXT_MANIFEST_SUFFIXES:
+        content = content.replace(b"\r\n", b"\n")
+    return hashlib.sha256(content).hexdigest()
+
+
 def _suite_manifest_entries(directory: Path) -> list[tuple[str, str]]:
-    return [(hashlib.sha256(p.read_bytes()).hexdigest(), p.name) for p in _suite_files(directory)]
+    return [(_suite_file_hash(p), p.name) for p in _suite_files(directory)]
 
 
 def _read_suite_manifest(directory: Path) -> dict[str, str]:

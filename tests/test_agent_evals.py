@@ -8,6 +8,7 @@ and the CLI's human-gated manifest re-bless.
 
 No model calls anywhere in this file (model-judge tier is Task 6).
 """
+import hashlib
 import json
 import os
 import shutil
@@ -102,6 +103,33 @@ def test_readme_is_not_manifested(tmp_path):
     entries = [ln for ln in manifest.splitlines() if ln and not ln.startswith("#")]
     names = [ln.split()[-1] for ln in entries]
     assert "smoke.md" in names and "README.md" not in names
+
+
+def test_suite_manifest_normalizes_text_crlf_but_preserves_binary_bytes(tmp_path):
+    directory = suite_dir(tmp_path, "demo-agent")
+    directory.mkdir(parents=True)
+    card_lf = _card_text("smoke", "file-exists", {"path": "README.md"}).encode("utf-8")
+    binary = b"\x00\xff\r\nbinary-fixture\r\n"
+    (directory / "smoke.md").write_bytes(card_lf)
+    (directory / "fixture.bin").write_bytes(binary)
+
+    # An LF blessing must verify a byte-for-byte CRLF checkout copy of the card.
+    agent_evals.update_suite_manifest(directory, ())
+    expected_card_hash = hashlib.sha256(card_lf).hexdigest()
+    expected_binary_hash = hashlib.sha256(binary).hexdigest()
+    assert agent_evals._read_suite_manifest(directory) == {
+        "smoke.md": expected_card_hash,
+        "fixture.bin": expected_binary_hash,
+    }
+    (directory / "smoke.md").write_bytes(card_lf.replace(b"\n", b"\r\n"))
+    assert agent_evals.verify_suite_manifest(directory) == (True, [])
+
+    # Re-blessing that CRLF checkout writes the same LF card hash; binary stays raw.
+    agent_evals.update_suite_manifest(directory, ())
+    assert agent_evals._read_suite_manifest(directory) == {
+        "smoke.md": expected_card_hash,
+        "fixture.bin": expected_binary_hash,
+    }
 
 
 def test_unknown_agent_is_a_refusal_not_a_crash(tmp_path):

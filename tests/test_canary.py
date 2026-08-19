@@ -5,6 +5,7 @@ capability `eval-namespace-isolation`), manifest tamper refusal, an intentionall
 broken fixture canary failing loud, record mode writing pinned-schema rows to a
 TMP ledger (never the real one), and diff-guard detection.
 """
+import hashlib
 import shutil
 import subprocess
 import textwrap
@@ -96,6 +97,22 @@ def test_added_canary_without_manifest_entry_is_tamper(tmp_path):
     _write_canary(evals / "canaries", "sneaky-extra", "action_required")
     ok, problems = canary.verify_manifest(evals)
     assert not ok and any("unmanifested" in p for p in problems)
+
+
+def test_canary_manifest_normalizes_crlf_for_bless_and_verify(tmp_path):
+    evals = tmp_path / "evals"
+    cards = evals / "canaries"
+    cards.mkdir(parents=True)
+    card_lf = b"---\nid: eol\n---\n# card\n"
+    card = cards / "eol.md"
+    card.write_bytes(card_lf)
+    canary.update_manifest(evals)
+    assert canary._read_manifest(evals)["canaries/eol.md"] == hashlib.sha256(card_lf).hexdigest()
+
+    card.write_bytes(card_lf.replace(b"\n", b"\r\n"))
+    assert canary.verify_manifest(evals) == (True, [])
+    canary.update_manifest(evals)
+    assert canary._read_manifest(evals)["canaries/eol.md"] == hashlib.sha256(card_lf).hexdigest()
 
 
 # --------------------------------------------------------------------------- #
