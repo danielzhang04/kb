@@ -8,13 +8,42 @@ afterEach(() => cleanup());
 describe('RecurrencePicker', () => {
   const showCustom = (): void => { fireEvent.change(screen.getByLabelText('Recurrence preset'), { target: { value: 'custom-raw' } }); };
 
-  it('makes presets first-class and only reveals day and time selectors for Custom', () => {
+  it('shows preset selectors as read-only and enables them for Custom', () => {
     render(<RecurrencePicker initialCron="daily" onChange={vi.fn()} />);
     expect(screen.getByLabelText('Recurrence preset')).toBeTruthy();
-    expect(screen.queryByLabelText('Time 1')).toBeNull();
+    expect((screen.getByLabelText('Time 1') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Mon') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByLabelText('Mon').getAttribute('aria-disabled')).toBe('true');
     showCustom();
-    expect(screen.getByLabelText('Time 1')).toBeTruthy();
-    expect(screen.getByLabelText('Mon')).toBeTruthy();
+    expect((screen.getByLabelText('Time 1') as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByLabelText('Mon') as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it('keeps preset controls inert, then seeds Custom from the preset for editing', () => {
+    const onChange = vi.fn();
+    render(<RecurrencePicker initialCron="weekly:tue" onChange={onChange} />);
+    const monday = screen.getByLabelText('Mon') as HTMLInputElement;
+    const tuesday = screen.getByLabelText('Tue') as HTMLInputElement;
+    fireEvent.click(monday);
+    expect(monday.checked).toBe(false);
+    expect(tuesday.checked).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Weekly day'), { target: { value: 'fri' } });
+    expect((screen.getByLabelText('Fri') as HTMLInputElement).checked).toBe(true);
+    expect(tuesday.checked).toBe(false);
+    showCustom();
+    expect(monday.checked).toBe(false);
+    expect((screen.getByLabelText('Fri') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(monday);
+    expect(monday.checked).toBe(true);
+    expect(onChange).toHaveBeenLastCalledWith('0 9 * * mon,fri');
+  });
+
+  it('starts a fresh Custom schedule with every day selected', () => {
+    render(<RecurrencePicker onChange={vi.fn()} />);
+    for (const day of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+      expect((screen.getByLabelText(day) as HTMLInputElement).checked).toBe(true);
+    }
   });
 
   it('emits one validated five-field cron for selected weekdays and multiple custom times', () => {

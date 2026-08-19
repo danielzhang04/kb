@@ -98,10 +98,10 @@
    * at ~1.02-1.09:1 rather than ~1.10-1.14:1). That is the point — the reference separates surfaces with
    * the EDGE, not with a lightness step, so the hairline alpha below is lifted (0.10 -> 0.12) to carry
    * the work the background delta used to do. The one surviving warmth in the app is --mc-accent. ---- */
-  --bg-sunken: #100f0d; /* code gutters / inputs / terminal — deepest well */
+  --bg-sunken: #151512; /* code gutters / inputs / terminal — deepest well */
   --bg-base: #151512; /* app shell — neutral near-black */
-  --bg-panel: #181715; /* cards / sidebar / panes — workhorse */
-  --bg-elevated: #201f1c; /* popovers / palette / hover — raised surface (the legend's measuring stick) */
+  --bg-panel: #242420; /* cards / sidebar / panes — workhorse */
+  --bg-elevated: #242420; /* popovers / palette / hover — raised surface (the legend's measuring stick) */
 
   /* ---- Color: foreground (neutral off-white / neutral gray) ---- */
   --fg-primary: #efeee8;
@@ -112,9 +112,9 @@
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
    * selection, KPI tiles, buttons, links, focus, tab underlines, left-borders) so redefining them here
    * neutralises every consumer at once. Semantic status colour lives in the separate tokens below. ---- */
-  --accent-strong: #ededea; /* buttons / links / focus / active underline+border (near-white) */
-  --accent: #a3a099; /* active nav icon tint / secondary (muted neutral) */
-  --accent-quiet: rgba(245, 244, 239, 0.06); /* selected wash — subtle raised, not a colour */
+  --accent-strong: #efeee8; /* buttons / links / focus / active underline+border */
+  --accent: #b4b4ac; /* active nav icon tint / secondary */
+  --accent-quiet: #514c28; /* selected wash — field-guide mark */
 
   /* ---- Color: hairlines (the Claude "super thin white outline" — a low-alpha white line is how a
    * surface is defined on near-black, NOT a background-lightness difference). --hairline is the resting
@@ -124,8 +124,8 @@
    * --border / --border-strong are kept as aliases so every existing consumer inherits at once.
    * Field-guide restyle 2026-08-18: both alphas step up (0.10 -> 0.12, 0.16 -> 0.18) because the surface
    * ladder flattened — the edge is now the primary separator, not a secondary one. ---- */
-  --hairline: rgba(255, 255, 255, 0.12);
-  --hairline-strong: rgba(255, 255, 255, 0.18);
+  --hairline: #3b3b36;
+  --hairline-strong: #3b3b36;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -221,17 +221,13 @@
   /* ONE tracking for every uppercase section heading (was 0.02/0.04/0.05/0.06em scattered). */
   --tracking-eyebrow: 0.05em;
 
-  /* ---- Radius — SQUARE (field-guide restyle 2026-08-18, Daniel's ruling). The reference has no rounded
-   * corner anywhere: every button, input, badge, card, panel, and nav surface is a sharp rectangle, and
-   * that squareness is most of what makes it read as a printed field guide rather than a web app. The
-   * two workhorse rungs go to a literal 0. --radius-lg keeps a 2px nick — NOT a compromise on the look
-   * but a fix for one artifact: the overlay surfaces (palette, modal, dropdown menu) are the only things
-   * carrying a large soft shadow, and a shadow cast off a mathematically perfect 0px corner reads as a
-   * rendering bug rather than a design choice. The tokens keep their names and their three-rung shape so
-   * every consumer inherits at once and a future pass can restore radii by editing three lines. ---- */
-  --radius-sm: 0; /* buttons / inputs / badges */
-  --radius-md: 0; /* cards / panels */
-  --radius-lg: 2px; /* modals / palette — the shadowed overlay surfaces only */
+  /* ---- Radius — Daniel's Claude-dashboard curve: compact controls stay at 6px; panels and overlays
+   * use 10px. The legacy names remain aliases so existing consumers inherit the same two-rung system. ---- */
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-sm: var(--radius-control); /* buttons / inputs / badges */
+  --radius-md: var(--radius-card); /* cards / panels */
+  --radius-lg: var(--radius-card); /* modals / palette */
 
   /* ---- Motion: ONE duration + easing for every hover / state transition in the app. A hover is a
    * quiet acknowledgement, never an animation — nothing here moves, only colour and border shift. ---- */
@@ -242,7 +238,7 @@
    * docs/superpowers/plans/2026-08-05-accent-swatches.md — #d9c7a8 dark / #6b5b41 light, low-chroma
    * sand deliberately distinct from the saturated amber/tier chips. --mc-accent-fg is the text colour
    * that sits ON a filled accent; --bg-base is correct in both themes. ---- */
-  --mc-accent: #d9c7a8;
+  --mc-accent: #efeee8;
   --mc-accent-fg: var(--bg-base);
 
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
@@ -271,10 +267,10 @@
  * who has NOT chosen a theme; the toggle always wins. */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-sunken: #eceae4;
+    --bg-sunken: #fbfbf8;
     --bg-base: #fbfbf8;
-    --bg-panel: #f8f7f2;
-    --bg-elevated: #f2f2ee;
+    --bg-panel: #f4f3ee;
+    --bg-elevated: #f4f3ee;
 
     --fg-primary: #11110f;
     /* Neutralised from #5c5749 after MEASURING it: 5.00:1 on the new --bg-elevated #f2f2ee, so it clears
@@ -283,17 +279,17 @@
     --fg-dim: #686862;
     /* KEPT at the U16 value on purpose. The reference's own faint grey fails 4.5:1 outright, so it is NOT
      * imported — the legend rule outranks fidelity to the reference. 4.67:1 here (was 4.57:1). */
-    --fg-faint: #726c5a;
+    --fg-faint: #8d8d86;
 
-    --accent-strong: #2b2925;
-    --accent: #6b6558;
-    --accent-quiet: rgba(0, 0, 0, 0.05);
-    --mc-accent: #6b5b41;
+    --accent-strong: #11110f;
+    --accent: #686862;
+    --accent-quiet: #d9d9d2;
+    --mc-accent: #11110f;
 
     /* Light hairline is a dark low-alpha line. Both alphas step up with dark's (0.10 -> 0.11,
      * 0.16 -> 0.16 unchanged in shape) because the light surface ladder flattened too. */
-    --hairline: rgba(0, 0, 0, 0.11);
-    --hairline-strong: rgba(0, 0, 0, 0.16);
+    --hairline: #d9d9d2;
+    --hairline-strong: #d9d9d2;
     --border: var(--hairline);
     --border-strong: var(--hairline-strong);
 
@@ -320,22 +316,22 @@
 
 /* Explicit theme pin — wins over the media query above. */
 :root[data-theme='light'] {
-  --bg-sunken: #eceae4;
+  --bg-sunken: #fbfbf8;
   --bg-base: #fbfbf8;
-  --bg-panel: #f8f7f2;
-  --bg-elevated: #f2f2ee;
+  --bg-panel: #f4f3ee;
+  --bg-elevated: #f4f3ee;
 
   --fg-primary: #11110f;
   --fg-dim: #686862;
-  --fg-faint: #726c5a;
+  --fg-faint: #8d8d86;
 
-  --accent-strong: #2b2925;
-  --accent: #6b6558;
-  --accent-quiet: rgba(0, 0, 0, 0.05);
-  --mc-accent: #6b5b41;
+  --accent-strong: #11110f;
+  --accent: #686862;
+  --accent-quiet: #d9d9d2;
+  --mc-accent: #11110f;
 
-  --hairline: rgba(0, 0, 0, 0.11);
-  --hairline-strong: rgba(0, 0, 0, 0.16);
+  --hairline: #d9d9d2;
+  --hairline-strong: #d9d9d2;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -358,22 +354,22 @@
 }
 
 :root[data-theme='dark'] {
-  --bg-sunken: #100f0d;
+  --bg-sunken: #151512;
   --bg-base: #151512;
-  --bg-panel: #181715;
-  --bg-elevated: #201f1c;
+  --bg-panel: #242420;
+  --bg-elevated: #242420;
 
   --fg-primary: #efeee8;
   --fg-dim: #b4b4ac;
   --fg-faint: #8d8d85;
 
-  --accent-strong: #ededea;
-  --accent: #a3a099;
-  --accent-quiet: rgba(245, 244, 239, 0.06);
-  --mc-accent: #d9c7a8;
+  --accent-strong: #efeee8;
+  --accent: #b4b4ac;
+  --accent-quiet: #514c28;
+  --mc-accent: #efeee8;
 
-  --hairline: rgba(255, 255, 255, 0.12);
-  --hairline-strong: rgba(255, 255, 255, 0.18);
+  --hairline: #3b3b36;
+  --hairline-strong: #3b3b36;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
