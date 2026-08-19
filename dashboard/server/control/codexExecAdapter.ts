@@ -17,6 +17,7 @@ import {
 } from './claudeWorkerAdapter.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
+import { parseIterationOutcome } from './iterationOutcome.ts';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
@@ -24,6 +25,13 @@ const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
 const MAX_AGENT_INSTRUCTION_CHARS = 64 * 1024;
 const ZERO_USAGE: ExecutionUsage = { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 };
+
+export class CodexExecAdapterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CodexExecAdapterError';
+  }
+}
 
 /** The executable plus any fixed argv prefix needed to launch the Codex CLI safely. */
 export interface CodexLaunchPair {
@@ -235,6 +243,9 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
 
   return {
     execute(input) {
+      if (input.expectsIterationOutcome && !input.iterationContract) {
+        throw new CodexExecAdapterError('codex iteration turn requires an immutable iteration contract');
+      }
       if ((input.assignment === undefined) !== (input.instructionMarkdown === undefined)) {
         throw new Error('codex worker requires assignment and declaration instructions together');
       }
@@ -259,7 +270,7 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
         readScope: input.readScope,
         writeScope: input.writeScope,
         ...(!threadId && input.instructionMarkdown !== undefined ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
-        ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
+        ...(input.iterationContract ? { iterationContract: input.iterationContract, proposalStage: input.proposalStage } : {}),
       });
 
       const start = (queuedMessages: string[]): Promise<WorkerExecutionResult> => {
@@ -328,6 +339,20 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
             if (!parsed.terminalEvent) {
               tap('meta', `exit code=${code} disposition=failed`);
               resolvePromise(failedResult(`codex worker produced no turn.completed terminal event. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
+              return;
+            }
+            if (input.iterationContract) {
+              const outcome = parseIterationOutcome(parsed.finalMessage, input.iterationContract);
+              if (!outcome.ok) {
+                tap('meta', `exit code=${code} disposition=failed`);
+                resolvePromise(failedResult(outcome.detail, usage, DEFAULT_SUMMARY_MAX_CHARS));
+                return;
+              }
+              tap('meta', `exit code=${code} disposition=succeeded`);
+              resolvePromise({
+                state: 'succeeded', summary: boundSummary(outcome.value.summary, DEFAULT_SUMMARY_MAX_CHARS),
+                usage, artifacts: [], checkpoints: [], iterationOutcome: outcome.value,
+              });
               return;
             }
             tap('meta', `exit code=${code} disposition=succeeded`);

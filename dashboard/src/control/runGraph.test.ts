@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { RunDetailDto } from './controlClient';
-import { agentGroups } from '../views/WorkflowAgentGraph';
+import { agentEdges, agentGroups } from '../views/WorkflowAgentGraph';
 import type { WorkflowDefEntry } from '../views/WorkflowDetail';
-import { entryFromRun, latestAttemptRefOfAgent, overlaysFromRun } from './runGraph';
+import {
+  entryFromRun,
+  iterationEdgesFromRun,
+  latestAttemptRefOfAgent,
+  overlaysFromRun,
+  participantStageKey,
+} from './runGraph';
 
 const assignment = (agentId: string) => ({
   agentId, declarationPath: `agents/${agentId}.md`, declarationHash: 'a'.repeat(64),
@@ -27,8 +33,69 @@ function runDetail(states: [string, string, string] = ['succeeded', 'running', '
     humanRequests: [
       { requestRef: 'request-1', runRef: 'run-1', displayName: 'Run graph', shortRef: 1, stageRef: 'stage-3', kind: 'approval', revision: 1, state: 'open', title: 'Approve', prompt: 'Approve', ask: 'Approve this.', technicalDetail: null, response: null, createdAt: '', updatedAt: '' },
     ],
-    reviewLoops: [], reviewReceipts: [],
+    stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
   };
+}
+
+function iterationRunDetail(): RunDetailDto {
+  const detail = runDetail();
+  detail.humanRequests.push({
+    ...detail.humanRequests[0]!, requestRef: 'park-gate', stageRef: 'stage-1', gateKind: 'iteration-park',
+    title: 'Iteration parked', prompt: 'Approve or decline.',
+  });
+  detail.iterationLoops = [
+    {
+      iterationLoopRef: 'loop-draft', runRef: 'run-1', definitionHash: 'definition-1', iterationGroupId: 'draft-loop', goal: 'Accept draft.',
+      participants: [
+        { participantId: 'producer', stageRef: 'research', role: 'contributor', perspective: 'Own the source.', mandate: 'Produce the draft.' },
+        { participantId: 'judge', stageRef: 'review', role: 'judge', perspective: 'Apply quality.', mandate: 'Judge the draft.' },
+      ],
+      routes: [
+        { routeId: 'review-route', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['research'] },
+        { routeId: 'rework-route', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['research'] },
+      ],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review-step',
+      schedule: [{ stepId: 'review-step', routeId: 'review-route', cycle: 'current' }], artifacts: ['draft'],
+      criteria: [{ id: 'quality', description: 'Complete.' }], maxCycles: 3, cycleUnit: 'judge verdicts',
+      terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }], cyclesUsed: 2,
+      state: 'awaiting-park-gate', turnOwnerParticipantId: 'producer', currentStepId: 'rework-step',
+      activeGenerationRefs: ['generation-1'], acceptedGenerationRefs: ['generation-accepted'],
+      lastReceiptRef: 'receipt-1', interventionRef: 'park-gate', parkReason: 'no-progress',
+      unresolvedResidue: {
+        unresolvedFindings: [{ findingId: 'finding-1', criterionId: 'quality', severity: 'blocking', summary: 'Missing source.', evidencePaths: ['draft.md'] }],
+        positions: [{ positionId: 'position-1', participantId: 'judge', summary: 'Needs evidence.', generationRefs: ['generation-1'] }],
+        recordedDissent: [{ dissentId: 'dissent-1', participantId: 'producer', positionId: 'position-1', summary: 'Disagree.' }],
+        requestRefs: ['request-1', 'request-attempted'], receiptRefs: ['receipt-1'], activeGenerationRefs: ['generation-1'],
+        acceptedGenerationRefs: ['generation-accepted'], nextRouteId: 'rework-route', cycleUnit: 'judge verdicts', cyclesUsed: 2, maxCycles: 3,
+        attemptedRequestRef: 'request-attempted', attemptedRequestCycle: 3,
+        attemptedOutcome: { schema: 'kb.iteration-outcome/v1', requestRef: 'request-attempted', iterationLoopRef: 'loop-draft', participantId: 'producer', cycle: 3, verdict: 'fulfilled', inputGenerationRefs: ['generation-1'], criteria: [], findings: [], positions: [], recordedDissent: [], summary: 'No progress.' },
+        artifactSnapshots: [{ path: 'draft.md', regularFile: true, size: 10, sha256: 'same', afterRegularFile: true, afterSize: 10, afterSha256: 'same', byteIdentical: true }],
+        failureReason: 'required output was byte-identical',
+      },
+      version: 8, createdAt: '', updatedAt: '',
+    },
+    {
+      iterationLoopRef: 'loop-peer', runRef: 'run-1', definitionHash: 'definition-2', iterationGroupId: 'peer-loop',
+      participants: [
+        { participantId: 'peer', stageRef: 'draft', role: 'peer', perspective: 'Challenge assumptions.', mandate: 'State a position.' },
+        { participantId: 'reply', stageRef: 'research', role: 'peer', perspective: 'Offer a counterpoint.', mandate: 'Reply to the position.' },
+      ],
+      routes: [{ routeId: 'position-route', senderParticipantId: 'peer', recipientParticipantId: 'reply', requestKinds: ['position'], baseResolutionStageIds: ['draft'] }],
+      activation: { seedParticipantId: 'peer', seedArtifactIds: [] }, initialStepId: 'position-step',
+      schedule: [{ stepId: 'position-step', routeId: 'position-route', cycle: 'current' }], artifacts: [], criteria: [], maxCycles: 5, cycleUnit: 'rounds', terminalAuthorities: [], cyclesUsed: 1,
+      state: 'awaiting-turn', activeGenerationRefs: ['generation-1'], version: 2, createdAt: '', updatedAt: '',
+    },
+  ];
+  detail.iterationRequests = [
+    { schema: 'kb.iteration-request/v1', requestRef: 'request-1', iterationLoopRef: 'loop-draft', stepId: 'review-step', routeId: 'review-route', senderParticipantId: 'producer', recipientParticipantId: 'judge', kind: 'review', cycle: 2, inputGenerationRefs: ['generation-1'], baseCommit: 'base', artifactHashes: {}, criteria: [], unresolvedFindingRefs: [], preservedInvariants: [], nextAcceptanceCheck: 'quality', instructions: 'Judge.' },
+    { schema: 'kb.iteration-request/v1', requestRef: 'request-attempted', iterationLoopRef: 'loop-draft', stepId: 'rework-step', routeId: 'route-not-declared', senderParticipantId: 'judge', recipientParticipantId: 'producer', kind: 'rework', cycle: 3, inputGenerationRefs: ['generation-1'], baseCommit: 'base', artifactHashes: {}, criteria: [], unresolvedFindingRefs: ['finding-1'], preservedInvariants: [], nextAcceptanceCheck: 'quality', instructions: 'Revise.' },
+  ];
+  detail.iterationReceipts = [{
+    schema: 'kb.iteration-receipt/v1', receiptRef: 'receipt-1', requestRef: 'request-1', iterationLoopRef: 'loop-draft', participantId: 'judge', cycle: 2,
+    verdict: 'fail', inputGenerationRefs: ['generation-1'], criteria: [], findings: [], positions: [], recordedDissent: [], summary: 'Needs work.',
+    outcomeHash: 'outcome', outputGenerationRefs: [], baseCommit: 'base', canonicalCommit: 'head', createdAt: '', version: 4,
+  }];
+  return detail;
 }
 
 const definition = (): WorkflowDefEntry => ({
@@ -73,5 +140,117 @@ describe('run graph selectors', () => {
     ];
     expect(latestAttemptRefOfAgent(detail, 'alpha')).toBe('attempt-new');
     expect(latestAttemptRefOfAgent(detail, 'missing')).toBeNull();
+  });
+
+  it('adds role cycle turn owner last verdict and park state to each participant overlay', () => {
+    const overlays = overlaysFromRun(iterationRunDetail());
+    expect(overlays.alpha.participantStages[0]).toMatchObject({
+      role: 'contributor', perspectiveSummary: 'Own the source.', cyclesUsed: 2, maxCycles: 3,
+      turnOwner: true, lastVerdict: 'fail', loopState: 'awaiting-park-gate', parkReason: 'no-progress',
+      gateState: 'open', parked: true,
+    });
+    expect(overlays.beta.participantStages[0]).toMatchObject({ role: 'judge', turnOwner: false, lastVerdict: 'fail' });
+  });
+
+  it('derives live parked state from the open park gate, not retained park evidence', () => {
+    const detail = iterationRunDetail();
+    const loop = detail.iterationLoops[0]!;
+    const gate = detail.humanRequests.find((request) => request.requestRef === loop.interventionRef)!;
+    loop.state = 'passed';
+    gate.state = 'resolved';
+    gate.response = {
+      requestRevision: gate.revision, decision: 'approved', response: null, respondedAt: '',
+    };
+
+    const resolved = overlaysFromRun(detail).alpha.participantStages[0]!;
+    expect(resolved).toMatchObject({
+      loopState: 'passed', parked: false, parkReason: 'no-progress', gateState: 'resolved',
+      unresolvedResidue: expect.objectContaining({ failureReason: 'required output was byte-identical' }),
+    });
+
+    loop.state = 'awaiting-park-gate';
+    gate.state = 'open';
+    gate.response = null;
+    expect(overlaysFromRun(detail).alpha.participantStages[0]!.parked).toBe(true);
+  });
+
+  it('keeps two stages using one agent as distinct participant overlays keyed by stage group and participant', () => {
+    const rows = overlaysFromRun(iterationRunDetail()).alpha.participantStages;
+    expect(rows.map((row) => row.key)).toEqual([
+      participantStageKey('research', 'draft-loop', 'producer'),
+      participantStageKey('draft', 'peer-loop', 'peer'),
+      participantStageKey('research', 'peer-loop', 'reply'),
+    ]);
+    expect(new Set(rows.map((row) => row.stageId))).toEqual(new Set(['research', 'draft']));
+  });
+
+  it('derives iteration edges only from server-declared routes', () => {
+    const edges = iterationEdgesFromRun(iterationRunDetail());
+    expect(edges.map((edge) => edge.routeId)).toEqual(['review-route', 'rework-route', 'position-route']);
+    expect(edges.some((edge) => edge.routeId === 'route-not-declared')).toBe(false);
+    expect(edges[0]).toMatchObject({
+      sourceParticipantStageKey: participantStageKey('research', 'draft-loop', 'producer'),
+      targetParticipantStageKey: participantStageKey('review', 'draft-loop', 'judge'),
+    });
+  });
+
+  it('drops an unresolved participant stage and every route that names it', () => {
+    const detail = iterationRunDetail();
+    detail.iterationLoops = [detail.iterationLoops[0]!];
+    detail.iterationLoops[0]!.participants[1]!.stageRef = 'stage-not-in-run';
+    const overlays = overlaysFromRun(detail);
+    expect(overlays.beta.participantStages).toEqual([]);
+    expect(iterationEdgesFromRun(detail)).toEqual([]);
+  });
+
+  it('gives each participant row independent iteration collection containers', () => {
+    const detail = iterationRunDetail();
+    const overlays = overlaysFromRun(detail);
+    const producer = overlays.alpha.participantStages.find((row) => row.participantId === 'producer')!;
+    const judge = overlays.beta.participantStages.find((row) => row.participantId === 'judge')!;
+    producer.activeGenerationRefs.push('generation-ui-only');
+    producer.requests.push({ ...producer.requests[0]!, requestRef: 'request-ui-only' });
+    producer.receipts.push({ ...producer.receipts[0]!, receiptRef: 'receipt-ui-only' });
+    producer.unresolvedResidue!.requestRefs.push('request-ui-only');
+    expect(detail.iterationLoops[0]!.activeGenerationRefs).toEqual(['generation-1']);
+    expect(detail.iterationRequests).toHaveLength(2);
+    expect(detail.iterationReceipts).toHaveLength(1);
+    expect(detail.iterationLoops[0]!.unresolvedResidue!.requestRefs).not.toContain('request-ui-only');
+    expect(judge.activeGenerationRefs).not.toContain('generation-ui-only');
+    expect(judge.requests).not.toContainEqual(expect.objectContaining({ requestRef: 'request-ui-only' }));
+    expect(judge.receipts).not.toContainEqual(expect.objectContaining({ receiptRef: 'receipt-ui-only' }));
+    expect(judge.unresolvedResidue!.requestRefs).not.toContain('request-ui-only');
+  });
+
+  it('uses an intervention gate when both iteration gate refs are present', () => {
+    const detail = iterationRunDetail();
+    detail.iterationLoops[0]!.completionGateRef = 'completion-gate';
+    detail.humanRequests.push({ ...detail.humanRequests[0]!, requestRef: 'completion-gate', gateKind: undefined });
+    const producer = overlaysFromRun(detail).alpha.participantStages.find((row) => row.participantId === 'producer')!;
+    expect(producer.gateKind).toBe('iteration-park');
+  });
+
+  it('keeps iteration edges distinct from DAG dependencies with stable ids', () => {
+    const detail = iterationRunDetail();
+    const first = iterationEdgesFromRun(detail);
+    const second = iterationEdgesFromRun(detail);
+    const dag = agentEdges(entryFromRun(detail));
+    expect(second.map((edge) => edge.id)).toEqual(first.map((edge) => edge.id));
+    expect(first.every((edge) => edge.kind === 'iteration-route')).toBe(true);
+    expect(first.map((edge) => edge.id).some((id) => dag.some((edge) => edge.id === id))).toBe(false);
+  });
+
+  it('shows one accepted generation and full parked residue without inferring either from logs', () => {
+    const overlays = overlaysFromRun(iterationRunDetail());
+    const parked = overlays.alpha.participantStages[0]!;
+    expect(parked.acceptedGenerationRefs).toEqual(['generation-accepted']);
+    expect(parked.unresolvedResidue).toMatchObject({
+      cyclesUsed: 2, attemptedRequestCycle: 3, attemptedRequestRef: 'request-attempted',
+      failureReason: 'required output was byte-identical', artifactSnapshots: [{ byteIdentical: true }],
+    });
+    const absent = overlays.alpha.participantStages[1]!;
+    expect(absent.lastVerdict).toBeUndefined();
+    expect(absent.acceptedGenerationRefs).toBeUndefined();
+    expect(absent.unresolvedResidue).toBeUndefined();
   });
 });

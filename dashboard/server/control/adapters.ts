@@ -14,8 +14,8 @@ import type { ExecutionProfile } from './policy.ts';
 import { isSafeRepoRelativePath } from './proposal.ts';
 import {
   canonicalStageResultHash,
-  canonicalStageResultHashMatches,
   canonicalResultOperationKey,
+  iterationResultOperationKey,
   type AccountingAdapter,
   type CanonicalStageResultPayload,
   type ExecutionBudget,
@@ -25,7 +25,11 @@ import {
   type WorkerArtifactResult,
   type WorktreeAdapter,
 } from './execution.ts';
-import { parseReviewOutcome, type ReviewContract, type ReviewOutcome } from './reviewOutcome.ts';
+import {
+  parseIterationOutcome,
+  type IterationOutcome,
+  type IterationOutcomeContract,
+} from './iterationOutcome.ts';
 import { createAtomicJsonDocument } from './atomicJsonDocument.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -35,6 +39,18 @@ const PINNED_COMMIT = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
 const MAX_OPERATION_KEY = 512;
 const MAX_RESULT_SUMMARY_BYTES = 64 * 1024;
 const MAX_STATE_BYTES = 32 * 1024 * 1024;
+const RESULT_RECORD_KEYS = new Set([
+  'operationKey', 'fingerprint', 'subject', 'runRef', 'stageRef', 'stageId', 'attemptRef',
+  'canonicalCardRef', 'iterationContract', 'result', 'integratedAt',
+]);
+const RESULT_PAYLOAD_KEYS = new Set([
+  'summary', 'artifacts', 'changed', 'checkpoints', 'iterationOutcome', 'resultHash',
+]);
+const RESULT_INTEGRATION_KEYS = new Set([
+  'operationKey', 'subject', 'runRef', 'stageRef', 'stageId', 'attemptRef', 'canonicalCardRef',
+  'summary', 'artifacts', 'changed', 'checkpoints', 'iterationOutcome', 'iterationContract',
+  'resultHash', 'worktreePath',
+]);
 
 export class ExecutionAdapterError extends Error {}
 
@@ -417,8 +433,7 @@ interface ResultRecord {
   stageId: string;
   attemptRef: string;
   canonicalCardRef: string | null;
-  /** Absent only on legacy non-review v1 records written before review contracts were journaled. */
-  reviewContract?: ReviewContract | null;
+  iterationContract?: IterationOutcomeContract;
   result: CanonicalStageResultPayload & { resultHash: string };
   integratedAt: string;
 }
@@ -443,25 +458,34 @@ function digest(value: unknown): string {
 function validCanonicalCardRef(operationKey: string, runRef: string, stageId: string, cardRef: string | null): boolean {
   const firstGeneration = canonicalResultOperationKey(runRef, stageId);
   if (operationKey === firstGeneration) return typeof cardRef === 'string' && SAFE_REF.test(cardRef) && !cardRef.includes('..');
+  const iterationPrefix = `iteration-result:${runRef}:${stageId}:`;
+  if (operationKey.startsWith(iterationPrefix)) {
+    const requestRef = operationKey.slice(iterationPrefix.length);
+    try {
+      return iterationResultOperationKey(runRef, stageId, requestRef) === operationKey && cardRef === null;
+    } catch {
+      return false;
+    }
+  }
   const match = /^:g([1-9]\d*)$/.exec(operationKey.slice(firstGeneration.length));
   return Boolean(match && Number(match[1]) >= 2 && cardRef === null);
 }
 
-function validatedReviewOutcome(value: unknown, contract: unknown): ReviewOutcome | undefined {
+function validatedIterationOutcome(value: unknown, contract: unknown): IterationOutcome | undefined {
   if (value === undefined) {
-    if (contract !== null && contract !== undefined) throw new ExecutionAdapterError('canonical result has a review contract without an outcome');
+    if (contract !== null && contract !== undefined) throw new ExecutionAdapterError('canonical result has an iteration contract without an outcome');
     return undefined;
   }
   if (!contract || typeof contract !== 'object' || Array.isArray(contract)) {
-    throw new ExecutionAdapterError('canonical review outcome lacks an immutable review contract');
+    throw new ExecutionAdapterError('canonical iteration outcome lacks an immutable iteration contract');
   }
   try {
-    const parsed = parseReviewOutcome(JSON.stringify(value), contract as ReviewContract);
+    const parsed = parseIterationOutcome(JSON.stringify(value), contract as IterationOutcomeContract);
     if (!parsed.ok) throw new ExecutionAdapterError(parsed.detail);
     return parsed.value;
   } catch (error) {
     if (error instanceof ExecutionAdapterError) throw error;
-    throw new ExecutionAdapterError('canonical review outcome is invalid');
+    throw new ExecutionAdapterError('canonical iteration outcome is invalid');
   }
 }
 
@@ -529,9 +553,15 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
   for (const item of value.results) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ExecutionAdapterError('invalid canonical result record');
     const record = item as unknown as ResultRecord;
-    const hasReviewContract = Object.prototype.hasOwnProperty.call(record, 'reviewContract');
-    if (!hasReviewContract && record.result && Object.prototype.hasOwnProperty.call(record.result, 'reviewOutcome')) {
-      throw new ExecutionAdapterError('canonical result review contract is absent');
+    if (Object.keys(record).some((key) => !RESULT_RECORD_KEYS.has(key))
+      || !record.result || Object.keys(record.result).some((key) => !RESULT_PAYLOAD_KEYS.has(key))) {
+      throw new ExecutionAdapterError('canonical result contains fields outside the current schema');
+    }
+    const hasIterationContract = Object.prototype.hasOwnProperty.call(record, 'iterationContract');
+    const hasIterationOutcome = Object.prototype.hasOwnProperty.call(record.result ?? {}, 'iterationOutcome');
+    if ((hasIterationContract && (!record.iterationContract || !hasIterationOutcome))
+      || (!hasIterationContract && hasIterationOutcome)) {
+      throw new ExecutionAdapterError('canonical result has incomplete iteration fields');
     }
     requireOperationKey(record.operationKey);
     if (operations.has(record.operationKey) || !SHA256.test(record.fingerprint)
@@ -547,10 +577,8 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
     if (!validCanonicalCardRef(record.operationKey, record.runRef, record.stageId, record.canonicalCardRef)) {
       throw new ExecutionAdapterError('invalid canonical result card identity');
     }
-    const reviewOutcome = validatedReviewOutcome(
-      record.result.reviewOutcome,
-      hasReviewContract ? record.reviewContract : undefined,
-    );
+    const iterationOutcome = hasIterationContract
+      ? validatedIterationOutcome(record.result.iterationOutcome, record.iterationContract) : undefined;
     if (!record.result.summary || record.result.summary.includes('\0')
       || Buffer.byteLength(record.result.summary, 'utf8') > MAX_RESULT_SUMMARY_BYTES
       || redactSensitiveText(record.result.summary) !== record.result.summary) {
@@ -561,12 +589,9 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
       artifacts: normalizedArtifacts(record.result.artifacts),
       changed: normalizedArtifacts(record.result.changed),
       checkpoints: normalizedCheckpoints(record.result.checkpoints),
-      ...(reviewOutcome ? { reviewOutcome } : {}),
+      ...(iterationOutcome ? { iterationOutcome } : {}),
     };
-    if (canonicalStageResultHash(
-      canonicalResult,
-      hasReviewContract ? 'current' : 'legacy-non-review',
-    ) !== record.result.resultHash) {
+    if (canonicalStageResultHash(canonicalResult) !== record.result.resultHash) {
       throw new ExecutionAdapterError('stored canonical result hash does not match its payload');
     }
     const fingerprintInput = {
@@ -579,8 +604,8 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
       canonicalCardRef: record.canonicalCardRef,
       result: { ...canonicalResult, resultHash: record.result.resultHash },
     };
-    const storedFingerprint = digest(hasReviewContract
-      ? { ...fingerprintInput, reviewContract: record.reviewContract }
+    const storedFingerprint = digest(hasIterationContract
+      ? { ...fingerprintInput, iterationContract: record.iterationContract }
       : fingerprintInput);
     if (record.fingerprint !== storedFingerprint) throw new ExecutionAdapterError('stored canonical result fingerprint differs');
     operations.add(record.operationKey);
@@ -784,8 +809,9 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
       if (byOperation.subject !== input.subject || byOperation.runRef !== input.runRef || byOperation.stageId !== input.stageId) {
         throw new ExecutionAdapterError('canonical result lookup identity differs from the committed operation');
       }
+      const storedResult = clone(byOperation.result);
       return {
-        ...clone(byOperation.result),
+        ...storedResult,
         durability: 'inactive' as const,
         attemptBaseCommit: null,
         integrationCommit: null,
@@ -794,6 +820,9 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
 
     async integrate(input) {
       requireOperationKey(input.operationKey);
+      if (Object.keys(input).some((key) => !RESULT_INTEGRATION_KEYS.has(key))) {
+        throw new ExecutionAdapterError('canonical result contains fields outside the current schema');
+      }
       if (!input.summary || input.summary.includes('\0') || Buffer.byteLength(input.summary, 'utf8') > MAX_RESULT_SUMMARY_BYTES) {
         throw new ExecutionAdapterError('canonical result summary is invalid');
       }
@@ -805,13 +834,13 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
       if (!validCanonicalCardRef(input.operationKey, input.runRef, input.stageId, input.canonicalCardRef)) {
         throw new ExecutionAdapterError('canonical result card identity is invalid');
       }
-      const reviewOutcome = validatedReviewOutcome(input.reviewOutcome, input.reviewContract);
+      const iterationOutcome = validatedIterationOutcome(input.iterationOutcome, input.iterationContract);
       const result: CanonicalStageResultPayload & { resultHash: string } = {
         summary: input.summary,
         artifacts: normalizedArtifacts(input.artifacts),
         changed: normalizedArtifacts(input.changed),
         checkpoints: normalizedCheckpoints(input.checkpoints),
-        ...(reviewOutcome ? { reviewOutcome } : {}),
+        ...(iterationOutcome ? { iterationOutcome } : {}),
         resultHash: input.resultHash,
       };
       const computed = canonicalStageResultHash({
@@ -819,7 +848,7 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
         artifacts: result.artifacts,
         changed: result.changed,
         checkpoints: result.checkpoints,
-        ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
+        ...(result.iterationOutcome ? { iterationOutcome: result.iterationOutcome } : {}),
       });
       if (computed !== input.resultHash) throw new ExecutionAdapterError('canonical result hash does not match its payload');
       const normalizedInput = {
@@ -830,26 +859,15 @@ export function createFileResultIntegrator(options: FileResultIntegratorOptions)
         stageId: input.stageId,
         attemptRef: input.attemptRef,
         canonicalCardRef: input.canonicalCardRef,
-        reviewContract: reviewOutcome ? clone(input.reviewContract as ReviewContract) : null,
+        ...(iterationOutcome ? { iterationContract: clone(input.iterationContract as IterationOutcomeContract) } : {}),
         result,
       };
       const fingerprint = digest(normalizedInput);
       return document.mutate((state) => {
         const byOperation = state.results.find((item) => item.operationKey === input.operationKey);
         if (byOperation) {
-          let expectedFingerprint = fingerprint;
-          if (!Object.prototype.hasOwnProperty.call(byOperation, 'reviewContract')) {
-            const { reviewContract: _reviewContract, ...legacyNormalizedInput } = normalizedInput;
-            expectedFingerprint = digest({
-              ...legacyNormalizedInput,
-              result: {
-                ...result,
-                resultHash: canonicalStageResultHash(result, 'legacy-non-review'),
-              },
-            });
-          }
-          if (byOperation.fingerprint !== expectedFingerprint
-            || !canonicalStageResultHashMatches(result, byOperation.result.resultHash)) {
+          if (byOperation.fingerprint !== fingerprint
+            || canonicalStageResultHash(result) !== byOperation.result.resultHash) {
             throw new ExecutionAdapterError('canonical result replay differs from the committed payload');
           }
           return { status: 'replayed' as const, resultHash: byOperation.result.resultHash, durability: 'inactive' as const };

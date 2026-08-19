@@ -48,7 +48,7 @@ import {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { AttemptMiniTail } from '../components/AttemptMiniTail';
-import type { AgentRunOverlay } from '../control/runGraph';
+import type { AgentRunOverlay, IterationGraphEdge, IterationParticipantOverlay } from '../control/runGraph';
 import type { UseSseResult } from '../lib/sseClient';
 import type { WorkflowDefEntry } from './WorkflowDetail';
 
@@ -209,6 +209,8 @@ export interface AgentGroup {
   isManager: boolean;
   /** The steps this agent governs, in pipeline order (dependency rank, then declaration order). */
   stages: WorkflowStage[];
+  /** Stage-scoped loop rows; values from different stages are never folded into agent-level state. */
+  participantStages: IterationParticipantOverlay[];
   /** The rank of this agent's earliest step; the manager sorts ahead of everything regardless. */
   rank: number;
 }
@@ -225,7 +227,10 @@ export interface AgentGroup {
  *     declaration order to break ties. The unresolved group takes its place by the same rule; it is
  *     not special-cased to the end.
  */
-export function agentGroups(entry: WorkflowDefEntry): AgentGroup[] {
+export function agentGroups(
+  entry: WorkflowDefEntry,
+  participantStages: readonly IterationParticipantOverlay[] = [],
+): AgentGroup[] {
   const ranks = stageRanks(entry);
   const order = new Map(entry.stages.map((stage, index) => [stage.id, index]));
   const sortKey = (stage: WorkflowStage): [number, number] => [ranks.get(stage.id) ?? 0, order.get(stage.id) ?? 0];
@@ -249,6 +254,7 @@ export function agentGroups(entry: WorkflowDefEntry): AgentGroup[] {
       isDefault: slot?.isDefault ?? false,
       isManager: false,
       stages: [stage],
+      participantStages: [],
       rank: 0,
     });
   }
@@ -268,9 +274,18 @@ export function agentGroups(entry: WorkflowDefEntry): AgentGroup[] {
         isDefault: manager.isDefault,
         isManager: true,
         stages: [],
+        participantStages: [],
         rank: 0,
       });
     }
+  }
+
+  const groupByStageId = new Map<string, AgentGroup>();
+  for (const group of groups.values()) {
+    for (const stage of group.stages) groupByStageId.set(stage.id, group);
+  }
+  for (const participant of participantStages) {
+    groupByStageId.get(participant.stageId)?.participantStages.push(participant);
   }
 
   const ordered = [...groups.values()];
@@ -416,7 +431,13 @@ interface AgentNodeData {
   overlay?: AgentRunOverlay;
   runRef?: string;
   sse?: UseSseResult;
-  onOpenPanel?: (agentId: string) => void;
+  iterationEdges: readonly IterationGraphEdge[];
+  onOpenPanel?: (selection: AgentPanelSelection) => void;
+}
+
+export interface AgentPanelSelection {
+  agentId: string;
+  participantStageKey?: string;
 }
 
 /** One eligible-choice picker. Selecting a value IS the governed write; there is no separate apply. */
@@ -484,7 +505,7 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
       <header
         className={`v-workflow-agent__head${data.onOpenPanel ? ' v-workflow-agent__head--open nodrag nopan' : ''}`}
         onPointerDown={data.onOpenPanel ? (event) => event.stopPropagation() : undefined}
-        onClick={data.onOpenPanel ? () => data.onOpenPanel?.(group.agentId ?? '') : undefined}
+        onClick={data.onOpenPanel ? () => data.onOpenPanel?.({ agentId: group.agentId ?? '' }) : undefined}
       >
         <strong className="v-workflow-agent__name">{agentGroupName(group)}</strong>
         {group.isManager ? <span className="entity-chip">runs the workflow</span> : null}
@@ -534,6 +555,68 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
       ) : (
         <p className="v-workflow-agent__stages-empty entity-note">no steps of its own</p>
       )}
+
+      {group.participantStages.length ? (
+        <ul className="v-workflow-agent__iterations" aria-label="Iteration participants">
+          {group.participantStages.map((participant) => {
+            const turn = participant.turnOwner
+              ? 'your turn'
+              : participant.turnOwnerParticipantId
+                ? `turn: ${participant.turnOwnerParticipantId}`
+                : 'no turn owner';
+            const parkLabel = participant.parked
+              ? `parked: ${participant.parkReason ?? 'awaiting approval'}`
+              : participant.completionGateRef && participant.gateState === 'open'
+                ? 'completion gate open'
+                : null;
+            const declined = participant.loopState === 'declined';
+            const participantKeys = new Set(group.participantStages.map((row) => row.key));
+            const selfRoutes = data.iterationEdges.filter((edge) => edge.sourceParticipantStageKey === participant.key
+              && participantKeys.has(edge.targetParticipantStageKey));
+            const content = (
+              <>
+                <span className="v-workflow-agent__iteration-heading">
+                  <span className="mc-mono">{participant.stageId}</span>
+                  <span>{participant.iterationGroupId}</span>
+                </span>
+                <span className="v-workflow-agent__iteration-meta">
+                  <span>{participant.participantId} · {participant.role}</span>
+                  <span>cycle {participant.cyclesUsed}/{participant.maxCycles}</span>
+                  <span>{turn}</span>
+                </span>
+                <span className="v-workflow-agent__iteration-state">
+                  <span>{participant.loopState}</span>
+                  {participant.lastVerdict ? <span>last verdict: {participant.lastVerdict}</span> : null}
+                  {declined ? <span className="entity-chip v-iteration-declined-chip">declined</span> : null}
+                  {!declined && parkLabel ? <span className="entity-chip v-iteration-park-chip">{parkLabel}</span> : null}
+                </span>
+                {selfRoutes.map((route) => (
+                  <span key={route.id}
+                    className={`v-workflow-agent__iteration-self-route${participant.parked ? ' v-workflow-agent__iteration-self-route--parked' : ''}${declined ? ' v-workflow-agent__iteration-self-route--declined' : ''}`}
+                    data-testid={`iteration-self-route-${route.id}`}>
+                    ↻ {route.routeId} → {route.route.recipientParticipantId}
+                    {declined ? ' · declined' : participant.parked ? ` · parked: ${participant.parkReason ?? 'awaiting approval'}` : ''}
+                  </span>
+                ))}
+              </>
+            );
+            return (
+              <li key={participant.key} data-testid={`iteration-participant-${participant.key}`}>
+                {data.onOpenPanel && group.agentId ? (
+                  <button type="button" className="v-workflow-agent__iteration nodrag nopan"
+                    aria-label={`Open ${participant.iterationGroupId} ${participant.participantId} loop detail`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); data.onOpenPanel?.({
+                      agentId: group.agentId ?? '', participantStageKey: participant.key,
+                    }); }}>
+                    {content}
+                  </button>
+                ) : <div className="v-workflow-agent__iteration">{content}</div>}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
 
       {data.overlay?.attemptRef && data.runRef && data.sse ? (
         <AttemptMiniTail runRef={data.runRef} attemptRef={data.overlay.attemptRef} sse={data.sse} />
@@ -602,11 +685,15 @@ export function WorkflowAgentGraph({
   runOverlay?: {
     runRef: string;
     overlays: Record<string, AgentRunOverlay>;
+    /** Separate from DAG handoffs; Task 12 owns rendering these declared route edges. */
+    iterationEdges: IterationGraphEdge[];
     sse: UseSseResult;
-    onOpenPanel?: (agentId: string) => void;
+    onOpenPanel?: (selection: AgentPanelSelection) => void;
   };
 }): React.JSX.Element {
-  const groups = useMemo(() => agentGroups(entry), [entry]);
+  const participantStages = useMemo(() => Object.values(runOverlay?.overlays ?? {})
+    .flatMap((overlay) => overlay.participantStages), [runOverlay?.overlays]);
+  const groups = useMemo(() => agentGroups(entry, participantStages), [entry, participantStages]);
   const defaultPositions = useMemo(() => agentNodePositions(entry), [entry]);
   const handoffs = useMemo(() => agentEdges(entry), [entry]);
   const positions = useRef(new Map<string, XYPosition>());
@@ -630,6 +717,7 @@ export function WorkflowAgentGraph({
         overlay: runOverlay?.overlays[group.key],
         runRef: runOverlay?.runRef,
         sse: runOverlay?.sse,
+        iterationEdges: runOverlay?.iterationEdges ?? [],
         onOpenPanel: runOverlay?.onOpenPanel,
       },
     };
@@ -638,11 +726,50 @@ export function WorkflowAgentGraph({
   const [nodes, setNodes, onNodesChange] = useNodesState(projectedNodes);
   const routedEdges = useMemo(() => {
     const livePositions = new Map(nodes.map((node) => [node.id, node.position]));
-    return handoffs.map((edge) => ({
+    const routedHandoffs = handoffs.map((edge) => ({
       ...edge,
       ...nearestHandles(livePositions.get(edge.source), livePositions.get(edge.target)),
     }));
-  }, [handoffs, nodes]);
+    const groupByStageId = new Map<string, string>();
+    for (const group of groups) for (const stage of group.stages) groupByStageId.set(stage.id, group.key);
+    const participantByLoop = new Map<string, IterationParticipantOverlay[]>();
+    for (const participant of participantStages) {
+      const rows = participantByLoop.get(participant.iterationLoopRef) ?? [];
+      rows.push(participant);
+      participantByLoop.set(participant.iterationLoopRef, rows);
+    }
+    const routedIterations: Edge[] = (runOverlay?.iterationEdges ?? []).flatMap((edge) => {
+      const sourceGroup = groupByStageId.get(edge.sourceStageId);
+      const targetGroup = groupByStageId.get(edge.targetStageId);
+      if (sourceGroup === undefined || targetGroup === undefined) return [];
+      const source = agentNodeId(sourceGroup === '' ? null : sourceGroup);
+      const target = agentNodeId(targetGroup === '' ? null : targetGroup);
+      // Same-agent routes would collapse into an invisible self-edge. Their source row renders a
+      // visible loop marker instead, preserving the participant-stage endpoints on the card.
+      if (source === target) return [];
+      const rows = participantByLoop.get(edge.iterationLoopRef) ?? [];
+      const parked = rows.find((row) => row.parked);
+      const declined = rows.some((row) => row.loopState === 'declined');
+      const parkReason = parked?.parkReason ?? (parked ? parked.loopState : null);
+      const routeLabel = declined ? 'declined' : parkReason ? `parked · ${parkReason}` : null;
+      return [{
+        id: edge.id,
+        source,
+        target,
+        type: 'smoothstep',
+        pathOptions: { borderRadius: 18 },
+        markerEnd: { type: MarkerType.Arrow, width: 19, height: 19 },
+        ...nearestHandles(livePositions.get(source), livePositions.get(target)),
+        ariaLabel: `${edge.iterationGroupId} iteration route ${edge.routeId}`
+          + (declined ? '; declined' : parkReason ? `; parked: ${parkReason}` : ''),
+        className: `v-workflow-iteration-route${parked ? ' v-workflow-iteration-route--parked' : ''}${declined ? ' v-workflow-iteration-route--declined' : ''}`,
+        ...(routeLabel ? { label: routeLabel } : {}),
+        animated: !parked && !declined,
+        focusable: false,
+      }];
+    });
+    return [...routedHandoffs, ...routedIterations];
+  }, [groups, handoffs, nodes, participantStages, runOverlay?.iterationEdges]);
   const keepPosition = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
     rememberNodePositions(changes, positions.current);
     onNodesChange(changes);
@@ -658,6 +785,7 @@ export function WorkflowAgentGraph({
         && (node.data as AgentNodeData).overlay === next.data.overlay
         && (node.data as AgentNodeData).runRef === next.data.runRef
         && (node.data as AgentNodeData).sse === next.data.sse
+        && (node.data as AgentNodeData).iterationEdges === next.data.iterationEdges
         && (node.data as AgentNodeData).onOpenPanel === next.data.onOpenPanel
         && node.position.x === next.position.x && node.position.y === next.position.y;
     });
@@ -686,7 +814,7 @@ export function WorkflowAgentGraph({
           >
             <Background gap={18} size={1} /><Controls showInteractive={false} />
             <Panel position="top-left" className="v-workflow-network__legend">
-              Each card is an agent and the steps it governs · arrows show the handoffs between them
+              Each card is an agent and the steps it governs · arrows show the handoffs between them · dashed arrows show iteration routes
             </Panel>
           </ReactFlow>
         </ReactFlowProvider>

@@ -48,7 +48,7 @@ import {
   quarantineRuns,
   reconcileAuthorizedFailedRun,
   rerouteManagedStage,
-  resolveReviewCompletionGate,
+  resolveIterationGate,
   respondToHumanRequest,
   resumeRunAfterHumanResponse,
   sendManagerMessage,
@@ -82,7 +82,7 @@ import {
   timestampLabel,
 } from '../control/runEvents';
 import { loadRunEventWindow, type RunEventWindow } from '../control/runEventWindow';
-import { entryFromRun, overlaysFromRun } from '../control/runGraph';
+import { entryFromRun, iterationEdgesFromRun, overlaysFromRun } from '../control/runGraph';
 import { agentIdsForRun, cardOwnerIndex, agentLink, cardLink, workflowLink } from '../control/entityLinks';
 import { EntityName } from '../components/EntityName';
 import { AgentWorkPanel } from '../components/AgentWorkPanel';
@@ -91,7 +91,7 @@ import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { NavTarget } from '../nav/stack';
-import { WorkflowAgentGraph } from './WorkflowAgentGraph';
+import { WorkflowAgentGraph, type AgentPanelSelection } from './WorkflowAgentGraph';
 import '../control/control.css';
 
 /** One poller serves every open tile for this run. */
@@ -275,8 +275,47 @@ function operationKey(prefix: string): string {
   return `${prefix}:${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now().toString(36)}`;
 }
 
-function humanIdempotencyKey(request: HumanRequestDto, decision: HumanRequestDecision): string {
+function humanIdempotencyKey(request: HumanRequestDto, decision: HumanRequestDecision | 'declined'): string {
   return `human:${request.requestRef}:${request.revision}:${decision}`;
+}
+
+function IterationParkRequestCard({
+  request,
+  activeGenerationRefs,
+  busy,
+  onResolve,
+}: {
+  request: HumanRequestDto;
+  activeGenerationRefs: readonly string[];
+  busy: boolean;
+  onResolve: (decision: 'approved' | 'declined', response: string) => void;
+}): React.JSX.Element {
+  const [response, setResponse] = useState('');
+  return (
+    <article className="control-request" data-testid={`run-gate-${request.requestRef}`}>
+      <h4>{request.ask}</h4>
+      <p>{request.prompt}</p>
+      <p className="control-help">Exact artifact set this approval will pin:</p>
+      <ul className="mc-mono" data-testid={`run-gate-generation-refs-${request.requestRef}`}>
+        {activeGenerationRefs.map((ref) => <li key={ref}>{ref}</li>)}
+      </ul>
+      {request.technicalDetail ? (
+        <details className="entity-fold" data-testid={`run-gate-technical-${request.requestRef}`}>
+          <summary>Technical details</summary>
+          <pre className="entity-fold__body run-gate__technical">{request.technicalDetail}</pre>
+        </details>
+      ) : null}
+      <label htmlFor={`response-${request.requestRef}`}>Your answer</label>
+      <textarea id={`response-${request.requestRef}`} value={response}
+        onChange={(event) => setResponse(event.target.value)} disabled={busy} />
+      <div className="control-actions">
+        <button type="button" className="mc-btn mc-btn--primary" disabled={busy}
+          onClick={() => onResolve('approved', response.trim())}>Approve</button>
+        <button type="button" className="mc-btn" disabled={busy}
+          onClick={() => onResolve('declined', response.trim())}>Decline</button>
+      </div>
+    </article>
+  );
 }
 
 /**
@@ -752,7 +791,7 @@ export function RunDetail({
   const [archiveReason, setArchiveReason] = useState('');
   const [quarantinePlan, setQuarantinePlan] = useState<QuarantinePlanDto | null>(null);
   const [quarantineNotice, setQuarantineNotice] = useState<string | null>(null);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [panelSelection, setPanelSelection] = useState<AgentPanelSelection | null>(null);
   const live = injectedDetail === undefined;
 
   /**
@@ -892,17 +931,17 @@ export function RunDetail({
     }
   }, [busy, loadRun, requireSession, runRef]);
   const runGraph = useMemo(() => detail
-    ? { entry: entryFromRun(detail), overlays: overlaysFromRun(detail) }
+    ? { entry: entryFromRun(detail), overlays: overlaysFromRun(detail), iterationEdges: iterationEdgesFromRun(detail) }
     : null, [detail]);
 
   useEffect(() => {
-    if (selectedAgentId === null) return;
+    if (panelSelection === null) return;
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setSelectedAgentId(null);
+      if (event.key === 'Escape') setPanelSelection(null);
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [selectedAgentId]);
+  }, [panelSelection]);
 
   if (missing) {
     return (
@@ -940,9 +979,12 @@ export function RunDetail({
 
   const openRequests = detail.humanRequests.filter((request) => request.state === 'open');
   const resolvedRequests = detail.humanRequests.filter((request) => request.state !== 'open');
-  const completionRequestRefs = new Set((detail.reviewReceipts ?? [])
-    .map((receipt) => receipt.completionRequestRef)
-    .filter((ref): ref is string => ref !== null));
+  const completionLoopByRequestRef = new Map((detail.iterationLoops ?? [])
+    .filter((loop) => loop.completionGateRef !== undefined)
+    .map((loop) => [loop.completionGateRef!, loop]));
+  const parkLoopByRequestRef = new Map((detail.iterationLoops ?? [])
+    .filter((loop) => loop.interventionRef !== undefined)
+    .map((loop) => [loop.interventionRef!, loop]));
   const manager = detail.sessions.find((item) => item.sessionRef === detail.run.managerSessionRef);
   const managerRunning = manager?.state === 'running';
   const resumeAvailable = canResumePublishedRun(detail);
@@ -976,11 +1018,16 @@ export function RunDetail({
   })();
 
   const respond = (request: HumanRequestDto, decision: HumanRequestDecision, response: string): void => {
-    const completionGate = completionRequestRefs.has(request.requestRef);
+    const iterationLoop = completionLoopByRequestRef.get(request.requestRef);
     void govern('your answer', async (active) => {
-      if (completionGate) {
-        await resolveReviewCompletionGate(request.requestRef, {
+      if (iterationLoop) {
+        await resolveIterationGate(request.requestRef, {
+          expectedGateRef: request.requestRef,
+          expectedGateKind: null,
+          expectedParkReason: null,
           expectedRequestRevision: request.revision,
+          expectedLoopVersion: iterationLoop.version,
+          expectedGenerationRefs: iterationLoop.activeGenerationRefs,
           decision: decision as Extract<HumanRequestDecision, 'approved' | 'rejected' | 'changes-requested'>,
           idempotencyKey: humanIdempotencyKey(request, decision),
           response: response || null,
@@ -991,9 +1038,29 @@ export function RunDetail({
           idempotencyKey: humanIdempotencyKey(request, decision), response: response || null,
         }, active, fetchImpl);
       }
-      if ((!completionGate && (decision === 'approved' || decision === 'responded')) || (completionGate && decision === 'approved')) {
+      if (!iterationLoop && (decision === 'approved' || decision === 'responded')) {
         await resumeRunAfterHumanResponse(request.runRef, active, fetchImpl);
       }
+    });
+  };
+
+  const resolvePark = (request: HumanRequestDto, decision: 'approved' | 'declined', response: string): void => {
+    const iterationLoop = parkLoopByRequestRef.get(request.requestRef);
+    void govern('your answer', async (active) => {
+      if (!iterationLoop || !iterationLoop.parkReason) {
+        throw new Error('This iteration park gate is not bound to a displayed loop version. Refresh before answering.');
+      }
+      await resolveIterationGate(request.requestRef, {
+        expectedGateRef: request.requestRef,
+        expectedGateKind: 'iteration-park',
+        expectedParkReason: iterationLoop.parkReason,
+        expectedRequestRevision: request.revision,
+        expectedLoopVersion: iterationLoop.version,
+        expectedGenerationRefs: iterationLoop.activeGenerationRefs,
+        decision,
+        idempotencyKey: humanIdempotencyKey(request, decision),
+        response: response || null,
+      }, active, fetchImpl);
     });
   };
 
@@ -1112,11 +1179,12 @@ export function RunDetail({
         <WorkflowAgentGraph
           entry={runGraph!.entry}
           readOnly
-          runOverlay={{ runRef: detail.run.runRef, overlays: runGraph!.overlays, sse, onOpenPanel: setSelectedAgentId }}
+          runOverlay={{ runRef: detail.run.runRef, overlays: runGraph!.overlays, iterationEdges: runGraph!.iterationEdges, sse, onOpenPanel: setPanelSelection }}
         />
-        {selectedAgentId !== null ? (
-          <AgentWorkPanel runRef={detail.run.runRef} agentId={selectedAgentId} run={detail}
-            overlay={runGraph!.overlays[selectedAgentId]} sse={sse} onClose={() => setSelectedAgentId(null)} busy={busy}
+        {panelSelection !== null ? (
+          <AgentWorkPanel runRef={detail.run.runRef} agentId={panelSelection.agentId}
+            participantStageKey={panelSelection.participantStageKey} run={detail}
+            overlay={runGraph!.overlays[panelSelection.agentId]} sse={sse} onClose={() => setPanelSelection(null)} busy={busy}
             onRespondRequest={(request, decision, response) => respond(request, decision, response)} />
         ) : null}
       </section>
@@ -1138,10 +1206,14 @@ export function RunDetail({
       {openRequests.length ? (
         <section className="entity-block" aria-label="Waiting on you" data-testid="run-gates">
           <h3 className="entity-block__title">Waiting on you</h3>
-          {openRequests.map((request) => (
+          {openRequests.map((request) => request.gateKind === 'iteration-park' ? (
+            <IterationParkRequestCard key={request.requestRef} request={request}
+              activeGenerationRefs={parkLoopByRequestRef.get(request.requestRef)?.activeGenerationRefs ?? []} busy={busy}
+              onResolve={(decision, response) => resolvePark(request, decision, response)} />
+          ) : (
             <HumanRequestCard key={request.requestRef} request={request} busy={busy}
               onRespond={(decision, response) => respond(request, decision, response)}
-              showPrompt={completionRequestRefs.has(request.requestRef)} />
+              showPrompt={completionLoopByRequestRef.has(request.requestRef)} />
           ))}
         </section>
       ) : null}

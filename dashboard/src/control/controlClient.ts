@@ -231,6 +231,8 @@ export interface HumanRequestDto {
   shortRef: number;
   stageRef: string | null;
   kind: 'input' | 'approval' | 'review' | 'intervention' | 'governance-refusal';
+  /** Present only for the dedicated fail-closed iteration parking boundary. */
+  gateKind?: 'iteration-park';
   revision: number;
   state: 'open' | 'resolved';
   title: string;
@@ -253,25 +255,209 @@ export interface HumanRequestDto {
   updatedAt: string;
 }
 
-/** Enough review lineage for clients to recognize a reserved completion-gate request. */
-export interface ReviewLoopDto {
-  reviewLoopRef: string;
-  runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  state: 'awaiting-subject' | 'checking' | 'rework-queued' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
+export type IterationRoleDto = 'peer' | 'judge' | 'mediator' | 'manager' | 'coordinator' | 'contributor';
+export type IterationRequestKindDto = 'review' | 'rework' | 'position' | 'reply' | 'delegate' | 'check';
+export type IterationVerdictDto =
+  | 'fulfilled'
+  | 'accept' | 'rework'
+  | 'pass' | 'fail'
+  | 'consensus' | 'continue'
+  | 'complete' | 'parked';
+export type IterationParkReasonDto = 'exhausted' | 'no-progress' | 'parked';
+
+export interface IterationParticipantDto {
+  participantId: string;
+  /** Definition stage id (not the run-scoped StageDto.stageRef). */
+  stageRef: string;
+  role: IterationRoleDto;
+  perspective: string;
+  mandate: string;
+  goal?: string;
+}
+
+export interface IterationRouteDto {
+  routeId: string;
+  senderParticipantId: string;
+  recipientParticipantId: string;
+  requestKinds: IterationRequestKindDto[];
+  baseResolutionStageIds: string[];
+}
+
+export interface IterationScheduleStepDto {
+  stepId: string;
+  routeId: string;
+  after?: { stepId: string; participantId: string; verdict: IterationVerdictDto };
+  cycle: 'current' | 'next';
+}
+
+export interface IterationFindingDto {
+  findingId: string;
+  criterionId: string;
+  severity: 'blocking' | 'advisory';
+  summary: string;
+  evidencePaths: string[];
+}
+
+export interface IterationPositionDto {
+  positionId: string;
+  participantId: string;
+  summary: string;
+  generationRefs: string[];
+}
+
+export interface IterationDissentDto {
+  dissentId: string;
+  participantId: string;
+  positionId: string;
+  summary: string;
+}
+
+export interface IterationCriterionOutcomeDto {
+  criterionId: string;
+  verdict: 'pass' | 'fail' | 'unverified';
+  findingIds: string[];
+}
+
+export interface IterationOutcomeDto {
+  schema: 'kb.iteration-outcome/v1';
+  requestRef: string;
+  iterationLoopRef: string;
+  participantId: string;
+  cycle: number;
+  verdict: IterationVerdictDto;
+  inputGenerationRefs: string[];
+  criteria: IterationCriterionOutcomeDto[];
+  findings: IterationFindingDto[];
+  resolvedFindingRefs?: string[];
+  positions: IterationPositionDto[];
+  recordedDissent: IterationDissentDto[];
+  summary: string;
+}
+
+export interface IterationArtifactSnapshotDto {
+  path: string;
+  regularFile: boolean;
+  size: number | null;
+  sha256: string | null;
+  afterRegularFile: boolean;
+  afterSize: number | null;
+  afterSha256: string | null;
+  byteIdentical: boolean;
+}
+
+export interface IterationResidueDto {
+  unresolvedFindings: IterationFindingDto[];
+  positions: IterationPositionDto[];
+  recordedDissent: IterationDissentDto[];
+  requestRefs: string[];
+  receiptRefs: string[];
+  activeGenerationRefs: string[];
+  acceptedGenerationRefs: string[];
+  nextRouteId: string;
+  cycleUnit: string;
+  cyclesUsed: number;
+  maxCycles: number;
+  attemptedRequestRef?: string;
+  /** Distinct from cyclesUsed: a no-progress attempt is rolled back before parking. */
+  attemptedRequestCycle?: number;
+  attemptedOutcome?: IterationOutcomeDto;
+  artifactSnapshots?: IterationArtifactSnapshotDto[];
+  failureReason?: string;
+}
+
+export interface IterationRequestDto {
+  schema: 'kb.iteration-request/v1';
+  requestRef: string;
+  iterationLoopRef: string;
+  stepId?: string;
+  routeId: string;
+  senderParticipantId: string;
+  recipientParticipantId: string;
+  kind: IterationRequestKindDto;
+  cycle: number;
+  inputGenerationRefs: string[];
+  baseCommit: string;
+  artifactHashes: Record<string, string>;
+  criteria: Array<{ id: string; description: string }>;
+  unresolvedFindingRefs: string[];
+  preservedInvariants: string[];
+  nextAcceptanceCheck: string;
+  instructions: string;
+}
+
+export interface IterationReceiptDto extends Omit<IterationOutcomeDto, 'schema'> {
+  schema: 'kb.iteration-receipt/v1';
+  receiptRef: string;
+  outcomeHash: string;
+  outputGenerationRefs: string[];
+  baseCommit: string;
+  canonicalCommit: string;
+  createdAt: string;
   version: number;
 }
 
-export interface ReviewReceiptDto {
-  reviewReceiptRef: string;
+export interface StageGenerationDto {
+  generationRef: string;
   runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
-  completionRequestRef: string | null;
-  interventionRequestRef: string | null;
+  logicalStageRef: string;
+  logicalStageId: string;
+  generation: number;
+  predecessorGenerationRef: string | null;
+  attemptRef: string;
+  canonicalResultOperationKey: string | null;
+  resultHash: string | null;
+  resultCardRef: string | null;
+  baseCommit: string | null;
+  canonicalCommit: string | null;
+  state: 'queued' | 'committed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerationSupersessionDto {
+  runRef: string;
+  predecessorGenerationRef: string;
+  successorGenerationRef: string;
+  triggerReceiptRef: string;
+  operationKey: string;
+  createdAt: string;
+}
+
+export interface IterationLoopDto {
+  iterationLoopRef: string;
+  runRef: string;
+  definitionHash: string;
+  iterationGroupId: string;
+  goal?: string;
+  participants: IterationParticipantDto[];
+  routes: IterationRouteDto[];
+  activation: { seedParticipantId: string; seedArtifactIds: string[] };
+  initialStepId: string;
+  schedule: IterationScheduleStepDto[];
+  artifacts: string[];
+  criteria: Array<{ id: string; description: string }>;
+  maxCycles: number;
+  cycleUnit: string;
+  terminalAuthorities: Array<{ participantId: string; verdict: Extract<IterationVerdictDto, 'accept' | 'pass' | 'consensus' | 'complete'> }>;
+  completionGate?: { id: string; kind: 'approval'; prompt: string; requiresReview: 'pass' };
+  cyclesUsed: number;
+  state:
+    | 'awaiting-seed' | 'awaiting-turn' | 'running-turn'
+    | 'failed' | 'rework-queued' | 'exhausted'
+    | 'parked' | 'awaiting-completion-gate' | 'awaiting-park-gate'
+    | 'passed' | 'declined';
+  turnOwnerParticipantId?: string;
+  currentStepId?: string;
+  activeGenerationRefs: string[];
+  acceptedGenerationRefs?: string[];
+  lastReceiptRef?: string;
+  completionGateRef?: string;
+  interventionRef?: string;
+  parkReason?: IterationParkReasonDto;
+  unresolvedResidue?: IterationResidueDto;
   version: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface RunDetailDto {
@@ -282,8 +468,11 @@ export interface RunDetailDto {
   attempts: AttemptDto[];
   sessions: ManagedSessionDto[];
   humanRequests: HumanRequestDto[];
-  reviewLoops: ReviewLoopDto[];
-  reviewReceipts: ReviewReceiptDto[];
+  stageGenerations: StageGenerationDto[];
+  generationSupersessions: GenerationSupersessionDto[];
+  iterationLoops: IterationLoopDto[];
+  iterationRequests: IterationRequestDto[];
+  iterationReceipts: IterationReceiptDto[];
 }
 
 /**
@@ -341,7 +530,8 @@ export function isAuthorizedFailedRunReconciliationCandidate(
     && run.managerGeneration === 1 && run.createdAt === '2026-08-01T02:04:03.640Z'
     && run.updatedAt === '2026-08-01T03:32:49.635Z'
     && detail.stages.length === 13 && detail.attempts.length === 13 && detail.sessions.length === 14
-    && detail.reviewLoops.length === 0 && detail.reviewReceipts.length === 0
+    && detail.stageGenerations.length === 0 && detail.generationSupersessions.length === 0
+    && detail.iterationLoops.length === 0 && detail.iterationRequests.length === 0 && detail.iterationReceipts.length === 0
     && detail.humanRequests.length === 1 && !!request
     && request.requestRef === AUTHORIZED_FAILED_RUN_RECONCILIATION.requestRef
     && request.runRef === run.runRef && request.stageRef === null && request.kind === 'intervention'
@@ -975,21 +1165,47 @@ export function reconcileAuthorizedFailedRun(
   ).then((body) => ({ run: body.value.run, replayed: body.replayed }));
 }
 
-/** Resolve a server-bound review completion gate; never use the generic request endpoint for it. */
-export function resolveReviewCompletionGate(
-  requestRef: string,
-  input: {
-    expectedRequestRevision: number;
+interface ResolveIterationGateCasDto {
+  expectedGateRef: string;
+  expectedRequestRevision: number;
+  expectedLoopVersion: number;
+  expectedGenerationRefs: string[];
+  idempotencyKey: string;
+  response?: string | null;
+}
+
+export type ResolveIterationGateDto = ResolveIterationGateCasDto & (
+  | {
+    expectedGateKind: null;
+    expectedParkReason: null;
     decision: Extract<HumanRequestDecision, 'approved' | 'rejected' | 'changes-requested'>;
-    idempotencyKey: string;
-    response?: string | null;
-  },
+  }
+  | {
+    expectedGateKind: 'iteration-park';
+    expectedParkReason: IterationParkReasonDto;
+    decision: 'approved' | 'declined';
+  }
+);
+
+export interface IterationGateResultDto {
+  loop: IterationLoopDto;
+  receipt: IterationReceiptDto | null;
+  receiptVersion: number | null;
+  gate: HumanRequestDto;
+  interventionRequest: HumanRequestDto | null;
+  run?: RunDto;
+}
+
+/** Resolve a server-bound iteration gate with the exact displayed gate and generation-set CAS. */
+export function resolveIterationGate(
+  requestRef: string,
+  input: ResolveIterationGateDto,
   token: string,
   fetchImpl?: FetchLike,
-): Promise<HumanRequestDto> {
-  return write<{ ok: true; value: { request: HumanRequestDto } }>(
-    `/api/control/review-completion-gates/${segment(requestRef)}/resolve`, input, token, fetchImpl,
-  ).then((body) => body.value.request);
+): Promise<IterationGateResultDto> {
+  return write<{ ok: true; value: IterationGateResultDto }>(
+    `/api/control/iteration-gates/${segment(requestRef)}/resolve`, input, token, fetchImpl,
+  ).then((body) => body.value);
 }
 
 export async function getRetentionInventory(token: string, fetchImpl?: FetchLike): Promise<StorageInventoryDto> {

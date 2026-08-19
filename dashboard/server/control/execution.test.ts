@@ -1,17 +1,16 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
 import type { JsonObject } from './types.ts';
-import type { PlanProposal, ProposalStage } from './proposal.ts';
-import { proposalContentHash } from './proposal.ts';
+import type { PlanProposal, ProposalIterationGroup, ProposalStage } from './proposal.ts';
+import { ARTIFACT_PRODUCING_REQUEST_KINDS, proposalContentHash } from './proposal.ts';
 import type { PolicyEnvironment } from './policy.ts';
 import {
   AutomaticExecutionEngine,
   AutomaticExecutionError,
   canonicalStageResultHash,
-  canonicalStageResultHashMatches,
   planRunWorktreePath,
   type AccountingAdapter,
   type AutomaticExecutionOptions,
@@ -108,6 +107,7 @@ function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runR
     managerModel: plan.manager.model,
     managerAssignment: plan.manager.assignment,
     idempotencyKey: `launch-${createdProposal.value.proposalRef}`,
+    iterationGroups: plan.iterationGroups,
     stages: plan.stages.map((item) => ({
       stageId: item.id,
       title: item.title,
@@ -140,6 +140,7 @@ interface Fakes {
   worktreePaths: string[];
   removedPaths: string[];
   reservations: string[];
+  settlements: string[];
   reservationLimits: ExecutionBudget[];
 }
 
@@ -149,6 +150,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
   const worktreePaths: string[] = [];
   const removedPaths: string[] = [];
   const reservations: string[] = [];
+  const settlements: string[] = [];
   const reservationLimits: ExecutionBudget[] = [];
   const settled = new Set<string>();
   const worktrees: WorktreeAdapter = {
@@ -166,7 +168,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
       reservationLimits.push(input.limits);
       return { ok: true, value: { reservationRef: `reservation:${input.attemptRef}`, replayed: false } };
     },
-    async settle(input) { settled.add(input.operationKey); },
+    async settle(input) { settled.add(input.operationKey); settlements.push(input.operationKey); },
   };
   const workers: WorkerAdapter = overrides.worker ?? {
     async execute(input) {
@@ -192,7 +194,8 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     async cancelManager() {},
     async cancelWorker() {},
   };
-  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, removedPaths, reservations, reservationLimits };
+  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder,
+    worktreePaths, removedPaths, reservations, settlements, reservationLimits };
 }
 
 interface LedgerRecord {
@@ -264,7 +267,7 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
     store,
     policy,
     worktreeRoot: root,
-    maxConcurrency: 1,
+    maxConcurrency: 2,
     budget: { maxAttempts: 3, maxInputTokens: 1_000, maxOutputTokens: 1_000, maxCostUsdMicros: 10_000 },
     // Deliberately distinct from the window budget above so a reservation can only match one of them.
     attemptBudget: { maxAttempts: 1, maxInputTokens: 400, maxOutputTokens: 400, maxCostUsdMicros: 4_000 },
@@ -280,101 +283,458 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
   };
 }
 
-function passOutcome() {
+
+
+
+
+function genericIterationGroup(maxCycles = 2): ProposalIterationGroup {
   return {
-    schema: 'kb.review-outcome/v1' as const, decision: 'pass' as const, summary: 'creator is safe',
-    criteria: [{ criterionId: 'safety', verdict: 'pass' as const, findingIds: [] }], findings: [],
+    iterationGroupId: 'draft-loop', goal: 'Produce an accepted draft.',
+    participants: [
+      { participantId: 'producer', stageRef: 'producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce and revise the draft.' },
+      { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Pass only a complete draft.' },
+    ],
+    routes: [
+      { routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer'] },
+      { routeId: 'to-producer', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['judge'] },
+    ],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+    schedule: [
+      { stepId: 'review', routeId: 'to-judge', after: { stepId: 'rework', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'rework', routeId: 'to-producer', after: { stepId: 'review', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles, cycleUnit: 'One producer generation followed by one judge verdict.',
+    terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
   };
 }
 
-function failOutcome() {
+function genericIterationPlan(maxCycles = 2): PlanProposal {
+  const producer = stage('producer');
+  producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
+  const judge = stage('judge', ['producer']);
+  judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const release = stage('release', ['producer']);
+  return { ...proposal([producer, judge, release]), iterationGroups: [genericIterationGroup(maxCycles)] };
+}
+
+function fanInIterationPlan(): PlanProposal {
+  const producer = stage('producer');
+  producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
+  const peer = stage('peer', ['producer']);
+  peer.artifacts = [{ id: 'peer-draft', path: 'dashboard/server/peer.txt', description: 'Peer contribution.' }];
+  peer.checkpoints = [];
+  const judge = stage('judge', ['producer']); judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const release = stage('release', ['producer']);
+  const group: ProposalIterationGroup = {
+    iterationGroupId: 'fan-in-loop', goal: 'Accept the current producer and peer generations.',
+    participants: [
+      { participantId: 'producer', stageRef: 'producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce the draft.' },
+      { participantId: 'peer', stageRef: 'peer', role: 'contributor', perspective: 'Challenge the draft.', mandate: 'Produce a current peer position.' },
+      { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Judge every current peer.' },
+    ],
+    routes: [
+      { routeId: 'to-peer', senderParticipantId: 'producer', recipientParticipantId: 'peer', requestKinds: ['delegate'], baseResolutionStageIds: ['producer'] },
+      { routeId: 'peer-to-judge', senderParticipantId: 'peer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer', 'peer'] },
+      { routeId: 'to-producer', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['judge'] },
+      { routeId: 'producer-to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer', 'peer'] },
+    ],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'peer-turn',
+    schedule: [
+      { stepId: 'peer-turn', routeId: 'to-peer', cycle: 'current' },
+      { stepId: 'judge-a', routeId: 'peer-to-judge', after: { stepId: 'peer-turn', participantId: 'peer', verdict: 'fulfilled' }, cycle: 'current' },
+      { stepId: 'producer-rework-a', routeId: 'to-producer', after: { stepId: 'judge-a', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'judge-b', routeId: 'producer-to-judge', after: { stepId: 'producer-rework-a', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'producer-rework-b', routeId: 'to-producer', after: { stepId: 'judge-b', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'Every current contribution is complete.' }],
+    maxCycles: 3, cycleUnit: 'One producer revision after peer review.', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+  };
+  return { ...proposal([producer, peer, judge, release]), iterationGroups: [group] };
+}
+
+function siblingIterationPlan(): PlanProposal {
+  const iterationGroup = (prefix: 'a' | 'b'): ProposalIterationGroup => ({
+    iterationGroupId: `${prefix}-loop`, goal: `Accept ${prefix} draft.`,
+    participants: [
+      { participantId: `${prefix}-producer`, stageRef: `${prefix}-producer`, role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce the draft.' },
+      { participantId: `${prefix}-judge`, stageRef: `${prefix}-judge`, role: 'judge', perspective: 'Apply quality.', mandate: 'Judge the draft.' },
+    ],
+    routes: [{
+      routeId: `${prefix}-to-judge`, senderParticipantId: `${prefix}-producer`, recipientParticipantId: `${prefix}-judge`,
+      requestKinds: ['review'], baseResolutionStageIds: [`${prefix}-producer`],
+    }, {
+      routeId: `${prefix}-to-producer`, senderParticipantId: `${prefix}-judge`, recipientParticipantId: `${prefix}-producer`,
+      requestKinds: ['rework'], baseResolutionStageIds: [`${prefix}-judge`],
+    }],
+    activation: { seedParticipantId: `${prefix}-producer`, seedArtifactIds: [`${prefix}-draft`] },
+    initialStepId: `${prefix}-review`,
+    schedule: [{
+      stepId: `${prefix}-review`, routeId: `${prefix}-to-judge`,
+      after: { stepId: `${prefix}-rework`, participantId: `${prefix}-producer`, verdict: 'fulfilled' }, cycle: 'next',
+    }, {
+      stepId: `${prefix}-rework`, routeId: `${prefix}-to-producer`,
+      after: { stepId: `${prefix}-review`, participantId: `${prefix}-judge`, verdict: 'fail' }, cycle: 'current',
+    }],
+    artifacts: [`${prefix}-draft`], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: prefix === 'a' ? 1 : 2, cycleUnit: 'One producer generation and judge verdict.',
+    terminalAuthorities: [{ participantId: `${prefix}-judge`, verdict: 'pass' }],
+  });
+  const aProducer = stage('a-producer');
+  aProducer.artifacts = [{ id: 'a-draft', path: 'dashboard/server/a-producer.txt', description: 'A draft.' }];
+  const aJudge = stage('a-judge', ['a-producer']); aJudge.artifacts = []; aJudge.checkpoints = [];
+  const bProducer = stage('b-producer');
+  bProducer.artifacts = [{ id: 'b-draft', path: 'dashboard/server/b-producer.txt', description: 'B draft.' }];
+  const bJudge = stage('b-judge', ['b-producer']); bJudge.artifacts = []; bJudge.checkpoints = [];
+  const release = stage('release', ['a-producer', 'b-producer']);
   return {
-    schema: 'kb.review-outcome/v1' as const, decision: 'fail' as const, summary: 'creator needs changes',
-    criteria: [{ criterionId: 'safety', verdict: 'fail' as const, findingIds: ['finding-1'] }],
-    findings: [{ id: 'finding-1', criterionId: 'safety', severity: 'blocking' as const, summary: 'blocking defect', evidencePaths: [] }],
+    ...proposal([aProducer, aJudge, bProducer, bJudge, release]),
+    maxConcurrency: 2,
+    iterationGroups: [iterationGroup('a'), iterationGroup('b')],
   };
 }
 
-function parkedOutcome() {
+function coordinatorCrewIterationPlan(): PlanProposal {
+  const coordinator = stage('coordinator');
+  coordinator.artifacts = [{ id: 'draft', path: 'dashboard/server/coordinator.txt', description: 'Crew draft.' }];
+  const specialist = stage('specialist', ['coordinator']);
+  const release = stage('release', ['coordinator']);
+  const group: ProposalIterationGroup = {
+    iterationGroupId: 'crew-loop', goal: 'Complete the bounded specialist assignment.',
+    participants: [
+      { participantId: 'coordinator', stageRef: 'coordinator', role: 'coordinator', perspective: 'Own the goal.', mandate: 'Route and assess specialist work.' },
+      { participantId: 'specialist', stageRef: 'specialist', role: 'contributor', perspective: 'Execute the bounded task.', mandate: 'Respond to delegate rework and check requests.' },
+    ],
+    routes: [
+      { routeId: 'delegate-specialist', senderParticipantId: 'coordinator', recipientParticipantId: 'specialist', requestKinds: ['delegate'], baseResolutionStageIds: ['coordinator'] },
+      { routeId: 'review-coordinator', senderParticipantId: 'specialist', recipientParticipantId: 'coordinator', requestKinds: ['review'], baseResolutionStageIds: ['specialist'] },
+      { routeId: 'rework-specialist', senderParticipantId: 'coordinator', recipientParticipantId: 'specialist', requestKinds: ['rework'], baseResolutionStageIds: ['coordinator'] },
+      { routeId: 'check-specialist', senderParticipantId: 'coordinator', recipientParticipantId: 'specialist', requestKinds: ['check'], baseResolutionStageIds: ['coordinator'] },
+    ],
+    activation: { seedParticipantId: 'coordinator', seedArtifactIds: ['draft'] }, initialStepId: 'delegate',
+    schedule: [
+      { stepId: 'delegate', routeId: 'delegate-specialist', cycle: 'current' },
+      { stepId: 'coordinate', routeId: 'review-coordinator', after: { stepId: 'delegate', participantId: 'specialist', verdict: 'fulfilled' }, cycle: 'current' },
+      { stepId: 'rework', routeId: 'rework-specialist', after: { stepId: 'coordinate', participantId: 'coordinator', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'check', routeId: 'check-specialist', after: { stepId: 'rework', participantId: 'specialist', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'complete', routeId: 'review-coordinator', after: { stepId: 'check', participantId: 'specialist', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'The crew result is complete.' }],
+    maxCycles: 2, cycleUnit: 'One delegate rework and check traversal.',
+    terminalAuthorities: [{ participantId: 'coordinator', verdict: 'complete' }],
+  };
+  return { ...proposal([coordinator, specialist, release]), iterationGroups: [group] };
+}
+
+function parallelIterationMixPlan(): PlanProposal {
+  const pairProducer = stage('pair-producer');
+  pairProducer.artifacts = [{ id: 'pair-draft', path: 'dashboard/server/pair-producer.txt', description: 'Pair draft.' }];
+  const pairPeer = stage('pair-peer', ['pair-producer']);
+  pairPeer.artifacts = []; pairPeer.checkpoints = []; pairPeer.scope = { read: ['dashboard'], write: [] };
+  const judgeProducer = stage('judge-producer');
+  judgeProducer.artifacts = [{ id: 'judge-draft', path: 'dashboard/server/judge-producer.txt', description: 'Judge draft.' }];
+  const judge = stage('mix-judge', ['judge-producer']);
+  judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const coordinator = stage('mix-coordinator');
+  coordinator.artifacts = [{ id: 'crew-draft', path: 'dashboard/server/mix-coordinator.txt', description: 'Crew draft.' }];
+  const specialist = stage('mix-specialist', ['mix-coordinator']);
+  const release = stage('release', ['pair-producer', 'judge-producer', 'mix-coordinator']);
+  const pair: ProposalIterationGroup = {
+    iterationGroupId: 'pair-loop', goal: 'Accept the pair draft.',
+    participants: [
+      { participantId: 'pair-producer', stageRef: 'pair-producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce the draft.' },
+      { participantId: 'pair-peer', stageRef: 'pair-peer', role: 'peer', perspective: 'Check the draft.', mandate: 'Accept a complete draft.' },
+    ],
+    routes: [{
+      routeId: 'pair-review', senderParticipantId: 'pair-producer', recipientParticipantId: 'pair-peer',
+      requestKinds: ['review'], baseResolutionStageIds: ['pair-producer'],
+    }],
+    activation: { seedParticipantId: 'pair-producer', seedArtifactIds: ['pair-draft'] },
+    initialStepId: 'pair-review', schedule: [{ stepId: 'pair-review', routeId: 'pair-review', cycle: 'next' }],
+    artifacts: ['pair-draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: 1, cycleUnit: 'One peer review.', terminalAuthorities: [{ participantId: 'pair-peer', verdict: 'accept' }],
+  };
+  const judged: ProposalIterationGroup = {
+    iterationGroupId: 'judge-loop', goal: 'Pass the judged draft.',
+    participants: [
+      { participantId: 'judge-producer', stageRef: 'judge-producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce and revise the draft.' },
+      { participantId: 'mix-judge', stageRef: 'mix-judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Pass only a complete draft.' },
+    ],
+    routes: [
+      { routeId: 'judge-review', senderParticipantId: 'judge-producer', recipientParticipantId: 'mix-judge', requestKinds: ['review'], baseResolutionStageIds: ['judge-producer'] },
+      { routeId: 'judge-rework', senderParticipantId: 'mix-judge', recipientParticipantId: 'judge-producer', requestKinds: ['rework'], baseResolutionStageIds: ['mix-judge'] },
+    ],
+    activation: { seedParticipantId: 'judge-producer', seedArtifactIds: ['judge-draft'] }, initialStepId: 'judge-review',
+    schedule: [
+      { stepId: 'judge-review', routeId: 'judge-review', after: { stepId: 'judge-rework', participantId: 'judge-producer', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'judge-rework', routeId: 'judge-rework', after: { stepId: 'judge-review', participantId: 'mix-judge', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['judge-draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: 2, cycleUnit: 'One producer generation and judge verdict.',
+    terminalAuthorities: [{ participantId: 'mix-judge', verdict: 'pass' }],
+  };
+  const coordinated: ProposalIterationGroup = {
+    iterationGroupId: 'coordinator-loop', goal: 'Complete the coordinated assignment.',
+    participants: [
+      { participantId: 'mix-coordinator', stageRef: 'mix-coordinator', role: 'coordinator', perspective: 'Own the goal.', mandate: 'Coordinate the specialist.' },
+      { participantId: 'mix-specialist', stageRef: 'mix-specialist', role: 'contributor', perspective: 'Execute the task.', mandate: 'Fulfill the delegated work.' },
+    ],
+    routes: [
+      { routeId: 'coordinator-delegate', senderParticipantId: 'mix-coordinator', recipientParticipantId: 'mix-specialist', requestKinds: ['delegate'], baseResolutionStageIds: ['mix-coordinator'] },
+      { routeId: 'coordinator-review', senderParticipantId: 'mix-specialist', recipientParticipantId: 'mix-coordinator', requestKinds: ['review'], baseResolutionStageIds: ['mix-specialist'] },
+    ],
+    activation: { seedParticipantId: 'mix-coordinator', seedArtifactIds: ['crew-draft'] }, initialStepId: 'coordinator-delegate',
+    schedule: [
+      { stepId: 'coordinator-delegate', routeId: 'coordinator-delegate', cycle: 'current' },
+      { stepId: 'coordinator-review', routeId: 'coordinator-review', after: { stepId: 'coordinator-delegate', participantId: 'mix-specialist', verdict: 'fulfilled' }, cycle: 'next' },
+    ],
+    artifacts: ['crew-draft'], criteria: [{ id: 'quality', description: 'The coordinated result is complete.' }],
+    maxCycles: 2, cycleUnit: 'One delegate and coordinator review.',
+    terminalAuthorities: [{ participantId: 'mix-coordinator', verdict: 'complete' }],
+  };
   return {
-    schema: 'kb.review-outcome/v1' as const, decision: 'parked' as const, summary: 'cannot verify safely',
-    criteria: [{ criterionId: 'safety', verdict: 'unverified' as const, findingIds: [] }], findings: [],
+    ...proposal([pairProducer, pairPeer, judgeProducer, judge, coordinator, specialist, release]),
+    maxConcurrency: 2,
+    iterationGroups: [pair, judged, coordinated],
   };
 }
 
-function reviewFixture(input: {
-  outcomes: Array<ReturnType<typeof passOutcome> | ReturnType<typeof failOutcome> | ReturnType<typeof parkedOutcome>>;
-  maxCreatorReworks?: number;
-  completionGate?: boolean;
-  crashAfterIntegrationStage?: 'subject' | 'checker';
-  checkerAttemptBaseCommit?: string;
-}) {
-  const store = createStore();
-  const subject = stage('subject');
-  const checker = stage('checker', ['subject']);
-  checker.action = 'review:subject'; checker.workflowProfile = 'checker-readonly'; checker.scope = { read: ['dashboard'], write: [] };
-  checker.artifacts = []; checker.checkpoints = [];
-  checker.review = { subjectStageId: 'subject', maxCreatorReworks: input.maxCreatorReworks ?? 1, criteria: [{ id: 'safety', description: 'No unsafe changes.' }] };
-  checker.assignment = { agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
-    profileId: 'worker:codex:codex-safe', runtime: 'codex', model: 'codex-safe' };
-  if (input.completionGate) checker.completionGate = { id: 'human-final', kind: 'approval', prompt: 'Approve reviewed creator output.', requiresReview: 'pass' };
-  const release = stage('release', ['checker']);
-  const plan = proposal([subject, checker, release]);
+function mixedKindIterationPlan(): PlanProposal {
+  const producer = stage('producer');
+  producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
+  const judge = stage('judge', ['producer']);
+  judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const release = stage('release', ['producer']);
+  const group: ProposalIterationGroup = {
+    iterationGroupId: 'mixed-kind-loop', goal: 'Rework and then check the same participant.',
+    participants: [
+      { participantId: 'producer', stageRef: 'producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Rework and check the draft.' },
+      { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Request the required rework.' },
+    ],
+    routes: [
+      { routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer'] },
+      { routeId: 'rework', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['judge'] },
+      { routeId: 'check', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['check'], baseResolutionStageIds: ['judge'] },
+    ],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+    schedule: [
+      { stepId: 'review', routeId: 'review', cycle: 'current' },
+      { stepId: 'rework', routeId: 'rework', after: { stepId: 'review', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'check', routeId: 'check', after: { stepId: 'rework', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'next' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: 2, cycleUnit: 'One rework followed by one check.',
+    terminalAuthorities: [{ participantId: 'producer', verdict: 'pass' }],
+  };
+  return { ...proposal([producer, judge, release]), iterationGroups: [group] };
+}
+
+function genericOutcome(
+  contract: NonNullable<Parameters<WorkerAdapter['execute']>[0]['iterationContract']>,
+  verdict: 'accept' | 'fail' | 'pass' | 'fulfilled' | 'complete',
+) {
+  const findingId = `finding-${contract.request.cycle}`;
+  return {
+    schema: 'kb.iteration-outcome/v1' as const,
+    requestRef: contract.request.requestRef,
+    iterationLoopRef: contract.request.iterationLoopRef,
+    participantId: contract.request.recipientParticipantId,
+    cycle: contract.request.cycle,
+    verdict,
+    inputGenerationRefs: [...contract.request.inputGenerationRefs],
+    criteria: verdict === 'fulfilled' ? [] : [{
+      criterionId: 'quality', verdict: verdict === 'accept' || verdict === 'pass' || verdict === 'complete' ? 'pass' as const : 'fail' as const,
+      findingIds: verdict === 'fail' ? [findingId] : [],
+    }],
+    findings: verdict === 'fail' ? [{
+      findingId, criterionId: 'quality', severity: 'blocking' as const,
+      summary: 'The draft needs another revision.', evidencePaths: [],
+    }] : [],
+    ...(verdict === 'complete' ? { resolvedFindingRefs: [...contract.request.unresolvedFindingRefs] } : {}),
+    positions: [], recordedDissent: [],
+    summary: verdict === 'fulfilled' ? 'The successor draft is committed.'
+      : verdict === 'complete' ? 'The crew result is complete.'
+        : verdict === 'accept' ? 'The peer accepts the draft.' : `The draft ${verdict === 'pass' ? 'passes' : 'fails'}.`,
+  };
+}
+
+function genericIterationFixture(input: {
+  judgeVerdicts?: Array<'fail' | 'pass'>;
+  maxCycles?: number;
+  stopBeforeJudgeTurn?: number;
+  crashAfterIntegrationStage?: string;
+  plan?: PlanProposal;
+  turnVerdicts?: Record<string, 'accept' | 'fail' | 'pass' | 'fulfilled' | 'complete'
+    | Array<'accept' | 'fail' | 'pass' | 'fulfilled' | 'complete'>>;
+  artifactFailure?: 'missing' | 'empty' | 'irregular' | 'byte-identical';
+  resolveBaseMissStage?: string;
+  resolvedBaseCommit?: string;
+  reservationRefusalAt?: number;
+  maxConcurrency?: number;
+  crashAfterIterationRequest?: boolean;
+  store?: ControlPlaneStore;
+} = {}) {
+  const store = input.store ?? createStore();
+  const plan = input.plan ?? genericIterationPlan(input.maxCycles ?? 2);
   const run = createApprovedRun(store, plan);
   const fake = fakes();
+  if (input.reservationRefusalAt !== undefined) {
+    const admitted = fake.accounting;
+    let reserveCalls = 0;
+    fake.accounting = {
+      async reserve(value) {
+        reserveCalls += 1;
+        if (reserveCalls === input.reservationRefusalAt) {
+          fake.reservations.push(value.operationKey);
+          fake.reservationLimits.push(value.limits);
+          return { ok: false, reason: 'iteration participant budget unavailable' };
+        }
+        return admitted.reserve(value);
+      },
+      async settle(value) { return admitted.settle(value); },
+    };
+  }
   const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+  const workerInputs: Parameters<WorkerAdapter['execute']>[0][] = [];
   const integrations: Parameters<ResultIntegrator['integrate']>[0][] = [];
-  const bases: Array<{ path: string; baseCommit?: string }> = [];
-  const remaining = [...input.outcomes];
-  let crashedAfterIntegration = false;
-  fake.worktrees.ensure = async (worktree) => { bases.push({ path: worktree.path, baseCommit: worktree.baseCommit }); };
-  fake.worktrees.inspect = async () => {
-    const id = fake.executionOrder.at(-1) as string;
-    return id === 'checker' ? { changed: [] } : { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
-  };
-  fake.workers = { async execute(worker) {
-    const id = worker.action.startsWith('review:') ? 'checker' : worker.action.split(':')[1];
-    fake.executionOrder.push(id);
-    if (id === 'checker') {
-      const reviewOutcome = remaining.shift();
-      if (!reviewOutcome) throw new Error('unexpected checker invocation');
-      return { state: 'succeeded' as const, summary: reviewOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-        artifacts: [], checkpoints: [], reviewOutcome };
+  const baseResolutions: Parameters<NonNullable<ResultIntegrator['resolveBase']>>[0][] = [];
+  const ensuredBases: Array<{ path: string; baseCommit?: string }> = [];
+  const verdicts = [...(input.judgeVerdicts ?? ['pass'])];
+  const turnVerdicts = Object.fromEntries(Object.entries(input.turnVerdicts ?? {}).map(([stepId, verdict]) => [
+    stepId, Array.isArray(verdict) ? [...verdict] : verdict,
+  ])) as NonNullable<typeof input.turnVerdicts>;
+  let judgeTurns = 0;
+  let crashed = false;
+  let canonicalHead: string | null = null;
+  let requestCrashArmed = input.crashAfterIterationRequest ?? false;
+  const recordIterationRequest = store.recordIterationRequest.bind(store);
+  store.recordIterationRequest = ((...args: Parameters<ControlPlaneStore['recordIterationRequest']>) => {
+    const recorded = recordIterationRequest(...args);
+    if (recorded.ok && requestCrashArmed) {
+      requestCrashArmed = false;
+      throw new Error('simulated crash after generic iteration request persistence');
     }
-    return { state: 'succeeded' as const, summary: `${id} passed`, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-      artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`] };
-  } };
+    return recorded;
+  }) as ControlPlaneStore['recordIterationRequest'];
+  const worktreeRoot = mkdtempSync(join(tmpdir(), 'kb-task7-iteration-'));
+  tempDirs.push(worktreeRoot);
+  fake.worktrees.ensure = async (value) => {
+    ensuredBases.push({ path: value.path, baseCommit: value.baseCommit });
+    mkdirSync(value.path, { recursive: true });
+    if (value.baseCommit) {
+      for (const artifact of plan.stages.flatMap((candidate) => candidate.artifacts)) {
+        const path = join(value.path, artifact.path);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, `pinned:${artifact.path}`, 'utf8');
+      }
+    }
+  };
+  fake.worktrees.inspect = async (value) => {
+    const attemptRef = value.path.split(/[\\/]/).at(-1);
+    const worker = [...workerInputs].reverse().find((candidate) => candidate.attemptRef === attemptRef);
+    const proposalStage = worker?.proposalStage ?? plan.stages.find((candidate) => candidate.id === worker?.stageRef);
+    const producingTurn = !worker?.iterationContract
+      || ARTIFACT_PRODUCING_REQUEST_KINDS.has(worker.iterationContract.request.kind);
+    return { changed: producingTurn
+      ? (proposalStage?.artifacts ?? []).map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) }))
+      : [] };
+  };
+  fake.workers = {
+    async execute(value) {
+      workerInputs.push(value);
+      fake.executionOrder.push(value.proposalStage?.id ?? value.action.split(':')[1]);
+      const producingTurn = value.iterationContract !== undefined
+        && ARTIFACT_PRODUCING_REQUEST_KINDS.has(value.iterationContract.request.kind);
+      for (const artifact of value.proposalStage?.artifacts ?? []) {
+        const path = join(value.worktreePath, artifact.path);
+        mkdirSync(dirname(path), { recursive: true });
+        if (!producingTurn || input.artifactFailure === undefined) {
+          writeFileSync(path, `changed:${value.iterationContract?.request.requestRef ?? value.attemptRef}`, 'utf8');
+        } else if (input.artifactFailure === 'missing') {
+          rmSync(path, { force: true, recursive: true });
+        } else if (input.artifactFailure === 'empty') {
+          writeFileSync(path, '', 'utf8');
+        } else if (input.artifactFailure === 'irregular') {
+          rmSync(path, { force: true, recursive: true });
+          mkdirSync(path, { recursive: true });
+        }
+      }
+      if (!value.iterationContract) {
+        return {
+          state: 'succeeded', summary: `${value.proposalStage?.id ?? 'stage'} seed committed`,
+          usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? [],
+          checkpoints: value.checkpoints.length > 0 ? [...value.checkpoints] : [],
+        };
+      }
+      const stepId = value.iterationContract.request.stepId;
+      const declared = stepId === undefined ? undefined : turnVerdicts[stepId];
+      const declaredVerdict = Array.isArray(declared) ? declared.shift() : declared;
+      if (declaredVerdict) {
+        const iterationOutcome = genericOutcome(value.iterationContract, declaredVerdict);
+        return {
+          state: 'succeeded', summary: iterationOutcome.summary,
+          usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: declaredVerdict === 'fulfilled'
+            ? value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? []
+            : [],
+          checkpoints: declaredVerdict === 'fulfilled' && value.checkpoints.length > 0 ? [...value.checkpoints] : [],
+          iterationOutcome,
+        };
+      }
+      if (value.iterationContract.request.recipientParticipantId === 'judge') {
+        judgeTurns += 1;
+        if (input.stopBeforeJudgeTurn === judgeTurns) {
+          return { state: 'waiting-human', summary: 'Judge paused.', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 }, artifacts: [], checkpoints: [] };
+        }
+        const verdict = verdicts.shift();
+        if (!verdict) throw new Error('unexpected judge turn');
+        const iterationOutcome = genericOutcome(value.iterationContract, verdict);
+        return { state: 'succeeded', summary: iterationOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 }, artifacts: [], checkpoints: [], iterationOutcome };
+      }
+      const iterationOutcome = genericOutcome(value.iterationContract, 'fulfilled');
+      return {
+        state: 'succeeded', summary: iterationOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+        artifacts: value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? [],
+        checkpoints: value.checkpoints.length > 0 ? [...value.checkpoints] : [], iterationOutcome,
+      };
+    },
+  };
   fake.results = {
-    async lookup(key) { return results.get(key.operationKey) ?? null; },
+    async lookup(value) { return results.get(value.operationKey) ?? null; },
     async resolveBase(value) {
-      const exact = value.dependencyResultOperationKeys?.at(-1)?.operationKey;
-      const record = exact ? results.get(exact) : null;
-      return record?.durability === 'canonical' ? record.integrationCommit : 'd'.repeat(40);
+      baseResolutions.push(value);
+      if (value.stageId === input.resolveBaseMissStage) return null;
+      if (value.dependencyStageIds.length === 0 || !value.dependencyResultOperationKeys
+        || value.dependencyResultOperationKeys.length !== value.dependencyStageIds.length) return null;
+      const records = value.dependencyResultOperationKeys.map((dependency) => results.get(dependency.operationKey));
+      if (records.some((record) => record?.durability !== 'canonical')) return null;
+      return input.resolvedBaseCommit ?? canonicalHead;
     },
     async integrate(value) {
       integrations.push(value);
-      const isCreatorG2 = value.operationKey.endsWith(':subject:g2');
-      const isCheckerG1 = value.operationKey.endsWith(':checker');
-      const isCheckerG2 = value.operationKey.endsWith(':checker:g2');
+      const ensured = ensuredBases.find((candidate) => candidate.path === value.worktreePath);
+      const attemptBaseCommit = ensured?.baseCommit ?? 'a'.repeat(40);
+      const integrationCommit = value.changed.length > 0
+        ? integrations.length.toString(16).padStart(40, '0') : attemptBaseCommit;
+      if (value.changed.length > 0) canonicalHead = integrationCommit;
       const stored = {
         summary: value.summary, artifacts: [...value.artifacts], changed: [...value.changed], checkpoints: [...value.checkpoints],
-        ...(value.reviewOutcome ? { reviewOutcome: value.reviewOutcome } : {}), resultHash: value.resultHash, durability: 'canonical' as const,
-        attemptBaseCommit: isCreatorG2 ? 'b'.repeat(40) : isCheckerG1 ? input.checkerAttemptBaseCommit ?? 'b'.repeat(40) : isCheckerG2 ? 'c'.repeat(40) : 'a'.repeat(40),
-        integrationCommit: isCreatorG2 ? 'c'.repeat(40) : isCheckerG2 ? 'd'.repeat(40) : 'b'.repeat(40),
+        ...(value.iterationOutcome ? { iterationOutcome: value.iterationOutcome } : {}),
+        resultHash: value.resultHash, durability: 'canonical' as const, attemptBaseCommit, integrationCommit,
       };
       results.set(value.operationKey, stored);
-      if (!crashedAfterIntegration && input.crashAfterIntegrationStage
-        && value.operationKey === `result:${run.runRef}:${input.crashAfterIntegrationStage}`) {
-        crashedAfterIntegration = true;
-        throw new Error('simulated crash after canonical integration');
+      if (!crashed && input.crashAfterIntegrationStage === value.stageId) {
+        crashed = true;
+        throw new Error('simulated crash after generic canonical integration');
       }
-      return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'canonical' as const,
-        attemptBaseCommit: stored.attemptBaseCommit, integrationCommit: stored.integrationCommit };
+      return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'canonical' as const, attemptBaseCommit, integrationCommit };
     },
   };
-  const options = engineOptions(store, fake);
-  options.assignedAgents = { resolve: (resolved) => ({ assignment: resolved.assignment, instructionMarkdown: 'checker instructions' }) };
-  return { store, plan, run, fake, results, integrations, bases, engine: new AutomaticExecutionEngine(options) };
+  const options = engineOptions(store, fake, worktreeRoot);
+  options.maxConcurrency = input.maxConcurrency ?? options.maxConcurrency;
+  const engine = new AutomaticExecutionEngine(options);
+  return { store, plan, run, fake, engine, results, workerInputs, integrations, baseResolutions, ensuredBases };
 }
 
 function fytPolicy(curatedSkills: string[]): PolicyEnvironment {
@@ -413,6 +773,657 @@ afterEach(() => {
 });
 
 describe('AutomaticExecutionEngine', () => {
+  it('selects the next participant only from the declared route and deterministic schedule', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    expect(item.fake.executionOrder).toEqual(['producer', 'judge', 'producer', 'judge', 'release']);
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationRequests.map((request) => [request.stepId, request.routeId, request.recipientParticipantId]))
+      .toEqual([['review', 'to-judge', 'judge'], ['rework', 'to-producer', 'producer'], ['review', 'to-judge', 'judge']]);
+  });
+
+  it('activates initialStepId only after the declared seed generation commits', async () => {
+    const item = genericIterationFixture();
+    const events: string[] = [];
+    const record = item.store.recordStageGeneration.bind(item.store);
+    const activate = item.store.activateIterationLoop.bind(item.store);
+    item.store.recordStageGeneration = ((...args: Parameters<ControlPlaneStore['recordStageGeneration']>) => {
+      const result = record(...args);
+      if (result.ok) events.push(`committed:${result.value.generationRef}`);
+      return result;
+    }) as ControlPlaneStore['recordStageGeneration'];
+    item.store.activateIterationLoop = ((...args: Parameters<ControlPlaneStore['activateIterationLoop']>) => {
+      const detail = item.store.getRun('operator', item.run.runRef);
+      expect(detail.ok && detail.value.stageGenerations.some((generation) =>
+        generation.state === 'committed' && args[2].seedGenerationRefs.includes(generation.generationRef))).toBe(true);
+      expect(Object.keys(args[2].artifactGenerationRefs)).toEqual(['draft']);
+      events.push(`activated:${args[2].seedGenerationRefs[0]}`);
+      return activate(...args);
+    }) as ControlPlaneStore['activateIterationLoop'];
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(events[0]?.startsWith('committed:')).toBe(true);
+    expect(events[1]).toBe(`activated:${events[0]?.slice('committed:'.length)}`);
+  });
+
+  it('never schedules one participant stage through the DAG and iteration loop at the same time', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    const before = item.store.getRun('operator', item.run.runRef);
+    expect(before.ok && before.value.stages.find((candidate) => candidate.stageId === 'judge')?.state).toBe('blocked');
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(item.workerInputs.filter((input) => input.proposalStage?.id === 'producer' && input.iterationContract === undefined)).toHaveLength(1);
+    expect(item.workerInputs.filter((input) => ['producer', 'judge'].includes(input.proposalStage?.id ?? '')
+      && input.iterationContract !== undefined)).toHaveLength(3);
+    expect(item.workerInputs.filter((input) => input.proposalStage?.id === 'judge' && input.iterationContract === undefined)).toHaveLength(0);
+  });
+
+  it('opens cycle one at activation while an awaiting seed remains at cycle zero', async () => {
+    const item = genericIterationFixture();
+    const before = item.store.getRun('operator', item.run.runRef);
+    expect(before).toMatchObject({ ok: true, value: { iterationLoops: [{ state: 'awaiting-seed', cyclesUsed: 0 }] } });
+    const opened: Array<{ state: string; cyclesUsed: number; currentStepId?: string }> = [];
+    const activate = item.store.activateIterationLoop.bind(item.store);
+    item.store.activateIterationLoop = ((...args: Parameters<ControlPlaneStore['activateIterationLoop']>) => {
+      const result = activate(...args);
+      if (result.ok) opened.push(result.value);
+      return result;
+    }) as ControlPlaneStore['activateIterationLoop'];
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(opened).toEqual([expect.objectContaining({ state: 'awaiting-turn', cyclesUsed: 1, currentStepId: 'review' })]);
+  });
+
+  it('opens the next cycle only at a declared schedule step boundary', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationRequests.map((request) => [request.stepId, request.cycle]))
+      .toEqual([['review', 1], ['rework', 1], ['review', 2]]);
+    expect(detail.ok && detail.value.iterationReceipts.map((receipt) => [receipt.verdict, receipt.cycle]))
+      .toEqual([['fail', 1], ['fulfilled', 1], ['pass', 2]]);
+  });
+
+  it('runs a declared maxCycles above the legacy cap until semantic acceptance', async () => {
+    const failures = Array.from({ length: 40 }, () => 'fail' as const);
+    const item = genericIterationFixture({ judgeVerdicts: [...failures, 'pass'], maxCycles: 41 });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationLoops[0]).toMatchObject({ state: 'passed', cyclesUsed: 41 });
+    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'judge')).toHaveLength(41);
+  }, 300_000);
+
+  it('accepts an authorized terminal verdict at the declared bound without parking', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['pass'], maxCycles: 1 });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'passed', cyclesUsed: 1 })],
+      humanRequests: [],
+    } });
+  });
+
+  it('parks before launching maxCycles plus one and preserves the complete unresolved residue', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], maxCycles: 1 });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(loop).toMatchObject({
+      state: 'awaiting-park-gate', parkReason: 'exhausted', cyclesUsed: 1,
+      unresolvedResidue: {
+        unresolvedFindings: [expect.objectContaining({ findingId: 'finding-1', severity: 'blocking' })],
+        requestRefs: detail.value.iterationRequests.map((request) => request.requestRef),
+        receiptRefs: detail.value.iterationReceipts.map((receipt) => receipt.receiptRef),
+        activeGenerationRefs: loop.activeGenerationRefs,
+        nextRouteId: 'to-judge', cyclesUsed: 1, maxCycles: 1,
+      },
+    });
+    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'judge')).toHaveLength(1);
+    expect(detail.value.humanRequests.filter((request) => request.gateKind === 'iteration-park')).toHaveLength(1);
+  });
+
+  it('keeps scheduling an unblocked sibling group after one group parks and settles after that gate resolves', async () => {
+    const item = genericIterationFixture({
+      plan: siblingIterationPlan(),
+      turnVerdicts: {
+        'a-review': 'fail', 'a-rework': 'fulfilled',
+        'b-review': ['fail', 'pass'], 'b-rework': 'fulfilled',
+      },
+    });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+
+    await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
+    const parked = item.store.getRun('operator', item.run.runRef);
+    if (!parked.ok) throw new Error(parked.detail);
+    const aLoop = parked.value.iterationLoops.find((loop) => loop.iterationGroupId === 'a-loop')!;
+    const bLoop = parked.value.iterationLoops.find((loop) => loop.iterationGroupId === 'b-loop')!;
+    const gate = parked.value.humanRequests.find((request) => request.requestRef === aLoop.interventionRef)!;
+    const receipt = parked.value.iterationReceipts.find((candidate) => candidate.receiptRef === aLoop.lastReceiptRef)!;
+
+    expect(aLoop).toMatchObject({ state: 'awaiting-park-gate', parkReason: 'exhausted', cyclesUsed: 1 });
+    expect(gate).toMatchObject({ gateKind: 'iteration-park', state: 'open' });
+    expect(bLoop).toMatchObject({ state: 'passed', cyclesUsed: 2 });
+    expect(parked.value.iterationReceipts.filter((candidate) => candidate.iterationLoopRef === bLoop.iterationLoopRef)
+      .map((candidate) => candidate.verdict)).toEqual(['fail', 'fulfilled', 'pass']);
+    expect(parked.value.humanRequests.some((request) => request.kind === 'intervention'
+      && request.gateKind === undefined)).toBe(false);
+
+    const resolved = item.store.resolveIterationGate('operator', gate.requestRef, {
+      expectedRequestRevision: gate.revision, expectedLoopVersion: aLoop.version,
+      expectedReceiptVersion: receipt.version, decision: 'approved', operationKey: 'approve-a-exhaustion',
+    });
+    expect(resolved).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
+    await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('runs pair judge and coordinator groups to their composite terminal state at concurrency two', async () => {
+    const item = genericIterationFixture({
+      plan: parallelIterationMixPlan(), maxConcurrency: 2,
+      turnVerdicts: {
+        'pair-review': 'accept',
+        'judge-review': ['fail', 'pass'], 'judge-rework': 'fulfilled',
+        'coordinator-delegate': 'fulfilled', 'coordinator-review': 'complete',
+      },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.iterationLoops.map((loop) => [loop.iterationGroupId, loop.state, loop.cyclesUsed]))
+      .toEqual([
+        ['pair-loop', 'passed', 1],
+        ['judge-loop', 'passed', 2],
+        ['coordinator-loop', 'passed', 2],
+      ]);
+    expect(detail.value.humanRequests).toEqual([]);
+    for (const receipt of detail.value.iterationReceipts.filter((candidate) => candidate.verdict !== 'fulfilled')) {
+      const request = detail.value.iterationRequests.find((candidate) => candidate.requestRef === receipt.requestRef)!;
+      const pinnedRef = request.inputGenerationRefs[0]!;
+      const pinned = detail.value.stageGenerations.find((generation) => generation.generationRef === pinnedRef)!;
+      expect(receipt).toMatchObject({ baseCommit: pinned.baseCommit, canonicalCommit: pinned.canonicalCommit });
+    }
+  });
+
+  it('parks before integration when any required rework artifact is missing empty irregular or byte-identical', async () => {
+    for (const artifactFailure of ['missing', 'empty', 'irregular', 'byte-identical'] as const) {
+      const item = genericIterationFixture({ judgeVerdicts: ['fail'], artifactFailure });
+      await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+        .resolves.toMatchObject({ state: 'waiting-human' });
+      const detail = item.store.getRun('operator', item.run.runRef);
+      expect(detail).toMatchObject({ ok: true, value: {
+        iterationLoops: [expect.objectContaining({ state: 'awaiting-park-gate', parkReason: 'no-progress' })],
+      } });
+      expect(item.integrations.filter((record) => record.stageId === 'producer' && record.iterationContract)).toHaveLength(0);
+    }
+  });
+
+  it('records no successor or supersession and makes zero integration calls on no progress', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], artifactFailure: 'byte-identical' });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.stageGenerations.map((generation) => [generation.logicalStageId, generation.generation, generation.state]))
+      .toEqual([['producer', 1, 'committed']]);
+    expect(detail.value.generationSupersessions).toEqual([]);
+    expect(item.integrations.filter((record) => record.stageId === 'producer' && record.iterationContract)).toEqual([]);
+    expect(detail.value.iterationLoops[0]!.activeGenerationRefs).toEqual([detail.value.stageGenerations[0]!.generationRef]);
+    expect(detail.value.attempts.find((attempt) => attempt.logicalGeneration === 2)).toMatchObject({ state: 'interrupted' });
+  });
+
+  it('mints one iteration-park gate with reason no-progress and full exhaustion-equivalent residue', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], artifactFailure: 'byte-identical' });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const attempted = detail.value.iterationRequests.at(-1)!;
+    expect(detail.value.humanRequests.filter((request) => request.gateKind === 'iteration-park'))
+      .toEqual([expect.objectContaining({ kind: 'approval', state: 'open' })]);
+    expect(loop.unresolvedResidue).toMatchObject({
+      unresolvedFindings: [expect.objectContaining({ findingId: 'finding-1' })],
+      requestRefs: detail.value.iterationRequests.map((request) => request.requestRef),
+      receiptRefs: detail.value.iterationReceipts.map((receipt) => receipt.receiptRef),
+      activeGenerationRefs: loop.activeGenerationRefs,
+      attemptedRequestRef: attempted.requestRef,
+      attemptedOutcome: expect.objectContaining({ requestRef: attempted.requestRef, verdict: 'fulfilled' }),
+      artifactSnapshots: [expect.objectContaining({
+        path: 'dashboard/server/producer.txt', size: expect.any(Number), sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        byteIdentical: true,
+      })],
+      failureReason: expect.stringContaining('byte-identical'),
+    });
+  });
+
+  it('reserves and settles the run token and cost windows for every participant turn', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const participants = item.workerInputs.filter((worker) => worker.iterationContract !== undefined);
+    expect(participants.map((worker) => `reserve:${worker.attemptRef}`)
+      .every((operationKey) => item.fake.reservations.includes(operationKey))).toBe(true);
+    expect(participants.map((worker) => `settle:${worker.attemptRef}`)
+      .every((operationKey) => item.fake.settlements.includes(operationKey))).toBe(true);
+  });
+
+  it('opens the existing fail-closed intervention and preserves loop state when budget reservation fails', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], reservationRefusalAt: 3 });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.iterationLoops[0]).toMatchObject({ state: 'running-turn', currentStepId: 'rework' });
+    expect(detail.value.iterationLoops[0]).not.toHaveProperty('parkReason');
+    expect(detail.value.humanRequests).toContainEqual(expect.objectContaining({
+      kind: 'intervention', prompt: 'iteration participant budget unavailable',
+    }));
+    const attempt = detail.value.attempts.find((candidate) => candidate.logicalGeneration === 2)!;
+    expect(attempt.state).toBe('interrupted');
+    expect(detail.value.sessions.find((session) => session.attemptRef === attempt.attemptRef)).toMatchObject({ state: 'interrupted' });
+    expect(detail.value.generationSupersessions).toEqual([]);
+  });
+
+  it('routes a transient fenced base-resolution miss to fail-closed intervention without failing the run', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], resolveBaseMissStage: 'producer' });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.run.state).toBe('waiting-human');
+    expect(detail.value.iterationLoops[0]).toMatchObject({ state: 'rework-queued', currentStepId: 'rework' });
+    expect(detail.value.iterationLoops[0]).not.toHaveProperty('parkReason');
+    expect(detail.value.attempts.find((attempt) => attempt.logicalGeneration === 2)).toMatchObject({ state: 'interrupted' });
+    expect(detail.value.humanRequests).toContainEqual(expect.objectContaining({
+      kind: 'intervention', prompt: expect.stringContaining('committed iteration dependency lineage is unavailable'),
+    }));
+    expect(detail.value.humanRequests.some((request) => request.gateKind === 'iteration-park')).toBe(false);
+  });
+
+  it('halts sibling groups when a transient base-resolution miss opens a run-wide intervention', async () => {
+    const item = genericIterationFixture({
+      plan: siblingIterationPlan(), resolveBaseMissStage: 'a-judge', maxConcurrency: 2,
+      turnVerdicts: { 'b-review': 'pass' },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'a-loop'))
+      .toMatchObject({ state: 'awaiting-turn', currentStepId: 'a-review' });
+    expect(detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'b-loop'))
+      .toMatchObject({ state: 'awaiting-turn', currentStepId: 'b-review', cyclesUsed: 1 });
+    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'b-judge')).toHaveLength(0);
+    expect(item.workerInputs.some((turn) => turn.iterationContract?.request.recipientParticipantId === 'a-judge')).toBe(false);
+    expect(detail.value.humanRequests).toContainEqual(expect.objectContaining({
+      kind: 'intervention', prompt: expect.stringContaining('committed iteration dependency lineage is unavailable'),
+    }));
+  });
+
+  it('pins every turn to the server-selected generation refs base commit and artifact hashes', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const iterationWorkers = item.workerInputs.filter((candidate) => candidate.iterationContract !== undefined);
+    expect(iterationWorkers).toHaveLength(3);
+    for (const worker of iterationWorkers) {
+      const request = worker.iterationContract!.request;
+      const durable = detail.value.iterationRequests.find((candidate) => candidate.requestRef === request.requestRef);
+      expect(request).toEqual(durable);
+      expect(request.inputGenerationRefs).toEqual(expect.arrayContaining(request.inputGenerationRefs));
+      expect(request.baseCommit).toMatch(/^[a-f0-9]{40}$/);
+      expect(request.artifactHashes).toEqual({ draft: 'b'.repeat(64) });
+    }
+  });
+
+  it('records verdict lineage from pinned generation identity after the shared base advances', async () => {
+    const advancedBase = 'f'.repeat(40);
+    const item = genericIterationFixture({ judgeVerdicts: ['pass'], resolvedBaseCommit: advancedBase });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(outcome, JSON.stringify(detail.value.humanRequests)).toMatchObject({ state: 'succeeded' });
+    const request = detail.value.iterationRequests[0]!;
+    const generation = detail.value.stageGenerations.find((candidate) =>
+      request.inputGenerationRefs.includes(candidate.generationRef) && candidate.logicalStageId === 'producer')!;
+    expect(request.baseCommit).toBe(advancedBase);
+    expect(detail.value.iterationReceipts[0]).toMatchObject({
+      inputGenerationRefs: [generation.generationRef],
+      baseCommit: generation.baseCommit,
+      canonicalCommit: generation.canonicalCommit,
+    });
+    expect(detail.value.humanRequests).toEqual([]);
+  });
+
+  it('resolves a verified canonical base for every fenced participant turn instead of the null unverified path', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const participantTurns = item.baseResolutions.filter((call) => call.stageId === 'producer' || call.stageId === 'judge');
+    expect(participantTurns).toHaveLength(3);
+    expect(participantTurns.every((call) => call.dependencyStageIds.length > 0
+      && call.dependencyResultOperationKeys?.length === call.dependencyStageIds.length)).toBe(true);
+    const iterationAttempts = item.workerInputs.filter((worker) => worker.iterationContract !== undefined);
+    for (const worker of iterationAttempts) {
+      const base = item.ensuredBases.find((candidate) => candidate.path.endsWith(worker.attemptRef))?.baseCommit;
+      expect(base).toBe(worker.iterationContract!.request.baseCommit);
+    }
+  });
+
+  it('pins a fan-in turn to the current generation of every peer and never generation one fallback', async () => {
+    const item = genericIterationFixture({ plan: fanInIterationPlan(), judgeVerdicts: ['fail', 'pass'] });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    const judgeBases = item.baseResolutions.filter((call) => call.stageId === 'judge');
+    expect(judgeBases).toHaveLength(2);
+    expect(judgeBases[0].dependencyResultOperationKeys).toEqual([
+      { stageId: 'producer', operationKey: `result:${item.run.runRef}:producer` },
+      { stageId: 'peer', operationKey: expect.stringMatching(`^iteration-result:${item.run.runRef}:peer:`) },
+    ]);
+    expect(judgeBases[1].dependencyResultOperationKeys).toEqual([
+      { stageId: 'producer', operationKey: expect.stringMatching(`^iteration-result:${item.run.runRef}:producer:`) },
+      { stageId: 'peer', operationKey: expect.stringMatching(`^iteration-result:${item.run.runRef}:peer:`) },
+    ]);
+    expect(judgeBases[1].dependencyResultOperationKeys).not.toContainEqual({
+      stageId: 'producer', operationKey: `result:${item.run.runRef}:producer`,
+    });
+  });
+
+  it('creates one successor generation and one supersession for an artifact-producing turn', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.stageGenerations.map((generation) => [generation.logicalStageId, generation.generation, generation.state]))
+      .toEqual([['producer', 1, 'committed'], ['producer', 2, 'committed']]);
+    expect(detail.ok && detail.value.generationSupersessions).toEqual([expect.objectContaining({
+      predecessorGenerationRef: detail.ok && detail.value.stageGenerations[0].generationRef,
+      successorGenerationRef: detail.ok && detail.value.stageGenerations[1].generationRef,
+    })]);
+  });
+
+  it('records fulfilled between rework and the next reviewing verdict', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationReceipts.map((receipt) => receipt.verdict)).toEqual(['fail', 'fulfilled', 'pass']);
+    const fulfilled = detail.ok && detail.value.iterationReceipts[1];
+    expect(fulfilled).toMatchObject({ verdict: 'fulfilled', outputGenerationRefs: [expect.any(String)] });
+    expect(detail.ok && detail.value.iterationReceipts[2].inputGenerationRefs).toEqual(fulfilled && fulfilled.outputGenerationRefs);
+  });
+
+  it('resumes a persisted request with no canonical result once using the same logical turn and operation identity', async () => {
+    const item = genericIterationFixture({ crashAfterIterationRequest: true });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    const crashed = item.store.getRun('operator', item.run.runRef);
+    if (!crashed.ok) throw new Error(crashed.detail);
+    const request = crashed.value.iterationRequests[0]!;
+    expect(crashed.value.iterationReceipts).toEqual([]);
+    expect(item.results.get(`iteration-result:${item.run.runRef}:judge:${request.requestRef}`)).toBeUndefined();
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake));
+    await expect(restarted.runToBoundary(input)).resolves.toMatchObject({ state: 'succeeded' });
+    const judgeTurns = item.workerInputs.filter((worker) => worker.proposalStage?.id === 'judge');
+    expect(judgeTurns).toHaveLength(1);
+    expect(judgeTurns[0]).toMatchObject({
+      operationKey: `iteration-turn:${request.requestRef}`,
+      iterationContract: { request },
+    });
+    expect(item.integrations.filter((record) => record.stageId === 'judge')).toEqual([
+      expect.objectContaining({ operationKey: `iteration-result:${item.run.runRef}:judge:${request.requestRef}` }),
+    ]);
+  });
+
+  it('allows recovery to create the normal successor attempt and session lineage', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-task8-iteration-recovery-'));
+    tempDirs.push(stateRoot);
+    let ids = 0;
+    const store = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const item = genericIterationFixture({ crashAfterIterationRequest: true, store });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    let detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const stage = detail.value.stages.find((candidate) => candidate.stageId === 'judge')!;
+    const proposalStage = item.plan.stages.find((candidate) => candidate.id === 'judge')!;
+    const prepared = (item.engine as any).prepareAttempt(input, stage, proposalStage, policy, null);
+    expect(prepared).not.toBeNull();
+    const oldAttemptRef = prepared.attempt.attemptRef;
+    const oldSessionRef = prepared.session.sessionRef;
+    const restartedStore = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const interrupted = restartedStore.getRun('operator', item.run.runRef);
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    const oldAttempt = interrupted.value.attempts.find((candidate) => candidate.attemptRef === oldAttemptRef)!;
+    expect(oldAttempt).toMatchObject({ state: 'interrupted' });
+    expect(interrupted.value.sessions.find((candidate) => candidate.sessionRef === oldSessionRef)).toMatchObject({ state: 'interrupted' });
+    expect(interrupted.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)).toMatchObject({ state: 'interrupted' });
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(restartedStore, item.fake));
+    await expect(restarted.runToBoundary(input)).resolves.toMatchObject({ state: 'succeeded' });
+    const recovered = restartedStore.getRun('operator', item.run.runRef);
+    if (!recovered.ok) throw new Error(recovered.detail);
+    const successor = recovered.value.attempts.find((candidate) => candidate.predecessorAttemptRef === oldAttempt.attemptRef)!;
+    expect(recovered.value.attempts.find((candidate) => candidate.attemptRef === oldAttempt.attemptRef)).toMatchObject({ state: 'interrupted' });
+    expect(successor).toMatchObject({ state: 'succeeded', logicalGeneration: oldAttempt.logicalGeneration });
+    expect(recovered.value.sessions.filter((session) =>
+      session.attemptRef === oldAttempt.attemptRef || session.attemptRef === successor.attemptRef)).toEqual([
+      expect.objectContaining({ attemptRef: oldAttempt.attemptRef, state: 'interrupted' }),
+      expect.objectContaining({ attemptRef: successor.attemptRef, state: 'completed' }),
+    ]);
+  });
+
+  it('replays a canonical receipt and successor exactly once after restart', async () => {
+    const item = genericIterationFixture({ crashAfterIterationRequest: true, judgeVerdicts: ['fail'] });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    const beforeTurn = item.store.getRun('operator', item.run.runRef);
+    if (!beforeTurn.ok) throw new Error(beforeTurn.detail);
+    const stage = beforeTurn.value.stages.find((candidate) => candidate.stageId === 'judge')!;
+    const proposalStage = item.plan.stages.find((candidate) => candidate.id === 'judge')!;
+    const runtime = item.engine as any;
+    const prepared = runtime.prepareAttempt(input, stage, proposalStage, policy, null);
+    expect(prepared).not.toBeNull();
+    const advanceIterationTurn = item.store.advanceIterationTurn.bind(item.store);
+    let advanceCrashArmed = true;
+    item.store.advanceIterationTurn = ((...args: Parameters<ControlPlaneStore['advanceIterationTurn']>) => {
+      if (advanceCrashArmed) {
+        advanceCrashArmed = false;
+        throw new Error('simulated crash after canonical iteration receipt persistence');
+      }
+      return advanceIterationTurn(...args);
+    }) as ControlPlaneStore['advanceIterationTurn'];
+    await expect(runtime.executeAttemptUnsafe(input, prepared, policy))
+      .rejects.toThrow('simulated crash after canonical iteration receipt persistence');
+
+    const crashed = item.store.getRun('operator', item.run.runRef);
+    if (!crashed.ok) throw new Error(crashed.detail);
+    expect(crashed.value.run.state).toBe('running');
+    expect(crashed.value.iterationLoops[0]).toMatchObject({ state: 'failed', lastReceiptRef: crashed.value.iterationReceipts[0]?.receiptRef });
+    expect(crashed.value.iterationReceipts).toEqual([expect.objectContaining({
+      verdict: 'fail', baseCommit: 'a'.repeat(40), canonicalCommit: '1'.padStart(40, '0'),
+    })]);
+    const workerCalls = item.workerInputs.length;
+    const integrationCalls = item.integrations.length;
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake)) as any;
+    await expect(restarted.reconcileIterationRuntime(input)).resolves.toEqual([]);
+    const once = item.store.getRun('operator', item.run.runRef);
+    if (!once.ok) throw new Error(once.detail);
+    const onceEvents = item.store.listEvents('operator', item.run.runRef);
+    if (!onceEvents.ok) throw new Error(onceEvents.detail);
+    const onceSnapshot = JSON.stringify({ detail: once.value, events: onceEvents.value });
+    await expect(restarted.reconcileIterationRuntime(input)).resolves.toEqual([]);
+    const twice = item.store.getRun('operator', item.run.runRef);
+    if (!twice.ok) throw new Error(twice.detail);
+    const twiceEvents = item.store.listEvents('operator', item.run.runRef);
+    if (!twiceEvents.ok) throw new Error(twiceEvents.detail);
+    expect(JSON.stringify({ detail: twice.value, events: twiceEvents.value })).toBe(onceSnapshot);
+    expect(item.workerInputs).toHaveLength(workerCalls);
+    expect(item.integrations).toHaveLength(integrationCalls);
+    expect(twice.value.iterationReceipts).toHaveLength(1);
+    expect(twice.value.iterationLoops[0]).toMatchObject({ state: 'rework-queued', currentStepId: 'rework' });
+    expect(twice.value.attempts.filter((attempt) => attempt.logicalGeneration === 2)).toEqual([
+      expect.objectContaining({ state: 'queued', predecessorAttemptRef: expect.any(String) }),
+    ]);
+    expect(twice.value.stageGenerations).toHaveLength(1);
+    expect(twice.value.generationSupersessions).toEqual([]);
+  });
+
+  it('does not re-advance an iteration receipt whose declared successor is already queued', async () => {
+    const item = genericIterationFixture({ crashAfterIterationRequest: true, judgeVerdicts: ['fail'] });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    const beforeTurn = item.store.getRun('operator', item.run.runRef);
+    if (!beforeTurn.ok) throw new Error(beforeTurn.detail);
+    const stage = beforeTurn.value.stages.find((candidate) => candidate.stageId === 'judge')!;
+    const proposalStage = item.plan.stages.find((candidate) => candidate.id === 'judge')!;
+    const runtime = item.engine as any;
+    const prepared = runtime.prepareAttempt(input, stage, proposalStage, policy, null);
+    expect(prepared).not.toBeNull();
+    const advanceIterationTurn = item.store.advanceIterationTurn.bind(item.store);
+    let advanceCrashArmed = true;
+    item.store.advanceIterationTurn = ((...args: Parameters<ControlPlaneStore['advanceIterationTurn']>) => {
+      if (advanceCrashArmed) {
+        advanceCrashArmed = false;
+        throw new Error('simulated crash after canonical iteration receipt persistence');
+      }
+      return advanceIterationTurn(...args);
+    }) as ControlPlaneStore['advanceIterationTurn'];
+    await expect(runtime.executeAttemptUnsafe(input, prepared, policy))
+      .rejects.toThrow('simulated crash after canonical iteration receipt persistence');
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake)) as any;
+    await expect(restarted.reconcileIterationRuntime(input)).resolves.toEqual([]);
+    const advanced = item.store.getRun('operator', item.run.runRef);
+    if (!advanced.ok) throw new Error(advanced.detail);
+    const receipt = advanced.value.iterationReceipts[0]!;
+    const loop = advanced.value.iterationLoops[0]!;
+    const events = item.store.listEvents('operator', item.run.runRef);
+    if (!events.ok) throw new Error(events.detail);
+
+    expect(restarted.routeIterationReceipt(input, receipt)).toBe('succeeded');
+    const reentered = item.store.getRun('operator', item.run.runRef);
+    const reenteredEvents = item.store.listEvents('operator', item.run.runRef);
+    expect(reentered).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'rework-queued', version: loop.version })],
+      iterationReceipts: [expect.objectContaining({ receiptRef: receipt.receiptRef })],
+    } });
+    expect(reentered.ok && reentered.value.iterationReceipts).toHaveLength(1);
+    expect(reentered.ok && reentered.value.attempts.filter((attempt) => attempt.logicalGeneration === 2)).toHaveLength(1);
+    expect(reenteredEvents).toEqual(events);
+  });
+
+  it('keeps an iteration park gate open across a file-store restart without replaying it', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-task8-iteration-gate-'));
+    tempDirs.push(stateRoot);
+    let ids = 0;
+    const store = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const item = genericIterationFixture({
+      plan: siblingIterationPlan(), store,
+      turnVerdicts: {
+        'a-review': 'fail', 'a-rework': 'fulfilled',
+        'b-review': ['fail', 'pass'], 'b-rework': 'fulfilled',
+      },
+    });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
+    const parked = store.getRun('operator', item.run.runRef);
+    if (!parked.ok) throw new Error(parked.detail);
+    const loop = parked.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'a-loop')!;
+    expect(parked.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'b-loop'))
+      .toMatchObject({ state: 'passed', cyclesUsed: 2 });
+    const workerCalls = item.workerInputs.length;
+    const receiptCount = parked.value.iterationReceipts.length;
+    const supersessions = parked.value.generationSupersessions.length;
+
+    const restartedStore = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const restarted = new AutomaticExecutionEngine(engineOptions(restartedStore, item.fake));
+    await expect(restarted.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
+    const recovered = restartedStore.getRun('operator', item.run.runRef);
+    if (!recovered.ok) throw new Error(recovered.detail);
+    expect(recovered.value.run.state).toBe('waiting-human');
+    expect(recovered.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'a-loop'))
+      .toMatchObject({ state: 'awaiting-park-gate', version: loop.version });
+    expect(recovered.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'b-loop'))
+      .toMatchObject({ state: 'passed', cyclesUsed: 2 });
+    expect(recovered.value.humanRequests.filter((request) => request.gateKind === 'iteration-park' && request.state === 'open')).toHaveLength(1);
+    expect(recovered.value.iterationReceipts).toHaveLength(receiptCount);
+    expect(recovered.value.generationSupersessions).toHaveLength(supersessions);
+    expect(item.workerInputs).toHaveLength(workerCalls);
+  });
+
+  it('replays an already integrated turn by operation key without a second worker call', async () => {
+    const item = genericIterationFixture({ crashAfterIntegrationStage: 'judge' });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    expect(item.workerInputs.filter((worker) => worker.proposalStage?.id === 'judge')).toHaveLength(1);
+    expect(item.integrations.filter((record) => record.stageId === 'judge')).toHaveLength(1);
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationReceipts).toHaveLength(1);
+    const workersBeforeRestart = item.workerInputs.length;
+    const integrationsBeforeRestart = item.integrations.length;
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake)) as unknown as {
+      reconcileIterationRuntime(input: { subject: string; runRef: string; proposal: PlanProposal }): Promise<string[]>;
+    };
+    await expect(restarted.reconcileIterationRuntime({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toEqual([]);
+    expect(item.workerInputs).toHaveLength(workersBeforeRestart);
+    expect(item.integrations).toHaveLength(integrationsBeforeRestart);
+  });
+
+  it('keeps canonical operation keys collision-free across cycles for the same stage', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const judgeRequests = detail.value.iterationRequests.filter((request) => request.recipientParticipantId === 'judge');
+    expect(item.integrations.filter((record) => record.stageId === 'judge').map((record) => record.operationKey))
+      .toEqual(judgeRequests.map((request) => `iteration-result:${item.run.runRef}:judge:${request.requestRef}`));
+    expect(new Set(item.integrations.map((record) => record.operationKey)).size).toBe(item.integrations.length);
+  });
+
+  it('runs a coordinator crew delegate rework and check route at its declared cycle boundary', async () => {
+    const item = genericIterationFixture({
+      plan: coordinatorCrewIterationPlan(),
+      turnVerdicts: { delegate: 'fulfilled', coordinate: 'fail', rework: 'fulfilled', check: 'fail', complete: 'complete' },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationRequests.map((request) => [request.stepId, request.kind, request.cycle]))
+      .toEqual([['delegate', 'delegate', 1], ['coordinate', 'review', 1], ['rework', 'rework', 1], ['check', 'check', 2], ['complete', 'review', 2]]);
+    expect(detail.ok && detail.value.iterationLoops[0]).toMatchObject({ state: 'passed', cyclesUsed: 2 });
+    const specialistKeys = item.integrations.filter((record) => record.stageId === 'specialist').map((record) => record.operationKey);
+    expect(new Set(specialistKeys).size).toBe(3);
+  });
+
+  it('keys a producing turn and the next mixed-kind turn by distinct durable request refs', async () => {
+    const item = genericIterationFixture({
+      plan: mixedKindIterationPlan(),
+      turnVerdicts: { review: 'fail', rework: 'fulfilled', check: 'pass' },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const producerRequests = detail.value.iterationRequests.filter((request) => request.recipientParticipantId === 'producer');
+    const producerKeys = item.integrations.filter((record) => record.stageId === 'producer' && record.iterationContract)
+      .map((record) => record.operationKey);
+    expect(producerKeys).toEqual(producerRequests.map((request) =>
+      `iteration-result:${item.run.runRef}:producer:${request.requestRef}`));
+    expect(new Set(producerKeys).size).toBe(2);
+    expect(item.workerInputs.filter((worker) => worker.proposalStage?.id === 'producer' && worker.iterationContract)).toHaveLength(2);
+  });
+
+  it('never releases a downstream DAG stage from a nonterminal iteration verdict', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'], stopBeforeJudgeTurn: 2 });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('waiting-human');
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationReceipts.map((receipt) => receipt.verdict)).toEqual(['fail', 'fulfilled']);
+    expect(detail.ok && detail.value.stages.find((candidate) => candidate.stageId === 'release')?.state).toBe('blocked');
+    expect(item.fake.executionOrder).not.toContain('release');
+  });
+
   it('acknowledges Manager startup only after durable Manager session and run state are running', async () => {
     const store = createStore();
     const plan = proposal([stage('manager-start-ack')]);
@@ -600,66 +1611,6 @@ describe('AutomaticExecutionEngine', () => {
     });
   });
 
-  it('accepts the historical omitted-review hash only for non-review payloads', () => {
-    const payload = { summary: 'legacy result', artifacts: [], changed: [], checkpoints: [] };
-    const legacyHash = canonicalStageResultHash(payload, 'legacy-non-review');
-    expect(canonicalStageResultHashMatches(payload, legacyHash)).toBe(true);
-    expect(canonicalStageResultHashMatches(payload, canonicalStageResultHash(payload))).toBe(true);
-    expect(canonicalStageResultHashMatches({ ...payload, reviewOutcome: passOutcome() }, legacyHash)).toBe(false);
-    expect(() => canonicalStageResultHash(
-      { ...payload, reviewOutcome: passOutcome() },
-      'legacy-non-review',
-    )).toThrow(/cannot encode a review outcome/);
-  });
-
-  it('reconciles a canonical legacy non-review result without rerunning its worker', async () => {
-    const store = createStore();
-    const plan = proposal([stage('legacy-lookup')]);
-    const run = createApprovedRun(store, plan);
-    const fake = fakes();
-    const payload = {
-      summary: 'legacy stage complete',
-      artifacts: [{ path: 'dashboard/server/legacy-lookup.txt', digest: 'b'.repeat(64) }],
-      changed: [{ path: 'dashboard/server/legacy-lookup.txt', digest: 'b'.repeat(64) }],
-      checkpoints: ['legacy-lookup-checked'],
-    };
-    fake.results.lookup = async () => ({
-      ...payload,
-      resultHash: canonicalStageResultHash(payload, 'legacy-non-review'),
-      durability: 'canonical',
-      attemptBaseCommit: 'a'.repeat(40),
-      integrationCommit: 'b'.repeat(40),
-    });
-    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
-
-    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
-      .resolves.toMatchObject({ state: 'succeeded' });
-    expect(fake.executionOrder).toEqual([]);
-  });
-
-  it('accepts a legacy hash receipt when resuming an in-progress canonical integration', async () => {
-    const store = createStore();
-    const plan = proposal([stage('legacy-resume')]);
-    const run = createApprovedRun(store, plan);
-    const fake = fakes();
-    fake.results.integrate = async (input) => ({
-      status: 'integrated',
-      resultHash: canonicalStageResultHash({
-        summary: input.summary,
-        artifacts: input.artifacts,
-        changed: input.changed,
-        checkpoints: input.checkpoints,
-      }, 'legacy-non-review'),
-      durability: 'canonical',
-      attemptBaseCommit: 'a'.repeat(40),
-      integrationCommit: 'b'.repeat(40),
-    });
-    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
-
-    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
-      .resolves.toMatchObject({ state: 'succeeded' });
-    expect(fake.executionOrder).toEqual(['legacy-resume']);
-  });
 
   it('rejects a stored/proposal assignment mismatch before invoking an assigned-agent resolver', async () => {
     const root = mkdtempSync(join(tmpdir(), 'kb-assignment-binding-'));
@@ -1076,29 +2027,6 @@ describe('AutomaticExecutionEngine', () => {
     expect(seen).toEqual(['research']);
   });
 
-  it('never forwards an unvalidated direct-worker review outcome to result persistence', async () => {
-    const store = createStore();
-    const plan = proposal([stage('outcome')]);
-    const run = createApprovedRun(store, plan);
-    const fake = fakes();
-    fake.workers = {
-      async execute() {
-        fake.executionOrder.push('outcome');
-        return {
-          state: 'succeeded', summary: 'worker claimed success', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-          artifacts: [{ path: 'dashboard/server/outcome.txt', digest: 'b'.repeat(64) }], checkpoints: ['outcome-checked'],
-          reviewOutcome: {
-            schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890',
-            criteria: [{ criterionId: 'forged', verdict: 'pass', findingIds: [] }], findings: [],
-          } as never,
-        };
-      },
-    };
-    const outcome = await new AutomaticExecutionEngine(engineOptions(store, fake))
-      .runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
-    expect(outcome.state).toBe('failed');
-    expect(fake.integrationOrder).toEqual([]);
-  });
 
   it('prefers a server-compiled per-stage workflow profile over the proposal profile', async () => {
     const store = createStore();
@@ -1126,295 +2054,27 @@ describe('AutomaticExecutionEngine', () => {
     expect(seen).toEqual(['checker-readonly']);
   });
 
-  it('runs a checker against the committed creator generation and releases its accepted downstream', async () => {
-    const store = createStore();
-    const subject = stage('subject');
-    const checker = stage('checker', ['subject']);
-    checker.action = 'review:subject';
-    checker.workflowProfile = 'checker-readonly';
-    checker.scope = { read: ['dashboard'], write: [] };
-    checker.artifacts = [];
-    checker.checkpoints = [];
-    checker.review = {
-      subjectStageId: 'subject', maxCreatorReworks: 1,
-      criteria: [{ id: 'safety', description: 'No unsafe changes.' }],
-    };
-    checker.assignment = {
-      agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
-      profileId: 'worker:codex:codex-safe', runtime: 'codex', model: 'codex-safe',
-    };
-    const downstream = stage('release', ['checker']);
-    const plan = proposal([subject, checker, downstream]);
-    const run = createApprovedRun(store, plan);
-    const fake = fakes();
-    const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
-    const seenContracts: unknown[] = [];
-    fake.worktrees.inspect = async () => {
-      const id = fake.executionOrder.at(-1) as string;
-      return id === 'checker' ? { changed: [] } : { changed: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }] };
-    };
-    fake.workers = {
-      async execute(input) {
-        const id = input.action.startsWith('review:') ? 'checker' : input.action.split(':')[1];
-        fake.executionOrder.push(id);
-        if (id === 'checker') {
-          seenContracts.push(input.reviewContract);
-          return {
-            state: 'succeeded', summary: 'checker passed', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-            artifacts: [], checkpoints: [], reviewOutcome: {
-              schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'creator is safe',
-              criteria: [{ criterionId: 'safety', verdict: 'pass', findingIds: [] }], findings: [],
-            },
-          };
-        }
-        return {
-          state: 'succeeded', summary: `${id} passed`, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-          artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`],
-        };
-      },
-    };
-    fake.results = {
-      async lookup(input) { return results.get(input.operationKey) ?? null; },
-      async resolveBase() { return 'd'.repeat(40); },
-      async integrate(input) {
-        const stored = {
-          summary: input.summary, artifacts: [...input.artifacts], changed: [...input.changed], checkpoints: [...input.checkpoints],
-          ...(input.reviewOutcome ? { reviewOutcome: input.reviewOutcome } : {}), resultHash: input.resultHash,
-          durability: 'canonical' as const,
-          attemptBaseCommit: input.operationKey.endsWith(':checker') || input.operationKey.endsWith(':g2') ? 'b'.repeat(40) : 'a'.repeat(40),
-          integrationCommit: input.operationKey.endsWith(':g2') ? 'c'.repeat(40) : 'b'.repeat(40),
-        };
-        results.set(input.operationKey, stored);
-        return { status: 'integrated' as const, resultHash: input.resultHash, durability: 'canonical' as const,
-          attemptBaseCommit: stored.attemptBaseCommit, integrationCommit: stored.integrationCommit };
-      },
-    };
-    const options = engineOptions(store, fake);
-    options.assignedAgents = { resolve: (input) => ({ assignment: input.assignment, instructionMarkdown: 'checker instructions' }) };
-    const engine = new AutomaticExecutionEngine(options);
-    const outcome = await engine.runToBoundary({
-      subject: 'operator', runRef: run.runRef, proposal: plan,
-    });
 
-    expect(outcome.state).toBe('succeeded');
-    expect(fake.executionOrder).toEqual(['subject', 'checker', 'release']);
-    expect(seenContracts).toEqual([{ review: checker.review }]);
-    const detail = store.getRun('operator', run.runRef);
-    expect(detail).toMatchObject({ ok: true, value: {
-      reviewLoops: [{ state: 'passed', acceptedGenerationRef: expect.any(String) }],
-      stageGenerations: [{ generation: 1, canonicalResultOperationKey: `result:${run.runRef}:subject`, resultCardRef: 'card-subject' }],
-      attempts: expect.arrayContaining([expect.objectContaining({ stageRef: expect.any(String), reviewSubjectGenerationRef: expect.any(String) })]),
-    } });
-  });
 
-  it('waits on one dedicated completion gate and releases only after its resolver accepts', async () => {
-    const item = reviewFixture({ outcomes: [passOutcome()], completionGate: true });
-    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(waiting).toMatchObject({ state: 'waiting-human', waitingStageIds: ['checker'] });
-    let detail = item.store.getRun('operator', item.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    expect(detail.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
-    expect(detail.value.humanRequests).toHaveLength(1);
-    expect(detail.value.sessions.find((session) => session.role === 'manager')?.state).toBe('running');
-    const gate = detail.value.humanRequests[0];
-    const receipt = detail.value.reviewReceipts[0]; const loop = detail.value.reviewLoops[0];
-    const reviewStage = detail.value.stages.find((stage) => stage.stageId === 'checker') as NonNullable<typeof detail.value.stages[number]>;
-    const subjectStage = detail.value.stages.find((stage) => stage.stageId === 'subject') as NonNullable<typeof detail.value.stages[number]>;
-    expect(item.store.resolveReviewCompletionGate('operator', gate.requestRef, {
-      expectedRequestRevision: gate.revision, expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version,
-      expectedReviewStageVersion: reviewStage.version, expectedSubjectStageVersion: subjectStage.version,
-      decision: 'approved', idempotencyKey: 'dedicated-gate-approve', response: 'Approved.',
-    }).ok).toBe(true);
-    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(completed.state).toBe('succeeded');
-    expect(item.fake.executionOrder).toEqual(['subject', 'checker', 'release']);
-    detail = item.store.getRun('operator', item.run.runRef);
-    expect(detail.ok && detail.value.reviewReceipts).toHaveLength(1);
-    expect(detail.ok && detail.value.humanRequests).toHaveLength(1);
-  });
 
-  it('reworks to g2 with generation-specific keys, bases, and accepted downstream release', async () => {
-    const item = reviewFixture({ outcomes: [failOutcome(), passOutcome()], maxCreatorReworks: 1 });
-    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(outcome.state).toBe('succeeded');
-    expect(item.fake.executionOrder).toEqual(['subject', 'checker', 'subject', 'checker', 'release']);
-    expect(item.integrations.map((record) => [record.operationKey, record.canonicalCardRef])).toEqual(expect.arrayContaining([
-      [`result:${item.run.runRef}:subject:g2`, null], [`result:${item.run.runRef}:checker:g2`, null],
-    ]));
-    // g1 checker and g2 creator both fork from g1's canonical integration; g2 checker forks from g2 creator.
-    expect(item.bases.filter((item) => item.baseCommit === 'b'.repeat(40))).toHaveLength(2);
-    expect(item.bases.filter((item) => item.baseCommit === 'c'.repeat(40))).toHaveLength(1);
-    const detail = item.store.getRun('operator', item.run.runRef);
-    expect(detail.ok && detail.value.stageGenerations.map((generation) => generation.generation)).toEqual([1, 2]);
-    expect(detail.ok && detail.value.reviewReceipts.map((receipt) => receipt.outcome.decision)).toEqual(['fail', 'pass']);
-  });
 
-  it('parks an exhausted review exactly once without a generic intervention', async () => {
-    const item = reviewFixture({ outcomes: [failOutcome()], maxCreatorReworks: 0 });
-    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(waiting.state).toBe('waiting-human');
-    const first = item.store.getRun('operator', item.run.runRef);
-    expect(first.ok && first.value.reviewLoops[0].state).toBe('parked');
-    expect(first.ok && first.value.humanRequests).toHaveLength(1);
-    expect(first.ok && first.value.humanRequests[0].kind).toBe('intervention');
-    expect(first.ok && first.value.sessions.find((session) => session.role === 'manager')?.state).toBe('running');
-    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    const replay = item.store.getRun('operator', item.run.runRef);
-    expect(replay.ok && replay.value.humanRequests).toHaveLength(1);
-    expect(item.fake.executionOrder).toEqual(['subject', 'checker']);
-  });
 
-  it('retains the parser-parked intervention without creating a generic request on replay', async () => {
-    const item = reviewFixture({ outcomes: [parkedOutcome()] });
-    const waiting = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(waiting.state).toBe('waiting-human');
-    const first = item.store.getRun('operator', item.run.runRef);
-    expect(first.ok && first.value.reviewReceipts[0].state).toBe('parked');
-    expect(first.ok && first.value.humanRequests).toHaveLength(1);
-    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    const replay = item.store.getRun('operator', item.run.runRef);
-    expect(replay.ok && replay.value.humanRequests).toHaveLength(1);
-    expect(item.fake.executionOrder).toEqual(['subject', 'checker']);
-  });
 
-  it('reconciles a canonical creator result after an integration-to-generation crash without rerunning the worker', async () => {
-    const item = reviewFixture({ outcomes: [passOutcome()], crashAfterIntegrationStage: 'subject' });
-    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(completed.state).toBe('succeeded');
-    expect(item.fake.executionOrder.filter((id) => id === 'subject')).toHaveLength(1);
-    const final = item.store.getRun('operator', item.run.runRef);
-    expect(final.ok && final.value.stageGenerations).toHaveLength(1);
-    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
-    expect(final.ok && final.value.humanRequests).toHaveLength(0);
-  });
 
-  it('replays a canonical checker result after the terminal-to-receipt seam without rerunning the checker', async () => {
-    const item = reviewFixture({ outcomes: [passOutcome()], crashAfterIntegrationStage: 'checker' });
-    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(completed.state).toBe('succeeded');
-    expect(item.fake.executionOrder.filter((id) => id === 'checker')).toHaveLength(1);
-    const final = item.store.getRun('operator', item.run.runRef);
-    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
-    expect(final.ok && final.value.reviewLoops[0].state).toBe('passed');
-    expect(final.ok && final.value.humanRequests).toHaveLength(0);
-  });
 
-  it('rejects a checker canonical result whose attempt base differs from its bound subject generation', async () => {
-    const item = reviewFixture({ outcomes: [passOutcome()], checkerAttemptBaseCommit: 'e'.repeat(40) });
-    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(outcome.state).toBe('waiting-human');
-    const detail = item.store.getRun('operator', item.run.runRef);
-    expect(detail.ok && detail.value.reviewReceipts).toHaveLength(0);
-    expect(detail.ok && detail.value.reviewLoops[0].state).toBe('checking');
-    expect(detail.ok && detail.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
-  });
 
-  it('records a terminal checker receipt while an unrelated open boundary keeps normal work paused', async () => {
-    const item = reviewFixture({ outcomes: [passOutcome()] });
-    let detail = item.store.getRun('operator', item.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    const subject = detail.value.stages.find((stage) => stage.stageId === 'subject') as NonNullable<typeof detail.value.stages[number]>;
-    const subjectAttempt = item.store.createAttempt('operator', subject.stageRef, { expectedStageVersion: subject.version, runtime: 'codex', model: 'codex-safe' });
-    if (!subjectAttempt.ok) throw new Error(subjectAttempt.detail);
-    const subjectSession = item.store.createWorkerSession('operator', subjectAttempt.value.attemptRef, { expectedAttemptVersion: subjectAttempt.value.version });
-    if (!subjectSession.ok) throw new Error(subjectSession.detail);
-    let current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
-    let currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
-    expect(item.store.transitionStage('operator', currentSubject.stageRef, currentSubject.version, 'running').ok).toBe(true);
-    let currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
-    let creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === subjectAttempt.value.attemptRef) as typeof subjectAttempt.value;
-    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'starting').ok).toBe(true);
-    currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
-    creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef) as typeof creator;
-    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'running').ok).toBe(true);
-    let sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
-    let creatorSession = sessions.value.sessions.find((session) => session.sessionRef === subjectSession.value.sessionRef) as typeof subjectSession.value;
-    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'starting').ok).toBe(true);
-    sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
-    creatorSession = sessions.value.sessions.find((session) => session.sessionRef === creatorSession.sessionRef) as typeof creatorSession;
-    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'running').ok).toBe(true);
-    sessions = item.store.getRun('operator', item.run.runRef); if (!sessions.ok) throw new Error(sessions.detail);
-    creatorSession = sessions.value.sessions.find((session) => session.sessionRef === creatorSession.sessionRef) as typeof creatorSession;
-    expect(item.store.transitionSession('operator', creatorSession.sessionRef, creatorSession.version, 'completed').ok).toBe(true);
-    currentAttempt = item.store.getRun('operator', item.run.runRef); if (!currentAttempt.ok) throw new Error(currentAttempt.detail);
-    creator = currentAttempt.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef) as typeof creator;
-    expect(item.store.transitionAttempt('operator', creator.attemptRef, creator.version, 'succeeded').ok).toBe(true);
-    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
-    currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
-    const afterCreator = item.store.getRun('operator', item.run.runRef); if (!afterCreator.ok) throw new Error(afterCreator.detail);
-    const generation = item.store.recordStageGeneration('operator', subject.stageRef, {
-      expectedStageVersion: currentSubject.version, expectedAttemptVersion: afterCreator.value.attempts.find((attempt) => attempt.attemptRef === creator.attemptRef)!.version,
-      expectedGeneration: 1, operationKey: `result:${item.run.runRef}:subject`, resultHash: 'a'.repeat(64), resultCardRef: subject.canonicalCardRef,
-      baseCommit: 'a'.repeat(40), canonicalCommit: 'b'.repeat(40),
-    });
-    if (!generation.ok) throw new Error(generation.detail);
-    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
-    currentSubject = current.value.stages.find((stage) => stage.stageRef === subject.stageRef) as typeof subject;
-    expect(item.store.transitionStage('operator', subject.stageRef, currentSubject.version, 'succeeded').ok).toBe(true);
-    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
-    const checker = current.value.stages.find((stage) => stage.stageId === 'checker') as typeof subject;
-    expect(item.store.transitionStage('operator', checker.stageRef, checker.version, 'ready').ok).toBe(true);
-    current = item.store.getRun('operator', item.run.runRef); if (!current.ok) throw new Error(current.detail);
-    const readyChecker = current.value.stages.find((stage) => stage.stageRef === checker.stageRef) as typeof checker;
-    const checkerAttempt = item.store.createAttempt('operator', readyChecker.stageRef, { expectedStageVersion: readyChecker.version, runtime: 'codex', model: 'codex-safe',
-      reviewSubjectGenerationRef: generation.value.generationRef, reviewSubjectResultHash: 'a'.repeat(64), reviewSubjectCanonicalCommit: 'b'.repeat(40) });
-    if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
-    const checkerSession = item.store.createWorkerSession('operator', checkerAttempt.value.attemptRef, { expectedAttemptVersion: checkerAttempt.value.version });
-    if (!checkerSession.ok) throw new Error(checkerSession.detail);
-    const advance = (kind: 'stage' | 'attempt' | 'session', ref: string, state: 'running' | 'starting' | 'completed' | 'succeeded') => {
-      const now = item.store.getRun('operator', item.run.runRef); if (!now.ok) throw new Error(now.detail);
-      if (kind === 'stage') return item.store.transitionStage('operator', ref, now.value.stages.find((value) => value.stageRef === ref)!.version, state as never);
-      if (kind === 'attempt') return item.store.transitionAttempt('operator', ref, now.value.attempts.find((value) => value.attemptRef === ref)!.version, state as never);
-      return item.store.transitionSession('operator', ref, now.value.sessions.find((value) => value.sessionRef === ref)!.version, state as never);
-    };
-    expect(advance('stage', readyChecker.stageRef, 'running').ok).toBe(true);
-    expect(advance('attempt', checkerAttempt.value.attemptRef, 'starting').ok).toBe(true); expect(advance('attempt', checkerAttempt.value.attemptRef, 'running').ok).toBe(true);
-    expect(advance('session', checkerSession.value.sessionRef, 'starting').ok).toBe(true); expect(advance('session', checkerSession.value.sessionRef, 'running').ok).toBe(true); expect(advance('session', checkerSession.value.sessionRef, 'completed').ok).toBe(true);
-    expect(advance('attempt', checkerAttempt.value.attemptRef, 'succeeded').ok).toBe(true); expect(advance('stage', readyChecker.stageRef, 'succeeded').ok).toBe(true);
-    const payload = { summary: 'creator is safe', artifacts: [], changed: [], checkpoints: [], reviewOutcome: passOutcome() };
-    item.results.set(`result:${item.run.runRef}:checker`, { ...payload, resultHash: canonicalStageResultHash(payload), durability: 'canonical', attemptBaseCommit: 'b'.repeat(40), integrationCommit: 'c'.repeat(40) });
-    const request = item.store.createHumanRequest('operator', item.run.runRef, { stageRef: null, kind: 'approval', title: 'unrelated boundary', prompt: 'Pause normal work.' });
-    expect(request.ok).toBe(true);
-    const runBefore = item.store.getRun('operator', item.run.runRef); if (!runBefore.ok) throw new Error(runBefore.detail);
-    expect(item.store.transitionRun('operator', item.run.runRef, runBefore.value.run.version, 'waiting-human').ok).toBe(true);
-    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(outcome.state).toBe('waiting-human');
-    const final = item.store.getRun('operator', item.run.runRef);
-    expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
-    expect(final.ok && final.value.reviewLoops[0].state).toBe('passed');
-    expect(final.ok && final.value.humanRequests).toHaveLength(1);
-    expect(final.ok && final.value.humanRequests[0].requestRef).toBe(request.ok && request.value.requestRef);
-    expect(item.fake.executionOrder).toEqual([]);
-    expect(final.ok && final.value.stages.find((stage) => stage.stageId === 'release')?.state).toBe('blocked');
-  });
 
-  it('replays a persisted failed receipt through one rework route without rerunning its checker', async () => {
-    const item = reviewFixture({ outcomes: [failOutcome(), passOutcome()], maxCreatorReworks: 1 });
-    const record = item.store.recordReviewReceipt.bind(item.store);
-    let faulted = false;
-    item.store.recordReviewReceipt = ((...args: Parameters<ControlPlaneStore['recordReviewReceipt']>) => {
-      const saved = record(...args);
-      if (!faulted && saved.ok) {
-        faulted = true;
-        throw new Error('simulated crash after persisted review receipt');
-      }
-      return saved;
-    }) as ControlPlaneStore['recordReviewReceipt'];
-    const completed = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
-    expect(completed.state).toBe('succeeded');
-    expect(item.fake.executionOrder.filter((id) => id === 'checker')).toHaveLength(2);
-    const final = item.store.getRun('operator', item.run.runRef);
-    expect(final.ok && final.value.reviewReceipts).toHaveLength(2);
-    expect(final.ok && final.value.generationSupersessions).toHaveLength(1);
-    expect(final.ok && final.value.humanRequests).toHaveLength(0);
-  });
 
   it('releases equal-priority roots deterministically while honoring bounded concurrency', async () => {
     const store = createStore();
     const plan = proposal([stage('b'), stage('a'), stage('c', ['a'])]);
     const run = createApprovedRun(store, plan);
     const fake = fakes();
-    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const options = engineOptions(store, fake);
+    // This assertion is deliberately about a total release order, and the basic fake correlates
+    // inspection with the most recently entered worker. Keep this one scheduling-order probe serial.
+    options.maxConcurrency = 1;
+    const engine = new AutomaticExecutionEngine(options);
 
     await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
 
@@ -1449,6 +2109,34 @@ describe('AutomaticExecutionEngine', () => {
     expect(completed.state).toBe('succeeded');
     expect(fake.executionOrder).toEqual(['review']);
     expect(store.getRun('operator', run.runRef)).toMatchObject({ ok: true, value: { humanRequests: [{ state: 'resolved' }] } });
+  });
+
+  it('halts the whole run when a generic gate opens even if an independent sibling stage is ready', async () => {
+    const store = createStore();
+    const gated = stage('a-gated');
+    gated.humanGates = [{ id: 'approval', kind: 'approval', prompt: 'Approve the gated stage.' }];
+    const sibling = stage('b-sibling');
+    const plan = proposal([gated, sibling]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.maxConcurrency = 2;
+    const engine = new AutomaticExecutionEngine(options);
+
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+
+    expect(fake.executionOrder).toEqual([]);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({ ok: true, value: {
+      run: { state: 'waiting-human' },
+      stages: expect.arrayContaining([
+        expect.objectContaining({ stageId: 'a-gated', state: 'waiting-human' }),
+        expect.objectContaining({ stageId: 'b-sibling', state: 'ready' }),
+      ]),
+      humanRequests: [expect.objectContaining({ kind: 'approval', state: 'open' })],
+    } });
+    const detail = store.getRun('operator', run.runRef);
+    expect(detail.ok && detail.value.humanRequests[0]).not.toHaveProperty('gateKind');
   });
 
   it('does not claim run success when the Manager shutdown is unacknowledged', async () => {

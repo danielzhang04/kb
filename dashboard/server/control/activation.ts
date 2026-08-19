@@ -246,6 +246,8 @@ export interface ActivationDeps {
   createWorkers: typeof createClaudeWorkerAdapter;
   createCodexWorkers: typeof createCodexExecAdapter;
   createSessionChains: typeof createAgentSessionChainStore;
+  createAttemptIo: typeof createAttemptIoStore;
+  createPaidActions: typeof buildPaidActionExecution;
   createRegistry: typeof createWorkerCancellationRegistry;
   createManagers: typeof createBrokerManagerAdapter;
   createCancellation: typeof createBrokerCancellationController;
@@ -308,7 +310,7 @@ function managedProfile(profiles: readonly ExecutionProfile[], spec: ManagedStar
 }
 
 function defaultResolveBaseCommit(repoRoot: string): string {
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8', windowsHide: true }).trim();
   if (!FULL_COMMIT.test(head)) throw new ActivationError('git rev-parse HEAD did not yield a full immutable commit id');
   return head;
 }
@@ -330,6 +332,8 @@ function defaultDeps(): ActivationDeps {
     createWorkers: createClaudeWorkerAdapter,
     createCodexWorkers: createCodexExecAdapter,
     createSessionChains: createAgentSessionChainStore,
+    createAttemptIo: createAttemptIoStore,
+    createPaidActions: buildPaidActionExecution,
     createRegistry: createWorkerCancellationRegistry,
     createManagers: createBrokerManagerAdapter,
     createCancellation: createBrokerCancellationController,
@@ -379,14 +383,17 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const budget = options.budget ?? DEFAULT_BUDGET;
   const attemptBudget = options.attemptBudget ?? DEFAULT_ATTEMPT_BUDGET;
   assertAttemptBudgetFitsWindow(attemptBudget, budget);
-  const maxConcurrency = options.maxConcurrency ?? 1;
+  // Keep legacy definitions at one worker per run while leaving enough server-owned headroom for a
+  // definition that explicitly proves independent sibling work (the iteration-loop demo declares 2).
+  const maxConcurrency = options.maxConcurrency ?? 2;
+  const defaultRunConcurrency = options.maxConcurrency ?? 1;
   const baseCommit = options.baseCommit ?? deps.resolveBaseCommit(repoRoot);
 
   const policy = deps.loadPolicy(repoRoot, project, [...refs]);
   const resolvePolicy = createProjectPolicyResolver(repoRoot, deps.loadPolicy, project, policy);
   const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
   const sessionChains = deps.createSessionChains(stateRoot);
-  const attemptIo = createAttemptIoStore({ root: join(stateRoot, 'control', 'attempt-io') });
+  const attemptIo = deps.createAttemptIo({ root: join(stateRoot, 'control', 'attempt-io') });
 
   const resolveManagedLaunch = (spec: ManagedStartSpec): ClaudeSessionLaunch => {
     const profile = managedProfile(policy.profiles, spec);
@@ -530,7 +537,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   // The provisioner hook mints a stage's grant and writes its token file into the prepared attempt worktree
   // at launch; it is passed to the engine so a paid stage arms its worker before delivery. Provider keys are
   // resolved server-side from OUTSIDE any worktree — never written into one.
-  const paid = buildPaidActionExecution({ stateRoot, worktreeRoot });
+  const paid = deps.createPaidActions({ stateRoot, worktreeRoot });
   // Mode-aware: the daemon's public origin is the serve host in tailnet mode, the RP origin in win32.
   // A hardcoded `DASHBOARD_RP_ORIGIN ?? ...` fell through to the loopback fallback in tailnet mode
   // (where RP_ORIGIN is banned), silently pointing every spend-grant approval link at the wrong host.
@@ -549,6 +556,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     assignedAgents,
     worktreeRoot,
     maxConcurrency,
+    defaultRunConcurrency,
     budget,
     attemptBudget,
     worktrees,

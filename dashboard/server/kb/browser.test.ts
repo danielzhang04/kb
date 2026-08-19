@@ -64,6 +64,9 @@ describe('listTree', () => {
     // regardless of platform — they are never confined to repoRoot.
     expect(() => listTree(REPO_A, '/etc/passwd')).toThrow(PathEscapeError);
     expect(() => listTree(REPO_A, 'C:\\Windows\\System32')).toThrow(PathEscapeError);
+    expect(() => listTree(REPO_A, 'C:/Windows/System32')).toThrow(PathEscapeError);
+    expect(() => listTree(REPO_A, '\\Windows\\System32')).toThrow(PathEscapeError);
+    expect(() => listTree(REPO_A, '\\\\server\\share')).toThrow(PathEscapeError);
   });
 });
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import inspect
 import json
 import os
 import re
@@ -67,18 +66,6 @@ def make_git_runner(git_user: str | None = VM_GIT_USER):
 
 
 run_git = make_git_runner()
-
-
-def _run_without_check(run, repo: Path, args: list[str]) -> subprocess.CompletedProcess:
-    try:
-        parameters = inspect.signature(run).parameters.values()
-        accepts_check = any(
-            parameter.name == "check" or parameter.kind is inspect.Parameter.VAR_KEYWORD
-            for parameter in parameters
-        )
-    except (TypeError, ValueError):
-        accepts_check = False
-    return run(repo, args, check=False) if accepts_check else run(repo, args)
 
 
 def _bytes(value: str | bytes | None) -> bytes:
@@ -366,6 +353,87 @@ def _validate_source_claims(repo: Path, source_chain: list[dict], run=run_git) -
             raise RuntimeError("source manifest commit contains a non-coordination path")
 
 
+def _read_matching_receipt(spool: Path, manifest: dict) -> dict:
+    path = spool / "receipts" / f"{manifest['id']}.json"
+    if not path.exists():
+        raise RuntimeError("ops reconciliation refused with unreceipted outbox items")
+    receipt = parse_closed_json(path, RECEIPT_KEYS)
+    if (
+        any(type(receipt[name]) is not str for name in RECEIPT_KEYS)
+        or receipt["schema"] != "kb.ops-promotion/v1"
+        or receipt["id"] != manifest["id"]
+        or receipt["sourceCommit"] != manifest["commit"]
+        or COMMIT_RE.fullmatch(receipt["promotedCommit"]) is None
+    ):
+        raise RuntimeError("promotion receipt does not match its manifest")
+    _canonical_utc(receipt["promotedAt"], "promotion")
+    return receipt
+
+
+def _replayed_tree(
+    repo: Path,
+    manifest: dict,
+    onto: str,
+    run=run_git,
+) -> str:
+    try:
+        result = run(
+            repo,
+            [
+                "merge-tree", "--write-tree", "--merge-base", manifest["parent"],
+                onto, manifest["commit"],
+            ],
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            f"promoted delta for {manifest['id']} conflicts with its recorded base"
+        ) from error
+    lines = _text(result.stdout).splitlines()
+    tree = lines[0] if lines else ""
+    if COMMIT_RE.fullmatch(tree) is None:
+        raise RuntimeError("promoted delta replay did not produce a valid tree")
+    return tree
+
+
+def _validate_promoted_deltas(
+    repo: Path,
+    source_chain: list[dict],
+    receipts: list[dict],
+    history_positions: dict[str, int],
+    run=run_git,
+) -> None:
+    previous_position = 0
+    for manifest, receipt in zip(source_chain, receipts, strict=True):
+        promoted = receipt["promotedCommit"]
+        position = history_positions.get(promoted)
+        if position is None or position < previous_position:
+            raise RuntimeError("promotion receipts are not in reconciled parent order")
+        previous_position = position
+
+        message = _text(run(repo, ["show", "-s", "--format=%B", promoted]).stdout).splitlines()
+        trailer = f"KB-Outbox-ID: {manifest['id']}"
+        trailer_count = message.count(trailer)
+        if trailer_count > 1:
+            raise RuntimeError("promoted commit contains a duplicate outbox trailer")
+        if trailer_count == 1:
+            row = _text(
+                run(repo, ["rev-list", "--parents", "-n", "1", promoted]).stdout
+            ).strip().split()
+            if len(row) != 2 or row[0] != promoted:
+                raise RuntimeError("promoted commit is not single-parent")
+            onto = row[1]
+        else:
+            # An idempotent promotion records the existing commit whose tree already
+            # contains the source delta, without manufacturing a trailer-only commit.
+            onto = promoted
+        expected_tree = _replayed_tree(repo, manifest, onto, run)
+        actual_tree = _text(
+            run(repo, ["rev-parse", f"{promoted}^{{tree}}"]).stdout
+        ).strip()
+        if actual_tree != expected_tree:
+            raise RuntimeError("promotion receipt does not identify the exact rebased bundle delta")
+
+
 def apply_reconciliation(
     repo: Path,
     spool: Path,
@@ -425,6 +493,7 @@ def apply_reconciliation(
     if source_chain[-1]["commit"] != head:
         raise RuntimeError("source head is not the validated manifest-chain tip")
     _validate_source_claims(repo, source_chain, run)
+    receipts = [_read_matching_receipt(spool, manifest) for manifest in source_chain]
     trusted_base = source_chain[0]["parent"]
 
     run(repo, ["bundle", "verify", str(bundle)])
@@ -442,11 +511,13 @@ def apply_reconciliation(
         run(repo, ["rev-list", "--reverse", "--parents", f"{trusted_base}..{target}"]).stdout
     ).splitlines()
     previous = trusted_base
-    for row in chain:
+    history_positions = {trusted_base: 0}
+    for position, row in enumerate(chain, start=1):
         fields = row.split()
         if len(fields) != 2 or fields[1] != previous:
             raise RuntimeError("reconciled ops history is not a single-parent chain")
         previous = fields[0]
+        history_positions[previous] = position
     if previous != target:
         raise RuntimeError("reconciled target is not descended from the trusted base")
     changed = nul_paths(run(repo, ["diff", "--name-only", "-z", trusted_base, target]).stdout)
@@ -459,8 +530,7 @@ def apply_reconciliation(
         raise RuntimeError("reconciled ref contains an unsafe object mode")
     if any(COORDINATION.fullmatch(path) is None for path in changed):
         raise RuntimeError("reconciled ref contains a non-coordination path")
-    if _run_without_check(run, repo, ["diff", "--quiet", head, target]).returncode != 0:
-        raise RuntimeError("promoted target tree differs from VM source chain")
+    _validate_promoted_deltas(repo, source_chain, receipts, history_positions, run)
     run(repo, ["branch", f"kb-before-reconcile-{head[:12]}", head])
     run(repo, ["reset", "--hard", target])
     run(repo, ["update-ref", "refs/kb-outbox/spooled", target, anchor])
