@@ -159,3 +159,36 @@ on pid 44508 — cannot idle-expire while this terminal stays open).
 - Resume: on any context refresh, re-read this section + the boss tasklist + the two scratchpad briefs;
   harvest completed workers via their ops `queue/done` cards. Next boss actions are event-driven
   (worker completion notifications): post P1 review verdict; review S0 manifest then dispatch S1.
+
+## RESUME AFTER CRASH — 2026-08-19 ~13:30 (boss session restarted → new id 8ce359ff)
+State is authoritative as of this section. keep-awake RE-ARMED (supervisor pid 34212, pid-only lease
+`boss-overnight`; armed:True). If the boss session restarts again, resume from here.
+
+- **Phase 1 = DONE.** PR #131 open (`claude/workflow-platform`), opus SHIP posted. Awaits Daniel merge.
+- **Phase 3 prep = DONE** (ops card `queue/done/6a853136-818f74c2.md`). D1 URL wiring worklist (40 refs),
+  D2 admin-console runbook, D3 caveats. Findings: URL rename is config-driven (set
+  `DASHBOARD_TAILNET_HOST=kb.command.ts.net` in the unit + swap 40 refs); bridge-tick acceptance
+  unprovable on main (no success log — needs a heartbeat log or different signal); pull-only flag =
+  `--pull-only` (resolved by outbox build). Execution still needs Daniel's Tailscale console (morning).
+- **Phase 2 = IN PROGRESS in two standalone CLONES** (NOT worktrees — see lesson):
+  - Port: `C:/Users/danie/kb-clones/linux-port-rederive` (branch `claude/linux-port-rederive` off
+    main 29463734, `dashboard/node_modules` junctioned, `PORT-MANIFEST.md` = scratch spec copy of ops
+    card `6a853054-f347db70`). ~30% done in working tree (496a522e + 506af813 preambleGate +
+    75a9a00a agent_runner.sh/.py). Re-dispatched: brief
+    `scratchpad/phase2-stage1-build-brief.md` (has RESUMPTION STATE). Remaining: 75a9a00a dashboard
+    seams + win32-gate, 8ebc337f childEnv, 4fa62cc3 noReparse.posix, fb9f501f browser+activation,
+    d18711f1, docs. runnerTrigger stays FALSE on Linux (ruling #1).
+  - Outbox: `C:/Users/danie/kb-clones/outbox-cowriter` (branch `claude/outbox-cowriter`).
+    promote_vm_outbox.py has all 3 behaviors + `--pull-only`; tests being written. Brief
+    `scratchpad/phase2-stage1b-outbox-brief.md`.
+- **LESSON (cost 3 wasted dispatches):** codex sandbox makes `.git` READ-ONLY (both linked worktrees
+  AND clones). Codex workers CANNOT `git commit`/`cherry-pick`/`add` — they edit the WORKING TREE
+  only; the BOSS commits (exactly the dispatch-codex skill's model). Brief workers accordingly:
+  "leave changes uncommitted; use `git show <sha>` (read) + `git apply` without --index or direct
+  edits; boss commits." Linked worktrees ALSO fail because their `.git` metadata lives under the main
+  repo's `.git/worktrees/<name>/` (outside the sandbox). Use standalone `git clone --local` +
+  junction `dashboard/node_modules` for tsc/vitest.
+- **HARVEST when a Phase-2 worker finishes:** boss reviews the clone's working-tree diff, runs win32
+  suites, then (boss, unsandboxed) `git add`/`commit` in the clone, `git fetch <clone-path>
+  <branch>:<branch>` into the main checkout, `git push origin <branch>`, open PR. Then dispatch S2
+  independent adversarial review before calling it merge-ready.
