@@ -197,6 +197,12 @@ def _with_target(card: EvalCard, agent_id: str | None) -> EvalCard:
     judge reads out of ``input`` changes."""
     if agent_id is None:
         return card
+    # agent_factory imports this module for EVAL_WORKER, so defer the reverse
+    # import until substitution. This makes the factory's grammar authoritative
+    # without creating an import-time cycle.
+    from agent_factory import SAFE_AGENT_ID
+    if not SAFE_AGENT_ID.fullmatch(agent_id):
+        raise ValueError(f"unsafe agent id: {agent_id!r}")
     new_meta = dict(card.meta)
     new_meta["input"] = _substitute_agent_id(card.input, agent_id)
     return EvalCard(meta=new_meta, body=card.body, path=card.path)
