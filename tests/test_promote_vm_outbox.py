@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.promote_vm_outbox as promote_module
 from scripts.promote_vm_outbox import (
     APPROVAL_KEYS,
     APPROVAL_NAMESPACE,
@@ -127,7 +128,11 @@ def write_approval(tmp_path: Path, chain: list[dict]):
 
 def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", *args], cwd=repo, check=check, capture_output=True, text=True,
+        ["git", "-c", "core.longpaths=true", *args],
+        cwd=repo,
+        check=check,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -223,6 +228,34 @@ def operator_state(repo: Path) -> tuple[str, str, str, bytes]:
         git(repo, "show-ref").stdout,
         git(repo, "reflog", "show", "--all").stdout,
         index.read_bytes(),
+    )
+
+
+def advance_origin_ops(
+    tmp_path: Path,
+    origin: Path,
+    rel: str,
+    body: str,
+    *,
+    clone_name: str = "desktop",
+) -> str:
+    desktop = tmp_path / clone_name
+    git(tmp_path, "clone", str(origin), str(desktop))
+    configure_repo(desktop)
+    target = desktop / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body, encoding="utf-8")
+    git(desktop, "add", rel)
+    git(desktop, "commit", "-m", f"desktop {rel}")
+    git(desktop, "push", "origin", "ops")
+    return git(desktop, "rev-parse", "HEAD").stdout.strip()
+
+
+def upstream_state(origin: Path) -> tuple[str, str, str]:
+    return (
+        git(origin, "rev-parse", "refs/heads/ops").stdout,
+        git(origin, "show-ref").stdout,
+        git(origin, "rev-list", "--all").stdout,
     )
 
 
@@ -438,16 +471,24 @@ def test_fresh_clone_uses_the_transport_timeout(tmp_path):
 
 
 def test_promote_one_refuses_to_reuse_a_trailer_commit_with_the_wrong_tree(tmp_path):
-    manifest = {"id": COMMIT, "commit": COMMIT}
+    promoted = "d" * 40
+    promoted_parent = "e" * 40
+    expected_tree = "f" * 40
+    actual_tree = "1" * 40
+    manifest = {"id": COMMIT, "commit": COMMIT, "parent": BASE}
 
     def run(_repo, args, check=True):
         if args[0] == "log":
-            return completed(args, "d" * 40 + "\n")
-        if args[:2] == ["diff", "--quiet"]:
-            return completed(args, returncode=1)
-        return completed(args)
+            return completed(args, promoted + "\n")
+        if args[:3] == ["rev-list", "--parents", "-n"]:
+            return completed(args, f"{promoted} {promoted_parent}\n")
+        if args[:2] == ["merge-tree", "--write-tree"]:
+            return completed(args, expected_tree + "\n")
+        if args == ["rev-parse", f"{promoted}^{{tree}}"]:
+            return completed(args, actual_tree + "\n")
+        raise AssertionError(f"unexpected git call: {args}")
 
-    with pytest.raises(RuntimeError, match="tree differs"):
+    with pytest.raises(RuntimeError, match="not the exact rebased bundle delta"):
         promote_one(tmp_path, tmp_path, manifest, "refs/kb-quarantine/test", run=run)
 
 
@@ -514,6 +555,72 @@ def test_push_response_loss_recovers_receipt_without_duplicate_commit(tmp_path, 
     assert len(git(origin, "rev-list", "--all").stdout.splitlines()) == 2
 
 
+def test_receiptless_recovery_reconciles_through_later_desktop_commit(tmp_path, monkeypatch):
+    origin, operator, vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/one.jsonl", "one\n")],
+    )
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "phase-2-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "phase-2-test@example.invalid")
+    pushes = 0
+
+    def lose_first_push_response(repo: Path, args: list[str], check: bool = True):
+        nonlocal pushes
+        result = subprocess.run(
+            ["git", "-c", "core.longpaths=true", *args],
+            cwd=repo,
+            check=check,
+            capture_output=True,
+        )
+        if args[0] == "push":
+            pushes += 1
+            raise subprocess.CalledProcessError(128, ["git", *args])
+        return result
+
+    assert promote_pending(
+        spool,
+        operator,
+        tmp_path / "work-lost-response",
+        trusted,
+        max_attempts=1,
+        run_git=lose_first_push_response,
+    ) == {"promoted": 0, "pending": 1, "failed": 1}
+    promoted = git(origin, "rev-parse", "refs/heads/ops").stdout.strip()
+    advanced = advance_origin_ops(
+        tmp_path,
+        origin,
+        "dashboards/later-desktop.md",
+        "later desktop state\n",
+    )
+
+    assert promote_pending(spool, operator, tmp_path / "work-recovery", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    receipt = json.loads(
+        (spool / "receipts" / f"{manifests[0]['id']}.json").read_text(encoding="utf-8")
+    )
+    assert pushes == 1
+    assert receipt["promotedCommit"] == promoted
+    assert promoted != advanced
+
+    return_bundle, return_repo = create_return_bundle(
+        operator, tmp_path / "return-recovery", promoted,
+    )
+    target = git(return_repo, "rev-parse", "refs/kb-reconciled/ops").stdout.strip()
+    assert target == advanced
+    assert apply_reconciliation(
+        vm,
+        spool,
+        return_bundle,
+        spool / "receipts",
+        manifests[-1]["commit"],
+        target,
+        readiness=lambda: {"quiescent": True, "blockers": []},
+    ) == target
+    assert git(vm, "show", "HEAD:ledgers/one.jsonl").stdout == "one\n"
+    assert git(vm, "show", "HEAD:dashboards/later-desktop.md").stdout == "later desktop state\n"
+
+
 def test_two_item_chain_promotes_in_parent_order_and_writes_two_receipts(tmp_path, monkeypatch):
     _origin, operator, _vm, spool, trusted, manifests = real_fixture(
         tmp_path, [("ledgers/one.jsonl", "one\n"), ("traces/two.jsonl", "two\n")],
@@ -552,3 +659,246 @@ def test_two_promotion_cycles_succeed(tmp_path, monkeypatch):
     assert promote_pending(spool, operator, tmp_path / "work-cycle-2", target) == {
         "promoted": 1, "pending": 0, "failed": 0,
     }
+
+
+def test_bundle_rebases_onto_advanced_ops_through_signed_approval_gate(tmp_path, monkeypatch):
+    origin, operator, vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("queue/inbox/vm-card.md", "from vm\n")],
+    )
+    advanced = advance_origin_ops(
+        tmp_path, origin, "dashboards/desktop.md", "from desktop\n",
+    )
+    approval, signature, allowed = write_approval(tmp_path, manifests)
+    approval_checks = []
+
+    def verify_approval(chain, approval_path, signature_path, allowed_path):
+        approval_checks.append([item["id"] for item in chain])
+        require_instruction_approval(
+            chain,
+            approval_path,
+            signature_path,
+            allowed_path,
+            run=verifier(),
+        )
+
+    monkeypatch.setattr(promote_module, "require_instruction_approval", verify_approval)
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "phase-2-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "phase-2-test@example.invalid")
+
+    assert promote_pending(
+        spool,
+        operator,
+        tmp_path / "work",
+        trusted,
+        approval=approval,
+        approval_signature=signature,
+        approval_allowed_signers=allowed,
+    ) == {"promoted": 1, "pending": 0, "failed": 0}
+
+    promoted = git(origin, "rev-parse", "refs/heads/ops").stdout.strip()
+    assert approval_checks == [[manifests[0]["id"]]]
+    assert promoted != advanced
+    assert git(origin, "rev-parse", f"{promoted}^").stdout.strip() == advanced
+    assert git(origin, "show", f"{promoted}:dashboards/desktop.md").stdout == "from desktop\n"
+    assert git(origin, "show", f"{promoted}:queue/inbox/vm-card.md").stdout == "from vm\n"
+    assert f"KB-Outbox-ID: {manifests[0]['id']}" in git(
+        origin, "show", "-s", "--format=%B", promoted,
+    ).stdout
+    return_bundle, _return_repo = create_return_bundle(
+        operator, tmp_path / "return", promoted,
+    )
+    assert apply_reconciliation(
+        vm,
+        spool,
+        return_bundle,
+        spool / "receipts",
+        manifests[-1]["commit"],
+        promoted,
+        readiness=lambda: {"quiescent": True, "blockers": []},
+    ) == promoted
+    assert git(vm, "show", "HEAD:dashboards/desktop.md").stdout == "from desktop\n"
+    assert git(vm, "show", "HEAD:queue/inbox/vm-card.md").stdout == "from vm\n"
+
+
+def test_conflicting_bundle_fails_closed_without_moving_ops(tmp_path):
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/base.jsonl", "from vm\n")],
+    )
+    advanced = advance_origin_ops(
+        tmp_path, origin, "ledgers/base.jsonl", "from desktop\n",
+    )
+    before = upstream_state(origin)
+
+    with pytest.raises(RuntimeError, match="conflicts with current origin/ops"):
+        promote_pending(spool, operator, tmp_path / "work", trusted, max_attempts=1)
+
+    assert upstream_state(origin) == before
+    assert git(origin, "rev-parse", "refs/heads/ops").stdout.strip() == advanced
+    assert not (spool / "receipts" / f"{manifests[0]['id']}.json").exists()
+
+
+def test_already_present_bundle_is_receipted_without_duplicate_commit(tmp_path):
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/shared.jsonl", "same change\n")],
+    )
+    advanced = advance_origin_ops(
+        tmp_path, origin, "ledgers/shared.jsonl", "same change\n",
+    )
+    before = upstream_state(origin)
+
+    assert promote_pending(spool, operator, tmp_path / "work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+
+    assert upstream_state(origin) == before
+    receipt = json.loads(
+        (spool / "receipts" / f"{manifests[0]['id']}.json").read_text(encoding="utf-8")
+    )
+    assert receipt["promotedCommit"] == advanced
+    assert f"KB-Outbox-ID: {manifests[0]['id']}" not in git(
+        origin, "show", "-s", "--format=%B", advanced,
+    ).stdout
+
+
+def test_empty_spool_main_exits_zero_with_nothing_to_promote(tmp_path, monkeypatch, capsys):
+    trusted = "a" * 40
+    operator = tmp_path / "operator"
+    operator.mkdir()
+
+    def fetch_empty(_vm_host: str, snapshot: Path) -> Path:
+        (snapshot / "ready").mkdir(parents=True)
+        (snapshot / "receipts").mkdir()
+        (snapshot / "SOURCE_HEAD").write_text(trusted + "\n", encoding="ascii")
+        return snapshot
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("empty spool continued into promotion or reconciliation")
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_empty)
+    monkeypatch.setattr(promote_module, "promote_pending", must_not_run)
+    monkeypatch.setattr(promote_module, "create_return_bundle", must_not_run)
+    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", must_not_run)
+    monkeypatch.setattr(
+        promote_module.sys,
+        "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", trusted,
+        ],
+    )
+
+    assert promote_module.main() == 0
+    assert capsys.readouterr().out.strip() == "nothing to promote"
+
+
+def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
+    tmp_path, monkeypatch, capsys,
+):
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    bundle = b"bundle"
+    manifest = {
+        "schema": "kb.ops-outbox/v1",
+        "id": COMMIT,
+        "parent": BASE,
+        "commit": COMMIT,
+        "paths": ["ledgers/already.jsonl"],
+        "createdAt": "2026-08-11T12:00:00.000Z",
+        "bundleSha256": hashlib.sha256(bundle).hexdigest(),
+    }
+    receipt = {
+        "schema": "kb.ops-promotion/v1",
+        "id": COMMIT,
+        "sourceCommit": COMMIT,
+        "promotedCommit": "c" * 40,
+        "promotedAt": "2026-08-11T12:00:01.000Z",
+    }
+
+    def fetch_receipted(_vm_host: str, snapshot: Path) -> Path:
+        (snapshot / "ready").mkdir(parents=True)
+        (snapshot / "receipts").mkdir()
+        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle)
+        (snapshot / "ready" / f"{COMMIT}.json").write_bytes(canonical(manifest))
+        (snapshot / "receipts" / f"{COMMIT}.json").write_bytes(canonical(receipt))
+        (snapshot / "SOURCE_HEAD").write_text(COMMIT + "\n", encoding="ascii")
+        return snapshot
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("receipted spool continued into promotion or reconciliation")
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_receipted)
+    monkeypatch.setattr(promote_module, "promote_pending", must_not_run)
+    monkeypatch.setattr(promote_module, "create_return_bundle", must_not_run)
+    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", must_not_run)
+    monkeypatch.setattr(
+        promote_module.sys,
+        "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", BASE,
+        ],
+    )
+
+    assert promote_module.main() == 0
+    assert capsys.readouterr().out.strip() == "nothing to promote"
+
+
+def test_pull_only_flag_fast_forwards_local_ops_without_writing_upstream(
+    tmp_path, monkeypatch, capsys,
+):
+    origin, operator, _vm, _spool, trusted, _manifests = real_fixture(
+        tmp_path, [("ledgers/pending.jsonl", "pending vm change\n")],
+    )
+    advanced = advance_origin_ops(
+        tmp_path, origin, "dashboards/desktop.md", "new upstream state\n",
+    )
+    before = upstream_state(origin)
+    monkeypatch.setattr(
+        promote_module.sys,
+        "argv",
+        ["promote_vm_outbox.py", "--repo", str(operator), "--pull-only"],
+    )
+
+    assert promote_module.main() == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {"before": trusted, "after": advanced, "updated": 1}
+    assert git(operator, "rev-parse", "refs/heads/ops").stdout.strip() == advanced
+    assert upstream_state(origin) == before
+
+
+def test_pull_only_flag_fails_closed_on_diverged_local_ops(tmp_path, monkeypatch):
+    origin, operator, _vm, _spool, _trusted, _manifests = real_fixture(
+        tmp_path, [("ledgers/pending.jsonl", "pending vm change\n")],
+    )
+    advanced = advance_origin_ops(
+        tmp_path, origin, "dashboards/desktop.md", "new upstream state\n",
+    )
+    local_path = operator / "memory" / "local.md"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text("local-only state\n", encoding="utf-8")
+    git(operator, "add", "memory/local.md")
+    git(operator, "commit", "-m", "local-only ops commit")
+    local = git(operator, "rev-parse", "HEAD").stdout.strip()
+    before = upstream_state(origin)
+    monkeypatch.setattr(
+        promote_module.sys,
+        "argv",
+        ["promote_vm_outbox.py", "--repo", str(operator), "--pull-only"],
+    )
+
+    with pytest.raises(RuntimeError, match="diverged.*refusing pull-only sync"):
+        promote_module.main()
+
+    assert git(operator, "rev-parse", "refs/heads/ops").stdout.strip() == local
+    assert git(origin, "rev-parse", "refs/heads/ops").stdout.strip() == advanced
+    assert upstream_state(origin) == before
