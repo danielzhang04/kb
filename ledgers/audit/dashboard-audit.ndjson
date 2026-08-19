@@ -169,3 +169,11 @@
 {"ts":"2026-08-12T19:26:21.114Z","action":"control-human-response-authorize","owner":"operator","target":"request-e34af60a-dc5b-4699-a2ab-e376c1ce2bed","riskTier":"T2","result":"authorized:responded","detail":{"requestRef":"request-e34af60a-dc5b-4699-a2ab-e376c1ce2bed","runRef":"run-74383969-3742-43d5-9c56-6024891f402e","runOwnerSubject":"dashboard-engine","requestRevision":1,"decision":"responded"}}
 {"ts":"2026-08-12T19:29:28.327Z","action":"control-human-response-authorize","owner":"operator","target":"request-9d36d644-84cd-46db-9658-c963bfd04cda","riskTier":"T3","result":"authorized:approved","detail":{"requestRef":"request-9d36d644-84cd-46db-9658-c963bfd04cda","runRef":"run-74383969-3742-43d5-9c56-6024891f402e","runOwnerSubject":"dashboard-engine","requestRevision":1,"decision":"approved"}}
 {"ts":"2026-08-12T19:29:46.759Z","action":"control-run-activate-authorize","owner":"operator","target":"run-74383969-3742-43d5-9c56-6024891f402e","riskTier":"T3","result":"authorized:run-74383969-3742-43d5-9c56-6024891f402e:3fd8a7ef1af99ef341bb19deae32494c8c9260bb60e42ec37d7a565af4190a4b","detail":{"runRef":"run-74383969-3742-43d5-9c56-6024891f402e","runOwnerSubject":"dashboard-engine","proposalHash":"3fd8a7ef1af99ef341bb19deae32494c8c9260bb60e42ec37d7a565af4190a4b","managerGeneration":3}}
+{"ts":"2026-08-18T03:39:28.969Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-18T03:39:38.585Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-18T03:42:30.270Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-18T03:55:09.005Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-18T04:25:58.325Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-18T04:31:59.904Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-18T04:41:03.851Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-18T04:47:55.702Z","action":"auth","owner":"operator","result":"login"}
