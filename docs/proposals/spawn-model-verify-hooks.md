@@ -179,8 +179,24 @@ exit 0 and empty stderr — fail open, silent, same as `delivery_gate.js` and `r
 2. **U8 first, if you want the SubagentStart hook to do anything.** It reads the U8 context store, and
    nothing writes `## North star` / `## Invariants` / `## Current gate` today — see the decision-note
    below. Armed on its own it is a correctly-working no-op.
-3. **Do the three arm-time empirical checks below** (they take one spawn each).
-4. **Arming inverts the inert-guard tests — retarget them in the same edit.** These
+3. **Kit injection brings two arm-time decisions of its own.** `subagent_context_load.js` gained a
+   second source since this proposal was written: `kitContext()` appends the rendered kit
+   (`kit/.rendered/<audience>.md`, audience `claude` falling back to `all`) to an injection the U8
+   store has already earned. Both of the following are settings, not bugs — decide them at arm time:
+   - **`KB_KIT_ROOT` is spawner-controlled.** The hook reads the artifact from that env var when it
+     is set, and only otherwise from its own repo root. Whoever launches the Claude session owns
+     that variable, so a session started with it pointed elsewhere injects THAT tree's doctrine into
+     every spawn. It exists for tests and scratch checkouts; on an armed machine, confirm it is
+     unset in the environment the session actually starts from (`Get-ChildItem Env:KB_KIT_ROOT`)
+     rather than assuming a shell profile has not set it.
+   - **At the default cap the kit is the truncation victim.** `KB_SUBAGENT_CONTEXT_MAX_CHARS`
+     defaults to 2000 and bounds the WHOLE block; the store's own sections are emitted first, so a
+     full store leaves the kit a few hundred characters — i.e. its L1 index and nothing more. That
+     is the deliberate priority (the session's own frame is what a child is missing), but it means
+     an armed hook does not deliver block bodies unless the cap is raised. Either raise it in the
+     same edit that arms the hook, or accept index-only injection and say so.
+4. **Do the three arm-time empirical checks below** (they take one spawn each).
+5. **Arming inverts the inert-guard tests — retarget them in the same edit.** These
    currently-green assertions exist to prove this family is NOT armed, and go red the moment
    any of it is: `tests/test_context_lifecycle_inert.py::test_no_hook_is_registered_in_any_settings_file`,
    `tests/test_context_lifecycle_inert.py::test_no_live_settings_were_touched`, and
@@ -189,10 +205,10 @@ exit 0 and empty stderr — fail open, silent, same as `delivery_gate.js` and `r
    retarget each one, in the same edit that changes `.claude/settings.json`, to assert the
    relevant hooks are registered **exactly once, at the committed path**, rather than not
    registered at all.
-5. Append the snippet to `.claude/settings.json` — merging into the existing `PreToolUse` array, not
+6. Append the snippet to `.claude/settings.json` — merging into the existing `PreToolUse` array, not
    replacing it. (Human edit: hooks config is Daniel's to change.)
-6. Restart the Claude Code session. Hooks load at session start.
-7. Confirm: dispatch one subagent, then check that
+7. Restart the Claude Code session. Hooks load at session start.
+8. Confirm: dispatch one subagent, then check that
    `%LOCALAPPDATA%\kb-context-lifecycle\model-audit.jsonl` has a `PreToolUse` row and a `SubagentStop`
    row for it. The **Model Audit** panel in the dashboard's Agent Platform section shows the same thing.
 
