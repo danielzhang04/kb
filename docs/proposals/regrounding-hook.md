@@ -1,6 +1,14 @@
 # Proposal: re-grounding UserPromptSubmit hook (for Daniel to arm, if ever)
 
 **Status:** PROPOSAL — inert, NOT wired into any live settings file.
+**Rework required before arming (Daniel ruling, 2026-08-19):** UserPromptSubmit-only is the
+wrong trigger set — it never fires mid-turn in an unsupervised run (one kickoff prompt, then
+hours of tool calls) and fires too often in interactive back-and-forth. Redesign to
+trigger+throttle: inject on `SessionStart(source: compact)` always (the post-compaction
+moment); inject on `PostToolUse` and `UserPromptSubmit` behind a shared state-file throttle
+(every N tool calls / skip if recently injected). Payload stays byte-stable (cache-safe).
+No timer-based compaction anywhere — the harness's fullness-triggered auto-compact remains
+the only compaction; this hook only re-grounds.
 **Built:** 2026-08-18, Agent Platform Wave 1, unit U7. Code: `scripts/hooks/regrounding_hook.js`.
 Tests: `tests/test_regrounding_hook.py`. Nothing in `.claude/settings.json`,
 `.claude/settings.local.json`, or `governance/**` was touched.
