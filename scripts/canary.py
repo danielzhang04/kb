@@ -103,7 +103,11 @@ _REQUIRED_META = ("id", "capability", "expected", "judge", "rubric_version",
                   "k", "source", "immutable")
 
 
-def parse_canary(path: Path) -> Canary:
+def split_frontmatter(path: Path) -> tuple[dict, str]:
+    """(meta, body) for any golden card file — the shared parser for every card
+    dialect built on this discipline (canaries here, per-agent eval suites in
+    `scripts/agent_evals.py`). Field validation is the caller's job, because the
+    required set differs per dialect."""
     text = Path(path).read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
     lines = text.split("\n")
     if not lines or lines[0] != "---":
@@ -114,17 +118,20 @@ def parse_canary(path: Path) -> Canary:
     close = next((i for i in range(1, len(lines)) if lines[i] == "---"), None)
     if close is None:
         raise CanaryError(f"{path}: unterminated frontmatter")
-    fm = "\n".join(lines[1:close])
-    body = "\n".join(lines[close + 1:])
-    meta = yaml.safe_load(fm)
+    meta = yaml.safe_load("\n".join(lines[1:close]))
     if not isinstance(meta, dict):
         raise CanaryError(f"{path}: frontmatter is not a mapping")
+    return meta, "\n".join(lines[close + 1:]).lstrip("\n")
+
+
+def parse_canary(path: Path) -> Canary:
+    meta, body = split_frontmatter(path)
     for key in _REQUIRED_META:
         if key not in meta:
             raise CanaryError(f"{path}: missing required frontmatter field {key!r}")
     if meta["capability"] not in CHECKERS:
         raise CanaryError(f"{path}: unknown capability {meta['capability']!r}")
-    return Canary(meta=meta, body=body.lstrip("\n"), path=Path(path))
+    return Canary(meta=meta, body=body, path=Path(path))
 
 
 def _canary_files(canary_dir: Path) -> list[Path]:
@@ -143,12 +150,15 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def _manifest_entries(evals_dir: Path) -> list[tuple[str, str]]:
-    """(hexdigest, relpath) for every canary file, relpath POSIX-style relative
-    to evals_dir (so the manifest is stable across OSes)."""
+def _manifest_entries(evals_dir: Path, subdir: str = CANARY_SUBDIR) -> list[tuple[str, str]]:
+    """(hexdigest, relpath) for every card file, relpath POSIX-style relative
+    to evals_dir (so the manifest is stable across OSes). ``subdir`` is where the
+    cards live under ``evals_dir``; `""` means the cards sit in ``evals_dir``
+    itself (the per-agent suite layout, `evals/agents/<id>/`)."""
     evals_dir = Path(evals_dir)
+    card_dir = evals_dir / subdir if subdir else evals_dir
     out: list[tuple[str, str]] = []
-    for p in _canary_files(evals_dir / CANARY_SUBDIR):
+    for p in _canary_files(card_dir):
         rel = p.relative_to(evals_dir).as_posix()
         out.append((_sha256(p), rel))
     return out
@@ -170,28 +180,35 @@ def _read_manifest(evals_dir: Path) -> dict[str, str]:
     return out
 
 
-def update_manifest(evals_dir: Path) -> Path:
-    """(Re)write MANIFEST.sha256 from the canary files on disk. Human-gated act
-    (the CLI only calls this after the suite passes)."""
+_CANARY_MANIFEST_HEADER = (
+    "# evals/MANIFEST.sha256 — golden canary hashes (human-gated regeneration).",
+    "# Regenerate ONLY via `py -3 scripts/canary.py --update-manifest` when the suite",
+    "# passes and an evals/ change is deliberate. A mismatch fails the suite loud.",
+    "",
+)
+
+
+def update_manifest(evals_dir: Path, subdir: str = CANARY_SUBDIR,
+                    header: tuple[str, ...] | list[str] | None = None) -> Path:
+    """(Re)write MANIFEST.sha256 from the card files on disk. Human-gated act
+    (the CLI only calls this after the suite passes). ``header`` lets another
+    suite dialect state its own re-bless command; the default is the canary one."""
     evals_dir = Path(evals_dir)
-    lines = ["# evals/MANIFEST.sha256 — golden canary hashes (human-gated regeneration).",
-             "# Regenerate ONLY via `py -3 scripts/canary.py --update-manifest` when the suite",
-             "# passes and an evals/ change is deliberate. A mismatch fails the suite loud.",
-             ""]
-    lines += [f"{h}  {rel}" for h, rel in _manifest_entries(evals_dir)]
+    lines = list(_CANARY_MANIFEST_HEADER if header is None else header)
+    lines += [f"{h}  {rel}" for h, rel in _manifest_entries(evals_dir, subdir)]
     path = evals_dir / MANIFEST_NAME
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
 
-def verify_manifest(evals_dir: Path) -> tuple[bool, list[str]]:
-    """True + [] when every canary file matches the manifest EXACTLY (no missing,
+def verify_manifest(evals_dir: Path, subdir: str = CANARY_SUBDIR) -> tuple[bool, list[str]]:
+    """True + [] when every card file matches the manifest EXACTLY (no missing,
     no extra, no changed). Otherwise False + human-readable problem lines."""
     evals_dir = Path(evals_dir)
     if not (evals_dir / MANIFEST_NAME).exists():
         return False, [f"missing {MANIFEST_NAME}"]
     recorded = _read_manifest(evals_dir)
-    actual = {rel: h for h, rel in _manifest_entries(evals_dir)}
+    actual = {rel: h for h, rel in _manifest_entries(evals_dir, subdir)}
     problems: list[str] = []
     for rel, h in actual.items():
         if rel not in recorded:
