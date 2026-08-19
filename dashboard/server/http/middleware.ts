@@ -78,32 +78,61 @@ export function verifiedSession(req: FastifyRequest): { token: string; claims: S
  * Any client-supplied bearer is IGNORED in that mode: honouring one would reintroduce a forgeable
  * credential beside the unforgeable transport proof.
  */
-export function requireSession(sessionConfig: SessionConfig) {
+export type ResolvedSession =
+  | { ok: true; token: string; claims: SessionClaims }
+  | { ok: false; status: 401 | 403; error: 'unauthenticated' | 'forbidden'; reason: string };
+
+/**
+ * The minimal request shape {@link resolveSession} reads: headers, plus the raw socket the tailnet peer
+ * proof needs. `socket` is optional so the PTY route's deliberately narrowed, hermetically testable
+ * request type still fits — an absent socket simply cannot prove a peer, which fails closed.
+ */
+export type SessionRequestLike = {
+  headers: FastifyRequest['headers'];
+  socket?: OperatorRequestLike['socket'];
+};
+
+/**
+ * Resolve the session for one request under WHICHEVER auth mode is configured — the single place either
+ * mode is decided. Every caller goes through it: the `requireSession` preHandler below, and the PTY
+ * route's three entry points, which read their bearer straight off the request instead of a preHandler
+ * stash. One branch, no second copy of the rule.
+ *
+ * `presentedToken` serves callers whose credential does not ride the usual headers (the PTY WebSocket
+ * carries its bearer in the subprotocol). It is IGNORED in `tailnet` mode, where the transport is the
+ * credential — honouring a client-supplied token there would put a forgeable credential beside an
+ * unforgeable proof.
+ */
+export function resolveSession(
+  req: SessionRequestLike,
+  sessionConfig: SessionConfig,
+  presentedToken?: string,
+): ResolvedSession {
   const operatorAuth = sessionConfig.operatorAuth;
   if (operatorAuth) {
-    return async function preHandlerRequireOperator(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-      const result = operatorAuth.authenticate(req as unknown as OperatorRequestLike);
-      if (!result.ok) {
-        // 403, not 401: there is no credential the client could supply to change this answer.
-        reply.code(403).send({ error: 'forbidden', reason: result.reason });
-        return;
-      }
-      bindAttribution(result.attribution);
-      verifiedByReq.set(req, mintSession(result.subject, sessionConfig));
-    };
+    const result = operatorAuth.authenticate(req as unknown as OperatorRequestLike);
+    // 403, not 401: no credential the client could supply would change this answer.
+    if (!result.ok) return { ok: false, status: 403, error: 'forbidden', reason: result.reason };
+    bindAttribution(result.attribution);
+    // Mint a REAL signed session so every gate module that independently re-verifies the token it is
+    // handed keeps working untouched.
+    return { ok: true, ...mintSession(result.subject, sessionConfig) };
   }
+  const token = presentedToken ?? sessionToken(req);
+  if (!token) return { ok: false, status: 401, error: 'unauthenticated', reason: 'missing session token' };
+  const check = verifySession(token, sessionConfig);
+  if (!check.ok) return { ok: false, status: 401, error: 'unauthenticated', reason: check.reason };
+  return { ok: true, token, claims: check.claims };
+}
+
+export function requireSession(sessionConfig: SessionConfig) {
   return async function preHandlerRequireSession(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const token = sessionToken(req);
-    if (!token) {
-      reply.code(401).send({ error: 'unauthenticated', reason: 'missing session token' });
+    const resolved = resolveSession(req, sessionConfig);
+    if (!resolved.ok) {
+      reply.code(resolved.status).send({ error: resolved.error, reason: resolved.reason });
       return;
     }
-    const check = verifySession(token, sessionConfig);
-    if (!check.ok) {
-      reply.code(401).send({ error: 'unauthenticated', reason: check.reason });
-      return;
-    }
-    verifiedByReq.set(req, { token, claims: check.claims });
+    verifiedByReq.set(req, { token: resolved.token, claims: resolved.claims });
   };
 }
 

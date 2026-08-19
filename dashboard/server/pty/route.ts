@@ -52,9 +52,10 @@ import fastifyWebsocket from '@fastify/websocket';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { assertOrigin, resolveAllowedOrigins } from '../security/origin.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
-import { resolveSessionSecret, resolveSessionTtlMs, verifySession } from '../auth/session.ts';
+import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
-import { sessionToken } from '../http/middleware.ts';
+import { resolveSession } from '../http/middleware.ts';
+import type { SessionRequestLike } from '../http/middleware.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
@@ -475,7 +476,10 @@ const isOpen = (socket: PtySocketLike): boolean => socket.readyState === socket.
  */
 export async function handlePtyConnection(
   socket: PtySocketLike,
-  req: Pick<FastifyRequest, 'headers' | 'url'>,
+  // `socket` is carried (optionally) because `tailnet` mode proves the operator from the connection's
+  // loopback peer rather than from a bearer. A real Fastify request always has it; the hermetic fake
+  // ones in tests may omit it, and an absent socket simply fails the peer proof closed.
+  req: Pick<FastifyRequest, 'headers' | 'url'> & { socket?: SessionRequestLike['socket'] },
   ctx: PtyRouteContext,
 ): Promise<void> {
   const maxConcurrent = ctx.maxConcurrent ?? MAX_CONCURRENT_PTY;
@@ -512,10 +516,11 @@ export async function handlePtyConnection(
     return;
   }
 
-  // 3. Session gate — the bearer rides the subprotocol, never the URL; same-origin clients may use the HttpOnly cookie.
-  const token = tokenFromSubprotocol(req) ?? sessionToken(req);
-  const session = token ? verifySession(token, ctx.sessionConfig) : null;
-  if (!session || !session.ok) {
+  // 3. Session gate — the bearer rides the subprotocol, never the URL; same-origin clients may use the
+  //    HttpOnly cookie. In `tailnet` mode `resolveSession` proves the operator from the connection
+  //    itself instead, so a browser with no session still reaches its terminal.
+  const session = resolveSession(req, ctx.sessionConfig, tokenFromSubprotocol(req));
+  if (!session.ok) {
     await audit('unauthenticated');
     if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'unauthenticated' }));
     socket.close(1008, 'unauthenticated');
@@ -861,10 +866,9 @@ export function requireBearerOwner(
   reply: FastifyReply,
   sessionConfig: SessionConfig,
 ): string | undefined {
-  const token = sessionToken(req);
-  const check = token ? verifySession(token, sessionConfig) : { ok: false as const, reason: 'malformed' as const };
+  const check = resolveSession(req, sessionConfig);
   if (!check.ok) {
-    void reply.code(401).send({ error: 'unauthenticated', reason: check.reason });
+    void reply.code(check.status).send({ error: check.error, reason: check.reason });
     return undefined;
   }
   return check.claims.sub;
@@ -892,10 +896,9 @@ export async function registerPtyRoute(
     {
       websocket: true,
       preValidation: async (req: FastifyRequest, reply: FastifyReply) => {
-        const token = tokenFromSubprotocol(req) ?? sessionToken(req);
-        const check = token ? verifySession(token, ctx.sessionConfig) : { ok: false as const, reason: 'malformed' as const };
+        const check = resolveSession(req, ctx.sessionConfig, tokenFromSubprotocol(req));
         if (!check.ok) {
-          await reply.code(401).send({ error: 'unauthenticated', reason: check.reason });
+          await reply.code(check.status).send({ error: check.error, reason: check.reason });
           return;
         }
         const parsed = parseSpawnParams(req.url);
