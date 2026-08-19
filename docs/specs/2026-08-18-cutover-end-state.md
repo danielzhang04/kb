@@ -24,7 +24,7 @@ VERIFIED from `systemctl cat kb-dashboard.service` and `/opt/kb-releases` on `kb
 | Code | `/opt/kb-releases/current` → `0554dc81…` today; `ReadOnlyPaths=/opt/kb-releases` |
 | Entry | `/usr/bin/node --experimental-strip-types server/index.ts`, cwd `/opt/kb-releases/current/dashboard` |
 | Listener | `127.0.0.1:4317` |
-| Public face | `tailscale serve` → `https://kb.tail82dd4f.ts.net` (443, **tailnet only**, no Funnel) |
+| Public face | `tailscale serve` → `https://kb.command.ts.net` (443, **tailnet only**, no Funnel) |
 | repoRoot | `DASHBOARD_REPO_ROOT=/var/lib/kb/ops` |
 | stateRoot | `DASHBOARD_STATE_ROOT=/var/lib/kb/state` |
 | Writable | `ReadWritePaths=/var/lib/kb/state /var/lib/kb/ops` only; `ProtectHome=true`, `PrivateTmp=true`, `NoNewPrivileges=true` |
@@ -311,7 +311,7 @@ precondition of the cutover window.** The passkey-login-then-unlock ceremony doe
 move to the VM.
 
 **End state: `DASHBOARD_AUTH_MODE=tailnet`.** The daemon is reachable only through the
-`tailscale serve` proxy on `https://kb.tail82dd4f.ts.net` (443, tailnet only, no Funnel), and in this
+`tailscale serve` proxy on `https://kb.command.ts.net` (443, tailnet only, no Funnel), and in this
 mode **a request arriving through that proxy is the operator**. There is no session, no bearer, no
 WebAuthn ceremony and no unlock latch. The proxy's identity headers are recorded on every audited
 action, so "who did this" is answered by the tailnet identity rather than by a session cookie.
@@ -384,7 +384,7 @@ enrolment (`http://localhost:5317`, credential `g4zK1F_rS_ZauyemvAFQWWb5TNPQ4bfp
 from `pm2.config.cjs` / `governance/webauthn-credentials.yaml`) stays where it is, serving the
 win32-desktop mode only.
 
-Access is **direct browsing of `https://kb.tail82dd4f.ts.net` over the tailnet**, and only that.
+Access is **direct browsing of `https://kb.command.ts.net` over the tailnet**, and only that.
 Every tunnel step from the old runbook (`ssh -N -L localhost:5317:127.0.0.1:5317`) is deleted, and
 the reason is now stronger than an origin mismatch: a tunnel bypasses the `tailscale serve` proxy,
 so the request arrives without the proxy identity the tailnet mode trusts and audits. A tunnelled

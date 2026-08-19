@@ -5,7 +5,7 @@ Scope: `dashboard/server` auth + activation seam, `deploy/` env contract.
 
 ## 1. Why
 
-The kb dashboard on the Hetzner VM is reachable only at `https://kb.tail82dd4f.ts.net`, published by
+The kb dashboard on the Hetzner VM is reachable only at `https://kb.command.ts.net`, published by
 `tailscale serve` (tailnet-only, no Funnel) proxying to `http://127.0.0.1:4317`. The tailnet is a
 single-human network. On that deployment the WebAuthn sign-in ceremony authenticates the same person the
 tailnet already authenticated, and the passkey-gated execution unlock latch means the fleet is disarmed
@@ -111,7 +111,7 @@ privilege grant to every node on the tailnet. There is no "any identity" mode.
 ### 3.4 The third lock: cross-site request forgery
 
 Tailnet-mode auth is *ambient* — it needs no cookie and no token, so `credentials: 'omit'` does not protect
-it. Any page the operator's browser loads could `fetch('https://kb.tail82dd4f.ts.net/api/...')`, and that
+it. Any page the operator's browser loads could `fetch('https://kb.command.ts.net/api/...')`, and that
 request would traverse serve and satisfy 3.2 and 3.3. The origin guard is therefore load-bearing in a way
 it was not before, and it stays fully enforced in this mode against `https://<DASHBOARD_TAILNET_HOST>`.
 
@@ -125,20 +125,20 @@ Probed on the live VM (2026-08-18), read-only, by capturing the loopback hop of 
 production serve listener:
 
 ```
-Host: kb.tail82dd4f.ts.net
+Host: kb.command.ts.net
 Tailscale-Headers-Info: https://tailscale.com/s/serve-headers
 Tailscale-User-Login: daniel.zhang.t1@gmail.com
 Tailscale-User-Name: Daniel Zhang
 Tailscale-User-Profile-Pic: https://lh3.googleusercontent.com/...
 X-Forwarded-For: 100.89.73.118
-X-Forwarded-Host: kb.tail82dd4f.ts.net
+X-Forwarded-Host: kb.command.ts.net
 X-Forwarded-Proto: https
 ```
 
 `tailscale serve` on this node (tailscaled 1.102.2) **does** inject identity headers. The degraded
 "authenticated-as-operator without attribution" design is therefore NOT what ships: attribution is real,
 and header presence can be required as a security control per 3.3. Serve config confirmed tailnet-only:
-`https://kb.tail82dd4f.ts.net (tailnet only) |-- / proxy http://127.0.0.1:4317`; no Funnel.
+`https://kb.command.ts.net (tailnet only) |-- / proxy http://127.0.0.1:4317`; no Funnel.
 
 `X-Forwarded-*` values are recorded for context only and are never an authentication input.
 
@@ -214,7 +214,7 @@ An unknown `DASHBOARD_AUTH_MODE` value is a boot error in every mode.
 | Variable | `win32-desktop` | `tailnet` |
 |---|---|---|
 | `DASHBOARD_AUTH_MODE` | absent or `win32-desktop` | `tailnet` (required) |
-| `DASHBOARD_TAILNET_HOST` | unused | required, e.g. `kb.tail82dd4f.ts.net` |
+| `DASHBOARD_TAILNET_HOST` | unused | required, e.g. `kb.command.ts.net` |
 | `DASHBOARD_TAILNET_OPERATOR` | unused | **required** — the single pinned operator login |
 | `DASHBOARD_TAILNET_PROXY_UID` | unused | optional, default `0` |
 | `DASHBOARD_DEV_ORIGIN` | optional localhost dev origin | **must not be set** (ambient auth: it would grant operator authority to any page on it) |

@@ -33,7 +33,7 @@ export const DEFAULT_AUTH_MODE: AuthMode = 'win32-desktop';
  */
 export const OPERATOR_SUBJECT = 'operator';
 
-/** A bare hostname: what `tailscale serve` publishes, e.g. `kb.tail82dd4f.ts.net`. No scheme, no path. */
+/** A bare hostname: what `tailscale serve` publishes, e.g. `kb.command.ts.net`. No scheme, no path. */
 const TAILNET_HOST_PATTERN = /^[a-z0-9][a-z0-9.-]*$/;
 
 /** Bind addresses that keep the listener behind the proxy. Anything else exposes ambient-auth routes. */

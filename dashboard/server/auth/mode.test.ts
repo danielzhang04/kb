@@ -3,7 +3,7 @@ import { assertAuthModeBoot, resolveAuthMode, resolveTailnetConfig, AuthModeErro
 
 const TAILNET = {
   DASHBOARD_AUTH_MODE: 'tailnet',
-  DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net',
+  DASHBOARD_TAILNET_HOST: 'kb.command.ts.net',
   DASHBOARD_TAILNET_OPERATOR: 'daniel.zhang.t1@gmail.com',
 };
 
@@ -26,13 +26,13 @@ describe('resolveAuthMode', () => {
 describe('resolveTailnetConfig', () => {
   it('reads the serve host + required operator and defaults the trusted proxy owner to root', () => {
     expect(resolveTailnetConfig(TAILNET)).toEqual({
-      host: 'kb.tail82dd4f.ts.net', proxyUid: 0, operatorLogin: 'daniel.zhang.t1@gmail.com',
+      host: 'kb.command.ts.net', proxyUid: 0, operatorLogin: 'daniel.zhang.t1@gmail.com',
     });
   });
 
   it('accepts an explicit proxy uid', () => {
     expect(resolveTailnetConfig({ ...TAILNET, DASHBOARD_TAILNET_PROXY_UID: '1000' }))
-      .toEqual({ host: 'kb.tail82dd4f.ts.net', proxyUid: 1000, operatorLogin: 'daniel.zhang.t1@gmail.com' });
+      .toEqual({ host: 'kb.command.ts.net', proxyUid: 1000, operatorLogin: 'daniel.zhang.t1@gmail.com' });
   });
 
   it('SECURITY: REJECTS a missing operator — tailnet membership must not be operator-by-default', () => {

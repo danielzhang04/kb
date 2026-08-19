@@ -18,7 +18,7 @@ TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
 # The single tailnet identity that IS the operator (Daniel, 2026-08-18). Required, fail-closed.
 DEFAULT_TAILNET_OPERATOR = "daniel.zhang.t1@gmail.com"
 STATE_ROOT = "/var/lib/kb/state"
-EMPTY_CONTROL_PLANE = b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"reviewLoops":[],"reviewReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
+EMPTY_CONTROL_PLANE = b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"iterationLoops":[],"iterationRequests":[],"iterationReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
 
 
 def validate_tailnet_host(value: str) -> None:

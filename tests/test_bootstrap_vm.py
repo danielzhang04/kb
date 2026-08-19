@@ -12,7 +12,7 @@ from deploy import bootstrap_vm
 from scripts import backup_tier0
 
 
-TAILNET_HOST = "kb.tail82dd4f.ts.net"
+TAILNET_HOST = "kb.command.ts.net"
 TAILNET_OPERATOR = "daniel.zhang.t1@gmail.com"
 
 
@@ -116,7 +116,7 @@ def test_bootstrap_seeds_the_empty_control_plane_document(tmp_path, monkeypatch)
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: commands.append(argv))
 
-    assert (state_root / "control/control-plane.json").read_bytes() == b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"reviewLoops":[],"reviewReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
+    assert (state_root / "control/control-plane.json").read_bytes() == b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"iterationLoops":[],"iterationRequests":[],"iterationReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
     assert ["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard", "-m", "0700", f"{state_root}/control"] in commands
     assert ["chown", "kb-dashboard:kb-dashboard", str(state_root / "control/control-plane.json")] in commands
     assert (state_root / "control", 0o700) in modes
@@ -398,7 +398,7 @@ def test_bootstrap_injects_the_tailnet_host_and_operator_lines(tmp_path):
 
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, tailnet_host=TAILNET_HOST, tailnet_operator=TAILNET_OPERATOR, run=run)
 
-    assert b"Environment=DASHBOARD_TAILNET_HOST=kb.tail82dd4f.ts.net\n" in installed_unit
+    assert b"Environment=DASHBOARD_TAILNET_HOST=kb.command.ts.net\n" in installed_unit
     assert b"Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com\n" in installed_unit
     # The mode itself is static in the repo fragment, never injected.
     assert b"Environment=DASHBOARD_AUTH_MODE=tailnet\n" in installed_unit
@@ -444,10 +444,10 @@ def test_bootstrap_refuses_invalid_operator_before_running_commands(tmp_path, va
 @pytest.mark.parametrize(
     "value",
     [
-        "https://kb.tail82dd4f.ts.net",
-        "kb.tail82dd4f.ts.net/path",
-        "KB.tail82dd4f.ts.net",
-        "kb.tail82dd4f.ts.net:8443",
+        "https://kb.command.ts.net",
+        "kb.command.ts.net/path",
+        "KB.command.ts.net",
+        "kb.command.ts.net:8443",
         "",
     ],
 )
