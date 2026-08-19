@@ -130,17 +130,32 @@ and header presence can be required as a security control per 3.3. Serve config 
 
 Three changes to core logic, no per-route special cases, no duplicated auth path.
 
-**(a) Auth middleware.** `SessionConfig` gains an optional `operatorAuth` field. `requireSession` — the one
-function all eight registration sites already call with `ctx.sessionConfig` — branches on it:
+**(a) Auth middleware.** `SessionConfig` gains an optional `operatorAuth` field, and
+`http/middleware.ts#resolveSession(req, sessionConfig, presentedToken?)` becomes the single function that
+decides either mode:
 
-- absent → today's code path exactly (verify the bearer/cookie via `verifySession`).
-- present → run the operator authenticator; on success **mint** a real session with `mintSession` and stash
-  it in the same per-request `WeakMap`.
+- `operatorAuth` absent → today's code path exactly (verify the bearer/cookie via `verifySession`).
+- present → run the operator authenticator; on success **mint** a real session with `mintSession`.
 
 Because the minted value is a genuine signed session, every downstream consumer works unchanged:
 `verifiedSession(req)?.claims.sub`, the `sessionToken` threaded into launches, and the gate modules that
-independently re-verify with `verifySession`. No route file is edited. The mode reaches all eight sites
-through the object they already receive.
+independently re-verify with `verifySession` (`floor`, `vibe`, `launch`, `governedSave`, `workflowRun`,
+`cardRouting`, `routingOverride`). No route file is edited.
+
+Two callers reach `resolveSession`:
+
+- `requireSession` — the preHandler all eight governed registration sites already call with
+  `ctx.sessionConfig`, so the mode reaches them through the object they already receive.
+- `pty/route.ts` — its WebSocket `preValidation`, its WS connection handler, and `requireBearerOwner`.
+  These read their credential straight off the request (the bearer rides the WS **subprotocol**, because an
+  upgrade has no preHandler stash to inherit), so they must consult the seam directly. Folding them in
+  removed three hand-rolled copies of token-then-verify rather than adding any. WebSocket upgrades are
+  therefore authenticated identically to HTTP by the same peer proof: `@fastify/websocket` hands the
+  handler the real Fastify request, whose `socket` is the live TCP connection the proof reads. Without
+  this the Terminal view would have been dead in tailnet mode.
+
+`presentedToken` exists for that subprotocol bearer. It is IGNORED in `tailnet` mode in both directions: a
+bogus token still succeeds behind a proven peer, and a plausible one cannot rescue an unproven one.
 
 **(b) Latch initial state.** `createExecutionLatch` boot-arms in `tailnet` mode with `source: 'tailnet'`,
 alongside the existing `env-override` boot-arm. The unlock grant it mints authorizes
