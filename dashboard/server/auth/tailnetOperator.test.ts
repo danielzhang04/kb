@@ -90,6 +90,26 @@ describe('createTailnetOperatorAuth', () => {
       .toEqual({ ok: false, reason: 'untrusted-peer' });
   });
 
+  it('REJECTS a 127/8 peer that is not exactly 127.0.0.1 — no address inside 127/8 is trusted wholesale', () => {
+    // The source-address spoof binds 127.0.0.2. Even before the /proc 4-tuple match, the tightened
+    // loopback check refuses any 127/8 address other than the exact bind address.
+    expect(auth(SERVE_TABLE).authenticate(request({ socket: { remoteAddress: '127.0.0.2' } })))
+      .toEqual({ ok: false, reason: 'untrusted-peer' });
+  });
+
+  it('SECURITY: rejects the source-address spoof end to end', () => {
+    // The attacker's accepted connection has remoteAddress 127.0.0.2; the /proc table carries both its
+    // own uid-999 row and tailscaled's genuine uid-0 row on the same port pair. The full-4-tuple match
+    // selects only the attacker's own row → untrusted-peer, even with perfect identity headers.
+    const spoofTable = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   6: 0100007F:10DD 0200007F:CF32 01 00000000:00000000 00:00000000 00000000   999        0 1 1 0 20 4 31 10 -1
+   7: 0200007F:CF32 0100007F:10DD 01 00000000:00000000 00:00000000 00000000   999        0 2 1 0 20 4 30 10 -1
+   8: 0100007F:CF32 0100007F:10DD 01 00000000:00000000 02:000002FE 00000000     0        0 3 1 0 20 4 30 10 -1
+`;
+    expect(auth(spoofTable).authenticate(request({ socket: { remoteAddress: '127.0.0.2' } })))
+      .toEqual({ ok: false, reason: 'untrusted-peer' });
+  });
+
   it('REJECTS when the peer socket cannot be located at all', () => {
     expect(auth('').authenticate(request())).toEqual({ ok: false, reason: 'untrusted-peer' });
   });

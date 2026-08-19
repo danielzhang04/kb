@@ -43,10 +43,15 @@ function header(req: OperatorRequestLike, name: string): string | undefined {
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
+/**
+ * Exactly the loopback host, nothing else in 127/8. The peer proof matches the accepted connection's
+ * real addresses against `/proc`, but a value here is also what those addresses are compared against, so
+ * it must be tight: `startsWith('127.')` would admit `127.0.0.2`, the very address the source-address
+ * spoof binds. `127.0.0.1` and `::1` are the only forms `tailscale serve` ever presents locally
+ * (`::ffff:127.0.0.1` covers a dual-stack socket reporting the v4 peer in mapped form).
+ */
 function isLoopbackAddress(address: string | undefined): boolean {
-  if (!address) return false;
-  const bare = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
-  return bare === '::1' || bare.startsWith('127.');
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
 export function createTailnetOperatorAuth(
@@ -60,15 +65,21 @@ export function createTailnetOperatorAuth(
       const site = header(req, 'sec-fetch-site');
       if (site !== undefined && !SAME_SITE.has(site)) return { ok: false, reason: 'cross-site' };
 
-      // Lock 1 — the peer's OS owner.
+      // Lock 1 — the peer's OS owner, proven against the connection's FULL 4-tuple (see peerUid.ts).
       const socket = req.socket;
+      const remoteAddress = socket?.remoteAddress;
+      const localAddress = socket?.localAddress;
       const remotePort = socket?.remotePort;
       const localPort = socket?.localPort;
-      if (!isLoopbackAddress(socket?.remoteAddress) || !isLoopbackAddress(socket?.localAddress)
+      if (!isLoopbackAddress(remoteAddress) || !isLoopbackAddress(localAddress)
         || !Number.isInteger(remotePort) || !Number.isInteger(localPort)) {
         return { ok: false, reason: 'untrusted-peer' };
       }
-      const peer = findPeerUid({ localPort: localPort!, remotePort: remotePort!, tables: readTables() });
+      const peer = findPeerUid({
+        localAddress: localAddress!, localPort: localPort!,
+        remoteAddress: remoteAddress!, remotePort: remotePort!,
+        tables: readTables(),
+      });
       if (!peer.ok || peer.uid !== config.proxyUid) return { ok: false, reason: 'untrusted-peer' };
 
       // Lock 2 — the proxy-injected tailnet identity.
