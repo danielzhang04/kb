@@ -1,0 +1,146 @@
+<title>Bricks Overnight Analysis</title>
+<style>
+  :root { color-scheme: dark; --bg:#111; --panel:#171717; --panel2:#1c1c1c; --text:#e8e8e8; --muted:#aaa; --line:#353535; --green:#77a77e; --amber:#c6a362; --red:#c26f6f; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:1180px; margin:0 auto; padding:34px 26px 54px; }
+  h1 { font-size:30px; line-height:1.15; margin:0 0 6px; letter-spacing:-.03em; }
+  h2 { font-size:20px; margin:40px 0 12px; letter-spacing:-.015em; border-bottom:1px solid var(--line); padding-bottom:8px; }
+  h3 { font-size:16px; margin:23px 0 7px; }
+  p { margin:8px 0 12px; }
+  .lede, .muted { color:var(--muted); }
+  .lede { max-width:880px; font-size:16px; }
+  .callout { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--amber); padding:14px 16px; margin:14px 0; }
+  .chip { display:inline-block; white-space:nowrap; border:1px solid currentColor; border-radius:999px; padding:1px 7px; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+  .closed, .toward { color:var(--green); } .partial, .flat { color:var(--amber); } .away, .open { color:var(--red); }
+  ul, ol { padding-left:22px; } li { margin:7px 0; }
+  .table-wrap { overflow-x:auto; border:1px solid var(--line); background:var(--panel); margin:12px 0 20px; }
+  table { border-collapse:collapse; width:100%; min-width:720px; font-size:13px; }
+  th, td { text-align:left; vertical-align:top; padding:9px 10px; border-bottom:1px solid var(--line); }
+  th { background:var(--panel2); color:#d3d3d3; font-size:11px; letter-spacing:.04em; text-transform:uppercase; }
+  tr:last-child td { border-bottom:0; }
+  .num { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .rank { display:inline-flex; width:22px; height:22px; border-radius:50%; align-items:center; justify-content:center; background:#2b2b2b; color:#ddd; font-weight:700; font-size:12px; margin-right:7px; }
+  .foot { color:var(--muted); font-size:12px; }
+</style>
+<main>
+  <header>
+    <h1>Bricks overnight analysis</h1>
+    <p class="lede">What the full clean VPW rerun and fresh L01–L25 generation changed, what still separates the work from Daniel’s liked frames, and the smallest next experiments that can answer it.</p>
+  </header>
+
+  <section>
+    <h2>TL;DR</h2>
+    <ul>
+      <li><strong>Composition and scale gap: <span class="closed">closed.</span></strong> The strongest fresh shots now put small-to-moderate figures in deep, structured worlds with real open space; L18, L01–L03, and L23–L25 meet the liked grammar on that axis.</li>
+      <li><strong>The dominant unclosed cause is render register.</strong> Every liked frame carries paper/canvas grain, dust-beam light, painterly material shading, and a moodier grade. None of the fresh frames does; fresh remains flat-cel with occasional glow or vignette touches.</li>
+      <li><strong>Pixels moved away on 8 of 12 measured dials.</strong> Fresh is over-warm, over-bright, busier at the edge, has about half the liked quiet/open-area proxy, and has almost no accent pop. Structure improved anyway: saturation and the depth proxy moved toward liked.</li>
+      <li><strong>The full reset was not cosmetic.</strong> It removed the v2 crop/foreground/row-template system, improved concrete world-building and figureless coverage, cut real cadence outliers from 115 to 6, and reached 245 shots with 0 HARD findings.</li>
+      <li><strong>The most consequential engine input is still unisolated.</strong> The liked full-run forge appended no suffix; current dispatch appends an 80-word house recipe after every scene payload, in the provider-weighted tail position.</li>
+      <li><strong>Fresh L01–L25 is usable evidence, not a final taste win.</strong> 24 of 25 frames are verified; L09 is parked after its sanctioned retry repeated the dense foreground crowd-rig failure. The slice cost was $4.56.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What we ran overnight</h2>
+    <p>The run combined a whole-file VPW repair and fresh opening-slice generation, then compared the result three ways: pixels, direct visual inspection, and historical prompt/dispatch analysis. That separation matters: it shows which improvements are real in the file, which are visible in frames, and which causes remain only hypotheses until an A/B.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Work</th><th>Outcome</th><th>What it establishes</th></tr></thead>
+      <tbody>
+        <tr><td>Full VPW rerun</td><td><span class="num">245</span> shots; <span class="closed">0 HARD</span>; cadence real-hold outliers <span class="num">6</span> versus r1’s <span class="num">115</span></td><td>The authoring file is substantially cleaner and less templated than r1/r2; it is not, by itself, a taste proof.</td></tr>
+        <tr><td>Fresh L01–L25 generation</td><td><span class="num">24/25</span> verified; L09 parked; <span class="num">$4.56</span></td><td>A real opening-slice image result exists under the clean rerun, including one repeatable crowd failure.</td></tr>
+        <tr><td>Three-way analysis</td><td>FRESH vs V2 vs LIKED: metrics, vision audit, prompt and dispatch diff</td><td>Separates delivered structural improvement from the remaining render-register and engine-input hypotheses.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Three-way verdict table</h2>
+    <p class="muted">Set cells are mean (p10; p90). “Toward” and “away” mean nearer to or farther from the LIKED mean than V2 under the documented rule.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Metric</th><th>LIKED</th><th>V2</th><th>FRESH</th><th>V2 → FRESH</th><th>What this means</th></tr></thead>
+      <tbody>
+        <tr><td>Warmth: mean R−B</td><td>37.6799 (2.8672; 69.8432)</td><td>52.9867 (25.8264; 76.7387)</td><td>64.8392 (41.7083; 82.2901)</td><td><span class="chip away">away</span></td><td>Fresh pushes the whole image substantially warmer than the liked set.</td></tr>
+        <tr><td>Warmth: p10 R−B</td><td>−5.5385 (−35.8000; 12.8000)</td><td>10.7200 (−55.6000; 44.8000)</td><td>22.7500 (−8.1000; 48.0000)</td><td><span class="chip away">away</span></td><td>Even its cooler/darker pixels are warmer; liked permits more cold contrast.</td></tr>
+        <tr><td>Saturation: mean HSV S</td><td>0.3259 (0.1267; 0.4660)</td><td>0.4439 (0.3530; 0.5588)</td><td>0.4249 (0.3373; 0.5034)</td><td><span class="chip toward">toward</span></td><td>Fresh pulled saturation down toward liked, though it remains above it.</td></tr>
+        <tr><td>Saturation: grey share (S &lt; 0.08)</td><td>0.0942 (0.0029; 0.2297)</td><td>0.0200 (0.0000; 0.0405)</td><td>0.0233 (0.0006; 0.0598)</td><td><span class="chip flat">flat</span></td><td>Neither current set recovers the liked set’s muted/grey passages.</td></tr>
+        <tr><td>Palette commitment: top-3 of 16 colors</td><td>0.2953 (0.2446; 0.3662)</td><td>0.3109 (0.2655; 0.3591)</td><td>0.3069 (0.2541; 0.3532)</td><td><span class="chip flat">flat</span></td><td>Broad palette concentration changed little.</td></tr>
+        <tr><td>Accent pop: high-S, hue-distant share</td><td>0.0320 (0.0000; 0.0039)</td><td>0.0133 (0.0000; 0.0147)</td><td>0.0009 (0.0000; 0.0032)</td><td><span class="chip away">away</span></td><td>The optional semantic accent has become almost absent in pixels.</td></tr>
+        <tr><td>Light: mean HSV V</td><td>0.5924 (0.4530; 0.6883)</td><td>0.6028 (0.4653; 0.7048)</td><td>0.6918 (0.6290; 0.7935)</td><td><span class="chip away">away</span></td><td>Fresh is notably brighter than liked, reducing the liked mood range.</td></tr>
+        <tr><td>Light: murk share (V &lt; 0.25)</td><td>0.1117 (0.0458; 0.0938)</td><td>0.1018 (0.0332; 0.2891)</td><td>0.0595 (0.0295; 0.0962)</td><td><span class="chip away">away</span></td><td>Fresh has too little dark/murky material to support the liked moody grade.</td></tr>
+        <tr><td>Edge/detail: mean gradient magnitude</td><td>0.0272 (0.0166; 0.0403)</td><td>0.0340 (0.0199; 0.0459)</td><td>0.0491 (0.0321; 0.0660)</td><td><span class="chip away">away</span></td><td>Fresh is busier and sharper at the pixel edge, not softer or more painterly.</td></tr>
+        <tr><td>Edge/detail: 4×4 grid density std</td><td>0.0102 (0.0062; 0.0127)</td><td>0.0154 (0.0092; 0.0213)</td><td>0.0168 (0.0104; 0.0230)</td><td><span class="chip away">away</span></td><td>Detail is distributed more unevenly than in liked frames.</td></tr>
+        <tr><td>Openness: contiguous quiet-space share</td><td>0.1816 (0.0000; 0.4494)</td><td>0.1974 (0.0521; 0.3369)</td><td>0.0850 (0.0220; 0.2466)</td><td><span class="chip away">away</span></td><td>Despite stronger semantic staging, fresh has less than half the liked quiet-space proxy.</td></tr>
+        <tr><td>Depth: horizontal luminance/edge bands</td><td>6.6923 (5.0000; 8.0000)</td><td>7.8000 (5.4000; 10.0000)</td><td>7.5417 (5.0000; 10.0000)</td><td><span class="chip toward">toward</span></td><td>Fresh’s layered scenes moved partway back toward the liked depth profile.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Visual audit findings</h2>
+    <h3>What improved versus V2</h3>
+    <p>Fresh creates deeper, more architecturally specific worlds: the two-storey mall (L01–L03), nested showroom arches (L16–L17), and colosseum (L18–L20) exceed V2’s strongest scale attempt. Its object-first beats are also better: the product pedestal (L13–L15) and warehouse (L23–L25) give non-character world-building genuine narrative work. Crowd staging is deeper, but rig discipline is not uniformly better.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Best 3</th><th>Why</th><th>Worst 3</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><strong>L18</strong> — colosseum</td><td>Best depth, silhouette crowd solution, and the set’s only real mood-vignette move.</td><td><strong>L21</strong> — prospector porch</td><td>Flattest depth and least open air; reads as a figure before a backdrop.</td></tr>
+        <tr><td><strong>L25</strong> — warehouse boxes</td><td>Deepest racking, best light-beam execution, clear punchline reveal.</td><td><strong>L04</strong> — computer shop</td><td>Cluttered shelving consumes openness; figures exceed the 10–30% scale band.</td></tr>
+        <tr><td><strong>L14</strong> — product pedestal</td><td>Symmetric non-character world, glow accent, and readable story detail.</td><td><strong>L07</strong> — auction hall</td><td>Good architecture is undercut by foreground crowd individuation.</td></tr>
+      </tbody>
+    </table></div>
+    <h3>Crowd recurrence and the remaining register gap</h3>
+    <p>L07–L08, L16–L17, and L22 repeat the same mechanism behind parked L09 at lower severity: near-camera crowds acquire varied hair, smiles, eyebrows, or fuller faces. It is a subclinical L09 defect, so the appropriate response is a foreground-crowd rig mechanism fix rather than isolated retries. The larger gap is render register: LIKED consistently has paper/canvas grain, volumetric dust-beam light, painterly gradient shading on terrain and materials, desaturated mood, and metal/glass/gold sheen. FRESH has uniform fills and thin linework, with only L10–L12’s lamp wash, L18–L20’s vignette, and L23–L25’s sunbeams as partial atmospheric gestures.</p>
+  </section>
+
+  <section>
+    <h2>How prompts changed (including Acts 2–4 / L26+)</h2>
+    <p><strong>Register delta.</strong> Liked prompts are directed scene briefs: a complete world, one readable relationship, a decisive camera, then the visible payload. They are not shorter—median <span class="num">73</span> words overall and <span class="num">87</span> on non-deltas versus fresh <span class="num">61</span> and <span class="num">73</span>. Liked begins with scene framing on <span class="num">150/214</span> shots and names a camera/vantage on <span class="num">152/214</span>; fresh is more cast/chain led and names vantage on only <span class="num">63/245</span>.</p>
+    <p><strong>Suffix smoking gun.</strong> The liked full-run forge did not append its stored suffix: authored scene content closed the assembled prompt except where figure/rig clauses applied. Current forge appends an <span class="num">80</span>-word recipe after every payload. That makes the generic flat-cel, warm-bias, semantic-red, exclusion, and aspect recipe the provider-weighted tail—and the cleanest unisolated engine-input difference.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>File-level change</th><th>What reset genuinely fixed</th><th>What it overcorrected or left open</th></tr></thead>
+      <tbody>
+        <tr><td>Chain balance</td><td>Chains rose beyond A1; concrete worlds, causal continuity, and figureless beats improved. Across A2–A4, v2’s crop/foreground/row chassis was removed.</td><td>Fresh has <span class="num">109</span> deltas and <span class="num">29</span> standalones, versus liked’s <span class="num">73</span>/<span class="num">74</span>. A2 has only <span class="num">2</span> standalones, limiting independent composition resets.</td></tr>
+        <tr><td>Vantage</td><td>Final repair recovered explicit camera choices from r2’s <span class="num">22</span> to <span class="num">63</span>.</td><td>Liked has <span class="num">152/214</span> explicit vantages; fresh has <span class="num">63/245</span>. A4 is the sharpest collapse: <span class="num">6/69</span> fresh versus <span class="num">39/57</span> liked.</td></tr>
+        <tr><td>Worlds, people, palette</td><td>Environment-noun density rose in every later act; figureless share rose materially; cream in A2–A4 fell from <span class="num">173/180</span> v2 to <span class="num">92/180</span> fresh.</td><td>Fresh still leans literal/ironic where liked had more symbolic objects, reactions, and number-object resets. A4 also remains palette-token concentrated and more figure-heavy than liked.</td></tr>
+        <tr><td>Critic repair loop</td><td>r1’s <span class="num">115</span> real cadence outliers, crop/recession tics, disclosure, topology, semantic-cast, and named chain defects converged. The <span class="num">9.4</span>s final hold was split.</td><td>The capped loop left no third fresh-context critic after systemic rewrites. A4 camera coverage, chain share, class mix, palette concentration, and <span class="num">16</span> prompts containing authoring language remain unadjudicated; no critic rendered the work.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>How image-gen dispatch changed</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Arc point</th><th>Prompt assembly</th><th>Anchors and review</th></tr></thead>
+      <tbody>
+        <tr><td>Liked full run</td><td>Head descriptor → authored scene → figure expansion/rig hold; no separately appended suffix. Default 2K.</td><td>Contextual style anchors for composed scenes; crowd exemplar on crowd shots; three act batches, ordinary-scale review before crop escalation, and one surgical retry wave.</td></tr>
+        <tr><td>Restoration and tile repair</td><td>Two style voices returned and a tail was retained; default moved from 2K to 1K. The current suffix is <span class="num">535</span> chars / <span class="num">80</span> words.</td><td><code>scene-style-tile</code> was registered for cast-free scenes, then granted saturation and temperature as well as line register. Figure-bearing scenes use cast seeds; crowd exemplar remains.</td></tr>
+        <tr><td>Current state</td><td>Every scene ends with the generic tail; several bad recipe clauses were removed, but the actual liked call shape was not restored.</td><td>Act generation now supports parallel disjoint partitions/waves with chains whole; the machine emits more review rows, but none measures delivered figure/open-space ratios or atmospheric depth.</td></tr>
+      </tbody>
+    </table></div>
+    <p>The run after <code>33676421</code> exercised the full L01–L25 slice and a 10-shot v2 comparison, not fresh A2–A4 pixels. The full <span class="num">245</span>-shot rerun is authoring evidence only for those later acts.</p>
+  </section>
+
+  <section>
+    <h2>Ranked next steps</h2>
+    <ol>
+      <li><span class="rank">1</span><strong>Suffix-tail A/B, including a no-suffix arm.</strong> On 6–9 fresh A2–A4 roots/bases or standalones, hold seed, model, size, aspect, and prose fixed. First compare current tail-last with the same suffix before the payload; then compare the winning order with no appended suffix/head-only. <span class="muted">Why:</span> liked full-run dispatch had no suffix slot; current has an 80-word provider-tail recipe. <span class="muted">Cost / blast radius:</span> small controlled batch; do not launch an A2–A4 wave before it resolves.</li>
+      <li><span class="rank">2</span><strong>Render-register experiment.</strong> Hold the winning dispatch and scene constant, then compare current flat-cel wording with a controlled grain/atmosphere/painterly-shading and mood-grade variant. <span class="muted">Why:</span> render register is now the dominant taste gap in every liked-versus-fresh frame, while scale/composition materially landed. <span class="muted">Cost / blast radius:</span> small paired set; a style-bible change waits for Daniel’s forced choice.</li>
+      <li><span class="rank">3</span><strong>Scene-first register A/B.</strong> For the same six beats, compare current prompts with liked-register rewrites: complete scene first, one decisive camera/distance, one readable relation, no authoring words, and a visible-consequence close. <span class="muted">Why:</span> liked is more camera-explicit and scene-led; fresh already exceeds v2 in world-noun density, so this tests organization rather than word count. <span class="muted">Cost / blast radius:</span> paired prompt test after dispatch order is locked; no mass rewrite.</li>
+      <li><span class="rank">4</span><strong>Restore standalone resets selectively.</strong> Audit only A2–A4 transitions that change the visual argument enough to earn a new composition; prioritize A2’s two standalones, A4’s camera gap, and beats that want a map, symbol, reaction, number-object, aftermath, or empty world. <span class="muted">Why:</span> fresh is <span class="num">109</span> deltas / <span class="num">29</span> standalones versus liked <span class="num">73</span> / <span class="num">74</span>. <span class="muted">Cost / blast radius:</span> targeted VPW edits; no class quota or blanket chain rollback.</li>
+      <li><span class="rank">5</span><strong>Approve <code>packing-executive</code> and <code>family-packer</code> canonicals.</strong> Mint and independently approve both story-bearing cast assets before their first scenes; decide separately whether the repeated shrink-wrapped brick pallet needs its own canonical. <span class="muted">Why:</span> these assets are an explicit Pass-2 generation gate for L160–L163. <span class="muted">Cost / blast radius:</span> blocks A2–A4 generation, but does not require a whole-file rewrite.</li>
+      <li><span class="rank">6</span><strong>Fix the L09 crowd rig at mechanism level.</strong> Re-author the crowd to be smaller/farther or remove the emotionally individuating language, then retry only after the foreground crowd rule is explicit. <span class="muted">Why:</span> both sanctioned L09 attempts produced detailed faces; L07/08, L16/17, and L22 show the same defect subclinically. <span class="muted">Cost / blast radius:</span> one local VPW/test case, with a reusable close-foreground crowd rule if it wins.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Open rulings for Daniel</h2>
+    <ul>
+      <li><strong>L84 audit-room plate:</strong> keep the existing approved plate as the reusable conference/audit geometry, or re-open it before later-act generation?</li>
+      <li><strong><code>qt-wiles</code> back-to-viewer card:</strong> approve the card as a permitted composition variant, or keep the current face-clear treatment as the rule?</li>
+      <li><strong>Crowd-exemplar tone diversity:</strong> should the exemplar permit broader hair/face/tone variation at distance while preserving the simplified rig, or remain tightly bounded?</li>
+      <li><strong>The two canonicals:</strong> approve <code>packing-executive</code> and <code>family-packer</code>, which block Acts 2–4 generation.</li>
+      <li><strong>Fresh L09 disposition:</strong> retain the best-of-two parked frame as evidence only, or authorize the mechanism-level composition rewrite and a new retry?</li>
+    </ul>
+  </section>
+  <p class="foot">Evidence synthesized from the specified taste audit, VPW critic, flagged-needs, and scene-manifest records. Pixel proxies support comparison; they do not replace Daniel’s forced-choice taste gate.</p>
+</main>
