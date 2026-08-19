@@ -38,7 +38,7 @@ import {
   AuthorizedFailedRunPublishedUncommittedError,
   reconcileAuthorized20260801FailedRun,
 } from './authorizedFailedRunReconciliation.ts';
-import type { ActivatedExecution } from './activation.ts';
+import type { ActivatedExecution, ExecutionUnlockSource } from './activation.ts';
 import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
@@ -170,7 +170,7 @@ function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope
 /** The latch posture every execution-touching response carries, so the UI never has to guess. */
 function executionPosture(ctx: SurfaceContext): {
   state: 'locked' | 'unlocked' | 'injected';
-  source: 'passkey' | 'env-override' | null;
+  source: ExecutionUnlockSource | null;
   unlockedAt: string | null;
   unlockedBy: string | null;
   unlockRoute?: string;

@@ -436,6 +436,29 @@ describe('createExecutionLatch (runtime unlock)', () => {
     expect(latch.lock({ subject: 'operator' }).state).toBe('locked');
   });
 
+  it('tailnet mode arms the latch AT BOOT with its own source', () => {
+    const { deps, latch } = latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' });
+    expect(latch.snapshot()).toMatchObject({ state: 'unlocked', source: 'tailnet', unlockedBy: DASHBOARD_EXECUTOR_SUBJECT });
+    expect(latch.current()).not.toBeNull();
+    expect(deps.createEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it('tailnet mode arms without DASHBOARD_EXECUTION_ACTIVATED, and outranks it when both are set', () => {
+    expect(latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' }).latch.snapshot().source).toBe('tailnet');
+    expect(latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_EXECUTION_ACTIVATED: '1' }).latch.snapshot().source)
+      .toBe('tailnet');
+  });
+
+  it('lock remains the fail-safe direction in tailnet mode', () => {
+    const { latch } = latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' });
+    expect(latch.lock({ subject: 'operator' })).toEqual({ state: 'locked', source: null, unlockedAt: null, unlockedBy: null });
+    expect(latch.current()).toBeNull();
+  });
+
+  it('win32-desktop mode still boots LOCKED', () => {
+    expect(latchHarness({ DASHBOARD_AUTH_MODE: 'win32-desktop' }).latch.snapshot().state).toBe('locked');
+  });
+
   it('refuses an unsafe unlock subject and leaves the daemon locked when construction throws', () => {
     const { latch } = latchHarness();
     expect(latch.unlock({ subject: '../../etc' })).toEqual({ ok: false, reason: 'unsafe-unlock-subject' });

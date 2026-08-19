@@ -270,3 +270,25 @@ describe('resolveAllowedOrigins', () => {
     expect(on).toContain('http://localhost:4317');
   });
 });
+
+describe('resolveAllowedOrigins in tailnet mode', () => {
+  const TAILNET = { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' };
+
+  it('derives the allowlist from the tailscale serve host', () => {
+    expect(resolveAllowedOrigins(TAILNET)).toEqual(['https://kb.tail82dd4f.ts.net']);
+  });
+
+  it('IGNORES a stale DASHBOARD_RP_ORIGIN — the WebAuthn RP origin leaves the unit in this mode', () => {
+    expect(resolveAllowedOrigins({ ...TAILNET, DASHBOARD_RP_ORIGIN: 'https://old.example.ts.net' }))
+      .toEqual(['https://kb.tail82dd4f.ts.net']);
+  });
+
+  it('stays fail-closed (empty) when the serve host is unset', () => {
+    expect(resolveAllowedOrigins({ DASHBOARD_AUTH_MODE: 'tailnet' })).toEqual([]);
+  });
+
+  it('still honours an explicitly enrolled dev origin', () => {
+    expect(resolveAllowedOrigins({ ...TAILNET, DASHBOARD_DEV_ORIGIN: 'http://localhost:4317' }))
+      .toEqual(['https://kb.tail82dd4f.ts.net', 'http://localhost:4317']);
+  });
+});

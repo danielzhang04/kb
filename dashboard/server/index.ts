@@ -17,6 +17,7 @@ import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { registerSessionRunRoutes } from './pty/sessionRunRoutes.ts';
 import { originPlugin } from './security/origin.ts';
+import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
@@ -311,8 +312,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   return app;
 }
 
-/** Start the daemon on the loopback interface. */
+/**
+ * Start the daemon on the loopback interface.
+ *
+ * The auth mode's boot invariants are asserted BEFORE anything is built or bound, so a misconfigured
+ * `tailnet` daemon refuses to run rather than serving ambient-auth routes on the wrong interface or the
+ * wrong platform. Failing here surfaces as a non-zero exit and a systemd restart loop — loud, and the
+ * safe direction.
+ */
 export async function start(port: number = PORT, host: string = HOST, options: { repoRoot?: string } = {}): Promise<FastifyInstance> {
+  assertAuthModeBoot({ bindHost: host });
   const app = buildApp({ repoRoot: options.repoRoot, validateData: true });
   await app.listen({ port, host });
   return app;

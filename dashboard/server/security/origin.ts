@@ -8,6 +8,7 @@
  * enrolled, a localhost dev origin.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { resolveAuthMode } from '../auth/mode.ts';
 
 /** A minimal request shape — just the headers this check reads. */
 export interface OriginRequestLike {
@@ -164,14 +165,27 @@ export function originPlugin(app: FastifyInstance, opts: { allowedOrigins: Allow
 }
 
 /**
- * Resolve the configured allowlist from the environment. Fail-closed: empty unless a ts.net RP
- * origin is configured. The localhost dev origin is added ONLY when explicitly enrolled
+ * Resolve the configured allowlist from the environment. Fail-closed: empty unless this deployment's
+ * public origin is configured. The localhost dev origin is added ONLY when explicitly enrolled
  * (`DASHBOARD_DEV_ORIGIN`), per the D0.12 enrollment decision — localhost is never trusted by default.
+ *
+ * Which variable names the origin follows the auth mode (`auth/mode.ts`): `win32-desktop` uses the
+ * WebAuthn RP origin, while `tailnet` derives it from the `tailscale serve` hostname — that mode has no
+ * relying party, and a stale `DASHBOARD_RP_ORIGIN` must never quietly widen the allowlist.
+ *
+ * This guard is load-bearing in `tailnet` mode in a way it was not before: authentication there is
+ * AMBIENT (no cookie, no token), so this is the only thing standing between a hostile page in the
+ * operator's browser and the API. See the design spec's trust-boundary section.
  */
 export function resolveAllowedOrigins(env: Record<string, string | undefined> = process.env): string[] {
   const list: string[] = [];
-  const rp = env.DASHBOARD_RP_ORIGIN?.trim();
-  if (rp) list.push(rp);
+  if (resolveAuthMode(env) === 'tailnet') {
+    const host = env.DASHBOARD_TAILNET_HOST?.trim();
+    if (host) list.push(`https://${host}`);
+  } else {
+    const rp = env.DASHBOARD_RP_ORIGIN?.trim();
+    if (rp) list.push(rp);
+  }
   const dev = env.DASHBOARD_DEV_ORIGIN?.trim();
   if (dev) list.push(dev);
   return list;

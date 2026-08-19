@@ -9,7 +9,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 function contextWith(recorder: AuditEvent[]): SurfaceContext {
   return {
     repoRoot: '/repo',
-    appendAudit: (_root, event) => {
+    appendAudit: (_root: string, event: AuditEvent) => {
       recorder.push(event);
       return { ...event, ts: 'ts' } as AuditRow;
     },
