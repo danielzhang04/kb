@@ -72,6 +72,8 @@ import { PAID_ACTION_ROUTE_PATH } from './paidActionRoute.ts';
 import type { SpendGrant } from './spendGrant.ts';
 import { brandInternalServiceCaller } from '../auth/session.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
+import { resolveAuthMode } from '../auth/mode.ts';
+import { resolveDaemonPublicOrigin } from '../security/origin.ts';
 
 export class ActivationError extends Error {}
 
@@ -529,7 +531,10 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   // at launch; it is passed to the engine so a paid stage arms its worker before delivery. Provider keys are
   // resolved server-side from OUTSIDE any worktree — never written into one.
   const paid = buildPaidActionExecution({ stateRoot, worktreeRoot });
-  const paidActionRouteUrl = `${(env.DASHBOARD_RP_ORIGIN ?? env.DASHBOARD_DEV_ORIGIN ?? 'http://127.0.0.1:5317').replace(/\/+$/, '')}${PAID_ACTION_ROUTE_PATH}`;
+  // Mode-aware: the daemon's public origin is the serve host in tailnet mode, the RP origin in win32.
+  // A hardcoded `DASHBOARD_RP_ORIGIN ?? ...` fell through to the loopback fallback in tailnet mode
+  // (where RP_ORIGIN is banned), silently pointing every spend-grant approval link at the wrong host.
+  const paidActionRouteUrl = `${resolveDaemonPublicOrigin(env).replace(/\/+$/, '')}${PAID_ACTION_ROUTE_PATH}`;
   const provisionSpendGrant = createSpendGrantProvisioner({
     grantStore: paid.spendGrantStore,
     routeUrl: paidActionRouteUrl,
@@ -616,11 +621,27 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   };
 }
 
+/** How an armed latch came to be armed. Distinct values because they mean different things: `passkey`
+ *  proves a human just asserted (win32), `tailnet` is the deployment's arm-at-boot operator posture, and
+ *  `env-override` is the headless/testing arm. */
+export type ExecutionUnlockSource = 'passkey' | 'env-override' | 'tailnet';
+
+/**
+ * True when the latch's source represents a genuine, present OPERATOR authorization — a human passkey
+ * unlock (win32) or the pinned tailnet operator identity. Excludes `env-override`, the headless/testing
+ * arm. The two break-glass recovery paths in `control/routes.ts` gate on this: they must stay usable
+ * under EITHER operator auth mode (Daniel, 2026-08-18) but must never be reachable under a headless arm.
+ */
+export function isOperatorUnlockSource(source: ExecutionUnlockSource | null): boolean {
+  return source === 'passkey' || source === 'tailnet';
+}
+
 /** What the lock/unlock routes and the UI see. Never carries the grant or any wiring reference. */
 export interface ExecutionLatchState {
   state: 'locked' | 'unlocked';
-  /** How it was unlocked: the passkey route, or the headless/testing env override. */
-  source: 'passkey' | 'env-override' | null;
+  /** How it was unlocked: the passkey route, the headless/testing env override, or `tailnet` mode's
+   *  arm-at-boot posture (see `auth/mode.ts`). */
+  source: ExecutionUnlockSource | null;
   unlockedAt: string | null;
   unlockedBy: string | null;
 }
@@ -682,7 +703,7 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
     options.onChange?.(next, nextState, serviceCaller);
   };
 
-  const construct = (subject: string, source: 'passkey' | 'env-override'): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string } => {
+  const construct = (subject: string, source: ExecutionUnlockSource): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string } => {
     const at = now();
     const grant = mintExecutionUnlockGrant(subject, at);
     const built = build({ ...options.buildOptions, env, unlockGrant: grant, now });
@@ -697,9 +718,14 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
     return { ok: true, state };
   };
 
-  // The env override is applied at construction so an overridden daemon is unlocked before the first
-  // request, preserving the pre-latch behaviour byte for byte.
-  if (isExecutionActivated(env)) construct(DASHBOARD_EXECUTOR_SUBJECT, 'env-override');
+  // Boot posture. `tailnet` mode is ARMED AT BOOT by design: the deployment's whole point is that the
+  // fleet keeps working across a restart without a human present, and the emergency brake is the STOP
+  // file plus `systemctl stop` — both non-interactive. It is checked FIRST so it outranks the env
+  // override, whose `env-override` source deliberately does NOT start the queue bridge (headless testing).
+  // The env override is otherwise applied at construction so an overridden daemon is unlocked before the
+  // first request, preserving the pre-latch behaviour byte for byte.
+  if (resolveAuthMode(env) === 'tailnet') construct(DASHBOARD_EXECUTOR_SUBJECT, 'tailnet');
+  else if (isExecutionActivated(env)) construct(DASHBOARD_EXECUTOR_SUBJECT, 'env-override');
 
   return {
     snapshot: () => state,

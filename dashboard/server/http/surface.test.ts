@@ -1153,6 +1153,36 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.stopQueueBridge).toBeUndefined();
   });
 
+  it('tailnet mode arms the latch AND starts the queue bridge at BOOT — no unlock call', () => {
+    const start = vi.fn();
+    const createBridge = vi.fn(() => ({ tick: vi.fn(), start, stop: vi.fn() }));
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      {
+        build: vi.fn().mockReturnValue(activatedTriple()) as never,
+        env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' },
+        createQueueBridge: createBridge as never,
+      },
+    );
+    expect(ctx.executionLatch?.snapshot()).toMatchObject({ state: 'unlocked', source: 'tailnet' });
+    expect(createBridge).toHaveBeenCalledOnce();
+    expect(start).toHaveBeenCalledWith(15_000);
+    expect(ctx.stopQueueBridge).toBeTypeOf('function');
+  });
+
+  it('tailnet mode installs the operator authenticator on the shared session config', () => {
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, allowedOrigins: [GOOD_ORIGIN] },
+      { env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' } },
+    );
+    expect(ctx.sessionConfig.operatorAuth).toBeDefined();
+  });
+
+  it('win32-desktop mode leaves the session config free of any operator authenticator', () => {
+    const ctx = makeSurfaceContext({ repoRoot: REPO_A, allowedOrigins: [GOOD_ORIGIN] }, { env: {} });
+    expect(ctx.sessionConfig.operatorAuth).toBeUndefined();
+  });
+
   it('logs a non-launched dispatch outcome once', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     let bridgeOptions: QueueBridgeOptions | undefined;

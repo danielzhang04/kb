@@ -18,6 +18,7 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { attributionLabel, currentAttribution } from '../auth/operator.ts';
 import { createAsyncGitRunner, resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
@@ -87,9 +88,27 @@ export function appendAuditRowLocal(
 ): AuditRow {
   const file = auditFile(repoRoot);
   mkdirSync(dirname(file), { recursive: true });
-  const row: AuditRow = { ts: now().toISOString(), ...event };
+  const row: AuditRow = { ts: now().toISOString(), ...attributed(event) };
   appendFileSync(file, serializeRow(row), 'utf8');
   return row;
+}
+
+/**
+ * Stamp the request's operator attribution onto a row, when there is one.
+ *
+ * This sits at the SINGLE write point every audit row passes through, rather than in one of the wrappers
+ * above it — `http/context.ts#auditFn` covers the governed routes, but `pty/route.ts` appends through its
+ * own context, and a future writer would be just as easy to miss. Putting it here means no caller has to
+ * know a mode exists.
+ *
+ * In `win32-desktop` mode nothing is ever attributed and the event is returned by IDENTITY, so rows are
+ * byte-identical to before this existed. Attribution is recorded ONLY: `owner` (the session subject) still
+ * decides authority, and the tailnet identity is never read back as an authentication input.
+ */
+function attributed(event: AuditEvent): AuditEvent {
+  const attribution = currentAttribution();
+  if (!attribution) return event;
+  return { ...event, detail: { ...event.detail, tailnetIdentity: attributionLabel(attribution) } };
 }
 
 export interface CommitAuditOptions {

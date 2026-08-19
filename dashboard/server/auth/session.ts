@@ -10,6 +10,7 @@
  * for a short-TTL token: the alternative, a fixed/guessable fallback secret, is not.
  */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { OperatorAuth } from './operator.ts';
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes — short-TTL per design (design §3.6).
 
@@ -31,6 +32,16 @@ export interface SessionConfig {
   ttlMs?: number;
   /** Injectable clock — defaults to `Date.now`. Tests advance this instead of using real timers. */
   now?: () => number;
+  /**
+   * The deployment auth-mode seam (see `auth/mode.ts`). ABSENT in `win32-desktop` mode, which is the
+   * default — `requireSession` then verifies a passkey-minted bearer exactly as it always has.
+   *
+   * PRESENT in `tailnet` mode, where the request's transport is the credential: `requireSession` asks
+   * this authenticator instead, and mints a session for the operator it proves. It lives on this object
+   * because `ctx.sessionConfig` is already the one value every `requireSession` call site receives, so
+   * the mode reaches all of them without a single route edit. `mintSession`/`verifySession` ignore it.
+   */
+  operatorAuth?: OperatorAuth;
 }
 
 export type SessionCheck =

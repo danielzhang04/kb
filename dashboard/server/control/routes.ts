@@ -38,7 +38,8 @@ import {
   AuthorizedFailedRunPublishedUncommittedError,
   reconcileAuthorized20260801FailedRun,
 } from './authorizedFailedRunReconciliation.ts';
-import type { ActivatedExecution } from './activation.ts';
+import { isOperatorUnlockSource } from './activation.ts';
+import type { ActivatedExecution, ExecutionUnlockSource } from './activation.ts';
 import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
@@ -170,7 +171,7 @@ function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope
 /** The latch posture every execution-touching response carries, so the UI never has to guess. */
 function executionPosture(ctx: SurfaceContext): {
   state: 'locked' | 'unlocked' | 'injected';
-  source: 'passkey' | 'env-override' | null;
+  source: ExecutionUnlockSource | null;
   unlockedAt: string | null;
   unlockedBy: string | null;
   unlockRoute?: string;
@@ -201,12 +202,13 @@ function hasExactKeys(value: Record<string, unknown>, expected: string[]): boole
   return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
 }
 
-/** Exact passkey grant + in-place wiring identity required by the one authorized historical repair. */
+/** Exact operator grant + in-place wiring identity required by the one authorized historical repair.
+ *  Accepts EITHER operator auth mode (passkey or tailnet), never a headless env-override arm. */
 function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): ActivatedExecution | null {
   const latch = ctx.executionLatch;
   const snapshot = latch?.snapshot();
   const current = latch?.current() ?? null;
-  if (!latch || !current || snapshot?.state !== 'unlocked' || snapshot.source !== 'passkey'
+  if (!latch || !current || snapshot?.state !== 'unlocked' || !isOperatorUnlockSource(snapshot.source)
     || snapshot.unlockedBy !== sub || ctx.controlBroker !== current.controlBroker
     || ctx.runAutomatic !== current.runAutomatic || ctx.cancelAutomatic !== current.cancelAutomatic
     || ctx.containManagerStart !== current.containManagerStart
@@ -238,7 +240,7 @@ export function authorizedFailedRunReconciliationGrant(
     AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
     ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
   ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
-  if (snapshot.state !== 'unlocked' || snapshot.source !== 'passkey'
+  if (snapshot.state !== 'unlocked' || !isOperatorUnlockSource(snapshot.source)
     || snapshot.unlockedBy !== sub || !snapshot.unlockedAt || hasLiveRun
     || (expected && (snapshot.unlockedAt !== expected.unlockedAt || wiring !== expected.wiring))) return null;
   return { latch, wiring, unlockedAt: snapshot.unlockedAt };

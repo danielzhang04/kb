@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import WebSocket from 'ws';
-import { assertOrigin, originPlugin, resolveAllowedOrigins } from './origin.ts';
+import { assertOrigin, originPlugin, resolveAllowedOrigins, resolveDaemonPublicOrigin } from './origin.ts';
 import { createBus } from '../hub/bus.ts';
 import { registerReadWs } from '../hub/ws.ts';
 
@@ -268,5 +268,47 @@ describe('resolveAllowedOrigins', () => {
       DASHBOARD_DEV_ORIGIN: 'http://localhost:4317',
     });
     expect(on).toContain('http://localhost:4317');
+  });
+});
+
+describe('resolveAllowedOrigins in tailnet mode', () => {
+  const TAILNET = { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' };
+
+  it('derives the allowlist from the tailscale serve host', () => {
+    expect(resolveAllowedOrigins(TAILNET)).toEqual(['https://kb.tail82dd4f.ts.net']);
+  });
+
+  it('IGNORES a stale DASHBOARD_RP_ORIGIN — the WebAuthn RP origin leaves the unit in this mode', () => {
+    expect(resolveAllowedOrigins({ ...TAILNET, DASHBOARD_RP_ORIGIN: 'https://old.example.ts.net' }))
+      .toEqual(['https://kb.tail82dd4f.ts.net']);
+  });
+
+  it('stays fail-closed (empty) when the serve host is unset', () => {
+    expect(resolveAllowedOrigins({ DASHBOARD_AUTH_MODE: 'tailnet' })).toEqual([]);
+  });
+
+  it('SECURITY: IGNORES DASHBOARD_DEV_ORIGIN — a dev origin is incompatible with ambient tailnet auth', () => {
+    // Under ambient auth, an allowlisted dev origin would hand operator authority to any page served
+    // from it. The tailnet allowlist is the serve host and nothing else.
+    expect(resolveAllowedOrigins({ ...TAILNET, DASHBOARD_DEV_ORIGIN: 'http://localhost:4317' }))
+      .toEqual(['https://kb.tail82dd4f.ts.net']);
+  });
+});
+
+describe('resolveDaemonPublicOrigin', () => {
+  it('uses the serve host in tailnet mode — a spend-grant link must not point at the loopback fallback', () => {
+    expect(resolveDaemonPublicOrigin({ DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' }))
+      .toBe('https://kb.tail82dd4f.ts.net');
+  });
+
+  it('uses the RP origin (then the dev origin) in win32-desktop mode', () => {
+    expect(resolveDaemonPublicOrigin({ DASHBOARD_RP_ORIGIN: 'https://box.example.ts.net' }))
+      .toBe('https://box.example.ts.net');
+    expect(resolveDaemonPublicOrigin({ DASHBOARD_DEV_ORIGIN: 'http://localhost:4317' }))
+      .toBe('http://localhost:4317');
+  });
+
+  it('falls back to loopback only when nothing is configured', () => {
+    expect(resolveDaemonPublicOrigin({})).toBe('http://127.0.0.1:5317');
   });
 });

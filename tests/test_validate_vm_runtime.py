@@ -1,5 +1,3 @@
-import json
-import shlex
 import subprocess
 from types import SimpleNamespace
 from pathlib import Path, PurePosixPath
@@ -18,23 +16,62 @@ Environment=DASHBOARD_EXECUTION_ACTIVATED=0
 Environment=KB_COORDINATION_PUBLICATION=outbox
 Environment=KB_VM_RUNTIME=1
 Environment=GIT_CONFIG_GLOBAL=/dev/null
+Environment=DASHBOARD_AUTH_MODE=tailnet
+Environment=DASHBOARD_TAILNET_HOST=kb.tail82dd4f.ts.net
+Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com
 """
-WEBAUTHN_CREDENTIALS = json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "counter": 0, "transports": ["usb", "internal"]}], separators=(",", ":"))
 
 
 @pytest.mark.parametrize(
     "value",
     [
-        "http://dashboard.example",
-        "https://dashboard.example/",
-        "https://user@dashboard.example",
-        "https://Dashboard.example",
-        "https://dashboard.example:8443",
+        "https://kb.tail82dd4f.ts.net",
+        "kb.tail82dd4f.ts.net/path",
+        "KB.tail82dd4f.ts.net",
+        "kb.tail82dd4f.ts.net:8443",
+        "",
     ],
 )
-def test_effective_unit_rejects_invalid_rp_origins(value):
-    text = VALID_UNIT_TEXT + f"Environment=DASHBOARD_RP_ORIGIN={value}\n"
-    with pytest.raises(RuntimeError, match="RP origin"):
+def test_effective_unit_rejects_invalid_tailnet_hosts(value):
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_TAILNET_HOST=kb.tail82dd4f.ts.net\n",
+        f"Environment=DASHBOARD_TAILNET_HOST={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="tailnet host"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_effective_unit_rejects_a_non_tailnet_auth_mode():
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_AUTH_MODE=tailnet\n",
+        "Environment=DASHBOARD_AUTH_MODE=win32-desktop\n",
+    )
+    with pytest.raises(RuntimeError, match="auth mode"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_effective_unit_requires_the_pinned_operator():
+    # DASHBOARD_TAILNET_OPERATOR is REQUIRED, not optional — a unit missing it fails the closed-set check.
+    text = VALID_UNIT_TEXT.replace("Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com\n", "")
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("value", ["", "not-an-email", "has space@x.com"])
+def test_effective_unit_rejects_an_invalid_operator(value):
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com\n",
+        f"Environment=DASHBOARD_TAILNET_OPERATOR={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="tailnet operator|assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("name", ["DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS"])
+def test_effective_unit_rejects_retired_webauthn_environment(name):
+    """Tailnet mode retires the WebAuthn unit channel; a unit still carrying it is stale, not optional."""
+    text = VALID_UNIT_TEXT + f"Environment={name}=whatever\n"
+    with pytest.raises(RuntimeError):
         validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
@@ -199,14 +236,20 @@ def test_static_phase_accepts_inactive_unit_without_a_control_group():
     validate_vm_runtime.validate_static_unit(show, VALID_UNIT_TEXT)
 
 
-def test_static_phase_accepts_an_optional_valid_rp_origin():
-    text = VALID_UNIT_TEXT + "Environment=DASHBOARD_RP_ORIGIN=https://dashboard.example\n"
-    validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+def test_static_phase_accepts_the_tailnet_unit():
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
 
 
-def test_static_phase_accepts_sanctioned_webauthn_credentials():
-    text = VALID_UNIT_TEXT + f"Environment={shlex.quote(f'DASHBOARD_WEBAUTHN_CREDENTIALS={WEBAUTHN_CREDENTIALS}')}\n"
-    validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+@pytest.mark.parametrize("name", ["DASHBOARD_TAILNET_PROXY_UID"])
+def test_static_phase_accepts_the_optional_tailnet_names(name):
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT + f"Environment={name}=x\n")
+
+
+def test_static_phase_rejects_dev_origin_under_ambient_tailnet_auth():
+    # A dev origin allowlisted under ambient auth would grant operator authority to any page on it.
+    text = VALID_UNIT_TEXT + "Environment=DASHBOARD_DEV_ORIGIN=http://localhost:4317\n"
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
 def test_static_phase_rejects_other_credential_named_unit_environment():
@@ -216,33 +259,14 @@ def test_static_phase_rejects_other_credential_named_unit_environment():
             validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
-@pytest.mark.parametrize(
-    ("value", "defect"),
-    [
-        ("not-json", "valid JSON"),
-        ("{}", "JSON array"),
-        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "privateKey": "not-allowed"}]), "unsupported keys"),
-        (json.dumps([{"id": "!" * 16, "publicKey": "b" * 32}]), "base64url"),
-        (json.dumps([{"id": "a" * 257, "publicKey": "b" * 32}]), "256-character"),
-        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 513}]), "512-character"),
-        (json.dumps([{"id": "a" * 15 + "=", "publicKey": "b" * 32}]), "padding is not allowed"),
-        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "transports": ["USB"]}]), "short strings"),
-        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "transports": ["a" * 33]}]), "short strings"),
-    ],
-)
-def test_static_phase_rejects_malformed_webauthn_credentials(value, defect):
-    text = VALID_UNIT_TEXT + f"Environment={shlex.quote(f'DASHBOARD_WEBAUTHN_CREDENTIALS={value}')}\n"
-    with pytest.raises(RuntimeError, match=defect):
-        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+def test_environment_has_no_sanctioned_credential_exemption_left():
+    """With the WebAuthn public-key channel retired, CREDENTIAL_ENV_NAME applies without exception."""
+    with pytest.raises(RuntimeError, match="DASHBOARD_WEBAUTHN_CREDENTIALS"):
+        validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": "anything"})
 
 
-def test_environment_allows_only_the_sanctioned_public_key_channel():
-    validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": WEBAUTHN_CREDENTIALS})
-
-
-def test_environment_rejects_malformed_sanctioned_public_key_channel():
-    with pytest.raises(RuntimeError, match="valid JSON"):
-        validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": "secret-looking-value"})
+def test_environment_accepts_the_tailnet_names():
+    validate_vm_runtime.validate_environment({"DASHBOARD_AUTH_MODE": "tailnet", "DASHBOARD_TAILNET_HOST": "kb.ts.net"})
 
 
 def test_effective_unit_still_refuses_a_ninth_unknown_environment_name():

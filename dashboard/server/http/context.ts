@@ -175,7 +175,10 @@ export interface SurfaceContext {
   naming?: NamingRegistry;
 }
 
-/** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
+/** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise.
+ *  Operator attribution is deliberately NOT stamped here: it is applied at the single row-write point
+ *  (`audit/log.ts#appendAuditRowLocal`), so writers that bypass this wrapper — notably `pty/route.ts`,
+ *  which appends through its own context — are covered by the same one seam. */
 export function auditFn(ctx: SurfaceContext): AppendAuditFn {
   if (ctx.appendAudit) return ctx.appendAudit;
   return (repoRoot, event, options = {}) => realAppendAudit(repoRoot, event, {
