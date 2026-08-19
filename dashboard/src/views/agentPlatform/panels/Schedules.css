@@ -67,3 +67,16 @@
 
 .ap-schedules__date { font-family: var(--font-mono); }
 .ap-schedules__narration--needs-you { color: var(--warning); font-weight: 600; }
+
+.ap-schedules__history {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border, #3a3a36);
+  padding-top: 0.55rem;
+}
+
+.ap-schedules__history ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.ap-schedules__history li { margin: 0.3rem 0; }

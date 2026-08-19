@@ -56,6 +56,7 @@ import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
 import { AgentPlatform } from './views/AgentPlatform';
+import { SchedulesBody } from './views/agentPlatform/panels/Schedules.panel';
 import { Sentinel } from './views/panels/Sentinel';
 import { Quartermaster } from './views/panels/Quartermaster';
 import { FlightRecorder } from './views/panels/FlightRecorder';
@@ -494,6 +495,8 @@ function ViewBody({
       // Wave-1 U0 — the Agent Platform section. Panels are auto-discovered from
       // `views/agentPlatform/panels/*.panel.tsx`; adding one needs no edit here.
       return <AgentPlatform />;
+    case 'schedules':
+      return <SchedulesBody />;
     case 'sentinel':
       // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
       return <LayerPanels />;

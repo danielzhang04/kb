@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { SessionProvider } from '../../../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../../../lib/authClient';
 import type { ScheduleRow, SchedulesPanel } from '../../../../server/panels/schedules';
-import { panel } from './Schedules.panel';
+import { panel, replaceCadenceSchedule } from './Schedules.panel';
 
 function cadence(over: Partial<ScheduleRow> & { name: string }): ScheduleRow {
   return {
@@ -25,7 +25,7 @@ const DATA: SchedulesPanel = {
   label: 'schedules',
   pausedCount: 1,
   files: {
-    'HEARTBEAT.md': '# Root heartbeat\n\n```yaml\ncadences:\n  - name: root-daily\n```\n',
+    'HEARTBEAT.md': '# Root heartbeat\n\n```yaml\ncadences:\n  - name: root-daily\n    schedule: 3 7 * * mon\n    tier: desktop\n```\n',
     'orgs/atlas-prep/HEARTBEAT.md': '# Atlas heartbeat\n',
     'orgs/kb-ops/HEARTBEAT.md': '# Ops heartbeat\n',
   },
@@ -57,11 +57,15 @@ function locked(): React.JSX.Element {
   return <SessionProvider>{panel.render()}</SessionProvider>;
 }
 
-function stubFetch(options: { unavailable?: boolean; edit?: { status: number; body: object }; pause?: { status: number; body: object } } = {}): ReturnType<typeof vi.fn> {
+function stubFetch(options: { unavailable?: boolean; edit?: { status: number; body: object }; pause?: { status: number; body: object }; history?: { status: number; body: object } } = {}): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((url: string) => {
     if (url === '/api/panels/schedules') {
       if (options.unavailable) return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) });
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(DATA) });
+    }
+    if (url === '/api/panels/schedules/history?project=system&cadence=root-daily') {
+      if (options.history) return Promise.resolve({ ok: false, status: options.history.status, json: () => Promise.resolve(options.history!.body) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cadence: 'root-daily', runs: [{ card: 'card-1', scheduledFor: '2026-08-18T07:03:00', dispatchedAt: '2026-08-18T07:04:00', outcome: 'done', result: 'Completed safely.' }] }) });
     }
     if (url === '/api/schedules/edit') {
       if (options.edit) return Promise.resolve({ ok: false, status: options.edit.status, json: () => Promise.resolve(options.edit!.body) });
@@ -130,6 +134,48 @@ describe('Schedules panel', () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/schedules/edit')).toHaveLength(1);
   });
 
+  it('uses the shared picker to replace only the selected schedule line in the PR prefill', async () => {
+    stubFetch();
+    render(unlocked());
+    await screen.findByTestId('ap-schedules-row-root-daily');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit HEARTBEAT.md in PR' }));
+    fireEvent.change(screen.getByLabelText('cadence'), { target: { value: 'root-daily' } });
+    fireEvent.change(screen.getByLabelText('Time 1'), { target: { value: '07:30' } });
+
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toContain('schedule: 30 7 * * mon');
+  });
+
+  it('disables schedule submission when the picker becomes invalid after emitting a replacement cron', async () => {
+    stubFetch();
+    render(unlocked());
+    await screen.findByTestId('ap-schedules-row-root-daily');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit HEARTBEAT.md in PR' }));
+    fireEvent.change(screen.getByLabelText('cadence'), { target: { value: 'root-daily' } });
+    fireEvent.change(screen.getByLabelText('Time 1'), { target: { value: '07:30' } });
+    expect((screen.getByRole('button', { name: 'Create edit PR' }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByLabelText('Mon'));
+    expect((screen.getByRole('button', { name: 'Create edit PR' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Choose at least one day.')).toBeTruthy();
+  });
+
+  it('opens read-only fire history without offering an execution action', async () => {
+    const fetchMock = stubFetch();
+    render(unlocked());
+    await screen.findByTestId('ap-schedules-row-root-daily');
+
+    fireEvent.click(screen.getByRole('button', { name: 'History for cadence root-daily' }));
+    const history = await screen.findByTestId('ap-schedules-history-root-daily');
+    expect(history.textContent).toContain('scheduled 2026-08-18T07:03:00');
+    expect(history.textContent).toContain('Completed safely.');
+    expect(fetchMock.mock.calls.find(([url]) => url === '/api/panels/schedules/history?project=system&cadence=root-daily')?.[1]).toMatchObject({
+      headers: { authorization: 'Bearer schedule-token' },
+    });
+    expect(screen.queryByRole('button', { name: /^run/i })).toBeNull();
+  });
+
   it('pauses an active cadence through the STOP-floor endpoint', async () => {
     const fetchMock = stubFetch();
     render(unlocked());
@@ -163,6 +209,27 @@ describe('Schedules panel', () => {
 
     expect(screen.getByTestId('ap-schedules-locked').textContent).toMatch(/unlock the dashboard/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps every non-schedule byte when replacing a selected cadence schedule', () => {
+    const source = 'cadences:\n  - name: alpha\n    schedule: 0 9 * * mon\n    prompt: |\n      untouched\n  - name: beta\n    schedule: daily\n';
+    expect(replaceCadenceSchedule(source, 'alpha', '30 9 * * mon')).toBe(
+      'cadences:\n  - name: alpha\n    schedule: 30 9 * * mon\n    prompt: |\n      untouched\n  - name: beta\n    schedule: daily\n',
+    );
+  });
+
+  it('inserts a missing direct-child schedule field without touching schedule text in a prompt block', () => {
+    const source = 'cadences:\n  - name: alpha\n    prompt: |\n      Never replace schedule: text from this prompt.\n    tier: desktop\n  - name: beta\n    schedule: daily\n';
+    expect(replaceCadenceSchedule(source, 'alpha', '30 9 * * mon')).toBe(
+      'cadences:\n  - name: alpha\n    schedule: 30 9 * * mon\n    prompt: |\n      Never replace schedule: text from this prompt.\n    tier: desktop\n  - name: beta\n    schedule: daily\n',
+    );
+  });
+
+  it('inserts the schedule field for a cadence that has none', () => {
+    const source = 'cadences:\n  - name: alpha\n    tier: desktop\n';
+    expect(replaceCadenceSchedule(source, 'alpha', '30 9 * * mon')).toBe(
+      'cadences:\n  - name: alpha\n    schedule: 30 9 * * mon\n    tier: desktop\n',
+    );
   });
 
   it('names an unavailable read and issues no governed mutation request', async () => {

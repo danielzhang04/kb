@@ -42,6 +42,7 @@ export type DestinationId =
   | 'activity'
   | 'atlas'
   | 'terminal'
+  | 'schedules'
   | 'workflows'
   | 'agents'
   | 'tasks'
@@ -86,6 +87,8 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'activity', label: 'Activity', icon: '≡', status: 'live' },
       { id: 'atlas', label: 'Atlas', icon: '◈', status: 'live' },
       { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },
+      // Daniel's Wave-2 ruling: routines/schedules are a sidebar destination, not an Agent Platform tile.
+      { id: 'schedules', label: 'Schedules', icon: '◷', status: 'live' },
     ],
   },
   {

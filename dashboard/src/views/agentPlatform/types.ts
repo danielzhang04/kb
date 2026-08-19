@@ -30,6 +30,8 @@ export interface AgentPlatformPanel {
   title: string;
   /** One-line tile subtitle: what the panel shows. */
   description: string;
+  /** A sidebar-owned panel is rendered by its own top-level destination, not the Platform grid. */
+  placement?: 'agent-platform' | 'sidebar';
   /** The panel body, rendered when its tile is opened. */
   render: () => React.JSX.Element;
 }

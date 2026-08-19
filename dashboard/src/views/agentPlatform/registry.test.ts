@@ -73,7 +73,6 @@ describe('agentPlatform/registry', () => {
       // U-L2 — the loops run on their own overnight; "did they run, and does one need me?" is the
       // first question of the morning, so the section opens on it.
       'loop-status',
-      'schedules',
       'agent-management',
       'fleet-graph',
       'watch-agents-run',
@@ -129,14 +128,15 @@ describe('agentPlatform/registry', () => {
     }
   });
 
-  it('registers exactly the *.panel.tsx files present on disk (auto-discovery, not a hand-kept list)', () => {
+  it('registers exactly the Agent Platform *.panel.tsx files present on disk (auto-discovery, not a hand-kept list)', () => {
     expect(PANEL_FILES.length).toBeGreaterThan(0);
     // Every entry file exports a `panel`, and every one of them is registered — so file count and
     // registry length move together. Adding a file is the whole registration procedure.
     // (Ids are NOT scraped out of the sources: a panel file may legitimately contain other `id:`
     // literals — fixtures, node objects — above its export. Uniqueness/shape are asserted at
     // RUNTIME above, which is stronger than any source regex.)
-    expect(AGENT_PLATFORM_PANELS.length).toBe(PANEL_FILES.length);
+    const sidebarPanels = PANEL_FILES.filter((file) => readFileSync(join(PANELS_DIR, file), 'utf8').includes("placement: 'sidebar'"));
+    expect(AGENT_PLATFORM_PANELS.length).toBe(PANEL_FILES.length - sidebarPanels.length);
     for (const file of PANEL_FILES) {
       const source = readFileSync(join(PANELS_DIR, file), 'utf8');
       expect(source, `${file} exports no \`panel\` const`).toMatch(/export const panel\b/);
@@ -151,7 +151,8 @@ describe('agentPlatform/registry', () => {
     expect(registrySource).toContain("'./panels/*.panel.tsx'");
     // The registry counts entry files only: whatever else sits in panels/ (tests, helper components,
     // helper sub-directories) is inert by construction.
-    expect(AGENT_PLATFORM_PANELS.length).toBe(PANEL_FILES.length);
+    const sidebarPanels = PANEL_FILES.filter((file) => readFileSync(join(PANELS_DIR, file), 'utf8').includes("placement: 'sidebar'"));
+    expect(AGENT_PLATFORM_PANELS.length).toBe(PANEL_FILES.length - sidebarPanels.length);
   });
 
   it('discovers by glob and never by a hardcoded panel list', () => {

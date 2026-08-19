@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import Fastify from 'fastify';
-import { buildSchedulesPanel, scheduleHint, HEARTBEAT_RELPATH } from './schedules.ts';
+import { buildScheduleHistory, buildSchedulesPanel, scheduleHint, selectScheduleHistoryCards, SCHEDULE_HISTORY_LIMIT, HEARTBEAT_RELPATH } from './schedules.ts';
 import type { SaveFn } from './schedules.ts';
 import { registerPanels } from './routes.ts';
 import { mintSession } from '../auth/session.ts';
@@ -31,6 +31,7 @@ import type { AppendAuditFn } from '../http/context.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 
 const tripwire = vi.hoisted(() => ({ armed: false, calls: [] as string[] }));
+const historyReads = vi.hoisted(() => ({ armed: false, cards: 0 }));
 
 const guardFactory = vi.hoisted(() => (name: string, fn: unknown): unknown =>
   (...args: unknown[]) => {
@@ -47,6 +48,10 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     default: actual,
+    readFileSync: (...args: Parameters<typeof actual.readFileSync>) => {
+      if (historyReads.armed && /[\\/]queue[\\/]/.test(String(args[0]))) historyReads.cards += 1;
+      return actual.readFileSync(...args);
+    },
     writeFileSync: guard('writeFileSync', actual.writeFileSync),
     appendFileSync: guard('appendFileSync', actual.appendFileSync),
     mkdirSync: guard('mkdirSync', actual.mkdirSync),
@@ -110,11 +115,11 @@ const LIVE_REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const DISPATCH_HEADER = 'cadence\tcard\tdate\tproject';
 
 /** A schema-shaped queue card whose `## Result` opens with the one-line human narration (U-L1). */
-function card(id: string, state: string, result: string): string {
+function card(id: string, state: string, result: string, scheduledFor?: string, dispatchedAt?: string, project = 'system', cadence = 'alpha'): string {
   return `---
 id: ${id}
-project: kb
-action: cadence:demo-cadence
+project: ${project}
+action: cadence:${cadence}
 target: .
 risk-tier: T1
 owner: null
@@ -125,7 +130,7 @@ workflow: null
 depends-on: []
 variant-group: null
 role: work
----
+${scheduledFor ? `scheduled_for: ${scheduledFor}\n` : ''}${dispatchedAt ? `dispatched_at: ${dispatchedAt}\n` : ''}---
 
 ## Work order
 
@@ -164,7 +169,7 @@ interface RepoOpts {
   root?: CadenceSpec[];
   orgs?: Record<string, CadenceSpec[]>;
   rows?: { cadence: string; card: string; date: string; project?: string }[];
-  cards?: Record<string, [string, string, string]>;
+  cards?: Record<string, [string, string, string, string?, string?, string?, string?]>;
   paused?: string[];
 }
 
@@ -183,9 +188,9 @@ function tempRepo(opts: RepoOpts = {}): string {
     writeFileSync(join(root, 'ledgers', 'dispatch', 'dispatcher-2026-08-18.tsv'), `${DISPATCH_HEADER}\n${body}\n`);
   }
   for (const [id, spec] of Object.entries(opts.cards ?? {})) {
-    const [dir, state, result] = spec;
+    const [dir, state, result, scheduledFor, dispatchedAt, project, cadence] = spec;
     mkdirSync(join(root, 'queue', dir), { recursive: true });
-    writeFileSync(join(root, 'queue', dir, `${id}.md`), card(id, state, result));
+    writeFileSync(join(root, 'queue', dir, `${id}.md`), card(id, state, result, scheduledFor, dispatchedAt, project, cadence));
   }
   for (const name of opts.paused ?? []) {
     mkdirSync(join(root, 'queue', 'paused'), { recursive: true });
@@ -330,6 +335,98 @@ describe('buildSchedulesPanel — the projection', () => {
     });
   });
 
+  it('builds newest-first history from dispatch rows plus card scheduler stamps and result excerpts', () => {
+    const root = tempRepo({
+      root: [{ name: 'alpha', schedule: '0 9 * * mon' }],
+      rows: [
+        { cadence: 'alpha', card: 'older0001-1111', date: '2026-08-17' },
+        { cadence: 'alpha', card: 'newer0002-2222', date: '2026-08-18' },
+      ],
+      cards: {
+        'older0001-1111': ['done', 'done', 'Older result.', '2026-08-17T09:00:00', '2026-08-17T09:02:00'],
+        'newer0002-2222': ['done', 'done', 'Newest result first line.\n\nMore inert detail.', '2026-08-18T09:00:00', '2026-08-18T09:01:00'],
+      },
+    });
+
+    expect(buildScheduleHistory(root, 'system', 'alpha')).toEqual({
+      project: 'system',
+      cadence: 'alpha',
+      runs: [
+        { card: 'newer0002-2222', project: 'system', scheduledFor: '2026-08-18T09:00:00', dispatchedAt: '2026-08-18T09:01:00', outcome: 'done', result: 'Newest result first line.' },
+        { card: 'older0001-1111', project: 'system', scheduledFor: '2026-08-17T09:00:00', dispatchedAt: '2026-08-17T09:02:00', outcome: 'done', result: 'Older result.' },
+      ],
+    });
+  });
+
+  it('returns result text only for cards physically and logically in done', () => {
+    const root = tempRepo({
+      root: [{ name: 'alpha', schedule: 'daily' }],
+      rows: [
+        { cadence: 'alpha', card: 'inbox0001-1111', date: '2026-08-15' },
+        { cadence: 'alpha', card: 'working0002-2222', date: '2026-08-16' },
+        { cadence: 'alpha', card: 'mismatch0003-3333', date: '2026-08-17' },
+        { cadence: 'alpha', card: 'done00004-4444', date: '2026-08-18' },
+      ],
+      cards: {
+        'inbox0001-1111': ['inbox', 'inbox', 'Inbox secret.', '2026-08-15T09:00:00'],
+        'working0002-2222': ['working', 'done', 'Working secret.', '2026-08-16T09:00:00'],
+        'mismatch0003-3333': ['done', 'working', 'Mismatched secret.', '2026-08-17T09:00:00'],
+        'done00004-4444': ['done', 'done', 'Published result.', '2026-08-18T09:00:00'],
+      },
+    });
+
+    expect(buildScheduleHistory(root, 'system', 'alpha').runs).toEqual([
+      expect.objectContaining({ card: 'done00004-4444', result: 'Published result.' }),
+      expect.objectContaining({ card: 'mismatch0003-3333', result: null }),
+      expect.objectContaining({ card: 'working0002-2222', result: null }),
+      expect.objectContaining({ card: 'inbox0001-1111', result: null }),
+    ]);
+  });
+
+  it('filters history by project as well as cadence name', () => {
+    const root = tempRepo({
+      orgs: {
+        alpha: [{ name: 'shared', schedule: 'daily' }],
+        beta: [{ name: 'shared', schedule: 'daily' }],
+      },
+      rows: [
+        { cadence: 'shared', card: 'alpha0001-1111', date: '2026-08-17', project: 'alpha' },
+        { cadence: 'shared', card: 'beta00002-2222', date: '2026-08-18', project: 'beta' },
+      ],
+      cards: {
+        'alpha0001-1111': ['done', 'done', 'Alpha only.', '2026-08-17T09:00:00', undefined, 'alpha', 'shared'],
+        'beta00002-2222': ['done', 'done', 'Beta only.', '2026-08-18T09:00:00', undefined, 'beta', 'shared'],
+      },
+    });
+
+    expect(buildScheduleHistory(root, 'alpha', 'shared').runs).toEqual([
+      expect.objectContaining({ card: 'alpha0001-1111', project: 'alpha', result: 'Alpha only.' }),
+    ]);
+    expect(buildScheduleHistory(root, 'beta', 'shared').runs).toEqual([
+      expect.objectContaining({ card: 'beta00002-2222', project: 'beta', result: 'Beta only.' }),
+    ]);
+  });
+
+  it('selects at most the response cap of card files by metadata before card bodies are parsed', () => {
+    const cards: NonNullable<RepoOpts['cards']> = {};
+    for (let index = 0; index < SCHEDULE_HISTORY_LIMIT + 25; index += 1) {
+      cards[`card-${String(index).padStart(3, '0')}`] = ['done', 'done', `Result ${index}.`, '2026-08-18T09:00:00'];
+    }
+    const root = tempRepo({ cards });
+    const selected = selectScheduleHistoryCards(root);
+    expect(selected).toHaveLength(SCHEDULE_HISTORY_LIMIT);
+    expect(new Set(selected.map((candidate) => candidate.id)).size).toBe(SCHEDULE_HISTORY_LIMIT);
+
+    historyReads.cards = 0;
+    historyReads.armed = true;
+    try {
+      buildScheduleHistory(root, 'system', 'alpha');
+    } finally {
+      historyReads.armed = false;
+    }
+    expect(historyReads.cards).toBe(SCHEDULE_HISTORY_LIMIT);
+  });
+
   it('degrades to an empty cadence list on a checkout with no HEARTBEAT at all', () => {
     const panel = buildSchedulesPanel(tempRepo());
     expect(panel.cadences).toEqual([]);
@@ -397,6 +494,15 @@ describe('GET /api/panels/schedules — read-only', () => {
       expect(body.cadences[1].paused).toBe(true);
       expect(body.cadences[1].scheduleHint).toBe('cron: */5 * * * *');
       expect(body).toMatchObject({ files: { 'HEARTBEAT.md': heartbeat([{ name: 'alpha', schedule: 'daily' }]) } });
+
+      const history = await app.inject({ method: 'GET', url: '/api/panels/schedules/history?project=system&cadence=alpha' });
+      expect(history.statusCode).toBe(200);
+      expect(history.json()).toMatchObject({ project: 'system', cadence: 'alpha', runs: [{ card: 'aaaa0001-1111', outcome: 'done', result: 'Hey — it ran.' }] });
+      const missingProject = await app.inject({ method: 'GET', url: '/api/panels/schedules/history?cadence=alpha' });
+      expect(missingProject.statusCode).toBe(400);
+      expect(missingProject.json()).toEqual({ error: 'project-required' });
+      const missingCadence = await app.inject({ method: 'GET', url: '/api/panels/schedules/history?project=system' });
+      expect(missingCadence.statusCode).toBe(400);
     } finally {
       tripwire.armed = false;
       await app.close();

@@ -115,7 +115,8 @@ function collectPanels(): AgentPlatformPanel[] {
       continue;
     }
     seen.add(candidate.id);
-    panels.push(candidate);
+    // A sidebar-owned panel keeps its self-contained body here but is not a second Agent Platform tile.
+    if (candidate.placement !== 'sidebar') panels.push(candidate);
   }
   return panels.sort(comparePanels);
 }

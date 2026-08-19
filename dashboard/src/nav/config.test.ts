@@ -35,6 +35,7 @@ describe('nav/config', () => {
       'activity',
       'atlas',
       'terminal',
+      'schedules',
     ]);
     expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
       'workflows',
@@ -124,6 +125,7 @@ describe('nav/config', () => {
       'ledgers',
       'sentinel',
       'agentPlatform',
+      'schedules',
     ] as const) {
       expect(status(id)).toBe('live');
     }

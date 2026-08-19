@@ -5,7 +5,8 @@
  */
 import { useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
-import type { ScheduleRow, SchedulesPanel } from '../../../../server/panels/schedules';
+import type { ScheduleHistory, ScheduleRow, SchedulesPanel } from '../../../../server/panels/schedules';
+import { RecurrencePicker } from '../../../components/RecurrencePicker';
 import { invalidateSessionOnGovernedAuthFailure } from '../../../lib/authClient';
 import { useSession } from '../../../lib/sessionContext';
 import { useReadPanel } from '../../../lib/useReadPanel';
@@ -17,6 +18,41 @@ interface EditResponse {
   pr?: { url?: string; number?: number } | null;
   reason?: string;
   error?: string;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Replace only the selected cadence's direct-child `schedule:` field, preserving every other source byte. */
+export function replaceCadenceSchedule(content: string, cadenceName: string, schedule: string): string {
+  const lines = content.match(/.*(?:\r?\n|$)/g)?.filter((line) => line !== '') ?? [];
+  const namePattern = new RegExp(`^([\\t ]*)-\\s+name:\\s*${escapeRegExp(cadenceName)}\\s*(?:\\r?\\n)?$`);
+  const start = lines.findIndex((line) => namePattern.test(line));
+  if (start === -1) return content;
+
+  const nameMatch = namePattern.exec(lines[start]);
+  const cadenceIndent = nameMatch?.[1] ?? '';
+  const lineIndent = (line: string) => /^([\t ]*)/.exec(line)?.[1] ?? '';
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end];
+    const indent = lineIndent(line);
+    if (line.trim() !== '' && indent.length <= cadenceIndent.length) break;
+    end += 1;
+  }
+
+  const firstChild = lines.slice(start + 1, end).find((line) => line.trim() !== '');
+  const childIndent = firstChild ? lineIndent(firstChild) : `${cadenceIndent}  `;
+  for (let index = start + 1; index < end; index += 1) {
+    if (lineIndent(lines[index]) !== childIndent || !/^schedule:\s*/.test(lines[index].slice(childIndent.length))) continue;
+    lines[index] = lines[index].replace(/^([\t ]*schedule:\s*).*?(\r?\n)?$/, `$1${schedule}$2`);
+    return lines.join('');
+  }
+
+  const newline = lines[start].endsWith('\r\n') ? '\r\n' : '\n';
+  lines.splice(start + 1, 0, `${childIndent}schedule: ${schedule}${newline}`);
+  return lines.join('');
 }
 
 function unboundedCron(schedule: string | null): boolean {
@@ -59,6 +95,11 @@ function SchedulesBody(): React.JSX.Element {
   const [editBusy, setEditBusy] = useState(false);
   const [pausedNames, setPausedNames] = useState<Set<string>>(() => new Set());
   const [pauseMessages, setPauseMessages] = useState<Record<string, string>>({});
+  const [selectedCadence, setSelectedCadence] = useState<string | null>(null);
+  const [expandedHistory, setExpandedHistory] = useState<Set<string>>(() => new Set());
+  const [histories, setHistories] = useState<Record<string, ScheduleHistory | null>>({});
+  const [historyLoading, setHistoryLoading] = useState<Set<string>>(() => new Set());
+  const [pickerValid, setPickerValid] = useState(true);
 
   if (!session) {
     return <p className="ap-schedules__note" data-testid="ap-schedules-locked">Unlock the dashboard to read schedules.</p>;
@@ -70,7 +111,9 @@ function SchedulesBody(): React.JSX.Element {
 
   const files = Object.keys(data.files);
   const prefill = editFile === null ? '' : data.files[editFile] ?? '';
-  const editDisabled = editBusy || content.trim() === '' || content === prefill || content === submittedContent;
+  const editableCadences = data.cadences.filter((row) => row.file === editFile);
+  const cadenceForPicker = editableCadences.find((row) => row.name === selectedCadence) ?? editableCadences[0] ?? null;
+  const editDisabled = editBusy || !pickerValid || content.trim() === '' || content === prefill || content === submittedContent;
 
   async function submitEdit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -129,6 +172,39 @@ function SchedulesBody(): React.JSX.Element {
     }
   }
 
+  async function toggleHistory(row: ScheduleRow): Promise<void> {
+    const key = `${row.project}:${row.name}`;
+    if (expandedHistory.has(key)) {
+      setExpandedHistory((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      return;
+    }
+    setExpandedHistory((current) => new Set(current).add(key));
+    if (Object.hasOwn(histories, key)) return;
+    setHistoryLoading((current) => new Set(current).add(key));
+    try {
+      const token = (await requireSession())?.token;
+      if (!token) throw new Error('locked');
+      const response = await fetch(`/api/panels/schedules/history?project=${encodeURIComponent(row.project)}&cadence=${encodeURIComponent(row.name)}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('unavailable');
+      const history = await response.json() as ScheduleHistory;
+      setHistories((current) => ({ ...current, [key]: history }));
+    } catch {
+      setHistories((current) => ({ ...current, [key]: null }));
+    } finally {
+      setHistoryLoading((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
   return (
     <div className="ap-schedules">
       <h4 className="ap-schedules__heading">Schedules ({data.cadences.length})</h4>
@@ -138,6 +214,9 @@ function SchedulesBody(): React.JSX.Element {
       <ul className="ap-schedules__list">
         {data.cadences.map((row) => {
           const paused = row.paused || pausedNames.has(row.name);
+          const historyKey = `${row.project}:${row.name}`;
+          const historyOpen = expandedHistory.has(historyKey);
+          const history = histories[historyKey];
           return (
             <li className="ap-schedules__row" data-testid={`ap-schedules-row-${row.name}`} key={`${row.file}:${row.name}`}>
               <div className="ap-schedules__identity">
@@ -162,8 +241,30 @@ function SchedulesBody(): React.JSX.Element {
                   Pause
                 </button>
               ) : null}
+              <button type="button" onClick={() => void toggleHistory(row)} aria-expanded={historyOpen} aria-label={`History for cadence ${row.name}`}>
+                {historyOpen ? 'Hide history' : 'History'}
+              </button>
               {paused ? <p className="ap-schedules__note">Resuming is a manual ops act (delete queue/paused/{row.name})</p> : null}
               {pauseMessages[row.name] ? <p data-testid={`ap-schedules-pause-${row.name}`} className="ap-schedules__status">{pauseMessages[row.name]}</p> : null}
+              {historyOpen ? (
+                <div className="ap-schedules__history" data-testid={`ap-schedules-history-${row.name}`}>
+                  {historyLoading.has(historyKey) ? <p className="ap-schedules__note">Reading history…</p> : null}
+                  {!historyLoading.has(historyKey) && history === null ? <p className="ap-schedules__note">History is unavailable. Nothing was changed.</p> : null}
+                  {history && history.runs.length === 0 ? <p className="ap-schedules__note">No recorded fires.</p> : null}
+                  {history && history.runs.length > 0 ? (
+                    <ul>
+                      {history.runs.map((fire, index) => (
+                        <li key={`${fire.card ?? 'unknown'}-${index}`}>
+                          <span>scheduled <code>{fire.scheduledFor ?? 'unknown'}</code></span>{' · '}
+                          <span>dispatched <code>{fire.dispatchedAt ?? 'unknown'}</code></span>{' · '}
+                          <span>{fire.outcome}</span>
+                          {fire.result ? <> {' · '}<span>{fire.result}</span></> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
             </li>
           );
         })}
@@ -173,13 +274,39 @@ function SchedulesBody(): React.JSX.Element {
       <p className="ap-schedules__note">Edits are proposed on a work branch and merge by human only.</p>
       <div className="ap-schedules__edit-files">
         {files.map((file) => (
-          <button type="button" key={file} onClick={() => { setEditFile(file); setContent(data.files[file]); setSubmittedContent(null); setEditResult(null); }}>
+          <button type="button" key={file} onClick={() => {
+            setEditFile(file);
+            setContent(data.files[file]);
+            setSelectedCadence(data.cadences.find((row) => row.file === file)?.name ?? null);
+            setPickerValid(true);
+            setSubmittedContent(null);
+            setEditResult(null);
+          }}>
             Edit {file} in PR
           </button>
         ))}
       </div>
       {editFile ? (
         <form className="ap-schedules__edit-form" onSubmit={(event) => void submitEdit(event)}>
+          {cadenceForPicker ? (
+            <>
+              <label>
+                cadence
+                <select aria-label="cadence" value={cadenceForPicker.name} onChange={(event) => {
+                  setSelectedCadence(event.target.value);
+                  setPickerValid(true);
+                }}>
+                  {editableCadences.map((row) => <option key={row.name} value={row.name}>{row.name}</option>)}
+                </select>
+              </label>
+              <RecurrencePicker
+                key={`${editFile}:${cadenceForPicker.name}:${cadenceForPicker.schedule ?? ''}`}
+                initialCron={cadenceForPicker.schedule}
+                onChange={(cron) => setContent((current) => replaceCadenceSchedule(current, cadenceForPicker.name, cron))}
+                onValidityChange={setPickerValid}
+              />
+            </>
+          ) : null}
           <label>
             full file contents — replaces {editFile}
             <textarea aria-label={`full file contents — replaces ${editFile}`} value={content} onChange={(event) => setContent(event.target.value)} />
@@ -207,6 +334,7 @@ export const panel: AgentPlatformPanel = {
   order: 6,
   title: 'Schedules',
   description: 'Declared HEARTBEAT cadences, their recent runs and governed edit or pause controls.',
+  placement: 'sidebar',
   render: () => <SchedulesBody />,
 };
 

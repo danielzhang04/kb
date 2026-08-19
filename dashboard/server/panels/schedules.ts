@@ -94,6 +94,25 @@ export interface SchedulesPanel {
   pausedCount: number;
 }
 
+/** A bounded, newest-first audit trail for a declared cadence. */
+export interface ScheduleHistoryRun {
+  card: string | null;
+  project: string | null;
+  scheduledFor: string | null;
+  dispatchedAt: string | null;
+  outcome: string;
+  result: string | null;
+}
+
+export interface ScheduleHistory {
+  project: string;
+  cadence: string;
+  runs: ScheduleHistoryRun[];
+}
+
+/** A cadence may run forever; the panel deliberately shows a bounded recent audit trail. */
+export const SCHEDULE_HISTORY_LIMIT = 50;
+
 /**
  * Cron field shapes, used ONLY to decide whether a 5-token string is worth LABELLING as cron. This is a
  * character-class check, not a parse: `dispatch.py::parse_cron` is the only thing entitled to interpret
@@ -189,12 +208,131 @@ function cardNarration(repoRoot: string, id: string): string | null {
     const path = join(repoRoot, 'queue', dirName, `${id}.md`);
     if (!existsSync(path)) continue;
     try {
-      return resultNarration(parseCardFrontmatter(readFileSync(path, 'utf-8')).body);
+      const parsed = parseCardFrontmatter(readFileSync(path, 'utf-8'));
+      return dirName === 'done' && parsed.meta.state === 'done' ? resultNarration(parsed.body) : null;
     } catch {
       return null; // unparseable — an honest null, never a guessed narration
     }
   }
   return null;
+}
+
+interface CardDetail {
+  id: string;
+  project: string | null;
+  cadence: string | null;
+  scheduledFor: string | null;
+  dispatchedAt: string | null;
+  outcome: string;
+  result: string | null;
+}
+
+interface QueueCardCandidate {
+  id: string;
+  dirName: (typeof CARD_QUEUE_DIRS)[number];
+  path: string;
+  modifiedMs: number;
+}
+
+function textField(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+function cadenceFromAction(action: unknown): string | null {
+  if (typeof action !== 'string') return null;
+  const match = /^cadence:([^:]+)(?::|$)/.exec(action);
+  return match?.[1] || null;
+}
+
+/**
+ * Choose card bodies by directory metadata before parsing any of them. A cadence can have an unbounded
+ * lifetime, so reading every historical card merely to discard all but the response cap is not a read-only
+ * operation we can afford. The queue stage is retained with each candidate so body narration can be gated.
+ */
+export function selectScheduleHistoryCards(repoRoot: string, limit: number = SCHEDULE_HISTORY_LIMIT): QueueCardCandidate[] {
+  const cards: QueueCardCandidate[] = [];
+  for (const dirName of CARD_QUEUE_DIRS) {
+    const dir = join(repoRoot, 'queue', dirName);
+    if (!existsSync(dir)) continue;
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.md')) continue;
+      const path = join(dir, file);
+      try {
+        const stat = statSync(path);
+        if (stat.isFile()) cards.push({ id: file.slice(0, -3), dirName, path, modifiedMs: stat.mtimeMs });
+      } catch {
+        // A concurrently removed card is simply absent from this read projection.
+      }
+    }
+  }
+  return cards.sort((a, b) => b.modifiedMs - a.modifiedMs || b.id.localeCompare(a.id)).slice(0, limit);
+}
+
+/** Read one selected card's scheduler evidence. A result is exposed only for a physically AND logically done card. */
+function cardDetail(candidate: QueueCardCandidate): CardDetail | null {
+  try {
+    const parsed = parseCardFrontmatter(readFileSync(candidate.path, 'utf-8'));
+    return {
+      id: candidate.id,
+      project: textField(parsed.meta.project),
+      cadence: cadenceFromAction(parsed.meta.action),
+      scheduledFor: textField(parsed.meta.scheduled_for),
+      dispatchedAt: textField(parsed.meta.dispatched_at),
+      outcome: textField(parsed.meta.state) ?? candidate.dirName,
+      result: candidate.dirName === 'done' && parsed.meta.state === 'done' ? resultNarration(parsed.body) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Build a cadence history entirely from dispatch ledger rows and queue-card frontmatter/results. */
+export function buildScheduleHistory(repoRoot: string, project: string, cadence: string): ScheduleHistory {
+  const rows = readKindRows(repoRoot, 'dispatch')
+    .filter((row) => String(row.project ?? '') === project && String(row.cadence ?? '') === cadence);
+  // Bound selection happens before this map reads a single card body. Do not move body parsing above it.
+  const details = selectScheduleHistoryCards(repoRoot).flatMap((candidate) => {
+    const detail = cardDetail(candidate);
+    return detail ? [detail] : [];
+  });
+  const byId = new Map<string, CardDetail>();
+  for (const detail of details) if (!byId.has(detail.id)) byId.set(detail.id, detail);
+  const seen = new Set<string>();
+  const runs: ScheduleHistoryRun[] = [];
+
+  for (const row of rows) {
+    const card = textField(row.card);
+    const candidate = card ? byId.get(card) : null;
+    const detail = candidate?.project === project && candidate.cadence === cadence ? candidate : null;
+    if (card) seen.add(card);
+    runs.push({
+      card,
+      project: detail?.project ?? textField(row.project),
+      scheduledFor: detail?.scheduledFor ?? textField(row.scheduled_for) ?? textField(row.date),
+      dispatchedAt: detail?.dispatchedAt ?? textField(row.dispatched_at),
+      outcome: detail?.outcome ?? 'dispatched',
+      result: detail?.result ?? null,
+    });
+  }
+
+  for (const detail of details) {
+    if (detail.project !== project || detail.cadence !== cadence || seen.has(detail.id) || (!detail.scheduledFor && !detail.dispatchedAt)) continue;
+    runs.push({
+      card: detail.id,
+      project: detail.project,
+      scheduledFor: detail.scheduledFor,
+      dispatchedAt: detail.dispatchedAt,
+      outcome: detail.outcome,
+      result: detail.result,
+    });
+  }
+
+  runs.sort((a, b) => {
+    const aTime = a.scheduledFor ?? a.dispatchedAt ?? '';
+    const bTime = b.scheduledFor ?? b.dispatchedAt ?? '';
+    return bTime.localeCompare(aTime) || (b.card ?? '').localeCompare(a.card ?? '');
+  });
+  return { project, cadence, runs: runs.slice(0, SCHEDULE_HISTORY_LIMIT) };
 }
 
 /**
@@ -323,6 +461,7 @@ function tokenFrom(req: FastifyRequest, body: Record<string, unknown>): string |
  * Register the Schedules panel's read route and its one governed write.
  *
  * `GET  /api/panels/schedules` — pure read, same gate as every sibling panel.
+ * `GET  /api/panels/schedules/history?project=&cadence=` — bounded, read-only card/ledger history.
  * `POST /api/schedules/edit`   — a HEARTBEAT.md edit through `governedSave` → work branch → PR to main.
  *
  * And that is the whole surface. PAUSING is `POST /api/write/pause-cadence` (the STOP floor already owns
@@ -336,6 +475,14 @@ export function registerSchedulesPanel(
   const runSave: SaveFn = options.save ?? defaultSave;
 
   app.get('/api/panels/schedules', async () => buildSchedulesPanel(repoRoot));
+  app.get('/api/panels/schedules/history', async (req, reply: FastifyReply) => {
+    const query = (req.query && typeof req.query === 'object' ? req.query : {}) as { project?: unknown; cadence?: unknown };
+    const project = typeof query.project === 'string' ? query.project.trim() : '';
+    const cadence = typeof query.cadence === 'string' ? query.cadence.trim() : '';
+    if (project === '') return reply.code(400).send({ error: 'project-required' });
+    if (cadence === '') return reply.code(400).send({ error: 'cadence-required' });
+    return buildScheduleHistory(repoRoot, project, cadence);
+  });
 
   app.post('/api/schedules/edit', async (req, reply: FastifyReply) => {
     // Admission first, exactly as `/api/write/save` orders it: when the durable outbox is degraded, new
