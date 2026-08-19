@@ -3,7 +3,7 @@ import { createTailnetOperatorAuth } from './tailnetOperator.ts';
 import { OPERATOR_SUBJECT } from './operator.ts';
 import type { TailnetConfig } from './mode.ts';
 
-const CONFIG: TailnetConfig = { host: 'kb.tail82dd4f.ts.net', proxyUid: 0, operatorLogin: null };
+const CONFIG: TailnetConfig = { host: 'kb.tail82dd4f.ts.net', proxyUid: 0, operatorLogin: 'daniel.zhang.t1@gmail.com' };
 
 /** `/proc/net/tcp` as captured on the live VM: the peer of :4317 <- :52994 is root-owned tailscaled. */
 const SERVE_TABLE = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode

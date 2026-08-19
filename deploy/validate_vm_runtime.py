@@ -15,11 +15,14 @@ CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTI
 # DASHBOARD_AUTH_MODE is static in the repo unit; DASHBOARD_TAILNET_HOST is injected at bootstrap. Both are
 # REQUIRED — without the host the daemon refuses to start, and asserting it here turns that into one loud
 # ExecStartPre failure instead of a restart loop.
-EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST"}
-OPTIONAL_UNIT_ENV = {"DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_TAILNET_OPERATOR"}
-# DASHBOARD_DEV_ORIGIN is deliberately NOT optional here: it is a win32-desktop-only convenience, and
-# under tailnet's AMBIENT auth an allowlisted dev origin would grant operator authority to any page served
-# from it. A unit that sets it fails the closed-set check.
+EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR"}
+OPTIONAL_UNIT_ENV = {"DASHBOARD_TAILNET_PROXY_UID"}
+# DASHBOARD_TAILNET_OPERATOR is REQUIRED (Daniel, 2026-08-18), not optional: tailnet membership on this VM
+# is root-equivalent, so the operator identity must be pinned rather than defaulting to "any tailnet
+# principal". DASHBOARD_DEV_ORIGIN is deliberately NOT here at all: it is a win32-desktop-only convenience,
+# and under tailnet's AMBIENT auth an allowlisted dev origin would grant operator authority to any page
+# served from it. A unit that sets it fails the closed-set check.
+TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
 # DASHBOARD_RP_ORIGIN and DASHBOARD_WEBAUTHN_CREDENTIALS are deliberately in NEITHER set. Tailnet mode
 # retires the WebAuthn unit channel, so a unit still carrying them is stale drift and must FAIL the
 # closed-set check rather than be tolerated. With no sanctioned public-key name left, CREDENTIAL_ENV_NAME
@@ -141,6 +144,8 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
         raise RuntimeError("dashboard unit auth mode must be tailnet")
     if TAILNET_HOST_PATTERN.fullmatch(environment["DASHBOARD_TAILNET_HOST"]) is None:
         raise RuntimeError("dashboard unit tailnet host is invalid")
+    if TAILNET_OPERATOR_PATTERN.fullmatch(environment["DASHBOARD_TAILNET_OPERATOR"]) is None:
+        raise RuntimeError("dashboard unit tailnet operator is invalid")
     unset = set(show["UnsetEnvironment"].split())
     missing = sorted(FORBIDDEN_ENV.difference(unset))
     if missing:

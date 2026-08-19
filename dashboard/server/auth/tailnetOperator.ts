@@ -87,7 +87,8 @@ export function createTailnetOperatorAuth(
       if (login.length === 0 || login.length > MAX_LOGIN_LENGTH || /\s/.test(login)) {
         return { ok: false, reason: 'no-tailnet-identity' };
       }
-      if (config.operatorLogin !== null && login !== config.operatorLogin) {
+      // The operator login is REQUIRED (see mode.ts): the proxy-supplied identity must equal exactly it.
+      if (login !== config.operatorLogin) {
         return { ok: false, reason: 'identity-not-allowed' };
       }
 

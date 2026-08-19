@@ -54,8 +54,13 @@ export interface TailnetConfig {
   host: string;
   /** UID owning the trusted proxy's sockets. `tailscaled` runs as root, so 0 unless deliberately changed. */
   proxyUid: number;
-  /** Optional single-login allowlist checked against `Tailscale-User-Login`; null = any tailnet identity. */
-  operatorLogin: string | null;
+  /**
+   * The single operator login — REQUIRED (Daniel, 2026-08-18). `Tailscale-User-Login` must equal it. It is
+   * fail-closed for a reason specific to this VM: tailnet membership there is root-equivalent (passwordless
+   * sudo), so "any tailnet principal is the operator" would be a standing privilege grant to every node on
+   * the tailnet. Pinning one identity closes that.
+   */
+  operatorLogin: string;
 }
 
 export function resolveTailnetConfig(env: Record<string, string | undefined> = process.env): TailnetConfig {
@@ -71,7 +76,11 @@ export function resolveTailnetConfig(env: Record<string, string | undefined> = p
       throw new AuthModeError('DASHBOARD_TAILNET_PROXY_UID must be a non-negative integer');
     }
   }
-  return { host, proxyUid, operatorLogin: env.DASHBOARD_TAILNET_OPERATOR?.trim() || null };
+  const operatorLogin = env.DASHBOARD_TAILNET_OPERATOR?.trim();
+  if (!operatorLogin) {
+    throw new AuthModeError('DASHBOARD_TAILNET_OPERATOR is required in tailnet mode (tailnet membership must not be operator-by-default)');
+  }
+  return { host, proxyUid, operatorLogin };
 }
 
 /**

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { assertAuthModeBoot, resolveAuthMode, resolveTailnetConfig, AuthModeError } from './mode.ts';
 
-const TAILNET = { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' };
+const TAILNET = {
+  DASHBOARD_AUTH_MODE: 'tailnet',
+  DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net',
+  DASHBOARD_TAILNET_OPERATOR: 'daniel.zhang.t1@gmail.com',
+};
 
 describe('resolveAuthMode', () => {
   it('defaults to the win32 desktop mode when unset — today behaviour is untouched', () => {
@@ -20,20 +24,25 @@ describe('resolveAuthMode', () => {
 });
 
 describe('resolveTailnetConfig', () => {
-  it('reads the serve host and defaults the trusted proxy owner to root', () => {
+  it('reads the serve host + required operator and defaults the trusted proxy owner to root', () => {
     expect(resolveTailnetConfig(TAILNET)).toEqual({
-      host: 'kb.tail82dd4f.ts.net', proxyUid: 0, operatorLogin: null,
+      host: 'kb.tail82dd4f.ts.net', proxyUid: 0, operatorLogin: 'daniel.zhang.t1@gmail.com',
     });
   });
 
-  it('accepts an explicit proxy uid and operator login allowlist', () => {
-    expect(resolveTailnetConfig({
-      ...TAILNET, DASHBOARD_TAILNET_PROXY_UID: '1000', DASHBOARD_TAILNET_OPERATOR: 'daniel@example.com',
-    })).toEqual({ host: 'kb.tail82dd4f.ts.net', proxyUid: 1000, operatorLogin: 'daniel@example.com' });
+  it('accepts an explicit proxy uid', () => {
+    expect(resolveTailnetConfig({ ...TAILNET, DASHBOARD_TAILNET_PROXY_UID: '1000' }))
+      .toEqual({ host: 'kb.tail82dd4f.ts.net', proxyUid: 1000, operatorLogin: 'daniel.zhang.t1@gmail.com' });
+  });
+
+  it('SECURITY: REJECTS a missing operator — tailnet membership must not be operator-by-default', () => {
+    const { DASHBOARD_TAILNET_OPERATOR: _omit, ...noOperator } = TAILNET;
+    expect(() => resolveTailnetConfig(noOperator)).toThrow(AuthModeError);
+    expect(() => resolveTailnetConfig({ ...TAILNET, DASHBOARD_TAILNET_OPERATOR: '  ' })).toThrow(AuthModeError);
   });
 
   it('rejects a missing or non-hostname serve host', () => {
-    expect(() => resolveTailnetConfig({ DASHBOARD_AUTH_MODE: 'tailnet' })).toThrow(AuthModeError);
+    expect(() => resolveTailnetConfig({ DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_OPERATOR: 'x@y' })).toThrow(AuthModeError);
     expect(() => resolveTailnetConfig({ ...TAILNET, DASHBOARD_TAILNET_HOST: 'https://kb.ts.net' })).toThrow(AuthModeError);
     expect(() => resolveTailnetConfig({ ...TAILNET, DASHBOARD_TAILNET_HOST: 'kb.ts.net/path' })).toThrow(AuthModeError);
   });
@@ -66,8 +75,13 @@ describe('assertAuthModeBoot', () => {
 
   it('REFUSES to start when the serve host is unconfigured', () => {
     expect(() => assertAuthModeBoot({
-      env: { DASHBOARD_AUTH_MODE: 'tailnet' }, bindHost: '127.0.0.1', platform: 'linux',
+      env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_OPERATOR: 'x@y' }, bindHost: '127.0.0.1', platform: 'linux',
     })).toThrow(AuthModeError);
+  });
+
+  it('SECURITY: REFUSES to start when the operator is unconfigured', () => {
+    const { DASHBOARD_TAILNET_OPERATOR: _omit, ...noOperator } = TAILNET;
+    expect(() => assertAuthModeBoot({ env: noOperator, bindHost: '127.0.0.1', platform: 'linux' })).toThrow(AuthModeError);
   });
 
   it('REFUSES to start on an unknown mode in any case', () => {

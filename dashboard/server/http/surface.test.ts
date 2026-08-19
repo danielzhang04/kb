@@ -1160,7 +1160,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
       { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
       {
         build: vi.fn().mockReturnValue(activatedTriple()) as never,
-        env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' },
+        env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' },
         createQueueBridge: createBridge as never,
       },
     );
@@ -1173,7 +1173,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
   it('tailnet mode installs the operator authenticator on the shared session config', () => {
     const ctx = makeSurfaceContext(
       { repoRoot: REPO_A, allowedOrigins: [GOOD_ORIGIN] },
-      { env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' } },
+      { env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' } },
     );
     expect(ctx.sessionConfig.operatorAuth).toBeDefined();
   });

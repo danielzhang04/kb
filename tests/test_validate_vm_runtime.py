@@ -18,6 +18,7 @@ Environment=KB_VM_RUNTIME=1
 Environment=GIT_CONFIG_GLOBAL=/dev/null
 Environment=DASHBOARD_AUTH_MODE=tailnet
 Environment=DASHBOARD_TAILNET_HOST=kb.tail82dd4f.ts.net
+Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com
 """
 
 
@@ -46,6 +47,23 @@ def test_effective_unit_rejects_a_non_tailnet_auth_mode():
         "Environment=DASHBOARD_AUTH_MODE=win32-desktop\n",
     )
     with pytest.raises(RuntimeError, match="auth mode"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_effective_unit_requires_the_pinned_operator():
+    # DASHBOARD_TAILNET_OPERATOR is REQUIRED, not optional — a unit missing it fails the closed-set check.
+    text = VALID_UNIT_TEXT.replace("Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com\n", "")
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("value", ["", "not-an-email", "has space@x.com"])
+def test_effective_unit_rejects_an_invalid_operator(value):
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com\n",
+        f"Environment=DASHBOARD_TAILNET_OPERATOR={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="tailnet operator|assignment set is not closed"):
         validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
@@ -222,7 +240,7 @@ def test_static_phase_accepts_the_tailnet_unit():
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
 
 
-@pytest.mark.parametrize("name", ["DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_TAILNET_OPERATOR"])
+@pytest.mark.parametrize("name", ["DASHBOARD_TAILNET_PROXY_UID"])
 def test_static_phase_accepts_the_optional_tailnet_names(name):
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT + f"Environment={name}=x\n")
 

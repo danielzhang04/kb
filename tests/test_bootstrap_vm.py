@@ -13,6 +13,7 @@ from scripts import backup_tier0
 
 
 TAILNET_HOST = "kb.tail82dd4f.ts.net"
+TAILNET_OPERATOR = "daniel.zhang.t1@gmail.com"
 
 
 @pytest.fixture(autouse=True)
@@ -38,14 +39,15 @@ def test_bootstrap_stops_old_service_before_clone_and_disables_remotes(tmp_path,
         commands.append(argv)
         return subprocess.CompletedProcess(argv, 0)
 
-    def install_validators(path, tailnet_host, run):
+    def install_validators(path, tailnet_host, tailnet_operator, run):
         assert run is fake_run
         assert tailnet_host == TAILNET_HOST
+        assert tailnet_operator == TAILNET_OPERATOR
         commands.append(["validators", str(path)])
 
     fake_run = run
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", install_validators)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, run=run)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
     clone_index = next(i for i, command in enumerate(commands) if command[:2] == ["git", "clone"])
     assert commands[0] == ["systemctl", "disable", "--now", "kb-dashboard.service"]
     assert clone_index > 0
@@ -67,7 +69,7 @@ def test_bootstrap_clones_before_transferring_ops_ownership(tmp_path, monkeypatc
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, run=run)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
 
     root_ops = ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/var/lib/kb/ops"]
     clone_index = commands.index(["git", "clone", "--branch", "ops", "--no-checkout", str(tmp_path / "ops.bundle"), "/var/lib/kb/ops"])
@@ -91,8 +93,8 @@ def test_bootstrap_reapplies_ops_git_identity_on_rerun(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, run=run)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, run=run)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
 
     assert commands.count(["git", "-C", "/var/lib/kb/ops", "config", "--replace-all", "user.email", "kb-dashboard@agents.local"]) == 2
     assert commands.count(["git", "-C", "/var/lib/kb/ops", "config", "--replace-all", "user.name", "kb-dashboard"]) == 2
@@ -112,7 +114,7 @@ def test_bootstrap_seeds_the_empty_control_plane_document(tmp_path, monkeypatch)
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm.os, "chmod", chmod)
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda argv, **kwargs: commands.append(argv))
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: commands.append(argv))
 
     assert (state_root / "control/control-plane.json").read_bytes() == b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"reviewLoops":[],"reviewReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
     assert ["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard", "-m", "0700", f"{state_root}/control"] in commands
@@ -127,10 +129,10 @@ def test_bootstrap_does_not_clobber_an_existing_control_plane_document(tmp_path,
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
     control_plane = state_root / "control/control-plane.json"
     control_plane.write_bytes(b'{"live":"state"}\n')
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
     assert control_plane.read_bytes() == b'{"live":"state"}\n'
 
@@ -142,7 +144,7 @@ def test_bootstrap_seed_passes_the_tier_zero_state_validator(tmp_path, monkeypat
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
     assert backup_tier0.validate_state_json(target) is True
 
@@ -155,7 +157,7 @@ def test_bootstrap_recovers_from_an_interrupted_control_plane_seed(tmp_path, mon
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
     assert (control / "control-plane.json").read_bytes() == bootstrap_vm.EMPTY_CONTROL_PLANE
     assert list(control.glob(".control-plane.json.*.tmp")) == []
@@ -214,7 +216,7 @@ def test_bootstrap_refuses_an_empty_existing_control_plane_document(tmp_path, mo
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     with pytest.raises(RuntimeError, match="control-plane state is corrupt"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda *args, **kwargs: None)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
 
 def test_bootstrap_refuses_a_truncated_existing_control_plane_document(tmp_path, monkeypatch):
@@ -225,7 +227,7 @@ def test_bootstrap_refuses_a_truncated_existing_control_plane_document(tmp_path,
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     with pytest.raises(RuntimeError, match="control-plane state is corrupt"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda *args, **kwargs: None)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
 
 def empty_control_plane_from_store_source(source: str) -> bytes:
@@ -290,7 +292,7 @@ def test_bootstrap_fails_if_the_installed_state_root_is_missing(tmp_path, monkey
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
 
     with pytest.raises(RuntimeError, match="state root was not created"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, run=lambda *args, **kwargs: None)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
 
 def test_data_patterns_are_closed_to_data_only_paths():
@@ -370,7 +372,7 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
         return os.open(path, os.O_CREAT | os.O_RDWR), str(path)
 
     monkeypatch.setattr(bootstrap_vm.tempfile, "mkstemp", mkstemp)
-    bootstrap_vm.install_root_validators(key_path, TAILNET_HOST, run=run)
+    bootstrap_vm.install_root_validators(key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
     assert ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/usr/local/lib/kb"] in commands
     for helper in ("activate_release.py", "apply_ops_reconciliation.py", "export_tier0.py"):
         assert any(
@@ -382,7 +384,7 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
     assert any(command[-1] == "/etc/systemd/system/kb-dashboard.service" for command in commands)
 
 
-def test_bootstrap_tailnet_host_installs_one_extra_root_owned_immutable_environment_line(tmp_path):
+def test_bootstrap_injects_the_tailnet_host_and_operator_lines(tmp_path):
     key_path = tmp_path / "release.pub"
     key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
     installed_unit = None
@@ -394,14 +396,15 @@ def test_bootstrap_tailnet_host_installs_one_extra_root_owned_immutable_environm
             assert argv[:7] == ["install", "-o", "root", "-g", "root", "-m", "0444"]
         return subprocess.CompletedProcess(argv, 0)
 
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, tailnet_host=TAILNET_HOST, run=run)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, tailnet_host=TAILNET_HOST, tailnet_operator=TAILNET_OPERATOR, run=run)
 
     assert b"Environment=DASHBOARD_TAILNET_HOST=kb.tail82dd4f.ts.net\n" in installed_unit
+    assert b"Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com\n" in installed_unit
     # The mode itself is static in the repo fragment, never injected.
     assert b"Environment=DASHBOARD_AUTH_MODE=tailnet\n" in installed_unit
 
 
-def test_bootstrap_installs_the_repo_fragment_plus_exactly_one_injected_line(tmp_path):
+def test_bootstrap_installs_the_repo_fragment_plus_exactly_two_injected_lines(tmp_path):
     key_path = tmp_path / "release.pub"
     key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
     installed_unit = None
@@ -412,14 +415,30 @@ def test_bootstrap_installs_the_repo_fragment_plus_exactly_one_injected_line(tmp
             installed_unit = Path(argv[-2]).read_bytes()
         return subprocess.CompletedProcess(argv, 0)
 
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, run=run)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
 
     fragment = (Path(bootstrap_vm.__file__).parent / "systemd/kb-dashboard.service").read_bytes()
-    injected = b"Environment=DASHBOARD_TAILNET_HOST=" + TAILNET_HOST.encode("ascii") + b"\n"
+    injected = (
+        b"Environment=DASHBOARD_TAILNET_HOST=" + TAILNET_HOST.encode("ascii") + b"\n"
+        + b"Environment=DASHBOARD_TAILNET_OPERATOR=" + TAILNET_OPERATOR.encode("ascii") + b"\n"
+    )
     assert installed_unit == fragment.replace(
         b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n",
         b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n" + injected,
     )
+
+
+@pytest.mark.parametrize("value", ["", "not-an-email", "has space@x.com"])
+def test_bootstrap_refuses_invalid_operator_before_running_commands(tmp_path, value):
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    with pytest.raises(ValueError, match="tailnet operator"):
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "unread.pub", TAILNET_HOST, value, run=run)
+    assert commands == []
 
 
 @pytest.mark.parametrize(
@@ -440,17 +459,27 @@ def test_bootstrap_refuses_invalid_tailnet_hosts_before_running_commands(tmp_pat
         return subprocess.CompletedProcess(argv, 0)
 
     with pytest.raises(ValueError, match="tailnet host"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "unread.pub", tailnet_host=value, run=run)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "unread.pub", tailnet_host=value, tailnet_operator=TAILNET_OPERATOR, run=run)
     assert commands == []
 
 
-def test_main_requires_and_passes_the_tailnet_host(monkeypatch):
+def test_main_requires_the_host_and_defaults_the_pinned_operator(monkeypatch):
     seen = []
-    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, tailnet_host: seen.append((ops_bundle, release_public_key, tailnet_host)))
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, tailnet_host, tailnet_operator: seen.append((ops_bundle, release_public_key, tailnet_host, tailnet_operator)))
     monkeypatch.setattr(sys, "argv", ["bootstrap_vm.py", "--ops-bundle", "ops.bundle", "--release-public-key", "release.pub", "--tailnet-host", TAILNET_HOST])
 
     assert bootstrap_vm.main() == 0
-    assert seen == [(Path("ops.bundle"), Path("release.pub"), TAILNET_HOST)]
+    # Operator defaults to the pinned identity when --tailnet-operator is omitted.
+    assert seen == [(Path("ops.bundle"), Path("release.pub"), TAILNET_HOST, TAILNET_OPERATOR)]
+
+
+def test_main_passes_an_explicit_operator(monkeypatch):
+    seen = []
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, tailnet_host, tailnet_operator: seen.append(tailnet_operator))
+    monkeypatch.setattr(sys, "argv", ["bootstrap_vm.py", "--ops-bundle", "o", "--release-public-key", "r", "--tailnet-host", TAILNET_HOST, "--tailnet-operator", "someone@else.com"])
+
+    assert bootstrap_vm.main() == 0
+    assert seen == ["someone@else.com"]
 
 
 def test_main_refuses_to_bootstrap_without_a_tailnet_host(monkeypatch):
