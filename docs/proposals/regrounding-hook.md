@@ -1,22 +1,91 @@
-# Proposal: re-grounding UserPromptSubmit hook (for Daniel to arm, if ever)
+# Proposal: re-grounding hook (for Daniel to arm, if ever)
 
 **Status:** PROPOSAL — inert, NOT wired into any live settings file.
-**Rework required before arming (Daniel ruling, 2026-08-19):** UserPromptSubmit-only is the
-wrong trigger set — it never fires mid-turn in an unsupervised run (one kickoff prompt, then
-hours of tool calls) and fires too often in interactive back-and-forth. Redesign to
-trigger+throttle: inject on `SessionStart(source: compact)` always (the post-compaction
-moment); inject on `PostToolUse` and `UserPromptSubmit` behind a shared state-file throttle
-(every N tool calls / skip if recently injected). Payload stays byte-stable (cache-safe).
-No timer-based compaction anywhere — the harness's fullness-triggered auto-compact remains
-the only compaction; this hook only re-grounds.
-**Built:** 2026-08-18, Agent Platform Wave 1, unit U7. Code: `scripts/hooks/regrounding_hook.js`.
-Tests: `tests/test_regrounding_hook.py`. Nothing in `.claude/settings.json`,
-`.claude/settings.local.json`, or `governance/**` was touched.
+**Rework ruling (Daniel, 2026-08-19):** The implemented design below uses post-compact
+injection plus a per-session trigger-and-throttle state file; it does not cause compaction.
+**Built:** 2026-08-18; reworked 2026-08-19, Agent Platform U7. Code:
+`scripts/hooks/regrounding_hook.js`. Tests: `tests/test_regrounding_hook.py`.
+Nothing in `.claude/settings.json`, `.claude/settings.local.json`, or `governance/**`
+was touched.
 
-## The change
+## Implemented design
 
-Add a `UserPromptSubmit` entry to the `hooks` object in `.claude/settings.json`
-(absolute-path `node` invocation, matching the four hooks already there):
+The hook reads its event JSON from stdin. It handles only these events:
+
+- `SessionStart` with `source: "compact"` always injects. A compaction has discarded
+  context, so this is the unthrottled re-grounding point; it also resets that session's
+  tool-call counter and injection time.
+- `PostToolUse` increments the session's tool-call counter, then injects if the counter
+  reaches the configured limit or the configured elapsed-time limit has passed.
+- `UserPromptSubmit` uses the same throttle without incrementing the counter.
+- Any other event, including a non-compact `SessionStart`, emits `{}`.
+
+The defaults are 25 tool calls (`KB_REGROUND_EVERY_CALLS`) or 30 minutes
+(`KB_REGROUND_EVERY_MINUTES`). Both overrides accept positive whole numbers. This is a
+re-grounding hook only: Claude Code's fullness-triggered auto-compaction remains the
+only compaction mechanism.
+
+Throttle state is stored at `%LOCALAPPDATA%/kb-regrounding/state.json`; tests and
+operators may override its directory with `KB_REGROUND_STATE_DIR`. The versioned state
+has a `sessions` map keyed only by a nonempty `session_id`. An event without an id is
+deliberately stateless: it injects without throttling and does not read, lock, or write
+the state directory. Injection is idempotent-safe; sharing mutable state between
+otherwise unrelated incomplete payloads is not.
+
+Missing or corrupt state means “never injected”, so the hook injects and best-effort
+initializes a fresh record. Unreadable or unwritable state has the same fail-open,
+silent behavior: output is still `{}` or an injection, exit is always 0, and stderr is
+empty. A nonblocking exclusive-create `state.lock` serializes state reads and updates;
+an observed lock older than one minute is treated as abandoned and recovered. On lock
+contention or any lock error, the hook injects but makes no state update. Writes use a
+temp file followed by rename so a completed update is atomic. A future
+`lastInjectionMs` is corrupt (for example, after a clock rollback), so it too is
+treated as never injected and reset by an injection.
+
+The injection payload is unchanged: the hook deterministically extracts the `## North
+star` and `## Invariants` sections from `KB_GOAL_STATE_PATH` (or the Wave 1 default),
+whitespace-collapses them in that order, and prefixes the single-sourced `GUARD_LINE`
+from `scripts/hooks/lib/hook_io.js`. State, time, session IDs, and counters never enter
+the payload, so identical source bytes produce byte-identical injection output.
+
+Missing/unreadable source, malformed stdin, missing sections, unknown events, and every
+escaped exception all produce `{}` with exit 0 and empty stderr.
+
+## Why
+
+An unsupervised run can have one kickoff prompt followed by hours of tool calls, while
+an interactive run can have frequent prompts. Post-tool counting covers the first case;
+the per-session throttle avoids excessive reinjection in the second. Compaction is the moment
+context is actually lost, so its `SessionStart` must always re-ground.
+
+## How to arm
+
+1. **Precondition — arm only after this branch merges to `main`.** The hook and its
+   goal-state source must exist at the registered absolute path before any settings edit.
+2. **Arming inverts the inert guards — retarget them in the same human settings edit.**
+   `tests/test_context_lifecycle_inert.py::test_no_hook_is_registered_in_any_settings_file`,
+   `tests/test_context_lifecycle_inert.py::test_no_live_settings_were_touched`, and
+   `tests/test_model_verify.py::test_the_u9_hook_family_is_inert` currently prove that
+   `.claude/**` was untouched. Change those assertions to allow exactly these three
+   registrations at the committed path, while retaining their protection for every other
+   hook and settings change.
+3. As a human edit, add these three entries to the `hooks` object in
+   `.claude/settings.json`. The absolute path is load-bearing because hook cwd is not
+   stable.
+
+```json
+"SessionStart": [
+  {
+    "matcher": "compact",
+    "hooks": [
+      {
+        "type": "command",
+        "command": "node \"C:/Users/danie/kb/scripts/hooks/regrounding_hook.js\""
+      }
+    ]
+  }
+]
+```
 
 ```json
 "UserPromptSubmit": [
@@ -31,109 +100,41 @@ Add a `UserPromptSubmit` entry to the `hooks` object in `.claude/settings.json`
 ]
 ```
 
-The absolute path is load-bearing: hooks run with an unpredictable cwd, and every
-existing kb hook is registered by absolute path. Do not relativize it.
-
-The hook emits the documented `UserPromptSubmit` structured-output shape:
-
 ```json
-{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"…"}}
+"PostToolUse": [
+  {
+    "hooks": [
+      {
+        "type": "command",
+        "command": "node \"C:/Users/danie/kb/scripts/hooks/regrounding_hook.js\""
+      }
+    ]
+  }
+]
 ```
 
-It reads its source file from `KB_GOAL_STATE_PATH`, defaulting to
-`<KB_ROOT or repo root>/docs/plans/2026-08-18-agent-platform-GOAL-STATE.md`, and
-deterministically extracts the `## North star` and `## Invariants` sections,
-whitespace-collapsed, in that order, behind a stale-replay guard line — the `GUARD_LINE`
-constant in `scripts/hooks/lib/hook_io.js` (see that file for the exact, single-sourced
-wording; it is not repeated verbatim here so there is only one place it can drift from).
-
-Every unhappy path (missing/unreadable source, empty or malformed stdin, no matching
-sections, any thrown error) emits `{}` with exit 0 and empty stderr — fail open, silent,
-same as `delivery_gate.js`.
-
-## Why
-
-- **Periodic re-grounding.** A long session drifts from — or compacts away — the goal
-  state it read at startup. Re-injecting the north star and the invariants at prompt
-  time is cheaper and more reliable than hoping the model re-reads the plan file.
-- **Cache-friendly stable prefix.** The output contains no timestamp, no randomness, and
-  no session or user data. Identical source bytes produce byte-identical output, so the
-  injected block stays a stable prompt prefix instead of busting the prompt cache on
-  every turn (asserted by `test_output_is_deterministic`).
-- **Guard against stale-replay.** The framing sentence marks the block as a refresh of
-  context the session already has, so a re-injected invariant is never read as a fresh
-  instruction arriving alongside the user's prompt.
-
-## How to arm
-
-1. **Precondition — arm only after this branch merges to `main`.** Both
-   `C:/Users/danie/kb/scripts/hooks/regrounding_hook.js` and the GOAL-STATE source doc
-   must exist in the main checkout. Arming while they live only on
-   `claude/agent-platform-w1` means `node` "Cannot find module" stderr noise on every
-   single prompt submission.
-2. **Arming inverts the inert-guard tests — retarget them in the same edit.** These
-   currently-green assertions exist to prove this hook is NOT armed, and go red the moment
-   it is: `tests/test_context_lifecycle_inert.py::test_no_hook_is_registered_in_any_settings_file`,
-   `tests/test_context_lifecycle_inert.py::test_no_live_settings_were_touched`, and
-   `tests/test_model_verify.py::test_the_u9_hook_family_is_inert`. That is correct — they
-   are inert guards, not general regression tests — but leaving them red afterward is not:
-   retarget each one, in the same edit that changes `.claude/settings.json`, to assert the
-   hook is registered **exactly once, at the committed path**, rather than not registered
-   at all.
-3. Apply the snippet above to `.claude/settings.json` (human edit — hooks config is
-   Daniel's to change).
-4. Restart the Claude Code session. Hooks are loaded at session start; an edited
-   settings file does **not** take effect in an already-running session.
-5. Confirm with a throwaway prompt that the session behaves normally (the hook is
-   additive; it cannot block a submission).
+4. Restart Claude Code; hooks load at session start. Then verify a compact, a prompt,
+   and a tool call all leave the session usable. The hook is additive and never blocks.
 
 ## How to disarm
 
-1. Delete the `"UserPromptSubmit"` key from `.claude/settings.json`.
-2. Restart the session.
+1. Delete all three registration keys from `.claude/settings.json`.
+2. Restart Claude Code.
 
-No other state exists — the hook writes nothing, keeps no cache, and touches no file.
-Deleting `scripts/hooks/regrounding_hook.js` while it is still registered would leave
-`node` failing per prompt, so remove the settings entry first.
+The state file is only a throttle cache; it may be left in place or deleted. Remove the
+settings entries before deleting the hook file, otherwise each configured event would
+invoke a missing `node` module.
 
 ## Verification
 
-```
-py -3 -m pytest tests/test_regrounding_hook.py -v
-```
-
-Five tests: valid `additionalContext` for a mock event against the real GOAL-STATE,
-byte-identical output across runs, missing source → exit 0 with no `additionalContext`
-and empty stderr, length cap holds on an oversized synthetic source, malformed stdin →
-exit 0 with no traceback.
-
-Manual smoke test:
-
-```
-echo '{"hook_event_name":"UserPromptSubmit","user_prompt":"go"}' | node scripts/hooks/regrounding_hook.js
+```text
+py -3 -m pytest tests/test_regrounding_hook.py tests/test_context_lifecycle_inert.py -q
+py -3 -m pytest tests/test_model_verify.py::test_the_u9_hook_family_is_inert -q
 ```
 
-## Open decision-notes (all unresolved — reasons this stays inert)
-
-- **Cap value.** `MAX_CONTEXT_CHARS = 1700` (~425 tokens). Measured against the current
-  source: North star 941 chars + Invariants 526 + labels, separators, and the guard line
-  ≈ 1630, so both sections now fit **whole** — no clipping. The earlier provisional 1400
-  did bind, and it clipped exactly the wrong text (the scope guardrails at the end of the
-  North star). The cap stays only to bound pathological sources. When it does bind, the
-  hook water-fills — each section gets an equal share, sections needing less release the
-  surplus — so both section labels always survive and only bodies are trimmed (with
-  `...`). Re-measure if the GOAL-STATE grows; a permanently-truncated north star is worse
-  than none.
-- **Injection cadence.** Currently every prompt. Every-N-turns (or first-prompt-after-
-  compaction only) would cut the per-turn cost, but the hook has no session state and
-  the harness passes no turn counter, so any cadence needs either a session-id-keyed
-  state file or a runtime feature that does not exist yet. Decide before arming.
-- **Target scope.** Fleet-wide (`.claude/settings.json`) versus boss-only. Recommend
-  narrow first: arm it in one operator's `settings.local.json` for a week, measure
-  whether drift actually drops, then consider fleet-wide. A fleet-wide arm injects the
-  block into every subagent turn as well, which is where the cost multiplies.
-- **Dated-filename staleness.** The default source is
-  `docs/plans/2026-08-18-agent-platform-GOAL-STATE.md` — a dated, wave-scoped file. Armed
-  as-is it would keep re-injecting Wave 1's goal state long after Wave 1 closes. A stable
-  "latest GOAL-STATE" pointer (symlink, `docs/plans/GOAL-STATE.md`, or an explicit
-  `KB_GOAL_STATE_PATH` in the settings `env` block) must exist before this is ever armed.
+The hook suite has nineteen behaviors: valid extraction, deterministic payload, missing
+source, cap, malformed stdin, unknown-event no-op, compact reset, Nth post-tool
+injection, prompt-window skip, elapsed-time injection, corrupt-state fail-open,
+unwritable-state silence, stateless missing-session injection, exact time-window
+boundaries, backward-clock recovery, payload equality across event metadata and throttle
+paths, stale-lock recovery, and two-process lock contention.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb re-grounding UserPromptSubmit hook — INERT (not wired into any settings file).
+ * kb re-grounding hook — INERT (not wired into any settings file).
  *
  * Provenance:
  *   pattern: ecc@2.0.0 session-start STALE-REPLAY GUARD (concept, not code)
@@ -9,20 +9,22 @@
  * Purpose:
  *   Re-inject the governing "north star" context a long-running session already had
  *   at startup but has drifted from (or compacted away), as structured
- *   additionalContext on UserPromptSubmit.
+ *   additionalContext after compaction and at a bounded cadence during a session.
  *
  * Status:
  *   INERT. Nothing in .claude/settings*.json references this file. The exact
- *   settings snippet that WOULD arm it lives in docs/proposals/regrounding-hook.md
- *   together with the open decision-notes (cap value, cadence, scope, staleness).
+ *   settings snippet that WOULD arm it lives in the "Implemented design" section of
+ *   docs/proposals/regrounding-hook.md.
  *
  * Contract:
  *   - Reads env: KB_GOAL_STATE_PATH (default:
  *     <KB_ROOT or repo root resolved from this script>/docs/plans/
- *     2026-08-18-agent-platform-GOAL-STATE.md), KB_ROOT.
- *   - Reads stdin JSON ({hook_event_name, user_prompt, ...}).
+ *     2026-08-18-agent-platform-GOAL-STATE.md), KB_ROOT,
+ *     KB_REGROUND_STATE_DIR, KB_REGROUND_EVERY_CALLS, and
+ *     KB_REGROUND_EVERY_MINUTES.
+ *   - Reads stdin JSON ({hook_event_name, session_id, source, ...}).
  *   - Emits to stdout, always exit 0, stderr always empty:
- *       {"hookSpecificOutput":{"hookEventName":"UserPromptSubmit",
+ *       {"hookSpecificOutput":{"hookEventName":"<triggering event>",
  *        "additionalContext":"<block>"}}
  *     or the no-op "{}" when there is nothing safe/useful to inject.
  *   - Fail open + silent on EVERY unhappy path (empty/malformed stdin, missing or
@@ -51,6 +53,13 @@ const WANTED_SECTIONS = ["North star", "Invariants"];
 // separators) while still bounding pathological sources — see
 // docs/proposals/regrounding-hook.md decision-notes.
 const MAX_CONTEXT_CHARS = 1700;
+
+const DEFAULT_EVERY_CALLS = 25;
+const DEFAULT_EVERY_MINUTES = 30;
+const STATE_FILE = "state.json";
+const LOCK_FILE = "state.lock";
+const STATE_VERSION = 1;
+const STALE_LOCK_MS = 60 * 1000;
 
 // Stale-replay guard: tells the model this is a refresh of context it already has, so it is never
 // read as a fresh instruction arriving with the user's prompt.
@@ -155,11 +164,143 @@ function buildBlock(source) {
   return truncateTo(block, MAX_CONTEXT_CHARS);
 }
 
-function main() {
-  // Reads stdin, parses it, and confirms the event name. Empty/closed stdin, malformed JSON, or a
-  // payload naming a different event all fail open ("{}", exit 0) inside this call.
-  io.readEventFor("UserPromptSubmit");
+function positiveEnvInt(name, fallback) {
+  const raw = process.env[name];
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) return fallback;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
 
+function stateDirectory() {
+  if (process.env.KB_REGROUND_STATE_DIR) return process.env.KB_REGROUND_STATE_DIR;
+  return process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "kb-regrounding") : null;
+}
+
+function statePath(directory) {
+  return directory ? path.join(directory, STATE_FILE) : null;
+}
+
+function lockPath(directory) {
+  return directory ? path.join(directory, LOCK_FILE) : null;
+}
+
+function readState(directory) {
+  const filename = statePath(directory);
+  if (!filename) return null;
+  try {
+    const state = JSON.parse(fs.readFileSync(filename, "utf8"));
+    if (!state || typeof state !== "object" || Array.isArray(state) || state.version !== STATE_VERSION ||
+        !state.sessions || typeof state.sessions !== "object" || Array.isArray(state.sessions)) {
+      return null;
+    }
+    return state;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function recordFor(state, key) {
+  if (!state) return null;
+  const record = state.sessions[key];
+  if (!record || typeof record !== "object" || !Number.isFinite(record.lastInjectionMs) ||
+      record.lastInjectionMs < 0 || !Number.isSafeInteger(record.toolCallsSinceInjection) ||
+      record.toolCallsSinceInjection < 0) {
+    return null;
+  }
+  return record;
+}
+
+/** Atomically replace the state file while the caller holds the state lock. */
+function writeState(directory, state) {
+  const filename = statePath(directory);
+  let temporary = null;
+  if (!filename) return false;
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+    temporary = `${filename}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(temporary, JSON.stringify(state), "utf8");
+    fs.renameSync(temporary, filename);
+    return true;
+  } catch (_err) {
+    try {
+      if (temporary) fs.unlinkSync(temporary);
+    } catch (_cleanupError) {
+      // A stale temp file is less important than preserving fail-open hook behavior.
+    }
+    return false;
+  }
+}
+
+/**
+ * Take a nonblocking cross-process lock. A lock older than one minute is abandoned
+ * by a crashed hook and retried once. Any uncertainty is contention: callers inject
+ * without state rather than risking an unsafe concurrent update.
+ */
+function acquireStateLock(directory) {
+  const filename = lockPath(directory);
+  if (!filename) return null;
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+  } catch (_err) {
+    return null;
+  }
+
+  function createLock() {
+    try {
+      const fd = fs.openSync(filename, "wx");
+      fs.closeSync(fd);
+      return "acquired";
+    } catch (err) {
+      try {
+        // If close failed after creation, do not leave a lock we cannot safely own.
+        if (err && err.code !== "EEXIST") fs.unlinkSync(filename);
+      } catch (_closeError) {
+        // The lock was not acquired safely, so fall through as contention.
+      }
+      return err && err.code === "EEXIST" ? "exists" : "error";
+    }
+  }
+
+  const initial = createLock();
+  if (initial !== "acquired") {
+    if (initial !== "exists") return null;
+    try {
+      const age = Date.now() - fs.statSync(filename).mtimeMs;
+      if (age > STALE_LOCK_MS) {
+        fs.unlinkSync(filename);
+        if (createLock() !== "acquired") return null;
+      } else {
+        return null;
+      }
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  return () => {
+    try {
+      fs.unlinkSync(filename);
+    } catch (_err) {
+      // A stale lock is recoverable on the next event; hook output stays fail-open.
+    }
+  };
+}
+
+function sessionKey(event) {
+  return typeof event.session_id === "string" && event.session_id ? event.session_id : null;
+}
+
+/** Test-only clock seam. Invalid values deliberately use the real clock. */
+function currentTimeMs() {
+  const raw = process.env.KB_REGROUND_NOW_MS;
+  if (typeof raw === "string" && /^\d+$/.test(raw)) {
+    const value = Number(raw);
+    if (Number.isSafeInteger(value)) return value;
+  }
+  return Date.now();
+}
+
+function loadBlock() {
   const root = process.env.KB_ROOT || path.resolve(__dirname, "..", "..");
   const sourcePath =
     process.env.KB_GOAL_STATE_PATH ||
@@ -169,15 +310,67 @@ function main() {
   try {
     source = fs.readFileSync(sourcePath, "utf8");
   } catch (_err) {
-    noop(); // missing or unreadable source -> fail open
+    return null;
+  }
+  return buildBlock(source);
+}
+
+function inject(event, block) {
+  if (!block) noop(); // missing source or no matching sections -> fail open
+  io.emitContext(event.hook_event_name, block);
+}
+
+function main() {
+  const event = io.parseEvent(io.readStdin());
+  const eventName = event && event.hook_event_name;
+  if (eventName !== "SessionStart" && eventName !== "UserPromptSubmit" && eventName !== "PostToolUse") {
+    noop();
   }
 
-  const block = buildBlock(source);
-  if (!block) {
-    noop(); // no matching sections -> nothing worth injecting
+  const key = sessionKey(event);
+  const block = loadBlock();
+  if (!block) noop();
+
+  // A missing id must never make unrelated sessions share mutable state. It is deliberately
+  // unthrottled: injection is idempotent-safe, and this path does no state or lock I/O.
+  if (!key) inject(event, block);
+
+  const directory = stateDirectory();
+  const release = acquireStateLock(directory);
+  // Lock contention (and every lock error) is fail-open: inject, but do not write state.
+  if (!release) inject(event, block);
+
+  let shouldInject = false;
+  try {
+    const now = currentTimeMs();
+    const state = readState(directory) || { version: STATE_VERSION, sessions: {} };
+    const record = recordFor(state, key);
+
+    // A compact has discarded context. A missing/corrupt/future timestamp is also untrustworthy,
+    // so each is treated as never injected and reset to the deterministic clock value.
+    if (eventName === "SessionStart" || !record || record.lastInjectionMs > now) {
+      state.sessions[key] = { lastInjectionMs: now, toolCallsSinceInjection: 0 };
+      writeState(directory, state);
+      shouldInject = true;
+    } else {
+      const everyCalls = positiveEnvInt("KB_REGROUND_EVERY_CALLS", DEFAULT_EVERY_CALLS);
+      const everyMinutes = positiveEnvInt("KB_REGROUND_EVERY_MINUTES", DEFAULT_EVERY_MINUTES);
+      const calls = record.toolCallsSinceInjection + (eventName === "PostToolUse" ? 1 : 0);
+      if (calls >= everyCalls || now - record.lastInjectionMs >= everyMinutes * 60 * 1000) {
+        state.sessions[key] = { lastInjectionMs: now, toolCallsSinceInjection: 0 };
+        writeState(directory, state);
+        shouldInject = true;
+      } else if (eventName === "PostToolUse") {
+        state.sessions[key] = { lastInjectionMs: record.lastInjectionMs, toolCallsSinceInjection: calls };
+        writeState(directory, state);
+      }
+    }
+  } finally {
+    release();
   }
 
-  io.emitContext("UserPromptSubmit", block);
+  if (shouldInject) inject(event, block);
+  noop();
 }
 
 // Belt and braces: this hook never breaks a prompt submission — any escaped throw becomes "{}".
