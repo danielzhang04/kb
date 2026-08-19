@@ -1,0 +1,2 @@
+worker	project	task_type	tier	card_id	score	pass	rubric_version	inspector_id	ts
+demo-agent	kb-ops	maintenance	T1	card-demo	72	false	1	inspector@agents.local	2026-08-19T06:00:00+00:00
