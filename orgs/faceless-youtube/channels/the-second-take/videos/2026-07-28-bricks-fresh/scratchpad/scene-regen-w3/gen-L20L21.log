@@ -1,0 +1,5 @@
+  [1/2] L20: START provider call
+  [1/2] L20: OK -> _staging/L20.png
+  [2/2] L21: START provider call
+  [2/2] L21: OK -> _staging/L21.png
+  == 2 generated, 0 failed, 0 skipped, 0 held for review ==

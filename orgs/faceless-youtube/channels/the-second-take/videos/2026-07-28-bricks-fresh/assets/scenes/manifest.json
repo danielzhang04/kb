@@ -760,7 +760,7 @@
   {
    "shot_id": "L02",
    "file": "assets/scenes/L02.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd) -- v2 doctrine regen",
    "seeds": [
     {
      "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
@@ -771,15 +771,15 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "r1 defect (fidelity: unrequested lettering) fixed by exact replace -- from: \"with a cropped ticket-booth corner stage-left\" -> to: \"with a cropped ticket-booth corner stage-left, its window glass bare and blank, no signage, no lettering, no text of any kind on the booth\" (changed_spans: 1)",
+   "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). RETRY overlay `L02-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L02-fix-w2.png to canonical assets/scenes/L02.png. sha256=046946793d1ac5519c3d068ae9c70b40807486a9e0254a41a6bc4fca8e553d03."
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json."
   },
   {
    "shot_id": "L06",
    "file": "assets/scenes/L06.png",
-   "technique": "(b) Seeded composition -- locked character(s) in composed environment",
+   "technique": "(b) Seeded composition -- locked prop in composed environment (crowd) -- v2 doctrine regen",
    "seeds": [
     {
      "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
@@ -798,7 +798,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). Re-authoring recast this shot's subject from `pc-boxy` to plain `prop-beige-pc` (unpersonified-object convention, matching L08/L15) -- seeds updated accordingly from the stale pre-re-author entry. `prop-beige-pc` match-prop canonical + crowd-exemplar seeded. Round-1 clean, no retry needed. sha256=ed1aed150e0e7c2ee97e8e5e8f60e95bb9d1ae56183ef975289f5668bfcb2ecb."
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json."
   },
   {
    "shot_id": "L09",
@@ -860,10 +860,10 @@
   {
    "shot_id": "L20",
    "file": "assets/scenes/L20.png",
-   "technique": "(b) Seeded composition — locked character(s) in composed environment (crowd)",
+   "technique": "(b) Seeded composition -- locked character(s) in composed environment (crowd) [supply-stall stage BASE] -- v2 doctrine regen, STEP-1 figure re-minted (costume-digest change)",
    "seeds": [
     {
-     "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-present--expr-smug--5e51ec13.png",
+     "path": "_staging/fig-drive-maker--action-present--expr-smug--eedf2a89.png",
      "role": "figure",
      "character": "drive-maker"
     },
@@ -877,14 +877,14 @@
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "`drive-maker` STEP-1 fig-drive-maker--action-present--expr-smug--5e51ec13 REUSED",
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
    "parent_depth": 0,
    "lineage": 0
   },
   {
    "shot_id": "L21",
    "file": "assets/scenes/L21.png",
-   "technique": "(e) Seeded delta-chain — supply-stall delta",
+   "technique": "(e) Seeded delta-chain -- supply-stall delta -- v2 doctrine regen, parent is the FRESH same-wave L20 (discarded a stale-parent-contaminated first attempt)",
    "seeds": [
     {
      "path": "_staging/L20.png",
@@ -906,7 +906,7 @@
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "`drive-maker` delta -> parent + canonical",
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
    "parent_depth": 1,
    "lineage": 1
   },
@@ -1014,7 +1014,7 @@
   {
    "shot_id": "L11",
    "file": "assets/scenes/L11.png",
-   "technique": "(b) Seeded composition — locked character in composed environment [bedside-table stage BASE]",
+   "technique": "(b) Seeded composition -- locked character in composed environment [bedside-table stage BASE] -- v2 doctrine regen",
    "seeds": [
     {
      "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
@@ -1036,7 +1036,7 @@
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L11.png",
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
    "parent_depth": 0,
    "lineage": 0
   },
@@ -1154,7 +1154,7 @@
   {
    "shot_id": "L03",
    "file": "assets/scenes/L03.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd) -- v2 doctrine regen, ONE sanctioned content retry",
    "seeds": [
     {
      "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
@@ -1165,15 +1165,15 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "r1 defect (rig: crowd hair/head-tone bounded-variety over the 2-3 cap) fixed by exact replace -- from: \"foreground a wall of raised applauding hands and shoulders fills the lower third, midground\" -> to: \"...fills the lower third, every crowd figure sharing the same two flat head tones and the same one repeating hairstyle silhouette across the whole group, midground\" (changed_spans: 1)",
+   "retry_cause": "rig FAIL: bald near-foreground crowd heads drew a `C`-shaped ear mark + nose bump at extreme close crop (bible S3 no-nose/no-ears); surgically rewrote the 'foreground a cropped band of near heads...' clause to state flat/featureless cheeks explicitly at that crop scale. Verified clean after retry (ear/nose gone, 4-digit hands confirmed).",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). RETRY overlay `L03-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L03-fix-w2.png to canonical assets/scenes/L03.png. sha256=add3397af9d76af1d037f389e25d4d7982b5823917af469afaa55f71f9edfeb5."
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame; ONE sanctioned content retry applied and verified clean."
   },
   {
    "shot_id": "L04",
    "file": "assets/scenes/L04.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(c) Character-free scene -- cast-free composition (lettering + style tile) -- v2 doctrine regen",
    "seeds": [
     {
      "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
@@ -1189,10 +1189,10 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "r1 defects (fidelity: unrequested 'SALE' tag; style: '1983' lettering in a digital/printed font, not marker-hand; rig: shutter drawn with hairline ridge lines finer than rig outline) fixed by ONE combined exact replace spanning the shutter/cartons/lettering clauses (changed_spans: 1) -- see retry-overlay-wA.json#L04 for the full from/to.",
+   "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). LETTERING -- text-bearing prompt; SS5 exemplar `lettering-marker-italic` derived. STYLE TILE -- cast-free frame; SS5 anchor `scene-style-tile` derived. RETRY overlay `L04-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L04-fix-w2.png to canonical assets/scenes/L04.png. sha256=cb6f36a550e4d59ecee01dad21aa03ad3841ff2be348081eedce066ad28fc947."
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json."
   },
   {
    "shot_id": "L05",
@@ -1221,7 +1221,7 @@
   {
    "shot_id": "L07",
    "file": "assets/scenes/L07.png",
-   "technique": "(b) Seeded composition -- locked character(s) in composed environment",
+   "technique": "(b) Seeded composition -- locked prop in composed environment (crowd) -- v2 doctrine regen, ONE sanctioned content retry",
    "seeds": [
     {
      "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
@@ -1237,10 +1237,10 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "fidelity+rig FAIL: crowd rendered at near-named-cast scale filling both frame flanks (violated 'clearly smaller crowd... at the far side') with individuated angry brows/open-shout mouths per figure (violated crowd-rig uniform-simple-face invariant); surgically rewrote the 'background at the far side of those tables...' clause with explicit relative-scale anchor (roughly a third the counter unit's height, packed into one tight distant knot, never spreading to the side edges) and explicit uniform-face restatement, dropping the mood adjective that was driving individuated expressions. Verified clean after retry.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). Subject is `prop-beige-pc` (unpersonified object) per re-authored still_prompt, not pc-boxy as the stale pre-re-author entry had. `prop-beige-pc` match-prop canonical + crowd-exemplar seeded. Round-1 clean, no retry needed. sha256=ca3c647a717ef9e34f8cfdfe580662a3efdefc176dbd3fb4d4eaedb5b95a0dd8."
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame; ONE sanctioned content retry applied and verified clean."
   },
   {
    "shot_id": "L08",
@@ -1288,7 +1288,7 @@
   {
    "shot_id": "L16",
    "file": "assets/scenes/L16.png",
-   "technique": "(b) Seeded composition — locked characters in composed environment [pc-ring stage BASE; FIRST rival-pc appearance]",
+   "technique": "(b) Seeded composition -- locked characters in composed environment [pc-ring stage BASE] -- v2 doctrine regen",
    "seeds": [
     {
      "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
@@ -1315,14 +1315,14 @@
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "why: `pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L16.png",
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
    "parent_depth": 0,
    "lineage": 0
   },
   {
    "shot_id": "L17",
    "file": "assets/scenes/L17.png",
-   "technique": "(e) Seeded delta-chain — in-chain parent + held canonicals [pc-ring stage DELTA]",
+   "technique": "(e) Seeded delta-chain -- in-chain parent + held canonicals [pc-ring stage DELTA] -- v2 doctrine regen, parent is the FRESH same-wave L16",
    "seeds": [
     {
      "path": "_staging/L16.png",
@@ -1349,7 +1349,7 @@
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "why: `pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L17.png",
+   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
    "parent_depth": 1,
    "lineage": 1
   }

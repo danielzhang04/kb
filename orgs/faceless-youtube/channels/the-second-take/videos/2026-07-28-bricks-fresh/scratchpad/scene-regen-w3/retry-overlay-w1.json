@@ -1,0 +1,26 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L03",
+      "name": "L03-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "foreground a cropped band of near heads and raised hands along the very bottom edge;",
+        "to": "foreground a cropped band of near heads and raised hands along the very bottom edge, each near head drawn perfectly flat and featureless at the cheek even this close -- dot eyes and one simple mouth ONLY, absolutely no nose bump and no ear mark of any kind on any near head;"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L07",
+      "name": "L07-w3retry1",
+      "defect": "content",
+      "replace": {
+        "from": "background at the far side of those tables, a clearly smaller crowd gathers around the far till in overlapping ranks, banknotes held out over the heads in front and boxed units already going back the other way, faces eager and impatient.",
+        "to": "background at the far side of those tables, a distinctly SMALL crowd -- each head no more than a third the height of the counter unit in the foreground, packed into one tight distant knot around the far till and never spreading to the frame's side edges -- gathers in overlapping ranks, every face the SAME flat simplified crowd rig (identical dot eyes, one identical closed simple mouth, no individuated brows, no scowls, no shouting mouths), banknotes held out over the heads in front and boxed units already going back the other way."
+      }
+    }
+  ]
+}

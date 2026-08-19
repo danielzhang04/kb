@@ -1,0 +1,11 @@
+{
+  "figures": {
+    "_staging/fig-drive-maker--action-present--expr-smug--eedf2a89.png": {
+      "canonical_sha256": "8f77fbb6b3cd7f378a80202cd62e7f4689e3228a5f9eb630c415b552c5241760",
+      "expression_sha256": null,
+      "verdicts": {"rig": "pass", "expression-register": "pass", "flat-cel-hazard": "pass"},
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-19"
+    }
+  }
+}

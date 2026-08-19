@@ -1,0 +1,18 @@
+[
+  {
+    "id": "L03",
+    "worst": "clean",
+    "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3), post-retry: ONE sanctioned content retry applied after the first attempt showed a rig FAIL -- bald near-foreground crowd heads (bottom-edge crop) carried a drawn C-shaped ear mark and a small nose bump, visible on crop-check. Retry surgically restated the foreground-band clause to force flat/featureless cheeks at that crop scale; re-crop-checked the retry frame at 2x and 5x zoom -- ear/nose gone, dot eyes + simple mouth only, 4-digit hands confirmed (thumb + 3 fingers) on the raised near hands. Fidelity: cropped near-heads band, receding banquet tables shrinking correctly with distance, velvet rope + honey-gold curtain, blank unlettered display board + empty lectern all present exactly as authored. Palette: honey-gold/cream/muted-burgundy, warm chestnut shadow, no unmotivated cool.",
+    "r": "clean",
+    "f": "clean",
+    "s": "clean"
+  },
+  {
+    "id": "L07",
+    "worst": "clean",
+    "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3), post-retry: ONE sanctioned content retry applied after the first attempt showed a compound FAIL -- crowd rendered at near-named-cast scale filling both frame flanks (violating the still_prompt's 'clearly smaller crowd... at the far side of those tables') with individuated angry brows and open-shout mouths per figure (violating the crowd-rig uniform-simple-face invariant). Retry surgically restated the background clause with an explicit relative-scale anchor and explicit uniform-face restatement, dropping the mood adjective that was driving per-figure expressiveness while keeping the load-bearing money/boxes fact intact. Re-crop-checked the retry frame: crowd now reads distinctly smaller/farther, faces uniform (dot eyes, closed/small-open mouth, no brows), bounded head-tone variety. prop-beige-pc canonical match preserved in the near plane throughout.",
+    "r": "clean",
+    "f": "clean",
+    "s": "clean"
+  }
+]

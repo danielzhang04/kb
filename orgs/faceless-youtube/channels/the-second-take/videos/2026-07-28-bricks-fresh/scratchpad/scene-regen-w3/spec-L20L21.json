@@ -1,0 +1,80 @@
+[
+  {
+    "name": "L20",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set. The SECOND image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\n`drive-maker`, `expr-smug`, `action-present`, stands behind a plank counter stage-right, holding a pick and a shovel out across it toward the diggings. A wide three-quarter view leaves generous pale sky above the canvas awning and holds the whole supply stall at a muddy creek bend: foreground a tall tool rack and cropped water butt overlap the lower-left; midground the counter, sacks and tin lanterns beside the open creek; background on the far side of the creek, a clearly smaller crowd of hopeful prospectors in muddy hats and mud-caked coats labours in overlapping depth, the nearer line working pans behind reeds and sluice frames while farther figures push wheelbarrows among canvas tents and spoil heaps. Ochre, warm brown, canvas cream and worn green under hard high sun. The held pick and shovel dominate the near plane while the labouring line stays small and receding across the creek.",
+    "payload": "`drive-maker`, `expr-smug`, `action-present`, stands behind a plank counter stage-right, holding a pick and a shovel out across it toward the diggings. A wide three-quarter view leaves generous pale sky above the canvas awning and holds the whole supply stall at a muddy creek bend: foreground a tall tool rack and cropped water butt overlap the lower-left; midground the counter, sacks and tin lanterns beside the open creek; background on the far side of the creek, a clearly smaller crowd of hopeful prospectors in muddy hats and mud-caked coats labours in overlapping depth, the nearer line working pans behind reeds and sluice frames while farther figures push wheelbarrows among canvas tents and spoil heaps. Ochre, warm brown, canvas cream and worn green under hard high sun. The held pick and shovel dominate the near plane while the labouring line stays small and receding across the creek.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-present--expr-smug--eedf2a89.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-present--expr-smug--eedf2a89.png",
+        "role": "figure",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--action-present--expr-smug--eedf2a89 REUSED"
+  },
+  {
+    "name": "L21",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change. Never the pose, and never the face: the parent image owns it outright. The THIRD image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\n`drive-maker`, `expr-smug`, `action-present`, remains behind the plank counter stage-right with the pick and shovel held out, in the same wide three-quarter stall view with generous pale sky, tool rack and water butt foreground, counter and open creek midground. On the far side of the creek, the clearly smaller crowd of hopeful prospectors remains in overlapping depth behind reeds and sluice frames, working pans nearer and pushing wheelbarrows among tents and spoil heaps farther back. Ochre, warm brown, canvas cream and worn green under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin; everything else exactly as established.",
+    "payload": "`drive-maker`, `expr-smug`, `action-present`, remains behind the plank counter stage-right with the pick and shovel held out, in the same wide three-quarter stall view with generous pale sky, tool rack and water butt foreground, counter and open creek midground. On the far side of the creek, the clearly smaller crowd of hopeful prospectors remains in overlapping depth behind reeds and sluice frames, working pans nearer and pushing wheelbarrows among tents and spoil heaps farther back. Ochre, warm brown, canvas cream and worn green under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L20.png",
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L20.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`drive-maker` delta -> parent + canonical"
+  }
+]

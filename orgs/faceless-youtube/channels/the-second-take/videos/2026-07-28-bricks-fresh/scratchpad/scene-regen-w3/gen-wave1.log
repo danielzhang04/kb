@@ -1,0 +1,22 @@
+  [1/11] L02: START provider call
+  [1/11] L02: OK -> _staging/L02.png
+  [2/11] L03: START provider call
+  [2/11] L03: OK -> _staging/L03.png
+  [3/11] L04: START provider call
+  [3/11] L04: OK -> _staging/L04.png
+  [4/11] L06: START provider call
+  [4/11] L06: OK -> _staging/L06.png
+  [5/11] L07: START provider call
+  [5/11] L07: OK -> _staging/L07.png
+  [6/11] L11: START provider call
+  [6/11] L11: OK -> _staging/L11.png
+  [7/11] L16: START provider call
+  [7/11] L16: OK -> _staging/L16.png
+  [8/11] L17: START provider call
+  [8/11] L17: OK -> _staging/L17.png
+  [9/11] fig-drive-maker--action-present--expr-smug--eedf2a89: START provider call
+  [9/11] fig-drive-maker--action-present--expr-smug--eedf2a89: OK -> _staging/fig-drive-maker--action-present--expr-smug--eedf2a89.png
+  [10/11] L20: skip (seed awaits review) — L20: figure `fig-drive-maker--action-present--expr-smug--eedf2a89` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [11/11] L21: START provider call
+  [11/11] L21: OK -> _staging/L21.png
+  == 10 generated, 0 failed, 0 skipped, 1 held for review ==

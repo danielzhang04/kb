@@ -1,0 +1,5 @@
+  [1/2] L03-retry1: START provider call
+  [1/2] L03-retry1: OK -> _staging/L03-retry1.png
+  [2/2] L07-w3retry1: START provider call
+  [2/2] L07-w3retry1: OK -> _staging/L07-w3retry1.png
+  == 2 generated, 0 failed, 0 skipped, 0 held for review ==
