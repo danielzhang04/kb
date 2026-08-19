@@ -1,9 +1,19 @@
+import hashlib
 from pathlib import Path
 
 import pytest
 import yaml
 
 import cards
+
+
+def _hash_tree(root: Path) -> dict:
+    """Content hash of every file under ``root``, keyed by relative path."""
+    return {
+        str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
 
 
 POLICY = """\
@@ -251,3 +261,82 @@ def test_failed_write_removes_only_factory_paths_created_by_this_run(tmp_path, m
     assert not (tmp_path / "agents" / "rollback-agent.md").exists()
     assert not (tmp_path / "memory").exists()
     assert not (tmp_path / "evals").exists()
+
+
+def test_pre_existing_eval_suite_is_adopted_not_refused(tmp_path):
+    """Reproduces the live defect: a hand-built evals/agents/<id>/ (as in
+    commit d65f34ab) must not block `new` when the agent/memory files don't
+    yet exist. The suite directory must come out byte-for-byte identical."""
+    from scripts.agent_factory import create_agent
+
+    _seed_policy(tmp_path)
+    suite_dir = tmp_path / "evals" / "agents" / "demo-agent"
+    suite_dir.mkdir(parents=True)
+    (suite_dir / "smoke.md").write_text("hand-built smoke eval\n", encoding="utf-8")
+    (suite_dir / "MANIFEST.sha256").write_text("deadbeef  smoke.md\n", encoding="utf-8")
+    before = _hash_tree(suite_dir)
+
+    created = create_agent(tmp_path, "demo-agent", role="work")
+
+    after = _hash_tree(suite_dir)
+    assert after == before  # suite dir byte-untouched: no README written, nothing modified
+    assert created.adopted_eval_suite is True
+    assert created.definition.exists()
+    assert created.memory.exists()
+    assert created.definition.read_text(encoding="utf-8").startswith("---\nid: demo-agent\n")
+    assert created.memory.read_text(encoding="utf-8") == "# memory: demo-agent\n"
+    assert not (suite_dir / "README.md").exists()
+
+
+def test_pre_existing_eval_suite_does_not_block_when_def_and_memory_absent_but_still_refuses_on_definition(tmp_path):
+    from scripts.agent_factory import create_agent
+
+    _seed_policy(tmp_path)
+    suite_dir = tmp_path / "evals" / "agents" / "demo-agent"
+    suite_dir.mkdir(parents=True)
+    (tmp_path / "agents").mkdir()
+    (tmp_path / "agents" / "demo-agent.md").write_text("existing definition", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        create_agent(tmp_path, "demo-agent", role="work")
+
+
+def test_pre_existing_eval_suite_does_not_block_but_existing_memory_still_refuses(tmp_path):
+    from scripts.agent_factory import create_agent
+
+    _seed_policy(tmp_path)
+    suite_dir = tmp_path / "evals" / "agents" / "demo-agent"
+    suite_dir.mkdir(parents=True)
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "memory" / "demo-agent.md").write_text("existing memory", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        create_agent(tmp_path, "demo-agent", role="work")
+
+
+def test_rollback_after_adoption_leaves_the_suite_intact(tmp_path, monkeypatch):
+    """If a later write (e.g. memory) fails, rollback must not delete the
+    adopted (pre-existing) suite directory or any file inside it."""
+    from scripts.agent_factory import create_agent
+
+    _seed_policy(tmp_path)
+    suite_dir = tmp_path / "evals" / "agents" / "demo-agent"
+    suite_dir.mkdir(parents=True)
+    (suite_dir / "smoke.md").write_text("hand-built smoke eval\n", encoding="utf-8")
+    before = _hash_tree(suite_dir)
+
+    original_write_text = Path.write_text
+
+    def fail_memory_write(path, contents, *args, **kwargs):
+        if path.name == "demo-agent.md" and path.parent.name == "memory":
+            raise OSError("simulated write failure")
+        return original_write_text(path, contents, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_memory_write)
+    with pytest.raises(OSError, match="simulated write failure"):
+        create_agent(tmp_path, "demo-agent", role="work")
+
+    assert suite_dir.is_dir()
+    assert _hash_tree(suite_dir) == before  # adopted suite untouched by rollback
+    assert not (tmp_path / "agents" / "demo-agent.md").exists()
+    assert not (tmp_path / "memory").exists()

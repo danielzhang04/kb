@@ -33,13 +33,19 @@ DEFAULT_TIER = "T1"
 
 @dataclass(frozen=True)
 class CreatedAgent:
-    """The paths created by one factory invocation."""
+    """The paths created by one factory invocation.
+
+    ``eval_readme``/``smoke_eval`` are the suite's canonical paths regardless
+    of adoption; when ``adopted_eval_suite`` is True neither was written by
+    this run (a pre-existing ``evals/agents/<id>/`` was adopted verbatim).
+    """
 
     definition: Path
     memory: Path
     eval_readme: Path
     smoke_eval: Path
     draft: Path | None
+    adopted_eval_suite: bool = False
 
 
 def _validate_value(field: str, value: str) -> str:
@@ -232,28 +238,38 @@ def create_agent(
     smoke_eval = eval_dir / "smoke.md"
     draft = (root / "queue" / "drafts" / f"{agent_id}-governance.md"
              if grader or needs_routing_override else None)
-    targets = [definition, memory, eval_dir, eval_readme, smoke_eval]
+    # Only agents/<id>.md and memory/<id>.md gate creation. A pre-existing
+    # evals/agents/<id>/ (e.g. hand-built ahead of the factory, see
+    # commit d65f34ab) is ADOPTED below rather than refused: the factory
+    # never overwrites or supplements a suite it did not create.
+    targets = [definition, memory]
     if draft is not None:
         targets.append(draft)
     existing = next((path for path in targets if path.exists()), None)
     if existing is not None:
         raise FileExistsError(existing)
 
+    adopted_eval_suite = eval_dir.exists()
+
     created_files: list[Path] = []
     created_directories: list[Path] = []
     try:
         _mkdir(definition.parent, created_directories)
         _mkdir(memory.parent, created_directories)
-        _mkdir(eval_dir, created_directories)
+        write_targets = [
+            (definition, _agent_definition(agent_id, role, selected_runtime, chosen_model, project_list)),
+            (memory, f"# memory: {agent_id}\n"),
+        ]
+        if not adopted_eval_suite:
+            _mkdir(eval_dir, created_directories)
+            write_targets.append(
+                (eval_readme, f"# {agent_id} eval suite\n\nFactory scaffold; human promotion is required before use as a golden suite.\n")
+            )
+            write_targets.append((smoke_eval, _smoke_eval(agent_id)))
         if draft is not None:
             _mkdir(draft.parent, created_directories)
 
-        for path, contents in (
-            (definition, _agent_definition(agent_id, role, selected_runtime, chosen_model, project_list)),
-            (memory, f"# memory: {agent_id}\n"),
-            (eval_readme, f"# {agent_id} eval suite\n\nFactory scaffold; human promotion is required before use as a golden suite.\n"),
-            (smoke_eval, _smoke_eval(agent_id)),
-        ):
+        for path, contents in write_targets:
             created_files.append(path)
             path.write_text(contents, encoding="utf-8")
         if draft is not None:
@@ -266,7 +282,7 @@ def create_agent(
         _rollback(created_files, created_directories)
         raise
 
-    return CreatedAgent(definition, memory, eval_readme, smoke_eval, draft)
+    return CreatedAgent(definition, memory, eval_readme, smoke_eval, draft, adopted_eval_suite)
 
 
 def main() -> int:
@@ -286,9 +302,14 @@ def main() -> int:
         Path.cwd(), args.agent_id, role=args.role, runtime=args.runtime, model=args.model,
         projects=args.projects, grader=args.grader, needs_routing_override=args.needs_routing_override,
     )
-    for path in (created.definition, created.memory, created.eval_readme, created.smoke_eval, created.draft):
+    for path in (created.definition, created.memory, created.draft):
         if path is not None:
             print(path)
+    if created.adopted_eval_suite:
+        print(f"adopted existing eval suite: evals/agents/{args.agent_id}/")
+    else:
+        print(created.eval_readme)
+        print(created.smoke_eval)
     if created.draft is not None:
         print(f"Publish this draft verbatim to ops after human review: {created.draft}")
     print(
