@@ -53,7 +53,13 @@ import type { GitRunner } from './branch.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { ownerLiveness } from '../runner/liveness.ts';
-import type { OwnerLiveness, SchtasksRunner, LivenessCache } from '../runner/liveness.ts';
+import type {
+  LivenessCache,
+  OwnerLiveness,
+  ProcessStartTimeReader,
+  RunnerStateReader,
+  SchtasksRunner,
+} from '../runner/liveness.ts';
 import { defaultOwnerActivity } from './ownerActivity.ts';
 import type { OwnerActivity, OwnerActivityReader } from './ownerActivity.ts';
 
@@ -169,6 +175,8 @@ export interface StrandedArchiveDeps {
   /** Owner-offline probe (VETO ONLY); default wraps {@link ownerLiveness} over the schtasks/cache seams. */
   liveness?: LivenessProbe;
   schtasksRun?: SchtasksRunner;
+  runnerState?: RunnerStateReader;
+  runnerProcessStartTime?: ProcessStartTimeReader;
   livenessCache?: LivenessCache;
   platform?: NodeJS.Platform;
   env?: Record<string, string | undefined>;
@@ -215,6 +223,8 @@ export async function archiveStrandedCards(deps: StrandedArchiveDeps): Promise<S
   const ownerActivity = deps.ownerActivity ?? ((owner, repoRoot) => defaultOwnerActivity(owner, repoRoot));
   const liveness: LivenessProbe = deps.liveness ?? ((owner, card) => ownerLiveness(owner, card, {
     run: deps.schtasksRun,
+    readState: deps.runnerState,
+    processStartTime: deps.runnerProcessStartTime,
     cache: deps.livenessCache,
     now: deps.now ? () => deps.now!().getTime() : undefined,
     platform: deps.platform,

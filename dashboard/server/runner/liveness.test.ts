@@ -15,6 +15,17 @@ function win32(run: LivenessDeps['run'], extra: Partial<LivenessDeps> = {}): Liv
   return { platform: 'win32', now: () => 1_000_000, cache: new Map() as LivenessCache, run, ...extra };
 }
 
+function linux(extra: Partial<LivenessDeps> = {}): LivenessDeps {
+  return {
+    platform: 'linux',
+    now: () => 1_000_000,
+    cache: new Map() as LivenessCache,
+    readState: () => ({ pid: 42, startTime: 99 }),
+    processStartTime: () => 99,
+    ...extra,
+  };
+}
+
 const READY = 'TaskName: \\kb-codex-runner\r\nStatus:                Ready\r\nLogon Mode:            Interactive/Background\r\n';
 const RUNNING = 'TaskName: \\kb-codex-runner\r\nStatus:                Running\r\n';
 const DISABLED = 'TaskName: \\kb-codex-runner\r\nStatus:                Disabled\r\n';
@@ -76,9 +87,45 @@ describe('ownerLiveness', () => {
     expect(run).not.toHaveBeenCalled(); // never probes a task it has no closed-map name for
   });
 
-  it('off win32 never probes schtasks and reports no known consumer', () => {
+  it('on Linux requires both a recorded pid and matching process start time', () => {
+    expect(ownerLiveness('codex-worker', card(), linux())).toEqual({
+      consumer: 'runner-process',
+      online: true,
+      detail: 'runner kb-codex-runner is running (pid 42)',
+    });
+    expect(ownerLiveness('codex-worker', card(), linux({ processStartTime: () => 100 }))).toEqual({
+      consumer: 'runner-process',
+      online: false,
+      detail: 'runner kb-codex-runner is not running',
+    });
+  });
+
+  it('on Linux treats absent state as an offline known runner', () => {
+    expect(ownerLiveness('codex-worker', card(), linux({ readState: () => null }))).toEqual({
+      consumer: 'runner-process',
+      online: false,
+      detail: 'runner kb-codex-runner is not running',
+    });
+  });
+
+  it('on Linux caches the pid/start-time probe within the TTL', () => {
+    const readState = vi.fn(() => ({ pid: 42, startTime: 99 }));
+    const readStartTime = vi.fn(() => 99);
+    const deps = linux({ readState, processStartTime: readStartTime });
+    expect(ownerLiveness('codex-worker', card(), deps)).toEqual(ownerLiveness('codex-worker', card(), deps));
+    expect(readState).toHaveBeenCalledOnce();
+    expect(readStartTime).toHaveBeenCalledOnce();
+  });
+
+  it('on Linux does not probe state for an unbound owner', () => {
+    const readState = vi.fn();
+    expect(ownerLiveness('other', card(), linux({ readState }))).toMatchObject({ consumer: 'none', online: false });
+    expect(readState).not.toHaveBeenCalled();
+  });
+
+  it('on unsupported platforms never probes schtasks and reports no known consumer', () => {
     const run = vi.fn(() => READY);
-    const result = ownerLiveness('codex-worker', card(), { platform: 'linux', run, cache: new Map() });
+    const result = ownerLiveness('codex-worker', card(), { platform: 'darwin', run, cache: new Map() });
     expect(result.consumer).toBe('none');
     expect(result.online).toBe(false);
     expect(run).not.toHaveBeenCalled();

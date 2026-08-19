@@ -6,6 +6,7 @@ scripts/test_codex_dispatch_reconcile.py`); the root conftest puts scripts/ on
 sys.path.
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -132,6 +133,7 @@ def _tasklist(monkeypatch, stdout="", rc=0, raises=None):
     monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows tasklist probe")
 def test_pid_alive_parses_the_tasklist_row(monkeypatch):
     _tasklist(monkeypatch, '"python.exe","4242","Console","1","57,392 K"\n')
     assert codex_dispatch.pid_alive(4242)
@@ -148,6 +150,7 @@ def test_pid_alive_does_not_match_a_memory_column(monkeypatch):
     assert not codex_dispatch.pid_alive(345)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows tasklist probe")
 def test_pid_alive_fails_safe_when_the_probe_cannot_run(monkeypatch):
     """A probe we cannot run must never manufacture an orphan for a live leg."""
     _tasklist(monkeypatch, raises=FileNotFoundError("tasklist"))

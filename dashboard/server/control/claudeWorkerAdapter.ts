@@ -24,7 +24,7 @@
  */
 import { spawn as spawnChildProcess } from 'node:child_process';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
-import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from '../pty/host.ts';
+import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from './childEnv.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
 import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles } from './environment.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';

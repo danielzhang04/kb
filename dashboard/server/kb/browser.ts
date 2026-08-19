@@ -17,7 +17,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
-import { isAbsolute, join, relative as relativePath, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative as relativePath, resolve, sep, win32 } from 'node:path';
 
 export class PathEscapeError extends Error {
   constructor(relpath: string) {
@@ -58,9 +58,9 @@ const HIDDEN = new Set(['.git', 'node_modules', 'dist']);
  */
 export function resolveWithin(repoRoot: string, relpath: string): string {
   if (relpath.includes('\0')) throw new PathEscapeError(relpath);
-  // Reject absolute inputs outright (POSIX `/etc`, Windows `C:\`, UNC `\\host`). `isAbsolute`
-  // on win32 treats a leading `/` as absolute too, which is the behaviour we want.
-  if (isAbsolute(relpath)) throw new PathEscapeError(relpath);
+  // Reject absolute inputs outright under both host and Windows semantics (POSIX `/etc`,
+  // Windows `C:\`, rooted `\path`, and UNC `\\host`) regardless of the daemon's host OS.
+  if (isAbsolute(relpath) || win32.isAbsolute(relpath)) throw new PathEscapeError(relpath);
 
   const root = resolve(repoRoot);
   const target = resolve(root, relpath);

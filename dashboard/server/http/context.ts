@@ -24,7 +24,12 @@ import type { VibeSpawner } from '../vibe/session.ts';
 import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
 import type { ComposerWorkspaceStore } from '../composer/store.ts';
 import type { RunnerTrigger } from '../runner/trigger.ts';
-import type { LivenessCache, SchtasksRunner } from '../runner/liveness.ts';
+import type {
+  LivenessCache,
+  ProcessStartTimeReader,
+  RunnerStateReader,
+  SchtasksRunner,
+} from '../runner/liveness.ts';
 import type { ControlPlaneStore } from '../control/store.ts';
 import type { ManagedSessionBroker } from '../control/broker.ts';
 import type {
@@ -166,6 +171,9 @@ export interface SurfaceContext {
    *  a recording fake in tests; production leaves it undefined and `ownerLiveness` shells the real
    *  `schtasks /Query`. Never involves a credential. */
   schtasksRun?: SchtasksRunner;
+  /** Linux detached-runner state and /proc probes. */
+  runnerState?: RunnerStateReader;
+  runnerProcessStartTime?: ProcessStartTimeReader;
   /** Per-context TTL cache backing the liveness probe, created once per process in `makeSurfaceContext`
    *  (so a slow schtasks is queried at most once per TTL across responds) and fresh per test context. */
   livenessCache?: LivenessCache;

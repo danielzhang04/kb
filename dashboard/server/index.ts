@@ -185,7 +185,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerPlaneA(scope, repoRoot);
     registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
-    registerAgents(scope, repoRoot);
+    registerAgents(scope, repoRoot, undefined, surfaceCtx.runtimeCapabilities);
     registerPanels(scope, repoRoot);
     registerWorkflows(scope, surfaceCtx);
   });
@@ -265,7 +265,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       runPy: surfaceCtx.runPy,
       appendAuditLocal: surfaceCtx.appendAuditLocal,
       schtasksRun: surfaceCtx.schtasksRun,
+      runnerState: surfaceCtx.runnerState,
+      runnerProcessStartTime: surfaceCtx.runnerProcessStartTime,
       livenessCache: surfaceCtx.livenessCache,
+      platform: surfaceCtx.runtimeCapabilities.platform,
       now: surfaceCtx.now,
       dryRun: resolveStrandedArchiveDryRun(),
       windowMs: resolveStrandedArchiveWindowMs(),
