@@ -1,0 +1,228 @@
+# Agent-Building Infrastructure — Design Spec
+
+Date: 2026-08-18 · Branch: `claude/agent-platform-w1` · Status: DRAFT (gates on Daniel's review)
+
+## Goal
+
+Every kb agent — Claude or codex, interactive or scheduled — automatically HAS a shared,
+versioned infrastructure kit (context doctrine, spin-up guidelines, standard loops,
+self-learning rules); Daniel can spin up a new agent in one step with all of it pre-wired,
+measure any agent with task-specific evals, and dispatch agents on repeated schedules
+managed from the dashboard. Editing the kit once changes every agent's next run.
+
+**Success condition:** the P6 platform proof — a factory-spawned demo agent receives the
+rendered kit in both runtimes (via the render artifact; the U7/U9 hooks remain INERT until
+Daniel's separate arming ceremony) and runs its eval suite into the pinned grades ledger,
+all on the isolated display dashboard, with zero API spend. Scheduling is proven by the
+cron/dedup/narration test fixtures plus the Schedules panel over the live read-only
+cadences — NOT by committing a demo cadence: coordination writes stay off the work branch
+(branch rules), so the first live scheduled fire happens after merge, when Daniel commits
+a cadence block through the panel's PR flow. (Amended at P6 after the arc goal audit
+flagged the original wording's conflict with the branch rules; Daniel ratifies at review.)
+
+## Non-goals (YAGNI — ruled out deliberately)
+
+- Claude Code plugin packaging for the kit (unreachable from codex workers; duplicates `scripts/sync_skills.py`).
+- Any change to the pinned grade-row schema in `scripts/grade.py` (a golden canary asserts extras are rejected).
+- Versioned worker identities (`agent@vN` as ledger `worker`) — would reset `promotion.py` autonomy streaks.
+- A dashboard-owned schedule store (would mint standing authorization without a human commit).
+- An LLM memory reconciler (deterministic `scripts/dream.py` already owns consolidation; extraction stays in `session_miner.py` / Loop B).
+- Per-block *token* accounting (no tokenizer in-repo; `count_tokens` is metered). Budgets are bytes.
+- Config-fork A/B infrastructure, full Temporal policy matrix, paid external tools.
+- Catch-up/replay of missed schedule occurrences and any calendar DSL beyond 5-field cron
+  (Claude routines ship without them; Codex Automations' attempt is their open-bug farm).
+
+## Grounding
+
+Inputs: Claude Agent SDK architecture study + agent-framework landscape study (Letta,
+LangGraph, OpenAI Agents SDK, inspect-ai, promptfoo, mem0, Temporal/Airflow, plugins,
+AGENTS.md), synthesized and then adversarially reviewed fresh-context against kb ground
+truth (verdict SOUND-WITH-CHANGES; all three blockers + majors incorporated below).
+Standing rulings: kit referenced not copied; OSS lifting only; subscription-only billing;
+task-specific evals per agent; scheduling managed via dashboard UI; anti-duplication is law.
+
+---
+
+## §1 Kit — content model
+
+**Location:** in-repo, versioned by git. Two parts:
+
+- `skills/curated/` — executable skills (existing home, existing promotion gate).
+- `kit/` (new, repo root) — doctrine and context blocks every agent loads.
+
+**Block format:** one markdown file per block with frontmatter:
+
+```yaml
+---
+name: <kebab-slug>
+description: <one line — ALWAYS loaded, the router>
+when: <trigger condition — task kinds / projects / runtimes this block applies to>
+audience: all | claude | codex | <agent-id list>
+read_only: true|false        # true = doctrine; assembly refuses agent-authored edits
+budget_bytes: <int>          # hard ceiling; assembly truncation is an ERROR, not silent
+---
+<body>
+```
+
+**Progressive disclosure (three levels):**
+- L1: every block's `description` line — always in every agent's context (~1 line each).
+- L2: block bodies — loaded only when `when` matches the dispatch (routing, not load-everything).
+- L3: scripts — never loaded as text; agents run them and only the *output* enters context.
+
+**Initial blocks (content, not code):** spin-up doctrine (preamble, branch rules, worktree
+leases), context-refresh doctrine (when to re-ground, what to drop), standard loops (which
+loop types an agent runs and when to wake a human), lesson-writing doctrine (append-only,
+least-general file), file-editing rules (edit core logic, cross-file consistency, no bloat,
+slim files), dispatch/spin-up guidelines for sub-work.
+
+**Precedence — two laws, stated in the kit's root block:**
+1. *Routing* (which instruction applies): nearest scope wins — card > agent def > org contract > kit default.
+2. *Authorization* (what is allowed): most-restrictive wins — CLAUDE.md hard ceiling and
+   `governance/**` are outermost AND strongest; contracts narrow, never widen; `## Evidence` is inert.
+   Nothing nearer may relax an outer restriction.
+
+**Kit ↔ context store:** the kit renderer produces a repo-level static artifact
+(`kit/.rendered/<audience>.md`, regenerated by the sync step, gitignored) whose sections
+include `## North star` and `## Invariants` — the two headings U7's extractor actually
+consumes (`## Current gate` has no consumer; dropped). U8 session stores are per-session
+with their own PostToolUse writer — the kit render is NOT written into them; the inert U7
+seam may consume the artifact's headings when Daniel arms it. No parallel manifest store,
+no writer contention with U8.
+
+## §2 Delivery — how agents get the kit
+
+- **Mechanism:** extend `scripts/sync_skills.py` (authoritative source → SHA-256
+  `MANIFEST.json` → byte-identical projections into `.claude/skills/` AND `.agents/skills/`;
+  `--check` drift gate already in nightly-review) to also project `kit/`. Kit entries get
+  their own manifest namespace (`kit:<name>`) and project to non-skill dirs
+  (`.claude/kb-kit/`, `.agents/kb-kit/`) so skill loaders never misparse them (no SKILL.md
+  requirement). Both runtimes reach it; codex workers read repo files fine.
+- **Version = git SHA.** An agent's kit version is the commit its branch was cut from; "change
+  once, all change" = merge the kit edit; rollback = git. No install/pin machinery.
+- **Spawn injection:** the existing U9 spawn context-load hook seam (INERT until Daniel arms
+  it per its runbook) injects L1 descriptions + matched L2 bodies at spawn. Codex workers get
+  the same content prepended by `codex_dispatch.py` from the same rendered artifact — one
+  renderer, two transports.
+- **Envelope vs context pack:** card frontmatter is already the machine-only run envelope
+  (id, owner, schedule, tier); the kit render is the model-visible context pack. The renderer
+  never serializes frontmatter into context; budgets apply to the pack only.
+
+## §3 Factory — one-step agent creation
+
+`scripts/agent_factory.py new <id> --role <role> ...` produces, in one run:
+
+- `agents/<id>.md` — in the CANONICAL shape of the live defs in `agents/` (the U3 six-field
+  schema stays what it is today: optional advisory fields, not a new required shape), kit
+  reference (not copy), declared autonomy ceiling (advisory), model default resolved by the
+  existing role×tier policy in `governance/model-routing.yaml`.
+- `memory/<id>.md` — seeded empty with the lesson-writing header.
+- `evals/agents/<id>/` — suite skeleton (§4) with at least one golden task.
+- Tests asserting the def parses through the existing roster loader.
+- **A queued card** (ops) for the human-edited half — ONLY when genuinely needed: a known-role
+  agent under existing role×tier policy needs no governance edit (per-agent overrides live in
+  `queue/routing-override.yaml`, not governance); the card fires only for a new role/model or
+  a grader (`governance/graders.yaml`). The factory NEVER writes `governance/**`.
+
+Worker identity is stable for life — config changes never rename the `worker` field anywhere.
+Attribution of "which kit/def version did this run use" goes on the *card* (def commit SHA),
+never into the grades ledger.
+
+## §4 Evals — per-agent, on existing canary machinery
+
+- **Reuse the PATTERN, extend the machinery honestly:** `canary.py`'s runner and manifest
+  today cover `evals/canaries/*.md` only. Agent suites need (a) a new runner path over
+  `evals/agents/<id>/` and (b) manifest coverage extended to them — same golden-card,
+  stable-id, `MANIFEST.sha256` tamper-refusal, human-gated re-bless discipline, new scope.
+- **New:** `evals/agents/<id>/` suites = golden task cards specific to that agent's job
+  (dataset + scorer fixed; the "solver" is the agent at whatever kit/def SHA runs).
+- **Model-judge tier sits OUTSIDE the hermetic runner** (canary.py's invariant is
+  no-model-calls and stays so): a separate subscription `claude -p` judge step whose verdict
+  lands through `scripts/grade.py`'s pinned schema (explanation in the card `## Result`).
+- **Eval grades must not feed autonomy.** Eval rows use a reserved namespace —
+  `worker: eval-suite`, `task_type: eval:<agent>:<suite>` (the canary.py pattern) — so
+  `promotion.status()`, keyed on `(worker, project, task_type, tier)`, can never count an
+  agent's own suite toward its `acts-alone` streak. Guarded by a canary.
+- **Fleet baseline suite:** asserts every agent inherits — no credential objects, no push to
+  main, lesson appended, cost ledgered under cap.
+- **Trigger:** a NEW kit-aware trigger (the existing `diff_guard` lists only `evals/` paths
+  and exits blocking) — a report-only wrapper that maps kit/doctrine/agent-def diffs to the
+  affected suites and runs them: a red suite blocks nothing automatically and never
+  remediates (loop-design-check #3); manifest re-blessing stays a human act.
+
+## §5 Scheduler — repeated dispatch, dashboard-managed, human-authorized
+
+- **Mechanism layer stays:** `HEARTBEAT.md` cadence blocks + `scripts/dispatch.py` `due()` as
+  the single clock; overlap-skip (per-day dedup), `queue/paused/<name>` sentinels, retry/
+  dead-letter all exist — extended, not shadowed.
+- **New in `due()` — copied from Claude Code routines, deliberately that simple:** the
+  `schedule:` string additionally accepts standard 5-field cron (`schedule: "3 7 * * mon,thu"`,
+  local timezone) alongside the existing `daily|weekly:<day>` forms. No calendar DSL, no
+  catch-up-window machinery: the fire rule is the routines rule verbatim — when the
+  dispatcher ticks, a cadence fires AT MOST ONCE if an occurrence has passed since its last
+  fire; missed occurrences are skipped, never replayed. The occurrence window closes at
+  local midnight: an occurrence with no dispatcher tick before day-end is gone (cron
+  granularity is bounded by tick frequency — deliberate, no cross-day ledger reads). (Codex Automations' undocumented
+  catch-up/overlap semantics are their open-bug farm — evidence this is the part NOT to
+  build.) Dedup key = last-fired occurrence, generalizing the existing per-day dedup.
+  Timing stays INSIDE `schedule:` — never sibling YAML keys — because
+  `promotion._cadence_matches` byte-compares the pinned cadence fields
+  (`name, schedule, tier, risk-tier, prompt`): ANY re-timing voids standing authorization
+  automatically. Guarded by a canary (a re-timed cadence must drop to `queues-for-me`).
+  Back-compatible: all SIX live blocks (root HEARTBEAT.md ×4, `orgs/atlas-prep` ×1,
+  `orgs/kb-ops` ×1) parse byte-unchanged, including the assertion that bare
+  `schedule: weekly` stays NON-firing as today.
+- **Stamps:** every dispatched card records `scheduled_for` AND `dispatched_at` (a catch-up
+  run knows which occurrence it is).
+- **Dashboard = editor, never owner:** a Schedules panel that (a) renders every declared
+  cadence (all HEARTBEAT files, root + orgs) with next-fire/last-result/paused state,
+  (b) lets Daniel compose or edit a block and routes it through the EXISTING governed-save
+  path (`write/governedSave.ts` + `branch.ts`: durable content → work branch → PR, hooks
+  active, never auto-merged) so authorization remains "a human merged it to main",
+  byte-compared by `promotion._standing_authorized` — no new diff-emitter is built, and
+  (c) can CREATE a pause sentinel (pausing is safe; `branch.ts` already classifies
+  `queue/paused/**` as a coordination write). UNPAUSING/ARMING stays a manual ops act —
+  sentinel deletion is deliberately not scriptable per the loops arc, and `loopStatus.ts`
+  stays read-only with its tripwire test.
+- **Narration:** scheduled runs keep the loops-arc contract — first `## Result` line is the
+  human-voiced "Hey — <found>. <did>. Needs you: <what/nothing>." surfaced by the loop-status
+  panel feed; the Schedules panel reuses that feed, one vocabulary.
+
+## §6 Self-learning integration (no new machinery)
+
+Extraction = `session_miner.py` / Loop B (append-only proposals, human promotes).
+Consolidation = `scripts/dream.py` (deterministic, no apply path). The kit adds the
+*doctrine* (when to write lessons, where, in what shape) — it adds no new memory engine.
+(The five-value approval vocabulary from the research is DROPPED from this arc: card states
+are pinned in `governance/card-schema.md`, human-edited only — if wanted later it's a
+separate governance proposal.) Everything upstream of a human gate must be idempotent
+(safe to re-run after an interrupt).
+
+## §7 Build rules (binding on every unit in P3–P5)
+
+1. **Probe first:** every unit opens with an anti-duplication SPEC probe — if kb already
+   provides it, the unit shrinks to wiring or dies.
+2. Edit core logic in place; keep behavior consistent across files; never bolt on.
+3. Slim files, no dead info, no speculative config.
+4. Workers never commit; the boss commits after reviews.
+5. Every unit: fresh-context opus unit Inspector (deterministic + adversarial) + fresh-context
+   opus goal Auditor; every subagent model transcript-verified; retry cap 2 → BLOCKED.
+6. Coordination writes → ops branch per constitution; `governance/**` untouched by any worker.
+7. Testing is empirical and platform-borne: unit tests per change PLUS the P6 end-to-end
+   proof on the isolated :4630 display dashboard.
+
+## §8 Sequencing
+
+P3 Kit + delivery → P4 Factory + evals → P5 Scheduler + surfaces → P6 platform proof.
+(P3 before P4 because the factory wires kit references; P5 independent after P3, may
+interleave. Wave-2 leftovers that intersect — brain sidecar, north-star writer — fold into
+P3's kit-renderer unit rather than running separately.)
+
+## Acceptance for the arc
+
+1. `kit/` blocks exist with valid frontmatter; assembly enforces `read_only` + byte budgets (error, not truncation); sync `--check` green for both runtime projections under the `kit:` manifest namespace.
+2. Kit render artifact carries `## North star` + `## Invariants`; U7's extractor consumes it with zero U7 edits (existing test extended, not weakened); U7/U8/U9 remain INERT — arming is Daniel's separate ceremony, not an arc deliverable.
+3. `agent_factory.py new demo-agent` yields def (canonical live shape) + memory + suite + tests green; governance card queued only if an override/grader entry is genuinely needed; roster loader lossless.
+4. Demo agent eval suite runs (deterministic runner + one model-judged task via `claude -p` outside the hermetic runner); grades land through unchanged `grade.py` in the reserved eval namespace; a canary proves NO eval row can move `promotion.status()` toward `acts-alone`; extra-field rejection canary still green.
+5. `due()` parses 5-field cron in `schedule:` AND all SIX live blocks (three HEARTBEAT files) byte-unchanged, bare `weekly` still non-firing; missed occurrences skip (never replay — test proves a 2-day gap fires exactly once); `scheduled_for`/`dispatched_at` stamped; a canary proves re-timing ANY schedule-bearing field voids standing authorization (drops to `queues-for-me`).
+6. Schedules panel renders all cadences; edits route through `governedSave` (work branch → PR, never auto-merged, never writes HEARTBEAT directly); panel can create pause sentinels but cannot delete them; `loopStatus.ts` read-only tripwire still green; narration feed shows the demo agent's scheduled run.
+7. $0 API spend; no writes to `governance/**` or the grades schema by any worker; all reviews model-verified.

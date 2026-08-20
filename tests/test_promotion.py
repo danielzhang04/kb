@@ -303,6 +303,44 @@ def test_untrusted_inspector_rows_ignored(tmp_path):
     assert d["autonomy"] == "queues-for-me"
 
 
+def test_status_rejects_reserved_eval_suite_and_eval_namespace_rows():
+    rows = _rows("T1", [100] * 10,
+                 worker=promotion.EVAL_WORKER,
+                 task_type="eval:demo-agent:smoke")
+    assert promotion.status(promotion.EVAL_WORKER, "p", "eval:demo-agent:smoke",
+                            "T1", rows, frozen=False) == promotion.QUEUES_FOR_ME
+
+    namespace_rows = _rows("T1", [100] * 10, task_type="eval:demo-agent:smoke")
+    assert promotion.status("w", "p", "eval:demo-agent:smoke", "T1",
+                            namespace_rows, frozen=False) == promotion.QUEUES_FOR_ME
+
+    card_rows = _rows("T1", [100] * 10)
+    for row in card_rows:
+        row["card_id"] = "eval:demo-agent:smoke"
+    assert promotion.status("w", "p", "tt", "T1", card_rows,
+                            frozen=False) == promotion.QUEUES_FOR_ME
+
+
+def test_reserved_eval_suite_rows_are_excluded_from_disk_and_injected_promotion_input(tmp_path):
+    (tmp_path / "governance").mkdir()
+    (tmp_path / "governance" / "graders.yaml").write_text(
+        "graders:\n  - inspector\n", encoding="utf-8")
+    for i in range(10):
+        ledger.append(tmp_path, "grades", "inspector",
+                      _grow(worker=promotion.EVAL_WORKER,
+                            task_type="eval:demo-agent:smoke", tier="T1",
+                            score=100, ts=f"{i:03d}"))
+
+    assert promotion.trusted_grades(tmp_path) == []
+    injected = _rows("T1", [100] * 10, worker=promotion.EVAL_WORKER,
+                     task_type="eval:demo-agent:smoke")
+    decision = promotion.decide({"name": "x", "risk-tier": "T1"}, tmp_path,
+                                worker=promotion.EVAL_WORKER, project="p",
+                                task_type="eval:demo-agent:smoke", grades_rows=injected,
+                                frozen=False, standing_authorized=False)
+    assert decision["autonomy"] == "queues-for-me"
+
+
 def test_assurance_class_values_are_in_the_named_set():
     assert promotion.ASSURANCE_CLASSES == frozenset(
         {"acts-alone", "possession-eligible", "T3-novel", "T3-established", "signed-only"})

@@ -44,6 +44,8 @@ import yaml
 AUTONOMOUS = "autonomous"
 QUEUES_FOR_ME = "queues-for-me"
 ACTS_ALONE = "acts-alone"
+EVAL_WORKER = "eval-suite"
+_RESERVED_EVAL_KEYS = ("task_type", "card_id", "kind")
 
 # --- the precise, named assurance-class set (Task 2.4 consumes these) --------
 ASSURANCE_CLASSES = frozenset({
@@ -92,6 +94,25 @@ def _passed(value) -> bool:
 
 def _row_key(row: dict) -> tuple:
     return (row.get("worker"), row.get("project"), row.get("task_type"), row.get("tier"))
+
+
+def _is_reserved_eval_row(row: dict) -> bool:
+    """True for eval evidence, which is never promotion evidence.
+
+    This is deliberately keyed by both the reserved writer identity and the
+    reserved ``eval:`` namespace.  Keeping the decision here gives every row
+    source (ledger reads, injected test rows, and direct ``status`` callers)
+    one fail-closed boundary.
+    """
+    if str(row.get("worker") or "") == EVAL_WORKER:
+        return True
+    return any(str(row.get(key) or "").startswith("eval:")
+               for key in _RESERVED_EVAL_KEYS)
+
+
+def _promotion_rows(rows) -> list[dict]:
+    """The sole row boundary for autonomy/promotion calculations."""
+    return [row for row in rows if isinstance(row, dict) and not _is_reserved_eval_row(row)]
 
 
 def _below_floor(row: dict, tier: str) -> bool:
@@ -147,9 +168,11 @@ def status(worker, project, task_type, tier, grades_rows, frozen) -> str:
         return QUEUES_FOR_ME
     if tier not in _TIERS:
         return QUEUES_FOR_ME
+    if _is_reserved_eval_row({"worker": worker, "task_type": task_type}):
+        return QUEUES_FOR_ME
     key = (worker, project, task_type, tier)
     matching = sorted(
-        (r for r in grades_rows if _row_key(r) == key),
+        (r for r in _promotion_rows(grades_rows) if _row_key(r) == key),
         key=lambda r: str(r.get("ts") or ""))
     return AUTONOMOUS if _streak_is_autonomous(matching, tier) else QUEUES_FOR_ME
 
@@ -211,12 +234,15 @@ def allowed_graders(repo_root) -> set[str]:
 
 
 def trusted_grades(repo_root) -> list[dict]:
-    """Grade rows whose ``inspector_id`` is an allow-listed grader. Empty when
-    graders.yaml is absent/empty (fail closed)."""
+    """Promotion-eligible rows from allow-listed graders.
+
+    The reserved ``eval-suite`` worker records eval evidence, never autonomy
+    evidence. Empty when graders.yaml is absent/empty (fail closed)."""
     allowed = allowed_graders(repo_root)
     if not allowed:
         return []
-    return [r for r in read_grades(repo_root) if r.get("inspector_id") in allowed]
+    return _promotion_rows(
+        r for r in read_grades(repo_root) if r.get("inspector_id") in allowed)
 
 
 # --------------------------------------------------------------------------- #
@@ -351,6 +377,8 @@ def decide(cadence, repo_root, *, worker, project, task_type=None, tier=None,
 
     if grades_rows is None:
         grades_rows = trusted_grades(repo_root)
+    else:
+        grades_rows = _promotion_rows(grades_rows)
     if frozen is None:
         frozen = is_frozen(repo_root)
     if standing_authorized is None:
@@ -363,7 +391,9 @@ def decide(cadence, repo_root, *, worker, project, task_type=None, tier=None,
     known = tier in _TIERS
 
     # ---- base autonomy (fail-closed precedence) ----
-    if not known:
+    if _is_reserved_eval_row({"worker": worker, "task_type": task_type}):
+        autonomy = QUEUES_FOR_ME
+    elif not known:
         autonomy = QUEUES_FOR_ME
     elif frozen:
         autonomy = QUEUES_FOR_ME

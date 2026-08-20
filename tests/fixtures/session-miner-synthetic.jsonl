@@ -1,0 +1,19 @@
+{"type":"assistant","timestamp":"2026-08-18T08:00:00Z","message":{"content":[{"type":"text","text":"I will inspect the failure."}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:01:00Z","message":{"content":[{"type":"tool_use","id":"tool-1","name":"Bash","input":{"command":"pytest -q"}}]}}
+{"type":"user","timestamp":"2026-08-18T08:01:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-1","is_error":true,"content":"import failed because the focused path was omitted"}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:02:00Z","message":{"content":[{"type":"tool_use","id":"tool-2","name":"Bash","input":{"command":"pytest tests/test_target.py -q"}}]}}
+{"type":"user","timestamp":"2026-08-18T08:02:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-2","content":"1 passed"}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:03:00Z","message":{"content":[{"type":"text","text":"- WORKED: run the focused test path before the full suite."}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:04:00Z","message":{"content":[{"type":"text","text":"HAZARD: check the fixture directory before opening a trace?"}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:05:00Z","message":{"content":[{"type":"text","text":"The scheduling note says next time we meet, check the fixture directory."}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:06:00Z","message":{"content":[{"type":"tool_use","id":"tool-3","name":"Bash","input":{"command":"old command"}}]}}
+{"type":"user","timestamp":"2026-08-18T08:06:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-3","is_error":true,"content":"old error must not pair with a distant success"}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:07:00Z","message":{"content":[{"type":"tool_use","id":"tool-4","name":"Read","input":{"file_path":"a"}}]}}
+{"type":"user","timestamp":"2026-08-18T08:07:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-4","content":"ok"}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:08:00Z","message":{"content":[{"type":"tool_use","id":"tool-5","name":"Glob","input":{"pattern":"a"}}]}}
+{"type":"user","timestamp":"2026-08-18T08:08:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-5","content":"ok"}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:09:00Z","message":{"content":[{"type":"tool_use","id":"tool-6","name":"Grep","input":{"pattern":"a"}}]}}
+{"type":"user","timestamp":"2026-08-18T08:09:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-6","content":"ok"}]}}
+{"type":"assistant","timestamp":"2026-08-18T08:10:00Z","message":{"content":[{"type":"tool_use","id":"tool-7","name":"Bash","input":{"command":"distant command"}}]}}
+{"type":"user","timestamp":"2026-08-18T08:10:01Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-7","content":"ok"}]}}
+{"type":"system","message":{"content":[{"type":"text","text":"noise"}]}}

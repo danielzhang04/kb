@@ -8,6 +8,12 @@ import { registerDag } from './dag/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
+import { registerTraceRead } from './trace/routes.ts';
+import { registerBrainSearch } from './brain/routes.ts';
+import { registerContextLifecycle } from './contextLifecycle/routes.ts';
+import { registerLessons } from './lessons/routes.ts';
+import { registerHygiene } from './hygiene/routes.ts';
+import { registerModelAudit } from './modelAudit/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
@@ -24,8 +30,10 @@ import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
+import { auditFn } from './http/context.ts';
 import type { SurfaceContext } from './http/context.ts';
 import type { RuntimeCapabilities } from './runtime/capabilities.ts';
+import type { SaveFn as ScheduleSaveFn } from './panels/schedules.ts';
 import type { VibeSpawner } from './vibe/session.ts';
 import { createPtyHost } from './pty/host.ts';
 
@@ -128,6 +136,10 @@ export interface BuildAppOptions {
   allowedOrigins?: SurfaceContext['allowedOrigins'];
   sessionConfig?: SurfaceContext['sessionConfig'];
   runtimeCapabilities?: RuntimeCapabilities;
+  coordinationPublication?: SurfaceContext['coordinationPublication'];
+  openPr?: SurfaceContext['openPr'];
+  traceRoot?: string | null;
+  scheduleSave?: ScheduleSaveFn;
   spawn?: VibeSpawner;
   createPtyHost?: typeof createPtyHost;
 }
@@ -144,6 +156,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     allowedOrigins: options.allowedOrigins,
     sessionConfig: options.sessionConfig,
     runtimeCapabilities: options.runtimeCapabilities,
+    coordinationPublication: options.coordinationPublication,
+    openPr: options.openPr,
+    traceRoot: options.traceRoot,
     spawn: options.spawn,
   }, { createPtyHost: options.createPtyHost });
 
@@ -186,7 +201,33 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
     registerAgents(scope, repoRoot, undefined, surfaceCtx.runtimeCapabilities);
-    registerPanels(scope, repoRoot);
+    // The Schedules panel's governed HEARTBEAT edit (-> work-branch PR, never auto-merged) needs the
+    // SAME one-per-process session config, side-effect runners and audit sink the write surface uses.
+    // Without a session config it fails closed with 503; without an audit sink it fails open and simply
+    // records no row (see panels/schedules.ts). Pausing is NOT here — it is /api/write/pause-cadence.
+    registerPanels(scope, repoRoot, {
+      durablePrWrites: surfaceCtx.runtimeCapabilities.durablePrWrites,
+      save: options.scheduleSave,
+      sessionConfig: surfaceCtx.sessionConfig,
+      durableRepoRoot: surfaceCtx.durableRepoRoot,
+      runGit: surfaceCtx.saveGit,
+      openPr: surfaceCtx.openPr,
+      runPreamble: surfaceCtx.runPreamble,
+      publication: surfaceCtx.coordinationPublication,
+      outboxRoot: surfaceCtx.outboxRoot,
+      audit: auditFn(surfaceCtx),
+      opsGit: surfaceCtx.opsGit,
+      now: surfaceCtx.now,
+      admission: surfaceCtx.admission,
+    });
+    if (surfaceCtx.runtimeCapabilities.localTranscripts && surfaceCtx.traceRoot) {
+      registerTraceRead(scope, surfaceCtx.traceRoot);
+    }
+    registerBrainSearch(scope, { repoRoot });
+    registerContextLifecycle(scope);
+    registerLessons(scope, repoRoot);
+    registerHygiene(scope, repoRoot);
+    registerModelAudit(scope);
     registerWorkflows(scope, surfaceCtx);
   });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)

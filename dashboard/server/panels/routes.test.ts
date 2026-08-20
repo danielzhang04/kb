@@ -26,6 +26,34 @@ describe('registerPanels', () => {
     await app.close();
   });
 
+  it('GET /api/panels/autonomy-ladder returns the recomputed ladder (declared kept apart from earned)', async () => {
+    const app = Fastify({ logger: false });
+    registerPanels(app, REPO_A);
+    await app.ready();
+
+    const res = await app.inject({ method: 'GET', url: '/api/panels/autonomy-ladder' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      label: string;
+      frozen: boolean;
+      trustedGraderCount: number;
+      gradeRowCount: number;
+      ledgerRowCount: number;
+      keys: unknown[];
+      workers: { worker: string; declaredCeiling: string | null; earned: unknown[] }[];
+    };
+    expect(body.label).toBe('autonomy-ladder');
+    expect(body.frozen).toBe(false);
+    // The fixture's grades ledger holds only `.gitkeep` (the live shape today) → nothing is earned.
+    expect(body.gradeRowCount).toBe(0);
+    expect(body.ledgerRowCount).toBe(0); // an empty ledger, not an untrusted-grader situation
+    expect(body.keys).toEqual([]);
+    expect(Array.isArray(body.workers)).toBe(true);
+    expect(body.workers.every((w) => Array.isArray(w.earned) && 'declaredCeiling' in w)).toBe(true);
+
+    await app.close();
+  });
+
   it('GET /api/panels/health returns the liveness panel (agents + org cadences)', async () => {
     const app = Fastify({ logger: false });
     registerPanels(app, REPO_A);

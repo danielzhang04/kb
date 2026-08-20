@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
@@ -38,6 +38,14 @@ async function scratch(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'stop-floor-'));
   tmpDirs.push(dir);
   return dir;
+}
+
+function declareCadence(repo: string, name = 'weekly-report'): void {
+  writeFileSync(
+    join(repo, 'HEARTBEAT.md'),
+    `# test\n\n\`\`\`yaml\ncadences:\n  - name: ${name}\n    schedule: weekly:sat\n\`\`\`\n`,
+    'utf8',
+  );
 }
 afterEach(async () => {
   while (tmpDirs.length) {
@@ -199,6 +207,7 @@ describe('requestStop — transitions the card working→stop-requested→haltin
 describe('pauseCadence — writes queue/paused/<name> via the governed ops path', () => {
   it('writes queue/paused/<name> so dispatch.due() skips the next beat, via the governed ops path', async () => {
     const repo = await scratch();
+    declareCadence(repo);
     const { runner: runGit, calls: gitCalls } = recordingGitRunner();
 
     const result = await pauseCadence('weekly-report', validSession(), { repoRoot: repo, runGit });
@@ -211,8 +220,25 @@ describe('pauseCadence — writes queue/paused/<name> via the governed ops path'
     expect(gitCalls[1]).toEqual(['add', '--', 'queue/paused/weekly-report']);
   });
 
+  it.each(['../../STOP', '..\\..\\STOP', 'nightly-review/../x', 'undeclared', '', 'bad\0name'])(
+    'refuses invalid or undeclared cadence %j before a marker or git/outbox action',
+    async (name) => {
+      const repo = await scratch();
+      declareCadence(repo, 'nightly-review');
+      const { runner: runGit, calls: gitCalls } = recordingGitRunner();
+
+      const result = await pauseCadence(name, validSession(), { repoRoot: repo, runGit });
+
+      expect(result).toMatchObject({ ok: false, reason: 'invalid-cadence' });
+      expect(existsSync(join(repo, 'STOP'))).toBe(false);
+      expect(existsSync(join(repo, 'queue', 'paused'))).toBe(false);
+      expect(gitCalls).toEqual([]);
+    },
+  );
+
   it('refuses without a valid session, writing nothing and touching no git', async () => {
     const repo = await scratch();
+    declareCadence(repo);
     const { runner: runGit, calls: gitCalls } = recordingGitRunner();
 
     const result = await pauseCadence('weekly-report', noSession(), { repoRoot: repo, runGit });

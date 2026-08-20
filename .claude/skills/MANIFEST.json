@@ -9,5 +9,12 @@
   "multi-source-synthesis": "857b131792ece01c1626c34e06d86f5587a7dd8bc7eb2fe6366852add1457377",
   "save-session": "23a079bffcada2aa47bf1cab9b423ebe62bd30e5acc67bf09d33667838718bcc",
   "security-review": "5264cc716e3e791382f350e5c6f20e0111ef9b6a2af2aeb4e89a7d22d67ee45b",
-  "strategic-compact": "77814be93eda3bf724ffb11a46a61952d18f0389445900aa071d25715460e629"
+  "strategic-compact": "77814be93eda3bf724ffb11a46a61952d18f0389445900aa071d25715460e629",
+  "kit:context-refresh": "de3d675ed8b8ec26ffabbf4cd11e4ea7f98e95e1a1d856cb1ab7dc8adf4a911a",
+  "kit:file-editing": "16becec9874f3ec7ff77a39228fd5aa65c4d904ae15615ca3ad80b627d77b179",
+  "kit:invariants": "a9c20498649b4ded1585b028f1e65a5cf095fd3a524d30c0c0397bcd4c876ef6",
+  "kit:lesson-writing": "4f56245b2d394696ed9930fcfb002d094e1bfeb7ab631dd39d09d1bb33c7a155",
+  "kit:north-star": "446c66f841c65f7f42f8339ddc71a526a7fc050cabee3a3ddd7746a47f021f74",
+  "kit:spin-up": "dc00912145b49f5daa82aa3bae50fcc9166391a5ef80b0952e0f8e03d98540c6",
+  "kit:standard-loops": "03cd0a9c20364edabd11a0600b22f37846d7ddfb6645b543b696f1716ebb8f2e"
 }

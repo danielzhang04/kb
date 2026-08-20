@@ -2,11 +2,16 @@
  * ============================================================================
  * MISSION CONTROL DESIGN SYSTEM (U1 — reconciled to docs/design-brief.md)
  * ============================================================================
- * Desktop-first / desktop-only. Aesthetic = warm Claude-desktop dark: warm
- * near-black surfaces (never pure black, never blue-gray), a NEUTRAL white/opacity
- * hierarchy for all chrome (NO decorative accent colour — Daniel override 2026-07-17;
- * terracotta retired, semantic status colours only), hairline borders doing most of
- * the work, shadows almost nowhere. Sleek/calm/refined, not a cold terminal. Monospace (tabular figures)
+ * Desktop-first / desktop-only. Aesthetic = FIELD GUIDE (Daniel restyle 2026-08-18 — supersedes the
+ * "warm near-black / warm cream" vocabulary this header carried from 2026-07-17). The surfaces are now
+ * NEUTRAL editorial greys: an achromatic near-black dark and an achromatic paper light, with the warm
+ * hue bias dropped from every surface and foreground rung. Corners are SQUARE (--radius-sm/md 0; only
+ * the shadowed overlay surfaces keep a 2px nick so a floating panel doesn't read as broken). Borders
+ * are hairlines doing most of the work, shadows almost nowhere, and overlays get one soft large shadow
+ * plus a strong edge. The single accent stays warm parchment on purpose (--mc-accent, Daniel's ruling):
+ * a neutral instrument with one warm interactive highlight. Sleek/calm/refined, not a cold terminal.
+ * NOTE: this pass is TOKENS + SHARED CLASSES ONLY — the structural section reframe is ON HOLD, so no
+ * layout, nav, or view was restructured and no heading was retargeted onto the new serif. Monospace (tabular figures)
  * is reserved for anything identifier-shaped (ids/hashes/tiers/counts/
  * timestamps); sans for everything else — that sans/mono contrast is a
  * signature ("engineered").
@@ -24,16 +29,40 @@
  *              --error / --warning / --success
  *              --status-running / --status-done / --status-blocked / --status-idle
  *              --tier-t1 / --tier-t2 / --tier-t3   (escalating warmth = risk)
+ *              --model-cheap / --model-standard / --model-deep  (aliases of the tier ramp — see MODEL below)
  *   Spacing    --space-0 (2px) / --space-1 (4px) .. --space-12 (48px), --gap (alias = --space-3)
- *   Type       --font-sans / --font-mono (system stacks only, no external fonts)
+ *   Type       --font-sans / --font-mono / --font-serif (system stacks only, no external fonts)
  *              --text-xs 11 / --text-sm 12 / --text-base 13 / --text-md 14 / --text-lg 16 / --text-xl 20
  *   Type ROLES --type-title / --type-section / --type-body / --type-meta / --type-metric (-size/-weight)
  *              + --tracking-eyebrow.  A VIEW STYLES BY ROLE, never by raw --text-* or a px literal.
- *   Radius     --radius-sm 6 / --radius-md 8 / --radius-lg 12
+ *   Radius     --radius-sm 0 / --radius-md 0 / --radius-lg 2  (square — field-guide restyle 2026-08-18)
  *   Motion     --transition (the ONE duration+easing for every hover / state change)
  *   Accent     --mc-accent / --mc-accent-fg (the single accent slot; warm parchment, landed 2026-08-05)
  *   Elevation  --shadow-elevated / --shadow-overlay / --shadow-sunken (panels are border-only)
  *   Layout     --sidebar-w / --sidebar-w-rail / --topbar-h
+ *
+ * THE LEGEND RULE (U16). The semantic/status/tier/model groups above encode DATA — they are the
+ * instrument's legend, not decoration — so each of those colours is held to >=4.5:1 against
+ * --bg-elevated, the badge fill and the hardest surface any of them lands on. A legend colour that
+ * can't be read is a bug, not a taste question. The U16 pass lifted the ones that fell short (dark
+ * --tier-t3 sat at 3.01:1, light --fg-faint at 2.63:1) by moving lightness only — every hue family is
+ * unchanged, and tokens already over the bar were left exactly as they were. The risk ramp is now told
+ * apart by HUE at comparable luminance (warm grey -> amber -> burnt orange) rather than by lightness,
+ * so no tier reads as "quieter" than another and the highest risk is no longer the faintest chip.
+ * When adding a legend colour: measure it on --bg-elevated in BOTH themes first.
+ *
+ * STATUS: running and done deliberately share the same muted ink signal. They are normal fleet
+ * states, not a decorative colour system.
+ *
+ * MODEL (U16): the routing legend, mapping governance/model-routing.yaml's aliases onto the tier ramp
+ * so cost weight reads on the gradient the eye already learned for risk:
+ *      haiku,  codex-cheap  -> cheap    (--model-cheap    = --tier-t1)
+ *      sonnet, codex        -> standard (--model-standard = --tier-t2)
+ *      opus,   codex-deep   -> deep     (--model-deep     = --tier-t3)
+ *   Rendered by src/components/ModelBadge.tsx as `.mc-badge .mc-mono .mc-badge--model-<weight>`; an
+ *   unrecognised or absent tier degrades to a plain `.mc-badge .mc-mono` rather than guessing a weight.
+ *   These three are var() aliases, so they follow the theme WITHOUT being mirrored into the theme
+ *   blocks (same mechanism as --mc-accent-fg). Do not paste literals for them.
  *
  * ACTIVE / SELECTED LANGUAGE (learned once, reused everywhere) — see .mc-nav-item--active:
  *   a 2px LEFT-border in --accent-strong is the single marker for the active/selected element.
@@ -61,56 +90,79 @@
  */
 
 :root {
-  /* ---- Color: surfaces (warm near-black — Claude-desktop-dark family; never pure black / never blue-gray)
-   * SHARPEN pass (Daniel 2026-07-17 "colors/contrast are bleh"): the base is pulled toward a true warm
-   * near-black and each rung of the ladder gets a crisper, slightly larger delta so panels read as
-   * genuinely raised over the shell instead of muddy mid-grays sitting on top of each other. The white
-   * hairline (below) then defines every surface edge Claude-style — on this deeper base the thin line
-   * finally reads. ---- */
-  --bg-sunken: #131210; /* code gutters / inputs / terminal — deepest well */
-  --bg-base: #1a1815; /* app shell — warm near-black */
-  --bg-panel: #232120; /* cards / sidebar / panes — workhorse (clear step above the shell) */
-  --bg-elevated: #2d2b27; /* popovers / palette / hover — crisply raised surface */
+  color-scheme: dark;
 
-  /* ---- Color: foreground (warm off-white / warm gray) ---- */
-  --fg-primary: #f5f4ef;
-  --fg-dim: #b8b5ad;
-  --fg-faint: #82807a;
+  /* ---- Color: pure-neutral dark scale. All grey tokens have R = G = B. ---- */
+  --bg-sunken: #0f0f0f; /* code gutters / terminal — deepest well */
+  --bg-base: #0f0f0f; /* page */
+  --bg-sidebar: #141414; /* navigation / chrome — intentionally below cards */
+  --bg-panel: #1b1b1b; /* cards / panes */
+  --bg-elevated: #202020; /* controls / sheets / popovers */
+
+  /* ---- Color: foreground (neutral off-white / neutral gray) ---- */
+  --fg-primary: #ebebeb;
+  --fg-dim: #a6a6a6;
+  --fg-faint: #7c7c7c;
+  --ink: #ebebeb;
+  --paper: #0f0f0f;
 
   /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
    * selection, KPI tiles, buttons, links, focus, tab underlines, left-borders) so redefining them here
    * neutralises every consumer at once. Semantic status colour lives in the separate tokens below. ---- */
-  --accent-strong: #ededea; /* buttons / links / focus / active underline+border (near-white) */
-  --accent: #a3a099; /* active nav icon tint / secondary (muted neutral) */
-  --accent-quiet: rgba(245, 244, 239, 0.06); /* selected wash — subtle raised, not a colour */
+  --accent-strong: var(--ink); /* buttons / links / focus / active underline+border */
+  --accent: var(--fg-dim); /* active nav icon tint / secondary */
+  --accent-quiet: var(--bg-elevated); /* selected wash */
 
   /* ---- Color: hairlines (the Claude "super thin white outline" — a low-alpha white line is how a
    * surface is defined on near-black, NOT a background-lightness difference). --hairline is the resting
    * surface/separator edge (cards, panels, rail, table rows, dividers); --hairline-strong is the
    * interactive/hovered/focused edge (inputs, buttons, badges, modals, focus rings). Tuned a touch
    * higher on the deeper base so the outline is unmistakable without becoming a visible grey rule.
-   * --border / --border-strong are kept as aliases so every existing consumer inherits at once. ---- */
-  --hairline: rgba(255, 255, 255, 0.1);
-  --hairline-strong: rgba(255, 255, 255, 0.16);
+   * --border / --border-strong are kept as aliases so every existing consumer inherits at once.
+   * Field-guide restyle 2026-08-18: both alphas step up (0.10 -> 0.12, 0.16 -> 0.18) because the surface
+   * ladder flattened — the edge is now the primary separator, not a secondary one. ---- */
+  --hairline: #2a2a2a;
+  --hairline-strong: #7c7c7c;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  /* ---- Color: semantic (KEPT — these encode data, not decoration) ---- */
-  --error: #e0554a;
-  --warning: #e0a040;
-  --success: #5cae7e;
+  /* ---- Color: semantic (KEPT — these encode data, not decoration).
+   * LEGEND-LEGIBILITY pass (U16): these tokens are the app's data legend, and a legend that can't be
+   * read is a broken instrument, not a style preference. Every colour below is now measured against
+   * --bg-elevated (the badge/pill fill — the hardest surface any of them lands on) and lifted to >=4.5:1
+   * where it fell short. Hue families are unchanged; only lightness moved. Untouched values were already
+   * over the bar.
+   * The rust failure token is the sole non-neutral color. ---- */
+  --error: #c97867; /* rust — the sole hue */
+  --warning: var(--error);
+  --success: var(--fg-dim);
 
   /* ---- Color: status (fleet card state — semantic, kept) ---- */
-  --status-running: #5cae7e;
-  --status-done: #5cae7e;
-  --status-blocked: #e0554a;
-  --status-idle: #82807a;
+  --status-running: var(--fg-dim);
+  --status-done: var(--fg-dim);
+  --status-blocked: var(--error);
+  --status-idle: var(--fg-faint);
 
-  /* ---- Color: risk tier (semantic, kept — escalating warmth = risk) ---- */
-  --tier-t1: #8a8175;
-  --tier-t2: #c9922e;
-  --tier-t3: #c1503a;
+  /* ---- Color: risk tier (semantic, kept — escalating warmth = risk). The three now sit at comparable
+   * luminance (4.5-5.2:1) and are told apart by HUE, not by lightness: warm grey -> amber -> burnt
+   * orange-red. Before this pass t3 (the highest risk) was the LEAST readable chip in the app at
+   * 3.01:1 — the legend was inverted against its own meaning. t3 also moved a few degrees toward
+   * orange (hue 10deg -> 16deg) so a risk chip stays distinguishable from an --error chip (hue 6deg). ---- */
+  --tier-t1: var(--fg-faint);
+  --tier-t2: var(--fg-dim);
+  --tier-t3: var(--error);
+
+  /* ---- Color: model weight (U16 — the routing legend). These are ALIASES of the risk-tier ramp, not a
+   * new hue family: "which model is this costing us" reads on the same cheap->expensive gradient the eye
+   * already learned for risk, so the dashboard gains a legend without gaining a palette. Deliberately
+   * separate NAMES so a future pass can decouple them from risk by editing three lines here and nothing
+   * else. Aliases resolve per-theme automatically (--tier-* is redefined in each theme block, and a
+   * custom property's var() is substituted at use time), so unlike every literal in this file these three
+   * are defined ONCE and must NOT be mirrored into the theme blocks. ---- */
+  --model-cheap: var(--tier-t1);
+  --model-standard: var(--tier-t2);
+  --model-deep: var(--tier-t3);
 
   /* ---- Spacing (4px atomic) ---- */
   --space-0: 2px; /* the ONE sub-atomic step: tight list stacks (nav items, home rows, panel headers) */
@@ -126,6 +178,12 @@
   /* ---- Type (system stacks only — self-contained, no external fonts) ---- */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  /* Field-guide restyle 2026-08-18 — GROUNDWORK ONLY. The reference sets its display headings in an old-
+   * style serif; this token makes that available without spending it, because the structural section
+   * reframe that would consume it is ON HOLD. Nothing in the app resolves to it today except the opt-in
+   * .mc-title--display class below, which no view applies yet. Do NOT retarget an existing heading class
+   * onto this until the reframe lands. System stacks only, same rule as the other two. */
+  --font-serif: 'Iowan Old Style', Georgia, Palatino, 'Book Antiqua', 'Times New Roman', serif;
   --text-xs: 11px; /* eyebrow / badge / col-headers */
   --text-sm: 12px; /* secondary / timestamps / nav labels */
   --text-base: 13px; /* body / table cell — dense tool */
@@ -156,27 +214,30 @@
   /* ONE tracking for every uppercase section heading (was 0.02/0.04/0.05/0.06em scattered). */
   --tracking-eyebrow: 0.05em;
 
-  /* ---- Radius ---- */
-  --radius-sm: 6px; /* buttons / inputs / badges */
-  --radius-md: 8px; /* cards / panels */
-  --radius-lg: 12px; /* modals / palette */
+  /* ---- Radius — Daniel's Claude-dashboard curve: compact controls stay at 6px; panels and overlays
+   * use 10px. The legacy names remain aliases so existing consumers inherit the same two-rung system. ---- */
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-sm: var(--radius-control); /* buttons / inputs / badges */
+  --radius-md: var(--radius-card); /* cards / panels */
+  --radius-lg: var(--radius-card); /* modals / palette */
 
   /* ---- Motion: ONE duration + easing for every hover / state transition in the app. A hover is a
    * quiet acknowledgement, never an animation — nothing here moves, only colour and border shift. ---- */
   --transition: 120ms ease-out;
 
-  /* ---- Accent slot. Every place an accent touches (active nav rail, primary button fill, focus
-   * rings, the unlock chip) reads --mc-accent. Landed 2026-08-05: candidate C "warm parchment" from
-   * docs/superpowers/plans/2026-08-05-accent-swatches.md — #d9c7a8 dark / #6b5b41 light, low-chroma
-   * sand deliberately distinct from the saturated amber/tier chips. --mc-accent-fg is the text colour
-   * that sits ON a filled accent; --bg-base is correct in both themes. ---- */
-  --mc-accent: #d9c7a8;
-  --mc-accent-fg: var(--bg-base);
+  /* ---- Accent slot. Inversion is ink on page in both themes. ---- */
+  --mc-accent: var(--ink);
+  --mc-accent-fg: var(--paper);
 
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
-   * neutral black low-opacity, never colored/glow) ---- */
+   * neutral black low-opacity, never colored/glow).
+   * --shadow-overlay restyled 2026-08-18: the reference floats an overlay on ONE soft, very large,
+   * low-opacity shadow — no tight contact shadow underneath it. The old two-layer stack (a 2px contact
+   * shadow + a 32px ambient) read as a Material card; a single 80px blur reads as paper lifted off a
+   * page. --shadow-elevated / --shadow-sunken are deliberately UNCHANGED. ---- */
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.24);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.35);
   --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 
   /* ---- Layout ---- */
@@ -185,128 +246,133 @@
   --topbar-h: 44px;
 }
 
-/* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. The
- * [data-theme=...] blocks below have higher specificity (0,2,0 vs 0,1,0) and win regardless. */
-/* Light theme — warm cream, but the accent is NEUTRALISED to warm near-black for coherence with the
- * dark-first neutral direction (Daniel override 2026-07-17). Surfaces stay warm cream; semantic status
- * hues are kept. NOTE: dark is the app default — main.tsx pins [data-theme=dark] explicitly so this
- * media query only takes effect for an OS-light user who has NOT chosen a theme; the toggle always wins. */
+/* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-sunken: #ece7dd;
-    --bg-base: #faf8f3;
+    color-scheme: light;
+    --bg-sunken: #fafafa;
+    --bg-base: #fafafa;
+    --bg-sidebar: #f1f1f1;
     --bg-panel: #ffffff;
-    --bg-elevated: #f3efe7;
+    --bg-elevated: #f1f1f1;
 
-    --fg-primary: #262421;
-    --fg-dim: #6b6558;
-    --fg-faint: #9a9488;
+    --fg-primary: #161616;
+    --ink: #161616;
+    --paper: #fafafa;
+    --fg-dim: #555555;
+    --fg-faint: #767676;
 
-    --accent-strong: #2b2925;
-    --accent: #6b6558;
-    --accent-quiet: rgba(0, 0, 0, 0.05);
-    --mc-accent: #6b5b41;
+    --accent-strong: var(--ink);
+    --accent: var(--fg-dim);
+    --accent-quiet: var(--bg-elevated);
+    --mc-accent: var(--ink);
 
-    /* Light hairline is a dark low-alpha line (structure requires the token; value unchanged from the
-     * prior --border/--border-strong so light is visually identical to before this sharpen pass). */
-    --hairline: rgba(0, 0, 0, 0.1);
-    --hairline-strong: rgba(0, 0, 0, 0.16);
+    --hairline: #dcdcdc;
+    --hairline-strong: #767676;
     --border: var(--hairline);
     --border-strong: var(--hairline-strong);
 
-    --error: #c4322a;
-    --warning: #b67a1e;
-    --success: #2f8f5b;
+    --error: #a1543f; /* rust — the sole hue */
+    --warning: var(--error);
+    --success: var(--fg-dim);
 
-    --status-running: #2f8f5b;
-    --status-done: #2f8f5b;
-    --status-blocked: #c4322a;
-    --status-idle: #9a9488;
+    --status-running: var(--fg-dim);
+    --status-done: var(--fg-dim);
+    --status-blocked: var(--error);
+    --status-idle: var(--fg-faint);
 
-    --tier-t1: #7a7266;
-    --tier-t2: #a97423;
-    --tier-t3: #b03d28;
+    --tier-t1: var(--fg-faint);
+    --tier-t2: var(--fg-dim);
+    --tier-t3: var(--error);
 
-    --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
-    --shadow-overlay: 0 8px 32px rgba(60, 50, 40, 0.18), 0 2px 6px rgba(60, 50, 40, 0.12);
-    --shadow-sunken: inset 0 1px 2px rgba(60, 50, 40, 0.12);
+    --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.16);
+    --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.12);
   }
 }
 
 /* Explicit theme pin — wins over the media query above. */
 :root[data-theme='light'] {
-  --bg-sunken: #ece7dd;
-  --bg-base: #faf8f3;
+  color-scheme: light;
+  --bg-sunken: #fafafa;
+  --bg-base: #fafafa;
+  --bg-sidebar: #f1f1f1;
   --bg-panel: #ffffff;
-  --bg-elevated: #f3efe7;
+  --bg-elevated: #f1f1f1;
 
-  --fg-primary: #262421;
-  --fg-dim: #6b6558;
-  --fg-faint: #9a9488;
+  --fg-primary: #161616;
+  --ink: #161616;
+  --paper: #fafafa;
+  --fg-dim: #555555;
+  --fg-faint: #767676;
 
-  --accent-strong: #2b2925;
-  --accent: #6b6558;
-  --accent-quiet: rgba(0, 0, 0, 0.05);
-  --mc-accent: #6b5b41;
+  --accent-strong: var(--ink);
+  --accent: var(--fg-dim);
+  --accent-quiet: var(--bg-elevated);
+  --mc-accent: var(--ink);
 
-  --hairline: rgba(0, 0, 0, 0.1);
-  --hairline-strong: rgba(0, 0, 0, 0.16);
+  --hairline: #dcdcdc;
+  --hairline-strong: #767676;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  --error: #c4322a;
-  --warning: #b67a1e;
-  --success: #2f8f5b;
+  --error: #a1543f;
+  --warning: var(--error);
+  --success: var(--fg-dim);
 
-  --status-running: #2f8f5b;
-  --status-done: #2f8f5b;
-  --status-blocked: #c4322a;
-  --status-idle: #9a9488;
+  --status-running: var(--fg-dim);
+  --status-done: var(--fg-dim);
+  --status-blocked: var(--error);
+  --status-idle: var(--fg-faint);
 
-  --tier-t1: #7a7266;
-  --tier-t2: #a97423;
-  --tier-t3: #b03d28;
+  --tier-t1: var(--fg-faint);
+  --tier-t2: var(--fg-dim);
+  --tier-t3: var(--error);
 
-  --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
-  --shadow-overlay: 0 8px 32px rgba(60, 50, 40, 0.18), 0 2px 6px rgba(60, 50, 40, 0.12);
-  --shadow-sunken: inset 0 1px 2px rgba(60, 50, 40, 0.12);
+  --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.16);
+  --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 :root[data-theme='dark'] {
-  --bg-sunken: #131210;
-  --bg-base: #1a1815;
-  --bg-panel: #232120;
-  --bg-elevated: #2d2b27;
+  color-scheme: dark;
+  --bg-sunken: #0f0f0f;
+  --bg-base: #0f0f0f;
+  --bg-sidebar: #141414;
+  --bg-panel: #1b1b1b;
+  --bg-elevated: #202020;
 
-  --fg-primary: #f5f4ef;
-  --fg-dim: #b8b5ad;
-  --fg-faint: #82807a;
+  --fg-primary: #ebebeb;
+  --ink: #ebebeb;
+  --paper: #0f0f0f;
+  --fg-dim: #a6a6a6;
+  --fg-faint: #7c7c7c;
 
-  --accent-strong: #ededea;
-  --accent: #a3a099;
-  --accent-quiet: rgba(245, 244, 239, 0.06);
-  --mc-accent: #d9c7a8;
+  --accent-strong: var(--ink);
+  --accent: var(--fg-dim);
+  --accent-quiet: var(--bg-elevated);
+  --mc-accent: var(--ink);
 
-  --hairline: rgba(255, 255, 255, 0.1);
-  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --hairline: #2a2a2a;
+  --hairline-strong: #7c7c7c;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  --error: #e0554a;
-  --warning: #e0a040;
-  --success: #5cae7e;
+  --error: #c97867;
+  --warning: var(--error);
+  --success: var(--fg-dim);
 
-  --status-running: #5cae7e;
-  --status-done: #5cae7e;
-  --status-blocked: #e0554a;
-  --status-idle: #82807a;
+  --status-running: var(--fg-dim);
+  --status-done: var(--fg-dim);
+  --status-blocked: var(--error);
+  --status-idle: var(--fg-faint);
 
-  --tier-t1: #8a8175;
-  --tier-t2: #c9922e;
-  --tier-t3: #c1503a;
+  --tier-t1: var(--fg-faint);
+  --tier-t2: var(--fg-dim);
+  --tier-t3: var(--error);
 
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.24);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.35);
   --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
@@ -322,8 +388,46 @@ body {
   line-height: 1.45;
 }
 
+/* Browser-native controls otherwise retain a light UA surface in dark mode. Keep every app
+ * control on the same token scale; specialised component rules only refine their layout. */
+button,
+input,
+select,
+textarea {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
+  font: inherit;
+}
+
 button {
-  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--bg-panel);
+  color: var(--fg-faint);
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+select option {
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
 }
 
 /* ---- Numeric utilities ---- */
@@ -336,6 +440,19 @@ button {
 /* Sans numbers that still need to align (KPI values, live counts, ledger figures). */
 .mc-num {
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- Display title (field-guide restyle 2026-08-18) — ADDITIVE + OPT-IN, applied by nothing yet.
+ * The reference sets its display headings in an old-style serif at a slightly negative tracking and a
+ * medium weight. This is that treatment, parked as a class so the structural section reframe (ON HOLD)
+ * can adopt it in one line per surface when it lands. It deliberately does NOT set a size: it composes
+ * with whatever type ROLE the element already carries (--type-title-size etc.), so applying it changes
+ * the FACE and not the scale, and kb stays dense. Do not fold this into .mc-topbar__title or any other
+ * existing heading class — that retarget is the reframe's call, not this pass's. ---- */
+.mc-title--display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.02em;
+  font-weight: 500;
 }
 
 /* ============================================================================
@@ -367,7 +484,7 @@ button {
 /* ---- Sidebar ---- */
 .mc-sidebar {
   grid-area: sidebar;
-  background: var(--bg-panel);
+  background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -487,8 +604,16 @@ button {
   margin: 0;
   padding: var(--space-1);
   background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  /* OVERLAYS GET A STRONG EDGE (field-guide restyle 2026-08-18). A hairline is how a surface that sits
+   * IN the page is defined; a surface floating OVER it gets a definite near-foreground line instead, so
+   * the menu reads as a separate object rather than a lighter patch of the panel underneath. This is a
+   * value swap only — --border-strong keeps its meaning (the interactive/hovered edge) everywhere else.
+   * The same rule is applied to the command palette in palette.css. */
+  /* Overlay edge uses --fg-faint (not --border-strong) per the field-guide direction: overlays get a strong near-fg edge; resting surfaces get hairlines. */
+  border: 1px solid var(--fg-faint);
+  /* --radius-lg, not --radius-md: this menu is a SHADOWED overlay, and --radius-lg is the rung that
+   * keeps a 2px nick exactly for those (see the Radius note above). Same rung as the palette. */
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
@@ -571,15 +696,18 @@ button {
 }
 
 .mc-nav-item:hover:not(.mc-nav-item--disabled) {
-  background: var(--bg-elevated);
-  color: var(--fg-primary);
+  background: var(--paper);
+  border-color: var(--ink);
+  border-left-color: var(--ink);
+  color: var(--ink);
 }
 
 .mc-nav-item--active {
-  background: var(--accent-quiet);
-  color: var(--fg-primary);
-  border-left-color: var(--mc-accent);
-  font-weight: 500;
+  background: var(--ink);
+  border-color: var(--ink);
+  border-left-color: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
 }
 
 .mc-nav-item--disabled {
@@ -596,7 +724,12 @@ button {
 }
 
 .mc-nav-item--active .mc-nav-item__icon {
-  color: var(--accent);
+  color: var(--paper);
+}
+
+.mc-nav-item--active .mc-nav-item__hint,
+.mc-nav-item--active .mc-nav-item__badge {
+  color: var(--paper);
 }
 
 .mc-nav-item__label {
@@ -894,14 +1027,43 @@ button {
   border-color: var(--tier-t3);
 }
 
+/* "Could not check" (U12) — the third state of a check, and the one a UI usually loses. Deliberately
+ * NOT the pass tone and NOT the fail tone: a dashed, muted chip, so an unevaluated rule reads as an
+ * ABSENCE OF EVIDENCE rather than as a clean result. The dash is the signal — it is the only badge in
+ * the system with a broken border, so it cannot be confused with a filled verdict at a glance.
+ * First consumer: the Run Envelope step check (`not-evaluated`). */
+.mc-badge--unevaluated {
+  color: var(--fg-faint);
+  border-color: var(--border-strong);
+  border-style: dashed;
+}
+
+/* Model-weight chips (U16). Same pill geometry as the tier chips — only the token differs — so a row
+ * that shows both "T2" and "sonnet" reads as one legend at two altitudes rather than two competing
+ * systems. Consumed by src/components/ModelBadge.tsx; U4 adopts it at the call sites. */
+.mc-badge--model-cheap {
+  color: var(--model-cheap);
+  border-color: var(--model-cheap);
+}
+
+.mc-badge--model-standard {
+  color: var(--model-standard);
+  border-color: var(--model-standard);
+}
+
+.mc-badge--model-deep {
+  color: var(--model-deep);
+  border-color: var(--model-deep);
+}
+
 .mc-badge--running {
-  color: var(--status-running);
-  border-color: var(--status-running);
+  color: var(--fg-dim);
+  border-color: var(--border-strong);
 }
 
 .mc-badge--done {
-  color: var(--status-done);
-  border-color: var(--status-done);
+  color: var(--fg-dim);
+  border-color: var(--border-strong);
 }
 
 .mc-badge--blocked {
@@ -912,6 +1074,13 @@ button {
 .mc-badge--error {
   color: var(--error);
   border-color: var(--error);
+}
+
+.mc-badge--attention {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+  font-weight: 650;
 }
 
 /* ---- Status dot — the app's ONE state indicator (Phase 6). Same shape, same size, same tone mapping
@@ -938,7 +1107,8 @@ button {
 
 /* Waiting on a person — the one amber state; it must not read as a failure. */
 .mc-status-dot--waiting {
-  background: var(--warning);
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--ink);
 }
 
 .mc-status-dot--blocked,
@@ -1037,6 +1207,13 @@ button {
   background: var(--mc-accent);
   border-color: var(--mc-accent);
   color: var(--mc-accent-fg);
+}
+
+.mc-btn--primary:hover:not(:disabled),
+.mc-btn--primary:focus-visible {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 .mc-btn--quiet {

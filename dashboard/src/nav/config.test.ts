@@ -35,6 +35,7 @@ describe('nav/config', () => {
       'activity',
       'atlas',
       'terminal',
+      'schedules',
     ]);
     expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
       'workflows',
@@ -42,6 +43,8 @@ describe('nav/config', () => {
       'tasks',
       'projects',
       'files',
+      // Wave-1 U0 — the Agent Platform section joins the entities group (no new divider).
+      'agentPlatform',
     ]);
     // D3.5 — Sentinel joins the system group (hosts the read-only layer panels behind sub-tabs).
     expect(NAV_SECTIONS[2].items.map((d) => d.id)).toEqual(['connectors', 'ledgers', 'sentinel']);
@@ -50,6 +53,10 @@ describe('nav/config', () => {
   it('every destination has a unique id, a label, an icon and a valid status', () => {
     const ids = ALL.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
+    // Glyphs are the rail-mode identity of a destination, so they are unique too — a new destination
+    // must claim an unused one (Wave-1 U0 added `agentPlatform`).
+    const icons = ALL.map((d) => d.icon);
+    expect(new Set(icons).size).toBe(icons.length);
     for (const dest of ALL) {
       expect(dest.label.length).toBeGreaterThan(0);
       expect(dest.icon.length).toBeGreaterThan(0);
@@ -117,6 +124,8 @@ describe('nav/config', () => {
       'connectors',
       'ledgers',
       'sentinel',
+      'agentPlatform',
+      'schedules',
     ] as const) {
       expect(status(id)).toBe('live');
     }

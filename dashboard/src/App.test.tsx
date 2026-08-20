@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from './App';
 import { invalidateSessionOnGovernedAuthFailure } from './lib/authClient';
+import { AGENT_PLATFORM_PANELS } from './views/agentPlatform/registry';
 
 beforeEach(() => {
   window.sessionStorage.clear();
@@ -62,11 +63,13 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Activity',
       'Atlas',
       'Terminal',
+      'Schedules',
       'Workflows',
       'Agents',
       'Tasks',
       'Projects',
       'Files',
+      'Agent Platform',
       'Connectors',
       'Ledgers',
       'Sentinel',
@@ -285,6 +288,31 @@ describe('App shell — entity-first sidebar navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
     expect(screen.getByLabelText('Home view')).toBeTruthy();
+  });
+
+  it('routes Schedules from the sidebar to its live Wave-2 surface', async () => {
+    await renderApp();
+    const btn = screen.getByRole('button', { name: 'Schedules' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-current')).toBe('page');
+    expect(screen.getByText(/Reading schedules/)).toBeTruthy();
+  });
+
+  it('routes the Agent Platform destination to its section (Wave-1 U0)', async () => {
+    await renderApp();
+    const btn = screen.getByRole('button', { name: 'Agent Platform' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-current')).toBe('page');
+    // The real section mounts, with its auto-discovered tiles — not the U3 placeholder. The subject
+    // is a REAL panel (U12 retired the Demo placeholder these assertions used to ride on), and it is
+    // read off the registry so the tile that proves reachability can never become a stale literal.
+    const view = screen.getByLabelText('Agent Platform view');
+    const first = AGENT_PLATFORM_PANELS[0];
+    expect(first).toBeTruthy();
+    expect(within(view).getByText(first.title)).toBeTruthy();
+    expect(within(view).getByText(first.description)).toBeTruthy();
   });
 
   it('routes the U3 entity destinations (Agents/Tasks/Projects/Ledgers) to their real views', async () => {

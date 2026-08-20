@@ -16,6 +16,21 @@ import type { AgentRosterEntry } from '../../server/agents/roster';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { RunMetadataDto } from '../control/controlClient';
 
+/**
+ * The six complex-agent declaration fields (U3) as they arrive for an agent that declares none of
+ * them — which is every live agent today. They are on `AgentDetailDto` (U12), so a hand-built
+ * declaration fixture has to carry them; spelling six nulls inline in each fixture would bury what
+ * the fixture is actually about.
+ */
+const UNDECLARED_U3_FIELDS = {
+  tools: null,
+  knowledgeSource: null,
+  autonomyTier: null,
+  skills: null,
+  whatItReplaces: null,
+  buildsOn: null,
+} as const;
+
 afterEach(cleanup);
 
 function agent(over: Partial<AgentDetailRow> & { id: string }): AgentDetailRow {
@@ -241,6 +256,7 @@ describe('the not-declared empty state', () => {
             instructions: '## Operating instructions\n\nRun the approved workflow stages in order and stop at human gates.\n\n<script>doEvil()</script>',
             defaultProfile: 'worker:claude:claude-opus-4-8',
             allowedProfiles: ['worker:claude:claude-opus-4-8'],
+            ...UNDECLARED_U3_FIELDS,
           },
           codebases: [{ project: 'faceless-youtube', path: 'orgs/faceless-youtube', relationship: 'owns pipeline work' }],
           workflows: [{ ref: 'video-run', title: 'Video run', path: 'orgs/faceless-youtube/workflows/video-run.md', relationship: 'stage runner' }],
@@ -295,7 +311,7 @@ describe('the not-declared empty state', () => {
         detailState="ready"
         detail={{
           id: 'fyt-runner',
-          declaration: { path: 'agents/fyt-runner.md', source: 'faceless-youtube', instructions: '', defaultProfile: null, allowedProfiles: null },
+          declaration: { path: 'agents/fyt-runner.md', source: 'faceless-youtube', instructions: '', defaultProfile: null, allowedProfiles: null, ...UNDECLARED_U3_FIELDS },
           codebases: [],
           workflows: [],
           howItRuns: null,

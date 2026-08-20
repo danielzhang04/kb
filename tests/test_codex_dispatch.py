@@ -214,10 +214,19 @@ def test_spawn_timeout_bounded_wait_survives_a_wedged_reap(tmp_path, monkeypatch
 
 def test_main_timeout_reports_failure(repo, prompt_file, tmp_path, monkeypatch, capsys):
     seen = _main_env(monkeypatch, tmp_path, rc=124)
+    published = {}
+    monkeypatch.setattr(
+        codex_dispatch,
+        "publish_ops",
+        lambda root, card, record: published.update(card=card, record=record) or (True, "pushed"),
+    )
     rc = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
                               "--timeout", "30"])
     assert rc == 124 and seen["timeout"] == 30
     assert "FAILED: timeout after 30s" in capsys.readouterr().out
+    assert published["card"].meta["state"] == "done"
+    assert "## Result\n\nFAILED: timeout after 30s" in published["card"].body
+    assert published["record"]["codex_exit"] == 124
 
 
 def test_main_genuine_exit_124_is_not_reported_as_our_timeout(repo, prompt_file, tmp_path,
@@ -702,3 +711,47 @@ def test_build_record_stamps_workflow_thread(repo, tmp_path):
     card, _ = codex_dispatch.build_record(
         _mk_args(), repo, "0000aaaa-11112222", "gpt-5.6-terra", 0, "P", "R", log)
     assert card.meta["workflow"] == "019f-abc"
+
+
+def test_agent_version_stamp_is_present_only_for_a_valid_declared_agent(repo):
+    import cards
+
+    (repo / "agents").mkdir()
+    (repo / "agents" / "demo-agent.md").write_text("---\nid: demo-agent\nversion: 4\n---\n", encoding="utf-8")
+    card = cards.new_card("kb-ops", "dispatch", "x", "T1")
+    codex_dispatch.stamp_agent_version(card, codex_dispatch.pinned_agent_version(repo, "demo-agent"))
+    assert card.meta["agent_version"] == "demo-agent@v4"
+
+    absent = cards.new_card("kb-ops", "dispatch", "x", "T1")
+    codex_dispatch.stamp_agent_version(absent, codex_dispatch.pinned_agent_version(repo, None))
+    assert "agent_version" not in absent.meta
+
+
+def test_main_wires_optional_agent_stamp_to_the_post_hoc_record(repo, prompt_file, tmp_path, monkeypatch):
+    _main_env(monkeypatch, tmp_path)
+    (repo / "agents").mkdir()
+    (repo / "agents" / "demo-agent.md").write_text("---\nid: demo-agent\nversion: 4\n---\n", encoding="utf-8")
+    published = {}
+    monkeypatch.setattr(codex_dispatch, "publish_ops", lambda root, card, rec: published.update(card=card) or (True, "pushed"))
+
+    assert codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo), "--agent", "demo-agent"]) == 0
+    assert published["card"].meta["agent_version"] == "demo-agent@v4"
+
+
+def test_main_stamps_the_version_pinned_before_spawn_when_definition_changes_mid_run(repo, prompt_file, tmp_path, monkeypatch):
+    _main_env(monkeypatch, tmp_path)
+    definition = repo / "agents" / "demo-agent.md"
+    definition.parent.mkdir()
+    definition.write_text("---\nid: demo-agent\nversion: 4\n---\n", encoding="utf-8")
+    published = {}
+    monkeypatch.setattr(codex_dispatch, "publish_ops", lambda root, card, rec: published.update(card=card) or (True, "pushed"))
+
+    def edit_during_spawn(*args, **kwargs):
+        definition.write_text("---\nid: demo-agent\nversion: 5\n---\n", encoding="utf-8")
+        args[5].write_text("ok", encoding="utf-8")
+        args[6].write_text("", encoding="utf-8")
+        return 0, False
+
+    monkeypatch.setattr(codex_dispatch, "spawn", edit_during_spawn)
+    assert codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo), "--agent", "demo-agent"]) == 0
+    assert published["card"].meta["agent_version"] == "demo-agent@v4"

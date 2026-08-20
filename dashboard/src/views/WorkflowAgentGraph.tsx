@@ -41,7 +41,6 @@ import {
   useNodesState,
   type Edge,
   type Node,
-  type NodeChange,
   type NodeProps,
   type NodeTypes,
   type XYPosition,
@@ -51,6 +50,9 @@ import { AttemptMiniTail } from '../components/AttemptMiniTail';
 import type { AgentRunOverlay, IterationGraphEdge, IterationParticipantOverlay } from '../control/runGraph';
 import type { UseSseResult } from '../lib/sseClient';
 import type { WorkflowDefEntry } from './WorkflowDetail';
+// One routing rule for every reactflow graph in the app (U12): the fleet graph carried a verbatim
+// copy of both helpers, so a fix here could silently miss the other graph.
+import { nearestHandles, rememberNodePositions } from '../lib/graphHandles';
 
 /** Which part of the definition an edit addresses. Mirrors the governed route's own body. */
 export type AssignTarget = { kind: 'manager' } | { kind: 'stage'; stageId: string };
@@ -343,23 +345,6 @@ export function agentNodePositions(entry: WorkflowDefEntry): Map<string, XYPosit
     y += Math.max(...row.map(agentNodeHeight)) + AGENT_NODE_GAP_Y;
   }
   return positions;
-}
-
-function nearestHandles(source: XYPosition | undefined, target: XYPosition | undefined): {
-  sourceHandle: string;
-  targetHandle: string;
-} {
-  if (!source || !target) return { sourceHandle: 'source-right', targetHandle: 'target-left' };
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0
-      ? { sourceHandle: 'source-right', targetHandle: 'target-left' }
-      : { sourceHandle: 'source-left', targetHandle: 'target-right' };
-  }
-  return dy >= 0
-    ? { sourceHandle: 'source-bottom', targetHandle: 'target-top' }
-    : { sourceHandle: 'source-top', targetHandle: 'target-bottom' };
 }
 
 /** The name a node shows, and the name an arrow uses when it talks about that node. */
@@ -658,12 +643,6 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
 }
 
 const NODE_TYPES: NodeTypes = { agent: AgentNode };
-
-function rememberNodePositions(changes: NodeChange[], positions: Map<string, XYPosition>): void {
-  for (const change of changes) {
-    if (change.type === 'position' && change.position) positions.set(change.id, change.position);
-  }
-}
 
 /** Frame the WHOLE cast by default. `maxZoom: 1` stops a two-node workflow ballooning; the low floor
  *  exists only so an unusually large cast still fits rather than being clipped by reactflow's 0.5 default. */

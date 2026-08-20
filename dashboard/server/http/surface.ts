@@ -54,11 +54,12 @@ import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGat
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import { quiescence } from '../release/quiescence.ts';
 import { serviceCgroupChildCount } from '../release/serviceCgroup.ts';
-import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
+import { defaultGitRunner, defaultPrOpener, prepareCoordination } from '../write/branch.ts';
 import { resolveCoordinationPublication } from '../write/outbox.ts';
 import { admit } from '../control/admission.ts';
 import { outboxStatus } from '../write/outboxStatus.ts';
-import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capabilities.ts';
+import { resolveSessionRoot } from '../trace/routes.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -137,6 +138,10 @@ export function makeSurfaceContext(
   const repoRoot = overrides.repoRoot ?? resolveRepoRoot();
   const coordinationPublication = overrides.coordinationPublication
     ?? resolveCoordinationPublication(activation.env as NodeJS.ProcessEnv | undefined);
+  const openPr = overrides.openPr ?? defaultPrOpener;
+  const traceRoot = overrides.traceRoot === undefined
+    ? resolveSessionRoot(activation.env as NodeJS.ProcessEnv | undefined)
+    : overrides.traceRoot;
   const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? createFileControlPlaneStore(stateRoot);
@@ -153,7 +158,10 @@ export function makeSurfaceContext(
   const build = activation.build ?? buildActivatedExecution;
   const buildQueueBridge = activation.createQueueBridge ?? createQueueBridge;
   const dispatchQueueCard = activation.dispatchClaimedCard ?? dispatchClaimedCard;
-  const capabilities = overrides.runtimeCapabilities ?? runtimeCapabilities();
+  const capabilities = composeRuntimeCapabilities(
+    overrides.runtimeCapabilities ?? runtimeCapabilities(),
+    { coordinationPublication, openPr, transcriptRoot: traceRoot },
+  );
   // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
   // spawns nothing; only `open` does.
   const underlyingPtyHost = capabilities.pty
@@ -193,6 +201,7 @@ export function makeSurfaceContext(
         : status);
     }),
     stateRoot,
+    traceRoot,
     readiness: overrides.readiness ?? (async () => {
       const activation = ctx.executionLatch?.snapshot();
       const recoveryBlockers = ctx.outboxRecoveryFailure ? ['outbox-recovery-failed'] : [];
@@ -245,7 +254,7 @@ export function makeSurfaceContext(
     appendAuditLocal: overrides.appendAuditLocal,
     opsGit: overrides.opsGit,
     saveGit: overrides.saveGit,
-    openPr: overrides.openPr,
+    openPr,
     runPy: overrides.runPy,
     runPreamble: overrides.runPreamble,
     activateManagedRoots: overrides.activateManagedRoots,

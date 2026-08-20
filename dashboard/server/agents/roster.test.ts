@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, realpathSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { effectiveForAgent, SAFE_DEFAULT } from '../routing/effective.ts';
 import type { AgentDeclarationRouting } from '../routing/effective.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { CardProjection } from '../planeA/cards.ts';
+import { NamingRegistry } from '../naming.ts';
 import {
   listAgents,
   buildRoster,
@@ -224,6 +225,27 @@ description: Volume worker for kb-ops housekeeping.
 Notes — inert prose.
 `;
 
+const COMPLEX_AGENT_FILE = `---
+id: complex-agent
+role: work
+runtime: codex
+model: gpt-5.6-sol
+default-profile: worker:codex:gpt-5.6-sol
+allowed-profiles: [worker:codex:gpt-5.6-sol]
+projects: [kb-ops]
+runner-bound: false
+tools: [Read, Grep]
+knowledge-source: [docs/]
+autonomy-tier: T2
+skills: [dispatch-codex]
+what-it-replaces: null
+builds-on: [fyt-checker]
+description: A fixture-only complex agent.
+---
+
+# Agent: complex-agent
+`;
+
 describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
   it.each([
     ['manage', 'manager'],
@@ -246,12 +268,155 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
       role: 'work',
       runtime: 'codex',
       model: 'gpt-5.6-sol',
+      tools: null,
+      knowledgeSource: null,
+      autonomyTier: null,
+      skills: null,
+      whatItReplaces: null,
+      buildsOn: null,
       defaultProfile: null,
       allowedProfiles: null,
       runnerBound: false,
       projects: ['kb-ops'],
       description: 'Volume worker for kb-ops housekeeping.',
+      version: 1,
+      io: null,
+      defaults: null,
     });
+  });
+
+  it('parses new advisory fields losslessly and preserves list order', () => {
+    const root = repoWithAgents({ 'complex-agent.md': COMPLEX_AGENT_FILE });
+    const detail = readDeclaredAgentDetails(root).get('complex-agent')!;
+    expect(detail).toMatchObject({
+      tools: ['Read', 'Grep'],
+      knowledgeSource: ['docs/'],
+      autonomyTier: 'T2',
+      skills: ['dispatch-codex'],
+      whatItReplaces: null,
+      buildsOn: ['fyt-checker'],
+    });
+    expect(readDeclaredAgents(root).get('complex-agent')).toMatchObject({
+      tools: ['Read', 'Grep'],
+      knowledgeSource: ['docs/'],
+      autonomyTier: 'T2',
+      skills: ['dispatch-codex'],
+      whatItReplaces: null,
+      buildsOn: ['fyt-checker'],
+    });
+    expect(buildRoster(indexOf([]), root, POLICY, { overrides: [] }, new NamingRegistry(join(root, 'naming.json')))
+      .find((entry) => entry.id === 'complex-agent'))
+      .toMatchObject({
+        tools: ['Read', 'Grep'],
+        knowledgeSource: ['docs/'],
+        autonomyTier: 'T2',
+        skills: ['dispatch-codex'],
+        whatItReplaces: null,
+        buildsOn: ['fyt-checker'],
+      });
+  });
+
+  it('parses version, io, and advisory defaults with the same legacy defaults as Python', () => {
+    const versioned = `---
+id: versioned-agent
+version: 3
+io:
+  inputs: {brief: markdown}
+  outputs: [report, citations]
+defaults: {budget_usd: 2.5, max_retries: 3, escalation: human-review}
+---
+# Versioned
+`;
+    const root = repoWithAgents({ 'versioned-agent.md': versioned, 'legacy-agent.md': AGENT_FILE.replaceAll('research-worker', 'legacy-agent') });
+    const detail = readDeclaredAgentDetails(root).get('versioned-agent')!;
+    expect(detail).toMatchObject({
+      version: 3,
+      io: { inputs: { brief: 'markdown' }, outputs: ['report', 'citations'] },
+      defaults: { budgetUsd: 2.5, maxRetries: 3, escalation: 'human-review' },
+    });
+    expect(readDeclaredAgentDetails(root).get('legacy-agent')).toMatchObject({ version: 1, io: null, defaults: null });
+    const quoted = repoWithAgents({ 'quoted-agent.md': versioned.replace('id: versioned-agent\nversion: 3', 'id: quoted-agent\nversion: "3"') });
+    expect(readDeclaredAgentDetails(quoted).get('quoted-agent')).toMatchObject({ version: 1 });
+  });
+
+  it.each([
+    ['3', 3, 3],
+    ['"3"', 1, '3'],
+    ['"true"', 1, 'true'],
+    ['true', 1, null],
+    ['null', 1, null],
+    [null, 1, null],
+  ])('matches Python scalar semantics for version/defaults: %s', (scalar, version, budgetUsd) => {
+    // Shared scalar fixture list: expected values are PyYAML +
+    // scripts/agent_definitions.py, which is the declaration authority.
+    const scalarLines = scalar === null ? '' : `version: ${scalar}\ndefaults: {budget_usd: ${scalar}}\n`;
+    const root = repoWithAgents({ 'scalar-agent.md': `---\nid: scalar-agent\n${scalarLines}---\n` });
+    expect(readDeclaredAgentDetails(root).get('scalar-agent')).toMatchObject({
+      version,
+      defaults: scalar === null ? null : { budgetUsd, maxRetries: null, escalation: null },
+    });
+  });
+
+  it('authoring a new list field with YAML block-list syntax throws in the frontmatter parser and drops the whole declaration (documented trap: only inline [a, b] list syntax parses)', () => {
+    const blockListed = COMPLEX_AGENT_FILE.replace('tools: [Read, Grep]', 'tools:\n- Read');
+    const root = repoWithAgents({ 'complex-agent.md': blockListed });
+    expect(readDeclaredAgents(root).has('complex-agent')).toBe(false);
+    expect(readAgentDeclarationProblems(root).get('complex-agent')).toMatchObject({ problem: 'malformed-frontmatter' });
+    const roster = buildRoster(indexOf([]), root, POLICY, { overrides: [] });
+    expect(roster).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'complex-agent', declared: false, declarationProblem: 'malformed-frontmatter' }),
+    ]));
+  });
+
+  it('keeps legacy declarations listable with null advisory fields', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    expect(readDeclaredAgentDetails(root).get('research-worker')).toMatchObject({
+      tools: null,
+      knowledgeSource: null,
+      autonomyTier: null,
+      skills: null,
+      whatItReplaces: null,
+      buildsOn: null,
+    });
+    const entry = buildRoster(indexOf([]), root, POLICY, { overrides: [] }).find((agent) => agent.id === 'research-worker')!;
+    expect(entry).toMatchObject({
+      declared: true,
+      declarationProblem: null,
+      tools: null,
+      knowledgeSource: null,
+      autonomyTier: null,
+      skills: null,
+      whatItReplaces: null,
+      buildsOn: null,
+    });
+  });
+
+  it('degrades malformed advisory values without rejecting the declaration', () => {
+    const malformed = AGENT_FILE.replace('runner-bound: false', 'runner-bound: false\ntools: 42\nautonomy-tier:');
+    const root = repoWithAgents({ 'research-worker.md': malformed });
+    expect(readDeclaredAgentDetails(root).get('research-worker')).toMatchObject({ tools: null, autonomyTier: null });
+    expect(buildRoster(indexOf([]), root, POLICY, { overrides: [] }).find((agent) => agent.id === 'research-worker'))
+      .toMatchObject({ declared: true, declarationProblem: null, tools: null, autonomyTier: null });
+    expect(readAgentDeclarationProblems(root).has('research-worker')).toBe(false);
+  });
+
+  it('reads every real agent declaration alongside the complex fixture without loss', () => {
+    const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+    const files = Object.fromEntries(
+      readdirSync(join(repoRoot, 'agents'))
+        .filter((name) => name.endsWith('.md'))
+        .map((name) => {
+          const source = readFileSync(join(repoRoot, 'agents', name), 'utf8');
+          const end = source.indexOf('\n---', 4);
+          return [name, end === -1 ? source : `${source.slice(0, end + 5)}\n`];
+        }),
+    );
+    files['complex-agent.md'] = COMPLEX_AGENT_FILE;
+    const root = repoWithAgents(files);
+    // +1 for the injected complex-agent fixture alongside every real agents/*.md declaration.
+    const expectedCount = readdirSync(join(repoRoot, 'agents')).filter((name) => name.endsWith('.md')).length + 1;
+    expect(readDeclaredAgentDetails(root)).toHaveLength(expectedCount);
+    expect(readAgentDeclarationProblems(root)).toHaveLength(0);
   });
 
   it('projects a complete declared execution-profile contract into detail and roster rows', () => {

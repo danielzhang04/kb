@@ -52,6 +52,7 @@ import sys
 from pathlib import Path
 
 import preamble
+from kb_paths import resolve_dashboard_state_root
 
 try:
     import ledger
@@ -75,16 +76,14 @@ def resolve_store_path(env: dict | None = None) -> Path:
     """The control-plane store path, mirroring the dashboard's
     `resolveDashboardStateRoot` precedence (READ-ONLY; we never write here)."""
     env = os.environ if env is None else env
-    configured = (env.get("DASHBOARD_STATE_ROOT") or "").strip()
-    if configured:
-        root = configured
+    localapp = (env.get("LOCALAPPDATA") or "").strip()
+    if localapp:
+        fallback = Path(localapp) / "kb" / "dashboard"
     else:
-        localapp = (env.get("LOCALAPPDATA") or "").strip()
-        if localapp:
-            root = os.path.join(localapp, "kb", "dashboard")
-        else:
-            root = os.path.join(os.path.expanduser("~"), ".kb", "dashboard")
-    return Path(root) / "control" / "control-plane.json"
+        fallback = Path.home() / ".kb" / "dashboard"
+    root = resolve_dashboard_state_root(env, fallback=fallback)
+    assert root is not None
+    return root / "control" / "control-plane.json"
 
 
 def load_store(path: Path) -> dict | None:

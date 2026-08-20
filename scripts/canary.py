@@ -103,7 +103,11 @@ _REQUIRED_META = ("id", "capability", "expected", "judge", "rubric_version",
                   "k", "source", "immutable")
 
 
-def parse_canary(path: Path) -> Canary:
+def split_frontmatter(path: Path) -> tuple[dict, str]:
+    """(meta, body) for any golden card file — the shared parser for every card
+    dialect built on this discipline (canaries here, per-agent eval suites in
+    `scripts/agent_evals.py`). Field validation is the caller's job, because the
+    required set differs per dialect."""
     text = Path(path).read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
     lines = text.split("\n")
     if not lines or lines[0] != "---":
@@ -114,17 +118,20 @@ def parse_canary(path: Path) -> Canary:
     close = next((i for i in range(1, len(lines)) if lines[i] == "---"), None)
     if close is None:
         raise CanaryError(f"{path}: unterminated frontmatter")
-    fm = "\n".join(lines[1:close])
-    body = "\n".join(lines[close + 1:])
-    meta = yaml.safe_load(fm)
+    meta = yaml.safe_load("\n".join(lines[1:close]))
     if not isinstance(meta, dict):
         raise CanaryError(f"{path}: frontmatter is not a mapping")
+    return meta, "\n".join(lines[close + 1:]).lstrip("\n")
+
+
+def parse_canary(path: Path) -> Canary:
+    meta, body = split_frontmatter(path)
     for key in _REQUIRED_META:
         if key not in meta:
             raise CanaryError(f"{path}: missing required frontmatter field {key!r}")
     if meta["capability"] not in CHECKERS:
         raise CanaryError(f"{path}: unknown capability {meta['capability']!r}")
-    return Canary(meta=meta, body=body.lstrip("\n"), path=Path(path))
+    return Canary(meta=meta, body=body, path=Path(path))
 
 
 def _canary_files(canary_dir: Path) -> list[Path]:
@@ -140,15 +147,24 @@ def load_canaries(canary_dir: Path) -> list[Canary]:
 # Manifest (immutability anchor)                                              #
 # --------------------------------------------------------------------------- #
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    """Hash a golden text card in its checkout-independent LF form.
+
+    Canary cards are UTF-8 Markdown.  Their manifest is an oracle for text
+    content, not for Git's platform-specific CRLF checkout representation.
+    """
+    content = Path(path).read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(content).hexdigest()
 
 
-def _manifest_entries(evals_dir: Path) -> list[tuple[str, str]]:
-    """(hexdigest, relpath) for every canary file, relpath POSIX-style relative
-    to evals_dir (so the manifest is stable across OSes)."""
+def _manifest_entries(evals_dir: Path, subdir: str = CANARY_SUBDIR) -> list[tuple[str, str]]:
+    """(hexdigest, relpath) for every card file, relpath POSIX-style relative
+    to evals_dir (so the manifest is stable across OSes). ``subdir`` is where the
+    cards live under ``evals_dir``; `""` means the cards sit in ``evals_dir``
+    itself (the per-agent suite layout, `evals/agents/<id>/`)."""
     evals_dir = Path(evals_dir)
+    card_dir = evals_dir / subdir if subdir else evals_dir
     out: list[tuple[str, str]] = []
-    for p in _canary_files(evals_dir / CANARY_SUBDIR):
+    for p in _canary_files(card_dir):
         rel = p.relative_to(evals_dir).as_posix()
         out.append((_sha256(p), rel))
     return out
@@ -170,28 +186,35 @@ def _read_manifest(evals_dir: Path) -> dict[str, str]:
     return out
 
 
-def update_manifest(evals_dir: Path) -> Path:
-    """(Re)write MANIFEST.sha256 from the canary files on disk. Human-gated act
-    (the CLI only calls this after the suite passes)."""
+_CANARY_MANIFEST_HEADER = (
+    "# evals/MANIFEST.sha256 — golden canary hashes (human-gated regeneration).",
+    "# Regenerate ONLY via `py -3 scripts/canary.py --update-manifest` when the suite",
+    "# passes and an evals/ change is deliberate. A mismatch fails the suite loud.",
+    "",
+)
+
+
+def update_manifest(evals_dir: Path, subdir: str = CANARY_SUBDIR,
+                    header: tuple[str, ...] | list[str] | None = None) -> Path:
+    """(Re)write MANIFEST.sha256 from the card files on disk. Human-gated act
+    (the CLI only calls this after the suite passes). ``header`` lets another
+    suite dialect state its own re-bless command; the default is the canary one."""
     evals_dir = Path(evals_dir)
-    lines = ["# evals/MANIFEST.sha256 — golden canary hashes (human-gated regeneration).",
-             "# Regenerate ONLY via `py -3 scripts/canary.py --update-manifest` when the suite",
-             "# passes and an evals/ change is deliberate. A mismatch fails the suite loud.",
-             ""]
-    lines += [f"{h}  {rel}" for h, rel in _manifest_entries(evals_dir)]
+    lines = list(_CANARY_MANIFEST_HEADER if header is None else header)
+    lines += [f"{h}  {rel}" for h, rel in _manifest_entries(evals_dir, subdir)]
     path = evals_dir / MANIFEST_NAME
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
 
-def verify_manifest(evals_dir: Path) -> tuple[bool, list[str]]:
-    """True + [] when every canary file matches the manifest EXACTLY (no missing,
+def verify_manifest(evals_dir: Path, subdir: str = CANARY_SUBDIR) -> tuple[bool, list[str]]:
+    """True + [] when every card file matches the manifest EXACTLY (no missing,
     no extra, no changed). Otherwise False + human-readable problem lines."""
     evals_dir = Path(evals_dir)
     if not (evals_dir / MANIFEST_NAME).exists():
         return False, [f"missing {MANIFEST_NAME}"]
     recorded = _read_manifest(evals_dir)
-    actual = {rel: h for h, rel in _manifest_entries(evals_dir)}
+    actual = {rel: h for h, rel in _manifest_entries(evals_dir, subdir)}
     problems: list[str] = []
     for rel, h in actual.items():
         if rel not in recorded:
@@ -391,6 +414,62 @@ def _check_triage(inp, expected, repo_root):
     return (label == expected["label"]), f"label={label}"
 
 
+def _check_eval_namespace_isolation(inp, expected, repo_root):
+    """`scripts/agent_evals.py`'s core guarantee (T5/T6), pinned as a permanent
+    Proving Grounds regression: a hermetic per-agent eval suite is seeded and
+    blessed in a tmp tree, run+recorded N times (worker=eval-suite,
+    task_type=eval:<agent_id>:<card_id>), and the target agent's OWN real
+    task_type/tier promotion verdict must be byte-identical to the zero-rows
+    baseline — eval rows can never move an agent's own autonomy."""
+    import agent_evals
+    import promotion
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        agent_id = inp.get("agent_id", "demo-agent")
+        card_id = inp.get("card_id", "smoke")
+        (root / "ANCHOR.md").write_text("x\n", encoding="utf-8")
+        suite = root / "evals" / "agents" / agent_id
+        suite.mkdir(parents=True)
+        card_text = (
+            "---\n"
+            f"id: {card_id}\n"
+            "capability: agent-baseline\n"
+            "judge: file-exists\n"
+            'rubric_version: "1"\n'
+            "k: 1\n"
+            "source: curated\n"
+            "immutable: true\n"
+            "tier: T1\n"
+            "input:\n"
+            "  path: ANCHOR.md\n"
+            "---\n"
+            f"# {card_id}\n"
+        )
+        (suite / f"{card_id}.md").write_text(card_text, encoding="utf-8")
+        agent_evals.update_manifest(root, agent_id)
+
+        record_root = root / "ledgerhome"
+        repeats = int(inp.get("repeats", 40))
+        for _ in range(repeats):
+            report = agent_evals.run_suite(root, agent_id, record=True,
+                                           record_root=record_root)
+            if not report.passed:
+                return False, f"seeded eval suite unexpectedly red: {report.reason}"
+        rows = promotion.read_grades(record_root)
+        if len(rows) != repeats:
+            return False, f"expected {repeats} recorded rows, got {len(rows)}"
+
+        real_task_type = inp.get("real_task_type", "build")
+        real_tier = inp.get("real_tier", "T2")
+        baseline = promotion.status(agent_id, "kb", real_task_type, real_tier, [],
+                                    frozen=False)
+        verdict = promotion.status(agent_id, "kb", real_task_type, real_tier, rows,
+                                   frozen=False)
+        want = expected.get("verdict", baseline)
+        ok = (verdict == baseline == want)
+        return ok, f"baseline={baseline} verdict={verdict} rows={len(rows)}"
+
+
 CHECKERS = {
     "card-parse": _check_card_parse,
     "routing-resolution": _check_routing,
@@ -400,6 +479,7 @@ CHECKERS = {
     "ledger-shard": _check_ledger,
     "reconcile-quarantine": _check_reconcile,
     "triage-taxonomy": _check_triage,
+    "eval-namespace-isolation": _check_eval_namespace_isolation,
 }
 
 

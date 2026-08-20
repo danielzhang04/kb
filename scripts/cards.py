@@ -205,6 +205,21 @@ def stamp_routing(card: Card, runtime: str, model: str) -> None:
     card.meta["model"] = model
 
 
+def stamp_schedule(card: Card, scheduled_for: str, dispatched_at: str) -> None:
+    """Record WHICH schedule occurrence produced this card, and WHEN it was cut.
+
+    Third setter of the stamp_session/stamp_routing family: mutates card.meta,
+    does not save. `scheduled_for` is the occurrence the dispatcher fired for
+    (an ISO datetime for a cron cadence, the bare ISO date for the legacy
+    daily/weekly forms — the same value that goes in the dispatch ledger row);
+    `dispatched_at` is the wall-clock instant the card was emitted. The two
+    differ whenever the dispatcher ticks late, which is how a run can tell
+    which occurrence it is (spec s5 "Stamps"). Inert metadata: never executed.
+    """
+    card.meta["scheduled_for"] = scheduled_for
+    card.meta["dispatched_at"] = dispatched_at
+
+
 def transition(card: Card, new_state: str, queue_root: Path) -> Path:
     old = card.meta["state"]
     if new_state not in LEGAL.get(old, set()):

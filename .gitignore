@@ -10,10 +10,14 @@ _data/
 _private/
 
 # python
+.brain-index/
 __pycache__/
 *.pyc
 .pytest_cache/
 atlas/.venv/
+.hygiene-report.json
+.pytest-*/
+.u10-pytest-tmp/
 
 # dashboard (Node) — build + deps never committed
 dashboard/node_modules/
@@ -23,3 +27,5 @@ dashboard/dist/
 # production copy lives under DASHBOARD_STATE_ROOT (AppData\Local\kb-dashboard), deliberately outside
 # every git worktree. A copy inside the repo only ever means a test pointed its stateRoot here.
 naming.json
+kit/.rendered/
+state/scratch/

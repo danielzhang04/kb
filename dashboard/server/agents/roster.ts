@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { CardProjection, ParsedCard } from '../planeA/cards.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { parseYaml, type YamlValue } from '../routing/yaml.ts';
 import { parseLedgerName } from '../planeA/ledgers.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import { effectiveForAgent, RoutingError } from '../routing/effective.ts';
@@ -164,12 +165,30 @@ export interface AgentRosterEntry {
   declaredRuntime: string | null;
   /** The declared DEFAULT model from the agent file (advisory metadata), or null. */
   declaredModel: string | null;
+  /** Declared tools from the agent file (advisory metadata), or null. */
+  tools?: string[] | null;
+  /** Declared knowledge sources from the agent file (advisory metadata), or null. */
+  knowledgeSource?: string[] | null;
+  /** Declared autonomy tier from the agent file (advisory metadata), or null. */
+  autonomyTier?: string | null;
+  /** Declared skills from the agent file (advisory metadata), or null. */
+  skills?: string[] | null;
+  /** Declared replacement relationship from the agent file (advisory metadata), or null. */
+  whatItReplaces?: string | null;
+  /** Declared predecessor relationships from the agent file (advisory metadata), or null. */
+  buildsOn?: string[] | null;
   /** The declaration's default server-owned execution profile id, or null for a legacy declaration. */
   defaultProfile?: string | null;
   /** The declaration's permitted execution profile ids, or null for a legacy declaration. */
   allowedProfiles?: string[] | null;
   /** One-line human description from the agent file, or null. */
   description: string | null;
+  /** Declaration revision. Legacy definitions are v1. */
+  version?: number;
+  /** Advisory input/output schema descriptions from the declaration, or null when absent. */
+  io?: AgentIo | null;
+  /** Advisory budget/retry/escalation defaults from the declaration, or null when absent. */
+  defaults?: AgentDefaults | null;
   /** A declaration file was found for this id but could not safely be used. */
   declarationProblem?: string | null;
 }
@@ -180,13 +199,33 @@ export interface DeclaredAgent {
   role: string | null;
   runtime: string | null;
   model: string | null;
+  tools?: string[] | null;
+  knowledgeSource?: string[] | null;
+  autonomyTier?: string | null;
+  skills?: string[] | null;
+  whatItReplaces?: string | null;
+  buildsOn?: string[] | null;
   /** Optional complete execution-profile contract. Legacy declarations carry null for both fields. */
   defaultProfile: string | null;
   allowedProfiles: string[] | null;
   runnerBound: boolean;
   description: string | null;
+  version?: number;
+  io?: AgentIo | null;
+  defaults?: AgentDefaults | null;
   /** Declared project relationships are display metadata, never routing authority. */
   projects: string[];
+}
+
+export interface AgentIo {
+  inputs: YamlValue | null;
+  outputs: YamlValue | null;
+}
+
+export interface AgentDefaults {
+  budgetUsd: string | number | null;
+  maxRetries: string | number | null;
+  escalation: string | number | null;
 }
 
 export type ExecutionAssignmentRole = 'manager' | 'worker';
@@ -369,7 +408,7 @@ interface ParsedAgentCandidate {
   stem: string;
   source: string;
   text: string;
-  parsed: ReturnType<typeof parseCardFrontmatter>;
+  parsed: { meta: Record<string, unknown>; body: string };
   claimedId: string;
 }
 
@@ -405,6 +444,116 @@ function declaredProfileConfig(meta: Record<string, unknown>): DeclaredProfileCo
 function projectIds(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return [...new Set(v.filter((item): item is string => typeof item === 'string' && SAFE_PROJECT_ID.test(item)))].sort();
+}
+
+/**
+ * Advisory list fields preserve authored string order while safely dropping malformed entries
+ * (non-strings and, matching `strFieldOrNull`'s '' rejection, empty strings) and deduping repeats.
+ * Only the inline `key: [a, b]` frontmatter syntax parses here — YAML block-list syntax (`key:` on
+ * its own line followed by `- item` lines) throws in the shared frontmatter parser and marks the
+ * whole declaration malformed-frontmatter, dropping it entirely. This is a pre-existing parser
+ * constraint, not specific to this function; the six new list fields inherit it, same as
+ * `projects` / `allowed-profiles`.
+ */
+function listField(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const values: string[] = [];
+  const seen = new Set<string>();
+  for (const item of v) {
+    if (typeof item === 'string' && item !== '' && !seen.has(item)) {
+      seen.add(item);
+      values.push(item);
+    }
+  }
+  return values;
+}
+
+function recordValue(value: unknown): Record<string, YamlValue> | null {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, YamlValue>;
+  }
+  // The long-established card reader deliberately treats flow maps as strings.
+  // Decode only this new advisory shape so legacy declaration parsing stays identical.
+  if (typeof value === 'string' && value.trim().startsWith('{')) {
+    const parsed = parseYaml(`value: ${value}`);
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      const nested = (parsed as Record<string, YamlValue>).value;
+      if (typeof nested === 'object' && nested !== null && !Array.isArray(nested)) return nested as Record<string, YamlValue>;
+    }
+  }
+  return null;
+}
+
+function declaredVersion(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : 1;
+}
+
+function declaredIo(value: unknown): AgentIo | null {
+  const io = recordValue(value);
+  return io ? { inputs: io.inputs ?? null, outputs: io.outputs ?? null } : null;
+}
+
+function advisoryDefault(value: unknown): string | number | null {
+  if (typeof value === 'number') return value;
+  // The dashboard's compact YAML reader intentionally leaves decimal literals
+  // as strings; normalize this advisory numeric subset to match Python YAML.
+  if (typeof value === 'string' && /^-?\d+\.\d+$/.test(value)) return Number(value);
+  return typeof value === 'string' ? value : null;
+}
+
+function declaredDefaults(value: unknown): AgentDefaults | null {
+  const defaults = recordValue(value);
+  return defaults ? {
+    budgetUsd: advisoryDefault(defaults.budget_usd),
+    maxRetries: advisoryDefault(defaults.max_retries),
+    escalation: advisoryDefault(defaults.escalation),
+  } : null;
+}
+
+/**
+ * Agent declarations inherit the card parser's strict flat shape.  The new
+ * `io` / `defaults` fields may additionally use YAML block maps; the fallback
+ * is limited to those two top-level keys so old malformed fields stay invalid.
+ */
+function parseAgentFrontmatter(text: string): { meta: Record<string, unknown>; body: string } {
+  try {
+    const parsed = parseCardFrontmatter(text);
+    const meta = { ...parsed.meta } as Record<string, unknown>;
+    // Keep the established strict parser as the admission gate, then recover
+    // only the typed extension fields from the YAML subset parser. This makes
+    // bare `version: 3` an integer while quoted `version: "3"` stays a string
+    // and therefore gets the legacy v1 default, matching Python exactly.
+    const head = text.replace(/^---\r?\n/, '');
+    const fenceIdx = head.search(/\r?\n---\r?\n/);
+    const extensions = fenceIdx === -1 ? null : parseYaml(head.slice(0, fenceIdx));
+    if (typeof extensions === 'object' && extensions !== null && !Array.isArray(extensions)) {
+      for (const key of ['version', 'io', 'defaults']) {
+        if (Object.hasOwn(extensions, key)) meta[key] = (extensions as Record<string, YamlValue>)[key];
+      }
+    }
+    return { meta, body: parsed.body };
+  } catch (err) {
+    if (!text.startsWith('---\n') && !text.startsWith('---\r\n')) throw err;
+    const head = text.replace(/^---\r?\n/, '');
+    const fenceIdx = head.search(/\r?\n---\r?\n/);
+    if (fenceIdx === -1) throw err;
+    const frontmatter = head.slice(0, fenceIdx);
+    let topLevel: string | null = null;
+    for (const line of frontmatter.split(/\r?\n/)) {
+      if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
+      if (!/^\s/.test(line)) {
+        const key = /^([^:\s][^:]*):/.exec(line);
+        if (!key || line.startsWith('-')) throw err;
+        topLevel = key[1].trim();
+      } else if (topLevel !== 'io' && topLevel !== 'defaults') {
+        throw err;
+      }
+    }
+    const parsed = parseYaml(frontmatter);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw err;
+    const body = head.slice(fenceIdx).replace(/^\r?\n---\r?\n/, '').replace(/^\r?\n+/, '');
+    return { meta: parsed as Record<string, unknown>, body };
+  }
 }
 
 /** Extract display-only, repo-contained paths from the declaration body. */
@@ -462,10 +611,10 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       continue;
     }
     let text: string;
-    let parsed: ReturnType<typeof parseCardFrontmatter>;
+    let parsed: { meta: Record<string, unknown>; body: string };
     try {
       text = readFileSync(full, 'utf-8');
-      parsed = parseCardFrontmatter(text);
+      parsed = parseAgentFrontmatter(text);
     } catch {
       problems.set(stem, { id: stem, source, problem: 'malformed-frontmatter' });
       continue;
@@ -515,10 +664,19 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       role: strFieldOrNull(meta.role),
       runtime: strFieldOrNull(meta.runtime),
       model: strFieldOrNull(meta.model),
+      tools: listField(meta.tools),
+      knowledgeSource: listField(meta['knowledge-source']),
+      autonomyTier: strFieldOrNull(meta['autonomy-tier']),
+      skills: listField(meta.skills),
+      whatItReplaces: strFieldOrNull(meta['what-it-replaces']),
+      buildsOn: listField(meta['builds-on']),
       defaultProfile: profileConfig.defaultProfile,
       allowedProfiles: profileConfig.allowedProfiles,
       runnerBound: meta['runner-bound'] === true,
       description: strFieldOrNull(meta.description),
+      version: declaredVersion(meta.version),
+      io: declaredIo(meta.io),
+      defaults: declaredDefaults(meta.defaults),
       source: candidate.source,
       instructionMarkdown: candidate.parsed.body,
       sourceHash: createHash('sha256').update(candidate.text, 'utf8').digest('hex'),
@@ -578,10 +736,23 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
       role: detail.role,
       runtime: detail.runtime,
       model: detail.model,
+      tools: detail.tools === null || detail.tools === undefined ? null : [...detail.tools],
+      knowledgeSource: detail.knowledgeSource === null || detail.knowledgeSource === undefined ? null : [...detail.knowledgeSource],
+      autonomyTier: detail.autonomyTier ?? null,
+      skills: detail.skills === null || detail.skills === undefined ? null : [...detail.skills],
+      whatItReplaces: detail.whatItReplaces ?? null,
+      buildsOn: detail.buildsOn === null || detail.buildsOn === undefined ? null : [...detail.buildsOn],
       defaultProfile: detail.defaultProfile,
       allowedProfiles: detail.allowedProfiles === null ? null : [...detail.allowedProfiles],
       runnerBound: detail.runnerBound,
       description: detail.description,
+      version: detail.version,
+      io: detail.io === null || detail.io === undefined ? null : { inputs: detail.io.inputs, outputs: detail.io.outputs },
+      defaults: detail.defaults === null || detail.defaults === undefined ? null : {
+        budgetUsd: detail.defaults.budgetUsd,
+        maxRetries: detail.defaults.maxRetries,
+        escalation: detail.defaults.escalation,
+      },
       projects: detail.projects,
     });
   }
@@ -649,9 +820,18 @@ export function buildRoster(
       runnerBound: dec?.runnerBound ?? false,
       declaredRuntime: dec?.runtime ?? null,
       declaredModel: dec?.model ?? null,
+      tools: dec?.tools === null || dec?.tools === undefined ? null : [...dec.tools],
+      knowledgeSource: dec?.knowledgeSource === null || dec?.knowledgeSource === undefined ? null : [...dec.knowledgeSource],
+      autonomyTier: dec?.autonomyTier ?? null,
+      skills: dec?.skills === null || dec?.skills === undefined ? null : [...dec.skills],
+      whatItReplaces: dec?.whatItReplaces ?? null,
+      buildsOn: dec?.buildsOn === null || dec?.buildsOn === undefined ? null : [...dec.buildsOn],
       defaultProfile: dec?.defaultProfile ?? null,
       allowedProfiles: dec?.allowedProfiles ? [...dec.allowedProfiles] : null,
       description: dec?.description ?? null,
+      version: dec?.version ?? 1,
+      io: dec?.io === null || dec?.io === undefined ? null : { ...dec.io },
+      defaults: dec?.defaults === null || dec?.defaults === undefined ? null : { ...dec.defaults },
       declarationProblem,
     });
   }

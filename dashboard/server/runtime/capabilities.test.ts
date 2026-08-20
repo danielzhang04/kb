@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runtimeCapabilities } from './capabilities.ts';
+import { composeRuntimeCapabilities, runtimeCapabilities } from './capabilities.ts';
 
 describe('runtimeCapabilities', () => {
   it('disables PTY and Task Scheduler on Linux while retaining the bridge', () => {
@@ -9,6 +9,8 @@ describe('runtimeCapabilities', () => {
       pty: false,
       runnerTrigger: false,
       vibe: false,
+      durablePrWrites: false,
+      localTranscripts: false,
       dashboardBridge: true,
     });
   });
@@ -20,7 +22,22 @@ describe('runtimeCapabilities', () => {
       pty: true,
       runnerTrigger: true,
       vibe: true,
+      durablePrWrites: false,
+      localTranscripts: false,
       dashboardBridge: true,
     });
+  });
+
+  it('derives deployment capabilities from the real composed surfaces, never KB_VM_RUNTIME', () => {
+    const openPr = async () => undefined;
+    expect(composeRuntimeCapabilities(runtimeCapabilities('linux'), {
+      coordinationPublication: 'outbox', openPr, transcriptRoot: null,
+    })).toMatchObject({ durablePrWrites: false, localTranscripts: false });
+    expect(composeRuntimeCapabilities(runtimeCapabilities('linux'), {
+      coordinationPublication: 'direct', openPr, transcriptRoot: '/readable/traces',
+    })).toMatchObject({ durablePrWrites: true, localTranscripts: true });
+    expect(composeRuntimeCapabilities(runtimeCapabilities('win32'), {
+      coordinationPublication: 'direct', transcriptRoot: null,
+    }).durablePrWrites).toBe(false);
   });
 });

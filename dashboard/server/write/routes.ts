@@ -363,6 +363,9 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       }, auditOpts);
       return reply.code(200).send({ ok: true, path: outcome.path });
     }
+    if (outcome.reason === 'invalid-cadence') {
+      return reply.code(400).send({ error: outcome.reason, detail: outcome.detail });
+    }
     return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
   });
 
