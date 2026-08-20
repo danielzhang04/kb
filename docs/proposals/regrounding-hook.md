@@ -25,8 +25,9 @@ The defaults are 25 tool calls (`KB_REGROUND_EVERY_CALLS`) or 30 minutes
 re-grounding hook only: Claude Code's fullness-triggered auto-compaction remains the
 only compaction mechanism.
 
-Throttle state is stored at `%LOCALAPPDATA%/kb-regrounding/state.json`; tests and
-operators may override its directory with `KB_REGROUND_STATE_DIR`. The versioned state
+Throttle state is stored at `DASHBOARD_STATE_ROOT/regrounding/state.json` when the daemon state
+root exists, otherwise `%LOCALAPPDATA%/kb-regrounding/state.json`; tests and operators may override
+its directory with `KB_REGROUND_STATE_DIR`. The versioned state
 has a `sessions` map keyed only by a nonempty `session_id`. An event without an id is
 deliberately stateless: it injects without throttling and does not read, lock, or write
 the state directory. Injection is idempotent-safe; sharing mutable state between

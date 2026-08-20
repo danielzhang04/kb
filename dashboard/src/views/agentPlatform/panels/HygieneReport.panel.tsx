@@ -12,7 +12,7 @@ function HygieneReportBody(): React.JSX.Element {
   if (state === 'unavailable') return <p className="ap-hygiene__empty">Report unavailable — nothing was changed.</p>;
   if (response === null) return <p className="ap-hygiene__empty">Reading hygiene report…</p>;
   if (!response.available) {
-    return <p className="ap-hygiene__empty" data-testid="ap-hygiene-not-generated">No report has been generated. Run: <code>python scripts/hygiene_sweep.py</code></p>;
+    return <p className="ap-hygiene__empty" data-testid="ap-hygiene-not-generated">No report has been generated. Run the packaged hygiene sweep against the ops checkout; the dashboard does not launch it.</p>;
   }
   const groups = Object.entries(response.report.summary.by_kind).sort(([a], [b]) => a.localeCompare(b));
   const grouped = new Map(groups.map(([kind]) => [kind, response.report.findings.filter((finding) => finding.kind === kind)]));

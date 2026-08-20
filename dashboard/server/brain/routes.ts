@@ -3,6 +3,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
+import { resolvePython } from '../runtime/python.ts';
 
 const execFile = promisify(execFileCallback);
 const DEFAULT_K = 8;
@@ -14,6 +15,7 @@ export type RunBrainQuery = (query: string, k: number) => Promise<string>;
 export interface BrainSearchOptions {
   repoRoot?: string;
   runQuery?: RunBrainQuery;
+  platform?: NodeJS.Platform;
 }
 
 /** The dashboard lives at `<repo>/dashboard/server/brain/routes.ts`. */
@@ -21,15 +23,16 @@ export function resolveRepoRoot(): string {
   return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 }
 
-function defaultRunQuery(repoRoot: string): RunBrainQuery {
+function defaultRunQuery(repoRoot: string, platform: NodeJS.Platform): RunBrainQuery {
+  const python = resolvePython(platform);
   return async (query, k) => {
     // Flags precede "--"; the query is the sole positional after it. A dash-leading query
     // (e.g. "-rf") would otherwise parse as an argparse flag and fail with the CLI's usage-error
     // exit code, which used to collide with "index not built" — see brain_query.py's
     // _StrictArgumentParser for the other half of this fix.
     const { stdout } = await execFile(
-      'py',
-      ['-3', '-m', 'scripts.brain.brain_query', '--k', String(k), '--json', '--', query],
+      python.command,
+      [...python.prefixArgs, '-m', 'scripts.brain.brain_query', '--k', String(k), '--json', '--', query],
       { cwd: repoRoot, timeout: QUERY_TIMEOUT_MS },
     );
     return stdout;
@@ -65,7 +68,10 @@ function errorReason(payload: unknown): string | null {
 
 /** Register GET /api/brain/search. The CLI itself is read-only; no write route exists. */
 export function registerBrainSearch(app: FastifyInstance, options: BrainSearchOptions = {}): void {
-  const runQuery = options.runQuery ?? defaultRunQuery(options.repoRoot ?? resolveRepoRoot());
+  const runQuery = options.runQuery ?? defaultRunQuery(
+    options.repoRoot ?? resolveRepoRoot(),
+    options.platform ?? process.platform,
+  );
   app.get('/api/brain/search', async (request, reply) => {
     const query = request.query as Record<string, unknown>;
     const q = query.q;

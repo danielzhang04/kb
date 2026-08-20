@@ -78,6 +78,10 @@ import { fetchHumanInbox } from './lib/approvalsClient';
 import { useSse } from './lib/sseClient';
 import { SessionProvider, useSession } from './lib/sessionContext';
 import { readThemeChoice, persistThemeChoice, applyTheme, type ThemeChoice } from './lib/theme';
+import {
+  RuntimeCapabilitiesProvider,
+  type ClientRuntimeCapabilities,
+} from './lib/runtimeCapabilities';
 
 /** Live count of all human-attention items for the sidebar Inbox badge. Reuses the same SSE-tick
  *  pattern as {@link ApprovalsLive}, so decisions/questions/interventions appear without a reload.
@@ -593,7 +597,10 @@ function AuthenticatedAppShell(): React.JSX.Element {
   const { session, requireSession } = useSession();
   // This authenticated shell mounts only after AppShell's signed-out gate. Capability discovery is
   // fail-closed: a Linux daemon that does not expose PTY routes must never get a socket.
-  const [ptyEnabled, setPtyEnabled] = useState(true);
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<ClientRuntimeCapabilities>({
+    pty: true,
+    localTranscripts: false,
+  });
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The [+ New ▾] menu opens the Composer surface over the current view; `composerKind` pre-seeds its
   // type chip (`idea` for the idea-first entry, a concrete kind for the entity pickers).
@@ -617,7 +624,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
 
   useEffect(() => {
     if (!session?.token) {
-      setPtyEnabled(true);
+      setRuntimeCapabilities({ pty: true, localTranscripts: false });
       return;
     }
     let alive = true;
@@ -626,13 +633,18 @@ function AuthenticatedAppShell(): React.JSX.Element {
     })
       .then(async (response) => {
         if (!response.ok) throw new Error('runtime capabilities unavailable');
-        return response.json() as Promise<{ pty?: unknown }>;
+        return response.json() as Promise<{ pty?: unknown; localTranscripts?: unknown }>;
       })
       .then((capabilities) => {
-        if (alive) setPtyEnabled(capabilities.pty === true);
+        if (alive) {
+          setRuntimeCapabilities({
+            pty: capabilities.pty === true,
+            localTranscripts: capabilities.localTranscripts === true,
+          });
+        }
       })
       .catch(() => {
-        if (alive) setPtyEnabled(false);
+        if (alive) setRuntimeCapabilities({ pty: false, localTranscripts: false });
       });
     return () => {
       alive = false;
@@ -816,6 +828,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
   );
 
   return (
+    <RuntimeCapabilitiesProvider value={runtimeCapabilities}>
     <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
       <Sidebar
         active={view}
@@ -867,7 +880,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
           data-testid="persistent-terminal-surface"
         >
           <Terminal
-            ptyEnabled={ptyEnabled}
+            ptyEnabled={runtimeCapabilities.pty}
             visible={terminalVisible}
             agentTarget={runAgentId}
             onAgentTargetConsumed={() => setRunAgentId(null)}
@@ -912,5 +925,6 @@ function AuthenticatedAppShell(): React.JSX.Element {
        *  orb). It hides itself while the worker is ASLEEP/OFFLINE; a click jumps to the Atlas view. */}
       {view !== 'atlas' ? <AtlasMiniOrb onOpen={() => goTo('atlas')} /> : null}
     </div>
+    </RuntimeCapabilitiesProvider>
   );
 }

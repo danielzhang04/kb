@@ -1,8 +1,7 @@
 # Proposal: brain-query runtime — spawn-per-query CLI behind the dashboard search route
 
-**Status:** PROPOSAL. Decision-note, not an activation ask — the code is already live behind
-`GET /api/brain/search` (once the dashboard wiring commit passes `repoRoot` at the call site in
-`dashboard/server/index.ts`; that edit is out of scope here, see "Wiring" below).
+**Status:** BUILT. Decision-note, not an activation ask — the code is live behind
+`GET /api/brain/search`, with the composition root passing the governed `repoRoot`.
 
 **Built:** 2026-08-18, Agent Platform Wave 1, unit U2. Code: `scripts/brain/brain_query.py`
 (query CLI), `dashboard/server/brain/routes.ts` (`GET /api/brain/search`),
@@ -12,12 +11,16 @@
 
 ## What it does
 
-Every search request spawns a fresh `py -3 -m scripts.brain.brain_query` process, which loads the
-`.brain-index` manifest, constructs a `sentence-transformers` embedder (loading the ~90MB
+Every search request spawns a fresh `scripts.brain.brain_query` process through the dashboard's
+platform-resolved Python command (`python3` on Linux, `py -3` on Windows). It loads the brain-index
+manifest, constructs a `sentence-transformers` embedder (loading the ~90MB
 `all-MiniLM-L6-v2` model into that process from scratch), embeds the query, ranks the index's
 vectors, and prints one JSON object to stdout. The route execs the CLI, parses stdout, and returns
 the payload (or an availability/reason pair) to the panel. No process persists between requests —
-the model is loaded and discarded on every call.
+the model is loaded and discarded on every call. In the VM daemon, both the index and provisioned
+model live under `DASHBOARD_STATE_ROOT/brain`; desktop callers retain their existing local-cache
+fallbacks. With `DASHBOARD_STATE_ROOT` unset, both index build and query retain the pre-fix
+repo-local `.brain-index` location; with it set, both use `<state-root>/brain/index`.
 
 ## Measured latency
 
@@ -41,15 +44,15 @@ Wave 1 armed nothing new by default — no daemon, no long-running worker proces
 service the fleet has to keep alive, restart on crash, or reason about as a new failure mode. A
 spawn-per-query CLI is the smallest thing that could possibly search the index from the dashboard:
 
-- It reuses the exact CLI a human already runs at the terminal (`py -3 -m
-  scripts.brain.brain_query`), so there is one code path, not two, to keep correct.
+- It reuses the exact module CLI a human already runs at the terminal (`python3 -m
+  scripts.brain.brain_query` on Linux, `py -3 -m ...` on Windows), so there is one code path,
+  not two, to keep correct.
 - It has no state to leak across requests — no shared process means no risk of one user's query
   context bleeding into another's, no server-lifetime memory growth from the model or from cached
   embeddings, and a crash costs exactly one query rather than every query until someone notices and
   restarts a daemon.
-- It costs nothing to turn off — deleting the route (or leaving `dashboard/server/index.ts`
-  unwired, which it currently is) leaves zero standing processes, zero ports, zero systemd/pm2
-  entries to reconcile.
+- It costs nothing to turn off — deleting the route leaves zero standing processes, zero ports,
+  and zero systemd/pm2 entries to reconcile.
 
 The 10-20s tax is the price of that minimalism, and it is a price Wave 1 can afford: brain search
 is a low-frequency, ad hoc lookup panel, not a hot path something else depends on.
@@ -91,22 +94,38 @@ not a decision between the two.
   identical to a fresh one in the UI. A reasonable Wave-2 addition: the panel renders "index built
   <relative time>" from the already-echoed `created_at`, so a visibly stale index prompts a rebuild
   rather than silently under-serving results.
-- **`py -3` is hardcoded** in `dashboard/server/brain/routes.ts`'s `defaultRunQuery` — the Windows
-  Python launcher convention (`py -3 -m ...`) used throughout this repo's scripts. This is a
-  portability note, not a bug for Wave 1: the dashboard daemon runs on this Windows machine today.
-  A Linux/macOS deployment (the cloud-migration arc already runs the dashboard daemon off-Windows)
-  would need this to resolve to `python3` or an explicit interpreter path instead, likely via the
-  same `DASHBOARD_REPO_ROOT`-style environment override pattern already used for `repoRoot`.
+- **Interpreter and writable assets are VM-safe.** `dashboard/server/brain/routes.ts` reuses
+  `runtime/python.ts#resolvePython`, while the CLI defaults its index to
+  `DASHBOARD_STATE_ROOT/brain/index` and loads the explicitly provisioned offline model from
+  `DASHBOARD_STATE_ROOT/brain/model`. Missing assets remain an explicit unavailable response.
+
+## VM deployment operation
+
+This is a VM-owner deployment operation, not work the dashboard performs. An interactive
+`sudo -u kb-dashboard` shell has `HOME=/nonexistent` and does not inherit the systemd unit's
+environment, so every required path is explicit:
+
+```sh
+sudo -u kb-dashboard env PYTHONPATH=/opt/kb-releases/current DASHBOARD_STATE_ROOT=/var/lib/kb/state DASHBOARD_REPO_ROOT=/var/lib/kb/ops python3 -m scripts.brain.fetch_model
+sudo -u kb-dashboard env PYTHONPATH=/opt/kb-releases/current DASHBOARD_STATE_ROOT=/var/lib/kb/state DASHBOARD_REPO_ROOT=/var/lib/kb/ops python3 -m scripts.brain.indexer build --root /var/lib/kb/ops
+```
+
+The first command is the one explicitly network-enabled provisioning step. The query path remains
+offline. Before running either command, install a pinned production Python environment containing
+`PyYAML==<VM-tested-version>`, `numpy==<VM-tested-version>`, and
+`sentence-transformers==<VM-tested-version>` (including its Torch, Transformers, and Hugging Face
+dependencies). The VM owner must record the tested pins in production requirements before rollout.
+`scripts/promotion.py` and
+`scripts/agent_evals.py` import PyYAML at module load, but the VM dashboard does not spawn or import
+them: its read-only autonomy ladder is the TypeScript port in
+`dashboard/server/panels/autonomyLadder.ts`, registered by `dashboard/server/panels/routes.ts`.
+Include `evals/**` in the release/ops assets only if VM eval execution is wanted.
 
 ## Wiring
 
-`registerBrainSearch(app, options)` already accepts `options.repoRoot` and uses it in place of
-deriving the path from `import.meta.url` when provided (mirroring `kbBrowserRoutes`'s
-`opts.repoRoot ?? defaultRepoRoot()` shape in `dashboard/server/kb/routes.ts`). The one remaining
-step — passing `repoRoot` at the `registerBrainSearch(scope)` call site in
-`dashboard/server/index.ts` (currently called with no options, so it falls back to
-`import.meta.url` derivation) — belongs to the wiring commit, not this fix, per this unit's scope
-boundary (`dashboard/server/index.ts` is contended and wired separately).
+`registerBrainSearch(app, options)` accepts `options.repoRoot`; `dashboard/server/index.ts` passes
+the governed `repoRoot` at composition time. Tests may still inject a runner or platform without
+changing process-global state.
 
 ## Verification
 

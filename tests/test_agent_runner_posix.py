@@ -1,9 +1,24 @@
 """Shape tests for the deferred Linux owned-card runner boundary."""
 from pathlib import Path
+import sys
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "agent_runner.py"
 WRAPPER = SCRIPT.with_suffix(".sh")
+sys.path.insert(0, str(SCRIPT.parent))
+import agent_runner  # noqa: E402
+
+
+def test_posix_runner_log_path_keeps_dashboard_and_xdg_precedence(tmp_path: Path):
+    dashboard_root = tmp_path / "dashboard-state"
+    xdg_root = tmp_path / "xdg-state"
+    assert agent_runner.log_path({
+        "DASHBOARD_STATE_ROOT": str(dashboard_root),
+        "XDG_STATE_HOME": str(xdg_root),
+    }) == dashboard_root / "agent-runner.log"
+    assert agent_runner.log_path({
+        "XDG_STATE_HOME": str(xdg_root),
+    }) == xdg_root / "kb-dashboard" / "agent-runner.log"
 
 
 def test_posix_runner_is_wrapped_and_keeps_exact_ownership_arbitration():

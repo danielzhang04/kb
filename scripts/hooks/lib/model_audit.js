@@ -26,7 +26,8 @@
  *
  * ── WHERE THE LOG LIVES ─────────────────────────────────────────────────────────────────────────
  * `KB_MODEL_AUDIT_PATH`, else `<context-store dir>/model-audit.jsonl` — the same repo-external root
- * the U8 stores use (`%LOCALAPPDATA%\kb-context-lifecycle` by default). Outside every git worktree,
+ * the U8 stores use (`DASHBOARD_STATE_ROOT/context-lifecycle` in the daemon, otherwise the desktop
+ * `%LOCALAPPDATA%\kb-context-lifecycle` default). Outside every git worktree,
  * for the reasons recorded in .gitignore's DASHBOARD_STATE_ROOT comment: hook-written per-session
  * state is daemon-local, never coordination truth.
  *

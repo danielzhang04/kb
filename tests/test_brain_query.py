@@ -23,6 +23,7 @@ MODEL_RUNTIME_READY = (
 class FakeEmbedder:
     model_name = "fake-model"
     dim = 2
+    model_fingerprint = "sha256:fake-model"
 
     def embed(self, texts: list[str]) -> np.ndarray:
         assert texts == ["find alpha"]
@@ -34,6 +35,7 @@ class AnyTextEmbedder:
 
     model_name = "fake-model"
     dim = 2
+    model_fingerprint = "sha256:fake-model"
 
     def embed(self, texts: list[str]) -> np.ndarray:
         return np.asarray([[1.0, 0.0]], dtype=np.float32)
@@ -50,6 +52,7 @@ def make_index(tmp_path: Path) -> Path:
         chunks,
         np.asarray([[1.0, 0.0], [0.2, 0.8]], dtype=np.float32),
         model="fake-model",
+        model_fingerprint="sha256:fake-model",
         dim=2,
         roots=["docs/**/*.md"],
     )

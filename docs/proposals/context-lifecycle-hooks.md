@@ -284,6 +284,7 @@ written to disk verbatim.** Two things follow.
 
 ### Store location
 
+`DASHBOARD_STATE_ROOT/context-lifecycle/<sessionId>.ctx.md` in the daemon, otherwise
 `%LOCALAPPDATA%\kb-context-lifecycle\<sessionId>.ctx.md`, overridable with `KB_CONTEXT_STORE_DIR`.
 
 Deliberately **outside every git worktree**, following the `DASHBOARD_STATE_ROOT` precedent recorded

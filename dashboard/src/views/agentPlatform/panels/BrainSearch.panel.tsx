@@ -27,6 +27,7 @@ const UNAVAILABLE_REASON: Record<string, string> = {
   'index-not-built': 'Index not built on this machine — run the indexer.',
   'model-mismatch': 'The index was built with a different embedding model — rebuild it.',
   'index-format-error': 'The index is in an unreadable format — rebuild it.',
+  'query-failed': 'Search failed — local Python dependencies or the provisioned model may be unavailable. Nothing was changed.',
 };
 
 const UNAVAILABLE_FALLBACK = 'Search failed — nothing was read. Nothing was changed.';

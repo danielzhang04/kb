@@ -8,6 +8,12 @@ description: Create or iterate on a kb agent declaration and its draft eval suit
 Build a bounded, reviewable agent instead of turning its definition into a second
 constitution.
 
+Runtime scope: desktop authoring only. This skill changes `agents/`, `skills/`, or
+`evals/`, which are not VM outbox coordination paths and cannot be published by the
+hardened VM. A VM worker may inspect the skill but must not invoke its authoring flow.
+The command examples remain platform-resolved so deterministic review works in any
+trusted authoring environment.
+
 ## Inheritance map
 
 - **Kit** is shared doctrine.
@@ -57,8 +63,11 @@ scheduling and arming are not this skill's authority.
    needed; the scaffold is non-overwritable, so a wrong first run cannot be
    rerun. Then run the factory, not a hand-written scaffold:
 
+   Use `python3` on a trusted POSIX/Linux authoring host and `py -3` on Windows;
+   `<python>` below means that platform-resolved desktop-authoring command.
+
    ```
-   py -3 -m scripts.agent_factory new <agent-id> --role <role> [--runtime <runtime>] [--model <model>] [--project <project>]
+   <python> -m scripts.agent_factory new <agent-id> --role <role> [--runtime <runtime>] [--model <model>] [--project <project>]
    ```
    Resolve a routing-policy warning before relying on the agent for execution.
 4. Make targeted edits to the generated definition: mandate, bounded operating loop,
@@ -95,24 +104,24 @@ When the eval-authoring gate permits drafted cards, first parse them without
 changing the manifest:
 
 ```
-py -3 -c "from pathlib import Path; import sys; sys.path.insert(0, 'scripts'); import agent_evals; print([c.id for c in agent_evals.load_cards(Path('evals/agents/<agent-id>'))])"
+<python> -c "from pathlib import Path; import sys; sys.path.insert(0, 'scripts'); import agent_evals; print([c.id for c in agent_evals.load_cards(Path('evals/agents/<agent-id>'))])"
 ```
 
 Then independently execute every deterministic draft judge, never the refused
 unblessed suite: for `file-exists`, run `Test-Path -LiteralPath <input.path>`;
-for `output-contains`, replace `{python}` with `py -3` and invoke
-`& <input.command[0]> <input.command[1..]> 2>&1`, then check the combined
-output for `input.contains`, or for emptiness when `input.expect_empty: true`;
+for `output-contains`, replace `{python}` with the platform-resolved Python
+command and invoke the card's argv without a shell, then check combined output
+for `input.contains`, or for emptiness when `input.expect_empty: true`;
 for `pytest`, run:
 
 ```
-py -3 -m pytest <input.test_file> -q -p no:cacheprovider
+<python> -m pytest <input.test_file> -q -p no:cacheprovider
 ```
 
 Run the factory output's relevant deterministic checks. For declaration shape, run:
 
 ```
-py -3 -m pytest evals/agents/_fleet/test_def_parses_in_roster_shape.py -q
+<python> -m pytest evals/agents/_fleet/test_def_parses_in_roster_shape.py -q
 ```
 
 Do not use an unblessed per-agent suite as evidence of success; its refusal is expected.

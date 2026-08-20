@@ -551,6 +551,30 @@ def test_forecast_cleanup_rmtree_precedes_prune_when_git_remove_fails(tmp_path, 
                      (["worktree", "prune"], False)]
 
 
+def test_forecast_scratch_uses_dashboard_state_root(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_root = tmp_path / "daemon-state"
+    monkeypatch.setenv("DASHBOARD_STATE_ROOT", str(state_root))
+
+    scratch = maintainer._forecast_scratch_parent(repo)
+
+    assert scratch == state_root / "agent-maintainer" / "forecast"
+    assert scratch.is_dir()
+    assert not (repo / "state").exists()
+
+
+def test_forecast_scratch_retains_repo_local_fallback(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.delenv("DASHBOARD_STATE_ROOT", raising=False)
+
+    scratch = maintainer._forecast_scratch_parent(repo)
+
+    assert scratch == repo / "state" / "scratch"
+    assert scratch.is_dir()
+
+
 def test_stale_lease_sweep_only_removes_aged_forecast_directories(tmp_path, monkeypatch):
     scratch = tmp_path / "state" / "scratch"
     old_forecast = scratch / "forecast-old"

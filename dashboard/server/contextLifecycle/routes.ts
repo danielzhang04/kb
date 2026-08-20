@@ -10,7 +10,8 @@
  *
  * WHERE THE STORES LIVE. Not in the repo: a per-session context file is daemon-local state, never
  * coordination truth (same reasoning as DASHBOARD_STATE_ROOT — see .gitignore). The root resolves to
- * `KB_CONTEXT_STORE_DIR` when set, else `%LOCALAPPDATA%\kb-context-lifecycle`, matching
+ * `KB_CONTEXT_STORE_DIR` when set, else `DASHBOARD_STATE_ROOT/context-lifecycle` in the daemon,
+ * then `%LOCALAPPDATA%\kb-context-lifecycle` on the desktop, matching
  * `scripts/hooks/lib/context_store.js:storeDir()` exactly. Tests inject a fixture root as the second
  * argument.
  *
@@ -27,6 +28,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { resolveStatePath } from '../../../scripts/hooks/lib/kb_paths.js';
 
 /** Session ids are Claude Code UUID-shaped file stems. Anything else is rejected unread. */
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -50,11 +52,11 @@ export interface ContextSessionSummary {
   bytes: number;
 }
 
-/** The store root — `KB_CONTEXT_STORE_DIR`, else the hook library's repo-external default. */
+/** The store root — explicit override, daemon state root, then the desktop repo-external default. */
 export function resolveStoreRoot(env: NodeJS.ProcessEnv = process.env): string {
   if (env.KB_CONTEXT_STORE_DIR) return env.KB_CONTEXT_STORE_DIR;
   const base = env.LOCALAPPDATA ?? join(homedir(), '.local', 'state');
-  return join(base, STORE_DIR_NAME);
+  return resolveStatePath('context-lifecycle', join(base, STORE_DIR_NAME), env)!;
 }
 
 /** Parse store markdown into ordered sections. Text before the first `## ` heading is dropped. */

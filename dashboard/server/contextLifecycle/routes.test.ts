@@ -191,7 +191,7 @@ describe('cross-parser pin: this route reads what the hook library writes', () =
     const text = readFileSync(HOOK_WRITTEN_FIXTURE, 'utf8');
     expect(text.startsWith(PREAMBLE)).toBe(true);
     // renderSections' exact block shape: heading, blank line, body, blank line.
-    expect(text).toContain('## North star\n\nShip the Wave-1 platform slice.\n');
+    expect(text.replace(/\r\n/g, '\n')).toContain('## North star\n\nShip the Wave-1 platform slice.\n');
   });
 });
 
@@ -211,9 +211,12 @@ describe('parseSections', () => {
 });
 
 describe('resolveStoreRoot', () => {
-  it('prefers KB_CONTEXT_STORE_DIR and otherwise stays outside the repo', () => {
+  it('prefers the explicit override, then daemon state, and otherwise stays outside the repo', () => {
     expect(resolveStoreRoot({ KB_CONTEXT_STORE_DIR: 'C:/fixture/store' } as NodeJS.ProcessEnv)).toBe(
       'C:/fixture/store',
+    );
+    expect(resolveStoreRoot({ DASHBOARD_STATE_ROOT: '/var/lib/kb/state' } as NodeJS.ProcessEnv)).toBe(
+      join('/var/lib/kb/state', 'context-lifecycle'),
     );
     const fallback = resolveStoreRoot({ LOCALAPPDATA: 'C:/Users/x/AppData/Local' } as NodeJS.ProcessEnv);
     expect(fallback).toBe(join('C:/Users/x/AppData/Local', 'kb-context-lifecycle'));

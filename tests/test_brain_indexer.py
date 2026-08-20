@@ -1,5 +1,6 @@
 from pathlib import Path
 import importlib.util
+import json
 import shutil
 import os
 import subprocess
@@ -8,7 +9,13 @@ import sys
 import numpy as np
 import pytest
 
-from scripts.brain import indexer, store
+from scripts.brain import brain_query, indexer, store
+from scripts.brain.embedder import (
+    FINGERPRINT_FILENAME,
+    provisioned_model_dir,
+    provisioned_model_fingerprint,
+    read_provisioned_model_fingerprint,
+)
 
 
 MODEL_RUNTIME_READY = (
@@ -17,9 +24,60 @@ MODEL_RUNTIME_READY = (
 )
 
 
+def test_provisioned_model_uses_dashboard_state_root(tmp_path: Path) -> None:
+    assert provisioned_model_dir({"DASHBOARD_STATE_ROOT": str(tmp_path)}) == tmp_path / "brain" / "model"
+    assert provisioned_model_dir({}) is None
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def test_persisted_model_fingerprint_pins_same_size_weight_contents(tmp_path: Path) -> None:
+    model = tmp_path / "model"
+    _write(model / "config.json", '{"hidden_size":384}\n')
+    weights = model / "model.safetensors"
+    weights.write_bytes(b"weights-a")
+    first = provisioned_model_fingerprint(model)
+    (model / FINGERPRINT_FILENAME).write_text(
+        json.dumps(first, sort_keys=True), encoding="utf-8"
+    )
+    assert first["files"] == ["config.json", "model.safetensors"]
+    assert read_provisioned_model_fingerprint(model) == first["sha256"]
+
+    class ModelEmbedder:
+        model_name = "fake-model"
+        dim = 2
+
+        def __init__(self, fingerprint: str | None) -> None:
+            self.model_fingerprint = fingerprint
+
+        def embed(self, texts: list[str]) -> np.ndarray:
+            return np.zeros((len(texts), self.dim), dtype=np.float32)
+
+    repo = tmp_path / "repo"
+    _write(repo / "docs" / "note.md", "# Note\n\nPinned model.\n")
+    out = tmp_path / "index"
+    original = ModelEmbedder(read_provisioned_model_fingerprint(model))
+    indexer.build_index(repo, out, original)
+    assert store.load(out, original).manifest["model_fingerprint"] == first["sha256"]
+
+    weights.write_bytes(b"weights-b")
+    assert weights.stat().st_size == len(b"weights-a")
+    # Query-time reads stay cheap and do not re-hash the 90MB weight set.
+    assert read_provisioned_model_fingerprint(model) == first["sha256"]
+    second = provisioned_model_fingerprint(model)
+    assert second["sha256"] != first["sha256"]
+    (model / FINGERPRINT_FILENAME).write_text(
+        json.dumps(second, sort_keys=True), encoding="utf-8"
+    )
+    with pytest.raises(store.ModelMismatchError, match="fingerprint"):
+        store.load(out, ModelEmbedder(read_provisioned_model_fingerprint(model)))
+
+    (model / FINGERPRINT_FILENAME).unlink()
+    with pytest.raises(store.ModelMismatchError, match="fingerprint"):
+        store.load(out, ModelEmbedder(read_provisioned_model_fingerprint(model)))
 
 
 def test_discover_files_uses_only_configured_roots(tmp_path: Path) -> None:
@@ -51,6 +109,7 @@ def test_embed_input_includes_heading_context_without_mutating_chunk() -> None:
 
 
 def test_cli_default_out_is_relative_to_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("DASHBOARD_STATE_ROOT", raising=False)
     calls: list[tuple[Path, Path]] = []
 
     class FakeEmbedder:
@@ -66,6 +125,49 @@ def test_cli_default_out_is_relative_to_root(monkeypatch: pytest.MonkeyPatch, tm
 
     assert indexer.main(["build", "--root", str(tmp_path)]) == 0
     assert calls == [(tmp_path, tmp_path / store.DEFAULT_INDEX_DIR)]
+
+
+def test_cli_default_out_uses_dashboard_state_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_root = tmp_path / "state"
+    calls: list[tuple[Path, Path]] = []
+
+    class FakeEmbedder:
+        model_name = "fake"
+        dim = 3
+
+    monkeypatch.setenv("DASHBOARD_STATE_ROOT", str(state_root))
+    monkeypatch.setattr(indexer, "SentenceTransformerEmbedder", FakeEmbedder)
+    monkeypatch.setattr(
+        indexer,
+        "build_index",
+        lambda root, out, _embedder: calls.append((root, out)) or indexer.IndexStats(0, 0, 0),
+    )
+
+    assert indexer.main(["build", "--root", str(tmp_path)]) == 0
+    assert calls == [(tmp_path, state_root / "brain" / "index")]
+    assert brain_query._default_index_dir() == state_root / "brain" / "index"
+
+
+def test_build_and_query_retain_the_same_repo_local_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DASHBOARD_STATE_ROOT", raising=False)
+    repo_root = Path(__file__).resolve().parents[1]
+    calls: list[tuple[Path, Path]] = []
+
+    class FakeEmbedder:
+        model_name = "fake"
+        dim = 3
+
+    monkeypatch.setattr(indexer, "SentenceTransformerEmbedder", FakeEmbedder)
+    monkeypatch.setattr(
+        indexer,
+        "build_index",
+        lambda root, out, _embedder: calls.append((root, out)) or indexer.IndexStats(0, 0, 0),
+    )
+
+    assert indexer.main(["build", "--root", str(repo_root)]) == 0
+    assert calls == [(repo_root, brain_query._default_index_dir())]
 
 
 @pytest.mark.slow

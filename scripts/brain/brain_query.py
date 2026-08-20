@@ -4,21 +4,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 from typing import NoReturn
 
 from scripts.brain.embedder import Embedder, SentenceTransformerEmbedder
 from scripts.brain.store import (
-    DEFAULT_INDEX_DIR,
     IndexFormatError,
     ModelMismatchError,
+    default_index_dir,
     load,
     search,
 )
 
 
 SNIPPET_LIMIT = 200
+
+
+def _index_build_help() -> str:
+    python = "py -3" if os.name == "nt" else "python3"
+    return f"index not built — run: {python} -m scripts.brain.indexer build"
 
 
 class _StrictArgumentParser(argparse.ArgumentParser):
@@ -70,7 +76,7 @@ def query_index(index_dir: Path, q: str, k: int, embedder: Embedder) -> list[dic
 
 
 def _default_index_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / DEFAULT_INDEX_DIR
+    return default_index_dir()
 
 
 def _positive_k(value: str) -> int:
@@ -108,14 +114,14 @@ def main(argv: list[str] | None = None) -> int:
     # Do this before constructing the model so an unbuilt machine receives the actionable
     # answer immediately rather than paying the initial model-load cost.
     if not index_dir.is_dir():
-        print("index not built — run: py -3 -m scripts.brain.indexer build", file=sys.stderr)
+        print(_index_build_help(), file=sys.stderr)
         _emit_json_error(args.as_json, "index-not-built")
         return 2
 
     try:
         results, manifest = _query(index_dir, args.query, args.k, SentenceTransformerEmbedder())
     except FileNotFoundError:
-        print("index not built — run: py -3 -m scripts.brain.indexer build", file=sys.stderr)
+        print(_index_build_help(), file=sys.stderr)
         _emit_json_error(args.as_json, "index-not-built")
         return 2
     except ModelMismatchError as exc:

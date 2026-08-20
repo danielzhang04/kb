@@ -49,6 +49,7 @@ import { checkSteps } from '../../../../server/trace/stepCheck.ts';
 import { ModelBadge } from '../../../components/ModelBadge';
 import { useSession } from '../../../lib/sessionContext';
 import { useReadPanel } from '../../../lib/useReadPanel';
+import { useRuntimeCapabilities } from '../../../lib/runtimeCapabilities';
 import { FIXTURE_ENVELOPE, FIXTURE_RULES } from './runEnvelopeFixture';
 import '../../../styles/views/agentPlatformRunEnvelope.css';
 
@@ -104,6 +105,7 @@ function RunEnvelopeBody({
   fixtureEnvelope = FIXTURE_ENVELOPE,
 }: RunEnvelopeProps = {}): React.JSX.Element {
   const { session } = useSession();
+  const { localTranscripts } = useRuntimeCapabilities();
   /** The operator's explicit pick, if they have made one. Null means "still on the default". */
   const [picked, setPicked] = useState<string | null>(null);
 
@@ -114,7 +116,7 @@ function RunEnvelopeBody({
   // effect: locked ⇒ null ⇒ no request at all. An injected envelope or a pinned id suppresses the
   // list, so a parent that already knows its subject pays for one request rather than two.
   const { data: list, state: listState } = useReadPanel<SessionListResponse>(
-    picking && session ? '/api/trace' : null,
+    picking && session && localTranscripts ? '/api/trace' : null,
   );
   const sessions = list === null ? null : list.available ? list.sessions : [];
   // The default is DERIVED, never written into state by the list effect: a stored default would go
@@ -123,7 +125,9 @@ function RunEnvelopeBody({
   const subject = sessionId ?? picked ?? (sessions === null ? null : defaultSubject(sessions));
 
   const { data: fetched, state } = useReadPanel<RunEnvelope>(
-    envelope === undefined && session && subject !== null ? `/api/trace/${encodeURIComponent(subject)}` : null,
+    envelope === undefined && session && localTranscripts && subject !== null
+      ? `/api/trace/${encodeURIComponent(subject)}`
+      : null,
   );
 
   const run = envelope ?? fetched;
@@ -131,7 +135,8 @@ function RunEnvelopeBody({
   // Report-only, computed at render off the FIXTURE envelope — never off the live run above.
   const report = checkSteps(fixtureEnvelope, FIXTURE_RULES);
   /** The list came back readable and held nothing — a fact about the machine, not a failure. */
-  const noTranscripts = picking && listState === 'ready' && (sessions?.length ?? 0) === 0;
+  const noTranscripts = (envelope === undefined && !localTranscripts)
+    || (picking && listState === 'ready' && (sessions?.length ?? 0) === 0);
   /** A run is actually in hand: injected, or read. Anything else is still loading, never "empty". */
   const envelopeKnown = envelope !== undefined || state === 'ready';
 

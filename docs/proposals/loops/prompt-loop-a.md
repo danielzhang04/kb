@@ -37,12 +37,12 @@ reviewable copy). Run it verbatim.
 1. Check out the loop branch claude/loop-a-hygiene. The dead-band baseline is exactly
    ONE canonical file: .loop-state/hygiene-baseline.json on that branch. It is the only
    baseline — never the previous card's ## Result, never a report found anywhere else.
-   .hygiene-report.json is listed in .gitignore and therefore can never be the baseline.
-2. Run: py -3 scripts/hygiene_sweep.py --root . --out .hygiene-report.json
+   C:\Users\danie\AppData\Local\kb-dashboard\hygiene\report.json is outside git and therefore can never be the baseline.
+2. Run: $env:DASHBOARD_STATE_ROOT='C:\Users\danie\AppData\Local\kb-dashboard'; py -3 -m scripts.hygiene_sweep --root .
    The sweep is dry-run by construction: it reads git-tracked content and writes ONLY
    that report. Exit 0 = it ran; a non-zero exit means the sweep itself failed.
 3. DONE-CRITERION — every clause is machine-checkable and the run is done when all hold:
-   a. py -3 scripts/hygiene_sweep.py exited 0 and .hygiene-report.json parses as JSON.
+   a. py -3 -m scripts.hygiene_sweep exited 0 and C:\Users\danie\AppData\Local\kb-dashboard\hygiene\report.json parses as JSON.
    b. Every finding is enumerated in this card's ## Result as path + kind + detail.
    c. BASELINE ABSENT (first run on this branch): copy the report to
       .loop-state/hygiene-baseline.json, commit it to claude/loop-a-hygiene with the
@@ -56,7 +56,7 @@ reviewable copy). Run it verbatim.
       dispatcher or Daniel assigns; never self-claim) listing the added and removed
       (path, kind) pairs. Write these acceptance criteria into that card verbatim:
         - the PR fixes ONLY the findings listed in this card, nothing else;
-        - re-running py -3 scripts/hygiene_sweep.py on the PR branch shows a strictly
+        - re-running $env:DASHBOARD_STATE_ROOT='C:\Users\danie\AppData\Local\kb-dashboard'; py -3 -m scripts.hygiene_sweep --root . on the PR branch shows a strictly
           lower count of findings of those kinds;
         - py -3 -m pytest -q is green on the branch.
       Then copy the new report over .loop-state/hygiene-baseline.json and commit it to
@@ -65,7 +65,7 @@ reviewable copy). Run it verbatim.
    f. ## Result states which of c, d, or e applied, with the finding count before and
       after.
 4. BOUNDARIES (verbatim): the ONLY paths this loop may create or modify are
-   .hygiene-report.json, .loop-state/hygiene-baseline.json, its own card (its ## Result
+   C:\Users\danie\AppData\Local\kb-dashboard\hygiene\report.json, .loop-state/hygiene-baseline.json, its own card (its ## Result
    and its own state transition), the one cleanup-proposal card in queue/inbox/, its own
    memory shard memory/<agent-id>.md, and its own rows under ledgers/dispatch/ and
    ledgers/cost/. Every other path in the repository is READ-ONLY to this loop: it
@@ -95,9 +95,9 @@ reviewable copy). Run it verbatim.
 ## Design notes (not part of the prompt)
 
 **One canonical baseline.** The dead-band is only as trustworthy as the thing it compares
-against, so the prompt names exactly one file and forbids the alternatives. `.hygiene-report.json`
-is in `.gitignore`, so it cannot persist between runs on a fresh checkout — using it as the
-baseline would make the dead-band silently collapse into "every run looks like the first run".
+against, so the prompt names exactly one file and forbids the alternatives. The runtime report
+under `DASHBOARD_STATE_ROOT/hygiene/report.json` lives outside git and is overwritten by each
+sweep, so using it as the baseline would collapse the comparison into the current output.
 `.loop-state/hygiene-baseline.json` is a tracked path on the loop branch, committed by the run
 that produced it. Absent baseline is a defined state (first run: record, file nothing), not an
 error, so the loop has no undefined start.

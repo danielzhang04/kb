@@ -2,7 +2,8 @@
 
 This module reads only its supplied evidence directories and returns proposal drafts. A
 caller must put a rendered card body through normal human review; this module never
-writes targets, mutates the queue or ledgers, invokes git, or registers a cadence.
+writes targets, mutates the queue or ledgers, changes git refs, contacts a remote, or
+registers a cadence. Optional forecasts use a disposable local git worktree only.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterator, Mapping
 
 from scripts import agent_evals
+from scripts.kb_paths import resolve_state_root
 
 
 MAX_PROPOSALS_PER_FIRE = 5
@@ -548,12 +550,22 @@ def _validate_forecast_diff(draft: ProposalDraft) -> str:
     return patch
 
 
+def _forecast_scratch_path(repo_root: Path) -> tuple[Path, PurePosixPath]:
+    """Return the trusted anchor and relative forecast path for this runtime."""
+    state_root = resolve_state_root(
+        override_key="DASHBOARD_STATE_ROOT", default_name=None
+    )
+    if state_root:
+        return state_root, PurePosixPath("agent-maintainer/forecast")
+    return repo_root, PurePosixPath("state/scratch")
+
+
 def _forecast_scratch_parent(repo_root: Path) -> Path:
     """Create the prescribed scratch parent only when it is safe and contained."""
-    relative = PurePosixPath("state/scratch")
-    if _has_unsafe_link_component(repo_root, relative):
+    anchor, relative = _forecast_scratch_path(repo_root)
+    if _has_unsafe_link_component(anchor, relative):
         raise ForecastError("forecast scratch path contains a link or reparse point")
-    parent = repo_root / Path(*relative.parts)
+    parent = anchor / Path(*relative.parts)
     parent.mkdir(parents=True, exist_ok=True)
     return parent
 
@@ -566,13 +578,14 @@ def _git(repo_root: Path, args: list[str], *, input_text: str | None = None) -> 
 
 
 def _remove_forecast_worktree(repo_root: Path, worktree: Path) -> None:
-    """Best-effort lease cleanup.  It never touches a path outside state/scratch."""
+    """Best-effort lease cleanup. It never touches a path outside the runtime scratch root."""
     removed = False
     try:
         removed = _git(repo_root, ["worktree", "remove", "--force", str(worktree)]).returncode == 0
     except (OSError, subprocess.SubprocessError):
         pass
-    scratch = (repo_root / "state" / "scratch").resolve()
+    anchor, relative = _forecast_scratch_path(repo_root)
+    scratch = (anchor / Path(*relative.parts)).resolve()
     candidate = Path(worktree).resolve()
     try:
         if not removed and candidate != scratch and _contains_path(scratch, candidate) and candidate.exists():
@@ -588,7 +601,8 @@ def _remove_forecast_worktree(repo_root: Path, worktree: Path) -> None:
 
 def _sweep_stale_forecast_leases(repo_root: Path) -> None:
     """Release only expired forecast leases owned by this module."""
-    scratch = repo_root / "state" / "scratch"
+    anchor, relative = _forecast_scratch_path(repo_root)
+    scratch = anchor / Path(*relative.parts)
     if not scratch.is_dir():
         return
     now = time.time()

@@ -29,6 +29,9 @@ import { requireSession } from '../http/middleware.ts';
 import type { SaveInput, SaveOutcome } from '../write/governedSave.ts';
 import type { AppendAuditFn } from '../http/context.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
+import type { PrOpener } from '../write/branch.ts';
+
+const TEST_OPEN_PR: PrOpener = async () => undefined;
 
 const tripwire = vi.hoisted(() => ({ armed: false, calls: [] as string[] }));
 const historyReads = vi.hoisted(() => ({ armed: false, cards: 0 }));
@@ -518,10 +521,37 @@ describe('GET /api/panels/schedules — read-only', () => {
 describe('POST /api/schedules/edit — the HEARTBEAT keyhole', () => {
   async function editApp(save: SaveFn, root = tempRepo({ root: [{ name: 'alpha', schedule: 'daily' }] })) {
     const app = Fastify({ logger: false });
-    registerPanels(app, root, { sessionConfig: SESSION_CONFIG, save });
+    registerPanels(app, root, {
+      durablePrWrites: true, publication: 'direct', openPr: TEST_OPEN_PR,
+      sessionConfig: SESSION_CONFIG, save,
+    });
     await app.ready();
     return app;
   }
+
+  it('reports and enforces unavailable durable PR writes in outbox publication mode', async () => {
+    const save = saveSpy();
+    const root = tempRepo({ root: [{ name: 'alpha', schedule: 'daily' }] });
+    const app = Fastify({ logger: false });
+    registerPanels(app, root, {
+      durablePrWrites: true, publication: 'outbox', openPr: TEST_OPEN_PR,
+      sessionConfig: SESSION_CONFIG, save,
+    });
+    await app.ready();
+    try {
+      const panel = await app.inject({ method: 'GET', url: '/api/panels/schedules' });
+      expect(panel.json()).toMatchObject({ edits: { available: false } });
+      const edit = await app.inject({
+        method: 'POST', url: '/api/schedules/edit',
+        payload: { file: 'HEARTBEAT.md', content: '# changed\n', sessionToken: 'tok' },
+      });
+      expect(edit.statusCode).toBe(503);
+      expect(edit.json()).toMatchObject({ error: 'capability-unavailable' });
+      expect(save.calls).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
 
   it('refuses a path outside the HEARTBEAT whitelist with 400 and never reaches save()', async () => {
     const save = saveSpy();
@@ -594,7 +624,10 @@ describe('POST /api/schedules/edit — the HEARTBEAT keyhole', () => {
     const app = Fastify({ logger: false });
     // The REAL gate the production scope applies, not a stand-in: it verifies and stashes the session.
     app.addHook('preHandler', requireSession(SESSION_CONFIG));
-    registerPanels(app, root, { sessionConfig: SESSION_CONFIG, save, audit });
+    registerPanels(app, root, {
+      durablePrWrites: true, publication: 'direct', openPr: TEST_OPEN_PR,
+      sessionConfig: SESSION_CONFIG, save, audit,
+    });
     await app.ready();
     try {
       const res = await app.inject({
@@ -618,6 +651,9 @@ describe('POST /api/schedules/edit — the HEARTBEAT keyhole', () => {
     const kinds: string[] = [];
     const app = Fastify({ logger: false });
     registerPanels(app, root, {
+      durablePrWrites: true,
+      publication: 'direct',
+      openPr: TEST_OPEN_PR,
       sessionConfig: SESSION_CONFIG,
       save,
       admission: (kind) => {
@@ -678,7 +714,10 @@ describe('POST /api/schedules/edit — the HEARTBEAT keyhole', () => {
     const audit = auditSpy();
     const root = tempRepo({ root: [{ name: 'alpha', schedule: 'daily' }] });
     const app = Fastify({ logger: false });
-    registerPanels(app, root, { sessionConfig: SESSION_CONFIG, save, audit });
+    registerPanels(app, root, {
+      durablePrWrites: true, publication: 'direct', openPr: TEST_OPEN_PR,
+      sessionConfig: SESSION_CONFIG, save, audit,
+    });
     await app.ready();
     try {
       const ok = await app.inject({
@@ -725,7 +764,9 @@ describe('POST /api/schedules/edit — the HEARTBEAT keyhole', () => {
     const save = saveSpy();
     const root = tempRepo({ root: [{ name: 'alpha', schedule: 'daily' }] });
     const app = Fastify({ logger: false });
-    registerPanels(app, root, { save }); // no sessionConfig
+    registerPanels(app, root, {
+      durablePrWrites: true, publication: 'direct', openPr: TEST_OPEN_PR, save,
+    }); // no sessionConfig
     await app.ready();
     try {
       const res = await app.inject({
@@ -745,7 +786,10 @@ describe('/api/schedules — the surface is EDIT and nothing else', () => {
   async function scheduleApp(save: SaveFn) {
     const root = tempRepo({ root: [{ name: 'alpha', schedule: 'daily' }] });
     const app = Fastify({ logger: false });
-    registerPanels(app, root, { sessionConfig: SESSION_CONFIG, save });
+    registerPanels(app, root, {
+      durablePrWrites: true, publication: 'direct', openPr: TEST_OPEN_PR,
+      sessionConfig: SESSION_CONFIG, save,
+    });
     await app.ready();
     return app;
   }

@@ -167,4 +167,20 @@ describe('defaultRunQuery (the real, non-stubbed argv construction)', () => {
     expect(options.cwd).toBe('C:\\repo');
     await app.close();
   });
+
+  it('uses python3 without Windows launcher arguments on Linux', async () => {
+    mockExecFile.mockClear();
+    const app = Fastify({ logger: false });
+    registerBrainSearch(app, { repoRoot: '/var/lib/kb/ops', platform: 'linux' });
+    await app.ready();
+
+    const res = await app.inject({ method: 'GET', url: '/api/brain/search?q=alerts&k=3' });
+
+    expect(res.statusCode).toBe(200);
+    const [file, args, options] = mockExecFile.mock.calls[0] as [string, string[], { cwd: string; timeout: number }];
+    expect(file).toBe('python3');
+    expect(args).toEqual(['-m', 'scripts.brain.brain_query', '--k', '3', '--json', '--', 'alerts']);
+    expect(options.cwd).toBe('/var/lib/kb/ops');
+    await app.close();
+  });
 });

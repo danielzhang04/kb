@@ -36,7 +36,7 @@
  * injected clock (`now`) and an injected `kill` function (no test ever sends a real OS signal).
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
@@ -45,6 +45,7 @@ import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
 import { isCoordinationPath } from '../write/branch.ts';
 import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
 import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
+import { readHeartbeatCadences } from '../panels/health.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
@@ -233,7 +234,32 @@ export async function requestStop(cardId: string, session: SessionInput, deps: F
   });
 }
 
-export type PauseCadenceOutcome = { ok: true; path: string } | Unauthenticated;
+export type PauseCadenceOutcome =
+  | { ok: true; path: string }
+  | Unauthenticated
+  | { ok: false; reason: 'invalid-cadence'; detail: string };
+
+/** Resolve one declared cadence marker as a direct child of queue/paused, or refuse it unread. */
+function cadencePauseTarget(
+  repoRoot: string,
+  name: string,
+): { relPath: string; absPath: string } | null {
+  if (
+    name === ''
+    || name.includes('/')
+    || name.includes('\\')
+    || name.includes('..')
+    || name.includes('\0')
+    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name)
+  ) return null;
+
+  const pausedRoot = resolve(repoRoot, 'queue', 'paused');
+  const absPath = resolve(pausedRoot, name);
+  if (dirname(absPath) !== pausedRoot) return null;
+  const declared = new Set(readHeartbeatCadences(repoRoot).map((cadence) => cadence.name));
+  if (!declared.has(name)) return null;
+  return { relPath: `queue/paused/${name}`, absPath };
+}
 
 /**
  * Write the `queue/paused/<name>` presence-only sentinel `scripts/dispatch.py#due()` (D1.1) checks to
@@ -244,16 +270,22 @@ export type PauseCadenceOutcome = { ok: true; path: string } | Unauthenticated;
 export async function pauseCadence(name: string, session: SessionInput, deps: FloorDeps): Promise<PauseCadenceOutcome> {
   const gated = checkSession(session);
   if (!gated.ok) return gated;
+  const target = cadencePauseTarget(deps.repoRoot, name);
+  if (!target) {
+    return {
+      ok: false,
+      reason: 'invalid-cadence',
+      detail: 'cadence must be a declared, filename-safe HEARTBEAT cadence id',
+    };
+  }
 
   return withOpsTransaction(async () => {
-    const relPath = `queue/paused/${name}`;
-    const abs = join(deps.repoRoot, 'queue', 'paused', name);
-    mkdirSync(dirname(abs), { recursive: true });
-    if (!existsSync(abs)) writeFileSync(abs, '', 'utf8');
+    mkdirSync(dirname(target.absPath), { recursive: true });
+    if (!existsSync(target.absPath)) writeFileSync(target.absPath, '', 'utf8');
 
     await commitToOps(
       deps.repoRoot,
-      [relPath],
+      [target.relPath],
       `chore(pause): ${name}`,
       deps.runGit ?? defaultOpsGitRunner,
       3,
@@ -261,7 +293,7 @@ export async function pauseCadence(name: string, session: SessionInput, deps: Fl
       deps.outboxRoot,
     );
 
-    return { ok: true, path: relPath };
+    return { ok: true, path: target.relPath };
   });
 }
 

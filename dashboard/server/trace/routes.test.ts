@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
-import { registerTraceRead, SESSION_LIST_LIMIT } from './routes.ts';
+import { registerTraceRead, resolveSessionRoot, SESSION_LIST_LIMIT } from './routes.ts';
 import type { SessionListResponse } from './routes.ts';
 
 const REAL_SLICE = fileURLToPath(new URL('./__fixtures__/real-run-slice.jsonl', import.meta.url));
@@ -49,6 +49,13 @@ async function appFor(root: string) {
 }
 
 describe('registerTraceRead', () => {
+  it('resolves only readable transcript directories for capability composition', async () => {
+    const root = await fixtureRoot();
+    expect(resolveSessionRoot({ DASHBOARD_TRACE_ROOT: root }, 'C:/ignored')).toBe(root);
+    expect(resolveSessionRoot({ DASHBOARD_TRACE_ROOT: join(root, 'missing') }, 'C:/ignored')).toBeNull();
+    expect(resolveSessionRoot({}, root)).toBeNull();
+  });
+
   it('GET /api/trace/:sessionId returns the envelope for a session at the root', async () => {
     const app = await appFor(await fixtureRoot());
     const res = await app.inject({ method: 'GET', url: '/api/trace/flat-session' });

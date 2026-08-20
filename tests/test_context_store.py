@@ -53,6 +53,26 @@ def read_store(store_dir: Path, session=SESSION):
     return json.loads(out)
 
 
+def test_store_dir_prefers_dashboard_state_root(tmp_path):
+    body = (
+        f'const store = require({json.dumps(str(STORE))});\n'
+        f'process.stdout.write(store.storeDir({{DASHBOARD_STATE_ROOT: {json.dumps(str(tmp_path))}}}));'
+    )
+    result = subprocess.run(["node", "-e", body], capture_output=True)
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert Path(result.stdout.decode("utf-8")) == tmp_path / "context-lifecycle"
+
+
+def test_store_dir_retains_desktop_fallback_without_state_root(tmp_path):
+    body = (
+        f'const store = require({json.dumps(str(STORE))});\n'
+        f'process.stdout.write(store.storeDir({{LOCALAPPDATA: {json.dumps(str(tmp_path))}}}));'
+    )
+    result = subprocess.run(["node", "-e", body], capture_output=True)
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert Path(result.stdout.decode("utf-8")) == tmp_path / "kb-context-lifecycle"
+
+
 def test_roundtrip_preserves_headings_and_bodies(tmp_path):
     sections = [
         {"heading": "North star", "body": "Ship the platform slice."},

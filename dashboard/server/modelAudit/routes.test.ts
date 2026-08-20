@@ -133,6 +133,9 @@ describe('registerModelAudit', () => {
     expect(resolveAuditPath({ KB_CONTEXT_STORE_DIR: join('C:', 'store') } as NodeJS.ProcessEnv)).toBe(
       join('C:', 'store', 'model-audit.jsonl'),
     );
+    expect(resolveAuditPath({ DASHBOARD_STATE_ROOT: '/var/lib/kb/state' } as NodeJS.ProcessEnv)).toBe(
+      join('/var/lib/kb/state', 'context-lifecycle', 'model-audit.jsonl'),
+    );
     expect(resolveAuditPath({ LOCALAPPDATA: join('C:', 'local') } as NodeJS.ProcessEnv)).toBe(
       join('C:', 'local', 'kb-context-lifecycle', 'model-audit.jsonl'),
     );

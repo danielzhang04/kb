@@ -30,6 +30,7 @@
  * never an unbounded recursive walk.
  */
 import { readdir, stat } from 'node:fs/promises';
+import { accessSync, constants, statSync } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -39,9 +40,19 @@ import { readEnvelope } from './envelope.ts';
 /** Session ids are Claude Code UUID-shaped file stems. Anything else is rejected unread. */
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
-/** The transcript root: `DASHBOARD_TRACE_ROOT` when set, else Claude Code's default projects dir. */
-export function resolveSessionRoot(): string {
-  return process.env.DASHBOARD_TRACE_ROOT ?? join(homedir(), '.claude', 'projects');
+/** Resolve one readable transcript directory, or null when ProtectHome/no local history hides it. */
+export function resolveSessionRoot(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+): string | null {
+  const configured = env.DASHBOARD_TRACE_ROOT?.trim();
+  const candidate = configured || join(home, '.claude', 'projects');
+  try {
+    accessSync(candidate, constants.R_OK);
+    return statSync(candidate).isDirectory() ? candidate : null;
+  } catch {
+    return null;
+  }
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -159,7 +170,7 @@ export async function listSessions(root: string): Promise<SessionListResponse> {
 }
 
 /** Register the read-only trace routes. Pure read: they open transcripts and write nothing. */
-export function registerTraceRead(app: FastifyInstance, sessionRoot: string = resolveSessionRoot()): void {
+export function registerTraceRead(app: FastifyInstance, sessionRoot: string): void {
   app.get('/api/trace', async (): Promise<SessionListResponse> => await listSessions(sessionRoot));
 
   app.get('/api/trace/:sessionId', async (request, reply) => {

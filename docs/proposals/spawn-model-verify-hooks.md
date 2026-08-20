@@ -442,7 +442,8 @@ this unit: it is the difference between a context store that mirrors a session a
 ### Why the audit log is not in the repo
 
 `KB_MODEL_AUDIT_PATH`, else `<context-store dir>/model-audit.jsonl` — the same repo-external root the
-U8 stores use (`%LOCALAPPDATA%\kb-context-lifecycle` by default). Following the `DASHBOARD_STATE_ROOT`
+U8 stores use (`DASHBOARD_STATE_ROOT/context-lifecycle` in the daemon, otherwise
+`%LOCALAPPDATA%\kb-context-lifecycle`). Following the `DASHBOARD_STATE_ROOT`
 precedent in `.gitignore`: hook-written per-session state is daemon-local, never coordination truth. In
 the repo it would be a merge-conflict generator across worktrees and would put a hook-written file
 inside the tree the delivery gate watches.

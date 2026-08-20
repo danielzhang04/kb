@@ -46,7 +46,6 @@ import { resultNarration, isPaused } from './loopStatus.ts';
 import { save as defaultSave } from '../write/governedSave.ts';
 import type { SaveInput, SaveOutcome } from '../write/governedSave.ts';
 import type { SessionConfig } from '../auth/session.ts';
-import { defaultPrOpener } from '../write/branch.ts';
 import type { GitRunner, PrOpener } from '../write/branch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { CoordinationPublication } from '../write/outbox.ts';
@@ -92,6 +91,8 @@ export interface SchedulesPanel {
   files: Record<string, string>;
   /** How many declared cadences currently carry a pause sentinel. */
   pausedCount: number;
+  /** Present on HTTP responses so clients never infer whether PR-backed edits can work. */
+  edits?: { available: boolean; reason?: string };
 }
 
 /** A bounded, newest-first audit trail for a declared cadence. */
@@ -400,6 +401,8 @@ export type SaveFn = (input: SaveInput) => Promise<SaveOutcome>;
  * honest about what exists; it simply refuses until the composition root wires the one session secret.
  */
 export interface SchedulesRouteOptions {
+  /** Composed from publication mode plus the presence of the concrete PR opener. */
+  durablePrWrites?: boolean;
   /** The one per-process session config. Absent ⇒ the edit route refuses with 503. */
   sessionConfig?: SessionConfig;
   /**
@@ -473,8 +476,14 @@ export function registerSchedulesPanel(
   options: SchedulesRouteOptions = {},
 ): void {
   const runSave: SaveFn = options.save ?? defaultSave;
+  const prOpener = options.openPr;
 
-  app.get('/api/panels/schedules', async () => buildSchedulesPanel(repoRoot));
+  const edits = options.durablePrWrites === true
+    && options.publication !== 'outbox'
+    && prOpener !== undefined
+    ? { available: true }
+    : { available: false, reason: 'Schedule edits require direct publication through a concrete GitHub PR route; this host can still read, pause, and show history.' };
+  app.get('/api/panels/schedules', async () => ({ ...buildSchedulesPanel(repoRoot), edits }));
   app.get('/api/panels/schedules/history', async (req, reply: FastifyReply) => {
     const query = (req.query && typeof req.query === 'object' ? req.query : {}) as { project?: unknown; cadence?: unknown };
     const project = typeof query.project === 'string' ? query.project.trim() : '';
@@ -485,6 +494,9 @@ export function registerSchedulesPanel(
   });
 
   app.post('/api/schedules/edit', async (req, reply: FastifyReply) => {
+    if (!edits.available || !prOpener) {
+      return reply.code(503).send({ error: 'capability-unavailable', reason: edits.reason });
+    }
     // Admission first, exactly as `/api/write/save` orders it: when the durable outbox is degraded, new
     // work is refused before anything else happens rather than adding another PR to a spool that is
     // already not draining.
@@ -510,9 +522,8 @@ export function registerSchedulesPanel(
     // The durable route opens the PR; capture its metadata so the panel can link the PR a human must
     // review. Nothing here merges it — `routeDurable` pushes the branch and opens a PR, full stop.
     const captured: { pr: AsyncPrResult | null } = { pr: null };
-    const inner = options.openPr ?? defaultPrOpener;
     const openPr: PrOpener = async (root, request) => {
-      const result = await inner(root, request);
+      const result = await prOpener(root, request);
       if (result) captured.pr = result;
       return result;
     };

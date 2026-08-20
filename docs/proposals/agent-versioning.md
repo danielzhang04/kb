@@ -5,14 +5,19 @@ version 1 so every existing declaration remains valid. `io` may describe free-fo
 `outputs`; `defaults` may advisory-describe `budget_usd`, `max_retries`, and `escalation`. These are
 declaration metadata only: they do not grant authority, set a runtime budget, or alter routing.
 
-Use `py -3 scripts/agent_factory.py bump <id>` after a behavior-changing definition edit. It changes
+Use `python3 scripts/agent_factory.py bump <id>` on Linux or `py -3 scripts/agent_factory.py bump <id>`
+on Windows after a behavior-changing definition edit. It changes
 only the definition's version field; ordinary edits never auto-bump. `eval_trigger --range A..B`
 reports `WARNING: def changed without version bump` when it sees a changed, comparable declaration
 whose endpoint versions match. The warning is visible review evidence, not a gate.
 
-Direct Codex dispatches may name a declaration with `--agent <id>`. Their post-hoc record then carries
+Direct desktop Codex dispatches may name a declaration with `--agent <id>`. Their post-hoc record then carries
 `agent_version: <id>@v<version>` (for example `fyt-story@v3`) beside `kit_sha`. Omit `--agent`, or
 leave a declaration unavailable, and no version stamp is recorded; dispatch behavior is unchanged.
+
+This dispatch stamp is desktop-only by design: the VM dashboard launches governed workers through its
+control-plane adapter, not `scripts/codex_dispatch.py`. The VM roster still displays declaration versions;
+run-state code-version provenance belongs to the resume-safe control-plane contract.
 
 ## Card-schema addition for Daniel
 

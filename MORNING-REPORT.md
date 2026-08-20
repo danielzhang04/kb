@@ -16,8 +16,8 @@
 |---|---|---|---|
 | U0 | Agent Platform section + zero-edit panel registry (`*.panel.tsx` glob) | `07d70e9f` | The section itself; drop any `X.panel.tsx` in `panels/` → it registers with no shared-file edit (proven empirically by both reviews) |
 | U16 | Theme legend contrast pass + ModelBadge | `2f2c16f9` | Every legend token now ≥4.5:1 both themes (headline: tier-t3 was faintest at 3.01:1); model badges on all fleet surfaces |
-| U1 | Semantic Brain indexer (all-MiniLM-L6-v2, offline-enforced) | `66ec584b` | `py -3 -m scripts.brain.indexer build --root . --out .brain-index` → 130 files / ~4400 chunks, max 900 chars, 0 dup ids |
-| U2 | Brain query CLI + Brain Search panel | `82489ae0` | `py -3 -m scripts.brain.brain_query "how does the autonomy promotion gate decide" --k 5 --json` (~10–20s/query — model reloads per spawn; honest in the panel; sidecar decision-note) |
+| U1 | Semantic Brain indexer (all-MiniLM-L6-v2, offline-enforced) | `66ec584b` | `$env:DASHBOARD_STATE_ROOT='C:\Users\danie\AppData\Local\kb-dashboard'; py -3 -m scripts.brain.indexer build --root .` writes `C:\Users\danie\AppData\Local\kb-dashboard\brain\index` → 130 files / ~4400 chunks, max 900 chars, 0 dup ids |
+| U2 | Brain query CLI + Brain Search panel | `82489ae0` | `$env:DASHBOARD_STATE_ROOT='C:\Users\danie\AppData\Local\kb-dashboard'; py -3 -m scripts.brain.brain_query "how does the autonomy promotion gate decide" --k 5 --json` reads `C:\Users\danie\AppData\Local\kb-dashboard\brain\index` (~10–20s/query — model reloads per spawn; honest in the panel; sidecar decision-note) |
 | U3 | Complex-agent schema in the existing roster loader (6 advisory fields) | `52cc40dc` | `/api/agents` carries tools/knowledge-source/autonomy-tier/skills/what-it-replaces/builds-on; all 8 live agents lossless |
 | U4 | Agent Management panel (headline UI) | `0b16d7d9` | Declared vs observed identities split honestly; detail card renders description/how-it-runs/codebases + the six schema fields with a why-empty note |
 | U14 | Fleet graph (agents as nodes; "blocks" card-dependency edges; dashed builds-on) | `61580282` | Panel; edge-empty state is honest on this worktree (queue has no cross-agent deps) |
@@ -28,7 +28,7 @@
 | U8 | Context persistence via adapted ECC (INERT; GateGuard dropped; zero-spend summarizer) | `abac0355` | `py -3 -m pytest tests/test_context_*.py -q` (51); Context Lifecycle panel; proposal: `docs/proposals/context-lifecycle-hooks.md` |
 | U9 | Spawn context-load + model-verify hooks (INERT; verified against the harness binary) | `6e50a197` | `py -3 -m pytest tests/test_model_verify.py -v`; Model Audit panel; proposal: `docs/proposals/spawn-model-verify-hooks.md` |
 | U10 | Learning miner (facts, not stubs — corpus-calibrated) | `0e1749df` | `py -3 -m scripts.brain.session_miner mine <transcript.jsonl>`; Proposed Lessons panel shows the committed demo proposals |
-| U11 | Hygiene sweep (dry-run, tracked-scope) | `4a9e1a42` | `python scripts/hygiene_sweep.py --root . --out .hygiene-report.json` → exactly 3 findings (2 genuinely stale July handoffs + 1.88MB visual-kit artifact); Hygiene Report panel |
+| U11 | Hygiene sweep (dry-run, tracked-scope) | `4a9e1a42` | `$env:DASHBOARD_STATE_ROOT='C:\Users\danie\AppData\Local\kb-dashboard'; py -3 -m scripts.hygiene_sweep --root .` writes the panel's `C:\Users\danie\AppData\Local\kb-dashboard\hygiene\report.json` → exactly 3 findings (2 genuinely stale July handoffs + 1.88MB visual-kit artifact) |
 | U13 | Fleet-wide editing + subagent-governance proposal docs | `3c77b873` | `docs/proposals/{file-editing-guidelines,subagent-governance}.md` |
 | U12 | Integration + design pass (demo retired, curated order, extractions) | `16fd3073` | The section as a whole; 829 client tests green (only the 7 pre-existing CommandPalette failures) |
 | — | Serial route wiring (5 read routes) | `540e08f7` | All panels reach live routes |

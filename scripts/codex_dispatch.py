@@ -26,6 +26,7 @@ import ledger      # noqa: E402
 import preamble    # noqa: E402
 import routing     # noqa: E402
 from agent_definitions import load_agent_definition  # noqa: E402
+from kb_paths import resolve_state_root  # noqa: E402
 
 WRITER = "codex-direct"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -42,17 +43,6 @@ MAX_KIT_BYTES = 256 * 1024
 SAFE_AGENT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 PROCESS_GROUP_GRACE = 2  # seconds to let a timed-out worker tree exit after SIGTERM
 PROCESS_START_TIME_TOLERANCE = 1  # /proc stat clock ticks
-
-
-def resolve_state_root(env=None, platform: str | None = None) -> Path:
-    """Return the sole state directory for logs, markers, spool, and sessions."""
-    env = os.environ if env is None else env
-    override = (env.get("KB_CODEX_DISPATCH_STATE") or "").strip()
-    if override:
-        return Path(override).expanduser()
-    if (platform or os.name) == "nt":
-        return Path(env.get("LOCALAPPDATA", str(Path.home()))) / "kb-codex-dispatch"
-    return Path.home() / ".local" / "state" / "kb-codex-dispatch"
 
 
 STATE_ROOT = resolve_state_root()
@@ -178,7 +168,11 @@ def stamp_kit(card: cards.Card, repo_root: Path) -> None:
 
 
 def pinned_agent_version(repo_root: Path, agent_id: str | None) -> str | None:
-    """Read the declared version before spawn, or leave provenance absent."""
+    """Read the declared version before a direct desktop Codex spawn.
+
+    The VM dashboard uses its governed control-plane worker adapter, not this
+    desktop dispatch path; its run-state provenance is a separate contract.
+    """
     if not agent_id or not SAFE_AGENT_ID.fullmatch(agent_id):
         return None
     try:

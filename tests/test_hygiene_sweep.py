@@ -99,7 +99,28 @@ def test_write_report_changes_nothing_except_the_requested_report(tmp_path: Path
     assert snapshot_tree(tmp_path, output) == before
     assert report['dryRun'] is True
     assert report['summary']['total'] == len(report['findings'])
-    assert report['header']['generation_command'] == 'python scripts/hygiene_sweep.py'
+    expected_python = 'py -3' if os.name == 'nt' else 'python3'
+    assert report['header']['generation_command'] == f'{expected_python} -m scripts.hygiene_sweep'
+
+
+def test_default_report_uses_dashboard_state_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    planted_tree(tmp_path)
+    state_root = tmp_path / 'daemon-state'
+    monkeypatch.setenv('DASHBOARD_STATE_ROOT', str(state_root))
+
+    hs.write_report(tmp_path, now=datetime(2026, 8, 18, tzinfo=timezone.utc))
+
+    assert (state_root / 'hygiene' / 'report.json').is_file()
+    assert not (tmp_path / '.hygiene-report.json').exists()
+
+
+def test_default_report_retains_repo_local_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    planted_tree(tmp_path)
+    monkeypatch.delenv('DASHBOARD_STATE_ROOT', raising=False)
+
+    hs.write_report(tmp_path, now=datetime(2026, 8, 18, tzinfo=timezone.utc))
+
+    assert (tmp_path / '.hygiene-report.json').is_file()
 
 
 @pytest.mark.parametrize('blocked', ['governance/report.json', 'memory/report.json'])

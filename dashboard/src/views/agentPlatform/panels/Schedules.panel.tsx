@@ -113,6 +113,7 @@ function SchedulesBody(): React.JSX.Element {
   if (state === 'unavailable' || data === null) return <p className="ap-schedules__quiet" data-testid="ap-schedules-unavailable">Schedules are unavailable. Nothing was changed.</p>;
 
   const prefill = editFile === null ? '' : data.files[editFile] ?? '';
+  const editsAvailable = data.edits?.available !== false;
   const editableCadences = data.cadences.filter((row) => row.file === editFile);
   const cadenceForPicker = editableCadences.find((row) => row.name === selectedCadence) ?? editableCadences[0] ?? null;
   const editDisabled = editBusy || !pickerValid || content.trim() === '' || content === prefill || content === submittedContent;
@@ -177,7 +178,7 @@ function SchedulesBody(): React.JSX.Element {
             <p className="ap-schedules__recurrence">{describeSchedule(row.schedule).label}</p>
           </div>
           <div className="ap-schedules__card-status"><span className="ap-schedules__next"><small>next window</small>{relativeScheduleWindow(nextScheduleWindow(row.schedule))}</span><LastOutcome row={row} />{attention ? <span className="mc-badge ap-schedules__needs-you">needs you</span> : null}</div>
-          <div className="ap-schedules__actions"><button type="button" onClick={() => openEditor(row.file, row.name)}>Edit in PR</button>{!paused ? <button type="button" onClick={() => void pauseCadence(row.name)} aria-label={`Pause cadence ${row.name}`}>Pause</button> : null}<button type="button" onClick={() => void toggleHistory(row)} aria-expanded={historyOpen} aria-label={`History for cadence ${row.name}`}>{historyOpen ? 'Hide history' : 'History'}</button></div>
+          <div className="ap-schedules__actions">{editsAvailable ? <button type="button" onClick={() => openEditor(row.file, row.name)}>Edit in PR</button> : null}{!paused ? <button type="button" onClick={() => void pauseCadence(row.name)} aria-label={`Pause cadence ${row.name}`}>Pause</button> : null}<button type="button" onClick={() => void toggleHistory(row)} aria-expanded={historyOpen} aria-label={`History for cadence ${row.name}`}>{historyOpen ? 'Hide history' : 'History'}</button></div>
           {unboundedCron(row.schedule) ? <p className="ap-schedules__quiet" data-testid={`ap-schedules-subhourly-${row.name}`}>This declaration can fire many times a day, each spending tokens.</p> : null}
           {paused ? <p className="ap-schedules__quiet">Resuming is a manual ops act (delete queue/paused/{row.name})</p> : null}
           {pauseMessages[row.name] ? <p data-testid={`ap-schedules-pause-${row.name}`} className="ap-schedules__quiet">{pauseMessages[row.name]}</p> : null}
@@ -185,7 +186,8 @@ function SchedulesBody(): React.JSX.Element {
         </li>;
       })}
     </ul>}
-    <div className="ap-schedules__files"><span>Declaration files</span>{Object.keys(data.files).map((file) => <button type="button" key={file} onClick={() => openEditor(file)}>Edit {file} in PR</button>)}</div>
+    {!editsAvailable ? <p className="ap-schedules__quiet" data-testid="ap-schedules-edit-unavailable">{data.edits?.reason}</p> : null}
+    <div className="ap-schedules__files"><span>Declaration files</span>{Object.keys(data.files).map((file) => editsAvailable ? <button type="button" key={file} onClick={() => openEditor(file)}>Edit {file} in PR</button> : <code key={file}>{file}</code>)}</div>
     {editFile ? <div className="ap-schedules__backdrop" onMouseDown={() => setEditFile(null)}><form className="ap-schedules__sheet" role="dialog" aria-modal="true" aria-label="Edit schedule in pull request" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => void submitEdit(event)}>
       <div className="ap-schedules__sheet-head"><div><span className="ap-schedules__project">{editFile}</span><h4>Edit schedule in PR</h4></div><button type="button" aria-label="Close schedule editor" onClick={() => setEditFile(null)}>Close</button></div>
       <p className="ap-schedules__quiet">Choose a cadence and recurrence. The resulting change is proposed for human review.</p>

@@ -11,7 +11,8 @@
  * WHERE THE LOG LIVES. Not in the repo: `KB_MODEL_AUDIT_PATH` when set, else
  * `<context-store dir>/model-audit.jsonl`, which resolves the same way
  * `scripts/hooks/lib/context_store.js:storeDir()` does — `KB_CONTEXT_STORE_DIR`, else
- * `%LOCALAPPDATA%\kb-context-lifecycle`. Hook-written per-session state is daemon-local, never
+ * `DASHBOARD_STATE_ROOT/context-lifecycle` in the daemon, then
+ * `%LOCALAPPDATA%\kb-context-lifecycle` on the desktop. Hook-written per-session state is daemon-local, never
  * coordination truth (the DASHBOARD_STATE_ROOT reasoning in .gitignore). Tests inject a fixture path
  * as the second argument.
  *
@@ -29,6 +30,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { resolveStatePath } from '../../../scripts/hooks/lib/kb_paths.js';
 
 /** Refuse to read a log that is not a log. Real ones are a few KiB. */
 const MAX_LOG_BYTES = 4 * 1024 * 1024;
@@ -72,7 +74,9 @@ export interface ModelAuditResponse {
 /** The audit log path — `KB_MODEL_AUDIT_PATH`, else `<context-store dir>/model-audit.jsonl`. */
 export function resolveAuditPath(env: NodeJS.ProcessEnv = process.env): string {
   if (env.KB_MODEL_AUDIT_PATH) return env.KB_MODEL_AUDIT_PATH;
-  const base = env.KB_CONTEXT_STORE_DIR ?? join(env.LOCALAPPDATA ?? join(homedir(), '.local', 'state'), 'kb-context-lifecycle');
+  const desktop = join(env.LOCALAPPDATA ?? join(homedir(), '.local', 'state'), 'kb-context-lifecycle');
+  const base = env.KB_CONTEXT_STORE_DIR
+    ?? resolveStatePath('context-lifecycle', desktop, env)!;
   return join(base, 'model-audit.jsonl');
 }
 

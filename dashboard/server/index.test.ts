@@ -5,6 +5,7 @@ import { makeSurfaceContext } from './http/surface.ts';
 import { mintSession } from './auth/session.ts';
 import type { SessionConfig } from './auth/session.ts';
 import { runtimeCapabilities } from './runtime/capabilities.ts';
+import { fileURLToPath } from 'node:url';
 
 const serviceCgroupChildCount = vi.hoisted(() => vi.fn(() => 0));
 const quiescenceSpy = vi.hoisted(() => vi.fn());
@@ -34,6 +35,7 @@ import {
 
 let app: FastifyInstance | undefined;
 const TEST_ORIGIN = 'http://kb.test';
+const TRACE_FIXTURES = fileURLToPath(new URL('./trace/__fixtures__/', import.meta.url));
 const TEST_SESSION: SessionConfig = { secret: Buffer.from('index-test-session-secret-32-bytes!'), ttlMs: 60_000 };
 const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
 // Mint inside each assertion: this file takes long enough that a module-load token can expire while
@@ -42,6 +44,7 @@ const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintS
 const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   serviceCgroupChildCount.mockReset();
   serviceCgroupChildCount.mockReturnValue(0);
   quiescenceSpy.mockClear();
@@ -56,15 +59,89 @@ describe('server', () => {
     const createPty = vi.fn(() => { throw new Error('must not construct'); });
     app = buildApp({
       validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
-      runtimeCapabilities: runtimeCapabilities('linux'), createPtyHost: createPty,
+      runtimeCapabilities: runtimeCapabilities('linux'),
+      coordinationPublication: 'outbox',
+      traceRoot: null,
+      createPtyHost: createPty,
     });
     const capabilities = await app.inject({
       method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
     });
     expect(capabilities.statusCode).toBe(200);
-    expect(capabilities.json()).toMatchObject({ pty: false, runnerTrigger: false, vibe: false, dashboardBridge: true });
+    expect(capabilities.json()).toMatchObject({
+      pty: false, runnerTrigger: false, vibe: false, durablePrWrites: false,
+      localTranscripts: false, dashboardBridge: true,
+    });
     expect((await app.inject({ method: 'GET', url: '/api/pty/sessions', headers: sessionHeaders() })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/trace', headers: sessionHeaders() })).statusCode).toBe(404);
     expect(createPty).not.toHaveBeenCalled();
+  });
+
+  it('registers trace routes only when a readable transcript root was composed', async () => {
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'), traceRoot: TRACE_FIXTURES,
+    });
+    const capabilities = await app.inject({
+      method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
+    });
+    expect(capabilities.json()).toMatchObject({ localTranscripts: true });
+    expect((await app.inject({
+      method: 'GET', url: '/api/trace', headers: sessionHeaders(),
+    })).statusCode).toBe(200);
+  });
+
+  it('refuses outbox schedule edits before governedSave when KB_VM_RUNTIME is absent', async () => {
+    vi.stubEnv('KB_COORDINATION_PUBLICATION', 'outbox');
+    vi.stubEnv('KB_VM_RUNTIME', undefined);
+    const save = vi.fn(async () => ({ ok: false as const, status: 403 as const, reason: 'should-not-run' }));
+    const openPr = vi.fn(async () => undefined);
+    app = buildApp({
+      validateData: false,
+      allowedOrigins: [TEST_ORIGIN],
+      sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'),
+      traceRoot: null,
+      openPr,
+      scheduleSave: save,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/schedules/edit',
+      headers: sessionHeaders(),
+      payload: { file: 'HEARTBEAT.md', content: '# changed\n' },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ error: 'capability-unavailable' });
+    expect(save).not.toHaveBeenCalled();
+    expect(openPr).not.toHaveBeenCalled();
+  });
+
+  it('admits direct schedule edits when the composed PR surface is present', async () => {
+    vi.stubEnv('KB_COORDINATION_PUBLICATION', 'direct');
+    vi.stubEnv('KB_VM_RUNTIME', undefined);
+    const save = vi.fn(async () => ({ ok: false as const, status: 403 as const, reason: 'test-stop-after-save-entry' }));
+    app = buildApp({
+      validateData: false,
+      allowedOrigins: [TEST_ORIGIN],
+      sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'),
+      traceRoot: null,
+      openPr: async () => undefined,
+      scheduleSave: save,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/schedules/edit',
+      headers: sessionHeaders(),
+      payload: { file: 'HEARTBEAT.md', content: '# changed\n' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(save).toHaveBeenCalledTimes(1);
   });
 
   it.each([

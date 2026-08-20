@@ -41,6 +41,40 @@ def state_record(state_dir, session=SESSION):
     return json.loads((state_dir / "state.json").read_text(encoding="utf-8"))["sessions"][session]
 
 
+def test_state_defaults_under_dashboard_state_root(tmp_path):
+    state_root = tmp_path / "daemon-state"
+    env = {
+        **os.environ,
+        "DASHBOARD_STATE_ROOT": str(state_root),
+        "KB_GOAL_STATE_PATH": str(GOAL_STATE),
+        "KB_REGROUND_NOW_MS": str(NOW),
+    }
+    env.pop("KB_REGROUND_STATE_DIR", None)
+    payload = {**EVENT, "session_id": SESSION}
+
+    result = subprocess.run(["node", str(HOOK)], input=json.dumps(payload).encode(), capture_output=True, env=env)
+
+    assert result.returncode == 0
+    assert (state_root / "regrounding" / "state.json").is_file()
+
+
+def test_state_retains_desktop_fallback_without_state_root(tmp_path):
+    env = {
+        **os.environ,
+        "LOCALAPPDATA": str(tmp_path),
+        "KB_GOAL_STATE_PATH": str(GOAL_STATE),
+        "KB_REGROUND_NOW_MS": str(NOW),
+    }
+    env.pop("DASHBOARD_STATE_ROOT", None)
+    env.pop("KB_REGROUND_STATE_DIR", None)
+    payload = {**EVENT, "session_id": SESSION}
+
+    result = subprocess.run(["node", str(HOOK)], input=json.dumps(payload).encode(), capture_output=True, env=env)
+
+    assert result.returncode == 0
+    assert (tmp_path / "kb-regrounding" / "state.json").is_file()
+
+
 def test_emits_additional_context_for_mock_event(tmp_path):
     r = run_hook(GOAL_STATE, tmp_path / "state")
     assert r.returncode == 0

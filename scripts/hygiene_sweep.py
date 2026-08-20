@@ -10,6 +10,8 @@ import json
 import os
 import re
 import subprocess
+from pathlib import Path
+from scripts.kb_paths import resolve_dashboard_state_path
 from datetime import date, datetime, timedelta, timezone
 
 OVERSIZED_BYTES = 1024 * 1024
@@ -225,7 +227,10 @@ def sweep(root: str | os.PathLike[str] = '.', now: datetime | None = None, all_f
 def write_report(root: str | os.PathLike[str] = '.', out: str | os.PathLike[str] | None = None, now: datetime | None = None, all_files: bool = False) -> dict[str, object]:
     """Generate the only output file; refuse coordination-sensitive or source destinations."""
     resolved_root = os.path.realpath(os.path.abspath(os.fspath(root)))
-    resolved_out = os.path.realpath(os.path.abspath(os.fspath(out or os.path.join(resolved_root, '.hygiene-report.json'))))
+    default_out = resolve_dashboard_state_path(
+        'hygiene', 'report.json', fallback=Path(resolved_root) / '.hygiene-report.json'
+    )
+    resolved_out = os.path.realpath(os.path.abspath(os.fspath(out or default_out)))
     if _inside(resolved_out, os.path.join(resolved_root, 'governance')) or _inside(resolved_out, os.path.join(resolved_root, 'memory')):
         raise ValueError('refusing an output path inside governance/ or memory/')
     tracked_outputs = {os.path.realpath(os.path.join(resolved_root, *path.split('/'))) for path in _tracked_paths(resolved_root)}
@@ -244,11 +249,12 @@ def write_report(root: str | os.PathLike[str] = '.', out: str | os.PathLike[str]
         'header': {
             'dry_run_notice': 'DRY-RUN only: this report did not delete, rename, or modify inspected files.',
             'tracking_notice': 'By default this report inspects Git-tracked content only; use --all-files to include untracked files.',
-            'generation_command': 'python scripts/hygiene_sweep.py',
+            'generation_command': f"{'py -3' if os.name == 'nt' else 'python3'} -m scripts.hygiene_sweep",
         },
         'findings': findings,
         'summary': {'total': len(findings), 'by_kind': dict(sorted(by_kind.items()))},
     }
+    os.makedirs(os.path.dirname(resolved_out), exist_ok=True)
     with open(resolved_out, 'w', encoding='utf-8', newline='\n') as handle:
         json.dump(report, handle, indent=2, ensure_ascii=False)
     return report
@@ -257,7 +263,7 @@ def write_report(root: str | os.PathLike[str] = '.', out: str | os.PathLike[str]
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='Generate a dry-run repository hygiene report.')
     parser.add_argument('--root', default='.', help='repository root to inspect')
-    parser.add_argument('--out', default=None, help='report path (defaults to <root>/.hygiene-report.json)')
+    parser.add_argument('--out', default=None, help='report path (defaults to runtime state in the daemon, else <root>/.hygiene-report.json)')
     parser.add_argument('--all-files', action='store_true', help='also inspect untracked files and directories')
     args = parser.parse_args(argv)
     report = write_report(args.root, args.out, all_files=args.all_files)

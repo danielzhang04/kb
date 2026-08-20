@@ -77,6 +77,8 @@ export interface SurfaceContext {
   admission: (kind: AdmissionKind) => AdmissionDecision;
   /** Dashboard-owned runtime state root; never a repository content path. */
   stateRoot: string;
+  /** Readable local Claude transcript root resolved once at composition; null when unavailable. */
+  traceRoot: string | null;
   /** Minimal, unauthenticated readiness probe. */
   readiness: () => Promise<ReturnType<typeof quiescence>>;
   /** Optional live hub bus; the surface uses it only while an execution latch is armed. */

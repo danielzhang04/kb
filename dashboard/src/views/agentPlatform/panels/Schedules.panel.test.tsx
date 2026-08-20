@@ -14,9 +14,9 @@ const DATA: SchedulesPanel = { label: 'schedules', pausedCount: 1, files: { 'HEA
 ] };
 function unlocked(): React.JSX.Element { persistSession({ token: 'schedule-token', expiresAt: Date.now() + 3_600_000 }); return <SessionProvider>{panel.render()}</SessionProvider>; }
 function locked(): React.JSX.Element { return <SessionProvider>{panel.render()}</SessionProvider>; }
-function stubFetch(options: { unavailable?: boolean; edit?: { status: number; body: object }; pause?: { status: number; body: object }; history?: { status: number; body: object } } = {}): ReturnType<typeof vi.fn> {
+function stubFetch(options: { unavailable?: boolean; data?: SchedulesPanel; edit?: { status: number; body: object }; pause?: { status: number; body: object }; history?: { status: number; body: object } } = {}): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn((url: string) => {
-    if (url === '/api/panels/schedules') return options.unavailable ? Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) }) : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(DATA) });
+    if (url === '/api/panels/schedules') return options.unavailable ? Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) }) : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(options.data ?? DATA) });
     if (url === '/api/panels/schedules/history?project=system&cadence=root-daily') return options.history ? Promise.resolve({ ok: false, status: options.history!.status, json: () => Promise.resolve(options.history!.body) }) : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ cadence: 'root-daily', runs: [{ card: 'card-1', scheduledFor: '2026-08-18T07:03:00', dispatchedAt: '2026-08-18T07:05:00', outcome: 'done', result: 'Completed safely.' }] }) });
     if (url === '/api/schedules/edit') return options.edit ? Promise.resolve({ ok: false, status: options.edit!.status, json: () => Promise.resolve(options.edit!.body) }) : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, target: 'HEARTBEAT.md', pr: { url: 'https://github.test/kb/pull/42' } }) });
     if (url === '/api/write/pause-cadence') return options.pause ? Promise.resolve({ ok: false, status: options.pause!.status, json: () => Promise.resolve(options.pause!.body) }) : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, path: 'queue/paused/root-daily' }) });
@@ -41,6 +41,16 @@ describe('Schedules panel', () => {
   it('never renders an unpause or run control, including for paused cadences', async () => {
     stubFetch(); render(unlocked()); await screen.findByTestId('ap-schedules-row-ops-paused');
     expect(screen.queryByRole('button', { name: /unpause/i })).toBeNull(); expect(screen.queryByText(/unpause/i)).toBeNull(); expect(screen.queryByRole('button', { name: /^run/i })).toBeNull();
+  });
+
+  it('shows the VM capability reason and removes only PR edit controls', async () => {
+    stubFetch({ data: { ...DATA, edits: { available: false, reason: 'Schedule edits require the desktop GitHub PR route.' } } });
+    render(unlocked());
+    await screen.findByTestId('ap-schedules-row-root-daily');
+    expect(screen.getByTestId('ap-schedules-edit-unavailable').textContent).toMatch(/desktop GitHub PR route/i);
+    expect(screen.queryByRole('button', { name: /edit .* in pr/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Pause cadence root-daily' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'History for cadence root-daily' })).toBeTruthy();
   });
 
   it('opens a focused PR sheet, changes only the selected schedule line, and locks resubmit after success', async () => {
@@ -109,7 +119,7 @@ describe('Schedules panel', () => {
 
   it('reads nothing while locked and names unavailable schedules without mutation', async () => {
     const lockedFetch = stubFetch(); render(locked()); expect(screen.getByTestId('ap-schedules-locked').textContent).toMatch(/unlock the dashboard/i); expect(lockedFetch).not.toHaveBeenCalled(); cleanup(); clearStoredSession();
-    const unavailable = stubFetch({ unavailable: true }); render(unlocked()); expect((await screen.findByTestId('ap-schedules-unavailable')).textContent).toMatch(/unavailable/i); expect(unavailable.mock.calls.filter(([url]) => url !== '/api/panels/schedules')).toHaveLength(0);
+    const unavailable = stubFetch({ unavailable: true }); render(unlocked()); expect((await screen.findByTestId('ap-schedules-unavailable')).textContent).toMatch(/unavailable/i); expect(unavailable.mock.calls.filter(([url]) => String(url).startsWith('/api/write/') || url === '/api/schedules/edit')).toHaveLength(0);
   });
 
   for (const status of [400, 401, 503]) it(`renders an edit refusal with HTTP ${status}, never success`, async () => {

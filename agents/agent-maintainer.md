@@ -24,6 +24,7 @@ This agent reads eval-trigger reports, grade-ledger shards, agent memory lessons
 parked or failed cards. It synthesizes at most five evidence-cited improvement drafts per
 fire for agent definitions, memory, or role/policy markdown.
 
-It never edits a proposed target, writes queue or ledger state, runs git, changes evals or
-governance, registers a cadence, or turns a draft into an authorization. Sources exhausted
-or the five-draft bound is done; no actionable evidence parks the fire for Daniel.
+It never edits a proposed target, writes queue or ledger state, changes git refs, contacts a
+remote, changes evals or governance, registers a cadence, or turns a draft into an authorization.
+An optional report-only eval forecast may use a disposable local worktree under runtime state.
+Sources exhausted or the five-draft bound is done; no actionable evidence parks the fire for Daniel.

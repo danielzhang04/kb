@@ -39,6 +39,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const kbPaths = require("./lib/kb_paths.js");
 const io = require("./lib/hook_io.js");
 
 // The stdin/stdout/fail-open boilerplate lives in lib/hook_io.js — one copy shared by every kb hook.
@@ -173,7 +174,10 @@ function positiveEnvInt(name, fallback) {
 
 function stateDirectory() {
   if (process.env.KB_REGROUND_STATE_DIR) return process.env.KB_REGROUND_STATE_DIR;
-  return process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "kb-regrounding") : null;
+  const fallback = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, "kb-regrounding")
+    : null;
+  return kbPaths.resolveStatePath("regrounding", fallback, process.env);
 }
 
 function statePath(directory) {

@@ -6,16 +6,29 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 import numpy as np
 
 from scripts.brain.chunker import CHUNKER_VERSION, Chunk
 from scripts.brain.embedder import Embedder
+from scripts.kb_paths import resolve_dashboard_state_path
 
 
 DEFAULT_INDEX_DIR = ".brain-index"
 FORMAT_VERSION = 1
+
+
+def default_index_dir(
+    env: Mapping[str, str] | None = None, *, repo_root: Path | None = None
+) -> Path:
+    """Return the writable runtime index, retaining the repo-local desktop fallback."""
+    root = repo_root if repo_root is not None else Path(__file__).resolve().parents[2]
+    resolved = resolve_dashboard_state_path(
+        "brain", "index", env=env, fallback=root / DEFAULT_INDEX_DIR
+    )
+    assert resolved is not None
+    return resolved
 
 
 class IndexFormatError(ValueError):
@@ -41,6 +54,13 @@ def _validate_embedder(manifest: dict[str, object], embedder: Embedder) -> None:
             f"{manifest['model']} ({manifest['dim']} dimensions), but query uses "
             f"{embedder.model_name} ({embedder.dim} dimensions)"
         )
+    if (
+        not embedder.model_fingerprint
+        or manifest.get("model_fingerprint") != embedder.model_fingerprint
+    ):
+        raise ModelMismatchError(
+            "Index model fingerprint is missing or does not match the provisioned query model"
+        )
 
 
 def save(
@@ -49,10 +69,13 @@ def save(
     vectors: np.ndarray,
     *,
     model: str,
+    model_fingerprint: str | None,
     dim: int,
     roots: list[str],
 ) -> None:
     """Write an index with rows aligned across vector, ID, and JSONL files."""
+    if not model_fingerprint:
+        raise ValueError("cannot build an index without a persisted model fingerprint")
     chunk_list = list(chunks)
     vector_array = np.asarray(vectors, dtype=np.float32)
     if vector_array.ndim != 2 or vector_array.shape != (len(chunk_list), dim):
@@ -70,6 +93,7 @@ def save(
     manifest = {
         "format_version": FORMAT_VERSION,
         "model": model,
+        "model_fingerprint": model_fingerprint,
         "dim": dim,
         "chunk_count": len(chunk_list),
         "created_at": datetime.now(timezone.utc).isoformat(),

@@ -14,13 +14,16 @@ import sys
 import time
 from pathlib import Path
 
+from kb_paths import resolve_dashboard_state_root
 
-def log_path() -> Path:
-    configured = (os.environ.get("DASHBOARD_STATE_ROOT") or "").strip()
-    if configured:
-        root = Path(configured)
-    else:
-        root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "kb-dashboard"
+
+def log_path(env: dict[str, str] | None = None) -> Path:
+    values = os.environ if env is None else env
+    fallback = Path(
+        values.get("XDG_STATE_HOME") or Path.home() / ".local" / "state"
+    ) / "kb-dashboard"
+    root = resolve_dashboard_state_root(values, fallback=fallback)
+    assert root is not None
     root.mkdir(parents=True, exist_ok=True)
     return root / "agent-runner.log"
 

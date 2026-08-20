@@ -62,22 +62,30 @@ def build_index(root: Path, out_dir: Path, embedder: Embedder) -> IndexStats:
         chunks,
         vectors,
         model=embedder.model_name,
+        model_fingerprint=embedder.model_fingerprint,
         dim=embedder.dim,
         roots=list(CORPUS_GLOBS),
     )
     return IndexStats(files=len(files), chunks=len(chunks), seconds=perf_counter() - started)
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the public indexer CLI without executing a build."""
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
     build = subcommands.add_parser("build", help="build a local vector index")
     build.add_argument("--root", type=Path, default=Path("."))
-    build.add_argument("--out", type=Path, default=Path(store.DEFAULT_INDEX_DIR))
-    args = parser.parse_args(argv)
+    build.add_argument("--out", type=Path)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     if args.command == "build":
-        out_dir = args.out if args.out.is_absolute() else args.root / args.out
+        out_dir = store.default_index_dir(repo_root=args.root) if args.out is None else args.out
+        if not out_dir.is_absolute():
+            out_dir = args.root / out_dir
         stats = build_index(args.root, out_dir, SentenceTransformerEmbedder())
         print(f"files={stats.files} chunks={stats.chunks} seconds={stats.seconds:.2f}")
     return 0

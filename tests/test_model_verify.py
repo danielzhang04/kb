@@ -235,6 +235,18 @@ def test_the_default_audit_path_sits_beside_the_context_stores(tmp_path):
     assert (tmp_path / "store" / "model-audit.jsonl").exists()
 
 
+def test_the_default_audit_path_uses_dashboard_state_root(tmp_path):
+    state_root = tmp_path / "daemon-state"
+    env = {**os.environ, "DASHBOARD_STATE_ROOT": str(state_root)}
+    env.pop("KB_MODEL_AUDIT_PATH", None)
+    env.pop("KB_CONTEXT_STORE_DIR", None)
+    result = subprocess.run(
+        ["node", str(PRETOOLUSE)], input=json.dumps(task_event()).encode(), capture_output=True, env=env
+    )
+    assert result.returncode == 0
+    assert (state_root / "context-lifecycle" / "model-audit.jsonl").exists()
+
+
 # ── SubagentStop: the observed half ──────────────────────────────────────────────────────────────
 
 

@@ -18,6 +18,7 @@ import { SessionProvider } from '../../../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../../../lib/authClient';
 import type { RunEnvelope } from '../../../../server/trace/envelope.ts';
 import type { SessionListEntry, SessionListResponse } from '../../../../server/trace/routes.ts';
+import { RuntimeCapabilitiesProvider } from '../../../lib/runtimeCapabilities';
 
 afterEach(() => {
   cleanup();
@@ -59,13 +60,21 @@ const ENVELOPE: RunEnvelope = {
 /** Render under a fresh session. Every assertion that expects a read rides on this. */
 function unlocked(node: React.JSX.Element): React.JSX.Element {
   persistSession({ token: 'tok', expiresAt: Date.now() + 3_600_000 });
-  return <SessionProvider>{node}</SessionProvider>;
+  return (
+    <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'win32-desktop' as const }) }}>
+      {node}
+    </SessionProvider>
+  );
 }
 
 /** Render with no session at all. */
 function locked(node: React.JSX.Element): React.JSX.Element {
   clearStoredSession();
-  return <SessionProvider>{node}</SessionProvider>;
+  return (
+    <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'win32-desktop' as const }) }}>
+      {node}
+    </SessionProvider>
+  );
 }
 
 function entry(over: Partial<SessionListEntry> & { sessionId: string }): SessionListEntry {
@@ -109,8 +118,9 @@ describe('RunEnvelope panel registration', () => {
 });
 
 describe('RunEnvelope envelope section', () => {
-  it('renders one row per step with tool, model, result state and duration', () => {
+  it('renders one row per step with tool, model, result state and duration', async () => {
     render(unlocked(<RunEnvelopeBody envelope={ENVELOPE} />));
+    await waitFor(() => expect(screen.getByTestId('runenv-step-0')).toBeTruthy());
     const first = screen.getByTestId('runenv-step-0');
     expect(within(first).getByText('Read')).toBeTruthy();
     expect(within(first).getByText('result')).toBeTruthy();
@@ -121,8 +131,9 @@ describe('RunEnvelope envelope section', () => {
     expect(within(second).getByText('no result')).toBeTruthy();
   });
 
-  it('renders the model through the shared ModelBadge (U16), weight and all', () => {
+  it('renders the model through the shared ModelBadge (U16), weight and all', async () => {
     render(unlocked(<RunEnvelopeBody envelope={ENVELOPE} />));
+    await waitFor(() => expect(screen.getByTestId('runenv-step-0')).toBeTruthy());
     const badge = within(screen.getByTestId('runenv-step-0')).getByTestId('model-badge');
     expect(badge.textContent).toBe('claude-opus-5');
     expect(badge.getAttribute('data-model-weight')).toBe('deep');
@@ -132,8 +143,9 @@ describe('RunEnvelope envelope section', () => {
   });
 
   /** U12 — the result chips come from `styles/app.css`, not a panel-local copy of the geometry. */
-  it('renders result state through the SHARED mc-badge chips', () => {
+  it('renders result state through the SHARED mc-badge chips', async () => {
     render(unlocked(<RunEnvelopeBody envelope={ENVELOPE} />));
+    await waitFor(() => expect(screen.getByTestId('runenv-step-0')).toBeTruthy());
     const ok = within(screen.getByTestId('runenv-step-0')).getByText('result');
     expect(ok.className).toContain('mc-badge');
     expect(ok.className).toContain('mc-badge--done');
@@ -175,8 +187,9 @@ describe('RunEnvelope envelope section', () => {
     await waitFor(() => expect(screen.getByTestId('runenv-unavailable')).toBeTruthy());
   });
 
-  it('is empty-safe for a run with no tool steps', () => {
+  it('is empty-safe for a run with no tool steps', async () => {
     render(unlocked(<RunEnvelopeBody envelope={{ sessionId: 'empty', stepCount: 0, steps: [] }} />));
+    await waitFor(() => expect(screen.getByTestId('runenv-empty')).toBeTruthy());
     expect(screen.getByTestId('runenv-empty').textContent).toContain('No tool steps');
   });
 
@@ -201,6 +214,7 @@ describe('RunEnvelope envelope section', () => {
 
     render(unlocked(<RunEnvelopeBody />));
     // Frame 1: the transcript list has not answered, so there is not even a subject yet.
+    await waitFor(() => expect(screen.getByTestId('runenv-empty')).toBeTruthy());
     expect(screen.getByTestId('runenv-empty').textContent).toContain('Loading envelope');
     expect(screen.getByTestId('runenv-empty').textContent).not.toContain('No tool steps');
 
@@ -239,6 +253,20 @@ describe('RunEnvelope while the dashboard is locked', () => {
  * daemon which transcripts actually exist and offers those.
  */
 describe('RunEnvelope subject picker', () => {
+  it('uses the existing no-transcript state and makes no trace probe when the capability is absent', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    render(unlocked(
+      <RuntimeCapabilitiesProvider value={{ pty: false, localTranscripts: false }}>
+        <RunEnvelopeBody />
+      </RuntimeCapabilitiesProvider>,
+    ));
+
+    await waitFor(() => expect(screen.getByTestId('runenv-no-transcripts')).toBeTruthy());
+    expect(screen.getByTestId('runenv-no-transcripts').textContent).toMatch(/no transcript on this machine/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('prefers the built-in session id WHEN THE MACHINE HAS IT, and reads that one', async () => {
     const fetchMock = stubRoutes({
       list: listResponse([entry({ sessionId: 'newer' }), entry({ sessionId: PREFERRED_SESSION_ID })]),

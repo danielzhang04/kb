@@ -33,6 +33,6 @@ describe('Hygiene Report panel', () => {
   it('renders an honest instruction when the report has not been generated', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ available: false, reason: 'not-generated' }) }));
     render(panel.render());
-    expect((await screen.findByTestId('ap-hygiene-not-generated')).textContent).toContain('python scripts/hygiene_sweep.py');
+    expect((await screen.findByTestId('ap-hygiene-not-generated')).textContent).toMatch(/packaged hygiene sweep.*ops checkout/i);
   });
 });

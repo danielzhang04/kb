@@ -8,7 +8,7 @@
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -259,6 +259,45 @@ describe('write surface — composition chain', () => {
     const inbox = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
     expect(inbox.statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(true) })).statusCode).toBe(200);
+  });
+
+  it('rejects invalid pause names before filesystem, git, or audit work and accepts a declared id', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'pause-route-'));
+    writeFileSync(
+      join(repoRoot, 'HEARTBEAT.md'),
+      '# test\n\n```yaml\ncadences:\n  - name: nightly-review\n    schedule: daily\n```\n',
+      'utf8',
+    );
+    const git = vi.fn(okOpsGit);
+    const audit = recordingAudit();
+    ({ app } = buildApp({ repoRoot, opsGit: git, appendAudit: audit.fn }));
+
+    try {
+      for (const name of ['../../STOP', '..\\..\\STOP', 'nightly-review/../x', 'undeclared']) {
+        const response = await app.inject({
+          method: 'POST', url: '/api/write/pause-cadence', headers: headers(true), payload: { name },
+        });
+        expect(response.statusCode, name).toBe(400);
+        expect(response.json()).toMatchObject({ error: 'invalid-cadence' });
+      }
+      expect(existsSync(join(repoRoot, 'queue'))).toBe(false);
+      expect(existsSync(join(repoRoot, 'STOP'))).toBe(false);
+      expect(git).not.toHaveBeenCalled();
+      expect(audit.rows).toEqual([]);
+
+      const accepted = await app.inject({
+        method: 'POST', url: '/api/write/pause-cadence', headers: headers(true),
+        payload: { name: 'nightly-review' },
+      });
+      expect(accepted.statusCode).toBe(200);
+      expect(existsSync(join(repoRoot, 'queue', 'paused', 'nightly-review'))).toBe(true);
+      expect(git).toHaveBeenCalled();
+      expect(audit.rows).toHaveLength(1);
+    } finally {
+      await app.close();
+      app = undefined;
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 
   it('composes paid-action behind its spend-grant gate while every session route keeps the session gate', async () => {
