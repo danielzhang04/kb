@@ -15,6 +15,7 @@ import type { GitRunner } from './branch.ts';
 import type { PyRunner } from './launch.ts';
 import type { RunnerState } from '../runner/trigger.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 const CONFIG = {
   secret: Buffer.from('card-respond-test-secret-0123456789'),
@@ -100,6 +101,7 @@ function harness(
   };
   const app = Fastify({ logger: false });
   registerWriteSurface(app, makeSurfaceContext({
+    controlStore: createInMemoryControlPlaneStore(),
     repoRoot,
     stateRoot: join(repoRoot, 'dashboard-state'),
     sessionConfig: CONFIG,

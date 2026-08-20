@@ -8,6 +8,7 @@ import type { SessionConfig } from './session.ts';
 import { rememberChallenge } from './credentialStore.ts';
 import { registerAuthRoutes } from './routes.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
+import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 const verifyAssertionMock = vi.hoisted(() => vi.fn());
 const verifyRegistrationMock = vi.hoisted(() => vi.fn());
@@ -34,6 +35,7 @@ function buildApp(overrides: Record<string, unknown> = {}) {
   const audit: Array<Record<string, unknown>> = [];
   const app = Fastify();
   const ctx = makeSurfaceContext({
+    controlStore: createInMemoryControlPlaneStore(),
     repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
     stateRoot: testStateRoot,
     sessionConfig: SESSION,

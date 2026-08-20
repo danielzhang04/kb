@@ -8,7 +8,7 @@ import {
   persistControlDocumentSync,
   spyPersistenceDeps,
 } from './persistence.ts';
-import { createFileControlPlaneStore } from './store.ts';
+import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 
 it('orders both Linux barriers for deploy-critical persistence', () => {
   const calls: string[] = [];
@@ -90,6 +90,7 @@ it('does not double-close a non-Linux directory descriptor when best-effort clos
 
 it('injects a real spy and coalesces migration plus crash normalization into one byte-real save', () => {
   const root = mkdtempSync(join(tmpdir(), 'control-persistence-spy-'));
+  const fileStores = createExistingRootFileStoreHarnessForTest();
   try {
     const control = join(root, 'control');
     const path = join(control, 'control-plane.json');
@@ -107,7 +108,7 @@ it('injects a real spy and coalesces migration plus crash normalization into one
       generationSupersessions: [], quarantine: [],
     })}\n`, 'utf8');
     const calls: string[] = [];
-    createFileControlPlaneStore(root, {
+    fileStores.open(root, {
       now: () => new Date('2026-08-20T01:00:00.000Z'),
       bootId: 'boot-spy',
       persistenceDepsForTest: spyPersistenceDeps(calls, createNodePersistenceDeps()),
@@ -123,6 +124,7 @@ it('injects a real spy and coalesces migration plus crash normalization into one
     expect(persisted.runs[0]).not.toHaveProperty('state');
     expect(persisted.events).toHaveLength(1);
   } finally {
+    fileStores.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

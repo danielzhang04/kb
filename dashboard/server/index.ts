@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { kbBrowserRoutes } from './kb/routes.ts';
 import { registerRegistry } from './registry/routes.ts';
@@ -36,6 +37,10 @@ import type { RuntimeCapabilities } from './runtime/capabilities.ts';
 import type { SaveFn as ScheduleSaveFn } from './panels/schedules.ts';
 import type { VibeSpawner } from './vibe/session.ts';
 import { createPtyHost } from './pty/host.ts';
+import { resolveDashboardStateRoot } from './composer/store.ts';
+import { acquireWriterLease } from './control/writerLease.ts';
+import type { FileControlPlaneAccess, WriterLease } from './control/writerLease.ts';
+import type { ControlPlaneStore } from './control/store.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -142,6 +147,8 @@ export interface BuildAppOptions {
   scheduleSave?: ScheduleSaveFn;
   spawn?: VibeSpawner;
   createPtyHost?: typeof createPtyHost;
+  controlStore?: ControlPlaneStore;
+  fileControlAccess?: FileControlPlaneAccess;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -160,6 +167,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     openPr: options.openPr,
     traceRoot: options.traceRoot,
     spawn: options.spawn,
+    controlStore: options.controlStore,
+    fileControlAccess: options.fileControlAccess,
   }, { createPtyHost: options.createPtyHost });
 
   app.get('/healthz', async () => {
@@ -365,11 +374,48 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
  * wrong platform. Failing here surfaces as a non-zero exit and a systemd restart loop — loud, and the
  * safe direction.
  */
-export async function start(port: number = PORT, host: string = HOST, options: { repoRoot?: string } = {}): Promise<FastifyInstance> {
+export interface StartOptions {
+  repoRoot?: string;
+  /** @internal */
+  leaseFactory?: typeof acquireWriterLease;
+  /** @internal */
+  buildApplication?: typeof buildApp;
+}
+
+export async function start(
+  port: number = PORT,
+  host: string = HOST,
+  options: StartOptions = {},
+): Promise<FastifyInstance> {
   assertAuthModeBoot({ bindHost: host });
-  const app = buildApp({ repoRoot: options.repoRoot, validateData: true });
-  await app.listen({ port, host });
-  return app;
+  const leaseFactory = options.leaseFactory ?? acquireWriterLease;
+  const buildApplication = options.buildApplication ?? buildApp;
+  let lease: WriterLease | null = leaseFactory({
+    stateRoot: resolveDashboardStateRoot(),
+    bootId: randomUUID(),
+  });
+  try {
+    const app = buildApplication({
+      repoRoot: options.repoRoot,
+      validateData: true,
+      fileControlAccess: { mode: 'already-locked', lease },
+    });
+    app.addHook('onClose', async () => {
+      lease?.release();
+      lease = null;
+    });
+    try {
+      await app.listen({ port, host });
+    } catch (error) {
+      try { await app.close(); } catch {}
+      throw error;
+    }
+    return app;
+  } catch (error) {
+    lease?.release();
+    lease = null;
+    throw error;
+  }
 }
 
 // Run directly: `node server/index.ts` (native TS via Node 24) / `npm run dev:server`.

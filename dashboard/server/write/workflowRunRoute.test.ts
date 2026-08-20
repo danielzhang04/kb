@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintSession } from '../auth/session.ts';
 import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
+import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 const CONFIG = { secret: Buffer.from('workflow-route-test-secret-01234567'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost';
@@ -26,6 +27,7 @@ describe('POST /api/write/workflow-runs', () => {
   it('is explicitly retired behind the normal origin and session gates', async () => {
     app = Fastify({ logger: false });
     registerWriteSurface(app, makeSurfaceContext({
+      controlStore: createInMemoryControlPlaneStore(),
       repoRoot: process.cwd(),
       stateRoot,
       sessionConfig: CONFIG,

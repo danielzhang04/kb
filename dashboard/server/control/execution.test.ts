@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import type { JsonObject } from './types.ts';
 import type { PlanProposal, ProposalIterationGroup, ProposalStage } from './proposal.ts';
 import { ARTIFACT_PRODUCING_REQUEST_KINDS, proposalContentHash } from './proposal.ts';
@@ -768,7 +769,10 @@ function fytProposal(requiredSkills: string[] = ['tests']): PlanProposal {
 }
 
 const tempDirs: string[] = [];
+const fileStores = createExistingRootFileStoreHarnessForTest();
+const createFileControlPlaneStore = fileStores.open;
 afterEach(() => {
+  fileStores.close();
   while (tempDirs.length > 0) rmSync(tempDirs.pop() as string, { recursive: true, force: true });
 });
 

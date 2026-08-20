@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import {
   DEPLOYMENT_STATES,
   canTransitionDeployment,
@@ -20,8 +21,11 @@ const create = {
 } as const;
 const roots: string[] = [];
 const TERMINAL_AT = '2026-08-20T01:00:00.000Z';
+const fileStores = createExistingRootFileStoreHarnessForTest();
+const createFileControlPlaneStore = fileStores.open;
 
 afterEach(() => {
+  fileStores.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
