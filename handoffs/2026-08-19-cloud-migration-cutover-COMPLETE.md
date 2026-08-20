@@ -64,3 +64,15 @@ Nothing before the window elapses. Platform needs no attention until then.
 - Deploy scripts (if a rollback/redeploy is needed): worktree `kb-worktrees/cutover-run`
   → `scripts/deploy_platform_release.py`, `deploy/activate_release.py` (`activate --upload-dir`, `rollback`).
 - Quiesce-for-swap recipe: `POST /api/control/execution/lock` via `curl.exe` through serve 443, then deploy.
+
+---
+### UPDATE 2026-08-20 — browser UI gap found + fixed (the real capstone)
+Opening the dashboard in a browser revealed Phase 0 shipped tailnet auth SERVER-side only: the CLIENT
+still gated on a WebAuthn bearer → stuck on a passkey ceremony that 503s in tailnet mode. "Verified 8/8"
+was headless/API only. FIXED by PR #138 (client discovers mode via `GET /api/auth/context`; tailnet →
+unlocked ambient sentinel, win32 bit-for-bit unchanged, fail-closed; opus adversarial review SHIP,
+model-verified). Live release is now **`439fc90d`** (= #137 + #138); browser confirmed usable, no sign-in.
+LESSON: a user-facing cutover is not verified until a human loads the actual screen.
+STILL OPEN: (1) Phase 8 decommission (~2026-09-02), (2) the desk⇄VM movement design doc Daniel wants —
+resume-safe deploys is the north star (deploy without draining runs), plus one-click/cadence deploy,
+asset/memory sync, credential provisioning to the VM, unified approval inbox, Atlas-as-local-orchestrator.
