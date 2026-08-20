@@ -1367,6 +1367,7 @@ import {
   QUEUE_BRIDGE_LEDGER_COST_SCRIPT,
 } from './queueBridge.ts';
 import type { RunDetail } from './types.ts';
+import { lifecycleForKind } from './runLifecycle.ts';
 
 /** A recording git fake shaped like the async ops runner: answers `ops` to rev-parse, '' to everything
  *  else, and throws on the first `pushFailures` pushes (a non-fast-forward rejection). */
@@ -1534,7 +1535,7 @@ describe('settleFleetCostLedger — post-run seam, preamble-gated, commits its o
 
 describe('collectTerminalStageCosts', () => {
   const detail = {
-    run: { state: 'succeeded' },
+    run: { lifecycle: lifecycleForKind('succeeded', null) },
     stages: [
       { stageRef: 's1', stageId: 'run', canonicalCardRef: 'wf-a', state: 'succeeded', currentAttemptRef: 'a1' },
       { stageRef: 's2', stageId: 'two', canonicalCardRef: 'wf-b', state: 'running', currentAttemptRef: 'a2' }, // not terminal

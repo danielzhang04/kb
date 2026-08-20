@@ -21,6 +21,7 @@ import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailed
 import { createAttemptIoStore } from './attemptIo.ts';
 import { executeApprovedLaunch } from './launch.ts';
 import { admit } from './admission.ts';
+import * as publication from './publication.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -118,6 +119,17 @@ function model(value: PlanProposal = proposal): TimelineModel {
 
 function headers(token: string) {
   return { origin: ORIGIN, host: 'localhost:5317', authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+}
+
+function expectExactWireRun(
+  actual: Record<string, unknown>,
+  source: { lifecycle: { kind: string } } & Record<string, unknown>,
+  additions: Record<string, unknown> = {},
+): void {
+  const { lifecycle, ...rest } = source;
+  expect(actual).toEqual({ ...rest, state: lifecycle.kind, ...additions });
+  expect(typeof actual.state).toBe('string');
+  expect(Object.hasOwn(actual, 'lifecycle')).toBe(false);
 }
 
 describe('control proposal routes', () => {
@@ -323,7 +335,7 @@ describe('control proposal routes', () => {
     const detail = {
       ownerSubject: 'operator',
       run: { runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
-        proposalHash: '9'.repeat(64), publicationState: 'published', state: 'waiting-human', version: 11, managerSessionRef: null,
+        proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
         managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '' },
       stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
       iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
@@ -337,7 +349,10 @@ describe('control proposal routes', () => {
         gate: { ...fixture.request, state: 'resolved', response: { decision: input.decision === 'approved' ? 'approved' : 'rejected' } }, interventionRequest: null,
       },
     } as never));
-    const failRun = vi.spyOn(controlStore, 'transitionRun').mockReturnValue({ ok: true, value: { ...detail.run, state: 'failed', version: 12 } } as never);
+    const failRun = vi.spyOn(controlStore, 'transitionRun').mockReturnValue({
+      ok: true,
+      value: { ...detail.run, lifecycle: { kind: 'failed', deployPause: null }, version: 12 },
+    } as never);
     return { ...fixture, detail, getHumanRequest, getRun, resolve, failRun };
   }
 
@@ -1016,7 +1031,7 @@ describe('control proposal routes', () => {
       expect(launched.statusCode, launched.body).toBe(202);
       const run = controlStore.getRun('operator', launched.json().runRef as string);
       expect(launched.json(), JSON.stringify(run)).toMatchObject({ ok: true, waitingHuman: true, activationGated: true });
-      expect(run.ok && run.value.run).toMatchObject({ publicationState: 'published', state: 'waiting-human' });
+      expect(run.ok && run.value.run).toMatchObject({ publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null } });
       expect(run.ok && run.value.stages.map((stage) => [stage.stageId, stage.canonicalCardRef, stage.state])).toEqual([
         ['verify', workflowCardId(launched.json().runRef as string, 'verify'), 'ready'],
         ['report', workflowCardId(launched.json().runRef as string, 'report'), 'blocked'],
@@ -1060,7 +1075,7 @@ describe('control proposal routes', () => {
         .toMatchObject({ ok: true, value: null });
       expect(controlStore.getRun('operator', ready.value.run.runRef)).toMatchObject({
         ok: true,
-        value: { run: { state: 'waiting-human', version: ready.value.run.version } },
+        value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null }, version: ready.value.run.version } },
       });
 
       // Simulate the post-passkey context wiring without touching a daemon or real latch. Activation must
@@ -1095,7 +1110,7 @@ describe('control proposal routes', () => {
       expect(resumed).toMatchObject({
         ok: true,
         value: {
-          run: { runRef: ready.value.run.runRef, state: 'running', publicationState: 'published' },
+          run: { runRef: ready.value.run.runRef, lifecycle: { kind: 'running', deployPause: null }, publicationState: 'published' },
           stages: [
             { stageId: 'verify', canonicalCardRef: workflowCardId(ready.value.run.runRef, 'verify') },
             { stageId: 'report', canonicalCardRef: workflowCardId(ready.value.run.runRef, 'report') },
@@ -1236,7 +1251,7 @@ describe('control proposal routes', () => {
       const runRef = parked.json().runRef as string;
       let detail = controlStore.getRun('operator', runRef);
       if (!detail.ok) throw new Error(detail.detail);
-      expect(detail.value.run).toMatchObject({ publicationState: 'waiting-human', state: 'waiting-human' });
+      expect(detail.value.run).toMatchObject({ publicationState: 'waiting-human', lifecycle: { kind: 'waiting-human', deployPause: null } });
       expect(detail.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
       expect(detail.value.humanRequests.map((request) => [request.kind, request.title, request.prompt])).toEqual([
         ['governance-refusal', 'Governance review: upload', 't3-content-bound-approval-required'],
@@ -1493,7 +1508,7 @@ describe('control proposal routes', () => {
     });
     expect(auditRows).toHaveLength(auditsBefore);
     expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
-      ok: true, value: { run: { managerGeneration: 1, managerSessionRef: manager.sessionRef, state: 'planned' } },
+      ok: true, value: { run: { managerGeneration: 1, managerSessionRef: manager.sessionRef, lifecycle: { kind: 'planned', deployPause: null } } },
     });
 
     const response = await app.inject({
@@ -1509,7 +1524,7 @@ describe('control proposal routes', () => {
       value: { generation: 2, predecessorSessionRef: manager.sessionRef, state: 'pending' },
     });
     expect(controlStore.getRun('operator', created.value.run.runRef)).toMatchObject({
-      ok: true, value: { run: { managerGeneration: 2, state: 'recovering' } },
+      ok: true, value: { run: { managerGeneration: 2, lifecycle: { kind: 'recovering', deployPause: null } } },
     });
     expect(auditRows.some((event) => event.action === 'control-manager-successor-authorize')).toBe(true);
   });
@@ -1540,12 +1555,17 @@ describe('control proposal routes', () => {
 
       expect([first.statusCode, second.statusCode].sort()).toEqual([200, 202]);
       expect([first.json(), second.json()].some((body) => body.replayed === true)).toBe(true);
+      const activatedDetail = controlStore.getRun('operator', detail.run.runRef);
+      if (!activatedDetail.ok) throw new Error(activatedDetail.detail);
+      for (const response of [first, second]) {
+        expectExactWireRun(response.json().value, activatedDetail.value.run as unknown as Record<string, unknown> & { lifecycle: { kind: string } });
+      }
       expect(runAutomatic).toHaveBeenCalledTimes(1);
       expect(activateManagedRoots).toHaveBeenCalledTimes(1);
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
         ok: true,
         value: {
-          run: { state: 'running', version: detail.run.version + 2 },
+          run: { lifecycle: { kind: 'running', deployPause: null }, version: detail.run.version + 2 },
           humanRequests: [{ state: 'resolved' }],
         },
       });
@@ -1557,6 +1577,10 @@ describe('control proposal routes', () => {
       });
       expect(gatedReplay.statusCode).toBe(200);
       expect(gatedReplay.json()).toMatchObject({ ok: true, replayed: true });
+      expectExactWireRun(
+        gatedReplay.json().value,
+        activatedDetail.value.run as unknown as Record<string, unknown> & { lifecycle: { kind: string } },
+      );
 
       const changedBody = await activated.inject({
         method: 'POST',
@@ -1578,6 +1602,44 @@ describe('control proposal routes', () => {
       expect(runAutomatic).toHaveBeenCalledTimes(1);
       expect(activateManagedRoots).toHaveBeenCalledTimes(1);
     } finally {
+      await activated.close();
+    }
+  });
+
+  it('projects a dispatched activation receipt discovered only after entering the run lock', async () => {
+    const detail = seedActivatableRun();
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:inside-lock-replay`,
+    };
+    let receiptReads = 0;
+    const receipt = vi.spyOn(controlStore, 'getRunActivationReceipt').mockImplementation(() => {
+      receiptReads += 1;
+      return receiptReads === 1
+        ? { ok: true, value: null }
+        : { ok: true, value: { run: detail.run, phase: 'dispatched' }, replayed: true };
+    });
+    const { activated, runAutomatic } = await activatedApp();
+    try {
+      const response = await activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toEqual({
+        ok: true,
+        value: expect.any(Object),
+        replayed: true,
+      });
+      expectExactWireRun(
+        response.json().value,
+        detail.run as unknown as Record<string, unknown> & { lifecycle: { kind: string } },
+      );
+      expect(receiptReads).toBe(2);
+      expect(runAutomatic).not.toHaveBeenCalled();
+    } finally {
+      receipt.mockRestore();
       await activated.close();
     }
   });
@@ -1695,7 +1757,7 @@ describe('control proposal routes', () => {
       expect(activateManagedRoots).not.toHaveBeenCalled();
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
         ok: true,
-        value: { run: { state: 'waiting-human', version: detail.run.version } },
+        value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null }, version: detail.run.version } },
       });
     } finally {
       await activated.close();
@@ -1753,7 +1815,7 @@ describe('control proposal routes', () => {
         subject: 'operator', runRef: detail.run.runRef,
       }));
       await vi.waitFor(() => expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
-        ok: true, value: { run: { state: 'running' } },
+        ok: true, value: { run: { lifecycle: { kind: 'running', deployPause: null } } },
       }));
       expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
         .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
@@ -1785,7 +1847,7 @@ describe('control proposal routes', () => {
         subject: 'dashboard-engine', runRef: detail.run.runRef,
       }));
       await vi.waitFor(() => expect(controlStore.getRun('dashboard-engine', detail.run.runRef)).toMatchObject({
-        ok: true, value: { run: { state: 'running' } },
+        ok: true, value: { run: { lifecycle: { kind: 'running', deployPause: null } } },
       }));
       expect(controlStore.getRunActivationReceipt('dashboard-engine', detail.run.runRef, autoResumeInput(detail.run)))
         .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
@@ -1862,7 +1924,7 @@ describe('control proposal routes', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(wired.runAutomatic).not.toHaveBeenCalled();
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
-        ok: true, value: { run: { state: 'waiting-human' } },
+        ok: true, value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null } } },
       });
     } finally {
       await wired.activated.close();
@@ -1882,7 +1944,7 @@ describe('control proposal routes', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(wired.runAutomatic).not.toHaveBeenCalled();
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
-        ok: true, value: { run: { state: 'waiting-human' } },
+        ok: true, value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null } } },
       });
     } finally {
       await wired.activated.close();
@@ -1901,7 +1963,7 @@ describe('control proposal routes', () => {
     expect(responded.json()).toMatchObject({ ok: true, value: { state: 'resolved' } });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
-      ok: true, value: { run: { state: 'waiting-human', version: detail.run.version } },
+      ok: true, value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null }, version: detail.run.version } },
     });
     expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
       .toMatchObject({ ok: true, value: null });
@@ -1970,7 +2032,7 @@ describe('control proposal routes', () => {
         .toMatchObject({ ok: true, value: null });
       expect(wired.runAutomatic).not.toHaveBeenCalled();
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
-        ok: true, value: { run: { state: 'waiting-human' } },
+        ok: true, value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null } } },
       });
     } finally {
       await wired.activated.close();
@@ -2027,7 +2089,7 @@ describe('control proposal routes', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(wired.runAutomatic).not.toHaveBeenCalled();
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
-        ok: true, value: { run: { state: 'waiting-human' } },
+        ok: true, value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null } } },
       });
     } finally {
       await wired.activated.close();
@@ -2124,7 +2186,7 @@ describe('control proposal routes', () => {
       expect(runAutomatic).not.toHaveBeenCalled();
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
         ok: true,
-        value: { run: { state: 'stopping', version: detail.run.version + 1 } },
+        value: { run: { lifecycle: { kind: 'stopping', deployPause: null }, version: detail.run.version + 1 } },
       });
     } finally {
       await activated.close();
@@ -2264,7 +2326,7 @@ describe('control proposal routes', () => {
       idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:pending-recovery`,
     };
     expect(controlStore.claimRunActivation('operator', detail.run.runRef, payload)).toMatchObject({
-      ok: true, value: { phase: 'claimed', run: { state: 'recovering' } },
+      ok: true, value: { phase: 'claimed', run: { lifecycle: { kind: 'recovering', deployPause: null } } },
     });
     const waiting = controlStore.transitionRun(
       'operator', detail.run.runRef, detail.run.version + 1, 'waiting-human',
@@ -2318,7 +2380,7 @@ describe('control proposal routes', () => {
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
         ok: true,
         value: {
-          run: { state: 'waiting-human' },
+          run: { lifecycle: { kind: 'waiting-human', deployPause: null } },
           humanRequests: [
             { state: 'resolved' },
             { state: 'open', kind: 'intervention', prompt: 'worker adapter failed after Manager startup' },
@@ -2367,7 +2429,7 @@ describe('control proposal routes', () => {
       expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
         ok: true,
         value: {
-          run: { state: 'waiting-human' },
+          run: { lifecycle: { kind: 'waiting-human', deployPause: null } },
           humanRequests: [
             { state: 'resolved' },
             {
@@ -2409,7 +2471,7 @@ describe('control proposal routes', () => {
       expect(containManagerStart).toHaveBeenCalledTimes(1);
       const contained = controlStore.getRun('operator', detail.run.runRef);
       if (!contained.ok) throw new Error(contained.detail);
-      expect(contained.value.run.state).toBe('waiting-human');
+      expect(contained.value.run.lifecycle.kind).toBe('waiting-human');
       const stopped = await activated.inject({
         method: 'POST', url: `/api/control/runs/${detail.run.runRef}/manager/stop`,
         headers: headers(token),
@@ -2505,7 +2567,7 @@ describe('control proposal routes', () => {
       expect(activation.statusCode, activation.body).toBe(409);
       const contained = controlStore.getRun('operator', detail.run.runRef);
       if (!contained.ok) throw new Error(contained.detail);
-      expect(contained.value.run.state).toBe('waiting-human');
+      expect(contained.value.run.lifecycle.kind).toBe('waiting-human');
       expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
         ok: true, value: { phase: 'failed' },
       });
@@ -2521,6 +2583,59 @@ describe('control proposal routes', () => {
       expect(stop.statusCode, stop.body).toBe(200);
     } finally {
       await activated.close();
+    }
+  });
+
+  it('projects the reconciled RunDetail through the exact public run wire shape', async () => {
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'reconcile-wire', sourceTurnId: 'reconcile-wire-turn', title: proposal.title,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved',
+      idempotencyKey: 'approve-reconcile-wire',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const created = controlStore.createRun('operator', {
+      title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime,
+      managerModel: proposal.manager.model, idempotencyKey: 'launch-reconcile-wire',
+      stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    if (!created.ok) throw new Error(created.detail);
+    const publishing = controlStore.transitionPublication(
+      'operator', created.value.run.runRef, created.value.run.version, 'publishing',
+    );
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const reconcile = vi.spyOn(publication, 'reconcileCanonicalPublication').mockResolvedValue({
+      ok: true,
+      cards: created.value.stages.map((stage) => ({
+        stageId: stage.stageId,
+        cardId: workflowCardId(created.value.run.runRef, stage.stageId),
+        cardPath: `queue/inbox/${workflowCardId(created.value.run.runRef, stage.stageId)}.md`,
+        cardState: stage.dependsOn.length === 0 ? 'inbox' : 'blocked',
+        stageState: stage.dependsOn.length === 0 ? 'ready' : 'blocked',
+      })),
+    });
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/control/runs/${created.value.run.runRef}/reconcile-publication`,
+        headers: headers(token),
+        payload: { expectedRunVersion: publishing.value.version },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const current = controlStore.getRun('operator', created.value.run.runRef);
+      if (!current.ok) throw new Error(current.detail);
+      expect(response.json()).toEqual({ ok: true, value: expect.any(Object), replayed: false });
+      expectExactWireRun(
+        response.json().value.run,
+        current.value.run as unknown as Record<string, unknown> & { lifecycle: { kind: string } },
+        { displayName: current.value.run.title, shortRef: expect.any(Number), workflowRef: null },
+      );
+    } finally {
+      reconcile.mockRestore();
     }
   });
 
@@ -3305,7 +3420,7 @@ describe('control run archive route', () => {
         method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload: { reason: 'why' },
       });
       expect(invalid.statusCode).toBe(400);
-      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { state: 'waiting-human' } } });
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null } } } });
     } finally {
       await app.close();
     }
@@ -3325,7 +3440,7 @@ describe('control run archive route', () => {
       });
       expect(refused.statusCode).toBe(500);
       expect(refused.json()).toEqual({ error: 'run-archive-audit-required' });
-      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { state: 'waiting-human' } } });
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null } } } });
     } finally {
       await app.close();
     }
@@ -3690,7 +3805,7 @@ describe('operator cross-subject authority', () => {
       expect(cancelAutomatic).not.toHaveBeenCalled();
       const owned = store.getRun('dashboard-engine', engineRun);
       if (!owned.ok) throw new Error(owned.detail);
-      expect(owned.value.run.state).toBe('waiting-human');
+      expect(owned.value.run.lifecycle.kind).toBe('waiting-human');
       expect(owned.value.humanRequests).toEqual([expect.objectContaining({ requestRef, state: 'open' })]);
     } finally { await app.close(); }
   });
@@ -3899,7 +4014,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const untouched = store.getRun(ENGINE, bridgeRun.run.runRef);
       if (!untouched.ok) throw new Error(untouched.detail);
       expect(untouched.value.run).toMatchObject({
-        version: settled.value.version, publicationState: 'pending', state: 'stopped',
+        version: settled.value.version, publicationState: 'pending', lifecycle: { kind: 'stopped', deployPause: null },
       });
 
       // DIRECTION 2 — bridge -> operator. The bridge re-ticks the SAME card and still replays ITS OWN
@@ -3953,7 +4068,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const untouched = store.getRun(ENGINE, bridgeRun.run.runRef);
       if (!untouched.ok) throw new Error(untouched.detail);
       expect(untouched.value.run).toMatchObject({
-        version: parked.value.version, publicationState: 'pending', state: 'waiting-human',
+        version: parked.value.version, publicationState: 'pending', lifecycle: { kind: 'waiting-human', deployPause: null },
       });
       expect(untouched.value.humanRequests).toEqual([]);
       expect(audit).toEqual([]);
@@ -4243,7 +4358,13 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
         method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
       });
       expect(restored.statusCode, restored.body).toBe(200);
-      expect(restored.json()).toMatchObject({ ok: true, value: { runRef, ownerSubject: ENGINE } });
+      const restoredMetadata = store.listRuns(ENGINE).find((run) => run.runRef === runRef);
+      if (!restoredMetadata) throw new Error('restored run metadata missing');
+      expect(restored.json()).toEqual({ ok: true, value: expect.any(Object), replayed: false });
+      expectExactWireRun(
+        restored.json().value,
+        restoredMetadata as unknown as Record<string, unknown> & { lifecycle: { kind: string } },
+      );
       expect(audit.find((row) => row.action === 'control-retention-restore-authorize')).toMatchObject({
         owner: 'operator', detail: { runRef, runOwnerSubject: ENGINE },
       });
@@ -4348,7 +4469,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       expect(audit).toEqual([]);
       const owned = store.getRun(ENGINE, runRef);
       if (!owned.ok) throw new Error(owned.detail);
-      expect(owned.value.run.state).toBe('interrupted');
+      expect(owned.value.run.lifecycle.kind).toBe('interrupted');
       expect(store.inventory(ENGINE).quarantinedRuns).toEqual([]);
     } finally { await app.close(); }
   });

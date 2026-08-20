@@ -1029,7 +1029,7 @@ describe('AutomaticExecutionEngine', () => {
       .resolves.toMatchObject({ state: 'waiting-human' });
     const detail = item.store.getRun('operator', item.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    expect(detail.value.run.state).toBe('waiting-human');
+    expect(detail.value.run.lifecycle.kind).toBe('waiting-human');
     expect(detail.value.iterationLoops[0]).toMatchObject({ state: 'rework-queued', currentStepId: 'rework' });
     expect(detail.value.iterationLoops[0]).not.toHaveProperty('parkReason');
     expect(detail.value.attempts.find((attempt) => attempt.logicalGeneration === 2)).toMatchObject({ state: 'interrupted' });
@@ -1236,7 +1236,7 @@ describe('AutomaticExecutionEngine', () => {
 
     const crashed = item.store.getRun('operator', item.run.runRef);
     if (!crashed.ok) throw new Error(crashed.detail);
-    expect(crashed.value.run.state).toBe('running');
+    expect(crashed.value.run.lifecycle.kind).toBe('running');
     expect(crashed.value.iterationLoops[0]).toMatchObject({ state: 'failed', lastReceiptRef: crashed.value.iterationReceipts[0]?.receiptRef });
     expect(crashed.value.iterationReceipts).toEqual([expect.objectContaining({
       verdict: 'fail', baseCommit: 'a'.repeat(40), canonicalCommit: '1'.padStart(40, '0'),
@@ -1340,7 +1340,7 @@ describe('AutomaticExecutionEngine', () => {
     await expect(restarted.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
     const recovered = restartedStore.getRun('operator', item.run.runRef);
     if (!recovered.ok) throw new Error(recovered.detail);
-    expect(recovered.value.run.state).toBe('waiting-human');
+    expect(recovered.value.run.lifecycle.kind).toBe('waiting-human');
     expect(recovered.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'a-loop'))
       .toMatchObject({ state: 'awaiting-park-gate', version: loop.version });
     expect(recovered.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'b-loop'))
@@ -1438,7 +1438,7 @@ describe('AutomaticExecutionEngine', () => {
         const detail = store.getRun('operator', run.runRef);
         if (!detail.ok) throw new Error(detail.detail);
         observed.push({
-          runState: detail.value.run.state,
+          runState: detail.value.run.lifecycle.kind,
           managerState: detail.value.sessions.find((session) =>
             session.sessionRef === detail.value.run.managerSessionRef)?.state,
         });
@@ -1490,7 +1490,7 @@ describe('AutomaticExecutionEngine', () => {
     // Existing behaviour is unchanged: the attempt parks for a human with the overage as the prompt.
     const detail = store.getRun('operator', run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    expect(detail.value.run.state).toBe('waiting-human');
+    expect(detail.value.run.lifecycle.kind).toBe('waiting-human');
     expect(detail.value.humanRequests.some((request) =>
       request.kind === 'intervention' && request.prompt.includes('settlement exceeds its reserved limits'))).toBe(true);
 
@@ -1540,7 +1540,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
       value: {
-        run: { state: 'waiting-human' },
+        run: { lifecycle: { kind: 'waiting-human', deployPause: null } },
         stages: [expect.objectContaining({ state: 'ready' })],
         sessions: [expect.objectContaining({ role: 'manager', state: 'interrupted' })],
       },
@@ -1591,7 +1591,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
       value: {
-        run: { state: 'waiting-human' },
+        run: { lifecycle: { kind: 'waiting-human', deployPause: null } },
         stages: [expect.objectContaining({ state: 'ready' })],
         sessions: [expect.objectContaining({ role: 'manager', state: 'interrupted' })],
       },
@@ -1604,7 +1604,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
       value: {
-        run: { state: 'waiting-human' },
+        run: { lifecycle: { kind: 'waiting-human', deployPause: null } },
         stages: [expect.objectContaining({ state: 'ready' })],
         sessions: [expect.objectContaining({ role: 'manager', state: 'interrupted' })],
       },
@@ -2128,7 +2128,7 @@ describe('AutomaticExecutionEngine', () => {
 
     expect(fake.executionOrder).toEqual([]);
     expect(store.getRun('operator', run.runRef)).toMatchObject({ ok: true, value: {
-      run: { state: 'waiting-human' },
+      run: { lifecycle: { kind: 'waiting-human', deployPause: null } },
       stages: expect.arrayContaining([
         expect.objectContaining({ stageId: 'a-gated', state: 'waiting-human' }),
         expect.objectContaining({ stageId: 'b-sibling', state: 'ready' }),
@@ -2158,7 +2158,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
       value: {
-        run: { state: 'waiting-human' },
+        run: { lifecycle: { kind: 'waiting-human', deployPause: null } },
         stages: [{ state: 'succeeded' }],
         sessions: expect.arrayContaining([expect.objectContaining({ role: 'manager', state: 'interrupted' })]),
         humanRequests: [{ kind: 'intervention', title: 'Manager shutdown needs intervention', state: 'open' }],
@@ -2686,7 +2686,7 @@ describe('AutomaticExecutionEngine', () => {
     const assertIntentPersisted = (): void => {
       const detail = store.getRun('operator', run.runRef);
       if (!detail.ok) throw new Error(detail.detail);
-      expect(detail.value.run.state).toBe('stopping');
+      expect(detail.value.run.lifecycle.kind).toBe('stopping');
       expect(store.listEvents('operator', run.runRef)).toMatchObject({
         ok: true, value: expect.arrayContaining([expect.objectContaining({ summary: expect.stringContaining('cancellation requested') })]),
       });
@@ -2710,7 +2710,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
       value: {
-        run: { state: 'stopped' },
+        run: { lifecycle: { kind: 'stopped', deployPause: null } },
         stages: [{ state: 'stopped' }],
         attempts: [{ state: 'stopped' }],
         sessions: expect.arrayContaining([expect.objectContaining({ state: 'stopped' })]),
@@ -2759,7 +2759,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(fake.integrationOrder).toEqual([]);
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
-      value: { run: { state: 'stopped' }, stages: [{ state: 'stopped' }], attempts: [{ state: 'stopped' }] },
+      value: { run: { lifecycle: { kind: 'stopped', deployPause: null } }, stages: [{ state: 'stopped' }], attempts: [{ state: 'stopped' }] },
     });
   });
 
@@ -2796,7 +2796,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(fake.executionOrder).toEqual([]);
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
-      value: { run: { state: 'stopped' }, stages: [{ state: 'stopped' }], sessions: [{ role: 'manager', state: 'stopped' }] },
+      value: { run: { lifecycle: { kind: 'stopped', deployPause: null } }, stages: [{ state: 'stopped' }], sessions: [{ role: 'manager', state: 'stopped' }] },
     });
   });
 
@@ -2834,7 +2834,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
       value: {
-        run: { state: 'interrupted' },
+        run: { lifecycle: { kind: 'interrupted', deployPause: null } },
         stages: [{ state: 'interrupted' }],
         attempts: [{ state: 'interrupted' }],
         humanRequests: [{ kind: 'intervention', state: 'open' }],
@@ -2904,7 +2904,7 @@ describe('AutomaticExecutionEngine', () => {
 
     const recoveredStore = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
     const interrupted = recoveredStore.getRun('operator', run.runRef);
-    expect(interrupted).toMatchObject({ ok: true, value: { run: { state: 'interrupted' }, attempts: [{ state: 'interrupted' }] } });
+    expect(interrupted).toMatchObject({ ok: true, value: { run: { lifecycle: { kind: 'interrupted', deployPause: null } }, attempts: [{ state: 'interrupted' }] } });
     const fake = fakes();
     const engine = new AutomaticExecutionEngine(engineOptions(recoveredStore, fake, join(stateRoot, 'worktrees')));
 

@@ -4,6 +4,7 @@ import { lstat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ControlPlaneStore } from './store.ts';
 import type { Attempt, IterationArtifactSnapshot, ManagedSession, RunDetail, Stage } from './types.ts';
+import { runLifecycleKind, type RunLifecycleKind } from './runLifecycle.ts';
 import {
   classifyActionRisk,
   evaluateExecutionPolicy,
@@ -323,7 +324,7 @@ export interface ExecuteRunInput {
 export const DEFAULT_MANAGER_START_ACK_TIMEOUT_MS = 30_000;
 
 export interface ExecutionOutcome {
-  state: RunDetail['run']['state'];
+  state: RunLifecycleKind;
   startedStageIds: string[];
   completedStageIds: string[];
   waitingStageIds: string[];
@@ -343,7 +344,7 @@ export interface ContainManagerStartInput {
 }
 
 export interface CancellationOutcome {
-  state: RunDetail['run']['state'];
+  state: RunLifecycleKind;
   stoppedSessionRefs: string[];
   interruptedSessionRefs: string[];
   replayed: boolean;
@@ -853,11 +854,11 @@ export class AutomaticExecutionEngine {
       if (initialIterationWait.length > 0) {
         waitingStageIds.push(...initialIterationWait);
         if (hasRunWideBlockingBoundary(this.detail(input))) {
-          return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+          return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
         }
       }
       if (!(await this.ensureManager(input, policy, resolvedAgents.manager))) {
-        return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+        return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
       }
       // BigInt keeps every safe-integer declaration exact; no old fixed cap or lossy product can
       // truncate a valid high bound. Each compiled schedule step can consume one durable worker pass,
@@ -870,29 +871,30 @@ export class AutomaticExecutionEngine {
       for (let pass = 0n; pass <= reconciliationPasses; pass += 1n) {
         const detail = this.detail(input);
         if (this.cancellingRuns.has(lockKey)) {
-          return { state: detail.run.state, startedStageIds, completedStageIds, waitingStageIds };
+          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
         }
-        if (['succeeded', 'failed', 'stopped', 'stopping'].includes(detail.run.state)) {
-          return { state: detail.run.state, startedStageIds, completedStageIds, waitingStageIds };
+        if (['succeeded', 'failed', 'stopped', 'stopping'].includes(runLifecycleKind(detail.run.lifecycle))) {
+          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
         }
-        if (detail.run.state === 'interrupted' && detail.humanRequests.some((request) => request.state === 'open')) {
-          return { state: detail.run.state, startedStageIds, completedStageIds, waitingStageIds };
+        if (runLifecycleKind(detail.run.lifecycle) === 'interrupted'
+          && detail.humanRequests.some((request) => request.state === 'open')) {
+          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
         }
         const iterationWait = await this.reconcileIterationRuntime(input);
         if (iterationWait.length > 0) {
           for (const stageId of iterationWait) if (!waitingStageIds.includes(stageId)) waitingStageIds.push(stageId);
           if (hasRunWideBlockingBoundary(this.detail(input))) {
-            return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+            return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
           }
         }
         this.releaseDependents(input, this.detail(input));
         await this.scheduleIterationTurns(input);
         const refreshed = this.detail(input);
         if (hasRunWideBlockingBoundary(refreshed)) {
-          return { state: refreshed.run.state, startedStageIds, completedStageIds, waitingStageIds };
+          return { state: runLifecycleKind(refreshed.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
         }
         if (refreshed.stages.some((stage) => stage.state === 'failed' || stage.state === 'stopped')) {
-          const state = this.transitionRun(input, 'failed').state;
+          const state = runLifecycleKind(this.transitionRun(input, 'failed').lifecycle);
           return { state, startedStageIds, completedStageIds, waitingStageIds };
         }
         const candidates: Array<{ stage: Stage; proposalStage: ProposalStage }> = [];
@@ -903,14 +905,14 @@ export class AutomaticExecutionEngine {
           if (boundary === 'waiting') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
             if (hasRunWideBlockingBoundary(this.detail(input))) {
-              return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+              return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
             }
             continue;
           }
           if (boundary === 'refused') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
             if (hasRunWideBlockingBoundary(this.detail(input))) {
-              return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+              return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
             }
             continue;
           }
@@ -929,7 +931,7 @@ export class AutomaticExecutionEngine {
         const batch = candidates.slice(0, available);
         if (batch.length === 0) {
           const settled = await this.settleRunState(input);
-          return { state: settled.state, startedStageIds, completedStageIds, waitingStageIds };
+          return { state: runLifecycleKind(settled.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
         }
         const prepared = batch
           .map(({ stage, proposalStage }) => this.prepareOrContain(
@@ -950,9 +952,9 @@ export class AutomaticExecutionEngine {
           if (result.state === 'waiting-human' && !waitingStageIds.includes(result.stageId)) waitingStageIds.push(result.stageId);
         }
         if (results.some((result) => result.state === 'waiting-human')
-          && this.detail(input).run.state === 'waiting-human'
+          && runLifecycleKind(this.detail(input).run.lifecycle) === 'waiting-human'
           && hasRunWideBlockingBoundary(this.detail(input))) {
-          return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+          return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
         }
       }
       throw new AutomaticExecutionError('DAG reconciliation exceeded its deterministic pass bound');
@@ -1038,7 +1040,7 @@ export class AutomaticExecutionEngine {
 
       current = this.detail(input);
       const finalState = uncertain.size > 0 ? 'interrupted' : 'stopped';
-      if (current.run.state !== finalState) {
+      if (runLifecycleKind(current.run.lifecycle) !== finalState) {
         const transitioned = this.options.store.transitionRun(input.subject, input.runRef, current.run.version, finalState);
         if (!transitioned.ok) throw new AutomaticExecutionError(transitioned.detail);
       }
@@ -1144,7 +1146,8 @@ export class AutomaticExecutionEngine {
     assignedAgent: ResolvedAssignedAgent | null,
   ): Promise<boolean> {
     let detail = this.detail(input);
-    if ((detail.run.state === 'waiting-human' || detail.run.state === 'interrupted') && hasRunWideBlockingBoundary(detail)) {
+    if (['waiting-human', 'interrupted'].includes(runLifecycleKind(detail.run.lifecycle))
+      && hasRunWideBlockingBoundary(detail)) {
       return false;
     }
     const requested = input.proposal.manager;
@@ -1210,9 +1213,10 @@ export class AutomaticExecutionEngine {
       }
     }
     detail = this.detail(input);
-    if (detail.run.state === 'waiting-human' && hasRunWideBlockingBoundary(detail)) return false;
-    if (detail.run.state === 'planned' || detail.run.state === 'interrupted' || detail.run.state === 'recovering'
-      || (detail.run.state === 'waiting-human' && !hasGroupScopedIterationBoundary(detail))) {
+    const runKind = runLifecycleKind(detail.run.lifecycle);
+    if (runKind === 'waiting-human' && hasRunWideBlockingBoundary(detail)) return false;
+    if (runKind === 'planned' || runKind === 'interrupted' || runKind === 'recovering'
+      || (runKind === 'waiting-human' && !hasGroupScopedIterationBoundary(detail))) {
       this.transitionRun(input, 'running');
     }
     input.onManagerStarted?.();
@@ -2430,13 +2434,13 @@ export class AutomaticExecutionEngine {
 
   private cancellationObserved(input: Pick<ExecuteRunInput, 'subject' | 'runRef'>): boolean {
     const lockKey = `${input.subject}\0${input.runRef}`;
-    const state = this.detail(input).run.state;
+    const state = runLifecycleKind(this.detail(input).run.lifecycle);
     return this.cancellingRuns.has(lockKey) || state === 'stopping' || state === 'stopped' || state === 'interrupted';
   }
 
   private async settleRunState(input: ExecuteRunInput): Promise<RunDetail['run']> {
     const detail = this.detail(input);
-    if (detail.run.state === 'stopping' || detail.run.state === 'stopped') return detail.run;
+    if (['stopping', 'stopped'].includes(runLifecycleKind(detail.run.lifecycle))) return detail.run;
     if (detail.stages.every((stage) => stage.state === 'succeeded')
       && detail.iterationLoops.every((loop) => loop.state === 'passed')) {
       const manager = detail.sessions.find((session) => session.sessionRef === detail.run.managerSessionRef);
@@ -2478,9 +2482,12 @@ export class AutomaticExecutionEngine {
     return detail.run;
   }
 
-  private transitionRun(input: ExecuteRunInput, state: RunDetail['run']['state']): RunDetail['run'] {
+  private transitionRun(
+    input: ExecuteRunInput,
+    state: Exclude<RunLifecycleKind, 'paused-for-deploy'>,
+  ): RunDetail['run'] {
     const run = this.detail(input).run;
-    if (run.state === state) return run;
+    if (runLifecycleKind(run.lifecycle) === state) return run;
     const result = this.options.store.transitionRun(input.subject, input.runRef, run.version, state);
     if (!result.ok) throw new AutomaticExecutionError(result.detail);
     return result.value;
