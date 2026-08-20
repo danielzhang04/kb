@@ -31,20 +31,19 @@ def _lint_piece(shots, words, header=""):
         return hard
 
 
-def test_runtime_over_four_cadence_floor_fails():
+def test_runtime_over_five_cadence_floor_fails():
     words = ["word"] * 50
     shots = [{"id": f"L{i}", "vo_ref": "word", "duration_s": 4} for i in range(1, 4)]
     errs = _lint_piece(shots, words)
-    assert any("1 cut / 4s" in e for e in errs), errs
+    assert any("1 cut / 5s" in e for e in errs), errs
 
 
-def test_the_cadence_floor_divisor_is_four_not_five():
-    """Daniel's 2026-07-28 dial: the band is 1.5-3s, so the planning floor is runtime/4.
-    60 words = a 24s runtime; 5 shots cleared the old runtime/5 (4.8) and must not clear 6."""
+def test_the_cadence_floor_divisor_is_five():
+    """Minimal P1: 60 words = 24 seconds, so four shots fail the five-second floor."""
     words = ["word"] * 60
-    shots = [{"id": f"L{i}", "vo_ref": "word", "duration_s": 4.5} for i in range(1, 6)]
+    shots = [{"id": f"L{i}", "vo_ref": "word", "duration_s": 6} for i in range(1, 5)]
     errs = _lint_piece(shots, words)
-    assert any("1 cut / 4s" in e for e in errs), errs
+    assert any("1 cut / 5s" in e for e in errs), errs
 
 
 def test_coverage_floor_still_fails_short_durations():
@@ -53,7 +52,7 @@ def test_coverage_floor_still_fails_short_durations():
     words = ["word"] * 100
     shots = [{"id": f"L{i}", "vo_ref": "word", "duration_s": 1} for i in range(1, 12)]
     errs = _lint_piece(shots, words)
-    assert any("don't cover the VO" in e for e in errs), errs
+    assert any("do not cover the VO" in e for e in errs), errs
 
 
 # --- the runtime SOURCE: the script header's stated rate, not a 150 constant ----
@@ -71,7 +70,7 @@ def test_the_header_rate_sizes_the_runtime():
 
 def test_without_the_header_the_150_default_still_applies():
     errs = _lint_piece(_cadence_shots(), ["word"] * 175)
-    assert any("don't cover the VO" in e and "150wpm" in e for e in errs), errs
+    assert any("do not cover the VO" in e and "150wpm" in e for e in errs), errs
 
 
 def test_the_runtime_message_names_the_rate_it_used():
@@ -121,3 +120,13 @@ def test_a_short_anchor_under_four_words_still_matches():
              {"id": "L2", "vo_ref": "the serial numbers", "duration_s": 8}]
     errs = _lint_piece(shots, words)
     assert not any("vo_ref not found" in e for e in errs), errs
+
+
+def test_out_of_order_anchor_fails():
+    words = "alpha beta gamma delta epsilon zeta eta theta".split()
+    shots = [
+        {"id": "L01", "vo_ref": "epsilon zeta eta theta", "duration_s": 4},
+        {"id": "L02", "vo_ref": "alpha beta gamma delta", "duration_s": 4},
+    ]
+    errs = _lint_piece(shots, words)
+    assert any("out of narration order" in e for e in errs), errs

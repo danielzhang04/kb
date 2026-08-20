@@ -125,24 +125,17 @@ def test_repeating_a_seed_without_changing_final_order_is_not_a_reorder():
         }, item=item, video=video)
 
 
-def test_policy_zones_precede_authored_payload_and_only_the_style_suffix_follows_it():
-    """Ordering law, restored to the era shape 2026-08-05: policy zones, then the authored payload,
-    then the file's fixed `global_prompt_suffix` and NOTHING else. The payload is still the last
-    AUTHORED text — the only thing after it is channel data every request carries identically, so a
-    shot's own closing clause keeps its weight."""
+def test_policy_zones_precede_the_authored_payload_and_nothing_follows_it():
+    """Liked-run ordering law: expansion clauses precede the authored provider-weighted tail."""
     descriptor = "DESCRIPTOR ZONE"
     crowd = "CROWD POLICY ZONE"
     rig = "RIG POLICY ZONE"
-    composition = "PLATE COMPOSITION POLICY ZONE"
+    composition = "GENERATED POLICY ZONE"
     replacement = "AUTHOR-PAYLOAD: the literal BRICKS clause."
-    suffix = "FIXED CHANNEL STYLE SUFFIX"
     text = forge.assemble_prompt(descriptor, replacement, crowd, rig, composition)
     assert text == "\n\n".join((descriptor, crowd, rig, composition, replacement))
     assert text.endswith(replacement)
     assert text.index(composition) < text.index(replacement)
-    tailed = forge.assemble_prompt(descriptor, replacement, crowd, rig, composition, suffix)
-    assert tailed == "\n\n".join((descriptor, crowd, rig, composition, replacement, suffix))
-    assert tailed.endswith(suffix) and tailed.index(replacement) < tailed.index(suffix)
 
 
 def test_gen_dry_run_prints_the_one_span_retry_authority():

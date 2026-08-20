@@ -1,7 +1,7 @@
 """Behaviour tests for the shots.json **v2** contract in lint_shots.py.
 
 v2 drops the v1 authoring/review metadata (`from_cue`, `beat`, `narration_type`,
-`hold_reason`, `cast`, `props`, `needed_assets`, `house_style`, `shot_counts`,
+`cast`, `props`, `needed_assets`, `house_style`, `shot_counts`,
 `timing_status`). None of it was ever engine-read, so the rule that matters is:
 
   * a v2 file is the norm and lints silently;
@@ -10,7 +10,7 @@ v2 drops the v1 authoring/review metadata (`from_cue`, `beat`, `narration_type`,
     naming change.
 
 The behaviour floor the v2 cut must NOT disturb (verbatim anchors in narration
-order, supplied-text, lettering L1-L4, delta caps, runtime/4 + coverage) is pinned
+order, supplied-text, lettering L1-L4, delta caps, runtime/5 + coverage) is pinned
 by the sibling suites; this file pins the v2-specific behaviour plus the
 end-to-end `--write` contract.
 """
@@ -30,8 +30,7 @@ SCRIPT = (
     "leaving four hundred families holding nothing at all."
 )
 
-# Five anchors, not four: a 50-word script is a ~20s runtime and the cadence floor is
-# runtime/4, so a four-shot fixture is legitimately too thin to lint green.
+# Five anchors: a 50-word script is a ~20s runtime and clears the runtime/5 floor.
 ANCHORS = [
     "The founder walked into",
     "Investors emptied their savings",
@@ -70,7 +69,7 @@ def _v2(**extra):
         "video_slug": "t",
         "generated": "2026-07-28",
         "status": "shots-drafted",
-        "global_prompt_suffix": "clean flat cel cartoon, 16:9.",
+        "global_prompt_suffix": "",
         "long_form": {"aspect_ratio": "16:9", "shots": [_shot(i) for i in range(5)]},
         "thumbnail": {"primary": {"gen_prompt": "a plain cartoon poster"}, "challengers": []},
         "shorts": [],
@@ -112,11 +111,11 @@ def test_legacy_shot_fields_are_a_warning_listing_them():
     data = _v2()
     data["long_form"]["shots"][0].update(
         {"from_cue": True, "beat": "hook", "narration_type": "scale",
-         "hold_reason": "legibility", "cast": [], "props": []})
+         "cast": [], "props": []})
     hard, soft = _soft(data)
     assert hard == [], "legacy fields must NEVER be an error"
     assert len(soft) == 1
-    for field in ("from_cue", "beat", "narration_type", "hold_reason", "cast", "props"):
+    for field in ("from_cue", "beat", "narration_type", "cast", "props"):
         assert field in soft[0], f"{field} must be named in the warning"
 
 
@@ -143,10 +142,20 @@ def test_derived_vo_text_is_not_a_legacy_field():
     assert _soft(data)[1] == []
 
 
-# --- the long hold: v1 demanded a `hold_reason`; v2 has no such field ----------
+# --- earned long holds --------------------------------------------------------
 
-def test_a_long_hold_is_no_longer_an_error():
+def test_a_long_hold_requires_a_reason():
     shots = [_shot(i, duration_s=12) for i in range(5)]
+    hard, soft = [], []
+    with tempfile.TemporaryDirectory() as td:
+        md = Path(td) / "script.md"
+        md.write_text("---\n" + SCRIPT + "\n", encoding="utf-8")
+        lint_shots.lint_piece("long-form", shots, md, hard, soft)
+    assert any("hold_reason" in m for m in hard), (hard, soft)
+
+
+def test_a_long_hold_with_a_reason_passes_that_gate():
+    shots = [_shot(i, duration_s=12, hold_reason="legibility") for i in range(5)]
     hard, soft = [], []
     with tempfile.TemporaryDirectory() as td:
         md = Path(td) / "script.md"
@@ -204,7 +213,7 @@ def test_the_report_prints_on_a_cp1252_console(capsys):
         sh["duration_s"] = 1
     rc, _ = _run(data)
     out = capsys.readouterr().out
-    assert rc == 1 and "don't cover the VO" in out
+    assert rc == 1 and "do not cover the VO" in out
     out.encode("cp1252")     # must not raise
 
 

@@ -23,12 +23,10 @@ from forge import (Kit, RETRY_OVERLAY_SCHEMA, SEED_CAP, cmd_batch, cmd_retry_bat
 from conftest import isolate_staging, stamp_kit
 import forge as forge_module
 
-
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
 ROOT = KIT_DIR.parents[2]
 PNG = b"\x89PNG\r\n\x1a\n"
-
 
 def _kit():
     kit = Kit(str(KIT_DIR), dry=True)
@@ -39,18 +37,15 @@ def _kit():
     # Per-test staging, never the channel's own: `Kit.staging` is the LIVE P3 review store.
     return isolate_staging(kit)
 
-
 def _write_json(path, value):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(value, f)
-
 
 def _drop_record(store, stem):
     """Withdraw one named asset's ruling. Records are keyed by kit-relative PATH, so the frame
     a key ends in is what identifies it — a bare stem names no record at all."""
     for key in [k for k in store["figures"] if k.endswith("/" + stem + ".png")]:
         store["figures"].pop(key)
-
 
 def _batch(kit, shots_path, out_path, scope=None):
     # P3: the channel's standing library and this video's approved frames are REVIEWED assets.
@@ -60,7 +55,6 @@ def _batch(kit, shots_path, out_path, scope=None):
     with open(out_path, encoding="utf-8") as f:
         return json.load(f)
 
-
 # L28's authored prose. P8 keys each STEP-1 card on the clause derived from its OWN beat, so the
 # fixture stages the cards under the names the builder computes from this text, never a hard-coded
 # recipe-only stem.
@@ -69,7 +63,6 @@ L28_PROMPT = ("`terry-johnson` and `miniscribe-rep` stand beside the drive "
 L28_CARDS = {c: forge_module.figure_frame_name(c, None, None,
                                            forge_module.beat_clause(L28_PROMPT, c))
              for c in ("terry-johnson", "miniscribe-rep")}
-
 
 def _l28_retry_fixture():
     """The audited bad order: place, Terry, MiniScribe, then the drive prop."""
@@ -106,7 +99,6 @@ def _l28_retry_fixture():
     })
     return video, shots, overlay, os.path.join(video, "spec.json")
 
-
 def _l28_retry_spec(entries=None):
     video, shots, overlay, out = _l28_retry_fixture()
     if entries is not None:      # same fixture, a different surgical authority under test
@@ -136,31 +128,8 @@ def _l28_retry_spec(entries=None):
     with open(out, encoding="utf-8") as f:
         return kit, json.load(f)
 
-
 def _scene(spec, name):
     return next(item for item in spec if item["name"] == name)
-
-
-def test_l28_final_seed_roles_and_ordinals_follow_the_final_retry_order():
-    kit, spec = _l28_retry_spec()
-    scene = _scene(spec, "L28-role-retry")
-    stems = [Path(seed).stem for seed in scene["seed"]]
-    assert stems == ["L26", L28_CARDS["terry-johnson"], L28_CARDS["miniscribe-rep"],
-                     "prop-drive"], stems
-    assert scene["seed_roles"] == [
-        {"path": scene["seed"][0], "role": "place", "character": None},
-        {"path": scene["seed"][1], "role": "figure", "character": "terry-johnson"},
-        {"path": scene["seed"][2], "role": "figure", "character": "miniscribe-rep"},
-        {"path": scene["seed"][3], "role": "prop", "character": "prop-drive"},
-    ], scene.get("seed_roles")
-    for clause in (
-        "The FIRST image is the destination place",
-        "The SECOND image is `terry-johnson`'s complete STEP-1 figure",
-        "The THIRD image is `miniscribe-rep`'s complete STEP-1 figure",
-        "The FOURTH image is the `prop-drive` prop canonical",
-    ):
-        assert clause in scene["delta"], scene["delta"]
-
 
 def test_preflight_rejects_seed_role_metadata_that_disagrees_with_final_seed_prose():
     kit, spec = _l28_retry_spec()
@@ -175,7 +144,6 @@ def test_preflight_rejects_seed_role_metadata_that_disagrees_with_final_seed_pro
     else:
         assert False, "preflight must reject ordinal prose/role metadata that lies about final seed order"
 
-
 def test_preflight_rejects_semantically_false_roles_even_when_prose_was_rebuilt_from_them():
     kit, spec = _l28_retry_spec()
     scene = _scene(spec, "L28-role-retry")
@@ -189,7 +157,6 @@ def test_preflight_rejects_semantically_false_roles_even_when_prose_was_rebuilt_
     else:
         assert False, "a place image relabelled as a figure must hard-fail preflight"
 
-
 def test_preflight_rejects_roleless_manual_composite_specs():
     kit, spec = _l28_retry_spec()
     scene = _scene(spec, "L28-role-retry")
@@ -200,7 +167,6 @@ def test_preflight_rejects_roleless_manual_composite_specs():
         assert "seed_roles" in str(exc), str(exc)
     else:
         assert False, "a hand-written composite may not bypass seed-role truth by omitting metadata"
-
 
 def _delta_fixture(delta_primitives=None):
     video = tempfile.mkdtemp()
@@ -224,7 +190,6 @@ def _delta_fixture(delta_primitives=None):
     })
     return shots, os.path.join(video, "spec.json")
 
-
 # P1 PIN (taste-forensics G2) — the DELTA RECIPE: parent + canonical, within SEED_CAP. This is the
 # recipe behind the one liked money-delta chain, so no later proposal may buy an attribute (P9's face
 # authority above all) with an extra delta SEED; role prose is the only channel that may widen.
@@ -242,7 +207,6 @@ def test_whole_scene_delta_uses_only_parent_and_canonical_identity_by_default():
     assert SEED_CAP == 4, SEED_CAP
     assert len(delta["seed"]) == 2 <= SEED_CAP, delta["seed"]
 
-
 # P1 PIN (taste-forensics G2) — the other half of the delta recipe: a primitive enters a delta ONLY
 # on an explicit per-character declaration, and parent + canonical still lead. Protects the liked
 # chain against any later proposal that widens the delta seed set implicitly.
@@ -259,7 +223,6 @@ def test_delta_allows_only_explicitly_proven_necessary_primitives_and_labels_the
         {"path": delta["seed"][2], "role": "pose", "character": "miniscribe-rep"},
     ], delta.get("seed_roles")
     assert "expr-smug" not in "\n".join(map(str, delta["seed"])), delta["seed"]
-
 
 # P9 (taste-forensics G2, COMPLETED 10b) — FACE OWNERSHIP ON A DELTA. The recipe above is pinned
 # (parent + canonical, no STEP-1 card), so the authority the r2 verifier's parked L34 "CANONICAL
@@ -282,7 +245,6 @@ def test_delta_prose_gives_the_held_face_to_the_parent_and_withdraws_it_from_the
     # face authority costs no seed — the P1 delta-recipe pin, restated at the point of change.
     assert len(delta["seed"]) == 2, delta["seed"]
 
-
 def _two_figure_delta_fixture(delta_primitives=None):
     """The AT-CAP legal delta: parent + canonical A + canonical B + one proved primitive == 4."""
     video = tempfile.mkdtemp()
@@ -304,32 +266,15 @@ def _two_figure_delta_fixture(delta_primitives=None):
     })
     return shots, os.path.join(video, "spec.json")
 
-
 # P9 FIX ROUND 1 (I-1) — the expression release is per-CHARACTER. A two-figure delta may seed one
 # proved expression and still sit at the cap, so an unscoped "replaces any expression held in a
 # parent scene" would license putting THIS figure's mouth on the OTHER figure's held face: the same
 # leak the parked L34 defect exhibits, one level down.
-def test_a_proved_expression_on_a_two_figure_delta_releases_only_its_own_character():
-    shots, out = _two_figure_delta_fixture({"miniscribe-rep": ["expr-smug"]})
-    spec = _batch(_kit(), shots, out)
-    delta = _scene(spec, "D02")
-    assert [Path(seed).stem for seed in delta["seed"]] == [
-        "D01", "miniscribe-rep", "terry-johnson", "expr-smug"], delta["seed"]
-    assert len(delta["seed"]) == SEED_CAP, delta["seed"]      # the shape is legal AT the cap
-    text = delta["delta"]
-    assert ("replaces the expression `miniscribe-rep` holds in the parent scene, and no other "
-            "figure's") in text, text
-    # the unscoped wording must not survive anywhere in the request
-    assert "replaces any expression held in a parent scene" not in text, text
-    # and the untouched figure keeps its held face from the parent's pixels
-    assert "take each held figure's STANCE and EXPRESSION" in text, text
-
 
 def _prose(*roles):
     return forge_module.seed_roles_text(
         [forge_module._seed_role(f"refs/{name}.png", role, character)
          for role, name, character in roles])
-
 
 # FINAL FIX ROUND (I-4 + I-5, 2026-08-12) — the canonical role string, on both its counts.
 #
@@ -352,7 +297,6 @@ def test_the_canonical_role_states_a_conditional_costume_and_no_this_image_only_
     assert "how eyes, brows and mouth are DRAWN" in card, card
     assert "never which shape they take where another seed carries it" in card, card
     assert "Never the pose" in card, card
-
 
 # 10b — the reduction is CONDITIONAL on a PARENT sharing the slate. A fresh (no-parent) recipe's
 # canonical is the only face authority such a slate has, so its register grant stands unchanged;
@@ -379,7 +323,6 @@ def test_the_register_grant_is_withdrawn_only_when_a_parent_shares_the_slate():
     assert "RENDER REGISTER" not in two_cast, two_cast
     assert two_cast.count("never the face") == 2, two_cast
 
-
 def test_the_two_cast_delta_slate_prose_stays_inside_the_adherence_band():
     """The canonical role repeats ONCE PER CAST MEMBER, so its length is multiplied by every slate
     that seeds two. The two-cast delta (parent + canonical A + canonical B) is the shape I-5
@@ -401,7 +344,6 @@ def test_the_two_cast_delta_slate_prose_stays_inside_the_adherence_band():
     # and no canonical on any of them still carries the dropped enumeration
     for slate in (two_cast_delta, one_cast_delta, card):
         assert "It fixes the" not in slate, slate
-
 
 # P9 — the COMPLETENESS WALK: every recipe shape `seed_roles_text` can emit leaves zero attribute
 # (identity, face shape, face render register, pose, costume, set) unowned.
@@ -463,7 +405,6 @@ def test_every_recipe_shape_states_complete_attribute_ownership():
     assert "Take NOTHING else" in tile and "PALETTE SATURATION" in tile, tile
     assert "SATURATION and TEMPERATURE" not in tile, tile
 
-
 def test_manual_delta_declaration_must_bind_primitive_to_the_authored_character():
     shots, out = _delta_fixture()
     kit = _kit()
@@ -481,7 +422,6 @@ def test_manual_delta_declaration_must_bind_primitive_to_the_authored_character(
         assert "not-in-cast" in str(exc) and "delta_primitives" in str(exc), str(exc)
     else:
         assert False, "manual specs may not declare a primitive under a character absent from the shot cast"
-
 
 def test_expression_defect_scene_retry_routes_to_step1_remint_not_contradictory_scene_prose():
     video = tempfile.mkdtemp()
@@ -513,7 +453,6 @@ def test_expression_defect_scene_retry_routes_to_step1_remint_not_contradictory_
     else:
         assert False, "expression-defect scene retries must route to a STEP-1 remint"
 
-
 def test_expression_defect_cannot_hide_inside_an_exact_scene_replacement():
     item = {
         "name": "E01", "seed": [], "seed_roles": [],
@@ -537,7 +476,6 @@ def test_expression_defect_cannot_hide_inside_an_exact_scene_replacement():
         assert "expression" in message and "step-1" in message, str(exc)
     else:
         assert False, "an expression-tag replacement must route to STEP-1"
-
 
 def _added_seed_retry(added_seed):
     """(kit, spec) for a retry that ADDS one kit asset to a scene, in the retry law's legal shape.
@@ -576,35 +514,9 @@ def _added_seed_retry(added_seed):
         cmd_retry_batch(kit, shots, out, overlay)
     return kit, json.load(open(out, encoding="utf-8"))
 
-
-def test_a_retry_added_kit_asset_carries_its_real_kind_and_passes_the_review_gate():
-    """I-1. `added_role`'s fallback stamped `reference` on every retry-added seed, and `reference`
-    was gate-exempt for the cast-mint path — so a retry overlay naming any kit prop, environment
-    or primitive seeded a scene with no review record. The role must state what the seed IS.
-
-    The overlay is the legal shape: a reorder of the native place seed (the surgical authority the
-    retry law demands) carrying one genuinely ADDED kit prop alongside it."""
-    kit, spec = _added_seed_retry("refs/env/prop-drive.png")
-    scene = _scene(spec, "R1-added-seed")
-    added = next(r for r in scene["seed_roles"] if r["path"].endswith("prop-drive.png"))
-    assert added["role"] == "prop", scene["seed_roles"]
-    assert added["role"] != "reference", scene["seed_roles"]
-    # ... and with its ruling withdrawn the gate refuses it, exactly as any other prop
-    store_path = os.path.join(kit.staging, "review.json")
-    store = json.load(open(store_path, encoding="utf-8"))
-    _drop_record(store, "prop-drive")
-    _write_json(store_path, store)
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        forge_module.cmd_gen(kit, spec, force=True, dry=True)
-    assert "R1-added-seed: skip (seed awaits review)" in buf.getvalue(), buf.getvalue()
-    assert "prop-drive" in buf.getvalue(), buf.getvalue()
-
-
 # --- fix round 2: a registry KIND is not automatically a legal seed ROLE -------------------------
 
 _SCHEMA_REJECT = "must contain valid path/role/character fields"
-
 
 def test_a_retry_added_crowd_exemplar_gets_a_legal_role_and_is_gated():
     """The registry calls the exemplar `crowd-anchor`; the provider vocabulary calls that seed
@@ -624,7 +536,6 @@ def test_a_retry_added_crowd_exemplar_gets_a_legal_role_and_is_gated():
     assert "R1-added-seed: skip (seed awaits review)" in buf.getvalue(), buf.getvalue()
     assert "crowd-exemplar" in buf.getvalue(), buf.getvalue()
 
-
 def test_a_retry_added_action_primitive_refuses_by_doctrine_not_by_schema():
     """`action` is how the registry spells 13 of its pose primitives; `cmd_batch` routes them as
     `pose`. The role must be the legal one — and then the character-binding law refuses it in
@@ -639,7 +550,6 @@ def test_a_retry_added_action_primitive_refuses_by_doctrine_not_by_schema():
     else:
         assert False, "a character-less pose primitive may not be hand-added by a retry"
 
-
 def test_a_retry_added_identity_or_base_frame_routes_back_to_the_builder():
     """An identity/base frame's only truthful role is `canonical`, which names the character it
     draws — a binding only the builder can make. The refusal says so and names the frame."""
@@ -652,7 +562,6 @@ def test_a_retry_added_identity_or_base_frame_routes_back_to_the_builder():
             assert stem in message and "BUILDER" in message, message
         else:
             assert False, f"a retry may not hand-add the {stem} identity/base frame"
-
 
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):

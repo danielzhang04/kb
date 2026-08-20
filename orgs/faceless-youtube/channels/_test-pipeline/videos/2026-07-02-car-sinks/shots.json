@@ -19,7 +19,7 @@
       "shorts": "9:16"
     }
   },
-  "global_prompt_suffix": "Stylized 3D / flat-vector animation, deep-indigo palette with a single hazard-orange accent, high-contrast cinematic lighting, saturated-but-dark, second-person POV framing, impossible physics rendered clean and non-photoreal, no on-screen faces, no gore.",
+  "global_prompt_suffix": "",
   "long_form": {
     "aspect_ratio": "16:9",
     "shots": [

@@ -69,7 +69,7 @@ def test_isolate_staging_moves_the_same_kit_to_tmp_and_the_stamp_semantics_are_u
     assert figures, "the standing library should have been stamped"
     sample = next(iter(figures.values()))
     assert sample["reviewer"] == "fixture" and sample["verdicts"] == {
-        "rig": "pass", "flat-cel-hazard": "pass"}
+        "texture-strip": "pass"}
     assert re.fullmatch(r"[0-9a-f]{64}", sample["canonical_sha256"]), sample
     with open(os.path.join(kit.staging, "review.json"), encoding="utf-8") as f:
         assert json.load(f)["figures"].keys() == figures.keys()

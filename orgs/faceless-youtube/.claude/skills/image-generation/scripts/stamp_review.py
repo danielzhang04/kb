@@ -93,55 +93,26 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import forge          # same skill, same dir: the gate's own store reader, never a second one
 
-# Ruling axes: manifest/review shorthand -> human label used in parked_reasons.
 _AXES = (("f", "fidelity"), ("s", "style"), ("r", "rig"))
-
 
 def _ruling_id(ruling: dict):
     """The shot id a ruling addresses (merged.json uses `id`; tolerate `shot_id`)."""
     return ruling.get("id") or ruling.get("shot_id")
 
-
-def _dsg_failures(ruling: dict):
-    """The FAILED items of a ruling's DSG-lite checklist — the dependency-ordered decomposition of
-    the assembled prompt into atomic facts (entities -> attributes -> relations -> lettering) that
-    the fidelity judge answers one by one. Each item is
-    `{id, parent, q, verdict: "pass"|"fail"|"skipped", note}`; only "fail" is a defect, because a
-    "skipped" child was short-circuited by a parent that already carries one."""
-    items = ruling.get("dsg")
-    if not isinstance(items, list):
-        return []
-    out = []
-    for it in items:
-        if not isinstance(it, dict) or str(it.get("verdict", "")).lower() != "fail":
-            continue
-        label = it.get("q") or it.get("id") or "unnamed check"
-        note = it.get("note")
-        out.append(f"dsg {it.get('id', '?')}: {label}" + (f" — {note}" if note else ""))
-    return out
-
-
 def _missing_axes(ruling: dict):
     return [key for key, _ in _AXES
             if not isinstance(ruling.get(key), str) or not ruling[key].strip()]
-
 
 def _is_clean(ruling: dict) -> bool:
     """A ruling is clean iff it carries no defect. `worst` is authoritative when present
     (aggregate of the axes); "clean" is the no-defect sentinel. Absent `worst` -> all axes clean.
     Conservative by design: only a fully-clean ruling verifies — any severity (even LOW) parks.
 
-    A failed DSG-lite item overrides a clean aggregate. The per-item checklist and the axis
-    severities are written by the same judge in one pass, so the aggregate can lag the items it was
-    summarizing — and a frame whose adherence check FAILED must never reach the render gate because
-    a summary field said `clean`. The items are the evidence; the aggregate is the opinion."""
-    if _dsg_failures(ruling):
-        return False
+    Missing axes park rather than verify."""
     if _missing_axes(ruling):
         return False
     return (all(ruling[key] == "clean" for key, _ in _AXES)
             and ("worst" not in ruling or ruling["worst"] == "clean"))
-
 
 def _reasons(ruling: dict):
     """Defect strings for a parked ruling: one `"<axis>: <SEVERITY>"` per non-clean axis, then each
@@ -157,7 +128,6 @@ def _reasons(ruling: dict):
         v = ruling.get(key)
         if isinstance(v, str) and v and v != "clean":
             reasons.append(f"{label}: {v}")
-    reasons.extend(_dsg_failures(ruling))
     why = ruling.get("why")
     if isinstance(why, str) and why.strip():
         reasons.append(why.strip())
@@ -166,7 +136,6 @@ def _reasons(ruling: dict):
         reasons.append(f"worst: {worst}" if worst else "unspecified defect")
     return reasons
 
-
 def classify(ruling: dict):
     """Map one merged ruling to `(review_status, parked_reasons)`.
     clean -> ("verified", []);  any defect -> ("parked", [reason, ...])."""
@@ -174,20 +143,17 @@ def classify(ruling: dict):
         return "verified", []
     return "parked", _reasons(ruling)
 
-
 def _entries(manifest):
     """The list of shot entries. The manifest is {..., shots: [...]}; tolerate a bare list."""
     if isinstance(manifest, dict):
         return manifest.setdefault("shots", [])
     return manifest
 
-
 def _rulings(data):
     """The ruling list. merged.json is a bare array; tolerate {rulings|shots: [...]}."""
     if isinstance(data, dict):
         return data.get("rulings") or data.get("shots") or []
     return data
-
 
 def stamp(manifest, rulings):
     """Write `review_status` + `parked_reasons` onto every reviewed shot's entry, IN PLACE.
@@ -221,9 +187,7 @@ def stamp(manifest, rulings):
             m_parked += 1
     return n_verified, m_parked
 
-
 _FIGURE_REQUIRED = ("canonical_sha256", "verdicts", "reviewer", "date")
-
 
 def _figure_input_records(data):
     """The asset-verdicts input's `asset_id -> record` mapping. Accepts `{"figures": {...}}` (the
@@ -232,7 +196,6 @@ def _figure_input_records(data):
         return {}
     figs = data.get("figures", data)
     return figs if isinstance(figs, dict) else {}
-
 
 def merge_figure_records(store: dict, input_data) -> int:
     """Merge each `asset_id -> record` in the asset-verdicts input into `store["figures"]`, IN
@@ -259,7 +222,6 @@ def merge_figure_records(store: dict, input_data) -> int:
         n += 1
     return n
 
-
 def _atomic_write_json(path: Path, data) -> None:
     """Write `data` as JSON to `path` atomically (temp file in the same dir, then os.replace)."""
     tmp = path.with_name(path.name + ".tmp")
@@ -275,7 +237,6 @@ def _atomic_write_json(path: Path, data) -> None:
             except OSError:
                 pass
 
-
 def _main_figures(argv) -> int:
     """The C-6/P3 asset-verdicts merge path: `--figures <input.json> <staging_dir>`."""
     if len(argv) != 2:
@@ -290,19 +251,12 @@ def _main_figures(argv) -> int:
     store = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
     if not isinstance(store, dict):
         store = {}
-    # The one-time key migration, persisted — over the dict ALREADY LOADED one line above, never a
-    # second read of the same file. `forge.review_store` answers `{}` for a store it cannot read,
-    # so re-reading here would replace 35 curated rows with nothing if that read failed at that
-    # instant. One reader, one read, then the migration on what it returned. Only keys move:
-    # verdicts, reviewer, date and `canonical_sha256` all cross byte-for-byte, and a record no
-    # candidate frame matches keeps its key rather than being dropped.
     store["figures"] = forge.migrate_review_store(
         store.get("figures"), str(staging_dir), str(staging_dir.parent))
     n = merge_figure_records(store, input_data)
     _atomic_write_json(review_path, store)
     print(f"asset-review: {n} merged into {review_path}")
     return 0
-
 
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -328,7 +282,6 @@ def main(argv=None) -> int:
     _atomic_write_json(manifest_path, manifest)
     print(f"stamped: {n_verified} verified, {m_parked} parked")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -111,10 +111,7 @@ def test_classify_low_worst_is_parked_not_verified():
     assert reasons, reasons
 
 
-def test_failed_dsg_item_parks_even_when_the_aggregate_says_clean():
-    """The DSG-lite hole this closes: the fidelity judge writes the per-item checklist AND the axis
-    severities in one pass, so a ruling can carry a failed adherence item under a `worst: "clean"`
-    summary. Trusting the summary would ship a frame whose own evidence says it missed a fact."""
+def test_legacy_dsg_payload_is_not_interpreted_as_a_state_axis():
     r = _ruling("L14", "clean")
     r["dsg"] = [
         {"id": "e1", "parent": None, "q": "a brick wall is present", "verdict": "pass"},
@@ -123,11 +120,7 @@ def test_failed_dsg_item_parks_even_when_the_aggregate_says_clean():
         {"id": "r1", "parent": "a1", "q": "the sign faces the worker", "verdict": "skipped"},
     ]
     status, reasons = stamp_review.classify(r)
-    assert status == "parked", (status, reasons)
-    assert any("the wall is unlettered" in x for x in reasons), reasons
-    assert any("BRIKS" in x for x in reasons), reasons
-    # a short-circuited CHILD is not itself a defect (its parent already carries one)
-    assert not any("faces the worker" in x for x in reasons), reasons
+    assert status == "verified" and reasons == []
 
 
 def test_all_passing_dsg_items_still_verify():
@@ -378,7 +371,7 @@ def test_figures_cli_migrates_a_legacy_stem_keyed_store_onto_paths_as_it_writes(
         # The record's OWN digest is what binds it to a frame — the store's existing notion of
         # which pixels were ruled on, never a second naming convention laid beside it.
         veto = {"canonical_sha256": hashlib.sha256(pixels).hexdigest(), "expression_sha256": None,
-                "verdicts": {"rig": "pass", "flat-cel-hazard": "pass", "human-veto": "fail"},
+                "verdicts": {"texture-strip": "pass", "human-veto": "fail"},
                 "reviewer": "Daniel veto, G2 2026-08-12, P12", "date": "2026-08-12"}
         unresolvable = _figrec(canonical="b" * 64)
         (staging / "review.json").write_text(

@@ -18,7 +18,7 @@
       "shorts": "9:16"
     }
   },
-  "global_prompt_suffix": "cold steel-blue and amber-warning palette, forensic engineering-diagram aesthetic, clean precise linework and annotation, cinematic low-key lighting on a dark field, calm and authoritative mood, no on-screen human faces, no casualties or bodies",
+  "global_prompt_suffix": "",
   "long_form": {
     "aspect_ratio": "16:9",
     "shots": [

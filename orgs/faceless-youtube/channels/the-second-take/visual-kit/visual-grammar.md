@@ -1,291 +1,225 @@
-# The Second Take — Visual Grammar (depiction law)
+# The Second Take — Visual Grammar (staging law)
 
-**What this is:** how The Second Take decides WHAT a shot depicts and HOW it is staged — the doc
-`visual-prompt-writer` reads when authoring `shots.json`. The LOOK is `style-bible.md`; the asset
-vocabulary is `registry/registry.json`; the depiction bar is `../example-shots.md`; writing craft is
-`../storytelling-grammar.md`. Within-shot motion and the stretch-to-fill rule live in `universal.md`
-§13a-i/§13a-ii and are **BINDING**. This channel's **cut cadence is the dial on top of them: a new
-shot every 1.5–3s; up to 4s only where the beat earns it** — so a shot list carries at least
-`Estimated runtime ÷ 4s` shots (lint-enforced), and a gap closes by densifying, never by lengthening
-a hold.
+**What this is:** how The Second Take *stages* shots — the doc `visual-prompt-writer` reads when
+authoring `shots.json`. It covers staging conventions, the payload-driven composition guidance, and how
+our lever/register bends the universal shot-classes. It is the visual companion to `../storytelling-grammar.md` (the
+writing craft).
 
-**`global_prompt_suffix`** — fixed channel data, copied verbatim into `shots.json`, appended by `forge.py`
-at the TAIL of every scene generation prompt:
+**What this is NOT:** the identity/style/generation law. The locked rig, descriptors, verify gates,
+committed recipe, and the asset-library build spec all live in **`style-bible.md`** (the image-gen doc);
+the **live index of assets that actually exist** is **`registry/registry.json`** — read the registry,
+not prose, for the channel's current vocabulary.
 
-> Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.
+**Read this pointer first — the general grammar is LAW and lives elsewhere.** The niche-agnostic visual
+grammar — the **narration-type → shot-class table**, the **within-shot motion** grammar (§13a-i), the
+**cut cadence + stretch-to-fill hard rule** (§13a-ii), the **convergent doctrine** (non-literal default,
+one-idea-per-shot, personify forces, glue numbers to objects, palette-codes-tone, humor-in-contrast,
+escalate-by-multiplying), and the **anti-slop / classify-then-invent** guardrail — all live in
+`universal.md §13 / §13a` and are **BINDING**. This doc does not restate them.
 
-The LOOK is stated in exactly TWO voices and nowhere else: `style-bible.md` §2b at the HEAD of the prompt
-and this suffix at its TAIL. `forge.py` injects both. A `still_prompt` describes **CONTENT and nothing
-else**: layout, orientation, the action, the committed scene palette, light, era, and depth. Never write
-art-style, texture, line-weight, or lettering words into a prompt (no "flat cel", "clean vector", "even
-outline", "hand-lettered marker style") — the two voices already inject them, and repeating them spends
-the prompt's weight on the look instead of on the scene. **The suffix states the lettering register so
-your prompt never has to** — it is not an exemption from the rule it sits above, it is the reason the
-rule can exist: one voice, one home.
+The procedure never changes: **read the line → identify its narration type → pick the shot class
+(`universal.md §13a`) → INVENT a fresh, on-style shot on our rig.** Everything below tells you how to
+stage "on-style" here.
 
-**Author absence as a positive STATE of the surface, never as a "no X" list.** "Every surface blank and
-unlettered", "an empty street", "a bare desk" — not "no signs, no words, no labels". Our generator reads a
-negation list as content and draws the very nouns it was told to omit, so each "no X" raises the odds of
-an X. One clean positive description of what the surface IS replaces the whole list.
+---
 
-## 1. What to depict — classify, then invent
+## 1. What to depict
 
-Read the line → name its narration TYPE → pick the shot CLASS → **INVENT a fresh, on-style shot in
-that class.** A grammar, not a phrasebook: same-typed lines must yield visibly different images, and
-each class carries a RANGE (a staged interaction: handshake, tug-of-war, handoff, one figure looming).
+4. **Depiction is a DECISION, not a transcription.** The hardest, most-upstream call — made *before*
+   composition or prompt wording — is *what each shot should depict*. The failure mode is a shot that
+   literally draws the sentence. Real channels almost never do that: **non-literal is the default;
+   literal depiction is reserved for concrete physical action/objects.** You classify each VO line's
+   *narration type* and pick a *shot class* from the visual-narration grammar (universal.md **§13a** +
+   the channel's `visual-kit/visual-grammar.md`), then **invent** a fresh on-style shot in that class —
+   never clone the grammar's examples. This is Step 2.5 and it governs every shot you write.
 
-| When the narration is… | Show a shot of class… |
-| --- | --- |
-| an abstract force/property/state (trust, inflation, dominance, "cut off") | **symbolic stand-in** or **hero-object** — one concrete object/creature that *embodies* it |
-| a relationship/deal/conflict between parties | **staged interaction** between personified parties (handshake, linked arms, tug-of-war, argument) |
-| an institution/nation/company as an actor | **personified character with one identity tag** (flag-tie, hat, uniform) or its **iconic landmark** |
-| a bare number/stat/date/quantity | **number/text-object** glued to its referent, a **diegetic dateline**, or a **countable mass** |
-| a comparison or a trend | **physicalized imbalance** (tipping scale, relative size) or a **deliberately-crude in-world chart** |
-| a historical event/announcement/shock | **diegetic media** (period TV/radio/newspaper) or a **dialogue reenactment** |
-| a mechanism / "how it really works" | **register-shift to a clean infographic + animate the one transform** |
-| a plan/spatial move/territory | **top-down map or plan-view with tokens/arrows/color-fills** |
-| a claim/boast/euphemism/spin | **ironic counterpoint** (image contradicts the words) or **literal-unmasking** |
-| a dry aside/punchline | **reaction shot on the payload word** or a **deadpan cutaway to a mundane/absurd object** |
-| a line with a vivid verb/idiom | **draw the phrase literally** (a visual pun on the idiom, not the fact) |
-| a grim/violent/tragic beat or emotional low point | **empty-world / aftermath / witness + palette turn** — never gore |
-| scale/magnitude | **scale as argument** (relative size) or **crowd multiplication** |
-| a real physical action/object | **literal depiction** (the one place it's correct) |
+## 2. Figure / crowd staging
 
-Record the class by its canonical name from the `shot_class` enum (`shots-schema.md §1`).
+- **No on-screen narrator; the screen is a cast** (identity law: `style-bible.md §1`) — stage each story
+  as a cast that comes and goes (the OverSimplified / HeyHistorically model).
+- **Institutions are personified cast** (identity/recipe law: `style-bible.md §6` — an institution = a
+  cast member with ONE identity tag, e.g. a flag necktie / hat / uniform, or an iconic building/landmark,
+  reused consistently). Staging consequence *here*: this makes the **staged-interaction** and
+  **institution-as-actor** classes native — stage policy/geopolitics/deals as conversations between
+  recurring rig-consistent characters.
+- **Every pose is a HELD TABLEAU — never a freeze of motion.** The pose menu is poses that *hold*
+  while carrying the action's meaning: a salute · a planted wide stance (triumph/arrival) · presenting
+  or offering an object with both parties composed · a held point at a target · arms-crossed appraisal ·
+  a slump or bowed head (defeat/aftermath) · leaning in (conspiracy) · recoil with weight on the back
+  foot (shock). Mid-stride walking, mid-shuffle crowds, mid-sweep arms read as broken frames when held
+  3–9s — if the beat is *travel or continuous action*, stage its **meaning as a tableau** (the marching
+  general = a planted stride-stance ON the map with the route drawn behind him) or let the change
+  arrive at a cut (a stage delta).
+- **Emotion is acted with the mouth and the body, not the hands — restrained by default:** the lead of a
+  beat gets a LEGIBLE expression sized to the beat's register, not a reflex caricature; secondary
+  characters hold **one** expression; posture/lean/recoil carries the rest (the rig has simple hands — see
+  `style-bible.md §6` for why). Reserve the strong/loud faces — laughing, shock, delight, **greed** — for
+  the beats that truly warrant them (a real laugh, a real shock, a beat genuinely about avarice), not by
+  reflex; ordinary beats get calm (deadpan / thinking / smug), grim beats get grim-flat.
+- **Expression tracks the beat (the acting layer).** A character's face is **selected per shot as an
+  `expression_ref`** (seeded, not prose — `style-bible.md §5`) from the register dial (`../storytelling-grammar.md §1.4`): **smug/self-important** on con/boast beats ·
+  **hopeful-warm** on the sell · **deadpan** on ironic counterpoint · **alarm/dawning-wrongness** on
+  the turn · **grim-flat, no comedy** on human-cost beats (desaturated gravity register). The DEFAULT is
+  restrained — a calm/plain face on an ordinary beat; the strong faces (laughing, shock, delighted, greedy) are
+  RESERVED for real peaks, not reached for by reflex. One default face riding every beat is a
+  defect; so is a caricature riding every beat — an expression change is a legitimate delta (swap the
+  `expression_ref`), and its STRENGTH tracks the beat's gravity.
+- **Co-stars share eye-line and height.** Two interacting characters face each other on one eye-line
+  unless the size difference or the disconnection IS the beat's argument (a deliberate size gag or a
+  cold shoulder) — never an accidental mismatch.
+- **Roles read at a glance.** Named cast wear their **pinned canonical outfits** (`registry.json`)
+  unless the shot deliberately authors a change; an unnamed role carries 1–2 unmistakable signifiers
+  (a king: crown + robe; a general: epaulettes) — a role the viewer must *deduce* is a staging failure.
+- **A character reveal is staged on the naming moment.** The first time a named character appears, the
+  shot lands on the VO line that NAMES them (the entrance anchors to the name), with a reveal staging
+  sized to the beat — a big reveal is dramatic (spotlight / low angle / arrival into a held scene), a
+  minor one a clean introduction — and the character wears its **canonical/default expression** unless the
+  beat authors otherwise (an entrance, not a reaction). A withheld character never appears before its
+  naming (disclosure order).
+- **Name recurring entities consistently across shots** ("MacGregor" in every prompt, not "the con-man"
+  in some) — downstream, `image-generation` derives the video's asset library by spotting recurrence in
+  these prompts.
+- Recurring cast/props/plates that already exist are in `registry/registry.json` — write shots that
+  reuse them where they fit; invent new entities freely where the story needs them (they'll be
+  materialized once at the image-gen pass).
+- **A recurring identifiable GROUP is a character, not a crowd.** A specific named band/duo/troupe that
+  reappears — its members must stay consistent shot to shot — is **cast** (a `cast` entry naming the
+  group, no `pose_ref`/`expression_ref`), so image-gen locks it once (canonical = the members together)
+4. **Cast it.** Every story-named or story-referenced figure — **including inside diegetic media** (a
+   brochure's prince who IS the story's con-man, a portrait, a poster) — routes through the channel
+   registry: name the registry asset in the prompt so `image-generation` seeds it. A role must read at
+   a glance (a king reads as a king via 1–2 signifiers); named cast wear their pinned canonical
+   outfits unless the shot deliberately authors a change. **A recurring identifiable GROUP** (a specific
+   named band/duo/troupe that reappears — its members must stay consistent) is cast too: ONE `cast` entry
+   naming the group, with no `pose_ref`/`expression_ref` (a group is not single-figure-posed; image-gen
+   **Recurring props are declared like cast.** A specific identifiable object that recurs across shots and
+   must look the SAME each time (the guidebook, a named banknote, a signed deed) is named in the shot's
+   **`props` array** (its library name). A recurring prop named in the prose but omitted from `props` is an
+   authoring gap, exactly like an uncast named figure. A one-off object (used in a single shot, no match
+   requirement) stays in the `still_prompt` prose only — no `props` entry, no slot.
+5. **Stage the tableau + act it — by SELECTING library assets, not describing them.** Mirror step 4's
+   casting: for each prominent figure, choose its **`pose_ref`** (the held body pose/gesture that carries the
+   action's meaning) and/or **`expression_ref`** (the face for this beat/register) **from the registry
+   vocabulary**, and record them on the shot's `cast` entry. These are SEEDED by `image-generation` (style-bible §5
+   one-run multi-seed) — so the pose/hands and the expression are the assets' job, **not** the `still_prompt`'s.
+   Scene-first ordering: the shot's meaning/scene drives which pose/expression fits, never the reverse.
+   `pose_ref`/`expression_ref` are each optional (a plain standing figure needs neither). A two-figure
+   interaction (a clasp) uses an **interaction** asset — the same kind of `pose_ref`, just one that shows two
+   figures — referenced by BOTH figures' `cast` entries. **The shot's `cast` ORDER binds the slots: the first
+   entry is the left figure, the second is the right** (image-gen seeds two identities into the template by
+   that order). If the registry lacks the interaction, surface it (below) as `kind: interaction`, no special path.
 
-**The literal / non-literal bar:**
-- **Symbolic stand-in, map, number/text-object, reaction, empty-world/aftermath, and hero-object are
-  first-class moves.** Draw what the beat means; literal re-enactment is one option for a concrete
-  physical action or object, never the automatic translation of narration.
-- Non-literal changes the depiction, not the scene's occupancy: symbolic, physicalized-imbalance and ironic-counterpoint shots remain full representative scenes, never the same scene with its people removed.
-- The calibration is `../example-shots.md`: match its depiction THINKING, never clone its content.
-- A shot that merely draws its line's words is a failure → reclassify it.
-- **The beat's true SUBJECT bears the frame — a person, an object, or a place.** Use people for
-  person, decision, relationship, action, or reaction beats; use an object, place, document, or
-  mechanism where that is the subject, and never add or remove people to hit a population target.
-  **A person-subject is satisfied by PERFORMANCE, not by population:** the body doing it stands where
-  the beat is, on the seeded tier (§2) — a rear-zone crowd behind an unmanned prop does not stage the
-  line, on a channel whose identity is "no on-screen narrator — the SCREEN is a CAST"
-  (`style-bible.md §1`). **A figureless run past ~10s is a self-audit flag** (SKILL step 3c), never a
-  lint failure: taste is the human's call and no rule will ever make it.
+## 2d. CROWD-RIG clause (verbatim — write INTO a crowd scene's prompt)
 
-**Chain logic:** one idea per FRAME. A chain exists only for a genuine progressive reveal: something
-visible changes at each cut and the story needs that change. Sharing a set is not enough; standalone
-cuts are normal. The `base` establishes the stage, each `delta` changes exactly ONE physically feasible,
-visually distinct semantic transformation, **≤2 deltas**, then a re-base or hard cut. A world, setting,
-subject, or register change is always a hard cut. **A delta PROMPT is a compact
-restatement of the held scene, then the change as its FINAL clause** — the base's identity and
-load-bearing facts carried over tightened, never re-invented or paraphrased into different nouns, closing
-on the one change plus "only this changes; everything else exactly as established". A delta regenerates
-the whole image, so whatever goes unstated gets re-invented, and the change stated last is read as the
-edit rather than as one more scene fact (§2 ordering law). **Disclosure order:** an image never shows
-what the VO has not yet said — a withheld entity is absent entirely from every earlier shot.
-**A figure's ENTRANCE is never a delta (lint-enforced, HARD).** A delta seeds [parent frame +
-canonical] only, so a figure absent from the parent has no pixels to inherit and its pose and
-expression are prose against an image that does not contain it — the strongest image input wins,
-every time. An entrance is a stage `base` (the figure's step-1 card is seeded, carrying pose AND
-expression) or it opens a new stage. Deltas are for a set that already holds the figure.
+> The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple
+> consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **same squat
+> head-to-body proportion as the crowd exemplar seed** — a large round head on a short compact body, NOT
+> taller/lanky — in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig —
+> do not give them individual detailed faces.
 
-**Feasibility gate:** the parent must actually reserve the space and state needed by its one delta; a place
-anchor is figure-free or already occupancy-compatible with later count/scale demands. Completion states say
-`all`, `entirely`, or what `nothing remains`; exact percentage scale, pixel-clear gaps, replacing one person,
-or removing/rearranging most of a seeded object rebase from the pre-transient ancestor or use the layered path.
+**The crowd rig differs from the full rig ONLY in the FACE** (dot eyes + one simple mouth vs the full
+detailed features) — **head-to-body proportion matches the crowd exemplar seed** (human-confirmed 2026-07-16:
+"the crowd rig should be the exact same proportions as our base rig — the face is different, of course").
+So proportion is a stated FACT in every crowd/base-rig delta (the words above carry it), and anonymous
+figures rendering **taller/lankier than the crowd exemplar seed** are the proven drift (they carry no seed to pin
+proportion) — a first-class review axis, §3.
 
-## 2. Staging conventions (our cast on screen)
+This clause governs the **anonymous** figures only. Unlike §2c (which `forge.py` auto-appends to every
+character-bearing gen), **§2d is authored by VPW into the `still_prompt`** of any shot with an anonymous
+crowd (the prompt the engine sees must carry these words) — it is not auto-appended, because most shots
+have no crowd. A foreground named character in the same shot still holds its FULL rig via its seed + the
+auto-appended §2c; §2d simplifies only the anonymous background.
 
-- **No on-screen narrator; the screen is a cast** (`style-bible.md §1`) that comes and goes.
-  **Institutions may be personified cast** with one identity tag, or represented by their iconic
-  landmark, building, letterhead, or product as the beat requires; reused consistently.
-- **Stage poses that HOLD** — every still is a tableau readable for its full duration, never a freeze
-  of mid-motion. Choose only from the live registry/library primitive catalog; a travel or continuous
-  action stages its meaning with the nearest available hold, or is elevated and blocked until a fitting
-  primitive is minted and approved.
-- **Reference cast, poses, and expressions by their registry vocabulary NAME, backticked, inline in
-  the prompt prose** — "MacGregor, `expr-smug`, `action-salute`, stage-left, facing right".
-  `image-generation` resolves each name to its file. **A cast name may be authored and minted at the
-  Pass-1 gate** — a backticked cast name absent from `registry.json` is an authoring gap
+**Crowd exemplar — the crowd's rig ANCHOR (human-gated 2026-07-16).** `refs/base/crowd-exemplar.png` —
+a human-approved crowd sample frame (5–6 anonymous figures on the EXACT squat base-rig proportion, dot
+eyes, one simple mouth, no noses/ears/teeth, varied era-appropriate dress) — is **SEEDED into EVERY
+crowd-bearing generation** as the crowd's proportion/face anchor. The §2d words above stay in the
+`still_prompt` (they carry the rig FACTS), but the **exemplar seed is what actually pins** proportion +
+face: a crowd carries no per-figure canonical, and prompt words alone let anonymous figures drift
+taller/lankier (the proven failure). This **supersedes** the earlier "author the §2d words, no seed"
+handling — a crowd is now prompt-authored (§2d) AND exemplar-seeded. It mechanizes Daniel's directive:
+don't generate figures that aren't based on the asset base rig, for the one tier that can't seed
+per-figure.
+
+
+Every depicted crowd figure must satisfy the crowd-exemplar comparator; latent figure-class content cannot silently pass.
+
+**Story bearer.** Every story-bearing individual is seeded named cast. Only a genuine rearward mass beat uses the simplified crowd rig.
+
   `image-generation` surfaces there for approval. **Pose, interaction, expression, and costume are
   CLOSED-WORLD:** the primitive must ALREADY exist in `registry.json` or the video's approved library,
   and the figure keeps its pinned costume. Conform the sentence to the closest entry. If none is near,
   write no invented token or prose pose; emit the VPW elevation flag and block the shot until the reusable
   primitive is minted, approved, and registered.
-  A named asset is the authoring act, and the prompt may not narrate what the seed already carries — no
-  eyelid, brow, nose, ear, finger, palm, or proportion prose next to a named pose or expression. Prose
-  competing with a seed is how one figure's attributes bleed onto another. **This is a rule about
-  SEEDED figures only:** a crowd-rig figure names no asset and carries no seeded pose or expression, so
-  its expression and attitude are authored in plain prose (below).
-- **Props follow the same rule ONLY once they exist.** A prop that recurs across the video and already
-  has a library entry is named by that entry (`registry.json` `assets[]` takes a `kind: "prop"` row like
-  any other vocabulary). A prop making its FIRST appearance has no name to use: describe it in prose,
-  concretely and identically on every shot that carries it, and `image-generation`'s Pass 1 mints its
-  canonical from that description at the pre-gen gate. Inventing a plausible-looking backticked slug for
-  an unbuilt prop is the failure — it resolves to nothing.
-- **Emotion acts through mouth and body, restrained by default:** the beat's lead gets a legible
-  expression sized to its register, secondary characters hold one, posture carries the rest. Register
-  dial (`../storytelling-grammar.md §1.4`): `expr-smug` on con/boast beats · `expr-delighted` on the sell
-  · `expr-deadpan` on ironic counterpoint · `expr-worried` on the turn. Reserve strong faces for beats
-  that warrant them; an expression change earns a delta only when it visibly advances the story.
-- **Co-stars share eye-line and height** unless the size gap or the disconnection IS the argument. A named face
-  that carries the beat states its orientation and the foreground/occlusion protection that keeps it visible.
-- **Roles read at a glance.** Named cast wear pinned canonical outfits (`registry.json`) unless the
-  shot authors a change; an unnamed role carries 1–2 unmistakable signifiers — a role the viewer must
-  deduce is a staging failure.
-- **A character reveal lands on the naming moment** — the entrance anchors to the VO line that names
-  them, staged sized to the beat (a big reveal: spotlight / low angle / scale / arrival into a held scene; a minor
-  one: a clean introduction), in its canonical expression unless the beat authors otherwise.
-  **Where the naming line is also a branded place's establishing beat**, the plate law and this one
-  want the same frame. The resolution: the plate is the place's first CAST-FREE frame, the reveal is
-  the place's first CAST-BEARING frame, and disclosure order decides which comes first. Both can land
-  on the naming beat if it is authored as two cuts — plate, then reveal — rather than one long hold.
-  Worked example: SKILL step 3a.
-- **A plate is the set MID-WORK, and a place that carries a long run declares VARIANTS of it.**
-  Cast-free means zero SEEDED FIGURES — the property that makes a plate reusable — and never zero
-  content: the plate is the frame every other shot in the place inherits, so an empty one makes the
-  whole place empty. Author it as the set doing its job — stock on the shelving, machines and
-  materials through the mid and background, depth filled edge-to-edge — **at the scale the script
-  implies** (a factory floor reads as a floor, not one small room). Two-sided: **NOT a cavernous
-  empty hangar and NOT a cluttered prop-shop** — the same "layered depth, filled edge-to-edge, name
-  concrete elements, not categories" bar `visual-prompt-writer` SKILL step 2.4 already sets for
-  scenes, applied to the plate. Diegetic lettering on a plate states its INK when it is authored
-  (§5's `#241a12` marker hand): an unstated ink is picked by the renderer, and the sign a whole
-  place seeds is the worst frame to leave to it. **A place carrying more than ~5 shots declares 2-3
-  plate VARIANTS** — a different vantage or zone of the SAME set, one `place` id, each variant
-  seeded from the first plate so the set stays one place, with `place_anchor` selecting which
-  variant a shot seeds. Two-sided again: no single backdrop image anchors more than **roughly a
-  third** of a place's run, and **NOT one bespoke environment per shot** — that deletes set
-  continuity, multiplies plate cost, and is the seedless-root failure under another name. Variants
-  are ordinary gated frames: each carries its own review ruling before its pixels seed anything
-  (`image-generation` Pass 1). None of this reaches a shot that declares no `place` —
-  symbolic/abstract/standalone object-insert classes, a short's `first_frame` and the thumbnail
-  stay place-exempt, and many shots should not be using plates at all.
-- **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
-  member acting alone is staged as an individual.
-- **Every human in frame is either NAMED CAST or CROWD — no third tier.** NAMED CAST
-  has a backticked slug and a canonical, and it is seeded; CROWD is declared `"crowd": true`
-  (`shots-schema.md §2`) and seeded from the crowd exemplar.
-  **One seeded figure is the default, cheap way to stage a human beat.** A story-bearing individual must
-  not be replaced with an empty object or demoted to rear-zone crowd to avoid a figure — promote it to
-  cast. Crowd is the exception, chosen only when the visible mass is the story point — the
-  demotion is the measured way a joke becomes wallpaper
-  (`videos/2026-07-28-bricks-fresh/scratchpad/authoring-audit.md` §1: 19 of 26 idiom-puns staged their
-  story-bearer as background crowd).
-  An anonymous foreground human does not exist; an anonymous person with an individual action or face
-  requirement is CAST. **An anonymous story-bearer is PLANNED as a
-  NEW named cast member and minted through the standard cast-generation waves — the same canonical and
-  seeding rounds every other cast member runs, no shortcut mint — resolved instead to an EXISTING cast
-  member where the story says it IS one.** That plan is made at
-  authoring time, at the cast-planning step (`visual-prompt-writer` SKILL step 3a), not improvised at
-  gen time: `forge.py`'s `shot_cast` never resolves the bare `` `base` `` rig as a figure, and
-  `seeding_law_violations` refuses a shot that casts it, by name. Named cast spends a foreground slot
-  against the ≤2 cap below.
-  **When a beat's argument is scale, the background plane carries its own activity: one deep scene
-  with people at more than one distance, never a single populated plane against scenery.**
-  An anonymous crowd belongs in a positive rear zone in the PRIMARY scene clause and must read
-  **SMALLER through intervening depth and overlap**; a pane/divider label alone is not distance.
-  The prose still stages crowd figures — where they
-  stand, what they do, what they wear, dressed for the scene's own era and setting, never the exemplar's
-  period dress, **and the simple beat-fit expression and group attitude they hold** ("grinning",
-  "worried", "deadpan"); that prose is a crowd's only expression channel, and an unauthored crowd renders
-  uniformly neutral. The RIG wording is `forge.py`'s: it expands the `crowd` declaration into the
-  style-bible §2d clause at gen time. **Never write that clause text into a `still_prompt`** (lint
-  HARD-fails its fingerprint): the reference frames already carry the rig, ~600–1,100 chars of
-  boilerplate per shot pushes the prompt into measured adherence decay, and generic figure wording
-  sitting ahead of a named character is what bleeds one figure's attributes onto another.
 
-  **Scope law: two-step seeding applies to named-cast FRESH stage-base gens only.** Crowd has no
-  canonical, so isolating a step-1 gen buys it nothing — crowd, environment, and prop shots stay
-  single-step (crowd exemplar + plate + prose), and delta beats stay single-step too, unchanged.
-  Combined with this tier law and the ≤2-cast cap below, no other shot shape exists that a step-1
-  figure applies to.
-- **The cast cap — at most 2 named cast per shot**, with the slate stated so the cost is visible
-  rather than argued:
+## 3. Composition / camera / scale
 
-  | Shot shape | STEP 2's slots (step 1 already ran per figure) | What it gives up |
-  | --- | --- | --- |
-  | 1 cast, fresh | step-1 figure · **plate** | nothing — 2 slots free |
-  | 1 cast + crowd, fresh | step-1 figure · plate · crowd exemplar | nothing |
-  | **2 cast, fresh** | step-1 figure A · step-1 figure B · **plate** | nothing — 1 slot still free |
-  | **2 cast + interaction, fresh** | step-1 figure A · step-1 figure B · **interaction template** · plate | nothing — the free slot buys the contact geometry |
-  | 2 cast + crowd, fresh | step-1 figure A · step-1 figure B · plate · crowd exemplar | nothing |
-  | 2 cast, delta beat | parent frame · canonical A · canonical B · one changed pose *or* expression | nothing — unchanged, single-step, exactly as today |
+A shot's **framing, scale, and angle are a choice** — driven by the one thing the viewer must see (the
+payload) and the shot's class (each `universal.md §13a` class already *suggests* its composition). Left
+unchosen, composition defaults to a centered, eye-level, same-size medium shot — fine once, deadly on
+repeat. **So decide it, and vary it across the video:**
 
-  A fresh two-cast shot that begins a genuine progressive reveal is its stage BASE; later beats are
-  deltas only while the visible story change continues. Crowd-rig figures are a mass, not identities,
-  and don't count against the cap.
-- **An `interaction` slug is a TWO-FIGURE geometry reference, never one figure's pose.** The asset is
-  two blank mannequins carrying the clasp geometry and eye-line; it resolves the contact BETWEEN two
-  bodies and binds to neither alone. So `handshake` / `handoff` / `fistbump` are
-  authored ONLY on a fresh two-cast **stage base**, where forge seeds the template scene-level
-  alongside both figures' step-1 cards (row above). On a solo shot or a delta beat there is no legal
-  slate for one: stage the gesture in prose — within what each figure's seeded primitive can hold —
-  and drop the slug, or move the contact to the base. Bound
-  to a single character it mints a solo reference card that says "the character alone" while carrying
-  a two-person clasp — a hand extended into empty air, an amputated forearm, or a second body fused
-  into the identity card. Lint and forge both refuse it.
-- **Prompt ordering — three zones, in this order.** (1) **Identity first:** the named cast,
-  their backticked registry names, and any pinned trait the shot depends on. (2) **Scene second:** setting,
-  staging, framing, palette, light, depth. (3) **Payload LAST, as the final clause:** the quoted lettering,
-  or on a delta the one change (§1 chain logic). The generator weights earliest mentions heaviest for
-  identity and reads the closing instruction most literally, so leading with boilerplate costs identity
-  and burying the payload mid-prompt costs the payload.
-  **Lint-enforced, HARD, on the lettering half:** a non-delta shot carrying a quoted literal ends on
-  that literal's clause. Any trailing scene-fact clause after the payload breaks it — state scene facts
-  BEFORE the lettered element, never after. A literal the shot merely carries
-  under L-1 (a place's owner sign, redrawn) is not that shot's payload and is exempt.
-  **What "LAST" governs OFF the lettering half (adjudicated 2026-08-13).** For an UNLETTERED payload —
-  a staged relation, a punch object — the rule governs the payload's **PROMINENCE, not its literal
-  sentence position**: the payload is stated as its own clause and is never buried mid-prompt behind
-  boilerplate. **A terminal depth/atmosphere clause is a LEGAL close** ("foreground depth from a
-  cropped bench end at the lower-right"): it is a framing fact the generator reads as composition
-  rather than as the shot's instruction, and it is the house template carried by every
-  human-approved frame this channel has shipped. The shape to hunt is therefore a trailing clause
-  that RE-OPENS THE SCENE after the payload — a fresh setting sentence, a new prop inventory, a
-  second staging idea — never the standing depth/palette/light tail. **The lettering half above is
-  unchanged and stays the exception:** a quoted literal still closes its prompt, and lint still
-  HARD-fails a non-delta lettered shot that does not.
+- **Scale / character-sizing** — subjects aren't always the same size or at eye level. A tiny figure
+  under a dominant labelled mass (scale as argument), a face filling the frame (a reaction), one figure
+  dwarfing another (power). Reach for size *relationships*, not a lineup of equals.
+- **Angle / distance** — top-down for a map or plan, low for dominance, an extreme close-up on a face or
+  a detail, a wide with air for a single graphic idea. Reach past the eye-level medium.
+- **No hand / extremity close-ups — framing stays at body scale.** The rig's schematic 4-digit hands do
+  not survive macro framing (a hand close-up reads as a rig-break); if a document, signature, or object
+  detail matters, show it at **desk / body scale** with the hand incidental, never as a hand macro.
+- **Literal vs symbolic** — non-literal is the default (`§13a`): draw what the beat *means*, not the
+  sentence. A promotion is insignia arriving on the coat, or the man small before an army — not "a man
+  standing in a field."
 
-## 3. Composition — a decision, driven by the payload
+The class carries a *range* (`§13a`: a staged-interaction can be a handshake, a tug-of-war, an object
+passed hand-to-hand, one figure looming; a physicalized-imbalance is relative size) — **pick the move the
+beat argues; don't reduce a class to one framing, and don't collapse it to a centered default.** A plain
+centered shot is valid when a beat genuinely wants it; the goal is **variety across the video**, not a
+rule per shot.
 
-Framing, scale, and vantage are a choice driven by the one thing the viewer must see (the payload) and
-the shot's class. Eye-level frontal is the house REST position, not a lock: unchosen, a shot defaults to
-a centered eye-level medium — fine once, deadly on repeat.
-- **Scale / character-sizing** — reach for size relationships, not a lineup of equals: a tiny figure
-  under a dominant labelled mass, a face filling the frame, one figure dwarfing another.
-- **Angle / distance** — reach past the eye-level medium: top-down for a map/plan, low for dominance,
-  an extreme close-up on a face or detail, a wide with air for a single graphic idea.
-- **A standalone prop keeps its full silhouette + air unless the crop itself is the payload.**
-- **No hand/extremity close-ups — framing stays at body scale.** The rig's schematic 4-digit hands do
-  not survive macro framing; show a document/signature/object detail at desk scale, the hand incidental.
+**Negative space follows the payload:** air for a single graphic idea (our signature) — but where the
+payload is *detail inside an artifact* (a brochure's contents, a map's territory, a seal), the artifact
+fills the frame. Everything in frame earns its place by meaning, palette code, or staging; unmotivated
+set dressing is a defect, not texture.
 
-A plain centered shot is valid when a beat wants it; the goal is variety across the video, not a rule
-per shot. **Negative space follows the payload:** air for a single graphic idea; where the payload is
-detail inside an artifact (a brochure's contents, a map's territory, a seal), the artifact fills the
-frame. Everything in frame earns its place by meaning, palette code, or staging.
 
-## 4. Lever / register — how our thesis bends each class
+## 4. Motion direction
 
-- **Ironic-counterpoint / unmasking is our SIGNATURE move, not a garnish** — the visual arm of the
-  vindication lever ("you were lied to — here's the mechanism"). When the narrator reports the spin
-  (the prospectus's promise, the official line), the image should expose it: reach for this class
-  whenever a beat carries a lie, a boast, or a euphemism.
-- **Register scales with topic gravity** (`../storytelling-grammar.md §1.4`) — visually, adopt the
-  punchline/aside and idiom-pun classes' timing, reaction shots, deadpan-object payoffs, visual puns.
-- **Money stories, not finance explainers.** Default to the abstract-force and relationship classes
-  (personify the players, stage the deal). Pure-explainer devices (meters, definition cards, bar-chart
-  infographics) are baked diegetic scene elements, flavor only — the exception, never the house style.
+The measured grammar (camera law, entrance vocabulary, transition law, number-selling recipe, audio
+grammar, the beat-type → treatment table) is **binding law in `universal.md §13a-iii`** — this section
+only sets The Second Take's dials on it. Evidence: `research/motion-logs/` (2026-07-08 teardown).
 
-## 5. Motion direction — our dial
+- **We run STORY mode**, not explainer mode: median hold target 3–5s, whip-pan reserved for dialogue
+  ping-pong and list montages; SFX-dense audio (story dial) when the audio layer lands. (The camera dial
+  is the next bullet.)
+- **Fixed POV is the house camera [user-directed 2026-07-08]:** no wandering pans/zooms — the camera is
+  furniture (`universal.md §13a-iii.1`). The universal ceiling is an overt move on **only ~10–20% of
+  shots** (peak or motivated beats: an intro, a vista, a gravity beat), everything else on a sub-visible
+  micro-drift floor, diegetic cards/artifacts held dead-static. **Our dial sits at the strict end of that ceiling: the engine
+  derives NO camera move at all** (`build_motion.py` calls `locked_camera()` unconditionally, with a
+  `camera_moving` regression counter), so an overt move can only ever be deliberately authored. **A
+  render where most or all shots push in or drift is a BUG, not a look:** a cut that moved the camera on
+  18 of 18 shots (~5× the ceiling) was flagged on sight as "floating and zooming randomly." If a majority
+  of shots move, fix the camera derivation or the authored camera intent — never ship it as a style.
+- **Motion + audio treatment:** every shot hard-cuts (the camera dial is above); the sound is authored
+  separately by the `audio-director`. `visual-prompt-writer` authors no
+  treatment field — the old beat-type enum + the `ken_burns`/`within_shot_motion` fields are all deleted.
 
-- **Locked camera** — no authored moves except deliberate exceptions. **Hard cuts only**, no transitions.
-- **No long-form word-captions** — text is diegetic; shorts keep word-highlight captions.
-- **Red is the only emphasis ink**, semantic (alarm / prohibition / ownership / the last punch element).
-- **Numbers live in-world** — a baked diegetic object, or a progressive chain when the accumulation is
-  itself the story reveal; never floating text.
+## 5. How this feeds the pipeline
 
-Full grammar + dial values: `universal.md §13a-iii` + `motion-tokens.json` / `audio-tokens.json`.
+- **`visual-prompt-writer`** runs the universal grammar (`§13a`) as its classify → pick-class → invent
+  step, enforces the literal-check + anti-slop guardrail, authors each shot as a **held tableau with
+  stated facts** (`still_prompt`; cadence per `§13a-ii`), and
+  stages per this doc — pulling the existing-asset vocabulary from `registry/registry.json` and the
+  recipe (house style; `global_prompt_suffix` is empty/absent) from `style-bible.md §6`. Its fresh-eyes shot
+  critic checks the plan against this doc's staging law before any generation.
+- **`long-form-writer` / `shorts-writer`** feed it upstream: cue the beat's **meaning**, not a literal
+  picture; report claims/spin (so the visual can unmask them — the vindication lever); reach for vivid
+  idioms (so the visual can draw the pun).
+- **`image-generation`** runs AFTER `shots.json` exists: pass 1 derives the video's asset library from
+  the shots (recurring entities materialized once), pass 2 assembles every scene from it — all under
+  `style-bible.md`'s law.
 
-## 6. Policy constraints (binding on every prompt)
-
-- **No defamatory depiction of a real named person** — stage the documented mechanism, never an invented humiliation.
-- **Analysis, not gore** — a grim beat renders as aftermath / witness / stylized-safe + a palette turn.
-- **Evergreen references only** — no memes, wojaks, anime cutaways, or dated internet imagery.
+**Validation status:** the grammar is not yet proven on a finished video — next test is the Poyais
+image-generation dogfood: confirm the shots read non-literal, on-lever (ironic-counterpoint), on-rig,
+and as choreographed slates (no static 8s holds, no stretch-to-fill).

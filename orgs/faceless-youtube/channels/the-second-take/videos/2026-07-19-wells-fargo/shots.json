@@ -25,7 +25,7 @@
       "shorts": "9:16"
     }
   },
-  "global_prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft cel shading and genuine fore/mid/background depth (never flat or empty), rounded friendly shapes, no realistic detail; built-but-flat environment filled edge-to-edge; any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "global_prompt_suffix": "",
   "long_form": {
     "aspect_ratio": "16:9",
     "shots": [

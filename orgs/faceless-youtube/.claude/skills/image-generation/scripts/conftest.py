@@ -133,7 +133,7 @@ def stamp_all_pass(staging_dir, kit, *targets, reviewer="fixture", date="2026-08
             figures[forge.store_key(frame, kit)] = {
                 "canonical_sha256": forge.frame_digest(frame),
                 "expression_sha256": None,
-                "verdicts": {"rig": verdict, "flat-cel-hazard": verdict},
+                "verdicts": {"texture-strip": verdict},
                 "reviewer": reviewer,
                 "date": date,
             }

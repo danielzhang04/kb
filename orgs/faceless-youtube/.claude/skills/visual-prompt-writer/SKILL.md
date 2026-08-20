@@ -1,300 +1,267 @@
 ---
 name: visual-prompt-writer
-description: Writes a scripted video's complete visual plan as videos/SLUG/shots.json — reads the pure-prose script.md and derives the full shot list itself. Covers the long-form still and B-roll shot list, retention cadence, thumbnail generation prompts, and scripted-short visuals. Use for visual prompts, shot lists, storyboards, on-screen choices, B-roll, thumbnail prompts, or image-generation prompts in any niche. Runs after script and metadata work and before voiceover, image generation, and rendering. Do not use it to write scripts, choose titles or tags, generate pixels, or assemble video.
+description: >-
+  Writes the complete visual plan for a scripted video in this project — the long-form B-roll shot
+  list (a still-frame plan + motion-intent metadata, densified to the retention cadence), the
+  thumbnail generation prompts (turning metadata's thumbnail CONCEPT into actual pixel-gen prompts),
+  and every scripted short's visual prompts — emitted as one videos/<slug>/shots.json that feeds
+  image-generation (the stills), render-builder (the Remotion motion engine), and publish-queue (the
+  thumbnail). Use this whenever the user wants visual prompts, a shot list, a storyboard, "what to
+  show on screen", B-roll, image generation prompts, a thumbnail prompt, scene visuals, or wants to
+  "do the visuals"/"build the shot list"/"prompt the images" for a video or short — for ANY niche.
+  Runs AFTER long-form-writer + shorts-writer + metadata-writer and BEFORE voiceover /
+  image-generation / render-builder. Reads script.md ([B-ROLL] cues) + metadata.json (thumbnail
+  concepts) + shorts/*.md + dna.md + the universal & niche playbooks. Do NOT use it to write the
+  script (long-form-writer / shorts-writer), pick titles/tags (metadata-writer), or generate/assemble
+  the actual pixels (image-generation / render-builder / voiceover).
 ---
 
 # visual-prompt-writer
 
 Turn ONE scripted video into a **complete, render-ready visual plan** — the long-form shot list, the
-thumbnail generation prompts, and every scripted short's visuals. One skill for every channel; the niche
-is **data** in `channels/<name>/`, never forked into code.
+thumbnail generation prompts, and every scripted short's visuals — for one faceless-YouTube channel.
+One skill for every channel; the niche is **data** in `channels/<name>/`, never forked into code.
 
 ## Mental model
 
-You are the bridge between words and pixels. `script.md` is **pure prose** — no `[B-ROLL]` cues, no
-`[PAUSE]` tags — so you derive the ENTIRE shot list yourself, line by line, against the channel's
-depiction grammar. Each shot is ONE still the engine holds for its duration, with any in-video text
-**baked diegetically into the image**; `image-generation` turns the prompts into verified stills and the
-Remotion engine plays them.
+`long-form-writer` decided *what is said* and left `[B-ROLL]` cues where a visual should land.
+`metadata-writer` decided *how the video is found and clicked* and left thumbnail **concepts** —
+deliberately stopping short of pixels. You are the bridge between words and pixels: you write the
+**still-frame plan plus intent metadata** that the downstream pipeline realizes — `image-generation`
+produces each shot's verified still; the local **Remotion engine** (render-builder's default) turns
+the plan into motion.
 
-**Author intent, never mechanism.** The camera is locked, transitions are hard cuts, and every change
-arrives AT a cut. Never write easing, camera moves, seeding instructions, or audio choices — the engine,
-`motion-planner`, and `audio-director` own those. A shot whose meaning depends on unauthorable mechanism
-is broken output: restage it.
+**Know what the engine can actually do — and author only that.** What renders per shot today: the
+verified still — **with any in-video text baked into the image** (diegetic stamps, signs, ledgers,
+banners) — a camera that is **always locked** (no derived moves), an idle micro-motion baseline,
+animated cutout **layers** (a matted element that slides / paths / appears / bobs, or a route the engine
+draws on — planned downstream by `motion-planner`, not authored here), and burned word-highlight
+captions on shorts. There are **no engine text overlays and no device kit** — both are retired; all
+on-screen text is diegetic, designed into the generated image. A stage delta = the next still simply
+*has* the new element (the change arrives **AT the cut**). You author **intent, never mechanism**: what a
+beat wants and on which word — never easing names, amplitudes, spring values, or camera treatments. A
+shot whose meaning *depends* on mechanism you can't author is broken output; restage it as a tableau, a
+delta chain, or a baked-text beat.
+
+Your output is a machine contract, so **five fundamentals** make each still a valid unit (distinct from
+— and feeding — the **seven authoring laws** named canonically under *Load-bearing rules*, which the
+Step 8 critic reviews):
+
+1. **Every still is a HELD TABLEAU.** It must read as a deliberate composition when frozen for its
+   full duration — the pose vocabulary is held poses that carry action meaning (a salute, a planted
+   stance, presenting a deed, a held point); a freeze of continuous motion (mid-stride, mid-shuffle,
+   mid-sweep) is broken output. The beat's change arrives at a cut or via motion intent — never baked
+   into the pose.
+2. **Retention-engineered, not decorative.** Visuals are a primary retention lever (§6a), not
+   illustration. You *densify* past the script's cues to hit the §10 cadence (new cut every 3–8s, new
+   stimulus every 30–45s) and front-load the first 60s. A "visual question" precedes the narration
+   (§1b tactic 6) — the first frame must make the viewer *need* the answer.
+3. **On the house style, every frame.** §13: a locked visual signature is a **monetization
+   prerequisite**, not a style choice — templated stock B-roll is a policy trigger (the July-2025
+   inauthentic-content rule). Every prompt inherits the channel's `dna.md` house style so the whole
+   video looks like one author made it.
 
 ## Step 0 — Identify channel + video
-**Channel** from the request → `channels/<name>/`. **Video:** the scripted one — a `videos/<slug>/`
-folder with a `script.md`. Given a slug use it; several scripted with no `shots.json` → do the one
-named, the most recently scripted, or ask. **No `script.md` → stop** and say the video must be scripted.
-
-**SCOPED-REPAIR mode:** request names specific shot ids AND `shots.json` already exists → read the
-file and re-author ONLY those shots, everything else staying byte-identical. Every step below
-(1–8, including the per-act self-audit) scopes to the touched shots — apply the full current law,
-reusing the cast list already declared in `vpw-log.md` (never re-declare), then
-write back in place. The target list arrives from the caller (board verdict, forge violation list);
-VPW never picks its own targets. **Absent named targets, author the full list as below** — the
-default; scoped-repair is opt-in.
-
-**Process law — re-author, never substitute.** A repair round re-authors each touched shot fresh from its
-own `vo_ref`'d VO line. **Bulk vocabulary substitution is banned** — a mass find/replace across many
-shots' prose (a generic→named swap, a wholesale term change) is not authoring; it is the mechanism that
-produced a wrong-cast wave last time. One shot's fix touches that shot's prose, derived from that shot's
-own VO span, never copied across siblings.
+1. **Channel** from the request → `channels/<name>/`.
+2. **Which video?** The scripted one: a `videos/<slug>/` folder with a `script.md`. Given a slug/ID,
+   use it. Several scripted with no `shots.json` → do the one named, or the most recently scripted, or
+   ask. **No `script.md` → stop** and tell the user to script the video first (there is nothing to
+   visualize without a script — the `[B-ROLL]` cues are your spine).
 
 ## Step 1 — Read (always)
-- **`script.md`** — the source of truth; every VO line, in order, is the shot list's spine.
-- **`visual-kit/visual-grammar.md`** — the channel depiction law: the narration→shot-class table, the
-  literal/non-literal bar, chain logic, staging, composition, `global_prompt_suffix`, policy.
-- **`example-shots.md`** — the depiction bar (script line → ideal shot). Match the thinking, never clone.
-- **`dna.md`** visual block — the visual-kit pointer + the channel's imagery policy constraints.
-- **`visual-kit/registry/registry.json`** — the live cast/pose/expression/prop vocabulary you name inline.
-- **`references/shots-schema.md`** — the v2 contract; follow it exactly.
-- **`research.md`** (when present) — the fact ledger every on-screen literal must be quoted from.
-- **`shorts/short-NN.md`** — each short's archetype, caption text, and `publish`|`bench` status.
+- **`videos/<slug>/script.md`** — the source of truth. The inline **`[B-ROLL: …]`** cues are your
+  base shot list; the VO text tells you *what each shot must depict and when* (so a shot lands on the
+  line it illustrates); the beat structure (hook → second gate → body → mid-arm → withheld peak →
+  close) tells you where to escalate visual intensity. Any `[PAUSE]` marks a beat a visual reveal can
+  land on.
+- **`videos/<slug>/metadata.json`** — the `long_form.thumbnail` block (primary + 2 challenger
+  **concepts**: text overlay + visual concept) and each short's block. You turn these concepts into
+  pixel-gen prompts — **do not re-invent the concept**, honor what metadata-writer committed (the
+  title/thumbnail are one asset). Also read `shorts[]` for the archetype/status of each short.
+  *If `metadata.json` is missing* (skill run out of order), derive thumbnail concepts from `script.md`
+  + `brief.md` yourself and flag `thumbnail_source: "derived-from-script (metadata.json absent — reconcile)"`.
+  **`thumbnail_source` lives inside the `thumbnail` block only** (see the schema) — do not also write it
+  at the top level.
+- **`videos/<slug>/shorts/short-NN.md`** — each short's `[B-ROLL]` cues (weighted to the first 3s),
+  archetype, caption/on-screen text, and `publish`|`bench` status. Write visuals for **every** short
+  (the library stays ready); carry the status.
+- **`channels/<name>/dna.md`** — the **locked house style** (Voice & style → *Visual style*: palette,
+  footage type, motion vs stills; Branding → *Thumbnail style*), the **locked emotional lever**, and
+  audience/region. This governs every prompt; §13 says it is the monetization moat.
+- **`knowledge/research/niche-playbooks/universal.md`** — read every run. Load-bearing here: **§1b**
+  (tactic 6: visual anchor before context; first frame is a visual question), **§6a** (visual pattern
+  interrupt every 30–45s; match-cut callbacks), **§8** (2026 thumbnail rules — the thumbnail spec),
+  **§10** (cut/stimulus cadence), **§12** (anti-pattern 8: no static ambient B-roll in the first 3–5s;
+  anti-pattern 2: no logo splash), **§13** (lock one house style; where AI is visually weak → hybrid),
+  and **§13a — the visual-narration grammar** (the narration-type → shot-class table = Step 2.5's
+  decision procedure; §13a-i within-shot choreography, authored here as *intent* — the still itself
+  stays a held tableau per this file's law; **§13a-ii cut cadence** = the stretch-to-fill kill rule —
+  BINDING, read every run).
+- **`channels/<name>/visual-kit/visual-grammar.md`** (if the channel has one) — the channel's
+  **staging law**: staging conventions (who's on screen, how emotion is acted — the tableau pose menu,
+  eye-line rule, expression-by-beat register mapping, role legibility), the payload-driven composition
+  guidance (§2), and the lever/register translation that maps each shot-class onto *this channel's* locked
+  style/lever/humor. Read it when present; it overrides the generic §13a for channel specifics but
+  does not replace §13a-ii's binding pacing law. Alongside it read
+  **`visual-kit/registry/registry.json`** — the live index of the channel's existing cast/props/plates
+  (write shots that reuse them where they fit) — and pull the house-style ingredients from
+  **`visual-kit/style-bible.md §6`** (the committed recipe) when the channel has one.
+- **`knowledge/research/niche-playbooks/<niche>.md`** — match from `dna.md`'s niche. Its visual
+  conventions, signature format, and any **policy quirk** that constrains imagery (engineering
+  disasters: **analysis-not-gore** — diagrams/annotated stills, never rendered casualties;
+  horror/internet-lore: suggestion over depiction; micro-health: clinical/no body-horror; business:
+  no defamatory depiction of real people).
+- **`knowledge/playbook.md`** — policy: originality (no cloning a specific rival's frames/format),
+  AI-synthetic disclosure, YMYL labeling.
+- **`.claude/skills/visual-prompt-writer/references/shots-schema.md`** (in this skill) — the exact
+  `shots.json` structure, the field → engine mapping, the **source-tag taxonomy**, and prompt-writing
+  patterns. **Follow it exactly** so downstream maps 1:1 with no interpretation.
+- `channels/<name>/performance.md` (if it has data) — reuse visual shapes / thumbnail styles that have
+  proven retention/CTR for *this* channel; drop ones that flopped.
 
-**Fresh authoring never reads an archived/quarantined prior `shots.json`.** `script.md` alone is the
-source of the shot list; only SCOPED-REPAIR reads a file, and only the CURRENT one. Reading a discarded
-file re-admits its drift by copy — the same mechanism that produced the bulk-substitution regression.
 
-## Step 2 — Decide what each line depicts (run per VO line)
-1. **Classify → pick a class** from the grammar's narration→shot-class table; record it as `shot_class`.
-2. **INVENT the shot** against the example-shots bar. Reach first for the restored non-literal moves:
-   symbolic stand-in, map/plan, number-or-text object, reaction, empty-world/aftermath, or hero-object.
-   Literal re-enactment is one option, reserved for a concrete physical action or object. A shot that
-   merely draws its line's words fails → reclassify.
-   **The beat's true subject bears the frame** — a person, an object, or a place: where the subject is a
-   person, a party, a decision, or an act, the bodies doing it are what stages it; where it is genuinely a
-   thing, place, or mechanism, that is. Non-literal changes the DEPICTION, never the scene's occupancy:
-   "the people selling picks and shovels" staged as an unattended stall has deleted the line's subject.
-   Full law + the >~10s self-audit flag: `visual-grammar.md §1`.
-3. **Reference figures, poses, and expressions by registry vocabulary NAME, backticked, inline** in the
-   prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). **On a
-   registry-backed (named cast) figure, never describe body pose, finger mechanics, or facial
-   expression in words** — that figure's seed carries them, and naming the asset IS the authoring act.
-   Pose, expression, interaction, and costume are CLOSED-WORLD: the named primitive must already resolve
-   in `registry.json` or the video's approved library manifest, and a figure keeps its registry-pinned
-   costume. Snap the sentence to the nearest primitive. If none is close, name no invented token or prose
-   pose; put `ELEVATION — primitive needed: <act>; BLOCKED until minted + approved` in `notes`. A new named
-   CAST member still follows the standard cast-generation wave without a separate human slot (G2,
-   2026-08-12) and is planned at Step 3a.
-   **COMPOSE the figure's sentence FROM that vocabulary.** The bodily act a sentence gives a figure IS the
-   primitive bound to it, written around the backticked name ("stands `action-powerstance`, `expr-smug`, at
-   the head of an assembly line"), never a second act the seed cannot hold. The card is minted holding the
-   act its sentence authors (`forge.py`), so prose that asks for a different one re-poses a stance card —
-   which redraws the hands, and with them the head that sits on the body. **Naming the primitive never
-   REPLACES the act:** the sentence still says what the body is DOING, phrased inside that primitive's own
-   vocabulary ("`hold-both-hands`, carrying a cardboard box of desk things") — a clause that names the pose
-   and describes no act mints the card against the pose REFERENCE alone, and the pose does not land.
-   **Conform the sentence to the CLOSEST existing primitive.** A beat no primitive can carry is the
-   blocked elevation above; the primitive is minted and approved before the shot can be authored.
-   **A crowd-rig figure has no seeded pose or expression, so plain scene prose is its ONLY expression
-   channel** — write the beat's simple expression ("grinning", "worried", "deadpan") and the group's
-   whole-body attitude, exactly as any other scene fact. An unauthored crowd renders uniformly neutral,
-   which is how a comic beat arrives dead.
-   **An `interaction` slug is two-figure geometry, not a pose:** author it only on a fresh two-figure stage
-   BASE, never on a solo shot and never on a delta (`visual-grammar.md §2` figure-cap table; lint and forge
-   both HARD-refuse the other shapes).
-   **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** Stage its distance against
-   the single crowd-distance law in `visual-grammar.md` §2. **Crowd is for genuine MASSES.**
-   **One seeded figure is the default, cheap staging for a human beat.** An anonymous individual who
-   performs, reacts, or decides is promoted to CAST — existing where the story identifies one, otherwise
-   a new named member from the standard cast wave — never the bare `` `base` `` rig. Crowd is the
-   exception, chosen only when the visible mass itself is the story point. Tier law: `visual-grammar.md §2`.
-   The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
-   gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
-   high-risk case in `notes`. Field spec: `shots-schema.md §2`.
+## Canonical rule homes
 
-   **Seed-cap displacement (plan at authoring time, not at forge's dry-run):** over `SEED_CAP` (4), forge
-   drops ONE seed at a time in priority order — never all at once, never past what the overage requires —
-   and records each drop rather than erroring: (1) the crowd exemplar, when the place plate OR the
-   in-chain parent frame carries the rear-zone mass (either already holds that mass in pixels; the
-   exemplar only pins proportion); (2) an
-   interaction template, since its contact geometry also lands in the shot's own prose and in the two named
-   figures' own STEP-1 cards; (3) a tagged prop, since the prompt already names it by its own backticked
-   slug and forge's derived seed is a reinforcement, not its only carrier. **Never displaced, at any step:**
-   the place plate/chain parent, the LOCKED §5 lettering exemplar, or any character STEP-1 — a shape that
-   only fits by dropping one of those refuses instead, naming the true bind (figure count against the cap),
-   never a locked seed.
+- Depiction, figure/crowd staging, poses/expressions, and camera/composition: `channels/<name>/visual-kit/visual-grammar.md`.
+- Palette, style register, the empty/absent suffix lock, and review criteria: `channels/<name>/visual-kit/style-bible.md`.
+- Chain/delta, cadence/coverage, and supplied lettering: `references/shots-schema.md`.
+- Prompt assembly order: `image-generation/scripts/forge.py::assemble_prompt`.
 
-   A shot still over cap once crowd, interaction, and prop are ALL legally exhausted is restaged — the
-   true bind is figure count against the cap, never a dropped lettering exemplar or place plate.
-4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
-   vehicle points where it travels), the action (a seeded figure's own bodily act is not free scene prose —
-   it is the primitive its sentence names, rule 3), what a gesture or highlight targets ("the northern half
-   of South America", not "the continent"), framing + scale, the committed scene palette, light/atmosphere, and a
-   **payload-driven THREE-PLANE read** — what occupies the foreground, the mid, and the background of THIS
-   beat, at what scale, and from where the camera sees them,
-   in whatever sentence the scene wants. Name concrete elements, not categories; a thin, palette-less
-   prompt renders thin. **Never art style, texture, or line weight** —
-   `forge.py` prepends the style bible's §2b descriptor at the HEAD of every scene gen and appends this
-   file's `global_prompt_suffix` at its TAIL, so both reach every gen without you, and
-   restating them spends the prompt on the look instead of the scene.
-   **Stage poses that hold** — a tableau, never a freeze of mid-motion. A load-bearing named face states its
-   orientation and what keeps it unobscured; do not let a crowd or foreground object own that face's sightline.
-   **Supplied-text law (HARD):** never name a text element without supplying its value verbatim, inline,
-   beside its own element — quote the literal from the fact ledger and cite `[F-NN]` in `notes`, or omit
-   the element, or author it deliberately blank. Rule + lettering laws L-1…L-4: `shots-schema.md §4`.
-   **Then ORDER the finished prompt in the grammar's three zones** — identity, scene, payload as the final
-   clause (`visual-grammar.md §2` ordering law; on a delta the final clause is its one change, §1 chain
-   logic). Absence is authored as a positive state of the surface, never a "no X, no Y" list (same file,
-   header block).
-5. **Use a stage chain only for a genuine progressive reveal** — something visible changes at each cut
-   and the story needs that change. Otherwise author standalone cuts, even on the same set. A chain has one
-   `base` first, each `delta` naming exactly ONE physically feasible, visually distinct semantic
-   transformation in `changed_elements`, ≤2 deltas, then a re-base or hard cut. **A figure's ENTRANCE is never a delta**
-   (a delta seeds parent + canonical only, so a figure the parent frame does not contain has nothing to
-   inherit): stage it as a `base`, or open a new stage on that shot. A place anchor is figure-free or already compatible
-   with the later count/scale demand. Completion states quantify the end state (`all`, `entirely`, or what
-   `nothing remains`); a parent that has no room for the change is not repaired with a re-roll.
-6. **Route the technique before writing precision prose:** an exact percentage scale, pixel-clear gap,
-   replace-one-person, or majority-removal beat is not a whole-frame prose delta. Simplify the composition, rebase
-   from the pre-transient ancestor, or mark the beat for the layered path; never ask the sticky parent to perform
-   measured placement/deletion by wording alone.
-7. **Tag a `source`** per the schema's taxonomy (`stock`/`hybrid`/`archival` get a `stock_query`), and
-   set `synthetic: true` on any photoreal AI shot.
+## Step 3 — Long-form shot list (expand the cues, then densify)
+Walk the script top to bottom and produce an ordered shot list where **every VO stretch has a
+visual** and the visual intensity tracks the beat structure. **Run Step 2.5 on every shot** — the
+`[B-ROLL]` cue tells you *where* a visual lands and its *meaning*; Step 2.5 decides *what it depicts*
+(the cue is rarely a literal instruction).
 
-## Step 3 (staged) — plan the video, then author act by act
+Tag each shot with `beat` = narrative **position** (`hook` · `second-gate` · `premise` · `body` ·
+`mid-arm` · `climax` · `withheld-peak` · `close` — §9 skeleton; authoring/review metadata, don't invent
+names). It's review metadata only — the engine doesn't read it.
 
-A shot list is authored in ACTS, never in one continuous pass. Depiction register decays across a long
-pass: the back half of a one-pass file drifts literal, reuses the same two or three classes, and reaches
-for the same nouns and the same staging. Once 3a's cast / place / stage plan is locked, the default
-execution is DISJOINT CONTIGUOUS ACT PARTITIONS — every planned `stage` whole inside one partition, never
-split across two — which a coordinator merges in narration order, then ONE whole-file lint + critic pass.
+- **Expand each `[B-ROLL]` cue** into a full shot: run **Step 2.5** on its VO line (classify → cast →
+  stage the tableau → state the facts), then write the `still_prompt`. Set
+  `from_cue: true`. Anchor it with a `vo_ref` — the **opening words of that VO line,
+  copied VERBATIM from `script.md`** (≥4 words, exact wording and order; never reword, summarize, or
+  swap a pronoun for a name). `render-builder` times the cut by matching the **first 4 normalized
+  words** of `vo_ref` against the real VO word-stream — a paraphrase never matches, so the shot
+  mis-times.
+- **Author shots in strict narration order (invariant).** Each shot's `vo_ref` must sit **at or after**
+  the previous shot's position in `script.md`. A densify insert goes at the *true* script position of
+  the line it illustrates — never before an earlier line. Out-of-order anchors trip render-builder's
+  monotonic check and drop the whole piece to proportional timing. (`scripts/lint_shots.py` enforces
+  both this and the verbatim rule.)
+- **`vo_text` is DERIVED — never authored, never a depiction brief.** Do not write `vo_text` yourself;
+  `lint_shots.py --write` (Step 7) fills each shot's `vo_text` = the verbatim script span it covers (its
+  anchor to the next shot's), purely so you and the human can *see* coverage. **Never make a shot's
+  image try to "represent" its whole span** — the image is anchored to its one moment (Step 2.5). A
+  `vo_text` that comes out long (>~8s of VO on one anchor) is a signal to **densify** (add a cut) or
+  confirm a progressive in-shot reveal — never to cram more meaning into one prompt (§10).
+- **Densify to the cadence.** The script's cues are the *floor*, not the ceiling. Insert additional
+  shots (`from_cue: false`) so there is a **new cut every 3–8s and a new stimulus every 30–45s**
+  (§10), and weight density **highest in the first 60s** (the 55% cliff zone). A 20-second VO passage
+  with one cue needs 3–5 shots, not one. Never leave static ambient B-roll under the first 3–5s
+  (anti-pattern 8).
 
-### 3a — Split + plan (before authoring a single shot)
-- **Split `script.md` into its acts** — the story's own turns (setup / scheme / unraveling / aftermath;
-  usually 2–4), never equal word counts.
-- **The video's named cast** — complete, planned before authoring, and derived from the script: include every recurring or
-  story-bearing person or institution whose identity matters. Do not add or remove cast to chase population;
-  if a later identity is genuinely needed, revise the plan before continuing, never invent a slug mid-pass.
-  **An ANONYMOUS story-bearer is planned INTO this list here, at 3a time** — one seeded figure is the
-  default human staging, resolved to existing cast where the story identifies one or minted as NEW named
-  cast through the standard wave. Crowd is reserved for a beat whose point is the mass itself; there is
-  no anonymous-foreground tier (`visual-grammar.md §2`).
-- **The acts the beats need — matched to the primitive library HERE, once.** Walk the planned beats and
-  bind each figure's act, expression, and costume to the existing registry/library catalog. The sentence
-  conforms to the nearest pose/action primitive and the figure keeps its pinned costume. If nothing close
-  carries the beat, emit the Step 2 elevation flag and block the shot; image-generation mints and approves
-  the reusable primitive first, then VPW re-authors against the now-live catalog. Never freestyle the gap.
-- **Places, stages + environments:** decide now which sets recur and carry held `stage` chains and which
-  are one-frame standalones. A **`place`** is a recurring diegetic set identity (kebab-case, e.g.
-  `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +
-  ≤2 deltas). **A set is a PLACE when the file REVISITS it after leaving** — two or more non-contiguous
-  runs; an unbroken single visit is a `stage`, whose base already anchors every shot of the run. Declare
-  `place` on every shot of a revisited set. Symbolic/abstract/standalone object-insert `shot_class`es, a
-  short's `first_frame`, and the thumbnail block declare no `place` and run as seedless roots. The
-  **plate is the first-in-file generated shot declaring the place**
-  (`source: ai-gen | hybrid`, absent defaults to `ai-gen`; a stock/chart/screencap/archival shot is
-  skipped, mirroring forge's own skip); for a QUALIFYING
-  place (it recurs, or its plate declares `place_owner`) the plate must carry zero SEEDED figures (named
-  cast) and no `stage_role: delta` — a single-visit, unbranded place is its own place-first frame and stays
-  seedless (a dedicated plate for it is pure waste). Every declared `place` must map to a span in
-  `script.md` (`script_vocab`) — an invented place fails lint like invented lettering. Every plate makes
-  the **owner forced choice**: declare exactly one of `place_owner: '<LITERAL>'` (the quoted cue must
-  appear in the plate's own `still_prompt`, carried under L-1 by any delta that redraws it) or
-  `owner_ambiguity: true`. **Ambiguity is a first-class answer, not the weak one** — it is the honest
-  call whenever the script establishes no visible branding, and reaching for `place_owner` to look
-  decisive invents signage, which is fabrication. The literal is per-video data sourced from the
-  script — **never a skill constant**. A set invented twice mid-pass gets described twice
-  differently and renders twice. Every plate is authored at **working occupancy** with its signage
-  ink stated, and a place carrying a long run declares its **plate variants** — the law, with both
-  bounds of each target, is `visual-grammar.md` §2 (the plate bullet); do not restate it here.
-  Decide the variant split at THIS step, alongside the recurrence decision, so it is planned once
-  per place rather than improvised shot by shot.
-- **The plate / reveal seam — decide it once, per branded place.** A qualifying place's plate is
-  cast-free; a character reveal lands on the line that NAMES them; on a branded set those two laws want
-  the same beat. Resolution: **the plate is the place's first CAST-FREE frame and the reveal is its
-  first CAST-BEARING frame**, and DISCLOSURE ORDER (never the plate law) decides which comes first — a
-  brand cannot appear before the VO says it, and neither can a person. When the naming line carries
-  both, author it as two cuts rather than one long hold; the cadence band wants that anyway.
-  *Worked example — "The company was MiniScribe, a hard drive manufacturer."* The plate takes the naming
-  clause: the cast-free assembly floor mid-work — drives moving along the benches, machines and stock
-  running back into the depth — with `'MINISCRIBE'` on the board over the entrance, its ink stated (§5),
-  ~2s. The very
-  next cut, still inside the same sentence's tail, is the reveal: `miniscribe-rep` planted in that
-  doorway, seeded off the plate. The brand and the personification both land on their own line, the
-  plate stays clean for everything that seeds it, and the entrance does not slip two shots downstream.
-- **The three peaks:** reserve the most striking staging for the opening, the mid-video re-arm (55–65%),
-  and the withheld peak in the final 20%. A character enters on the line that NAMES them.
-- **Density budget, written down per act:** read the runtime AND the rate off the script header ("N words
-  ÷ M wpm"), never a fixed 150 — the header's rate is the channel's MEASURED voice, and sizing off a
-  slower one buys shots for a video that doesn't exist. Then split the whole-file limits
-  (`shots-schema.md §5` — cadence band, the `runtime ÷ 4s` floor, Σ `duration_s` ≈ runtime, hold lengths)
-  into a per-act shot target, **weighted heaviest in the first 60s**; never a static ambient shot under the
-  first 3–5s. A short-summing list gets stretched at render, leaving one visual dead 15–25s: **densify,
-  never lengthen holds.** 3c audits each act against its number.
+**Partitioning machinery.** Author disjoint contiguous act partitions. Keep every planned stage and its whole chain inside one partition, never split across two; a coordinator merges partitions in narration order, then runs one whole-file lint and one independent critic pass.
 
-### 3b — Author act by act
-**Before each act, re-read `example-shots.md` + `visual-grammar.md` §1–3.** Skipping the re-read is how the
-back half goes literal. Then run Step 2 on every line of that act, in narration order.
-- **Anchor every shot with a `vo_ref`** copied VERBATIM from `script.md` — that VO line's opening words,
-  **≥4 where the sentence has them; a shorter sentence anchors on its full text** (a `[PAUSE]`-bounded
-  "The audit passed." is a legal 3-word anchor) — exact wording and order, never reworded or
-  pronoun-swapped, and authored in **strict narration order**, each anchor at or after the previous
-  shot's script position. `render-builder` times each cut off the first 4 normalized words (all of them
-  when there are fewer), so a bad anchor mis-places the shot. Anchor only on SPOKEN text: an italic
-  authoring note in the script is not narration and matches nothing.
-- A shot covering more than ~8s of VO means densify there, never widen the image's scope.
+- **Tag a source for every shot** (`ai-gen` / `stock` / `hybrid` / `chart` / `screencap` / `archival`
+  — taxonomy in the schema). Doctrine: pure-AI B-roll reads uncanny (§13 / tools.md) — **blend real
+  stock** for anything meant to look real (places, people, events), reserve full AI-gen for
+  stylized/impossible/illustrative shots, and use `chart`/`screencap` for data and receipts (the
+  "show the work" tactic, §1b). Give `stock`/`hybrid` shots a `stock_query`.
 
-### 3c — Close each act: lint the partial file, then self-audit for drift
-Run the Step 7 lint command on the partial file. **Two HARD findings are EXPECTED until the file is
-complete** — the duration-sum and shot-floor checks measure the whole runtime — and are judged only at
-Step 7; **every other HARD finding is a real defect, fixed now**, while the act is fresh.
-Then write yourself ONE paragraph on the act just closed: **non-literal share** (any shot merely drawing
-its line's words?), **class variety** (which `shot_class` values repeated, and has one become a reflex?),
-**red-ink count** (red is the one semantic accent — alarm / prohibition / ownership / the punch element —
-so a rising count means it is turning into decoration), **human use** (flag story-bearing people, decisions, or relationships hidden behind objects, or
-habitual people staged where object, place, document, or mechanism is the subject; no target share —
-but **name every figureless run longer than ~10s** and say for each what earned the absence), and
-**cadence vs the 3a budget** (shot count and Σ
-`duration_s` against this act's target; if a VO manifest already exists, the lint's REAL-hold heads-ups
-are the truer number and a run of them means densify here, not later). A drifting act is re-authored here, not left for the critic:
-Step 8 is whole-file and one cycle only.
-
-## Step 4 — Thumbnails (primary + 2 challengers, derived from script + dna)
-Derive the concept yourself from `script.md`'s hook and withheld peak plus `dna.md`'s thumbnail grammar,
-then write the full `gen_prompt`:
-- **A hero with ONE loud, readable emotion is mandatory** — a cast member, or a personified money object
-  WITH a face (smug / menacing / panicked / gloating). A cold faceless object as sole subject is banned.
-- **ONE dominant thing, big and simple, legible at 168px.** Overlay text is a **punchline, verdict, or
-  fake quote** — never the premise, never the title — and the pixels carry **≤3 words, no all-caps**.
-- **The one red accent POINTS** (arrow, circle, underline) at the anomaly or highlights the payoff word.
-- Prefer an **absurd or menacing juxtaposition** to literal illustration; lead with a familiar anchor;
-  avoid the dead list (open-mouth photoreal shock, rainbow arrows, cluttered frames, all-caps).
-- Each challenger tests a genuinely different hero/emotion/framing within the locked lever.
+## Step 4 — Thumbnail generation prompts (from metadata's concepts)
+For the long-form primary **and both challengers**, convert each `metadata.json` thumbnail *concept*
+into a full `gen_prompt`, honoring **§8**:
+- **Proof-of-human beats fully-AI by 18–22%** — prefer a real/photographic subject + AI or graphic
+  background (hybrid) over a fully-AI plastic-skin portrait (algorithmically penalized). Where the
+  channel is faceless with no subject, use its **locked signature subject/artifact** instead.
+- **Neo-minimalism:** one dominant subject, **≥50% negative space, ≤2 primary colors**,
+  channel-consistent palette. **Zero-text often wins**; if text helps, carry metadata's thumbnail
+  `text` at **≤3 words, no all-caps**. **You own the ≤3-word cap, not metadata-writer** — its
+  thumbnail `text` is a *concept promise* and may run longer (e.g. 4 words); if it exceeds 3 words,
+  **trim it to ≤3 or drop to zero-text**, and note the change in the shot's `composition`. Don't
+  restate the title — the thumbnail delivers the promise visually while leaving the question open
+  (title + thumbnail = one asset).
+- Use the working 2026 devices where they fit the concept: **single-artifact focus + red circle on
+  the anomaly**, before/after split (only if the delta is visually obvious), **numbers as visual
+  objects** (a stack of cash, dozens of pills) not text. Avoid the dead list (§8c): open-mouth shock,
+  rainbow arrows, cluttered five-element frames, all-caps.
+- Set `source: "hybrid"` (or the channel default) and respect the niche policy quirk.
 
 ## Step 5 — Shorts visuals
-For every short write a `first_frame` block **and** an ordered shot list, running Step 2 on each shot.
-**The first frame IS the thumbnail:** a pattern-interrupt tableau already carrying the beat's tension —
-a held pose loaded with the story's wrongness — with the caption **baked diegetically, quoted verbatim,
-≤4 words**, winning the swipe in ~1.3–1.8s; no static opening. Then **a cut every 2–4 seconds**, **9:16**,
-same per-shot fields as long-form, carrying each short's `archetype` and status.
+For every short, write a `first_frame` block **and** an ordered shot list. **Run Step 2.5 on every
+short shot too** (classify → cast → tableau → facts → intent note) — shorts are the densest,
+most-cloned surface, so the non-literal grammar + anti-slop guardrail matter most here:
+- **First frame IS the thumbnail** (§8/§11) — a pattern-interrupt tableau *already carrying the
+  beat's tension* (a held pose loaded with the story's wrongness — not a freeze of motion), with the
+  short's on-frame caption text **baked into the image** (diegetic, quoted verbatim, **≤4 words —
+  rule 11 L-3, which is a HARD lint failure and applies here identically**) that wins the swipe decision
+  in ~1.3–1.8s. *(This cap read "3–7 words" until the lint was built and caught the file's own shorts
+  captions — `'IT STARTED WITH A RHYME'` and `'THEY CALLED THE ETHICS LINE'`, both 5 — contradicting
+  rule 9's proven 1–4. The proven number wins: a caption the engine garbles loses the swipe outright.
+  No shorts frames had been generated, so nothing was re-rendered to close this.)* No static/ambient opening (anti-pattern 8).
+- **A cut every 2–4 seconds** (§11c) — shorts are visually denser than long-form. Same per-shot
+  fields as long-form.
+- **9:16 aspect.** Match the channel house style and locked lever (cross-lever visuals poison the
+  brand). Carry the short's `archetype` + `publish`|`bench` status.
 
-## Step 6 — Policy (not optional)
-- **Originality moat:** compose original frames carrying the channel's POV — never instruct "recreate
-  <rival>'s thumbnail/shot" or clone a named channel's signature format (cloning is the
-  inauthentic-content trigger; generic archetypes are fine).
-- **Imagery constraints** come from the grammar's policy section + `dna.md`; flag borderline shots in
-  `notes`. **Illustrate the VO, never extend it** — baked diegetic text included: never put a casualty
-  count, date, name, or statistic on screen that the script omitted.
+## Step 6 — Policy, originality & consistency (not optional)
+- **Originality moat (July-2025):** compose *original* frames carrying the channel's POV. Never
+  instruct "recreate <rival>'s thumbnail/shot" or clone a specific rival's signature format — that is
+  the exact inauthentic-content trigger. Generic archetypes are fine; cloning a named channel is not.
+- **AI-synthetic disclosure:** realistic AI/altered footage must be disclosed at upload (the machine
+  flag lives in `metadata.json`); note `synthetic: true` on any photoreal AI shot so render-builder /
+  publish-queue can honor it. For YMYL niches (health/finance) assume the viewer sees the label first.
+- **Niche imagery gate:** engineering = analysis-not-gore (annotated diagrams, not casualties);
+  horror/lore = suggestion over depiction; health = clinical, no body-horror; business = no
+  defamatory depiction of real, named people. Flag any borderline shot in its `notes`.
 
 ## Step 7 — Write the file + lint
-Write **`videos/<slug>/shots.json`** per `references/shots-schema.md`: `schema:
-"faceless-youtube/shots@2"`, `global_prompt_suffix` copied verbatim from the grammar's header,
-`long_form` + `thumbnail` + `shorts[]`, `status: "shots-drafted"`. **Then run the lint (mandatory):**
-`python .claude/skills/visual-prompt-writer/scripts/lint_shots.py videos/<slug>/shots.json --write`. It
-enforces the mechanical rules above. **Any HARD failure degrades render sync — fix it before handoff.**
+Write **`videos/<slug>/shots.json`** per `references/shots-schema.md` (one file: `house_style` +
+`long_form` + `thumbnail` + `shorts[]`; set the file's own `status: "shots-drafted"`). Timings are
+estimates until render — mark `timing_status: "estimated-from-script — re-time after render"`.
+
+**Then run the lint (mandatory):**
+`python .claude/skills/visual-prompt-writer/scripts/lint_shots.py videos/<slug>/shots.json --write`.
+It validates every `vo_ref` against `script.md` (verbatim + narration order, mirroring render-builder's
+matcher) and, on a clean pass, injects the **derived** `vo_text` coverage + `shot_counts`. **Any HARD
+failure means render sync will degrade — fix it before handoff** (re-copy the exact opening words from
+`script.md`; move the out-of-order shot to its true script position). Heads-up warnings (a shot covering
+>~8s of VO on one anchor) mean **densify** there or confirm a progressive in-shot reveal — do not fix
+them by widening the image's scope.
 
 ## Step 8 — Shot critic (mandatory; before any generation token is spent)
-Dispatch the **fresh-eyes shot critic** per `references/critics.md`: one subagent with no share in this
-run's authoring context, given `shots.json` + `script.md` + the channel's `visual-grammar.md` +
-`registry.json`. Edit `shots.json` through its findings yourself — the critic never writes prompts —
-then **re-run `lint_shots.py --write`** and note any finding you rejected, with the reason. Leave the
-idea-backlog status at **`scripted`**; the folder is then ready for `voiceover` + `image-generation` →
-`render-builder` → `publish-queue`.
+Dispatch the **fresh-eyes shot critic** per `references/critics.md`: one subagent with no share in
+this run's authoring context, given `shots.json` + `script.md` + the channel staging law + the seven
+authoring laws, answering the charter's generalized questions (scene logic · tableau · casting ·
+acting · staging interest · renderability). Edit `shots.json` through its findings (you rewrite —
+the critic never writes prompts), then **re-run `lint_shots.py --write`**. Note any finding you
+rejected, with the reason, for the run summary. Only after this does the folder move on — leave the
+idea-backlog lifecycle status at **`scripted`** (*files are the memory*; the idea flips to `produced`
+only when the video is fully assembled). The folder is then ready for `voiceover` +
+`image-generation` (pass 1/2 off this file) → `render-builder` → `compliance-check` → `publish-queue`.
 
 ## Output to the user
-Short summary only: the `shots.json` path; the long-form shot count; the thumbnail primary one-liner;
-shorts visualized with total short shots; **confirmation `lint_shots.py` passed** plus any densify
-heads-up; **the critic pass result** (N findings, how each was addressed or why rejected). The full
-field list is canonical in `references/shots-schema.md` — write against that, not this summary.
+Short summary only: the `shots.json` path, the long-form shot count (and how many are densified
+inserts vs. cue expansions), the thumbnail primary one-liner, the count of shorts visualized (with
+total short shots), **confirmation `lint_shots.py` passed** (anchors verbatim + in narration order;
+`vo_text` coverage + `shot_counts` written) plus any densify heads-up it raised, and **the critic
+pass result** (N findings, how each was addressed or why rejected). `shots.json` is the source of
+truth; keep the chat brief.
+- **If `needed_assets` is non-empty:** STOP and surface the wanted poses/expressions/interactions (each with
+  its `kind` + `wants` + `why`) for the human gate — do **not** hand off to `image-generation`. The run ends
+  at the gate; a later invocation resumes once the assets are generated+approved (or vetoed beats restaged).
+
+## Output contract (what image-generation + render-builder + publish-queue read)
+`videos/<slug>/shots.json` — a single JSON object:
+- `house_style` — the channel signature; `global_prompt_suffix` is empty/absent because Forge dispatches none.
+- `long_form.shots[]` — ordered; each with `id`, `beat`, `start_hint`, `duration_s`,
+  `vo_ref`, `from_cue`, `narration_type`, `shot_class`, `cast?`, `props?`, `source`, `still_prompt`,
+  `stage?`/`stage_role?`/`changed_elements?`, `stock_query?`, `synthetic`, `notes` (+ the derived
+  `vo_text` after lint). **The full field list and
+  the exact field→engine mapping are canonical in `references/shots-schema.md` §1–§2 — this is a
+  summary, not the contract.**
+- `thumbnail.{primary,challengers[2]}` — each with `text_overlay`, `gen_prompt`, `composition`, `source`.
+- `shorts[]` — one per short: `file`, `archetype`, `status`, `first_frame`, `shots[]`.
+The field → engine mapping is documented in `references/shots-schema.md` so downstream maps 1:1 with
+no interpretation.

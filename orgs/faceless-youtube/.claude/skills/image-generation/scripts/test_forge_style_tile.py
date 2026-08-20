@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The 2026-08-05 line-register reset: the §5 SCENE STYLE TILE seeding law (plain asserts).
+"""The §5 SCENE STYLE TILE seeding-law regression set (plain asserts).
 
 Run: py -3 .claude/skills/image-generation/scripts/test_forge_style_tile.py
 
@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import forge as forge_module
 from forge import (Kit, cmd_batch, seed_role_violations, seed_roles_text, seeding_law_violations,
-                   PLATE_COMPOSITION, SEED_CAP, STYLE_TILE, STYLE_ANCHOR_ROLE)
+                   SEED_CAP, STYLE_TILE, STYLE_ANCHOR_ROLE)
 from conftest import isolate_staging, stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
@@ -33,32 +33,11 @@ TILE = REFS + "env/scene-style-tile.png"
 LETTERING = REFS + "env/lettering-marker-italic.png"
 CAST = "`miniscribe-rep`, `expr-smug`, `action-powerstance`,"
 PNG = b"\x89PNG\r\n\x1a\n"
-EXPECTED_PLATE_COMPOSITION = (
-    "PLATE COMPOSITION — this overrides generic depth framing: eye-level, frontal or only mildly "
-    "oblique; reserve one continuous standable-ground zone from foreground into midground, roughly "
-    "25–35% of the frame and wide enough for two full-body rig silhouettes to share one plane "
-    "without furniture overlap. Any foreground depth prop stays at one edge and never crosses that "
-    "zone. Outside it, keep the set rich and working with its real furniture, stock, and machinery."
-)
-
-# The two provider voices: authored-palette HEAD plus the separately gated, byte-pinned TAIL.
-# These literals are the drift-lock: the doc that drifts fails the test.
 ERA_STYLE_ONLY = (
     "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an "
-    "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle "
-    "soft cel shading, using the authored locked 2–3-colour scene palette — including cool or desaturated "
-    "palettes when the story beat calls for them — rounded friendly shapes, no realistic detail. No text, no "
-    "words, no labels.")
-ERA_SUFFIX = (
-    "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm "
-    "brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, "
-    "rounded friendly shapes, no realistic detail; any in-world lettering "
-    "hand-lettered in the marker style, short and legible; warm-biased scene palette plus "
-    "the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the "
-    "last punch element); no photorealism, no on-screen narrator or host face, no unrequested "
-    "text, no logos; 16:9.")
-
-
+    "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours "
+    "with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, "
+    "no labels.")
 def _kit():
     k = Kit(str(KIT_DIR), dry=True)
     k.root = str(ROOT)          # a worktree has no env marker for `Kit` to walk up to
@@ -73,12 +52,12 @@ def _doc(*shots):
             "long_form": {"aspect_ratio": "16:9", "shots": list(shots)}}
 
 
-def _run(doc, scope=None, video=None):
+def _run(doc, scope=None, video=None, kit=None):
     """(spec | None, SystemExit text | None) — cmd_batch, quietly."""
     v = video or tempfile.mkdtemp()
     shots, out = os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
     json.dump(doc, open(shots, "w", encoding="utf-8"))
-    k = _kit()
+    k = kit or _kit()
     stamp_kit(k, v)             # P3: the channel's standing library is a REVIEWED library
     try:
         with contextlib.redirect_stdout(io.StringIO()):
@@ -186,57 +165,25 @@ def test_omitting_the_tile_by_name_suppresses_the_derived_seed():
     assert t1["seed"] == [] and t1["plate"] is True, t1
 
 
-def test_plate_composition_is_exact_once_on_cast_free_place_firsts_including_lettered_ones():
-    """The composition law keys to the place-first shape, not `plate`: lettering is content-seeded
-    but the lettered L114-shaped root still establishes the actor-ready place for later scenes."""
-    assert PLATE_COMPOSITION == EXPECTED_PLATE_COMPOSITION
-    spec, err = _run(_doc(
-        {"id": "L114", "place": "brick-yard",
-         "still_prompt": "A working brick yard with a sign reading 'BRICKS' over the gate."},
-        {"id": "L115", "place": "brick-yard", "stage": "yard", "stage_role": "delta",
-         "still_prompt": "The same working brick yard, unchanged, with a ledger on the gate table."},
-        {"id": "N01", "still_prompt": "A standalone ledger on a bare table."}))
-    assert err is None, err
-    lettered = _by_name(spec, "L114")
-    delta = _by_name(spec, "L115")
-    no_place = _by_name(spec, "N01")
-    assert lettered["plate"] is False and lettered["plate_composition"] is True, lettered
-    assert not delta.get("plate_composition") and not no_place.get("plate_composition")
-    cast_spec, _ = _run(_doc(
-        {"id": "C01", "place": "cast-office",
-         "still_prompt": f"{CAST} standing at the office desk."}))
-    with tempfile.TemporaryDirectory() as anchored_video:
-        anchor = Path(anchored_video) / "assets" / "scenes" / "A00.png"
-        anchor.parent.mkdir(parents=True)
-        anchor.write_bytes(PNG)
-        anchored_spec, _ = _run(_doc(
-            {"id": "A00", "place": "anchored-office", "source": "library",
-             "still_prompt": "The approved anchored office."},
-            {"id": "A01", "place": "anchored-office", "place_anchor": "assets/scenes/A00.png",
-             "still_prompt": "A cast-free anchored office."}), video=anchored_video)
-    # The clause is only for a cast-free, unanchored place-first request.
-    assert not _by_name(cast_spec, "C01").get("plate_composition")
-    assert not _by_name(anchored_spec, "A01").get("plate_composition")
-    k = _kit()
-    prompt = k.prompt_for("environment", lettered["delta"],
-                          generated_policy=PLATE_COMPOSITION if lettered["plate_composition"] else "")
-    assert prompt.count(PLATE_COMPOSITION) == 1, prompt
-    assert prompt.index(PLATE_COMPOSITION) < prompt.index(lettered["delta"]), prompt
-
-
 # --- seed-cap arithmetic -------------------------------------------------------------------------
 
 def test_the_tile_counts_toward_the_cap_and_a_prop_is_dropped_before_it():
     """A cast-free frame tagging three props plus a lettered literal reaches 5 with the tile
     present. Displacement drops a PROP; the tile — like the place plate and the §5 lettering
     exemplar — is never the seed that makes room."""
+    k = _kit()
+    video = tempfile.mkdtemp()
+    assets = {}
+    for name in ("prop-one", "prop-two", "prop-three"):
+        path = str(Path(video) / (name + ".png"))
+        Path(path).write_bytes(PNG)
+        k.reg["assets"].append({"name": name, "kind": "prop", "file": path})
+        assets[name] = path
     spec, err = _run(_doc(
         {"id": "T1", "place": "shop",
-         "assets": {"prop-beige-pc": REFS + "env/prop-beige-pc.png",
-                    "prop-drive": REFS + "env/prop-drive.png",
-                    "stamp-block-outlined": REFS + "env/stamp-block-outlined.png"},
-         "still_prompt": ("A shop counter holding a `prop-beige-pc`, a `prop-drive`, and a "
-                          "`stamp-block-outlined` card reading 'PAID'.")}))
+         "assets": assets,
+         "still_prompt": ("A shop counter holding a `prop-one`, a `prop-two`, and a "
+                          "`prop-three` card reading 'PAID'.")}), video=video, kit=k)
     assert err is None, err
     t1 = _by_name(spec, "T1")
     assert len(t1["seed"]) <= SEED_CAP, t1["seed"]
@@ -289,44 +236,33 @@ def test_only_the_registered_tile_may_wear_the_style_anchor_role():
 
 # --- the doctrine the tile enforces --------------------------------------------------------------
 
-def test_the_look_is_stated_in_exactly_two_voices_at_the_two_ends():
-    """The 2026-08-05 era restoration changed this drift-lock's subject, not its job.
-
-    Forge no longer carries a prose copy of the style (`HARDENED_SCENE_STYLE` is deleted), so there
-    is no second copy to keep in sync with §2b. What the lock now guards is that the poyais-era TWO
-    VOICES both still exist and still read verbatim: the bible's §2b blockquote (the HEAD of every
-    prompt) and the channel's `global_prompt_suffix` (its TAIL, authored in `visual-grammar.md` and
-    copied into each video's shots.json). A THIRD voice anywhere is the drift mechanism the
-    2026-08-04 audit named first."""
+def test_style_descriptor_and_empty_suffix_lock_are_loaded_from_the_bible():
     bible = (KIT_DIR / "style-bible.md").read_text(encoding="utf-8")
     style_only = forge_module.blockquote_after(bible, "STYLE-ONLY descriptor")
     assert style_only == ERA_STYLE_ONLY, style_only
-    grammar = (KIT_DIR / "visual-grammar.md").read_text(encoding="utf-8")
-    assert "> " + ERA_SUFFIX in grammar, "the TAIL style voice is not the era suffix, verbatim"
+    suffix_section = bible.split("## 2d. Canonical dispatch suffix", 1)[1].split("\n## ", 1)[0]
+    assert "global_prompt_suffix`** — empty" in suffix_section
+    assert not any(line.lstrip().startswith(">") for line in suffix_section.splitlines())
     assert not hasattr(forge_module, "HARDENED_SCENE_STYLE"), \
-        "a third style voice reappeared in forge.py"
+        "a second style copy reappeared in forge.py"
 
 
-def test_the_tail_voice_reaches_every_scene_request_and_no_step1_card():
-    """`cmd_batch` copies the file's `global_prompt_suffix` onto every scene request, and
-    `prompt_for` appends it after the authored payload. A STEP-1 identity card is 2:3 on a plain
-    ground and takes none of it (the suffix's `16:9` and scene-only no-host clause would fight
-    the card)."""
+def test_scene_and_step1_dispatch_end_on_their_authored_payloads():
+    """Neither scene nor STEP-1 request receives a Forge-authored suffix."""
     doc = _doc({"id": "T1", "place": "office",
                 "still_prompt": f"{CAST} standing at the office desk."})
-    doc["global_prompt_suffix"] = ERA_SUFFIX
+    doc["global_prompt_suffix"] = ""
     spec, err = _run(doc)
     assert err is None, err
     scene = _by_name(spec, "T1")
     step1 = next(r for r in spec if r["name"].startswith("fig-"))
-    assert scene["prompt_suffix"] == ERA_SUFFIX, scene.get("prompt_suffix")
-    assert not step1.get("prompt_suffix"), step1.get("prompt_suffix")
+    assert "prompt_suffix" not in scene
+    assert "prompt_suffix" not in step1
     k = _kit()
-    text = k.prompt_for("environment", scene["delta"], suffix=scene["prompt_suffix"])
-    assert text.endswith(ERA_SUFFIX), text[-200:]
+    text = k.prompt_for("environment", scene["delta"])
+    assert text.endswith(scene["delta"]), text[-200:]
     assert text.startswith(ERA_STYLE_ONLY), text[:200]
-    assert k.prompt_for("environment", step1["delta"],
-                        suffix=step1.get("prompt_suffix") or "").endswith(step1["delta"])
+    assert k.prompt_for("environment", step1["delta"]).endswith(step1["delta"])
 
 
 def _tests():

@@ -218,3 +218,20 @@ def test_text_supply_check_reports_id_field_and_excerpt():
     assert len(hard) == 1
     assert "L31" in hard[0] and "still_prompt" in hard[0]
     assert "scorecard number" in hard[0], "the message must quote the offending text"
+
+
+def test_prose_named_prop_lettering_probe_distinguishes_all_four_cases():
+    """Accepted recut regression: object naming alone is not a lettering request."""
+    assert unsupplied_text_requests("a brass deed box on the desk", SUFFIX) == []
+    assert unsupplied_text_requests("a brass deed box labelled 'POYAIS'", SUFFIX) == []
+    assert unsupplied_text_requests("a brass deed box labelled on the lid", SUFFIX)
+
+    from lint_shots import carried_literal_check
+    hard = []
+    carried_literal_check("long-form", [
+        {"id": "L01", "stage": "deed", "stage_role": "base",
+         "still_prompt": "a brass deed box labelled 'POYAIS'"},
+        {"id": "L02", "stage": "deed", "stage_role": "delta",
+         "still_prompt": "the same deed box, its Poyais label now split"},
+    ], SUFFIX, hard)
+    assert hard and "established lettering" in hard[0]
