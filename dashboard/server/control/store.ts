@@ -459,6 +459,8 @@ export interface ControlStoreOptions {
   maxEventsPerRun?: number;
   /** @internal */
   persistenceDepsForTest?: PersistenceDeps;
+  /** @internal Exact persisted byte size for durability tests and the explicitly enabled VM benchmark. */
+  persistenceTargetBytesForTest?: number;
   /** @internal Future migration-edge regression seam. */
   loadAndMigrateForTest?: typeof loadAndMigrate;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
@@ -6071,6 +6073,15 @@ export function createFileControlPlaneStore(
   const path = join(stateRoot, 'control', 'control-plane.json');
   const acceptedSizePath = join(stateRoot, 'control', CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
   const maxBytes = options.maxDocumentBytes ?? MAX_CONTROL_DOCUMENT_BYTES;
+  const persistenceTargetBytes = options.persistenceTargetBytesForTest;
+  if (persistenceTargetBytes !== undefined) {
+    if (process.env.NODE_ENV !== 'test' && process.env.KB_VM_DURABILITY_BENCHMARK !== '1') {
+      throw new Error('persistenceTargetBytesForTest is available only in tests or the VM durability benchmark');
+    }
+    if (!Number.isSafeInteger(persistenceTargetBytes) || persistenceTargetBytes < 1) {
+      throw new Error('persistenceTargetBytesForTest must be a positive safe integer');
+    }
+  }
   let acceptedMaxBytes = maxBytes;
   if (access.mode === 'already-locked') assertWriterLeaseForRoot(access.lease, stateRoot);
   if (access.mode === 'read-only-harness') {
@@ -6132,7 +6143,16 @@ export function createFileControlPlaneStore(
   ): void => {
     assertWriterLeaseForRoot(lease, stateRoot);
     const persisted = genericPersistenceDocument(document);
-    const encoded = `${JSON.stringify(persisted)}\n`;
+    const canonical = JSON.stringify(persisted);
+    const canonicalBytes = Buffer.byteLength(canonical, 'utf8') + 1;
+    if (persistenceTargetBytes !== undefined && persistenceTargetBytes < canonicalBytes) {
+      throw new ControlStoreLimitError(
+        `persistence target ${persistenceTargetBytes} bytes is smaller than encoded document ${canonicalBytes} bytes`,
+      );
+    }
+    const encoded = persistenceTargetBytes === undefined
+      ? `${canonical}\n`
+      : `${canonical}${' '.repeat(persistenceTargetBytes - canonicalBytes)}\n`;
     if (enforceConfiguredLimit && Buffer.byteLength(encoded, 'utf8') > acceptedMaxBytes) {
       throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
     }
