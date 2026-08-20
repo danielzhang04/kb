@@ -229,7 +229,7 @@ describe('workflow definition routes', () => {
     expect(run.ok).toBe(true);
     if (!run.ok) return;
     expect(run.value.run.publicationState).toBe('published');
-    expect(run.value.run.state).toBe('waiting-human');
+    expect(run.value.run.lifecycle.kind).toBe('waiting-human');
     expect(run.value.humanRequests).toContainEqual(expect.objectContaining({
       kind: 'intervention', title: 'Automatic execution activation is gated', state: 'open',
     }));
@@ -248,7 +248,7 @@ describe('workflow definition routes', () => {
     expect(run.ok).toBe(true);
     if (!run.ok) return;
 
-    expect(run.value.run).toMatchObject({ publicationState: 'published', state: 'waiting-human' });
+    expect(run.value.run).toMatchObject({ publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null } });
     expect(run.value.stages).toHaveLength(8);
     expect(run.value.stages.every((stage) => stage.canonicalCardRef !== null)).toBe(true);
     expect(run.value.iterationLoops).toHaveLength(4);
@@ -620,7 +620,7 @@ describe('workflow launch governance boundaries', () => {
     expect(run.ok).toBe(true);
     if (!run.ok) return;
     expect(run.value.run.publicationState).toBe('waiting-human');
-    expect(run.value.run.state).toBe('waiting-human');
+    expect(run.value.run.lifecycle.kind).toBe('waiting-human');
     expect(run.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
     expect(run.value.humanRequests.length).toBeGreaterThan(0);
   });

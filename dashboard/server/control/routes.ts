@@ -47,6 +47,7 @@ import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
+import { projectRunState, runLifecycleKind, type RunLifecycleKind } from './runLifecycle.ts';
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -140,6 +141,11 @@ function runDisplay<T extends { runRef: string; title: string; proposalRef: stri
   };
 }
 
+function runDto<T extends Run>(run: T): Omit<T, 'lifecycle'> & { state: RunLifecycleKind } {
+  const { lifecycle, ...value } = run;
+  return { ...value, state: projectRunState(lifecycle) };
+}
+
 /**
  * A Human Request has no identity of its own in the naming registry: the operator reads it as "this
  * RUN needs you", and every surface that lists one renders the owning run beside the request's own
@@ -164,7 +170,7 @@ function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope
   const requestByRef = new Map(detail.iterationRequests.map((request) => [request.requestRef, request]));
   return {
     ...detail,
-    run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub, scope)),
+    run: runDisplay(ctx, runDto(detail.run), workflowRefIndex(ctx, sub, scope)),
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
     iterationLoops: detail.iterationLoops.map((loop) => {
       const residue = loop.unresolvedResidue;
@@ -654,7 +660,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             publication: ctx.coordinationPublication,
             outboxRoot: ctx.outboxRoot,
           });
-          return reply.send({ ok: true, value: outcome.result, replayed: outcome.replayed, canonicalCommit: outcome.canonicalCommit });
+          return reply.send({
+            ok: true,
+            value: { ...outcome.result, run: runDto(outcome.result.run) },
+            replayed: outcome.replayed,
+            canonicalCommit: outcome.canonicalCommit,
+          });
         } catch (error) {
           // The HTTP reply stays generic (proof wording never crosses the surface), but the operator
           // running the daemon owns its console — without this line a refusal is undiagnosable.
@@ -674,8 +685,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     // still listable on request, but it is out of the DEFAULT projection every surface renders —
     // otherwise "archive" would mean nothing and dead runs would keep haunting every list.
     const includeArchived = string((req.query as { includeArchived?: unknown }).includeArchived) === '1';
-    const runs = ctx.controlStore.listRuns(sub, scope).filter((run) => includeArchived || run.state !== 'archived');
-    return reply.send({ runs: runs.map((run) => runDisplay(ctx, run, workflows)) });
+    const runs = ctx.controlStore.listRuns(sub, scope)
+      .filter((run) => includeArchived || runLifecycleKind(run.lifecycle) !== 'archived');
+    return reply.send({ runs: runs.map((run) => runDisplay(ctx, runDto(run), workflows)) });
   });
 
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
@@ -788,7 +800,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           detail: 'active or interrupted work cannot reroute in place; stop it and create a successor attempt with an explicit handoff',
         };
       }
-      if (detail.value.run.publicationState !== 'published' || ['stopping', 'succeeded', 'failed', 'stopped'].includes(detail.value.run.state)) {
+      if (detail.value.run.publicationState !== 'published'
+        || ['stopping', 'succeeded', 'failed', 'stopped'].includes(runLifecycleKind(detail.value.run.lifecycle))) {
         return {
           ok: false as const, status: 409, error: 'reroute-refused', disposition: 'immutable' as const,
           detail: 'run is not in a published reroutable state',
@@ -1052,14 +1065,20 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         stages: projection,
       });
       if (!projected.ok) throw new Error(projected.detail);
-      if (projected.value.run.state === 'waiting-human'
+      if (runLifecycleKind(projected.value.run.lifecycle) === 'waiting-human'
         && !projected.value.humanRequests.some((request) => request.state === 'open')) {
         ctx.controlStore.createHumanRequest(sub, runRef, {
           kind: 'intervention', title: 'Canonical publication reconciled; runtime release required',
           prompt: 'The committed cards were recovered exactly. Review and release the inactive automatic runtime separately.',
         });
       }
-      return sendResult(reply, ctx.controlStore.getRun(sub, runRef));
+      const detail = ctx.controlStore.getRun(sub, runRef);
+      if (!detail.ok) return sendResult(reply, detail);
+      return reply.send({
+        ok: true,
+        value: runDetailDto(ctx, sub, detail.value, 'own-subject'),
+        replayed: detail.replayed ?? false,
+      });
     } catch (error) {
       return reply.code(409).send({ error: 'projection-reconciliation-required', detail: error instanceof Error ? error.message : String(error) });
     }
@@ -1246,7 +1265,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return ctx.runControlTransactions.run(owned.value.ownerSubject, runRef, async () => {
       const detail = ctx.controlStore.getRun(sub, runRef, runScope);
       if (!detail.ok) return sendResult(reply, detail);
-      if (detail.value.run.state !== 'archived') {
+      if (runLifecycleKind(detail.value.run.lifecycle) !== 'archived') {
         try {
           await auditFn(ctx)(ctx.repoRoot, {
             // `owner` is the ACTOR — the operator session that authorized this — while `runOwnerSubject`
@@ -1258,7 +1277,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
               runRef,
               runOwnerSubject: detail.value.ownerSubject,
               runVersion: detail.value.run.version,
-              runState: detail.value.run.state,
+              runState: runLifecycleKind(detail.value.run.lifecycle),
               openHumanRequestCount: detail.value.humanRequests.filter((request) => request.state === 'open').length,
               reason,
             },
@@ -1277,7 +1296,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             : 'Run archived by the operator',
         }, runScope);
       }
-      return sendResult(reply, archived);
+      return sendResult(reply, {
+        ...archived,
+        value: { ...archived.value, run: runDto(archived.value.run) },
+      });
     });
   });
 
@@ -1301,7 +1323,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const activeActivation = ctx.controlStore.hasActiveRunActivation(owner, runRef);
     if (!activeActivation.ok) return sendResult(reply, activeActivation);
     const acceptedResume = detail.value.run.publicationState === 'published'
-      && detail.value.run.state === 'waiting-human'
+      && runLifecycleKind(detail.value.run.lifecycle) === 'waiting-human'
       && detail.value.humanRequests.length > 0
       && detail.value.humanRequests.every((request) => acceptsBoundary(request));
     if (activeActivation.value || acceptedResume) {
@@ -1564,7 +1586,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (parkGate && resolved.value.loop.state === 'declined') {
       const currentRun = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
       if (!currentRun.ok) return sendResult(reply, currentRun);
-      if (currentRun.value.run.state === 'failed') failedRun = currentRun.value.run;
+      if (runLifecycleKind(currentRun.value.run.lifecycle) === 'failed') failedRun = currentRun.value.run;
       else {
         const failed = ctx.controlStore.transitionRun(currentRun.value.ownerSubject, request.value.runRef, currentRun.value.run.version, 'failed');
         if (!failed.ok) return sendResult(reply, failed);
@@ -1575,7 +1597,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         actorSubject: sub, runRef: request.value.runRef, answeredTitle: request.value.title, scope: runScope,
       });
     }
-    const value = failedRun ? { ...resolved.value, run: failedRun } : resolved.value;
+    const value = failedRun ? { ...resolved.value, run: runDto(failedRun) } : resolved.value;
     if (parkGate) {
       return reply.send({ ok: true, value, replayed: resolved.replayed ?? false,
         continuation: { kind: 'separate-relaunch', detail: 'Further work requires a separate operator relaunch with new run lineage.' } });
@@ -1665,7 +1687,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(500).send({ error: 'restore-audit-required' });
     }
     const restored = ctx.controlStore.restoreRun(sub, runRef, runScope);
-    return sendResult(reply, restored);
+    if (!restored.ok) return sendResult(reply, restored);
+    return sendResult(reply, { ...restored, value: runDto(restored.value) });
   });
 }
 
@@ -1710,7 +1733,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
   const persistedReceipt = ctx.controlStore.getRunActivationReceipt(ownerSubject, runRef, activationInput);
   if (!persistedReceipt.ok) return activationFailure(persistedReceipt);
   if (persistedReceipt.value?.phase === 'dispatched') {
-    return { status: 200, body: { ok: true, value: persistedReceipt.value.run, replayed: true } };
+    return { status: 200, body: { ok: true, value: runDto(persistedReceipt.value.run), replayed: true } };
   }
   if (persistedReceipt.value?.phase === 'failed') {
     return { status: 409, body: { error: 'activation-failed' } };
@@ -1734,7 +1757,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
     const receipt = ctx.controlStore.getRunActivationReceipt(ownerSubject, runRef, activationInput);
     if (!receipt.ok) return activationFailure(receipt);
     if (receipt.value?.phase === 'dispatched') {
-      return { status: 200, body: { ok: true, value: receipt.value.run, replayed: true } };
+      return { status: 200, body: { ok: true, value: runDto(receipt.value.run), replayed: true } };
     }
     if (receipt.value?.phase === 'failed') return { status: 409, body: { error: 'activation-failed' } };
     const detail = ctx.controlStore.getRun(ownerSubject, runRef);
@@ -1744,8 +1767,8 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
       || detail.value.run.managerGeneration !== activationInput.expectedManagerGeneration
       || detail.value.run.publicationState !== 'published'
       || (pendingReplay
-        ? detail.value.run.state !== 'waiting-human' && detail.value.run.state !== 'recovering'
-        : detail.value.run.state !== 'waiting-human')) {
+        ? !['waiting-human', 'recovering'].includes(runLifecycleKind(detail.value.run.lifecycle))
+        : runLifecycleKind(detail.value.run.lifecycle) !== 'waiting-human')) {
       return { status: 409, body: { error: 'activation-state-changed' } };
     }
     if (detail.value.humanRequests.length === 0
@@ -1802,8 +1825,8 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
         || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
         || current.value.run.publicationState !== 'published'
         || (exactPending
-          ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
-          : current.value.run.state !== 'waiting-human')
+          ? !['waiting-human', 'recovering'].includes(runLifecycleKind(current.value.run.lifecycle))
+          : runLifecycleKind(current.value.run.lifecycle) !== 'waiting-human')
         || current.value.humanRequests.length === 0
         || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
         throw new Error('run activation state changed before canonical root activation');
@@ -1971,9 +1994,8 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
       });
       if (!intervention.ok) {
         const current = ctx.controlStore.getRun(ownerSubject, runRef);
-        if (current.ok && (current.value.run.state === 'recovering'
-          || current.value.run.state === 'running'
-          || current.value.run.state === 'waiting-human')) {
+        if (current.ok && ['recovering', 'running', 'waiting-human']
+          .includes(runLifecycleKind(current.value.run.lifecycle))) {
           ctx.controlStore.transitionRun(ownerSubject, runRef, current.value.run.version, 'interrupted');
         }
       }
@@ -1991,7 +2013,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
         prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
       });
       const current = ctx.controlStore.getRun(ownerSubject, runRef);
-      if (current.ok && (current.value.run.state === 'recovering' || current.value.run.state === 'running')) {
+      if (current.ok && ['recovering', 'running'].includes(runLifecycleKind(current.value.run.lifecycle))) {
         ctx.controlStore.transitionRun(
           ownerSubject,
           runRef,
@@ -2000,7 +2022,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
         );
       }
     });
-    return { status: 202, body: { ok: true, value: dispatched.run, starting: true } };
+    return { status: 202, body: { ok: true, value: runDto(dispatched.run), starting: true } };
   });
 }
 
@@ -2058,7 +2080,7 @@ function resumeRunAfterBoundaryAccepted(ctx: SurfaceContext, input: {
   const detail = ctx.controlStore.getRun(actorSubject, runRef, scope);
   if (!detail.ok) return;
   const run = detail.value.run;
-  if (run.state !== 'waiting-human' || run.publicationState !== 'published') return;
+  if (runLifecycleKind(run.lifecycle) !== 'waiting-human' || run.publicationState !== 'published') return;
   if (detail.value.humanRequests.length === 0
     || detail.value.humanRequests.some((request) => !acceptsBoundary(request))) return;
   const ownerSubject = detail.value.ownerSubject;
@@ -2069,7 +2091,7 @@ function resumeRunAfterBoundaryAccepted(ctx: SurfaceContext, input: {
   };
   const park = (reason: string): void => {
     const current = ctx.controlStore.getRun(ownerSubject, runRef);
-    if (!current.ok || current.value.run.state !== 'waiting-human') return;
+    if (!current.ok || runLifecycleKind(current.value.run.lifecycle) !== 'waiting-human') return;
     // At most ONE open activation park per run, whichever surface minted it: a dispatch failure already
     // files 'Activation dispatch needs reconciliation' inside `activateRunUnderOwner` and then returns
     // the refusal here, so without this one event produced two asks for the same thing.

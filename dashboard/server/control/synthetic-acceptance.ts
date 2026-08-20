@@ -41,6 +41,7 @@ import { createInternalServiceCaller, isExecutionActivated, DASHBOARD_EXECUTOR_S
 import { dispatchClaimedCard, type OwnedCard } from './queueBridge.ts';
 import { defaultPyRunner } from '../write/launch.ts';
 import type { SurfaceContext } from '../http/context.ts';
+import { runLifecycleKind } from './runLifecycle.ts';
 
 export class AcceptanceRefusal extends Error {}
 
@@ -203,8 +204,10 @@ export async function pollRunTerminal(ctx: SurfaceContext, runRef: string, maxMs
   const stop = new Set(['succeeded', 'failed', 'stopped', 'interrupted', 'waiting-human']);
   for (;;) {
     const got = ctx.controlStore.getRun(DASHBOARD_EXECUTOR_SUBJECT, runRef);
-    if (got.ok && stop.has(got.value.run.state)) return got.value.run.state;
-    if (Date.now() > deadline) return got.ok ? got.value.run.state : 'unknown';
+    if (got.ok && stop.has(runLifecycleKind(got.value.run.lifecycle))) {
+      return runLifecycleKind(got.value.run.lifecycle);
+    }
+    if (Date.now() > deadline) return got.ok ? runLifecycleKind(got.value.run.lifecycle) : 'unknown';
     await new Promise((r) => setTimeout(r, 2_000));
   }
 }
