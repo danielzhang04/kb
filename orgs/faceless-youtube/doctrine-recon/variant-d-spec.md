@@ -1,4 +1,4 @@
-# Variant D — design spec (2026-08-20, rev 3 — rev-2 verdict `variant-d-spec-adv-r2.md` F2/A2/N1–N4 resolved below)
+# Variant D — design spec (2026-08-20, rev 4 — plan-adv `variant-d-plan-adv.md` F3/F4/F5/F6/F8/F9 folded in; rev-2 verdict F2/A2/N1–N4 resolved in rev 3)
 
 Owner: boss session. Base: `claude/bricks-variant-vb` tip (`17becaaf`), new branch `claude/bricks-variant-vd`.
 Evidence: `V/scratchpad/taste-audit/vd-{chain,palette,occupancy,crowd-density}-forensics*.md` + adversarial
@@ -51,8 +51,9 @@ patch, and updates the tests that mirror it. The writing-plans step produces the
 
 ### 3.2 Palette — per-stage commitment with a physical basis; recurrence judged, never gated
 - `style-bible.md` 217-220: *each stage commits a dominant field derived from its light source and dominant
-  material, plus at most two supporting colours; complements are valid when those facts create them; a palette turn
-  changes the dominant field, not the names of the same pair. Colour with no physical or story cause is not written.*
+  material; its supporting colours come from the same facts; complements are valid when those facts create them; a
+  palette turn changes the dominant field, not the names of the same pair. Colour with no physical or story cause is
+  not written.* (No colour count — F6.)
 - `visual-prompt-writer/SKILL.md` Step 3 plan lock: palette recorded **per stage** as *field + basis* (liked-era
   requirement, dropped by the restoration). Transport (F7/N3, two halves): (i) **pixels** — the drawable light and
   material facts that realize the chosen field are written into the base shot's `still_prompt`, replacing lower-value
@@ -64,21 +65,31 @@ patch, and updates the tests that mirror it. The writing-plans step produces the
 - `references/critics.md` 52-56: keep "do not police palette codes"; the one plan-level check becomes: a dominant axis
   repeated across distinct stages without a stated basis. Holds exempt.
 - `image-generation/SKILL.md` fresh-eyes review gate: invoke the existing scene-board command
-  (`build_review_artifact.py` 214-271); cards carry `still_prompt`, stage, and the base's `notes` basis, plus per-frame
-  warm/cool field share and a complementary-pair share with a 165–240° cool band. Advisory only — the reviewer judges
-  role-grounding and unjustified repetition (F6: liked L10/L11/L24 are justified pairs; no zero-recurrence gate).
+  (`build_review_artifact.py` 214-271); cards (scene and pending-asset alike, rendered with defaults) carry
+  `still_prompt`, stage, and the base's `notes` basis, plus per-frame warm/cool field share and a complementary-pair
+  share with a 165–240° cool band. The HSV metric lives in one owned module inside the image-generation skill
+  (`scripts/palette_metrics.py`), which the scratch report `vd_palette_metrics.py` imports — no video-specific side
+  door in the shared skill (plan-adv F8). Advisory only — the reviewer judges role-grounding and unjustified
+  repetition (liked L10/L11/L24 are justified pairs; no zero-recurrence gate).
 - Out of scope: tile, third-colour quotas, hue-angle lint on prose.
 
 ### 3.3 Occupancy — decide from who acts; give the pair a verified home
-- `visual-grammar.md` 147 (story-bearer sentence) becomes: *Decide occupancy from who is acting in this beat: no
-  human when mechanism, quantity, place, object or absence is the subject; one seeded performer for one person's
-  decision/action/reaction; a seeded pair when an exchange, relationship or shared labour makes the sentence true;
-  the simplified crowd rig only when the subject is the mass.* Three staging examples in the same paragraph: clerk +
-  customer exchanging a box; two workers at one bench; manager + auditor over one ledger. Figures stay small,
-  mid/rear, in a structured world.
-- Pair execution (F10): a non-contact pair is two `cast` records on a fresh base (already legal, `shots-schema.md`
-  170); a contact pair uses an existing interaction/pose route from `registry.json` or emits `needed_assets` and stops
-  at the existing human gate. No three-person promise; `shots-schema.md` 179 wording limited to the verified path.
+- `visual-grammar.md` 147 (story-bearer sentence) becomes: *Occupancy follows who acts in the sentence: the
+  performer whose decision, action or reaction makes it true is seeded cast; a pair is seeded when an exchange,
+  relationship or shared labour is what the sentence shows; a beat whose subject is a thing, a quantity, a place or
+  an absence carries no performer; a beat whose subject is the mass uses the simplified crowd rig.* (A criterion,
+  not a when-not list — F6.) Three staging examples in the same paragraph: clerk + customer exchanging a box; two
+  workers at one bench; manager + auditor over one ledger. Figures stay small, mid/rear, in a structured world.
+- Pair execution — corrected to what forge actually consumes (plan-adv F3): forge reads only `still_prompt` and
+  derives cast from backticked character tokens (`forge.py` 1238, 1269, `shot_cast` 296-305); the `cast` array is
+  never engine-read. A pair is therefore two backticked seeded characters named in the prompt, and a contact pair
+  additionally names an existing registry interaction (`handoff`, `handshake`, `fistbump` exist — `registry.json`
+  407-412) in the order the grammar binds; anything else emits `needed_assets` and stops at the existing human gate.
+  The stack's contradictory speakers are aligned to this fact in the same patch: `image-generation/SKILL.md` 215-220
+  ("cast is authoritative"), `shots-schema.md` 170/179, `visual-grammar.md` 105-110, `test_shots_v2.py` 4-6. No
+  three-person promise.
+- The authoring plan gives the author the evidence (per-frame judgments in `vd-occupancy-forensics.md` §2) as input,
+  never pre-selected outcomes per shot (F6): decisions are recorded after the criterion is applied, shot by shot.
 - `visual-prompt-writer/SKILL.md` 140-141: decision order subject → acting participants → occupancy → class → cast →
   tableau; 125 keeps the grammar as the only normative home.
 - The critic's six canonical questions live at `style-bible.md` 180-202 (`critics.md` 47-50 is the pointer and
@@ -92,8 +103,9 @@ patch, and updates the tests that mirror it. The writing-plans step produces the
   Is any named figure in the wrong canonical outfit without the shot authoring the change? Where a crowd is depicted,
   is its narrated subject genuinely the mass, and does the scene geometry hold it beyond something with the near
   zone empty?` All three existing checks survive; the two occupancy/crowd judgments join them.
-- `scripts/lint_shots.py`: diagnostics only — zero-human runs (ids, duration, VO), crowd shots with VO and
-  neighbours, 1–2-cast shots with asset/base renderability.
+- `scripts/lint_shots.py`: diagnostics only, from structured fields never prose — zero-human runs (ids, duration,
+  VO), every `figures.crowd` shot with its VO and neighbours (metadata row — this is the only crowd diagnostic, F9),
+  1–2-cast shots with asset/base renderability.
 
 ### 3.4 Crowd — restore the positive-rear-zone clause; forge expands the rig, VPW stops reciting it
 - Mechanism (F1, verified on vb): `forge.py` 184-188 loads `desc_crowdrig = blockquote_after(bible, "CROWD-RIG
@@ -144,6 +156,10 @@ median quota (F8).
    Lint (fragment scope) → independent critic → repair → lint.
 4. **Gen L01–L12** exactly as vb (`forge.py batch` → `gen --image-size 1K --force`, kit `the-second-take`, 16:9;
    deltas after their parent is reviewed). Fresh-eyes review, one re-authored retry per failing shot, honest parks.
+   Provenance (plan-adv F5): `V/assets/scenes/` holds prior-variant bytes — a D frame is copied to
+   `variant-frames/vd/` only when the manifest records a D call for it; an uncalled shot (parked parent, blocked
+   child) stays missing on the board with its reason, never a stale copy. "12/12 attempted" means every shot was
+   called or parked with a reason.
 5. **Board:** add D to `build_variant_board.py` VARIANTS; fresh blind reviewer applies §3.1–3.4 criteria per shot and
    reports distributions (chains, palette recurrence with cause, occupancy buckets, crowd bounding); republish the
    same artifact URL.
@@ -153,10 +169,12 @@ median quota (F8).
   phrases grep to zero across skills, kit, tests; tests green; forge crowd-expansion byte test passes.
 - Fragment: `lint --fragment` 0 HARD; critic pass after ≤1 repair round; every chain passes the symmetric test;
   every stage base carries its light/material facts in `still_prompt` and a `Palette basis:` sentence in `notes`;
-  crowd geometry judged by the critic (question 3). **No-growth review is dispositive (N4):** a per-shot table of
-  authored word deltas vs vb; any positive delta must name, in the same row, the lower-value words it replaced, or
-  the shot is re-authored before gen; assembled-provider deltas are reported separately (crowd shots gain the
-  forge-appended §2d — expected, reported, not counted as authored growth). No aggregate target.
+  crowd geometry judged by the critic (question 3). **No-growth review is dispositive (N4, plan-adv F4):** per shot,
+  authored `still_prompt` words ≤ vb's same-id shot; a positive delta is REJECT and the shot is re-authored before
+  gen (the §2d move and the dropped negations free the words the new facts need). Assembled-provider deltas are
+  reported separately (crowd shots gain the forge-appended §2d — expected). **Payload ruling per shot (F11):** each
+  of L01–L12 is marked *changed — by which lever* (hold re-staged, field+basis prose, backticked pair/interaction,
+  crowd geometry) or *intentionally unchanged — why*; unchanged rows are not evidence of a lever.
 - Renders: 12/12 attempted; parks honest; the blind reviewer's distributions reported, not targeted.
 
 ## 6. Cost and records (F12)
