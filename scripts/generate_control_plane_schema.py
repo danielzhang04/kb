@@ -98,15 +98,21 @@ def derived_values(registry: dict[str, Any]) -> tuple[dict[str, Any], int, int, 
     versions = {version["version"]: version for version in registry["versions"]}
     current = max(versions)
     incoming = {edge["to"]: edge for edge in registry["migrations"]}
+    upgrade_path: list[dict[str, Any]] = []
+    upgrade = current
+    while upgrade in incoming:
+        edge = incoming[upgrade]
+        upgrade_path.append(edge)
+        upgrade = edge["from"]
     rollback = current
-    path: list[dict[str, Any]] = []
+    rollback_path: list[dict[str, Any]] = []
     while rollback in incoming and incoming[rollback]["down"] == "present":
         edge = incoming[rollback]
-        path.append(edge)
+        rollback_path.append(edge)
         rollback = edge["from"]
-    if not path:
+    if not rollback_path:
         fail("current version must have a present down migration")
-    migration = "breaking" if any(edge["breaking"] for edge in path) else "compatible"
+    migration = "breaking" if any(edge["breaking"] for edge in upgrade_path) else "compatible"
     return versions[current], current, rollback, migration
 
 

@@ -4,8 +4,20 @@ import gzip
 import hashlib
 import io
 import json
+import sys
 import tarfile
 from pathlib import Path
+
+if __package__ in {None, ""}:  # direct `python scripts/build_platform_release.py` execution
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from deploy.control_plane_schema import (
+    RELEASE_ATTESTATION_KEYS,
+    RELEASE_ATTESTATION_SCHEMA,
+    ROLLBACK_STATE_SCHEMA,
+    STATE_MIGRATION,
+    STATE_SCHEMA,
+)
 
 RELEASE_ROOTS = (
     "dashboard/dist", "dashboard/server", "dashboard/src", "dashboard/node_modules",
@@ -77,11 +89,16 @@ def build_release(source: Path, version: str, output: Path, attestation: Path) -
             archive.addfile(info, io.BytesIO(data))
     statement = {
         "archive": output.name,
-        "schema": "kb.release-attestation/v1",
+        "schema": RELEASE_ATTESTATION_SCHEMA,
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
         "sourceCommit": version,
+        "stateSchema": STATE_SCHEMA,
+        "rollbackStateSchema": ROLLBACK_STATE_SCHEMA,
+        "stateMigration": STATE_MIGRATION,
         "workflow": "kb-platform-release",
     }
+    if set(statement) != set(RELEASE_ATTESTATION_KEYS):
+        raise RuntimeError("release attestation keys do not match registry")
     attestation.write_text(json.dumps(statement, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8", newline="")
 
 

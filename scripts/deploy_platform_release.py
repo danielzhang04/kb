@@ -7,20 +7,53 @@ import json
 import re
 import secrets
 import subprocess
+import sys
 from pathlib import Path
 
+if __package__ in {None, ""}:  # direct `python scripts/deploy_platform_release.py` execution
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-ATTESTATION_KEYS = {"archive", "schema", "sha256", "sourceCommit", "workflow"}
+from deploy.control_plane_schema import (
+    RELEASE_ATTESTATION_KEYS,
+    RELEASE_ATTESTATION_SCHEMA,
+    ROLLBACK_STATE_SCHEMA,
+    STATE_MIGRATION,
+    STATE_SCHEMA,
+)
+
+V1_ATTESTATION_KEYS = frozenset({"archive", "schema", "sha256", "sourceCommit", "workflow"})
+V2_ATTESTATION_KEYS = frozenset(RELEASE_ATTESTATION_KEYS)
+STATE_MIGRATIONS = frozenset({"compatible", "breaking"})
+CANONICAL_DECIMAL = re.compile(r"(?:0|[1-9][0-9]*)")
 
 
 def parse_local_attestation(attestation: Path, archive: Path) -> dict[str, str]:
     raw = attestation.read_bytes()
     value = json.loads(raw)
-    if type(value) is not dict or set(value) != ATTESTATION_KEYS or any(type(value[key]) is not str for key in ATTESTATION_KEYS):
+    if type(value) is not dict:
+        raise RuntimeError("closed canonical attestation required")
+    keys = set(value)
+    if keys == V1_ATTESTATION_KEYS:
+        expected_schema = "kb.release-attestation/v1"
+    elif keys == V2_ATTESTATION_KEYS:
+        expected_schema = RELEASE_ATTESTATION_SCHEMA
+    else:
+        raise RuntimeError("closed canonical attestation required")
+    if any(type(value[key]) is not str for key in keys):
         raise RuntimeError("closed canonical attestation required")
     canonical = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
-    if raw != canonical or value["schema"] != "kb.release-attestation/v1" or value["workflow"] != "kb-platform-release":
+    if raw != canonical or value["schema"] != expected_schema or value["workflow"] != "kb-platform-release":
         raise RuntimeError("closed canonical attestation required")
+    if keys == V2_ATTESTATION_KEYS:
+        if (
+            CANONICAL_DECIMAL.fullmatch(value["stateSchema"]) is None
+            or CANONICAL_DECIMAL.fullmatch(value["rollbackStateSchema"]) is None
+            or value["stateMigration"] not in STATE_MIGRATIONS
+            or value["stateSchema"] != STATE_SCHEMA
+            or value["rollbackStateSchema"] != ROLLBACK_STATE_SCHEMA
+            or value["stateMigration"] != STATE_MIGRATION
+        ):
+            raise RuntimeError("attestation registry metadata mismatch")
     commit = value["sourceCommit"]
     if re.fullmatch(r"[0-9a-f]{40}", commit) is None or value["archive"] != f"kb-platform-{commit}.tar.gz":
         raise RuntimeError("attestation identity mismatch")

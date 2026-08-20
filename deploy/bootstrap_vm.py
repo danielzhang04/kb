@@ -145,6 +145,7 @@ def install_root_validators(
         run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", str(install_root)], check=True)
         for helper in (
             "activate_release.py",
+            "control_plane_schema.py",
             "validate_vm_runtime.py",
             "apply_ops_reconciliation.py",
             "export_tier0.py",
