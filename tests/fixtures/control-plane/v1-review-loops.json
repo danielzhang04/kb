@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "nextEventCursor": 1,
+  "proposals": [],
+  "runs": [
+    { "subject": "alice", "runRef": "run-review", "state": "waiting-human" }
+  ],
+  "stages": [
+    {
+      "subject": "alice",
+      "stageRef": "stage-build",
+      "runRef": "run-review",
+      "stageId": "build",
+      "dependsOn": [],
+      "workflowProfile": "default",
+      "review": null,
+      "currentAttemptRef": null,
+      "version": 1,
+      "createdAt": "2026-08-01T00:00:00.000Z",
+      "updatedAt": "2026-08-01T00:00:00.000Z"
+    },
+    {
+      "subject": "alice",
+      "stageRef": "stage-check",
+      "runRef": "run-review",
+      "stageId": "check",
+      "dependsOn": ["build"],
+      "workflowProfile": "checker-readonly",
+      "review": { "subjectStageId": "build", "maxCreatorReworks": 2 },
+      "currentAttemptRef": "attempt-check",
+      "version": 1,
+      "createdAt": "2026-08-01T00:00:00.000Z",
+      "updatedAt": "2026-08-01T00:00:00.000Z"
+    }
+  ],
+  "attempts": [
+    { "attemptRef": "attempt-check", "stageRef": "stage-check", "state": "queued", "version": 1, "updatedAt": "2026-08-01T00:00:00.000Z" }
+  ],
+  "sessions": [],
+  "humanRequests": [],
+  "events": [],
+  "stageGenerations": [],
+  "generationSupersessions": [],
+  "quarantine": []
+}

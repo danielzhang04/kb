@@ -1,0 +1,98 @@
+{
+  "schema": "kb.control-plane-migrations/v1",
+  "versions": [
+    {
+      "version": 1,
+      "collections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "stageGenerations",
+        "iterationLoops",
+        "iterationRequests",
+        "iterationReceipts",
+        "generationSupersessions",
+        "quarantine"
+      ],
+      "requiredCollections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "quarantine"
+      ],
+      "envelopeRequired": [
+        "version",
+        "nextEventCursor"
+      ]
+    },
+    {
+      "version": 2,
+      "collections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "stageGenerations",
+        "iterationLoops",
+        "iterationRequests",
+        "iterationReceipts",
+        "generationSupersessions",
+        "quarantine",
+        "deployments"
+      ],
+      "requiredCollections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "stageGenerations",
+        "iterationLoops",
+        "iterationRequests",
+        "iterationReceipts",
+        "generationSupersessions",
+        "quarantine",
+        "deployments"
+      ],
+      "envelopeRequired": [
+        "version",
+        "documentRevision",
+        "nextEventCursor"
+      ]
+    }
+  ],
+  "migrations": [
+    {
+      "from": 1,
+      "to": 2,
+      "breaking": true,
+      "down": "present"
+    }
+  ],
+  "releaseAttestation": {
+    "schema": "kb.release-attestation/v2",
+    "keys": [
+      "archive",
+      "schema",
+      "sha256",
+      "sourceCommit",
+      "stateSchema",
+      "rollbackStateSchema",
+      "stateMigration",
+      "workflow"
+    ]
+  }
+}
