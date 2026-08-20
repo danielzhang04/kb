@@ -51,7 +51,11 @@
         "shot_class": "reaction-shot",
         "source": "ai-gen",
         "still_prompt": "`pc-boxy`, `expr-confused`, stands at the bright end of an electronics-shop aisle, facing camera with its screen-face clear above a low display plinth. Blank catalogues lie near the lens; box stacks flank the device at centre; ceiling signs, more shelves, and the glass entrance define the distant store. Cream, muted teal, and warm brown give the 1983 opener plenty of breathing room.",
-        "notes": "Named product-world figure owns the disbelief beat."
+        "notes": "Named product-world figure owns the disbelief beat.",
+        "assets": {
+          "pc-boxy": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+          "expr-confused": "channels/the-second-take/visual-kit/refs/base/expr-confused.png"
+        }
       },
       {
         "id": "L05",
@@ -193,7 +197,12 @@
         "shot_class": "staged-interaction",
         "source": "ai-gen",
         "still_prompt": "`pc-boxy`, `expr-smug`, and `rival-pc`, `expr-smug`, stand on opposing shop-display plinths, facing one another across a broad aisle at a shared eye-line and matching small head scale. A brass rail passes close to camera; the two rivals control opposite sides of the centre; shelf walls and skylights make the store deep behind them. Beige, teal, and warm brown leave the rivalry theatrical and open.",
-        "notes": "Two-figure rivalry is staged as a fresh base with plane, eye-line, and scale stated."
+        "notes": "Two-figure rivalry is staged as a fresh base with plane, eye-line, and scale stated.",
+        "assets": {
+          "pc-boxy": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+          "rival-pc": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+        }
       },
       {
         "id": "L17",
@@ -215,7 +224,12 @@
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
         "still_prompt": "`drive-maker`, `action-powerstance`, `expr-smug`, stands on a factory catwalk with its face clear toward camera while anonymous computer cartons pass below. A drive casing rises at the near rail; the maker commands the central catwalk; machinery bays, high windows, and a loading door show the long industrial world beyond. Tobacco brown, muted teal, and cream give the overlooked supplier a surprisingly grand stage.",
-        "notes": "Named manufacturer owns the industry payoff."
+        "notes": "Named manufacturer owns the industry payoff.",
+        "assets": {
+          "drive-maker": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+        }
       },
       {
         "id": "L19",
@@ -237,7 +251,12 @@
         "shot_class": "idiom-pun",
         "source": "ai-gen",
         "still_prompt": "`drive-maker`, `action-offering`, `expr-smug`, stands at a small hardware counter, presenting one hard drive as though it were a prospector's pick. A brass pan and scattered pebbles lie near camera; the maker and object create the centre joke; timber stalls, an ochre ridge, and an open supply hall reach across the rear. Ochre, teal, and tobacco brown keep the gold-rush analogy dry and spacious.",
-        "notes": "Idiom-pun; the hard drive, not an actual historical claim, carries the pick."
+        "notes": "Idiom-pun; the hard drive, not an actual historical claim, carries the pick.",
+        "assets": {
+          "drive-maker": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+          "action-offering": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+        }
       },
       {
         "id": "L21",
@@ -270,7 +289,11 @@
         "shot_class": "reaction-shot",
         "source": "ai-gen",
         "still_prompt": "`pc-boxy`, `expr-surprised`, peers over the rim of one oversized sealed carton at the end of a warehouse aisle, keeping its face clear to camera. A pallet slat enters from the lower left; carton and device make a compact central reveal pause; tall rack rows, roll-up doors, and a charcoal wall frame the far end. Terracotta, kraft tan, and charcoal hold the breath before the box opens.",
-        "notes": "Named reaction owns the disclosure beat."
+        "notes": "Named reaction owns the disclosure beat.",
+        "assets": {
+          "pc-boxy": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+          "expr-surprised": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png"
+        }
       },
       {
         "id": "L24",
@@ -650,7 +673,7 @@
         "duration_s": 3,
         "synthetic": false,
         "vo_ref": "It. Instead of shitting",
-      "vo_text": "It. Instead of shitting on your risotto, he's reading",
+        "vo_text": "It. Instead of shitting on your risotto, he's reading",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
         "still_prompt": "A cooling bowl of risotto waits on a brass charger at the near end of a charcoal conference table. Across the table, cream quarterly statements have been stacked into a small skyscraper; a steel-blue glass wall and muted-gold lamps make the room feel corporately sterile. A silver fork lies uselessly beside the paperwork tower.",
@@ -834,7 +857,7 @@
         "duration_s": 3,
         "synthetic": false,
         "vo_ref": "Wiles handed out didn’t",
-      "vo_text": "Wiles handed out didn't care much what the company could actually",
+        "vo_text": "Wiles handed out didn't care much what the company could actually",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
         "still_prompt": "A colossal steel-blue quota gate hangs over a miniature charcoal factory silhouette, viewed from the factory yard. A cream order sheet is pinned to a low concrete block at left; muted-gold work lamps dot the open industrial space. The gate’s bottom edge hovers so low that the tiny factory cannot plausibly pass under it.",
@@ -876,7 +899,7 @@
         "duration_s": 3,
         "synthetic": false,
         "vo_ref": "sat there needing a",
-      "vo_text": "sat there needing a number they didn't have, and",
+        "vo_text": "sat there needing a number they didn't have, and",
         "shot_class": "register-shift-infographic",
         "source": "ai-gen",
         "stage": "invented-count-entry",
@@ -908,7 +931,7 @@
         "duration_s": 2.9,
         "synthetic": false,
         "vo_ref": "1987, MiniScribe’s outside accountants",
-      "vo_text": "1987, MiniScribe's outside accountants",
+        "vo_text": "1987, MiniScribe's outside accountants",
         "shot_class": "personified-character",
         "source": "ai-gen",
         "place": "accountants-building",
@@ -1001,7 +1024,7 @@
         "duration_s": 2.9,
         "synthetic": false,
         "vo_ref": "wasn’t. Awkward. And coming",
-      "vo_text": "wasn't. Awkward. And coming",
+        "vo_text": "wasn't. Awkward. And coming",
         "shot_class": "register-shift-infographic",
         "source": "ai-gen",
         "stage": "count-sheet-substitution",
@@ -1043,7 +1066,7 @@
         "duration_s": 2.9,
         "synthetic": false,
         "vo_ref": "The real sheets were",
-      "vo_text": "The real sheets were locked in the accountants' own boxes, so they",
+        "vo_text": "The real sheets were locked in the accountants' own boxes, so they",
         "shot_class": "literal",
         "source": "ai-gen",
         "place": "accountants-building",
@@ -1093,7 +1116,7 @@
         "duration_s": 2.8,
         "synthetic": false,
         "vo_ref": "back clean. Not exactly",
-      "vo_text": "back clean. Not exactly Ocean's Eleven level, but",
+        "vo_text": "back clean. Not exactly Ocean's Eleven level, but",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
         "still_prompt": "A grey lockbox, one Allen wrench, and one paper clip have been arranged with absurd solemnity on a cream evidence table. A charcoal chair arm enters at lower right; cold-blue office bays and a few muted-gold lamps set the tiny tools in a grand heist-like arena. The bargain-bin toolkit receives the whole dramatic tableau.",
@@ -1104,7 +1127,7 @@
         "duration_s": 2.8,
         "synthetic": false,
         "vo_ref": "pretty close. But a",
-      "vo_text": "pretty close. But a clean audit doesn't lower",
+        "vo_text": "pretty close. But a clean audit doesn't lower",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
         "still_prompt": "A spotless cream audit report forms the base of a tall steel-blue target pedestal, turning paperwork into structural support. A charcoal desk edge runs across the lower frame; muted-gold office lamps glint on the report’s top corners and dark accounting shelves form the distance. The higher target is physically propped up by the clean audit.",
@@ -1115,7 +1138,7 @@
         "duration_s": 2.8,
         "synthetic": false,
         "vo_ref": "next quarter’s target, it",
-      "vo_text": "next quarter's target, it raises it.",
+        "vo_text": "next quarter's target, it raises it.",
         "shot_class": "register-shift-infographic",
         "source": "ai-gen",
         "stage": "fraud-ledger-escalation",
@@ -1144,7 +1167,7 @@
         "duration_s": 2.8,
         "synthetic": false,
         "vo_ref": "and a swapped count",
-      "vo_text": "and a swapped count sheet wasn't going to carry",
+        "vo_text": "and a swapped count sheet wasn't going to carry",
         "shot_class": "register-shift-infographic",
         "source": "ai-gen",
         "stage": "fraud-ledger-escalation",
