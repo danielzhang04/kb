@@ -1,0 +1,610 @@
+{
+    "shots":  [
+                  {
+                      "id":  "L48",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "By 1985 the company was",
+                      "shot_class":  "number-glued-to-object",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A heavy brass investment syringe hovers over a small steel-blue MiniScribe factory model, with a cream ledger slip and a cropped banker desk in the foreground, the factory and a growing pile of blank folders in the middle, and charcoal city blocks fading into cool window light behind. Steel blue, charcoal, and muted gold hold the restrained palette; the syringe\u0027s clear barrel carries the supplied amount \u0027$20 MILLION\u0027 as the payload.",
+                      "notes":  "H\u0026Q investment amount [F-27]; non-literal rescue rather than a generic bank meeting."
+                  },
+                  {
+                      "id":  "L49",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "their bankers at Hambrecht \u0026 Quist",
+                      "shot_class":  "personified-character",
+                      "source":  "ai-gen",
+                      "still_prompt":  "`hq-banker`, `action-present`, `expr-deadpan`, stands small at the far end of a long charcoal board table, presenting one empty high-backed chair while his face remains three-quarter to camera and unobscured. A brass desk edge and stacked cream folders frame the foreground, the chair occupies the middle, and steel-blue window bays and muted-gold lamps recede through the structured office. Steel blue, charcoal, and muted gold commit the palette; the empty chair is the turnaround vacancy payload.",
+                      "notes":  "Banker installs Wiles [F-27]; Wiles remains withheld until named."
+                  },
+                  {
+                      "id":  "L50",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "sent their own turnaround guy to",
+                      "shot_class":  "reaction-shot",
+                      "source":  "ai-gen",
+                      "still_prompt":  "`qt-wiles`, `action-powerstance`, `expr-smug`, stands newly revealed, small but dominant on a raised charcoal dais at the end of a deep office corridor, face toward camera and unobscured. A cropped brass rail and cream dossier lead the foreground, his empty chair and desk form the middle plane, and steel-blue window bays with muted-gold lamps repeat into the background. Steel blue, charcoal, and muted gold commit the control palette; his held, unwelcoming arrival is the payload.",
+                      "notes":  "Fresh named-character reveal on the turnaround line [F-02,F-27]."
+                  },
+                  {
+                      "id":  "L51",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "They brought in the man,",
+                      "shot_class":  "ironic-counterpoint",
+                      "source":  "ai-gen",
+                      "still_prompt":  "`qt-wiles`, `action-powerstance`, `expr-smug`, holds the same distant dais against a huge empty cream wall of the executive corridor, face three-quarter toward camera and unobscured. A brass rail cuts the foreground, his compact figure and high-backed chair occupy the middle, and steel-blue windows recede behind. Steel blue, charcoal, and muted gold commit the palette; the absurdly oversized empty wall makes the \u0027legend\u0027 feel like manufactured scale.",
+                      "notes":  "No premature nickname lettering."
+                  },
+                  {
+                      "id":  "L52",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "You know that Gordon Ramsay",
+                      "shot_class":  "idiom-pun",
+                      "source":  "ai-gen",
+                      "still_prompt":  "`tv-chef`, `point-at-thing`, `expr-worried`, stands small at one end of a long failing restaurant pass, his face three-quarter to camera and unobscured. A cropped copper pan and towel fill the foreground, cold plates and the chef occupy the middle, and steel-blue tiled bays and dim muted-gold lamps recede into the kitchen depth. Steel blue, charcoal, and muted gold make a deliberately cold service; the empty pass carries the failing-restaurant analogy.",
+                      "notes":  "Generic archetype only, never likeness-specific."
+                  },
+                  {
+                      "id":  "L53",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Wiles was the Gordon Ramsay",
+                      "shot_class":  "ironic-counterpoint",
+                      "source":  "ai-gen",
+                      "still_prompt":  "`qt-wiles`, `hold-paper-by-sides`, `expr-skeptical`, stands at the same deep restaurant-pass geometry now recast as an office, holding a blank cream quarterly statement square to his torso, face unobscured. A brass calculator and one tired risotto bowl occupy the foreground, Wiles and the pass sit mid-frame, while charcoal filing shelves and steel-blue window bays recede behind. Steel blue, charcoal, and muted gold hold; the business paper replacing a menu is the payload.",
+                      "notes":  "Wiles\u0027s banker role and Doctor Fix-It turnarounds [F-02]."
+                  },
+                  {
+                      "id":  "L54",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "an investment banker they called Doctor",
+                      "shot_class":  "diegetic-device",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A brass office nameplate rests alone on a long charcoal desk beneath a distant steel-blue window wall, with a cropped cream statement and calculator in the foreground, the empty executive chair in the middle, and muted-gold lamps repeating into the background. Steel blue, charcoal, and muted gold commit the palette; the supplied nickname \u0027DOCTOR FIX-IT\u0027 is the one readable payload.",
+                      "notes":  "Nickname [F-02]."
+                  },
+                  {
+                      "id":  "L55",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Instead of shitting on your risotto,",
+                      "shot_class":  "idiom-pun",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A single tired risotto bowl sits on a brass turntable beside a towering stack of blank cream quarterly statements, seen across a deep charcoal office desk. The bowl anchors the foreground, paper stack dominates the middle, and steel-blue filing bays with muted-gold lamps recede behind. Steel blue, charcoal, and muted gold hold; the corporate paperwork swallowing the dinner is the payload.",
+                      "notes":  "No literal profanity or text."
+                  },
+                  {
+                      "id":  "L56",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "And, like Doctor Strange with his",
+                      "shot_class":  "map-plan-view",
+                      "source":  "ai-gen",
+                      "still_prompt":  "`qt-wiles`, `action-present`, `expr-smug`, stands small at the lower edge of a giant cream plan table, face visible above its rim, presenting four chunky unlettered office-door tokens arranged along branching charcoal corridors. A brass compass and table lip frame the foreground, Wiles and the tokens occupy the middle, and steel-blue walls with muted-gold lamps recede behind. Steel blue, charcoal, and muted gold commit the palette; the multiplying thresholds are the several-companies payload.",
+                      "notes":  "Several companies and remote leadership [F-03]."
+                  },
+                  {
+                      "id":  "L57",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "this one from an office out",
+                      "shot_class":  "literal",
+                      "source":  "ai-gen",
+                      "place":  "office",
+                      "owner_ambiguity":  true,
+                      "still_prompt":  "A cast-free Los Angeles executive office sits mid-work with a cropped brass telephone cord and oak desk corner in the foreground, a substantial charcoal desk, blank cream folders, active multi-line phone, swivel chair, and muted-gold lamp across the middle, and steel-blue window bays, filing shelves, and a second worktable receding into the background. Steel blue, charcoal, and muted gold commit the restrained palette; all surfaces are blank and unlettered, leaving ownership intentionally ambiguous.",
+                      "notes":  "Working-occupancy plate for recurring office; Los Angeles remote office [F-03]."
+                  },
+                  {
+                      "id":  "L58",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Full remote, forty years early.",
+                      "shot_class":  "ironic-counterpoint",
+                      "source":  "ai-gen",
+                      "place":  "office",
+                      "still_prompt":  "`qt-wiles`, `hold-one-hand`, `expr-smug`, stands small beside the office\u0027s active multi-line telephone, holding its receiver toward a distant Colorado-shaped factory token on the desk while his face remains unobscured. The brass phone cord anchors the foreground, Wiles and desk form the middle, and the same steel-blue window bays and muted-gold lamps recede behind. Steel blue, charcoal, and muted gold hold; the absurdly long copper phone cable crossing the desk is the payload.",
+                      "notes":  "Remote operation [F-03]."
+                  },
+                  {
+                      "id":  "L59",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Wiles ran MiniScribe with fear.",
+                      "shot_class":  "personified-character",
+                      "source":  "ai-gen",
+                      "place":  "office",
+                      "still_prompt":  "`qt-wiles`, `action-armscrossed`, `expr-smug`, stands small but centered beneath a tall steel-blue window grid, face toward camera and unobscured. A cropped brass phone and cream folders anchor the foreground, Wiles and a charcoal desk hold the middle, and muted-gold lamps, filing shelves, and open floor recede behind. Steel blue, charcoal, and muted gold commit the palette; the deep empty space around him turns control into the payload.",
+                      "notes":  "Fear regime [F-04]."
+                  },
+                  {
+                      "id":  "L60",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Hit them, and you got a",
+                      "shot_class":  "number-glued-to-object",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A stout muted-gold bonus envelope balances precariously on the top edge of a tall charcoal target pedestal, with a cropped steel-blue desk corner in the foreground, the pedestal in the middle, and office windows diminishing into the background. Steel blue, charcoal, and muted gold hold; the envelope\u0027s generous size against the narrow pedestal makes reward conditional.",
+                      "notes":  "Bonus pressure [F-04], no unsupported currency lettering."
+                  },
+                  {
+                      "id":  "L61",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Miss them, and your head was",
+                      "shot_class":  "symbolic-stand-in-object",
+                      "source":  "ai-gen",
+                      "still_prompt":  "An empty charcoal executive chair sits beneath a suspended brass cleaver-shaped paper cutter, with a cropped cream target sheet in the foreground, the chair and cutter in the middle, and steel-blue office bays receding into darkness behind. Steel blue, charcoal, and muted gold commit a cool threat palette; the vacant chair under the cutter is the firing consequence payload.",
+                      "notes":  "Symbolic termination threat [F-04]; no graphic violence."
+                  },
+                  {
+                      "id":  "L62",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "And when you hit them, he",
+                      "shot_class":  "physicalized-imbalance",
+                      "source":  "ai-gen",
+                      "stage":  "quota-ratchet",
+                      "stage_role":  "base",
+                      "still_prompt":  "`qt-wiles`, `point-at-thing`, `expr-smug`, stands at the left edge of a huge steel-blue target board, face three-quarter to camera and unobscured, pointing at a broad muted-gold gauge resting at its baseline. A cropped charcoal desk rail frames the foreground, the gauge and Wiles occupy the middle, and a small worried manager crowd recedes behind structural board supports into the rear zone. Steel blue, charcoal, and muted gold commit the palette; the baseline target is the payload.",
+                      "figures":  {
+                                      "crowd":  true
+                                  },
+                      "notes":  "A2\u0027s sole manager-mass exception: the small rear-zone crowd is pressure context, not foreground action [F-04]."
+                  },
+                  {
+                      "id":  "L63",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "raised them, so the next quarter",
+                      "shot_class":  "physicalized-imbalance",
+                      "source":  "ai-gen",
+                      "stage":  "quota-ratchet",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "~ the single quota gauge ratchets to a clearly higher level"
+                                           ],
+                      "still_prompt":  "`qt-wiles`, `point-at-thing`, `expr-smug`, remains at the left edge of the same huge steel-blue target board, face unobscured, with the charcoal desk rail in front and the same small worried manager crowd receding behind structural supports. Steel blue, charcoal, and muted gold hold; the one broad muted-gold quota gauge has ratcheted to a clearly higher level, only this changes; everything else exactly as established.",
+                      "figures":  {
+                                      "crowd":  true
+                                  },
+                      "notes":  "Material quota escalation [F-04]."
+                  },
+                  {
+                      "id":  "L64",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "was even harder.",
+                      "shot_class":  "physicalized-imbalance",
+                      "source":  "ai-gen",
+                      "stage":  "quota-ratchet",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "~ the same quota gauge ratchets to its highest level"
+                                           ],
+                      "still_prompt":  "`qt-wiles`, `point-at-thing`, `expr-smug`, remains at the left edge of the same huge steel-blue target board, face unobscured, with the charcoal desk rail in front and the same small worried manager crowd receding behind structural supports. Steel blue, charcoal, and muted gold hold; the one broad muted-gold quota gauge has ratcheted again to its highest level, only this changes; everything else exactly as established.",
+                      "figures":  {
+                                      "crowd":  true
+                                  },
+                      "notes":  "Second necessary target escalation [F-04]."
+                  },
+                  {
+                      "id":  "L65",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "He once made two managers stand",
+                      "shot_class":  "reaction-shot",
+                      "source":  "ai-gen",
+                      "place":  "office",
+                      "hard_cut":  true,
+                      "still_prompt":  "`qt-wiles`, `action-accuse`, `expr-smug`, stands small on the foreground edge of a long conference floor, accusing two anxious crowd-rig managers standing together far back at the center of the room. A brass table corner frames the foreground, Wiles and the distant pair occupy separate middle-depth planes, and steel-blue window bays with muted-gold lamps repeat into the background. Steel blue, charcoal, and muted gold hold; the two managers\u0027 rigid, worried posture is the intimidation payload.",
+                      "figures":  {
+                                      "crowd":  true
+                                  },
+                      "notes":  "Reported intimidation scene [Q-01]; crowd is needed because the visible room pressure is the story point."
+                  },
+                  {
+                      "id":  "L66",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "and fired them on the spot,",
+                      "shot_class":  "aftermath-palette-turn",
+                      "source":  "ai-gen",
+                      "place":  "office",
+                      "hard_cut":  true,
+                      "still_prompt":  "Two empty charcoal chairs stand isolated at the far end of the same deep conference floor, with a cropped brass table corner in the foreground, a scattered pair of blank cream folders in the middle, and steel-blue window bays receding behind. Desaturated steel blue, charcoal, and paper white turn the palette colder; the two empty chairs are the firing aftermath payload.",
+                      "notes":  "Reported firing [Q-01]; distinct consequence cut, not a cosmetic delta."
+                  },
+                  {
+                      "id":  "L67",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "just to show everyone who was",
+                      "shot_class":  "reaction-shot",
+                      "source":  "ai-gen",
+                      "place":  "office",
+                      "still_prompt":  "`qt-wiles`, `action-powerstance`, `expr-smug`, stands alone and small at the end of the emptied conference table, face toward camera and unobscured. A cropped brass chair arm anchors the foreground, Wiles and the two vacant chairs sit in the middle, while steel-blue bays and unoccupied seats recede behind. Desaturated steel blue, charcoal, and paper white hold; his calm ownership of the cleared room is the payload.",
+                      "notes":  "Control aftermath [Q-01]."
+                  },
+                  {
+                      "id":  "L68",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "What a dick.",
+                      "shot_class":  "reaction-shot",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A lone brass desk bell sits dead center on a huge empty charcoal conference table, with two vacant chairs tiny at the far end and a steel-blue window wall behind. Desaturated steel blue, charcoal, and paper white hold; the mundane bell in the vacated room is the narrator\u0027s deadpan payload.",
+                      "notes":  "Figureless deadpan cutaway earned by the aside."
+                  },
+                  {
+                      "id":  "L69",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Now, the targets Wiles handed out",
+                      "shot_class":  "physicalized-imbalance",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A giant steel-blue quota gate looms over a tiny charcoal factory silhouette, with a cropped cream order sheet in the foreground, the undersized factory and gate in the middle, and muted-gold work lights receding into open industrial depth. Steel blue, charcoal, and muted gold commit the palette; the gate dwarfing the factory is the impossible-target payload.",
+                      "notes":  "Targets detached from production reality [F-04,F-23]."
+                  },
+                  {
+                      "id":  "L70",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "So four times a year, a",
+                      "shot_class":  "staged-interaction",
+                      "source":  "ai-gen",
+                      "place":  "miniscribe-building",
+                      "still_prompt":  "`brick-foreman`, `hold-paper-by-sides`, `expr-worried`, stands small at a long Colorado count table holding a blank cream quarterly form, face three-quarter to camera and unobscured. A cropped steel ruler and charcoal tabletop anchor the foreground, the foreman and form fill the middle, and a full room of worried middle-manager crowd figures stays small behind shelving and window mullions in the rear zone. Fluorescent green, grey, and off-white commit the pressured palette; the blank field faces the foreman as the missing-number payload.",
+                      "figures":  {
+                                      "crowd":  true
+                                  },
+                      "notes":  "Planned foreman owns the choice; permitted manager crowd is spatially subordinate [F-23]."
+                  },
+                  {
+                      "id":  "L71",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "sat there needing a number they",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "stage":  "invented-count-entry",
+                      "stage_role":  "base",
+                      "still_prompt":  "`brick-foreman`, `hold-paper-by-sides`, `expr-worried`, holds one cream quarterly count form at a long grey count table, face unobscured and small against a deep grid of fluorescent-green shelves. A steel ruler frames the foreground, the foreman and form occupy the middle, and blank warehouse count cards recede through the background. Fluorescent green, grey, and off-white commit the palette; the single large required inventory field remains blank and unlettered as the payload.",
+                      "notes":  "First paper-fraud chain base [F-12,F-23]."
+                  },
+                  {
+                      "id":  "L72",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "and wrote one down anyway.",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "stage":  "invented-count-entry",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "~ the entire blank inventory field becomes a boldly filled invented count field"
+                                           ],
+                      "still_prompt":  "`brick-foreman`, `hold-paper-by-sides`, `expr-worried`, remains holding the same cream quarterly count form at the long grey count table, face unobscured, with the steel ruler in front, fluorescent-green shelves behind, and blank count cards receding through the same warehouse depth. Fluorescent green, grey, and off-white hold; the entire required inventory field is now filled by one broad false count block, only this changes; everything else exactly as established.",
+                      "notes":  "Whole field transformation, not tiny handwriting [F-12,F-23]."
+                  },
+                  {
+                      "id":  "L73",
+                      "duration_s":  3,
+                      "synthetic":  false,
+                      "vo_ref":  "Then in January 1987, MiniScribe\u0027s outside",
+                      "shot_class":  "diegetic-device",
+                      "source":  "ai-gen",
+                      "place":  "accountants-building",
+                      "owner_ambiguity":  true,
+                      "still_prompt":  "A cast-free accountants\u0027 count room sits mid-work: a cropped grey metal lockbox handle and cream count sheets anchor the foreground, a broad steel count table with clipboards and stacked blank boxes fills the middle, and fluorescent-green shelving, frosted glass, and cool overhead fixtures recede into the background. Fluorescent green, grey, and off-white commit the audit palette; every surface and paper field is blank and unlettered, leaving ownership intentionally ambiguous.",
+                      "notes":  "Cast-free working plate for recurring accountants-building; January 1987 audit [F-12]."
+                  },
+                  {
+                      "id":  "L74",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "accountants came in to audit the",
+                      "shot_class":  "personified-character",
+                      "source":  "ai-gen",
+                      "place":  "accountants-building",
+                      "still_prompt":  "`auditor-rep`, `hold-paper-by-sides`, `expr-deadpan`, stands small beside the steel count table holding one blank cream count sheet, face three-quarter toward camera and unobscured. The lockbox handle and a ruler anchor the foreground, auditor and table occupy the middle, and fluorescent-green shelves with frosted glass recede behind. Fluorescent green, grey, and off-white hold; the auditor\u0027s orderly count sheet is the audit-arrival payload.",
+                      "notes":  "Auditor owns audit beat [F-11,F-12]."
+                  },
+                  {
+                      "id":  "L75",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "which means somebody counts what your",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A single open cream count sheet sits at the front of a long grey warehouse aisle, its ruled columns deliberately blank, with a cropped steel ruler in the foreground, one selected carton in the middle, and fluorescent-green racks of identical cartons receding to a vanishing point behind. Fluorescent green, grey, and off-white hold; the physical shelf depth against the blank count grid is the audit-mechanism payload.",
+                      "notes":  "Test-count concept [F-11]."
+                  },
+                  {
+                      "id":  "L76",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "So the accountants set up in",
+                      "shot_class":  "literal",
+                      "source":  "ai-gen",
+                      "place":  "accountants-building",
+                      "still_prompt":  "`auditor-rep`, `sign-with-pen`, `expr-deadpan`, works at the steel count table, maintaining a held signing tableau with face unobscured. A cropped lockbox corner and ruler frame the foreground, auditor and cream sheet occupy the middle, and fluorescent-green shelves and frosted glass recede behind. Fluorescent green, grey, and off-white commit the palette; the settled audit station is the payload.",
+                      "notes":  "Accountants establish the audit station [F-12]."
+                  },
+                  {
+                      "id":  "L77",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "and all those numbers the managers",
+                      "shot_class":  "physicalized-imbalance",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A tall cream count sheet and a deep warehouse rack stand side by side like mismatched towers, with a cropped steel ruler in the foreground, the sheet and one sparse shelf bay in the middle, and fluorescent-green aisles receding behind. Cold blue-grey, paper white, and semantic red commit the discovery palette; a red gap-shaped void between the paper tower and shelf tower is the mismatch payload.",
+                      "notes":  "Paper counts held against actual shelves [F-12]."
+                  },
+                  {
+                      "id":  "L78",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "Four million dollars of product that",
+                      "shot_class":  "number-glued-to-object",
+                      "source":  "ai-gen",
+                      "still_prompt":  "An enormous empty rectangular space is cut from the center of a deep fluorescent-green warehouse rack, with a cropped grey pallet corner in the foreground, the hollow rack bay in the middle, and paper-white aisle labels deliberately blank as they recede behind. Cold blue-grey, paper white, and semantic red commit the palette; a small red valuation tag beside the void reads \u0027$4 MILLION\u0027 as the payload.",
+                      "notes":  "Approximate shortfall [F-08,F-12]."
+                  },
+                  {
+                      "id":  "L79",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "was supposed to be sitting there, wasn\u0027t.",
+                      "shot_class":  "aftermath-palette-turn",
+                      "source":  "ai-gen",
+                      "place":  "warehouse",
+                      "owner_ambiguity":  true,
+                      "still_prompt":  "A cast-free rented warehouse stands at working occupancy with a cropped grey pallet corner and steel loading threshold in the foreground, full fluorescent-green rack runs and blank cream cartons across the middle, and high cold-blue warehouse bays receding into the background. Cold blue-grey, paper white, and charcoal commit the palette; one central rack bay stands entirely empty against the stocked structure, while all surfaces remain blank and unlettered and ownership intentionally ambiguous.",
+                      "notes":  "Warehouse plate at working occupancy with visible absence [F-06,F-12]."
+                  },
+                  {
+                      "id":  "L80",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "Awkward.",
+                      "shot_class":  "reaction-shot",
+                      "source":  "ai-gen",
+                      "place":  "warehouse",
+                      "still_prompt":  "`auditor-rep`, `action-armscrossed`, `expr-confused`, stands small at the edge of the warehouse\u0027s empty central rack bay, face toward camera and unobscured. A grey pallet corner anchors the foreground, auditor and void occupy the middle, and cold-blue bays with fluorescent-green racks recede into the background. Cold blue-grey, paper white, and charcoal hold; the awkward empty bay is the payload.",
+                      "notes":  "Auditor owns the discovery reaction [F-12]."
+                  },
+                  {
+                      "id":  "L81",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "And coming up short like that",
+                      "shot_class":  "symbolic-stand-in-object",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A single blank cream termination envelope hangs above a deep cold-blue warehouse aisle on a thin red thread, with a cropped grey pallet in the foreground, one empty rack bay in the middle, and fluorescent-green shelves receding behind. Cold blue-grey, paper white, and semantic red hold; the suspended envelope over the inventory void is the fear-of-reporting payload.",
+                      "notes":  "Firing consequence drives concealment [F-04,F-23]."
+                  },
+                  {
+                      "id":  "L82",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "so instead of reporting it, they",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "stage":  "count-sheet-substitution",
+                      "stage_role":  "base",
+                      "still_prompt":  "A grey accountants\u0027 lockbox sits open within a deep steel document well, holding one real cream count sheet with ruled but blank columns. A cropped Allen wrench and paper clip lie in the foreground, the box and sheet fill the middle, and cold-blue filing bays with fluorescent-green shelves recede behind. Cold blue-grey, paper white, and semantic red commit the palette; the complete real sheet visibly occupies the locked box as the payload.",
+                      "notes":  "Substitution chain base; physical box entry [F-12]."
+                  },
+                  {
+                      "id":  "L83",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "wrote down a better number.",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "stage":  "count-sheet-substitution",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "~ the complete real count sheet is replaced by one complete forged count sheet"
+                                           ],
+                      "still_prompt":  "The same grey accountants\u0027 lockbox remains open within the same deep steel document well, with the cropped Allen wrench and paper clip in front, cold-blue filing bays and fluorescent-green shelves receding behind, under cold blue-grey, paper white, and semantic red. The complete real cream count sheet has been replaced by one complete forged cream count sheet with a broad false-count block, only this changes; everything else exactly as established.",
+                      "notes":  "Whole-sheet substitution, not an illegible handwriting edit [F-12]."
+                  },
+                  {
+                      "id":  "L84",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "The real sheets were locked in",
+                      "shot_class":  "literal",
+                      "source":  "ai-gen",
+                      "place":  "accountants-building",
+                      "hard_cut":  true,
+                      "still_prompt":  "`brick-foreman`, `hold-one-hand`, `expr-worried`, stands small beside a closed grey accountants\u0027 lockbox, holding one Allen wrench at his side while his face remains three-quarter to camera and unobscured. A paper clip and cream count sheet anchor the foreground, the foreman and box occupy the middle, and cold-blue filing bays recede behind. Cold blue-grey, paper white, and semantic red hold; the locked box is the physical-obstacle payload.",
+                      "notes":  "Foreman chosen for managers\u0027 survival choice; tools sourced [F-12]."
+                  },
+                  {
+                      "id":  "L85",
+                      "duration_s":  2.9,
+                      "synthetic":  false,
+                      "vo_ref":  "so they popped the boxes open",
+                      "shot_class":  "literal",
+                      "source":  "ai-gen",
+                      "place":  "accountants-building",
+                      "hard_cut":  true,
+                      "still_prompt":  "A grey accountants\u0027 lockbox stands open on a steel table, its lid held upright beside a loose paper clip and Allen wrench, with a cream count sheet in the foreground and cold-blue filing bays receding behind. Cold blue-grey, paper white, and semantic red commit the palette; the fully opened lockbox is the payload.",
+                      "notes":  "Literal fact shown as a completed state, not freeze-frame action [F-12]."
+                  },
+                  {
+                      "id":  "L86",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "took the real count out and",
+                      "shot_class":  "diegetic-device",
+                      "source":  "ai-gen",
+                      "place":  "accountants-building",
+                      "hard_cut":  true,
+                      "still_prompt":  "Two complete cream count sheets lie separated across a deep steel table: the ruled-but-blank real sheet is foreground-left and the forged sheet with a broad false-count block is middle-right, with the opened grey lockbox behind them. Cold-blue filing bays recede through the background under cold blue-grey, paper white, and semantic red. The clean separation of real and false pages is the payload.",
+                      "notes":  "Physical swap evidence [F-12]."
+                  },
+                  {
+                      "id":  "L87",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "and blamed the whole gap on",
+                      "shot_class":  "ironic-counterpoint",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A tiny red correction mark sits alone at the base of a huge cold-blue warehouse void, with a cropped grey pallet in the foreground, the rack gap in the middle, and paper-white shelves receding behind. Cold blue-grey, paper white, and semantic red hold; the absurdly tiny correction against the vast missing space is the typo-euphemism payload.",
+                      "notes":  "\u0027Typo\u0027 cover story [F-12]."
+                  },
+                  {
+                      "id":  "L88",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "The audit came back clean.",
+                      "shot_class":  "ironic-counterpoint",
+                      "source":  "ai-gen",
+                      "place":  "accountants-building",
+                      "hard_cut":  true,
+                      "still_prompt":  "`auditor-rep`, `hold-paper-by-sides`, `expr-deadpan`, stands small before a deep wall of cold-blue filing bays holding one cream report whose surface is entirely blank, face unobscured. A grey lockbox corner anchors the foreground, auditor and report fill the middle, and fluorescent-green shelf edges recede behind. Cold blue-grey, paper white, and charcoal commit the palette; the spotless report against the exposed lockbox geometry is the clean-audit payload.",
+                      "notes":  "Audit cleared despite tampering [F-13]."
+                  },
+                  {
+                      "id":  "L89",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "Not exactly Ocean\u0027s Eleven level,",
+                      "shot_class":  "idiom-pun",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A plain grey lockbox, one Allen wrench, and one paper clip sit awkwardly spaced on a cream evidence table, with a cropped charcoal chair arm in the foreground and cold-blue office bays receding behind. Cold blue-grey, paper white, and charcoal hold; the tiny improvised toolkit as a failed-heist tableau is the payload.",
+                      "notes":  "Deadpan comparison, no film likeness or branding."
+                  },
+                  {
+                      "id":  "L90",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "But a clean audit doesn\u0027t lower",
+                      "shot_class":  "physicalized-imbalance",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A spotless cream audit report acts as the base of a tall steel-blue target pedestal, with a cropped charcoal desk edge in the foreground, the report and pedestal in the middle, and muted-gold office lamps receding into the background. Steel blue, charcoal, and muted gold commit the palette; the clean report physically lifting the target is the payload.",
+                      "notes":  "Causal escalation from audit to next quota [F-04,F-23]."
+                  },
+                  {
+                      "id":  "L91",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "it raises it. So the fake",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "stage":  "fraud-ledger-escalation",
+                      "stage_role":  "base",
+                      "still_prompt":  "A single cream false-inventory ledger stands upright on a grey accounting table, with one broad first false entry block at the bottom of its otherwise ruled blank column. A cropped steel ruler anchors the foreground, the ledger occupies the middle, and cold-blue filing bays recede behind. Fluorescent green, grey, and off-white commit the pressured palette; the first false entry is the payload.",
+                      "notes":  "False-ledger escalation chain begins [F-12,F-23]."
+                  },
+                  {
+                      "id":  "L92",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "numbers had to keep climbing too,",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "stage":  "fraud-ledger-escalation",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "+ a second full false-inventory entry rises above the first in the same ledger column"
+                                           ],
+                      "still_prompt":  "The same cream false-inventory ledger stands on the same grey accounting table with the steel ruler in front and cold-blue filing bays receding behind under fluorescent green, grey, and off-white. A second full false-inventory entry block now rises above the established first block in the same ruled column, only this changes; everything else exactly as established.",
+                      "notes":  "Second quarter of visible compounding [F-23]."
+                  },
+                  {
+                      "id":  "L93",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "and a swapped count sheet wasn\u0027t",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "stage":  "fraud-ledger-escalation",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "+ a third full false-inventory entry rises above the existing false column"
+                                           ],
+                      "still_prompt":  "The same cream false-inventory ledger stands on the same grey accounting table with the steel ruler in front and cold-blue filing bays receding behind under fluorescent green, grey, and off-white. A third full false-inventory entry block now rises above the existing two false blocks in the same ruled column, only this changes; everything else exactly as established.",
+                      "notes":  "Third material escalation proves the paper lie cannot stay small [F-23]."
+                  },
+                  {
+                      "id":  "L94",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "going to carry that much weight.",
+                      "shot_class":  "physicalized-imbalance",
+                      "source":  "ai-gen",
+                      "still_prompt":  "A towering cream ledger column leans under the weight of a tiny grey count sheet at its base, with a cropped steel ruler in the foreground, the tipping column in the middle, and cold-blue accounting shelves receding behind. Fluorescent green, grey, and off-white hold; the tiny page visibly failing to support the tower is the payload.",
+                      "notes":  "Paper swap no longer carries the growing fraud [F-23]."
+                  },
+                  {
+                      "id":  "L95",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "They needed product.",
+                      "shot_class":  "symbolic-stand-in-object",
+                      "source":  "ai-gen",
+                      "still_prompt":  "An enormous empty drive-carton silhouette stands upright at the end of a deep warehouse aisle, with a cropped grey pallet corner in the foreground, the hollow carton in the middle, and cold-blue racks receding behind. Cold blue-grey, paper white, and charcoal commit the palette; the hollow product-shaped void is the payload.",
+                      "notes":  "Bricks themselves remain withheld until A3."
+                  },
+                  {
+                      "id":  "L96",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "Something an auditor could walk up",
+                      "shot_class":  "personified-character",
+                      "source":  "ai-gen",
+                      "place":  "warehouse",
+                      "hard_cut":  true,
+                      "still_prompt":  "`auditor-rep`, `hold-one-hand`, `expr-deadpan`, stands small at the front of a deep warehouse aisle, holding one blank cream checklist toward a sealed plain drive carton on a grey pallet, face unobscured. A steel pallet edge anchors the foreground, auditor and carton sit in the middle, and cold-blue bays with fluorescent-green rack lines recede behind. Cold blue-grey, paper white, and charcoal hold; the reachable sealed carton is the product-test payload.",
+                      "notes":  "Auditor\u0027s tangible-test requirement [F-11,F-23]; contents deliberately withheld."
+                  },
+                  {
+                      "id":  "L97",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "could walk up to, put his",
+                      "shot_class":  "register-shift-infographic",
+                      "source":  "ai-gen",
+                      "place":  "warehouse",
+                      "hard_cut":  true,
+                      "still_prompt":  "A single sealed plain drive carton sits centered on a grey pallet at the mouth of a long warehouse aisle, with a cropped cream checklist and steel ruler in the foreground, the carton in the middle, and cold-blue racks receding through the background. Cold blue-grey, paper white, and charcoal commit the palette; three large blank checklist boxes align with the carton as the tactile-count payload.",
+                      "notes":  "Ends A2 on an auditor-facing inventory object; brick disclosure stays for A3."
+                  },
+                  {
+                      "id":  "L98",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "hands on, and tick off a",
+                      "shot_class":  "diegetic-device",
+                      "source":  "ai-gen",
+                      "place":  "warehouse",
+                      "hard_cut":  true,
+                      "still_prompt":  "A cream audit checklist lies open on a grey pallet beside one sealed plain drive carton, with its three ruled boxes deliberately blank and a steel ruler cropped in the foreground. The carton and sheet occupy the middle, while cold-blue rack bays recede behind under cold blue-grey, paper white, and charcoal. The blank list waiting for a count is the final A2 payload.",
+                      "notes":  "No unsupported on-screen text."
+                  },
+                  {
+                      "id":  "L99",
+                      "duration_s":  2.8,
+                      "synthetic":  false,
+                      "vo_ref":  "list.",
+                      "shot_class":  "aftermath-palette-turn",
+                      "source":  "ai-gen",
+                      "place":  "warehouse",
+                      "hard_cut":  true,
+                      "still_prompt":  "The same warehouse aisle holds a single sealed plain drive carton on a grey pallet, but the foreground checklist has been folded shut and rests beside it, leaving the cold-blue racks and charcoal loading threshold to recede into quiet depth. Cold blue-grey, paper white, and charcoal hold; the sealed carton waiting in the empty aisle is the unresolved product payload.",
+                      "notes":  "Deliberate final breathing cut before A3\u0027s plan; no brick disclosure."
+                  }
+              ]
+}

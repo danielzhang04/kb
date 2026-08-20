@@ -1,0 +1,125 @@
+{
+  "schema": "faceless-youtube/vpw-plan-lock@1",
+  "video": "2026-07-28-bricks-fresh",
+  "status": "leg-0-plan-locked",
+  "script_basis": {
+    "path": "script.md",
+    "words": 1632,
+    "wpm": 175,
+    "runtime_s": 560,
+    "long_form_shot_target": 204,
+    "cadence": "1.5-3s normally; earned 4s bases only; front-load the first 60 seconds"
+  },
+  "doctrine": {
+    "authoring_mode": "fresh; current shots.json not read or reused",
+    "chain_rule": "standalone by default; only a visible, story-needed progressive reveal may use a base plus at most two material deltas",
+    "human_staging": "one seeded named figure for a human beat by default; crowd only when the visible mass is the story point",
+    "palette_rule": "each shot commits to a 2-3-colour beat palette; cool/desaturated passages are deliberate low-point tools",
+    "catalog_rule": "cast, pose, expression, interaction, and costume are closed-world; unresolved needs block authoring"
+  },
+  "partitions": [
+    {
+      "id": "A1",
+      "title": "Boom, boast, and the first crack",
+      "script_lines": [11, 21],
+      "vo_start": "We're in the 1980s.",
+      "vo_end": "Terry Johnson was out the door.",
+      "estimated_runtime_s": 110,
+      "shot_target": 47,
+      "front_loaded_first_60s_shots": 27,
+      "peak": "opening brick-in-a-hard-drive-box reveal",
+      "chain_frames": 9,
+      "standalone_frames": 38,
+      "palette_passages": [
+        "muted teal / beige / tobacco for the early-PC boom",
+        "terracotta / kraft tan / charcoal only on the brick reveal",
+        "slate blue / paper white / charcoal for the 1984 collapse"
+      ]
+    },
+    {
+      "id": "A2",
+      "title": "Doctor Fix It and the number that was not there",
+      "script_lines": [23, 31],
+      "vo_start": "By 1985 the company was in real trouble",
+      "vo_end": "put his hands on, and tick off a list.",
+      "estimated_runtime_s": 152,
+      "shot_target": 52,
+      "peak": "the locked audit box yields a forged count sheet",
+      "chain_frames": 10,
+      "standalone_frames": 42,
+      "palette_passages": [
+        "steel blue / charcoal / muted gold for Wiles's control",
+        "fluorescent green / grey / off-white for the quota and audit pressure",
+        "cold blue-grey / paper white / semantic red only for the discovered shortfall"
+      ]
+    },
+    {
+      "id": "A3",
+      "title": "The brick operation",
+      "script_lines": [33, 41],
+      "vo_start": "So the managers put their heads together",
+      "vo_end": "called the Denver newspapers.",
+      "estimated_runtime_s": 147,
+      "shot_target": 51,
+      "peak": "the full-pallet brick reveal at the mid-video re-arm",
+      "chain_frames": 14,
+      "standalone_frames": 37,
+      "palette_passages": [
+        "clay red / corrugated tan / soot black for the brick purchase and packing",
+        "navy / steel grey / kraft tan for the shipping-and-return loop",
+        "desaturated blue-grey / paper pink / charcoal for the Christmas layoff"
+      ]
+    },
+    {
+      "id": "A4",
+      "title": "Discovery, reversal, and the HR punchline",
+      "script_lines": [43, 55],
+      "vo_start": "The papers ran it.",
+      "vo_end": "selling those bricks.",
+      "estimated_runtime_s": 151,
+      "shot_target": 54,
+      "peak": "the final HR counterfactual: the fraud survived every formal control but not its fired workers",
+      "chain_frames": 9,
+      "standalone_frames": 45,
+      "palette_passages": [
+        "cold blue-grey / paper white / black for the restatement and bankruptcy",
+        "courtroom brown / ink black / semantic red for the verdict and reversal",
+        "winter blue / payroll pink / charcoal for the final HR aftermath"
+      ]
+    }
+  ],
+  "chain_plan": [
+    {"act":"A1","stage":"pc-shelf-drain","frames":["base","delta"],"parent_composition":"one fixed 1983 home-computer shop shelf with the same foreground PC-box display","material_progression":["the PC-box display is fully stocked","most boxes have left, exposing the shelf's empty backing"],"story_load":"The buying frenzy is a visible depletion, not a generic shopper cut.","guard":"A new shopper, price-label edit, or reframing is a hard cut."},
+    {"act":"A1","stage":"miniscribe-revenue-rise","frames":["base","delta"],"parent_composition":"one MiniScribe production-and-revenue display with the same factory silhouette and counter","material_progression":["the annual-revenue counter reads $125 million","the same counter rises to the claimed $600 million peak"],"story_load":"The boom's scale must persist into the later doubt.","guard":"A new company, chart type, decorative crack, or expression tweak is a hard cut."},
+    {"act":"A1","stage":"brick-box-reveal","frames":["base","delta","delta"],"parent_composition":"one fixed foreground drive-carton and near-pallet composition","material_progression":["the drive carton is closed","one whole carton is opened and visibly contains a red clay brick","the full near pallet face is opened, exposing repeated bricks"],"story_load":"The title's substitution becomes staged material proof.","guard":"New figures, reframing, label-only edits, or decorative carton detail are hard cuts."},
+    {"act":"A1","stage":"ibm-order-collapse","frames":["base","delta"],"parent_composition":"one MiniScribe loading-dock bay with the same IBM outbound-rack positions","material_progression":["outbound racks fill the bay","those same rack positions are entirely cleared"],"story_load":"The cut order visibly empties the operation before the separate layoff and founder consequences.","guard":"Worker removal, firing reaction, a new dock, or reframing is a hard cut."},
+    {"act":"A2","stage":"quota-ratchet","frames":["base","delta","delta"],"parent_composition":"one Wiles target-board composition with the same quota gauge and team-position markers","material_progression":["the sales target is at its baseline","the gauge ratchets higher","the same gauge ratchets higher again"],"story_load":"The no-win quarterly escalation is legible before the fraud response.","guard":"A figure entrance, bonus/firing reaction, or changed boardroom is a hard cut."},
+    {"act":"A2","stage":"invented-count-entry","frames":["base","delta"],"parent_composition":"one managers' quarterly-count form on the same count table","material_progression":["the required inventory-count field is blank","the whole field is filled with an invented count"],"story_load":"The first paper falsification is a consequential document-state change, not a pen detail.","guard":"Pen/clip movement, a new manager, or tiny handwriting-only change is a hard cut."},
+    {"act":"A2","stage":"count-sheet-substitution","frames":["base","delta"],"parent_composition":"one accountants' locked count-box and document well","material_progression":["the readable box holds the real count sheet","the whole sheet is visibly replaced by a forged one"],"story_load":"The substitution converts the discovered gap into a clean audit.","guard":"A clip, wrench, tab, expression, or illegible tiny writing is a hard cut."},
+    {"act":"A2","stage":"fraud-ledger-escalation","frames":["base","delta","delta"],"parent_composition":"one false-inventory ledger column held in the same accounting composition","material_progression":["the column has its first fictitious inventory entry","the false column rises another quarter","the same false column rises again"],"story_load":"The paper lie visibly compounds when the clean audit raises the next target.","guard":"A new document, accounting setting, or label-only change is a hard cut."},
+    {"act":"A3","stage":"brick-packing-scale","frames":["base","delta","delta"],"parent_composition":"one warehouse packing bench with the same brick pile, carton row, and pallet position","material_progression":["loose matched bricks sit beside open drive cartons","the whole carton row has become sealed drive cartons","the sealed-carton row has accumulated into a full pallet tower"],"story_load":"The scheme crosses from purchased material into scaled inventory.","guard":"Family/worker entrance, serial-label-only edit, shrink-wrap-only edit, or a new warehouse zone is a hard cut."},
+    {"act":"A3","stage":"pallet-unmasking","frames":["base","delta","delta"],"parent_composition":"one fixed foreground shrink-wrapped pallet face","material_progression":["the pallet is wrapped with closed cartons","one whole front carton is opened to a brick","the entire front pallet face is opened, exposing a repeated brick field"],"story_load":"The re-arm proves physical fraud at full operational scale.","guard":"A person entrance, local trim, serial-label-only state, or shipping-location change is a hard cut."},
+    {"act":"A3","stage":"pallet-return-loop","frames":["base","delta","delta"],"parent_composition":"one fixed Colorado-Singapore-return route plan with one pallet token and the same route","material_progression":["the pallet token is at Colorado dispatch","the same token reaches Singapore","the same token returns to MiniScribe inventory"],"story_load":"The same units must read as a sale in one quarter and inventory in the next.","guard":"A second pallet, new map, new route, or customer entrance is a hard cut."},
+    {"act":"A3","stage":"sample-pass-propagation","frames":["base","delta"],"parent_composition":"one warehouse audit-count composition with foreground sampled carton and fixed surrounding rack field","material_progression":["one selected carton is the bounded test sample","the surrounding rack field resolves as accepted inventory"],"story_load":"The sample-to-whole-warehouse blind spot is visible without a stamp-only delta.","guard":"A tick/stamp-only edit, auditor entrance, or new warehouse framing is a hard cut."},
+    {"act":"A3","stage":"scrap-padding-dominates","frames":["base","delta","delta"],"parent_composition":"one held inventory-rack composition with brick cartons and a bounded scrap section","material_progression":["brick cartons dominate with a small scrap section","scrap-filled cartons integrate across the rack","the scrap field visibly dwarfs the brick stock"],"story_load":"The fraud escalates beyond its brick icon into the larger junk-padding problem.","guard":"Loose debris addition, exact measured ratio, or a new warehouse zone is a hard cut."},
+    {"act":"A4","stage":"restatement-loss-deepens","frames":["base","delta","delta"],"parent_composition":"one new-management accounting-table composition with a 1986-88 book run and central loss counter","material_progression":["reported books carry the $14 million loss","the whole book run changes to restated entries","the same loss counter deepens to $40 million"],"story_load":"The discovery matters as an accumulating correction, not an isolated number.","guard":"Rifenburgh entrance, a new office, or label-only red accent is a hard cut."},
+    {"act":"A4","stage":"verdict-reversal-settlement","frames":["base","delta","delta"],"parent_composition":"one court-clerk case-file composition with the central disposition sheet filling the frame","material_progression":["the jury disposition awards $550 million","the whole disposition becomes an overturned judgment","the same case file resolves to the $128 million settlement"],"story_load":"The expectation of a verdict is reversed into the actual recovery.","guard":"A stamp-only landing, judge entrance, or new courtroom framing is a hard cut."},
+    {"act":"A4","stage":"wiles-defense-rebuttal","frames":["base","delta","delta"],"parent_composition":"one Wiles case dossier with one full-page claim/rebuttal panel in the same folder","material_progression":["the dossier carries Wiles's ignorance defense","the whole panel becomes subordinates' rebuttal testimony","the whole panel becomes the pre-exposure share-sale record"],"story_load":"The cumulative case against his denial builds in one readable evidentiary object.","guard":"A single added sticky note, prison entrance, or new case setting is a hard cut."}
+  ],
+  "needs": [
+    {
+      "kind": "canonical-mint",
+      "name": "packing-executive",
+      "acts": ["A3"],
+      "reason": "The executive who brings family into the night packing operation is a story-bearing individual.",
+      "catalog_binding": "hold-both-hands + expr-smug or expr-worried; fixed canonical costume after Pass 1"
+    },
+    {
+      "kind": "canonical-mint",
+      "name": "family-packer",
+      "acts": ["A3"],
+      "reason": "The family member helping pack boxes is a story-bearing individual, not a crowd substitute.",
+      "catalog_binding": "hold-both-hands + expr-worried or expr-deadpan; fixed canonical costume after Pass 1"
+    }
+  ]
+}
