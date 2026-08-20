@@ -31,6 +31,7 @@ from scripts.kb_paths import resolve_state_root
 
 MAX_PROPOSALS_PER_FIRE = 5
 MAX_FILES_PER_SOURCE = 100
+MAX_ENTRIES_PER_DIRECTORY = 10_000
 MAX_BYTES_PER_FILE = 128 * 1024
 MAX_LEDGER_ROWS_PER_FILE = 1_000
 
@@ -292,32 +293,34 @@ class _ScanState:
 
 
 def _iter_files(source: Path, suffixes: frozenset[str], source_name: str, state: _ScanState) -> Iterator[Path]:
-    """Stream source candidates in deterministic order with no directory links."""
+    """Stream source candidates in deterministic name order, one directory listing at a time (each level capped by MAX_ENTRIES_PER_DIRECTORY, parks beyond it), with no directory links. Sorting changes which files a capped fire reads on every platform, not only Linux."""
     if source.is_file():
         candidates: Iterator[Path] = iter((source,))
     elif source.is_dir():
         def sorted_entries(path: Path) -> Iterator[os.DirEntry[str]]:
             scan = os.scandir(path)
             try:
-                return iter(sorted(scan, key=lambda entry: entry.name))
+                entries = list(scan)
             finally:
                 scan.close()
+            if len(entries) > MAX_ENTRIES_PER_DIRECTORY:
+                raise InputParseError(
+                    f"parse failure: {source_name} directory exceeds {MAX_ENTRIES_PER_DIRECTORY} entries: {path.name}"
+                )
+            return iter(sorted(entries, key=lambda entry: entry.name))
 
         def walk() -> Iterator[Path]:
             scans = [sorted_entries(source)]
-            try:
-                while scans:
-                    try:
-                        entry = next(scans[-1])
-                    except StopIteration:
-                        scans.pop()
-                        continue
-                    if entry.is_dir(follow_symlinks=False):
-                        scans.append(sorted_entries(Path(entry.path)))
-                    elif entry.is_file(follow_symlinks=False):
-                        yield Path(entry.path)
-            finally:
-                scans.clear()
+            while scans:
+                try:
+                    entry = next(scans[-1])
+                except StopIteration:
+                    scans.pop()
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    scans.append(sorted_entries(Path(entry.path)))
+                elif entry.is_file(follow_symlinks=False):
+                    yield Path(entry.path)
 
         candidates = walk()
     else:

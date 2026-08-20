@@ -358,7 +358,7 @@ def test_source_file_bound_stops_before_later_malformed_file_is_scanned(tmp_path
     assert result.reason.startswith("file bound reached for eval reports")
 
 
-def test_scandir_file_bound_sorts_entries_before_applying_cap(tmp_path, monkeypatch):
+def test_file_bound_lists_each_level_once_within_the_directory_ceiling(tmp_path, monkeypatch):
     sources = _empty_sources(tmp_path)
     for number in range(MAX_FILES_PER_SOURCE + 5):
         (sources["eval_reports"] / f"clean-{number:03}.md").write_text("# clean", encoding="utf-8")
@@ -386,9 +386,23 @@ def test_scandir_file_bound_sorts_entries_before_applying_cap(tmp_path, monkeypa
 
     result = run_fire(tmp_path, sources)
 
-    assert consumed == MAX_FILES_PER_SOURCE + 5
+    assert consumed >= MAX_FILES_PER_SOURCE
+    assert consumed <= maintainer.MAX_ENTRIES_PER_DIRECTORY
     assert result.parked is True
     assert result.reason.startswith("file bound reached for eval reports")
+
+
+def test_directory_entry_bound_parks(tmp_path, monkeypatch):
+    monkeypatch.setattr(maintainer, "MAX_ENTRIES_PER_DIRECTORY", 3)
+    sources = _empty_sources(tmp_path)
+    for number in range(4):
+        (sources["eval_reports"] / f"entry-{number}.md").write_text("", encoding="utf-8")
+
+    result = run_fire(tmp_path, sources, forecast=False)
+
+    assert result.parked is True
+    assert result.reason.startswith("parse failure:")
+    assert "exceeds" in result.reason
 
 
 def test_no_actionable_evidence_parks(tmp_path):
