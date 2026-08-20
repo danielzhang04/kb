@@ -22,8 +22,16 @@ Atlas features themselves are a later build.
   GitHub-like behavior — pushing/deploying never waits on running work; in-flight runs
   pause at a clean boundary and rehydrate after the swap ("merging main doesn't
   disturb running terminals"). Quiescence-waiting toil is eliminated, not automated.
-- Key custody for the deploy trigger: PENDING (one-click desktop-signed vs unattended
-  key holder) — asked 2026-08-19.
+- **Key custody / trigger: one-click, key stays with Daniel** (2026-08-20). One local
+  command/button = fetch green CI artifact → verify → sign with his desktop key →
+  ship → swap. Auto-on-merge (CI/desktop-cadence key custody) is a possible future
+  upgrade, explicitly NOT this arc.
+- **Deploy timing: none.** Click = immediate apply, mid-run or not. Existing runs
+  pause at a clean boundary (stage/attempt edge, never mid-agent-turn) and rehydrate
+  ON THE NEW code — chosen over old-until-complete (blue-green) because the store is
+  single-writer, and mid-run deploys are usually fixes for the run in flight.
+  Guardrails: versioned run-state + migrate-on-load; a release declaring a breaking
+  state migration pauses the deploy and asks instead of silently applying.
 
 ## Facts the design rests on (codex survey, card 6a867b1f-608a2099)
 - All run/stage/attempt/session state persists in `DASHBOARD_STATE_ROOT/control/
