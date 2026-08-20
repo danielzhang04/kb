@@ -1,0 +1,12 @@
+[
+  {
+    "name": "crowd-probe-a2",
+    "mode": "environment",
+    "aspect": "16:9",
+    "image_size": "1K",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar — use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nBehind the same brass rail, a restrained shopper crowd in plain 1980s clothing -- every figure on the channel's simple round-head crowd rig, NO historical or Victorian costume, no top hats, no bonnets -- holds toward the few remaining unlabeled PC boxes, their bodies a small midground band beneath a huge skylit retail vault; cobalt, cream, and walnut preserve the world-over-people ratio.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": {"crowd": true}
+  }
+]

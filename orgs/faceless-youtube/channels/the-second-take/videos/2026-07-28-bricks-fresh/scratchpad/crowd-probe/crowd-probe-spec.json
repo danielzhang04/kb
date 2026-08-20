@@ -1,0 +1,46 @@
+[
+  {
+    "name": "crowd-probe-a0",
+    "mode": "environment",
+    "aspect": "16:9",
+    "image_size": "1K",
+    "payload": "Behind the same brass rail, a restrained shopper crowd in plain 1980s clothing -- every figure on the channel's simple round-head crowd rig, NO historical or Victorian costume, no top hats, no bonnets -- holds toward the few remaining unlabeled PC boxes, their bodies a small midground band beneath a huge skylit retail vault; cobalt, cream, and walnut preserve the world-over-people ratio.",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar — use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nBehind the same brass rail, a restrained shopper crowd in plain 1980s clothing -- every figure on the channel's simple round-head crowd rig, NO historical or Victorian costume, no top hats, no bonnets -- holds toward the few remaining unlabeled PC boxes, their bodies a small midground band beneath a huge skylit retail vault; cobalt, cream, and walnut preserve the world-over-people ratio.",
+    "seed": ["channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"],
+    "seed_roles": [{"path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png", "role": "crowd", "character": null}],
+    "figures": {"crowd": true}
+  },
+  {
+    "name": "crowd-probe-a1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "image_size": "1K",
+    "payload": "Behind the same brass rail and pressed against the far display window, exactly twelve shoppers stand two deep in plain 1980s clothing -- every figure on the channel's simple round-head crowd rig, NO historical or Victorian costume, no top hats, no bonnets -- holding toward the few remaining unlabeled PC boxes, their bodies a small midground band beneath a huge skylit retail vault; cobalt, cream, and walnut preserve the world-over-people ratio.",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar — use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nBehind the same brass rail and pressed against the far display window, exactly twelve shoppers stand two deep in plain 1980s clothing -- every figure on the channel's simple round-head crowd rig, NO historical or Victorian costume, no top hats, no bonnets -- holding toward the few remaining unlabeled PC boxes, their bodies a small midground band beneath a huge skylit retail vault; cobalt, cream, and walnut preserve the world-over-people ratio.",
+    "seed": ["channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"],
+    "seed_roles": [{"path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png", "role": "crowd", "character": null}],
+    "figures": {"crowd": true}
+  },
+  {
+    "name": "crowd-probe-a3",
+    "mode": "environment",
+    "aspect": "16:9",
+    "image_size": "1K",
+    "payload": "Behind the same brass rail, a restrained shopper crowd in plain 1980s clothing holds toward the few remaining unlabeled PC boxes, their bodies a small midground band beneath a huge skylit retail vault; cobalt, cream, and walnut preserve the world-over-people ratio. Every figure matches the crowd exemplar seed's squat proportions and simple face.",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar — use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nBehind the same brass rail, a restrained shopper crowd in plain 1980s clothing holds toward the few remaining unlabeled PC boxes, their bodies a small midground band beneath a huge skylit retail vault; cobalt, cream, and walnut preserve the world-over-people ratio. Every figure matches the crowd exemplar seed's squat proportions and simple face.",
+    "seed": ["channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"],
+    "seed_roles": [{"path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png", "role": "crowd", "character": null}],
+    "figures": {"crowd": true}
+  },
+  {
+    "name": "crowd-probe-a4",
+    "mode": "environment",
+    "aspect": "16:9",
+    "image_size": "1K",
+    "payload": "At the far end of the huge skylit retail vault, exactly twelve shoppers stand two deep behind the glass of a distant display window, beyond the same brass rail, looking toward the few remaining unlabeled PC boxes. The foreground and near aisle stay empty; cobalt, cream, and walnut preserve the world-over-people ratio. Every shopper matches the crowd exemplar seed's squat proportions and simple face and wears plain 1980s clothing.",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar — use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nAt the far end of the huge skylit retail vault, exactly twelve shoppers stand two deep behind the glass of a distant display window, beyond the same brass rail, looking toward the few remaining unlabeled PC boxes. The foreground and near aisle stay empty; cobalt, cream, and walnut preserve the world-over-people ratio. Every shopper matches the crowd exemplar seed's squat proportions and simple face and wears plain 1980s clothing.",
+    "seed": ["channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"],
+    "seed_roles": [{"path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png", "role": "crowd", "character": null}],
+    "figures": {"crowd": true}
+  }
+]
