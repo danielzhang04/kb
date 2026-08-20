@@ -4,10 +4,11 @@ from pathlib import Path
 from typing import Any
 
 
-TOP_LEVEL_KEYS = {"schema", "versions", "migrations", "releaseAttestation"}
+TOP_LEVEL_KEYS = {"schema", "versions", "migrations", "releaseAttestation", "activationJournal"}
 VERSION_KEYS = {"version", "collections", "requiredCollections", "envelopeRequired"}
 MIGRATION_KEYS = {"from", "to", "breaking", "down"}
 ATTESTATION_KEYS = {"schema", "keys"}
+ACTIVATION_JOURNAL_KEYS = {"phases"}
 
 
 def fail(message: str) -> None:
@@ -86,6 +87,10 @@ def load_registry(path: Path) -> dict[str, Any]:
         "archive", "schema", "sha256", "sourceCommit", "stateSchema", "rollbackStateSchema", "stateMigration", "workflow",
     ]:
         fail("releaseAttestation.keys must be the canonical v2 key order")
+    activation_journal = exact_keys(registry["activationJournal"], ACTIVATION_JOURNAL_KEYS, "activationJournal")
+    phases = string_array(activation_journal["phases"], "activationJournal.phases")
+    if len(phases) != 16:
+        fail("activationJournal.phases must contain exactly 16 phases")
     return registry
 
 
@@ -118,6 +123,7 @@ def ts_source(registry: dict[str, Any]) -> str:
         f"export const CONTROL_PLANE_MIGRATIONS = {json.dumps(migrations, separators=(',', ':'))} as const;",
         f"export const RELEASE_ATTESTATION_SCHEMA = {json.dumps(attestation['schema'])} as const;",
         f"export const RELEASE_ATTESTATION_KEYS = {json.dumps(attestation['keys'])} as const;",
+        f"export const ACTIVATION_JOURNAL_PHASES = {json.dumps(registry['activationJournal']['phases'])} as const;",
         f"export const STATE_SCHEMA = {json.dumps(str(current))} as const;",
         f"export const ROLLBACK_STATE_SCHEMA = {json.dumps(str(rollback))} as const;",
         f"export const STATE_MIGRATION = {json.dumps(migration)} as const;",
@@ -147,6 +153,7 @@ def py_source(registry: dict[str, Any]) -> str:
         f"CONTROL_PLANE_MIGRATIONS = {tuple(dict(edge) for edge in registry['migrations'])!r}",
         f"RELEASE_ATTESTATION_SCHEMA = {attestation_literal(registry['releaseAttestation']['schema'])}",
         f"RELEASE_ATTESTATION_KEYS = {tuple(registry['releaseAttestation']['keys'])!r}",
+        f"ACTIVATION_JOURNAL_PHASES = {tuple(registry['activationJournal']['phases'])!r}",
         f"STATE_SCHEMA = {str(current)!r}",
         f"ROLLBACK_STATE_SCHEMA = {str(rollback)!r}",
         f"STATE_MIGRATION = {migration!r}",

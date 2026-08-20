@@ -13,10 +13,14 @@ import type { TimelineModel } from '../../src/lib/timelineModel.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import { ManagedSessionBroker } from './broker.ts';
 import { createSubjectBrokerPersistence } from './brokerStore.ts';
-import type { JsonObject } from './types.ts';
+import type { JsonObject, Run } from './types.ts';
 import type { ExecuteRunInput } from './execution.ts';
 import type { SurfaceContext } from '../http/context.ts';
-import { authorizedFailedRunReconciliationGrant, authorizedFailedRunReconciliationRefusal } from './routes.ts';
+import {
+  authorizedFailedRunReconciliationGrant,
+  authorizedFailedRunReconciliationRefusal,
+  authorizedFailedRunReconciliationWireBody,
+} from './routes.ts';
 import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailedRunReconciliation.ts';
 import { createAttemptIoStore } from './attemptIo.ts';
 import { executeApprovedLaunch } from './launch.ts';
@@ -131,6 +135,30 @@ function expectExactWireRun(
   expect(typeof actual.state).toBe('string');
   expect(Object.hasOwn(actual, 'lifecycle')).toBe(false);
 }
+
+it('pins the failed-run reconciliation success wire shape', () => {
+  const run: Run = {
+    runRef: 'run-reconciled', predecessorRunRef: null, title: 'Reconciled run',
+    proposalRef: 'proposal-reconciled', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+    publicationState: 'published', lifecycle: { kind: 'failed', deployPause: null }, version: 8,
+    managerSessionRef: 'manager-reconciled', managerGeneration: 1, managerAssignment: null,
+    agentWorkspaceLaunch: null,
+    createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T01:00:00.000Z',
+  };
+  const body = authorizedFailedRunReconciliationWireBody({
+    result: { run, event: { cursor: 6 }, receipt: { phase: 'committed' } },
+    replayed: false,
+    canonicalCommit: 'c'.repeat(40),
+  } as never);
+  const { lifecycle: _lifecycle, ...wireRun } = run;
+  expect(body).toEqual({
+    ok: true,
+    value: { run: { ...wireRun, state: 'failed' }, event: { cursor: 6 }, receipt: { phase: 'committed' } },
+    replayed: false,
+    canonicalCommit: 'c'.repeat(40),
+  });
+  expectExactWireRun(body.value.run, run as unknown as { lifecycle: { kind: string } } & Record<string, unknown>);
+});
 
 describe('control proposal routes', () => {
   let app: ReturnType<typeof Fastify>;

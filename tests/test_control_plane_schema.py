@@ -13,6 +13,11 @@ def test_generated_empty_document_is_schema_v2():
         control_plane_schema.CONTROL_PLANE_COLLECTIONS
     )
 
+def test_activation_journal_phases_are_generated_for_python_consumers():
+    assert len(control_plane_schema.ACTIVATION_JOURNAL_PHASES) == 16
+    assert control_plane_schema.ACTIVATION_JOURNAL_PHASES[0] == "authorized"
+    assert control_plane_schema.ACTIVATION_JOURNAL_PHASES[-1] == "recovery-required"
+
 @pytest.mark.parametrize(
     ("name", "accepted"),
     [("v1-supported.json", True), ("v1-sparse-legacy.json", True), ("v2-empty.json", True),

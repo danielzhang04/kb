@@ -146,6 +146,17 @@ function runDto<T extends Run>(run: T): Omit<T, 'lifecycle'> & { state: RunLifec
   return { ...value, state: projectRunState(lifecycle) };
 }
 
+export function authorizedFailedRunReconciliationWireBody(
+  outcome: Awaited<ReturnType<typeof reconcileAuthorized20260801FailedRun>>,
+) {
+  return {
+    ok: true,
+    value: { ...outcome.result, run: runDto(outcome.result.run) },
+    replayed: outcome.replayed,
+    canonicalCommit: outcome.canonicalCommit,
+  };
+}
+
 /**
  * A Human Request has no identity of its own in the naming registry: the operator reads it as "this
  * RUN needs you", and every surface that lists one renders the owning run beside the request's own
@@ -660,12 +671,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             publication: ctx.coordinationPublication,
             outboxRoot: ctx.outboxRoot,
           });
-          return reply.send({
-            ok: true,
-            value: { ...outcome.result, run: runDto(outcome.result.run) },
-            replayed: outcome.replayed,
-            canonicalCommit: outcome.canonicalCommit,
-          });
+          return reply.send(authorizedFailedRunReconciliationWireBody(outcome));
         } catch (error) {
           // The HTTP reply stays generic (proof wording never crosses the surface), but the operator
           // running the daemon owns its console — without this line a refusal is undiagnosable.

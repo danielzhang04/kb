@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import {
+  CONTROL_PLANE_ACCEPTED_SIZE_FILENAME,
   ControlStoreLimitError,
   AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
@@ -20,7 +21,8 @@ import {
   proposalSnapshotHash,
 } from './store.ts';
 import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
-import { applyMigrationEdgeForTest } from './migrations.ts';
+import { applyMigrationEdgeForTest, loadAndMigrate } from './migrations.ts';
+import { createNodePersistenceDeps } from './persistence.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
 
@@ -29,6 +31,25 @@ const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as co
 
 function persistedV1(value: unknown): any {
   return applyMigrationEdgeForTest(value, 1, { stamp: '2026-08-20T00:00:00.000Z' });
+}
+
+function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
+  return {
+    version: 1,
+    nextEventCursor: 1,
+    proposals: [],
+    runs: Array.from({ length: 64 }, (_, index) => ({
+      subject: 'alice', runRef: `run-large-${index}`, predecessorRunRef: null,
+      title: `Large run ${index}`, proposalRef: `proposal-${index}`, proposalRevision: 1,
+      proposalHash: `${index.toString(16).padStart(2, '0')}${'a'.repeat(62)}`,
+      publicationState: 'published', state: 'succeeded', version: 1,
+      managerSessionRef: `manager-${index}`, managerGeneration: 1,
+      createdAt: stamp, updatedAt: stamp,
+    })),
+    stages: [], attempts: [], sessions: [], humanRequests: [], events: [],
+    stageGenerations: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+    generationSupersessions: [], quarantine: [],
+  };
 }
 
 it('binds store collection keys to the generated control-plane manifest', () => {
@@ -2135,28 +2156,13 @@ describe('Task 2 generic iteration durability', () => {
       .toThrow(new RegExp(`migration.*${maxDocumentBytes}.*source ${legacyBytes}.*migrated \\d+`, 'i'));
   });
 
-  it('loads a large v1 document without legacy rows when only the schema projection crosses the configured limit', () => {
+  it('loads and mutates a migration-grown document across every boot', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-task2-large-v1-no-legacy-'));
     roots.push(root);
     const path = join(root, 'control', 'control-plane.json');
     mkdirSync(dirname(path), { recursive: true });
     const stamp = '2026-08-20T00:00:00.000Z';
-    const source = {
-      version: 1,
-      nextEventCursor: 1,
-      proposals: [],
-      runs: Array.from({ length: 64 }, (_, index) => ({
-        subject: 'alice', runRef: `run-large-${index}`, predecessorRunRef: null,
-        title: `Large run ${index}`, proposalRef: `proposal-${index}`, proposalRevision: 1,
-        proposalHash: `${index.toString(16).padStart(2, '0')}${'a'.repeat(62)}`,
-        publicationState: 'published', state: 'succeeded', version: 1,
-        managerSessionRef: `manager-${index}`, managerGeneration: 1,
-        createdAt: stamp, updatedAt: stamp,
-      })),
-      stages: [], attempts: [], sessions: [], humanRequests: [], events: [],
-      stageGenerations: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
-      generationSupersessions: [], quarantine: [],
-    };
+    const source = largeV1MigrationSource(stamp);
     const sourceEncoded = `${JSON.stringify(source)}\n`;
     const projected = applyMigrationEdgeForTest(source, 2, { stamp }) as Record<string, unknown>;
     projected.documentRevision = 1;
@@ -2169,7 +2175,120 @@ describe('Task 2 generic iteration durability', () => {
 
     const loaded = createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
     expect(loaded.listRuns('alice')).toHaveLength(64);
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, documentRevision: 1 });
+    expect(loaded.createProposalRevision('alice', {
+      sourceComposerRef: 'large-v1-first-boot', sourceTurnId: 'turn-first', title: 'First boot', snapshot: {},
+    }).ok).toBe(true);
+
+    const secondBoot = createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
+    expect(secondBoot.listRuns('alice')).toHaveLength(64);
+    expect(secondBoot.createProposalRevision('alice', {
+      sourceComposerRef: 'large-v1-second-boot', sourceTurnId: 'turn-second', title: 'Second boot', snapshot: {},
+    }).ok).toBe(true);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, documentRevision: 3 });
+  });
+
+  it.each([
+    ['truncated', '{"schema":'],
+    ['wrong shape', JSON.stringify({ schema: 'kb.control-plane-accepted-size/v1', maxBytes: 999 })],
+  ])('ignores a %s accepted-size sidecar and lets the configured base limit decide', (_name, sidecar) => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-invalid-size-sidecar-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    expect(createApprovedProposal(store).approval?.decision).toBe('approved');
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    writeFileSync(join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME), `${sidecar}\n`, 'utf8');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const baseLimit = statSync(path).size + 1;
+      expect(() => createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes: baseLimit }))
+        .not.toThrow();
+      expect(warn).toHaveBeenCalledWith('[control-store] ignoring invalid control-plane accepted-size sidecar');
+      expect(() => createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes: 1 }))
+        .toThrow(ControlStoreLimitError);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('boots when a valid older grant is below a newly raised configured limit', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-raised-base-limit-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    expect(createApprovedProposal(store).approval?.decision).toBe('approved');
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    const raisedLimit = statSync(path).size + 100;
+    writeFileSync(join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME), `${JSON.stringify({
+      schema: 'kb.control-plane-accepted-size/v1', schemaVersion: 2, maxBytes: 1,
+    })}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, {
+      ...deterministicOptions(), maxDocumentBytes: raisedLimit,
+    })).not.toThrow();
+  });
+
+  it('accumulates a future migration grant on top of the existing accepted size', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-future-size-grant-'));
+    roots.push(root);
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    const sidecarPath = join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
+    mkdirSync(control, { recursive: true });
+    const stamp = '2026-08-20T00:00:00.000Z';
+    const source = largeV1MigrationSource(stamp);
+    const sourceEncoded = `${JSON.stringify(source)}\n`;
+    const projected = applyMigrationEdgeForTest(source, 2, { stamp }) as Record<string, unknown>;
+    projected.documentRevision = 1;
+    const projectedEncoded = `${JSON.stringify(projected)}\n`;
+    const maxDocumentBytes = Math.floor((Buffer.byteLength(sourceEncoded) + Buffer.byteLength(projectedEncoded)) / 2);
+    writeFileSync(path, sourceEncoded, 'utf8');
+    createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
+    const firstGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
+    expect(statSync(path).size).toBeGreaterThan(maxDocumentBytes);
+    expect(firstGrant).toMatchObject({ schemaVersion: 2 });
+
+    expect(() => createFileControlPlaneStore(root, {
+      ...deterministicOptions(),
+      maxDocumentBytes,
+      loadAndMigrateForTest: (encoded, target, context) => {
+        const result = loadAndMigrate(encoded, target, context);
+        if ((JSON.parse(encoded) as { version: number }).version === 2) {
+          for (const run of result.document.runs) run.title = `${run.title}x`;
+          return { document: result.document, applied: [{ from: 2, to: 3, breaking: true, down: 'present' }] };
+        }
+        return result;
+      },
+    })).not.toThrow();
+    const secondGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
+    expect(secondGrant.schemaVersion).toBe(2);
+    expect(secondGrant.maxBytes).toBeGreaterThan(firstGrant.maxBytes);
+  });
+
+  it('does not advance the accepted-size sidecar when the validating migration save fails', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-size-grant-save-failure-'));
+    roots.push(root);
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    const sidecarPath = join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
+    mkdirSync(control, { recursive: true });
+    const stamp = '2026-08-20T00:00:00.000Z';
+    const source = largeV1MigrationSource(stamp);
+    const sourceEncoded = `${JSON.stringify(source)}\n`;
+    const projectedEncoded = `${JSON.stringify(applyMigrationEdgeForTest(source, 2, { stamp }))}\n`;
+    const maxDocumentBytes = Math.floor((Buffer.byteLength(sourceEncoded) + Buffer.byteLength(projectedEncoded)) / 2);
+    writeFileSync(path, sourceEncoded, 'utf8');
+    const delegate = createNodePersistenceDeps();
+    const persistenceDepsForTest = {
+      ...delegate,
+      rename: (temp: string, target: string) => {
+        if (target === path) throw new Error('injected validating save refusal');
+        delegate.rename(temp, target);
+      },
+    };
+    expect(() => createFileControlPlaneStore(root, {
+      ...deterministicOptions(), maxDocumentBytes, persistenceDepsForTest,
+    })).toThrow(/injected validating save refusal/);
+    expect(existsSync(sidecarPath)).toBe(false);
   });
 
   it('refuses a corrupted persisted stage generation projection at hydration', () => {

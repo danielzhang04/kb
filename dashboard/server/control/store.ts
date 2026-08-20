@@ -17,7 +17,7 @@ import {
   loadAndMigrate,
   normalizeCrash,
 } from './migrations.ts';
-import type { ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
+import { CONTROL_PLANE_SCHEMA_VERSION, type ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
 import type {
   ProposalCompletionGate,
   ProposalIterationGroup,
@@ -32,6 +32,14 @@ import type {
 } from './broker.ts';
 import type { PublicOperationalEvent } from './publicEvents.ts';
 import { TERMINAL_ATTEMPT } from './types.ts';
+import { MAX_DEPLOYMENT_OPERATION_RECEIPTS } from './controlPlaneLimits.ts';
+import {
+  assertDeploymentCollection,
+  canTransitionDeployment,
+  isTerminalDeploymentState,
+  validateCreateDeploymentInput,
+  validateTransitionDeploymentInput,
+} from './deploymentState.ts';
 import type {
   Attempt,
   AttemptState,
@@ -39,6 +47,8 @@ import type {
   AdvanceIterationTurnInput,
   AgentWorkspaceLaunchProvenance,
   ControlResult,
+  CreateDeploymentInput,
+  Deployment,
   GenerationSupersession,
   HumanRequest,
   HumanRequestDecision,
@@ -72,6 +82,7 @@ import type {
   StageState,
   StorageInventory,
   StorageInventoryItem,
+  TransitionDeploymentInput,
 } from './types.ts';
 import {
   RUN_LIFECYCLE_KINDS,
@@ -85,6 +96,8 @@ import {
 } from './runLifecycle.ts';
 
 export const MAX_CONTROL_DOCUMENT_BYTES = 128 * 1024 * 1024;
+/** Snapshot/restore of the control plane must include this grant sidecar with control-plane.json. */
+export const CONTROL_PLANE_ACCEPTED_SIZE_FILENAME = 'control-plane.accepted-size.json';
 export const MAX_PROPOSAL_SNAPSHOT_BYTES = 512 * 1024;
 export const MAX_EVENTS_PER_RUN = 100_000;
 export const MAX_EVENT_PAGE = 1_000;
@@ -230,10 +243,15 @@ export interface StoredRun extends Run {
   authorizedFailedRunReconciliation?: StoredAuthorizedFailedRunReconciliation | null;
 }
 
-interface StoredDeployment {
-  deploymentRef: string;
-  revision: number;
-  operationReceipts: [];
+interface StoredDeployment extends Deployment {
+  operationReceipts: Array<{
+    key: string;
+    fingerprint: string;
+    operation: 'create' | 'transition';
+    deploymentRevision: number;
+    result: Deployment;
+    recordedAt: string;
+  }>;
 }
 
 export type RunActivationPhase = 'claimed' | 'roots-activated' | 'dispatched' | 'failed';
@@ -439,6 +457,8 @@ export interface ControlStoreOptions {
   maxEventsPerRun?: number;
   /** @internal */
   persistenceDepsForTest?: PersistenceDeps;
+  /** @internal Future migration-edge regression seam. */
+  loadAndMigrateForTest?: typeof loadAndMigrate;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
   beforeIterationBoundaryValidationForTest?: (
     boundary: 'quarantine' | 'restore',
@@ -719,6 +739,16 @@ export interface BrokerStoreBackend {
 }
 
 export interface ControlPlaneStore extends BrokerStoreBackend {
+  getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision'>;
+  getDeployment(deploymentRef: string): ControlResult<Deployment>;
+  listDeployments(): Deployment[];
+  createDeployment(subject: string, input: CreateDeploymentInput): ControlResult<Deployment>;
+  transitionDeployment(
+    subject: string,
+    deploymentRef: string,
+    input: TransitionDeploymentInput,
+  ): ControlResult<Deployment>;
+
   listProposalRevisions(subject: string, proposalRef?: string): ProposalRevisionMetadata[];
   listProposalRevisionsForComposer(subject: string, sourceComposerRef: string, scope?: ReadScope): ProposalRevisionMetadata[];
   getProposalRevision(subject: string, proposalRef: string, revision: number, scope?: ReadScope): ControlResult<ProposalRevision>;
@@ -1188,6 +1218,11 @@ function internalRun(value: StoredRun): Run {
     ...run
   } = value;
   return clone(run);
+}
+
+function publicDeployment(deployment: StoredDeployment): Deployment {
+  const { operationReceipts: _operationReceipts, ...result } = deployment;
+  return clone(result);
 }
 
 export function publicRun(value: StoredRun): RunDto {
@@ -2167,6 +2202,7 @@ function runCanSucceed(document: StoreDocument, run: StoredRun): boolean {
 }
 
 function validateStoreDocument(document: StoreDocument): void {
+  assertDeploymentCollection(document.deployments);
   const validateRows = (bundle: Pick<StoreDocumentCollections, 'runs' | 'stages'>): void => {
     for (const run of bundle.runs) {
       if (normalizeAssignment(run.managerAssignment) === undefined) {
@@ -2731,7 +2767,11 @@ function validateIterationDurability(
   }
 }
 
-function makeStore(load: () => StoreDocument, save: (document: StoreDocument) => void, options: ControlStoreOptions): ControlPlaneStore {
+function makeStore(
+  load: () => StoreDocument,
+  save: (document: StoreDocument, durability?: SaveDurability) => void,
+  options: ControlStoreOptions,
+): ControlPlaneStore {
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? randomUUID;
   const maxEvents = options.maxEventsPerRun ?? MAX_EVENTS_PER_RUN;
@@ -2799,9 +2839,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
     revision: receipt.revision,
   });
 
-  const commit = (document: StoreDocument): void => {
+  const commit = (document: StoreDocument, durability: SaveDurability = 'ordinary'): void => {
     document.documentRevision += 1;
-    save(document);
+    save(document, durability);
   };
 
   interface IterationTransitionTarget {
@@ -2975,6 +3015,115 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
   };
 
   return {
+    getControlDocumentMetadata() {
+      const { version, documentRevision } = load();
+      return { version, documentRevision };
+    },
+
+    getDeployment(deploymentRef) {
+      const deployment = load().deployments.find((item) => item.deploymentRef === deploymentRef);
+      return deployment ? ok(publicDeployment(deployment)) : fail('not-found', 'deployment was not found');
+    },
+
+    listDeployments() {
+      return load().deployments
+        .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt) || a.deploymentRef.localeCompare(b.deploymentRef))
+        .map(publicDeployment);
+    },
+
+    createDeployment(subject, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validateCreateDeploymentInput(input)) {
+        return fail('invalid', 'deployment creation input is invalid');
+      }
+      const document = load();
+      const fingerprint = sha256(canonicalJson({ subject, input } as unknown as JsonValue));
+      const prior = document.deployments.flatMap((deployment) => deployment.operationReceipts)
+        .find((receipt) => receipt.key === input.idempotencyKey);
+      if (prior) {
+        if (prior.operation !== 'create' || prior.fingerprint !== fingerprint) {
+          return fail('idempotency-conflict', 'deployment idempotencyKey was reused with different content');
+        }
+        return ok(clone(prior.result), true);
+      }
+      if (document.deployments.some((deployment) => deployment.deploymentRef === input.deploymentRef)
+        || document.deployments.some((deployment) => !isTerminalDeploymentState(deployment.state))) {
+        return fail('conflict', 'a deployment with this reference or another nonterminal deployment already exists');
+      }
+      const deployment: StoredDeployment = {
+        deploymentRef: input.deploymentRef,
+        revision: 1,
+        targetCommit: input.targetCommit,
+        previousCommit: input.previousCommit,
+        state: input.initialState,
+        requestedAt: input.requestedAt,
+        parkWarnAt: input.parkWarnAt,
+        swapDeadlineAt: null,
+        fenceRevision: 0,
+        drainAcks: {},
+        blockers: [],
+        progress: { kind: 'idle', attemptRef: null, since: null, detail: null },
+        abortRequestedAt: null,
+        error: null,
+        terminalOutcome: null,
+        acknowledgedBy: null,
+        operationReceipts: [],
+      };
+      const result = publicDeployment(deployment);
+      deployment.operationReceipts.push({
+        key: input.idempotencyKey,
+        fingerprint,
+        operation: 'create',
+        deploymentRevision: deployment.revision,
+        result: clone(result),
+        recordedAt: stamp(),
+      });
+      document.deployments.push(deployment);
+      commit(document, 'deploy-critical');
+      return ok(result);
+    },
+
+    transitionDeployment(subject, deploymentRef, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validNonEmpty(deploymentRef, MAX_SHORT_TEXT)
+        || !validateTransitionDeploymentInput(input)) {
+        return fail('invalid', 'deployment transition input is invalid');
+      }
+      const document = load();
+      const fingerprint = sha256(canonicalJson({ subject, deploymentRef, input } as unknown as JsonValue));
+      const prior = document.deployments.flatMap((deployment) => deployment.operationReceipts)
+        .find((receipt) => receipt.key === input.idempotencyKey);
+      if (prior) {
+        if (prior.operation !== 'transition' || prior.fingerprint !== fingerprint) {
+          return fail('idempotency-conflict', 'deployment idempotencyKey was reused with different content');
+        }
+        return ok(clone(prior.result), true);
+      }
+      const deployment = document.deployments.find((item) => item.deploymentRef === deploymentRef);
+      if (!deployment) return fail('not-found', 'deployment was not found');
+      if (deployment.revision !== input.expectedRevision || deployment.state !== input.expectedState
+        || !canTransitionDeployment(deployment.state, input.nextState)) {
+        return fail('conflict', 'deployment revision, state, or transition changed');
+      }
+      deployment.state = input.nextState;
+      Object.assign(deployment, clone(input.patch));
+      deployment.revision += 1;
+      const result = publicDeployment(deployment);
+      deployment.operationReceipts.push({
+        key: input.idempotencyKey,
+        fingerprint,
+        operation: 'transition',
+        deploymentRevision: deployment.revision,
+        result: clone(result),
+        recordedAt: stamp(),
+      });
+      while (deployment.operationReceipts.length > MAX_DEPLOYMENT_OPERATION_RECEIPTS) {
+        const transitionReceipt = deployment.operationReceipts.findIndex((receipt) => receipt.operation === 'transition');
+        if (transitionReceipt < 0) throw new Error('deployment transition receipt eviction invariant failed');
+        deployment.operationReceipts.splice(transitionReceipt, 1);
+      }
+      commit(document, 'deploy-critical');
+      return { ok: true, value: result, replayed: undefined };
+    },
+
     listProposalRevisions(subject, proposalRef) {
       return load().proposals
         .filter((item) => item.subject === subject && (proposalRef === undefined || item.proposalRef === proposalRef))
@@ -5889,8 +6038,10 @@ export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {
 /** File-backed daemon store. Every mutation replaces one sibling temp file atomically. */
 export function createFileControlPlaneStore(stateRoot: string, options: ControlStoreOptions = {}): ControlPlaneStore {
   const path = join(stateRoot, 'control', 'control-plane.json');
+  const acceptedSizePath = join(stateRoot, 'control', CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
   const maxBytes = options.maxDocumentBytes ?? MAX_CONTROL_DOCUMENT_BYTES;
-  let readableMaxBytes = maxBytes;
+  let acceptedMaxBytes = maxBytes;
+  const migrateDocument = options.loadAndMigrateForTest ?? loadAndMigrate;
   const startupStamp = (options.now ?? (() => new Date()))().toISOString();
   const bootId = options.bootId ?? randomUUID();
   const requiresGenericRewrite = (raw: Record<string, unknown>): boolean => {
@@ -5903,7 +6054,7 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
         || !Object.hasOwn(bundle, 'iterationReceipts'));
   };
   const hydrate = (encoded: string): StoreDocument => {
-    const migrated = loadAndMigrate(encoded, 2, { stamp: startupStamp }).document;
+    const migrated = migrateDocument(encoded, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp }).document;
     validateStoreDocument(migrated);
     validateGenericIterationBundle(migrated);
     for (const bundle of migrated.quarantine) validateGenericIterationBundle(bundle);
@@ -5911,7 +6062,9 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
   };
   const load = (): StoreDocument => {
     if (!existsSync(path)) return emptyStoreDocumentForTest();
-    if (statSync(path).size > readableMaxBytes) throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
+    if (statSync(path).size > acceptedMaxBytes) {
+      throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
+    }
     return hydrate(readFileSync(path, 'utf8'));
   };
   const save = (
@@ -5921,8 +6074,8 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
   ): void => {
     const persisted = genericPersistenceDocument(document);
     const encoded = `${JSON.stringify(persisted)}\n`;
-    if (enforceConfiguredLimit && Buffer.byteLength(encoded, 'utf8') > maxBytes) {
-      throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
+    if (enforceConfiguredLimit && Buffer.byteLength(encoded, 'utf8') > acceptedMaxBytes) {
+      throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
     }
     persistControlDocumentSync(path, encoded, durability, options.persistenceDepsForTest);
   };
@@ -5932,13 +6085,35 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
   let sourceBytes = 0;
   if (existsSync(path)) {
     sourceBytes = statSync(path).size;
-    if (sourceBytes > maxBytes) throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
     const source = readFileSync(path, 'utf8');
     const parsed: unknown = JSON.parse(source);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && existsSync(acceptedSizePath)) {
+      try {
+        const basis: unknown = JSON.parse(readFileSync(acceptedSizePath, 'utf8'));
+        const sourceVersion = Number((parsed as Record<string, unknown>).version);
+        if (basis === null || typeof basis !== 'object' || Array.isArray(basis)
+          || Object.keys(basis).sort().join(',') !== 'maxBytes,schema,schemaVersion'
+          || (basis as Record<string, unknown>).schema !== 'kb.control-plane-accepted-size/v1'
+          || !Number.isSafeInteger((basis as Record<string, unknown>).schemaVersion)
+          || Number((basis as Record<string, unknown>).schemaVersion) < 1
+          || Number((basis as Record<string, unknown>).schemaVersion) > sourceVersion
+          || !Number.isSafeInteger((basis as Record<string, unknown>).maxBytes)
+          || Number((basis as Record<string, unknown>).maxBytes) < 1) {
+          throw new Error('invalid accepted-size sidecar shape');
+        }
+        acceptedMaxBytes = Math.max(maxBytes, Number((basis as Record<string, unknown>).maxBytes));
+      } catch {
+        // Advisory recovery metadata: the configured base limit remains authoritative when unreadable.
+        console.warn('[control-store] ignoring invalid control-plane accepted-size sidecar');
+      }
+    }
+    if (sourceBytes > acceptedMaxBytes) {
+      throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
+    }
     legacyRewrite = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
       && (parsed as Record<string, unknown>).version === 1
       && requiresGenericRewrite(parsed as Record<string, unknown>);
-    const initial = loadAndMigrate(source, 2, { stamp: startupStamp });
+    const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp });
     recovered = initial.document;
     validateStoreDocument(recovered);
     validateGenericIterationBundle(recovered);
@@ -5954,9 +6129,25 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
         `control-plane legacy migration would exceed the ${maxBytes} byte limit (source ${sourceBytes} bytes; migrated ${migratedBytes} bytes)`,
       );
     }
-    const pureSchemaMigrationOverage = migrated && !legacyRewrite && migratedBytes > maxBytes;
-    if (pureSchemaMigrationOverage) readableMaxBytes = migratedBytes;
-    save(recovered, 'deploy-critical', !pureSchemaMigrationOverage);
+    const migrationGrowth = migratedBytes - sourceBytes;
+    const pureSchemaMigrationOverage = migrated && !legacyRewrite && migratedBytes > maxBytes && migrationGrowth > 0;
+    const nextAcceptedMaxBytes = pureSchemaMigrationOverage
+      ? acceptedMaxBytes + migrationGrowth
+      : acceptedMaxBytes;
+    acceptedMaxBytes = nextAcceptedMaxBytes;
+    save(recovered, 'deploy-critical');
+    if (pureSchemaMigrationOverage) {
+      persistControlDocumentSync(
+        acceptedSizePath,
+        `${JSON.stringify({
+          schema: 'kb.control-plane-accepted-size/v1',
+          schemaVersion: recovered.version,
+          maxBytes: acceptedMaxBytes,
+        })}\n`,
+        'deploy-critical',
+        options.persistenceDepsForTest,
+      );
+    }
   }
   return makeStore(load, save, options);
 }

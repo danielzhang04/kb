@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { SurfaceContext } from './http/context.ts';
 import { makeSurfaceContext } from './http/surface.ts';
@@ -34,6 +37,8 @@ import {
 } from './index.ts';
 
 let app: FastifyInstance | undefined;
+let testStateRoot: string | undefined;
+const originalStateRoot = process.env.DASHBOARD_STATE_ROOT;
 const TEST_ORIGIN = 'http://kb.test';
 const TRACE_FIXTURES = fileURLToPath(new URL('./trace/__fixtures__/', import.meta.url));
 const TEST_SESSION: SessionConfig = { secret: Buffer.from('index-test-session-secret-32-bytes!'), ttlMs: 60_000 };
@@ -42,6 +47,11 @@ const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
 // later matrix rows are still running.
 const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintSession('operator', TEST_SESSION).token}` });
 const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
+
+beforeEach(() => {
+  testStateRoot = mkdtempSync(join(tmpdir(), 'kb-index-test-state-'));
+  process.env.DASHBOARD_STATE_ROOT = testStateRoot;
+});
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -52,6 +62,10 @@ afterEach(async () => {
     await app.close();
     app = undefined;
   }
+  if (originalStateRoot === undefined) delete process.env.DASHBOARD_STATE_ROOT;
+  else process.env.DASHBOARD_STATE_ROOT = originalStateRoot;
+  if (testStateRoot) rmSync(testStateRoot, { recursive: true, force: true });
+  testStateRoot = undefined;
 });
 
 describe('server', () => {

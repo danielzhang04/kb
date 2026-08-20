@@ -12,7 +12,7 @@ import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { makeSurfaceContext, PTY_OPEN_FLEET_FROZEN, registerWriteSurface } from './surface.ts';
@@ -111,11 +111,23 @@ function headers(withToken: boolean): Record<string, string> {
 }
 
 let app: FastifyInstance | undefined;
+let testStateRoot: string | undefined;
+const originalStateRoot = process.env.DASHBOARD_STATE_ROOT;
+
+beforeEach(() => {
+  testStateRoot = mkdtempSync(join(tmpdir(), 'kb-surface-test-state-'));
+  process.env.DASHBOARD_STATE_ROOT = testStateRoot;
+});
+
 afterEach(async () => {
   if (app) {
     await app.close();
     app = undefined;
   }
+  if (originalStateRoot === undefined) delete process.env.DASHBOARD_STATE_ROOT;
+  else process.env.DASHBOARD_STATE_ROOT = originalStateRoot;
+  if (testStateRoot) rmSync(testStateRoot, { recursive: true, force: true });
+  testStateRoot = undefined;
   rmSync(join(REPO_A, 'STOP'), { force: true });
   rmSync(join(REPO_A, 'ledgers', 'audit'), { recursive: true, force: true });
   vi.restoreAllMocks();

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
+import { assertDeploymentCollection } from './deploymentState.ts';
 import {
   crashNormalizedLifecycle,
   lifecycleForKind,
@@ -235,7 +236,7 @@ function assertRunLifecycle(run: unknown): void {
 export function assertDocumentInvariant(value: unknown): asserts value is StoreDocument {
   assertMigrationEnvelope(value);
   if (value.version !== CONTROL_PLANE_SCHEMA_VERSION) throw new Error('invalid control-plane store target');
-  if (value.deployments.length !== 0) throw new Error('invalid control-plane deployments');
+  assertDeploymentCollection(value.deployments);
   assertEventCursorSequence(value);
   for (const run of value.runs) assertRunLifecycle(run);
   for (const stage of value.stages) assertStoredStageGenerationProjection(stage);

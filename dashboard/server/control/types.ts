@@ -13,6 +13,7 @@ import type {
   ResolvedAgentAssignment,
 } from './proposal.ts';
 import type { IterationOutcome } from './iterationOutcome.ts';
+import type { DeploymentState } from './deploymentState.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -84,6 +85,72 @@ export type RunLifecycle =
       kind: 'paused-for-deploy';
       deployPause: DeployPause;
     };
+
+export interface DeploymentProgress {
+  kind: 'idle' | 'waiting-attempt' | 'parked' | 'swapping' | 'rehydrating';
+  attemptRef: string | null;
+  since: string | null;
+  detail: string | null;
+}
+
+export interface DeploymentTerminalOutcome {
+  kind: 'succeeded' | 'aborted' | 'failed';
+  at: string;
+  by: string;
+}
+
+export interface DeploymentAcknowledgement {
+  subject: string;
+  at: string;
+}
+
+export interface Deployment {
+  deploymentRef: string;
+  revision: number;
+  targetCommit: string;
+  previousCommit: string;
+  state: DeploymentState;
+  requestedAt: string;
+  parkWarnAt: string;
+  swapDeadlineAt: string | null;
+  fenceRevision: number;
+  drainAcks: Record<string, { fenceRevision: number; acknowledgedAt: string }>;
+  blockers: string[];
+  progress: DeploymentProgress;
+  abortRequestedAt: string | null;
+  error: string | null;
+  terminalOutcome: DeploymentTerminalOutcome | null;
+  acknowledgedBy: DeploymentAcknowledgement | null;
+}
+
+export interface DeploymentTransitionPatch {
+  swapDeadlineAt?: string | null;
+  blockers?: string[];
+  progress?: DeploymentProgress;
+  abortRequestedAt?: string | null;
+  error?: string | null;
+  terminalOutcome?: DeploymentTerminalOutcome | null;
+  acknowledgedBy?: DeploymentAcknowledgement | null;
+}
+
+export interface CreateDeploymentInput {
+  deploymentRef: string;
+  initialState: 'waiting-confirmation' | 'requested';
+  targetCommit: string;
+  previousCommit: string;
+  requestedAt: string;
+  parkWarnAt: string;
+  idempotencyKey: string;
+}
+
+export interface TransitionDeploymentInput {
+  expectedRevision: number;
+  expectedState: DeploymentState;
+  nextState: DeploymentState;
+  idempotencyKey: string;
+  patch: DeploymentTransitionPatch;
+}
+
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);

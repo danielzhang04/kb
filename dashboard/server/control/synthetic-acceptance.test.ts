@@ -23,7 +23,7 @@ function ctxReturning(state: string | null): SurfaceContext {
     controlStore: {
       getRun: () => (state === null
         ? { ok: false as const }
-        : { ok: true as const, value: { run: { state } } }),
+        : { ok: true as const, value: { run: { lifecycle: { kind: state, deployPause: null } } } }),
     },
   } as unknown as SurfaceContext;
 }
