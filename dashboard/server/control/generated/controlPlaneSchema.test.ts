@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_MIGRATIONS,
+  ACTIVATION_JOURNAL_PHASES, CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_MIGRATIONS,
   CONTROL_PLANE_SCHEMA_VERSION, RELEASE_ATTESTATION_KEYS,
   RELEASE_ATTESTATION_SCHEMA, ROLLBACK_CONTROL_PLANE_SCHEMA_VERSION,
   STATE_MIGRATION, STATE_SCHEMA, ROLLBACK_STATE_SCHEMA,
@@ -19,6 +19,13 @@ describe('generated control-plane schema', () => {
     expect(RELEASE_ATTESTATION_KEYS).toEqual([
       'archive', 'schema', 'sha256', 'sourceCommit', 'stateSchema',
       'rollbackStateSchema', 'stateMigration', 'workflow',
+    ]);
+    expect(ACTIVATION_JOURNAL_PHASES).toHaveLength(16);
+    expect(ACTIVATION_JOURNAL_PHASES).toEqual([
+      'authorized', 'service-stopped', 'migrated', 'current-swapped', 'restart-issued',
+      'activation-committed', 'healthy', 'rollback-authorized', 'rollback-stopped',
+      'down-migrated', 'rollback-swapped', 'rollback-committed', 'rollback-healthy',
+      'old-selected', 'rollback-cancelled', 'recovery-required',
     ]);
     const empty = emptyControlPlaneDocument();
     expect(empty.version).toBe(2);

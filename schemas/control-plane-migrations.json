@@ -94,5 +94,25 @@
       "stateMigration",
       "workflow"
     ]
+  },
+  "activationJournal": {
+    "phases": [
+      "authorized",
+      "service-stopped",
+      "migrated",
+      "current-swapped",
+      "restart-issued",
+      "activation-committed",
+      "healthy",
+      "rollback-authorized",
+      "rollback-stopped",
+      "down-migrated",
+      "rollback-swapped",
+      "rollback-committed",
+      "rollback-healthy",
+      "old-selected",
+      "rollback-cancelled",
+      "recovery-required"
+    ]
   }
 }

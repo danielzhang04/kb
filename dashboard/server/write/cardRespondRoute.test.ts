@@ -101,6 +101,7 @@ function harness(
   const app = Fastify({ logger: false });
   registerWriteSurface(app, makeSurfaceContext({
     repoRoot,
+    stateRoot: join(repoRoot, 'dashboard-state'),
     sessionConfig: CONFIG,
     allowedOrigins: [ORIGIN],
     runPy: py,

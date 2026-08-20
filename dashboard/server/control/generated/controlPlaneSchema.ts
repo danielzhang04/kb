@@ -5,6 +5,7 @@ export type ControlPlaneCollection = typeof CONTROL_PLANE_COLLECTIONS[number];
 export const CONTROL_PLANE_MIGRATIONS = [{"from":1,"to":2,"breaking":true,"down":"present"}] as const;
 export const RELEASE_ATTESTATION_SCHEMA = "kb.release-attestation/v2" as const;
 export const RELEASE_ATTESTATION_KEYS = ["archive", "schema", "sha256", "sourceCommit", "stateSchema", "rollbackStateSchema", "stateMigration", "workflow"] as const;
+export const ACTIVATION_JOURNAL_PHASES = ["authorized", "service-stopped", "migrated", "current-swapped", "restart-issued", "activation-committed", "healthy", "rollback-authorized", "rollback-stopped", "down-migrated", "rollback-swapped", "rollback-committed", "rollback-healthy", "old-selected", "rollback-cancelled", "recovery-required"] as const;
 export const STATE_SCHEMA = "2" as const;
 export const ROLLBACK_STATE_SCHEMA = "1" as const;
 export const STATE_MIGRATION = "breaking" as const;

@@ -6,6 +6,7 @@ CONTROL_PLANE_COLLECTIONS = ('proposals', 'runs', 'stages', 'attempts', 'session
 CONTROL_PLANE_MIGRATIONS = ({'from': 1, 'to': 2, 'breaking': True, 'down': 'present'},)
 RELEASE_ATTESTATION_SCHEMA = 'kb.release-attestation/v2'
 RELEASE_ATTESTATION_KEYS = ('archive', 'schema', 'sha256', 'sourceCommit', 'stateSchema', 'rollbackStateSchema', 'stateMigration', 'workflow')
+ACTIVATION_JOURNAL_PHASES = ('authorized', 'service-stopped', 'migrated', 'current-swapped', 'restart-issued', 'activation-committed', 'healthy', 'rollback-authorized', 'rollback-stopped', 'down-migrated', 'rollback-swapped', 'rollback-committed', 'rollback-healthy', 'old-selected', 'rollback-cancelled', 'recovery-required')
 STATE_SCHEMA = '2'
 ROLLBACK_STATE_SCHEMA = '1'
 STATE_MIGRATION = 'breaking'

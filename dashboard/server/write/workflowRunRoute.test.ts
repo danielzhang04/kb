@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintSession } from '../auth/session.ts';
 import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 
@@ -8,16 +11,23 @@ const ORIGIN = 'http://localhost';
 
 describe('POST /api/write/workflow-runs', () => {
   let app: ReturnType<typeof Fastify> | undefined;
+  let stateRoot: string;
+
+  beforeEach(() => {
+    stateRoot = mkdtempSync(join(tmpdir(), 'kb-workflow-run-route-state-'));
+  });
 
   afterEach(async () => {
     await app?.close();
     app = undefined;
+    rmSync(stateRoot, { recursive: true, force: true });
   });
 
   it('is explicitly retired behind the normal origin and session gates', async () => {
     app = Fastify({ logger: false });
     registerWriteSurface(app, makeSurfaceContext({
       repoRoot: process.cwd(),
+      stateRoot,
       sessionConfig: CONFIG,
       allowedOrigins: [ORIGIN],
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Fastify from 'fastify';
@@ -22,6 +22,11 @@ const SECRET_TEXT = SECRET.toString('utf8');
 const sessionConfig = { secret: SECRET, ttlMs: 60_000 };
 const okPreamble: PreambleRunner = () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
 const frozenPreamble: PreambleRunner = () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP file present', stderr: '' });
+let testStateRoot: string;
+
+beforeEach(() => {
+  testStateRoot = mkdtempSync(join(tmpdir(), 'kb-composer-routes-state-'));
+});
 
 function token(subject = 'operator'): string {
   return mintSession(subject, sessionConfig).token;
@@ -78,6 +83,7 @@ function buildApp(overrides: Partial<SurfaceContext> = {}) {
     createInMemoryComposerStore({ protector: createProviderIdProtector(SECRET) });
   const ctx = makeSurfaceContext({
     repoRoot: '/repo',
+    stateRoot: testStateRoot,
     sessionConfig,
     composerStore,
     runPreamble: okPreamble,
@@ -111,6 +117,7 @@ let app: FastifyInstance | undefined;
 afterEach(async () => {
   if (app) await app.close();
   app = undefined;
+  rmSync(testStateRoot, { recursive: true, force: true });
 });
 
 describe('Composer workspace catalog routes', () => {
