@@ -48,6 +48,13 @@
       "head_tone": "#e2b78c",
       "costume": "PINNED canonical outfit: boxy tan blazer worn open over a brown open-collar shirt (chest and lapels plain \u2014 no badge, pin, or logo), plain dark trousers and dark shoes; short dark-brown side-parted hair, stocky build. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
+    },
+    "pc-boxy": {
+      "role": "Personified beige boxy 1980s home computer — a FACED machine character (not a human). The cast's cartoon eyes and mouth sit in its front panel; short stubby arms and legs, NO hands. Appears L01-L04, L16.",
+      "head_tone": "#e8dcc0",
+      "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT — never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
+      "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "no_hands": true
     }
   },
   "assets": [
@@ -518,6 +525,14 @@
       "kind": "environment",
       "tag": "style anchor",
       "note": "Contributes line register and palette saturation ONLY, never temperature, hues, content, layout, or the place it depicts."
+    },
+    {
+      "name": "pc-boxy",
+      "file": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "character": "pc-boxy",
+      "kind": "identity",
+      "tag": "base",
+      "seed_frame": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
     }
   ]
 }

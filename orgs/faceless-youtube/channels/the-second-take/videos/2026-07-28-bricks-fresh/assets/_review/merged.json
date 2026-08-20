@@ -1,52 +1,202 @@
 [
- {"id": "L01", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: 1980s home-computer desk scene reads exactly the authored facts (joystick, cassette, coiled cord, dusk-blue curtains, bookcase, wide suburban room); no cast, no unrequested text; palette on-recipe; flat-cel line register holds."},
- {"id": "L02", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "ONE sanctioned content retry (vpw3r1): original gen had dense fine wood-grain lines on the arcade cabinet finer than the rig outline (line-register hazard); surgical replace forced flat solid wood-tone panels, no grain -- retry frame is clean flat cel, all authored facts present (bench, brass rail, shuttered storefronts, skylight), no unrequested text."},
- {"id": "L03", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: top-down accounting-desk still life -- carton on brass pedestal, hair-thin red thread, adding machine, beige/brass/blue-black palette exactly as authored; no unrequested text; moody dark register supports the 'only warning' beat."},
- {"id": "L04", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "ONE sanctioned content retry (vpw3r1): original gen baked an unauthored 'DO NOT TOUCH' sign onto the display plinth (fidelity: unrequested text/label, still_prompt authored none); surgical replace to a bare plinth with an explicit no-signage clause fixed it. Retry frame: pc-boxy identity/rig matches canonical (beige case, green screen face, stubby no-hand arms/legs), expr-confused shape correct, all scene facts present, no unrequested text."},
- {"id": "L05", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: lettering-bearing shot -- DSG check on the calendar's '1983' passes letter-by-letter, marker-hand register matches the lettering exemplar; mouse+coiled cord, retail shelving, clerestory windows, teal/cream/walnut palette all present; no other text anywhere."},
- {"id": "L06", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "ONE sanctioned content retry (vpw3r1): original gen baked an unauthored 'SALES' word onto the receipt prop (fidelity: unrequested text, still_prompt authored none); surgical replace to an explicitly blank/unlettered receipt fixed it. Retry frame: balance-beam imbalance reads correctly, ruler+receipt near camera, palette on-recipe, no unrequested text."},
- {"id": "L07", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: delta-chain BASE for L08 -- fully stocked 1983 shop shelf, large display unit near lens, brass queue rail, skylights/ceiling fans/side aisles, beige/teal/tobacco-brown palette all present; no unrequested text; composition is solid and holdable for the coming delta."},
- {"id": "L09", "f": "MED", "s": "clean", "r": "LOW", "worst": "MED",
-  "why": "ONE sanctioned retry issued (plain reroll -- crowd-rig clauses are forge-injected via figures.crowd, never hand-authored in shot prose, so no single clause existed to surgically replace). Original gen had a HARD rig fail: several crowd figures carried individuated detailed faces (visible noses, open-mouth teeth) instead of the required CROWD-RIG dot-eye/no-nose/no-ear/no-teeth simplification -- the reroll FIXED this (every figure now reads correctly on the simplified crowd rig). But the reroll introduced a NEW fidelity defect: the word 'PC' is baked repeatedly (~8x) onto the background boxes, unrequested -- still_prompt names 'a distant wall of beige PC boxes' as an object-type description, never quotes literal text, and the style suffix's 'no unrequested text' was not honoured. Also a residual LOW rig note: crowd head-tone count reads ~4 distinct flat tones (cream/tan/brown/dark-brown), exceeding the 2-3 bound. Exhausted retry budget -- PARKING rather than a third gen. suspected_mechanism_layer: vpw_authoring/forge_assembly -- an object-type noun in shot prose ('sales receipt', 'invoice', 'PC boxes') is repeatedly rendered by the provider as literal on-object printed text despite the head/tail 'no unrequested text' policy clauses; seen on L04/L06/L19 before their retries fixed it, and now on L09 after its retry. Recommend a surfaced (never self-applied) prompt-policy strengthening for the next wave: an explicit negative clause targeting paper/box/sign props specifically."},
- {"id": "L10", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: 'run on' is a VO/visual pun, not diegetic lettering -- correctly rendered with NO baked text; paper-airplane computer box, brass rivets, blank price rails, stepped shelves toward a sunlit doorway all present; beige/brass/muted-teal palette on-recipe."},
- {"id": "L11", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: hard-drive-as-small-vault reads clearly (keyhole lock), screwdriver+cable coil near corners, pegboards/spare casings/factory windows present; palette on-recipe; no unrequested text."},
- {"id": "L12", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: computer and drive joined by a glowing thick copper conduit reads the 'memory as physical connection' beat cleanly; desk lip/loose cable, empty shelving, tool wall, teal partition all present; cream/copper/teal palette on-recipe."},
- {"id": "L13", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: closed hard drive with brass keyring and sealed (blank) envelope on a dark walnut desk; round power switch+cable, filing cabinet, high window, teal-shadowed wall present; walnut/teal/cream palette on-recipe; no unrequested text."},
- {"id": "L14", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: three chunky UNLETTERED drawers (paper, tool, sealed box) correctly carry no invented labels; cable, tall shelves, blue-green wall present; palette on-recipe."},
- {"id": "L15", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: several beige computers on a high shelf send copper cables down to one central hard drive on a plinth, dependency read is immediate; bench corner+tool tray, teal wall present; teal/cream/copper palette on-recipe."},
- {"id": "L16", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "ONE sanctioned content retry (vpw3r1): original gen showed pc-boxy and rival-pc as head/screen only, missing their canonical stubby arms and legs (rig: identity/form deviation from both characters' registry canonicals). Surgical replace explicitly demanded full-body visibility with arms/legs -- retry frame shows both figures complete: pc-boxy (beige/green, no-hand stub arms+legs) and rival-pc (slate-grey, narrower/taller tower, vent-slot panel, matching no-hand rig) correctly rendered, matching eye-line, expr-smug on both, brass rail/shelf walls/skylights present."},
- {"id": "L17", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: two beige towers lean together over the brass balance beam while the hard-drive unit rests small/unnoticed beneath the pivot -- 'quiet supplier lower position' beat lands cleanly; counter edge, retail bays, ceiling lamps present; cream/teal/brass palette on-recipe; no unrequested text (magazine covers correctly blank)."},
- {"id": "L18", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: drive-maker (STEP-1 card fig-drive-maker--action-powerstance--expr-smug--72fa85ba, itself passed rig/expression-register/flat-cel-hazard) seeds cleanly into the factory-catwalk scene -- identity/costume/pose/expression match the card; anonymous cartons on the conveyor below, machinery bays, high windows, loading door present; tobacco-brown/muted-teal/cream palette on-recipe; no unrequested text."},
- {"id": "L19", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "ONE sanctioned content retry (vpw3r1): original gen baked an unauthored 'INVOICE' word onto the paper prop (fidelity: unrequested text, still_prompt authored none); surgical replace to an explicitly blank/unlettered invoice corner fixed it. Retry frame: hard-drive unit at the foot of the tall brass coin stack, cartons shrinking to the distant wall, rack uprights/crates/high windows present; palette reads slightly cooler/greyer than the authored beige but the brass coin column (the load-bearing fact) is correctly warm/golden -- not blocking."},
- {"id": "L20", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: drive-maker (STEP-1 card fig-drive-maker--action-offering--expr-smug--fd44746a, itself passed rig/expression-register/flat-cel-hazard) seeds cleanly into the gold-rush-counter scene, presenting the hard drive as a prospector's pick; brass pan+pebbles near camera, timber stalls, ochre ridge, open supply hall present; ochre/teal/tobacco-brown palette on-recipe; no unrequested text."},
- {"id": "L21", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: hard-drive unit dwarfed by the enormous brass miner's pan of pebbles reads the central imbalance clearly; one tiny gold glint sits within the pebble pile rather than literally 'beside the door' as worded, but still reads as the last/subtlest thing the eye finds -- not blocking; workbench edge, timber supply hall, ochre slope present; brass/clay-ochre/teal palette on-recipe."},
- {"id": "L22", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: long procession of identical sealed cartons (twine-wrapped oversized carton nearest the lens) reads cleanly; pallet slat, rack uprights, loading doors, charcoal wall present; kraft-tan/terracotta/charcoal palette correctly reserves the clay/terracotta accent for the coming reveal; no unrequested text."},
- {"id": "L23", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "ONE sanctioned content retry (vpw3r1): original gen showed pc-boxy gripping the carton rim with HANDS -- a hard rig fail against its registry 'no_hands: true' pin (personified object, explicitly never seeds a human grip). Surgical replace stated the bare armless top edge explicitly (no hands, no fingers) -- retry frame shows pc-boxy's rounded case-corner stubs resting on the box rim, no hands, expr-surprised correct; pallet slat, rack rows, roll-up doors, charcoal wall present; terracotta/kraft-tan/charcoal palette on-recipe."},
- {"id": "L24", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: delta-chain BASE for L25 -- one closed kraft carton before a matching carton wall, torn shrink wrap+pallet board texture, warehouse racks/trusses/charcoal wall present; every carton surface correctly blank/unlettered as authored; terracotta/kraft-tan/charcoal palette on-recipe; composition solid and holdable for the coming delta."},
- {"id": "L08", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: delta off VERIFIED base L07 (place plate stamped in the channel review store) -- held-set holds (same shelf structure, near-lens large display unit, brass queue rail, skylights/fans/aisles); the ONE changed element lands correctly: the middle shelf tier is now bare wood backing, most smaller PC boxes gone, while the kept top-row monitor displays and everything else remain exactly as L07 established; beige/teal/tobacco-brown palette unchanged; no unrequested text."},
- {"id": "L25", "f": "clean", "s": "clean", "r": "clean", "worst": "clean",
-  "why": "fresh-eyes: delta off VERIFIED base L24 (place plate stamped in the channel review store) -- held-set holds (matching carton wall, torn shrink wrap, pallet board, warehouse racks/trusses/charcoal wall, all boxes still correctly blank/unlettered); the ONE changed element is the reveal itself: one whole foreground carton stands open with a single red clay brick clearly visible inside, exactly the authored 'single material substitution'; terracotta/kraft-tan/charcoal palette unchanged; no unrequested text. This is the video's central reveal frame and it lands clean."}
+ {
+  "id": "L01",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, R1 retry): 1980s home den at night -- TV glow, bookshelf, starlit window, walnut desk with an open-flap carton (reddish interior peeking) beside an unlit beige home computer. No shop counter/register/arcade cabinet (R1 fixed the prior gen's retail-room drift). No unrequested text. Flat-cel line register on-recipe."
+ },
+ {
+  "id": "L02",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, R1 retry): bright skylit mall corridor, brass rail foreground, small crowd gathered around a distant arcade cabinet. All figures now hold the plain round-head/dot-eye crowd rig throughout (R1 fixed the prior gen's off-rig detailed faces/hair). Cobalt/peach/cream palette on-recipe, no unrequested text."
+ },
+ {
+  "id": "L03",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, clean on first gen): hard-drive carton displayed like a trophy on a polished plinth, a small red-clay corner pressing through the lower seam; teal filing bays and tall office windows recede behind. No unrequested text; palette on-recipe."
+ },
+ {
+  "id": "L04",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, R1 retry): `pc-boxy` at a middle-distance scale facing the suspicious carton in a long electronics aisle, foreground cable coil. R1 fixed a HARD rig defect (fingered hands rendered on the first gen, violating the no_hands canonical) -- the retry frame shows only stubby armless-handed limbs, matching the registry costume exactly."
+ },
+ {
+  "id": "L05",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, R1 retry): oak counter with beige home computer, joystick, and a desk calendar reading '1983' verbatim (DSG letter-by-letter pass). R1 fixed the first gen's invented illegible window signage -- windows now read plain/unmarked glass as authored. Green wall panels, cobalt/cream/walnut palette on-recipe."
+ },
+ {
+  "id": "L06",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, clean on first gen): squat home computer at the near end of a long exhibition bench opposite a tiny circuit-board sprout; cream-and-teal showroom with roof trusses dwarfing the machine. No unrequested text; palette on-recipe."
+ },
+ {
+  "id": "L07",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, R1 retry): delta-chain BASE for L08 -- fully stocked shelf wall of plain beige PC boxes under a skylight, brass queue rail crossing the foreground, cool blue/cream/walnut palette. R1 fixed the first gen's unauthored shopper crowd and fabricated box labels/price tags -- retry frame is the required empty, unlabeled plate."
+ },
+ {
+  "id": "L09",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, R1 retry): shopper crowd behind the brass rail in plain 1980s clothing (denim jacket, overalls, perms, pastel sweaters) toward the few remaining PC boxes. R1 fixed a HARD fidelity defect (first gen rendered an anachronistic Victorian-era crowd -- top hats, bonnets, long gowns) -- retry frame is era-correct on the plain crowd rig."
+ },
+ {
+  "id": "L10",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, clean on first gen): lone beige computer carton tilted on a display ramp, poised toward a distant open shop door with arcade cabinets visible beyond; cropped price rail, long shelves, blue daylight. No logo, no unrequested text."
+ },
+ {
+  "id": "L11",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, clean on first gen): compact hard drive on a broad repair bench like a small vault, coiled cables foreground, layered tool stations, high green-tinted windows onto a city skyline. No unrequested text; palette on-recipe."
+ },
+ {
+  "id": "L12",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, clean on first gen): beige computer and separate hard-drive unit on a cutaway worktable joined by one thick copper conduit; tall green-and-cream workshop with receding benches. No unrequested text; palette on-recipe."
+ },
+ {
+  "id": "L13",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: closed hard drive with brass keyring and sealed (blank) envelope on a dark walnut desk; round power switch+cable, filing cabinet, high window, teal-shadowed wall present; walnut/teal/cream palette on-recipe; no unrequested text."
+ },
+ {
+  "id": "L14",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: three chunky UNLETTERED drawers (paper, tool, sealed box) correctly carry no invented labels; cable, tall shelves, blue-green wall present; palette on-recipe."
+ },
+ {
+  "id": "L15",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: several beige computers on a high shelf send copper cables down to one central hard drive on a plinth, dependency read is immediate; bench corner+tool tray, teal wall present; teal/cream/copper palette on-recipe."
+ },
+ {
+  "id": "L16",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "ONE sanctioned content retry (vpw3r1): original gen showed pc-boxy and rival-pc as head/screen only, missing their canonical stubby arms and legs (rig: identity/form deviation from both characters' registry canonicals). Surgical replace explicitly demanded full-body visibility with arms/legs -- retry frame shows both figures complete: pc-boxy (beige/green, no-hand stub arms+legs) and rival-pc (slate-grey, narrower/taller tower, vent-slot panel, matching no-hand rig) correctly rendered, matching eye-line, expr-smug on both, brass rail/shelf walls/skylights present."
+ },
+ {
+  "id": "L17",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: two beige towers lean together over the brass balance beam while the hard-drive unit rests small/unnoticed beneath the pivot -- 'quiet supplier lower position' beat lands cleanly; counter edge, retail bays, ceiling lamps present; cream/teal/brass palette on-recipe; no unrequested text (magazine covers correctly blank)."
+ },
+ {
+  "id": "L18",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: drive-maker (STEP-1 card fig-drive-maker--action-powerstance--expr-smug--72fa85ba, itself passed rig/expression-register/flat-cel-hazard) seeds cleanly into the factory-catwalk scene -- identity/costume/pose/expression match the card; anonymous cartons on the conveyor below, machinery bays, high windows, loading door present; tobacco-brown/muted-teal/cream palette on-recipe; no unrequested text."
+ },
+ {
+  "id": "L19",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "ONE sanctioned content retry (vpw3r1): original gen baked an unauthored 'INVOICE' word onto the paper prop (fidelity: unrequested text, still_prompt authored none); surgical replace to an explicitly blank/unlettered invoice corner fixed it. Retry frame: hard-drive unit at the foot of the tall brass coin stack, cartons shrinking to the distant wall, rack uprights/crates/high windows present; palette reads slightly cooler/greyer than the authored beige but the brass coin column (the load-bearing fact) is correctly warm/golden -- not blocking."
+ },
+ {
+  "id": "L20",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: drive-maker (STEP-1 card fig-drive-maker--action-offering--expr-smug--fd44746a, itself passed rig/expression-register/flat-cel-hazard) seeds cleanly into the gold-rush-counter scene, presenting the hard drive as a prospector's pick; brass pan+pebbles near camera, timber stalls, ochre ridge, open supply hall present; ochre/teal/tobacco-brown palette on-recipe; no unrequested text."
+ },
+ {
+  "id": "L21",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: hard-drive unit dwarfed by the enormous brass miner's pan of pebbles reads the central imbalance clearly; one tiny gold glint sits within the pebble pile rather than literally 'beside the door' as worded, but still reads as the last/subtlest thing the eye finds -- not blocking; workbench edge, timber supply hall, ochre slope present; brass/clay-ochre/teal palette on-recipe."
+ },
+ {
+  "id": "L22",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: long procession of identical sealed cartons (twine-wrapped oversized carton nearest the lens) reads cleanly; pallet slat, rack uprights, loading doors, charcoal wall present; kraft-tan/terracotta/charcoal palette correctly reserves the clay/terracotta accent for the coming reveal; no unrequested text."
+ },
+ {
+  "id": "L23",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "ONE sanctioned content retry (vpw3r1): original gen showed pc-boxy gripping the carton rim with HANDS -- a hard rig fail against its registry 'no_hands: true' pin (personified object, explicitly never seeds a human grip). Surgical replace stated the bare armless top edge explicitly (no hands, no fingers) -- retry frame shows pc-boxy's rounded case-corner stubs resting on the box rim, no hands, expr-surprised correct; pallet slat, rack rows, roll-up doors, charcoal wall present; terracotta/kraft-tan/charcoal palette on-recipe."
+ },
+ {
+  "id": "L24",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: delta-chain BASE for L25 -- one closed kraft carton before a matching carton wall, torn shrink wrap+pallet board texture, warehouse racks/trusses/charcoal wall present; every carton surface correctly blank/unlettered as authored; terracotta/kraft-tan/charcoal palette on-recipe; composition solid and holdable for the coming delta."
+ },
+ {
+  "id": "L08",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes (variant-B re-gen, clean on first gen, delta off the R1-corrected L07 base): SAME held shelf/rail/skylight/palette; the shelf wall is now mostly bare with a few boxes remaining -- the single authored depletion delta, world persists, no unrequested text."
+ },
+ {
+  "id": "L25",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "fresh-eyes: delta off VERIFIED base L24 (place plate stamped in the channel review store) -- held-set holds (matching carton wall, torn shrink wrap, pallet board, warehouse racks/trusses/charcoal wall, all boxes still correctly blank/unlettered); the ONE changed element is the reveal itself: one whole foreground carton stands open with a single red clay brick clearly visible inside, exactly the authored 'single material substitution'; terracotta/kraft-tan/charcoal palette unchanged; no unrequested text. This is the video's central reveal frame and it lands clean."
+ }
 ]

@@ -743,25 +743,25 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "content (re-authored prompt, see genlog)",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L02",
    "file": "assets/scenes/L02.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "content (re-authored prompt, see genlog)",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "no cast — the scene composes from the place; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L03",
@@ -776,23 +776,22 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L04",
    "file": "assets/scenes/L04.png",
-   "technique": "(b) Seeded composition -- named cast pc-boxy in composed environment",
+   "technique": "(d) One-shot single-character -- pc-boxy (no_hands canonical)",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-    "channels/the-second-take/visual-kit/refs/base/expr-confused.png"
+    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "content (re-authored prompt, see genlog)",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "`pc-boxy` no_hands -> canonical"
+   "notes": "`pc-boxy` no_hands -> canonical; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L05",
@@ -805,10 +804,10 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "content (re-authored prompt, see genlog)",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+   "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L06",
@@ -823,7 +822,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L07",
@@ -835,10 +834,10 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "content (re-authored prompt, see genlog)",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L09",
@@ -848,23 +847,18 @@
     "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
    ],
    "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MED",
-    "rig: LOW",
-    "ONE sanctioned retry issued (plain reroll -- crowd-rig clauses are forge-injected via figures.crowd, never hand-authored in shot prose, so no single clause existed to surgically replace). Original gen had a HARD rig fail: several crowd figures carried individuated detailed faces (visible noses, open-mouth teeth) instead of the required CROWD-RIG dot-eye/no-nose/no-ear/no-teeth simplification -- the reroll FIXED this (every figure now reads correctly on the simplified crowd rig). But the reroll introduced a NEW fidelity defect: the word 'PC' is baked repeatedly (~8x) onto the background boxes, unrequested -- still_prompt names 'a distant wall of beige PC boxes' as an object-type description, never quotes literal text, and the style suffix's 'no unrequested text' was not honoured. Also a residual LOW rig note: crowd head-tone count reads ~4 distinct flat tones (cream/tan/brown/dark-brown), exceeding the 2-3 bound. Exhausted retry budget -- PARKING rather than a third gen. suspected_mechanism_layer: vpw_authoring/forge_assembly -- an object-type noun in shot prose ('sales receipt', 'invoice', 'PC boxes') is repeatedly rendered by the provider as literal on-object printed text despite the head/tail 'no unrequested text' policy clauses; seen on L04/L06/L19 before their retries fixed it, and now on L09 after its retry. Recommend a surfaced (never self-applied) prompt-policy strengthening for the next wave: an explicit negative clause targeting paper/box/sign props specifically."
-   ],
-   "retry_cause": null,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "content (re-authored prompt, see genlog)",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "no cast — the scene composes from the place"
+   "notes": "no cast — the scene composes from the place; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L10",
    "file": "assets/scenes/L10.png",
    "technique": "(c) Character-free scene -- cast-free composition",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
     "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
    "flagged": false,
@@ -873,7 +867,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L11",
@@ -888,7 +882,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L12",
@@ -903,7 +897,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L13",
@@ -1102,7 +1096,7 @@
    "retry_cause": null,
    "parent_depth": 1,
    "lineage": 1,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
   },
   {
    "shot_id": "L25",

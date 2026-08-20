@@ -1,0 +1,189 @@
+{
+ "video_slug": "2026-07-28-bricks-fresh",
+ "generated": "2026-08-20",
+ "notes": "variant-B first-12 gen batch — copy for review",
+ "shots": [
+  {
+   "shot_id": "L01",
+   "file": "assets/scenes/L01.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "content (re-authored prompt, see genlog)",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L02",
+   "file": "assets/scenes/L02.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "content (re-authored prompt, see genlog)",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "no cast — the scene composes from the place; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L03",
+   "file": "assets/scenes/L03.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L04",
+   "file": "assets/scenes/L04.png",
+   "technique": "(d) One-shot single-character -- pc-boxy (no_hands canonical)",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "content (re-authored prompt, see genlog)",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "`pc-boxy` no_hands -> canonical; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L05",
+   "file": "assets/scenes/L05.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "content (re-authored prompt, see genlog)",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L06",
+   "file": "assets/scenes/L06.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L07",
+   "file": "assets/scenes/L07.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "content (re-authored prompt, see genlog)",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L08",
+   "file": "assets/scenes/L08.png",
+   "technique": "(e) Seeded delta-chain -- one changed element off the stage's held base/parent",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L07.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L09",
+   "file": "assets/scenes/L09.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "content (re-authored prompt, see genlog)",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "no cast — the scene composes from the place; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L10",
+   "file": "assets/scenes/L10.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L11",
+   "file": "assets/scenes/L11.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+  },
+  {
+   "shot_id": "L12",
+   "file": "assets/scenes/L12.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+  }
+ ]
+}
