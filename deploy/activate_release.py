@@ -22,6 +22,17 @@ from typing import Iterator, Protocol
 from release_signing_public import RELEASE_PUBLIC_KEY
 
 try:
+    from .control_plane_schema import (
+        RELEASE_ATTESTATION_KEYS,
+        RELEASE_ATTESTATION_SCHEMA,
+    )
+except ImportError:  # direct `python deploy/activate_release.py` execution
+    from control_plane_schema import (
+        RELEASE_ATTESTATION_KEYS,
+        RELEASE_ATTESTATION_SCHEMA,
+    )
+
+try:
     import fcntl as _fcntl
 except ImportError:  # pragma: no cover - exercised by the Windows test seam
     _fcntl = None
@@ -39,7 +50,10 @@ class RuntimePaths:
 RELEASES = Path("/opt/kb-releases")
 CURRENT = RELEASES / "current"
 PREVIOUS = RELEASES / "previous"
-ATTESTATION_KEYS = {"archive", "schema", "sha256", "sourceCommit", "workflow"}
+V1_ATTESTATION_KEYS = frozenset({"archive", "schema", "sha256", "sourceCommit", "workflow"})
+V2_ATTESTATION_KEYS = frozenset(RELEASE_ATTESTATION_KEYS)
+STATE_MIGRATIONS = frozenset({"compatible", "breaking"})
+CANONICAL_DECIMAL = re.compile(r"(?:0|[1-9][0-9]*)")
 SHORT_COMMAND_TIMEOUT = 30
 SYSTEMCTL_TIMEOUT = 120
 
@@ -97,11 +111,29 @@ def release_lock(
 
 def parse_attestation(raw: bytes) -> dict[str, str]:
     value = json.loads(raw)
-    if type(value) is not dict or set(value) != ATTESTATION_KEYS or any(type(value[key]) is not str for key in ATTESTATION_KEYS):
+    if type(value) is not dict:
+        raise RuntimeError("closed canonical attestation required")
+    keys = set(value)
+    if keys == V1_ATTESTATION_KEYS:
+        expected_schema = "kb.release-attestation/v1"
+    elif keys == V2_ATTESTATION_KEYS:
+        expected_schema = RELEASE_ATTESTATION_SCHEMA
+    else:
+        raise RuntimeError("closed canonical attestation required")
+    if any(type(value[key]) is not str for key in keys):
         raise RuntimeError("closed canonical attestation required")
     canonical = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
-    if raw != canonical or value["schema"] != "kb.release-attestation/v1" or value["workflow"] != "kb-platform-release":
+    if raw != canonical or value["schema"] != expected_schema or value["workflow"] != "kb-platform-release":
         raise RuntimeError("closed canonical attestation required")
+    if keys == V2_ATTESTATION_KEYS:
+        # Phase 1 validates structure only. Value agreement is recomputed post-extraction
+        # from the extracted release's registry in Phase 3 (spec §2.4).
+        if (
+            CANONICAL_DECIMAL.fullmatch(value["stateSchema"]) is None
+            or CANONICAL_DECIMAL.fullmatch(value["rollbackStateSchema"]) is None
+            or value["stateMigration"] not in STATE_MIGRATIONS
+        ):
+            raise RuntimeError("attestation registry metadata mismatch")
     commit = value["sourceCommit"]
     if re.fullmatch(r"[0-9a-f]{40}", commit) is None or value["archive"] != f"kb-platform-{commit}.tar.gz" or re.fullmatch(r"[0-9a-f]{64}", value["sha256"]) is None:
         raise RuntimeError("attestation identity mismatch")

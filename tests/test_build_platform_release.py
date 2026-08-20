@@ -64,14 +64,26 @@ def test_release_is_versioned_and_excludes_data(tmp_path: Path):
         assert "MANIFEST.sha256" in names
         manifest = archive.extractfile("MANIFEST.sha256").read().decode("utf-8")
         assert "  dashboard/src/lib/timelineModel.ts\n" in manifest
-    assert json.loads(attestation.read_text(encoding="utf-8")) == {
-        "archive": output.name,
-        "schema": "kb.release-attestation/v1",
+    assert attestation.read_bytes().endswith(b"\n")
+
+
+def test_release_attestation_uses_registry_metadata(tmp_path):
+    source = release_source(tmp_path)
+    output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
+    attestation = tmp_path / f"kb-platform-{VERSION}.attestation.json"
+    build_release(source, VERSION, output, attestation)
+    value = json.loads(attestation.read_bytes())
+    assert set(value) == {
+        "archive", "schema", "sha256", "sourceCommit", "stateSchema",
+        "rollbackStateSchema", "stateMigration", "workflow",
+    }
+    assert value == {
+        "archive": output.name, "schema": "kb.release-attestation/v2",
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-        "sourceCommit": VERSION,
+        "sourceCommit": VERSION, "stateSchema": "2",
+        "rollbackStateSchema": "1", "stateMigration": "breaking",
         "workflow": "kb-platform-release",
     }
-    assert attestation.read_bytes().endswith(b"\n")
 
 
 def test_utf8_manifest_is_accepted_by_the_release_consumer(tmp_path: Path):

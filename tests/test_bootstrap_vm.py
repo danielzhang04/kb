@@ -351,6 +351,12 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
     monkeypatch.setattr(bootstrap_vm.tempfile, "mkstemp", mkstemp)
     bootstrap_vm.install_root_validators(key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
     assert ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/usr/local/lib/kb"] in commands
+    installed_helpers = {
+        command[-1].rsplit("/", 1)[-1]
+        for command in commands
+        if command[-1].startswith("/usr/local/lib/kb/") and command[6] == "0555"
+    }
+    assert "control_plane_schema.py" in installed_helpers
     for helper in ("activate_release.py", "apply_ops_reconciliation.py", "export_tier0.py"):
         assert any(
             command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0555"]
