@@ -1,0 +1,13 @@
+{
+  "video_slug": "2026-07-28-bricks-fresh",
+  "scope": "variant-b-central-plan-lock",
+  "partitions": [
+    {"id": "A1", "script_start": "We're in the 1980s.", "script_end": "and Terry Johnson was out the door.", "shot_ids": ["L01", "L45"], "owns_stages": ["retail-shelf", "pc-rivalry", "drive-seller", "brick-carton", "miniscribe-rise", "order-collapse"]},
+    {"id": "A2", "script_start": "By 1985 the company was in real trouble", "script_end": "wrote one down anyway."},
+    {"id": "A3", "script_start": "Then in January 1987", "script_end": "Not exactly Ocean's Eleven level, but pretty close."},
+    {"id": "A4", "script_start": "But a clean audit doesn't lower", "script_end": "The irony."},
+    {"id": "A5", "script_start": "What finally killed it", "script_end": "Hell of a typo."},
+    {"id": "A6", "script_start": "By the time the accountants", "script_end": "paid out by the executives, the bank, and the accountants."},
+    {"id": "A7", "script_start": "As for Wiles", "script_end": "selling those bricks."}
+  ]
+}
