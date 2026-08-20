@@ -51,6 +51,15 @@ describe('auth ceremony routes', () => {
     verifyRegistrationMock.mockReset();
   });
 
+  it.each(['tailnet', 'win32-desktop'] as const)('reports only the %s auth mode', async (authMode) => {
+    ({ app } = buildApp({ authMode }));
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/context' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ mode: authMode });
+  });
+
   it('a genuinely unknown ceremonyId is refused as bad-ceremony', async () => {
     ({ app } = buildApp());
     const res = await app.inject({

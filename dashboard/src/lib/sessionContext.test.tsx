@@ -27,14 +27,16 @@ type RequireSession = () => Promise<Session | null>;
 
 /** A consumer that renders the shared lock state and hands its `requireSession` back to the test. */
 function Probe({ id, capture }: { id: string; capture?: (require: RequireSession) => void }) {
-  const { session, locked, requireSession } = useSession();
+  const { mode, session, locked, requireSession } = useSession();
   capture?.(requireSession);
-  return <span data-testid={id}>{locked ? 'locked' : `unlocked:${session?.token ?? ''}`}</span>;
+  return <span data-testid={id} data-mode={mode ?? 'loading'}>{locked ? 'locked' : `unlocked:${session?.token ?? ''}`}</span>;
 }
 
 function freshSession(token = 'ceremony-token', ttlMs = 60_000): Session {
   return { token, expiresAt: Date.now() + ttlMs };
 }
+
+const win32Context = async () => ({ mode: 'win32-desktop' as const });
 
 beforeEach(() => clearStoredSession());
 afterEach(() => {
@@ -49,7 +51,7 @@ describe('SessionProvider', () => {
     persistSession(stored);
 
     render(
-      <SessionProvider>
+      <SessionProvider deps={{ fetchAuthContext: win32Context }}>
         <Probe id="a" />
       </SessionProvider>,
     );
@@ -64,7 +66,7 @@ describe('SessionProvider', () => {
     );
 
     render(
-      <SessionProvider>
+      <SessionProvider deps={{ fetchAuthContext: win32Context }}>
         <Probe id="a" />
       </SessionProvider>,
     );
@@ -79,11 +81,12 @@ describe('SessionProvider', () => {
     const requires: RequireSession[] = [];
 
     render(
-      <SessionProvider deps={{ signIn }}>
+      <SessionProvider deps={{ signIn, fetchAuthContext: win32Context }}>
         <Probe id="a" capture={(r) => requires.push(r)} />
         <Probe id="b" capture={(r) => requires.push(r)} />
       </SessionProvider>,
     );
+    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
     const [fromA, fromB] = [requires[0]!, requires[requires.length - 1]!];
 
     let resultA: Session | null = null;
@@ -108,7 +111,7 @@ describe('SessionProvider', () => {
     let require!: RequireSession;
 
     render(
-      <SessionProvider deps={{ signIn }}>
+      <SessionProvider deps={{ signIn, fetchAuthContext: win32Context }}>
         <Probe id="a" capture={(r) => { require = r; }} />
       </SessionProvider>,
     );
@@ -124,7 +127,7 @@ describe('SessionProvider', () => {
     persistSession(freshSession('stored-token'));
 
     render(
-      <SessionProvider>
+      <SessionProvider deps={{ fetchAuthContext: win32Context }}>
         <Probe id="a" />
         <Probe id="b" />
       </SessionProvider>,
@@ -140,7 +143,7 @@ describe('SessionProvider', () => {
   it('stops listening for invalidation after unmount', async () => {
     persistSession(freshSession('stored-token'));
     const view = render(
-      <SessionProvider>
+      <SessionProvider deps={{ fetchAuthContext: win32Context }}>
         <Probe id="a" />
       </SessionProvider>,
     );
@@ -156,10 +159,11 @@ describe('SessionProvider', () => {
     let require!: RequireSession;
 
     render(
-      <SessionProvider deps={{ signIn }}>
+      <SessionProvider deps={{ signIn, fetchAuthContext: win32Context }}>
         <Probe id="a" capture={(r) => { require = r; }} />
       </SessionProvider>,
     );
+    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
 
     const result = await act(async () => require());
 
@@ -176,15 +180,60 @@ describe('SessionProvider', () => {
     persistSession({ token: 'short-lived', expiresAt: Date.now() + 1_000 });
 
     render(
-      <SessionProvider>
+      <SessionProvider deps={{ fetchAuthContext: win32Context }}>
         <Probe id="a" />
       </SessionProvider>,
     );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(screen.getByTestId('a').textContent).toBe('unlocked:short-lived');
 
     act(() => { vi.advanceTimersByTime(1_001); });
 
     expect(screen.getByTestId('a').textContent).toBe('locked');
+  });
+
+  it('uses an ambient session in tailnet mode without invoking the passkey ceremony', async () => {
+    const signIn = vi.fn(async () => freshSession('must-not-be-minted'));
+    let require!: RequireSession;
+
+    render(
+      <SessionProvider deps={{
+        signIn,
+        fetchAuthContext: async () => ({ mode: 'tailnet' }),
+      }}>
+        <Probe id="a" capture={(next) => { require = next; }} />
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('a').textContent).toBe('unlocked:tailnet-ambient'));
+    await expect(require()).resolves.toMatchObject({ token: 'tailnet-ambient' });
+    expect(signIn).not.toHaveBeenCalled();
+
+    act(() => { window.dispatchEvent(new Event(SESSION_INVALIDATED_EVENT)); });
+    expect(screen.getByTestId('a').textContent).toBe('unlocked:tailnet-ambient');
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the desktop ceremony when auth-context discovery fails', async () => {
+    const signIn = vi.fn(async () => freshSession('fallback-token'));
+    let require!: RequireSession;
+
+    render(
+      <SessionProvider deps={{
+        signIn,
+        fetchAuthContext: async () => { throw new Error('offline'); },
+      }}>
+        <Probe id="a" capture={(next) => { require = next; }} />
+      </SessionProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
+    await expect(require()).resolves.toMatchObject({ token: 'fallback-token' });
+    expect(signIn).toHaveBeenCalledOnce();
   });
 });
 
