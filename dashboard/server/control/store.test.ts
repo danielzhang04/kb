@@ -3942,6 +3942,17 @@ describe('durability, crash recovery, and retention', () => {
     const store = createInMemoryControlPlaneStore({ ...deterministicOptions(), maxDocumentBytes: 200 });
     expect(() => createApprovedProposal(store)).toThrow(ControlStoreLimitError);
   });
+
+  it('rejects a persistence target smaller than the encoded document', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-persistence-target-too-small-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, {
+      ...deterministicOptions(),
+      persistenceTargetBytesForTest: 1,
+    });
+
+    expect(() => createApprovedProposal(store)).toThrow(ControlStoreLimitError);
+  });
 });
 
 /**

@@ -29,7 +29,7 @@ def release_source(root: Path) -> Path:
         "dashboard/dist/app.js", "dashboard/server/index.ts", "dashboard/src/lib/timelineModel.ts", "dashboard/package.json",
         "dashboard/package-lock.json", "dashboard/node_modules/pkg/index.js", "scripts/cards.py",
         "schemas/compatibility.json", "dashboard/config/repositories.json",
-        "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/export_tier0.py",
+        "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/control_plane_schema.py", "deploy/export_tier0.py",
         "deploy/validate_vm_runtime.py", "deploy/systemd/kb-dashboard.service",
     ):
         path = source / rel
@@ -54,6 +54,7 @@ def test_release_is_versioned_and_excludes_data(tmp_path: Path):
         assert "dashboard/src/lib/timelineModel.ts" in names
         assert "deploy/activate_release.py" in names
         assert "deploy/bootstrap_vm.py" in names
+        assert "deploy/control_plane_schema.py" in names
         assert "deploy/export_tier0.py" in names
         assert "deploy/validate_vm_runtime.py" in names
         assert "deploy/systemd/kb-dashboard.service" in names
