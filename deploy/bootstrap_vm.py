@@ -10,6 +10,11 @@ import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
 
+try:
+    from .control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
+except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
+    from control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
+
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
 # The bare `tailscale serve` hostname this VM is published at. Mirrors validate_vm_runtime's pattern.
@@ -18,7 +23,6 @@ TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
 # The single tailnet identity that IS the operator (Daniel, 2026-08-18). Required, fail-closed.
 DEFAULT_TAILNET_OPERATOR = "daniel.zhang.t1@gmail.com"
 STATE_ROOT = "/var/lib/kb/state"
-EMPTY_CONTROL_PLANE = b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"iterationLoops":[],"iterationRequests":[],"iterationReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
 
 
 def validate_tailnet_host(value: str) -> None:
@@ -64,8 +68,8 @@ def seed_control_plane(state_root: Path) -> None:
 
 def _validate_control_plane(final: Path) -> None:
     try:
-        json.loads(final.read_bytes())
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        assert_control_plane_schema(json.loads(final.read_bytes()))
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
         raise RuntimeError(f"control-plane state is corrupt: {final}; restore or remove it before re-running bootstrap") from error
 
 

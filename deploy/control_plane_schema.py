@@ -11,7 +11,9 @@ STATE_SCHEMA = '2'
 ROLLBACK_STATE_SCHEMA = '1'
 STATE_MIGRATION = 'breaking'
 _SCHEMA_VERSIONS = {1: (('version', 'nextEventCursor'), ('proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'quarantine'), ('proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions', 'quarantine')), 2: (('version', 'documentRevision', 'nextEventCursor'), ('proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions', 'quarantine', 'deployments'), ('proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions', 'quarantine', 'deployments'))}
-EMPTY_CONTROL_PLANE = "{\"version\":2,\"documentRevision\":0,\"nextEventCursor\":1,\"proposals\":[],\"runs\":[],\"stages\":[],\"attempts\":[],\"sessions\":[],\"humanRequests\":[],\"events\":[],\"stageGenerations\":[],\"iterationLoops\":[],\"iterationRequests\":[],\"iterationReceipts\":[],\"generationSupersessions\":[],\"quarantine\":[],\"deployments\":[]}\n"
+EMPTY_CONTROL_PLANE = b'{"version":2,"documentRevision":0,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"iterationLoops":[],"iterationRequests":[],"iterationReceipts":[],"generationSupersessions":[],"quarantine":[],"deployments":[]}\n'
+_MAX_ENVELOPE_COLLECTION_ROWS = 1_000_000
+_OPTIONAL_V1_COLLECTIONS = ('reviewLoops', 'reviewReceipts', 'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions')
 
 def assert_control_plane_schema(value):
     if not isinstance(value, dict):
@@ -29,9 +31,10 @@ def assert_control_plane_schema(value):
     if 'nextEventCursor' in envelope and value['nextEventCursor'] < 1:
         raise ValueError('invalid control-plane envelope field: nextEventCursor')
     for key in required:
-        if not isinstance(value.get(key), list):
+        if not isinstance(value.get(key), list) or len(value[key]) > _MAX_ENVELOPE_COLLECTION_ROWS:
             raise ValueError(f'missing required control-plane collection: {key}')
-    for key in collections:
-        if key in value and not isinstance(value[key], list):
+    optional = _OPTIONAL_V1_COLLECTIONS if version == 1 else ()
+    for key in (*collections, *optional):
+        if key in value and (not isinstance(value[key], list) or len(value[key]) > _MAX_ENVELOPE_COLLECTION_ROWS):
             raise ValueError(f'invalid control-plane collection: {key}')
     return value
