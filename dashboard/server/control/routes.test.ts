@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
-import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
+import { makeSurfaceContext as makeProductionSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import { createInMemoryControlPlaneStore } from './store.ts';
 import type { PlanProposal } from './proposal.ts';
 import type { TimelineModel } from '../../src/lib/timelineModel.ts';
@@ -29,6 +29,13 @@ import * as publication from './publication.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
+
+function makeSurfaceContext(
+  overrides: Parameters<typeof makeProductionSurfaceContext>[0] = {},
+  activation: Parameters<typeof makeProductionSurfaceContext>[1] = {},
+) {
+  return makeProductionSurfaceContext({ controlStore: createInMemoryControlPlaneStore(), ...overrides }, activation);
+}
 
 describe('authorized failed-run route grant', () => {
   function exactContext(liveSession = false): SurfaceContext {

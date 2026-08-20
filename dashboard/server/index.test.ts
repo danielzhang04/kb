@@ -4,10 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { SurfaceContext } from './http/context.ts';
-import { makeSurfaceContext } from './http/surface.ts';
+import { makeSurfaceContext as makeProductionSurfaceContext } from './http/surface.ts';
 import { mintSession } from './auth/session.ts';
 import type { SessionConfig } from './auth/session.ts';
 import { runtimeCapabilities } from './runtime/capabilities.ts';
+import { createInMemoryControlPlaneStore } from './control/store.ts';
 
 const serviceCgroupChildCount = vi.hoisted(() => vi.fn(() => 0));
 const quiescenceSpy = vi.hoisted(() => vi.fn());
@@ -23,7 +24,7 @@ vi.mock('./release/quiescence.ts', async (importOriginal) => {
   return { ...actual, quiescence: quiescenceSpy };
 });
 import {
-  buildApp,
+  buildApp as buildProductionApp,
   DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
   DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS,
   DEFAULT_STRANDED_ARCHIVE_WINDOW_MS,
@@ -33,7 +34,9 @@ import {
   resolveStrandedArchiveIntervalMs,
   resolveStrandedArchiveDryRun,
   resolveStrandedArchiveWindowMs,
+  start,
 } from './index.ts';
+import type { WriterLease } from './control/writerLease.ts';
 
 let app: FastifyInstance | undefined;
 let testStateRoot: string | undefined;
@@ -44,6 +47,15 @@ const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
 // Mint inside each assertion: this file takes long enough that a module-load token can expire while
 // later matrix rows are still running.
 const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintSession('operator', TEST_SESSION).token}` });
+function buildApp(options: Parameters<typeof buildProductionApp>[0] = {}) {
+  return buildProductionApp({ controlStore: createInMemoryControlPlaneStore(), ...options });
+}
+function makeSurfaceContext(
+  overrides: Parameters<typeof makeProductionSurfaceContext>[0] = {},
+  activation: Parameters<typeof makeProductionSurfaceContext>[1] = {},
+) {
+  return makeProductionSurfaceContext({ controlStore: createInMemoryControlPlaneStore(), ...overrides }, activation);
+}
 const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
 
 beforeEach(() => {
@@ -66,6 +78,43 @@ afterEach(async () => {
 });
 
 describe('server', () => {
+  function countingLease() {
+    const release = vi.fn();
+    const lease = {
+      mode: 'already-locked' as const,
+      stateRoot: testStateRoot!,
+      bootId: 'boot-test',
+      pid: process.pid,
+      assertHeld: vi.fn(),
+      release,
+    } satisfies WriterLease;
+    return { lease, release };
+  }
+
+  it('releases the entrypoint lease once when application construction fails', async () => {
+    const { lease, release } = countingLease();
+    await expect(start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      buildApplication: () => { throw new Error('build failed'); },
+    })).rejects.toThrow(/build failed/);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the entrypoint lease once when listen fails', async () => {
+    const { lease, release } = countingLease();
+    let onClose: (() => Promise<void>) | undefined;
+    const failingApp = {
+      addHook: (_name: string, hook: () => Promise<void>) => { onClose = hook; },
+      listen: async () => { throw new Error('listen failed'); },
+      close: async () => { await onClose?.(); },
+    } as unknown as ReturnType<typeof buildProductionApp>;
+    await expect(start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      buildApplication: () => failingApp,
+    })).rejects.toThrow(/listen failed/);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it('omits PTY routes on Linux and reports the governed bridge capability', async () => {
     const createPty = vi.fn(() => { throw new Error('must not construct'); });
     app = buildApp({

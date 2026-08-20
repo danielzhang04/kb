@@ -12,6 +12,8 @@ import {
   type PersistenceDeps,
   type SaveDurability,
 } from './persistence.ts';
+import { assertWriterLeaseForRoot } from './writerLease.ts';
+import type { FileControlPlaneAccess } from './writerLease.ts';
 import {
   legacyGroupForStages,
   loadAndMigrate,
@@ -897,6 +899,12 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
 
 export class ControlStoreLimitError extends Error {}
 export class ControlStoreMigrationLimitError extends ControlStoreLimitError {}
+export class ControlStoreReadOnlyError extends Error {
+  constructor() {
+    super('control-plane store is read-only');
+    this.name = 'ControlStoreReadOnlyError';
+  }
+}
 
 function genericPersistenceDocument(document: StoreDocument): StoreDocument {
   return clone(document);
@@ -6035,15 +6043,64 @@ export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {
   );
 }
 
+const READ_ONLY_CONTROL_STORE_METHODS = new Set<keyof ControlPlaneStore>([
+  'getControlDocumentMetadata', 'getDeployment', 'listDeployments',
+  'listProposalRevisions', 'listProposalRevisionsForComposer', 'getProposalRevision',
+  'listRuns', 'getRun', 'findActiveRunForRevision', 'getRunActivationReceipt', 'hasActiveRunActivation',
+  'getHumanRequest', 'preflightAuthorized20260731ExecutionLock',
+  'preflightAuthorized20260801FailedRunReconciliation', 'listEvents', 'inventory', 'dryRunQuarantine',
+]);
+
+function readOnlyControlPlaneStore(store: ControlPlaneStore): ControlPlaneStore {
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver) as unknown;
+      if (typeof property !== 'string' || typeof value !== 'function'
+        || READ_ONLY_CONTROL_STORE_METHODS.has(property as keyof ControlPlaneStore)) return value;
+      return () => { throw new ControlStoreReadOnlyError(); };
+    },
+  });
+}
+
 /** File-backed daemon store. Every mutation replaces one sibling temp file atomically. */
-export function createFileControlPlaneStore(stateRoot: string, options: ControlStoreOptions = {}): ControlPlaneStore {
+export function createFileControlPlaneStore(
+  stateRoot: string,
+  access: FileControlPlaneAccess,
+  options: ControlStoreOptions = {},
+): ControlPlaneStore {
   const path = join(stateRoot, 'control', 'control-plane.json');
   const acceptedSizePath = join(stateRoot, 'control', CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
   const maxBytes = options.maxDocumentBytes ?? MAX_CONTROL_DOCUMENT_BYTES;
   let acceptedMaxBytes = maxBytes;
+  if (access.mode === 'already-locked') assertWriterLeaseForRoot(access.lease, stateRoot);
+  if (access.mode === 'read-only-harness') {
+    const loadReadOnly = (): StoreDocument => {
+      if (!existsSync(path)) throw new ControlStoreReadOnlyError();
+      if (statSync(path).size > maxBytes) {
+        throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
+      }
+      const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)
+        || (parsed as Record<string, unknown>).version !== CONTROL_PLANE_SCHEMA_VERSION) {
+        throw new ControlStoreReadOnlyError();
+      }
+      const document = parsed as StoreDocument;
+      validateStoreDocument(document);
+      validateGenericIterationBundle(document);
+      for (const bundle of document.quarantine) validateGenericIterationBundle(bundle);
+      return clone(document);
+    };
+    loadReadOnly();
+    return readOnlyControlPlaneStore(makeStore(
+      loadReadOnly,
+      () => { throw new ControlStoreReadOnlyError(); },
+      options,
+    ));
+  }
+  const lease = access.lease;
   const migrateDocument = options.loadAndMigrateForTest ?? loadAndMigrate;
   const startupStamp = (options.now ?? (() => new Date()))().toISOString();
-  const bootId = options.bootId ?? randomUUID();
+  const bootId = options.bootId ?? lease.bootId;
   const requiresGenericRewrite = (raw: Record<string, unknown>): boolean => {
     const quarantined = Array.isArray(raw.quarantine) ? raw.quarantine as Array<Record<string, unknown>> : [];
     return Object.hasOwn(raw, 'reviewLoops') || Object.hasOwn(raw, 'reviewReceipts')
@@ -6061,6 +6118,7 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
     return migrated;
   };
   const load = (): StoreDocument => {
+    assertWriterLeaseForRoot(lease, stateRoot);
     if (!existsSync(path)) return emptyStoreDocumentForTest();
     if (statSync(path).size > acceptedMaxBytes) {
       throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
@@ -6072,6 +6130,7 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
     durability: SaveDurability = 'ordinary',
     enforceConfiguredLimit = true,
   ): void => {
+    assertWriterLeaseForRoot(lease, stateRoot);
     const persisted = genericPersistenceDocument(document);
     const encoded = `${JSON.stringify(persisted)}\n`;
     if (enforceConfiguredLimit && Buffer.byteLength(encoded, 'utf8') > acceptedMaxBytes) {
@@ -6137,6 +6196,7 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
     acceptedMaxBytes = nextAcceptedMaxBytes;
     save(recovered, 'deploy-critical');
     if (pureSchemaMigrationOverage) {
+      assertWriterLeaseForRoot(lease, stateRoot);
       persistControlDocumentSync(
         acceptedSizePath,
         `${JSON.stringify({

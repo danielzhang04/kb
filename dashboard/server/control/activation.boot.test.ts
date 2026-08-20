@@ -25,11 +25,13 @@ import { buildApp } from '../index.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
 import { buildActivatedExecution, createExecutionLatch, isExecutionActivated, type ActivationDeps } from './activation.ts';
 import { isInternalServiceCaller, type InternalServiceCaller } from '../auth/session.ts';
-import { createFileControlPlaneStore } from './store.ts';
+import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import { createQueueBridge, settleFleetLedgerForRun } from './queueBridge.ts';
 
 /** A control store whose getRun always misses — the observer must treat it as a no-op, never throw. */
 const missingRunStore = { getRun: () => ({ ok: false as const, reason: 'not-found' as const, detail: 'x' }) };
+const fileStores = createExistingRootFileStoreHarnessForTest();
+const createFileControlPlaneStore = fileStores.open;
 
 describe('T6 gated boot smoke', () => {
   const savedEnv: Record<string, string | undefined> = {};
@@ -42,6 +44,7 @@ describe('T6 gated boot smoke', () => {
   });
 
   afterEach(() => {
+    fileStores.close();
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -55,7 +58,7 @@ describe('T6 gated boot smoke', () => {
 
     let app: FastifyInstance | null = null;
     try {
-      app = buildApp();
+      app = buildApp({ controlStore: createFileControlPlaneStore(tempStateRoot) });
       await app.listen({ port: 0, host: '127.0.0.1' });
       const { port } = app.server.address() as AddressInfo;
       const res = await fetch(`http://127.0.0.1:${port}/healthz`);
@@ -66,7 +69,7 @@ describe('T6 gated boot smoke', () => {
 
     // The core inert invariant, at the surface composition root: gate off ⇒ the three executor fields are
     // undefined (production constructs no broker/engine and can spawn no `claude`).
-    const ctx = makeSurfaceContext();
+    const ctx = makeSurfaceContext({ controlStore: createFileControlPlaneStore(tempStateRoot) });
     expect(ctx.controlBroker).toBeUndefined();
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();

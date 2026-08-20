@@ -3,9 +3,9 @@
  * already on AND the operator confirmed a live watched run. The live run itself is human-supervised and is
  * not exercised here (it spawns a real `claude`).
  */
-import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -14,9 +14,11 @@ import {
   setUpThrowawayRepo,
   assertCoordinationRemoteIsolated,
   pollRunTerminal,
+  main,
   type ThrowawayRepo,
 } from './synthetic-acceptance.ts';
 import type { SurfaceContext } from '../http/context.ts';
+import { acquireWriterLease } from './writerLease.ts';
 
 function ctxReturning(state: string | null): SurfaceContext {
   return {
@@ -40,6 +42,73 @@ describe('assertAcceptanceGate — the harness refuses to run unless watched + g
 
   it('passes only when the gate is on AND the run is explicitly confirmed', () => {
     expect(() => assertAcceptanceGate({ DASHBOARD_EXECUTION_ACTIVATED: '1' }, ['--confirm-live'])).not.toThrow();
+  });
+});
+
+describe('main writer-lease ownership', () => {
+  it('acquires and releases exactly one lease when construction fails before dispatch', async () => {
+    const savedGate = process.env.DASHBOARD_EXECUTION_ACTIVATED;
+    const savedRepo = process.env.DASHBOARD_REPO_ROOT;
+    const savedState = process.env.DASHBOARD_STATE_ROOT;
+    const savedArgv = [...process.argv];
+    const sourceRoot = mkdtempSync(join(tmpdir(), 'wave-a-lease-source-'));
+    mkdirSync(join(sourceRoot, 'scripts'), { recursive: true });
+    writeFileSync(join(sourceRoot, 'scripts', 'cards.py'), [
+      'from pathlib import Path',
+      'class Card:',
+      '    def __init__(self, body, owner):',
+      '        self.meta = {"id": "synthetic-lease-card", "owner": owner}',
+      '        self.body = body',
+      'def new_card(project, action, target, riskTier, body, profile, owner, **kwargs):',
+      '    return Card(body, owner)',
+      'def save(card, root):',
+      '    path = Path(root) / "inbox" / (card.meta["id"] + ".md")',
+      '    path.parent.mkdir(parents=True, exist_ok=True)',
+      '    path.write_text("---\\nid: " + card.meta["id"] + "\\n---\\n\\n" + card.body + "\\n", encoding="utf-8")',
+      '    return path',
+    ].join('\n'), 'utf8');
+    writeFileSync(join(sourceRoot, 'README.md'), '# synthetic lease source\n', 'utf8');
+    execFileSync('git', ['init', '--quiet'], { cwd: sourceRoot });
+    execFileSync('git', ['config', 'user.email', 'synthetic@local'], { cwd: sourceRoot });
+    execFileSync('git', ['config', 'user.name', 'synthetic'], { cwd: sourceRoot });
+    execFileSync('git', ['add', '.'], { cwd: sourceRoot });
+    execFileSync('git', ['commit', '--quiet', '-m', 'fixture'], { cwd: sourceRoot });
+    const logs: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => { logs.push(args.map(String).join(' ')); });
+    let acquired = 0;
+    let released = 0;
+    try {
+      process.env.DASHBOARD_EXECUTION_ACTIVATED = '1';
+      process.env.DASHBOARD_REPO_ROOT = sourceRoot;
+      process.argv.push('--confirm-live');
+      await expect(main({
+        leaseFactory: (input) => {
+          acquired += 1;
+          const lease = acquireWriterLease(input);
+          const release = lease.release.bind(lease);
+          lease.assertHeld = () => { throw new Error('synthetic test stop before dispatch'); };
+          lease.release = () => { released += 1; release(); };
+          return lease;
+        },
+      })).rejects.toThrow(/synthetic test stop before dispatch/);
+      expect({ acquired, released }).toEqual({ acquired: 1, released: 1 });
+    } finally {
+      log.mockRestore();
+      process.argv.splice(0, process.argv.length, ...savedArgv);
+      if (savedGate === undefined) delete process.env.DASHBOARD_EXECUTION_ACTIVATED;
+      else process.env.DASHBOARD_EXECUTION_ACTIVATED = savedGate;
+      if (savedRepo === undefined) delete process.env.DASHBOARD_REPO_ROOT;
+      else process.env.DASHBOARD_REPO_ROOT = savedRepo;
+      if (savedState === undefined) delete process.env.DASHBOARD_STATE_ROOT;
+      else process.env.DASHBOARD_STATE_ROOT = savedState;
+      rmSync(sourceRoot, { recursive: true, force: true });
+      for (const line of logs.flatMap((entry) => entry.split(/\r?\n/)).map((entry) => entry.trim())) {
+        if (!line.startsWith(tmpdir())) continue;
+        const name = line.slice(tmpdir().length).replace(/^[/\\]/, '');
+        if (!/^(wave-a-accept-repo-|wave-a-accept-mirror-|wave-a-accept-state-)/.test(name)) continue;
+        rmSync(line, { recursive: true, force: true });
+      }
+    }
   });
 });
 

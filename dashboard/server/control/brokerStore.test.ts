@@ -5,13 +5,16 @@ import { join } from 'node:path';
 import type { BrokerPersistence } from './broker.ts';
 import { createSubjectBrokerPersistence } from './brokerStore.ts';
 import {
-  createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
   type ControlPlaneStore,
 } from './store.ts';
+import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 
 const roots: string[] = [];
+const fileStores = createExistingRootFileStoreHarnessForTest();
+const createFileControlPlaneStore = fileStores.open;
 afterEach(() => {
+  fileStores.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

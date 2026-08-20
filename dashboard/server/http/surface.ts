@@ -37,6 +37,7 @@ import { activeVibeProcessCount } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { activeAsyncGitCount } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
+import type { FileControlPlaneAccess } from '../control/writerLease.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
 import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
@@ -83,6 +84,10 @@ export interface SurfaceActivationSeam {
   createPtyHost?: typeof createPtyHost;
 }
 
+export type SurfaceContextOverrides = Partial<SurfaceContext> & {
+  fileControlAccess?: FileControlPlaneAccess;
+};
+
 const QUEUE_BRIDGE_INTERVAL_MS = 15_000;
 
 /** Stable, detail-free refusal for manual Terminal PTY opens at the host boundary. */
@@ -121,7 +126,7 @@ function fleetGatedPtyHost(host: PtyHost, repoRoot: string, runPreamble: Preambl
 /** Build a full {@link SurfaceContext}, filling every field not supplied in `overrides` with its real
  *  default. `sessionConfig`'s secret is resolved exactly once (see module doc). */
 export function makeSurfaceContext(
-  overrides: Partial<SurfaceContext> = {},
+  overrides: SurfaceContextOverrides = {},
   activation: SurfaceActivationSeam = {},
 ): SurfaceContext {
   // The auth-mode seam, resolved ONCE here with the same env source the activation gate reads. In
@@ -139,7 +144,9 @@ export function makeSurfaceContext(
     ?? resolveCoordinationPublication(activation.env as NodeJS.ProcessEnv | undefined);
   const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
-  const controlStore = overrides.controlStore ?? createFileControlPlaneStore(stateRoot);
+  const controlStore = overrides.controlStore ?? (overrides.fileControlAccess
+    ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess)
+    : (() => { throw new Error('makeSurfaceContext requires controlStore or fileControlAccess'); })());
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
   // supplied as an override (tests, or a future explicit injection), activation is skipped entirely so no
   // construction is attempted. Otherwise `buildActivatedExecution` returns `null` unless the gate is on —
@@ -360,7 +367,7 @@ export function makeSurfaceContext(
 }
 
 /** Register the governed write surface (auth + write + composer + approvals) as one guarded child scope. */
-export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext = makeSurfaceContext()): void {
+export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext): void {
   app.addHook('onReady', async () => {
     if (ctx.coordinationPublication !== 'outbox') return;
     try {

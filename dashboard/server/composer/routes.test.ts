@@ -15,6 +15,7 @@ import { createProviderIdProtector } from './protector.ts';
 import { createInMemoryComposerStore } from './store.ts';
 import { lockout, rateLimit } from '../security/ratelimit.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 const PROVIDER_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const SECRET = Buffer.from('composer-routes-test-secret-0123456789');
@@ -82,6 +83,7 @@ function buildApp(overrides: Partial<SurfaceContext> = {}) {
     overrides.composerStore ??
     createInMemoryComposerStore({ protector: createProviderIdProtector(SECRET) });
   const ctx = makeSurfaceContext({
+    controlStore: createInMemoryControlPlaneStore(),
     repoRoot: '/repo',
     stateRoot: testStateRoot,
     sessionConfig,

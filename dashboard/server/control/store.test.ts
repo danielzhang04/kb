@@ -14,12 +14,12 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
   AUTHORIZED_20260801_FAILED_RUN_INPUT,
   AUTHORIZED_20260801_FAILED_RUN_REF,
-  createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
   emptyStoreDocumentForTest,
   exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
 } from './store.ts';
+import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
 import { applyMigrationEdgeForTest, loadAndMigrate } from './migrations.ts';
 import { createNodePersistenceDeps } from './persistence.ts';
@@ -27,6 +27,8 @@ import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.t
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
 
 const roots: string[] = [];
+const fileStores = createExistingRootFileStoreHarnessForTest();
+const createFileControlPlaneStore = fileStores.open;
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
 
 function persistedV1(value: unknown): any {
@@ -268,6 +270,7 @@ const CHECKER_COMPLETION_GATE = {
   id: 'approve-check', kind: 'approval' as const, prompt: 'Approve the checker result.', requiresReview: 'pass' as const,
 };
 afterEach(() => {
+  fileStores.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
