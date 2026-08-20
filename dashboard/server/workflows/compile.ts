@@ -11,8 +11,10 @@
 import { createHash } from 'node:crypto';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
 import {
+  ARTIFACT_PRODUCING_REQUEST_KINDS,
   PLAN_PROPOSAL_SCHEMA,
   type PlanProposal,
+  type ProposalIterationGroup,
   type ProposalRiskTier,
   type ProposalStage,
   type ResolvedAgentAssignment,
@@ -57,7 +59,11 @@ function effectiveReadScope(def: WorkflowDef): string[] {
 }
 
 /** A stable, safe-id proposal identity derived only from the definition content. */
-function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): string {
+function deriveProposalId(
+  def: WorkflowDef,
+  effectiveRead: readonly string[],
+  iterationGroups: readonly ProposalIterationGroup[],
+): string {
   const preimage = JSON.stringify({
     id: def.id,
     project: def.project,
@@ -66,6 +72,7 @@ function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): s
     // validation mode is explicitly committed, so weakening/removing its publication prohibition
     // always forces a fresh approval.
     ...(def.executionMode === 'validation-slice' ? { executionMode: def.executionMode } : {}),
+    ...(def.maxConcurrency === undefined ? {} : { maxConcurrency: def.maxConcurrency }),
     profile: def.profile,
     // The effective read scope is part of the approved proposal identity: a changed read scope changes
     // the proposalId, forcing re-approval. Without this the scan roots would be tamper-silent. (§4.2)
@@ -94,10 +101,195 @@ function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): s
       // Emitted only when present, so definitions without artifacts keep their existing proposalId.
       ...(stage.artifacts?.length ? { artifacts: stage.artifacts } : {}),
     })),
+    ...(iterationGroups.length > 0 ? { iterationGroups } : {}),
     ...(def.manager ? { manager: { agentId: def.manager.agentId, profileId: def.manager.profileId } } : {}),
   });
   const hash = createHash('sha256').update(preimage, 'utf8').digest('hex');
   return `wf-${hash.slice(0, 48)}`;
+}
+
+type IterationCompilation =
+  | { ok: true; groups: ProposalIterationGroup[]; dependsOn: Map<string, string[]> }
+  | { ok: false; reason: string; detail: string };
+
+type LegacyReviewDefinitionMigration =
+  | { ok: true; groups: ProposalIterationGroup[] }
+  | { ok: false; reason: string; detail: string };
+
+/** Isolated compiler migration: accepts legacy `review` inputs and emits generic iteration groups only. */
+function migrateLegacyReviewDefinitions(
+  def: WorkflowDef,
+  stageById: ReadonlyMap<string, WorkflowDef['stages'][number]>,
+  occupiedStages: Set<string>,
+): LegacyReviewDefinitionMigration {
+  const groups: ProposalIterationGroup[] = [];
+  for (const reviewStage of def.stages.filter((stage) => stage.review !== undefined)) {
+    const review = reviewStage.review!;
+    if (!Number.isSafeInteger(review.maxCreatorReworks) || review.maxCreatorReworks < 0
+      || review.maxCreatorReworks > Number.MAX_SAFE_INTEGER - 1) {
+      return {
+        ok: false,
+        reason: 'legacy-review-bound-unsafe',
+        detail: `review stage '${reviewStage.id}' maxCreatorReworks must be a nonnegative safe integer that can be incremented`,
+      };
+    }
+    const subject = stageById.get(review.subjectStageId);
+    if (!subject) return { ok: false, reason: 'legacy-review-subject-missing', detail: `review stage '${reviewStage.id}' names missing subject '${review.subjectStageId}'` };
+    if (!subject.artifacts || subject.artifacts.length === 0) {
+      return {
+        ok: false,
+        reason: 'legacy-review-artifacts-required',
+        detail: `review stage '${reviewStage.id}' subject '${subject.id}' must declare at least one artifact`,
+      };
+    }
+    if (occupiedStages.has(subject.id) || occupiedStages.has(reviewStage.id)) {
+      return { ok: false, reason: 'iteration-stage-shared', detail: `legacy review '${reviewStage.id}' overlaps another iteration group` };
+    }
+    occupiedStages.add(subject.id);
+    occupiedStages.add(reviewStage.id);
+    const managerParticipantId = `${subject.id}-manager`;
+    const judgeParticipantId = `${reviewStage.id}-judge`;
+    const reviewStepId = `${reviewStage.id}-review`;
+    const reworkStepId = `${reviewStage.id}-rework`;
+    const toJudgeRouteId = `${reviewStage.id}-to-judge`;
+    const toManagerRouteId = `${reviewStage.id}-to-manager`;
+    groups.push({
+      iterationGroupId: `${reviewStage.id}-iteration`,
+      goal: `Accept '${subject.title}' against the declared review criteria.`,
+      participants: [
+        {
+          participantId: managerParticipantId,
+          stageRef: subject.id,
+          role: 'manager',
+          perspective: `Own the artifact produced by stage '${subject.id}'.`,
+          mandate: subject.workOrder,
+        },
+        {
+          participantId: judgeParticipantId,
+          stageRef: reviewStage.id,
+          role: 'judge',
+          perspective: `Apply the declared criteria to stage '${subject.id}' without changing its artifact.`,
+          mandate: reviewStage.workOrder,
+        },
+      ],
+      routes: [
+        {
+          routeId: toJudgeRouteId,
+          senderParticipantId: managerParticipantId,
+          recipientParticipantId: judgeParticipantId,
+          requestKinds: ['review'],
+          baseResolutionStageIds: [subject.id],
+        },
+        {
+          routeId: toManagerRouteId,
+          senderParticipantId: judgeParticipantId,
+          recipientParticipantId: managerParticipantId,
+          requestKinds: ['rework'],
+          baseResolutionStageIds: [reviewStage.id],
+        },
+      ],
+      activation: {
+        seedParticipantId: managerParticipantId,
+        seedArtifactIds: (subject.artifacts ?? []).map((artifact) => artifact.id),
+      },
+      initialStepId: reviewStepId,
+      schedule: [
+        {
+          stepId: reviewStepId,
+          routeId: toJudgeRouteId,
+          after: { stepId: reworkStepId, participantId: managerParticipantId, verdict: 'fulfilled' },
+          cycle: 'next',
+        },
+        {
+          stepId: reworkStepId,
+          routeId: toManagerRouteId,
+          after: { stepId: reviewStepId, participantId: judgeParticipantId, verdict: 'fail' },
+          cycle: 'current',
+        },
+      ],
+      artifacts: (subject.artifacts ?? []).map((artifact) => artifact.id),
+      criteria: structuredClone(review.criteria),
+      maxCycles: review.maxCreatorReworks + 1,
+      cycleUnit: `One '${subject.id}' generation followed by one '${reviewStage.id}' verdict.`,
+      terminalAuthorities: [{ participantId: judgeParticipantId, verdict: 'pass' }],
+      ...(reviewStage.completionGate ? { completionGate: structuredClone(reviewStage.completionGate) } : {}),
+    });
+  }
+  return { ok: true, groups };
+}
+
+function compileIterationGroups(def: WorkflowDef): IterationCompilation {
+  const stageById = new Map(def.stages.map((stage) => [stage.id, stage]));
+  const groups: ProposalIterationGroup[] = [];
+  const occupiedStages = new Set<string>();
+  const authored = def.iterationGroups ?? [];
+  for (const group of authored) {
+    for (const participant of group.participants) {
+      if (!stageById.has(participant.stageRef)) {
+        return { ok: false, reason: 'iteration-stage-reference-invalid', detail: `iteration group '${group.iterationGroupId}' names missing stage '${participant.stageRef}'` };
+      }
+      if (occupiedStages.has(participant.stageRef)) {
+        return { ok: false, reason: 'iteration-stage-shared', detail: `stage '${participant.stageRef}' belongs to more than one iteration group` };
+      }
+      occupiedStages.add(participant.stageRef);
+    }
+    const routes: ProposalIterationGroup['routes'] = [];
+    for (const route of group.routes) {
+      const sender = group.participants.find((participant) => participant.participantId === route.senderParticipantId);
+      const recipient = group.participants.find((participant) => participant.participantId === route.recipientParticipantId);
+      if (!sender || !recipient) {
+        return { ok: false, reason: 'iteration-route-reference-invalid', detail: `iteration route '${route.routeId}' names an unknown participant` };
+      }
+      if (route.requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
+        const recipientStage = stageById.get(recipient.stageRef);
+        if (!recipientStage?.artifacts || recipientStage.artifacts.length === 0) {
+          return {
+            ok: false,
+            reason: 'iteration-route-artifacts-required',
+            detail: `artifact-producing iteration route '${route.routeId}' targets recipient '${recipient.participantId}' stage '${recipient.stageRef}', which must declare at least one artifact`,
+          };
+        }
+      }
+      const baseResolutionStageIds = group.routes
+        .filter((candidate) => candidate.recipientParticipantId === recipient.participantId)
+        .map((candidate) => group.participants.find((participant) => participant.participantId === candidate.senderParticipantId)?.stageRef)
+        .filter((stageRef): stageRef is string => stageRef !== undefined);
+      routes.push({ ...structuredClone(route), baseResolutionStageIds: [...new Set(baseResolutionStageIds)] });
+    }
+    groups.push({ ...structuredClone(group), routes });
+  }
+  const migratedLegacyDefinitions = migrateLegacyReviewDefinitions(def, stageById, occupiedStages);
+  if (!migratedLegacyDefinitions.ok) return migratedLegacyDefinitions;
+  groups.push(...migratedLegacyDefinitions.groups);
+  const dependsOn = new Map(def.stages.map((stage) => [stage.id, [...stage.dependsOn]]));
+  for (const group of groups) {
+    const seed = group.participants.find((participant) => participant.participantId === group.activation.seedParticipantId);
+    if (!seed) return { ok: false, reason: 'iteration-activation-invalid', detail: `iteration group '${group.iterationGroupId}' has no activation seed` };
+    for (const participant of group.participants) {
+      if (participant.stageRef === seed.stageRef) continue;
+      const dependencies = dependsOn.get(participant.stageRef);
+      if (!dependencies) return { ok: false, reason: 'iteration-stage-reference-invalid', detail: `iteration group '${group.iterationGroupId}' names missing stage '${participant.stageRef}'` };
+      if (!dependencies.includes(seed.stageRef)) dependencies.push(seed.stageRef);
+    }
+  }
+  const indegree = new Map(def.stages.map((stage) => [stage.id, dependsOn.get(stage.id)?.length ?? 0]));
+  const children = new Map(def.stages.map((stage) => [stage.id, [] as string[]]));
+  for (const [stageId, dependencies] of dependsOn) for (const dependency of dependencies) children.get(dependency)?.push(stageId);
+  const ready = def.stages.filter((stage) => (dependsOn.get(stage.id)?.length ?? 0) === 0).map((stage) => stage.id);
+  let visited = 0;
+  while (ready.length > 0) {
+    const stageId = ready.pop() as string;
+    visited += 1;
+    for (const child of children.get(stageId) ?? []) {
+      const remaining = (indegree.get(child) ?? 0) - 1;
+      indegree.set(child, remaining);
+      if (remaining === 0) ready.push(child);
+    }
+  }
+  if (visited !== def.stages.length) {
+    return { ok: false, reason: 'iteration-dependency-cycle', detail: 'iteration activation wiring would create a cyclic stage dependency graph' };
+  }
+  return { ok: true, groups, dependsOn };
 }
 
 function resolveAssignment(
@@ -228,6 +420,8 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     }
     reviewSubjects.add(subjectStageId);
   }
+  const iterationCompilation = compileIterationGroups(def);
+  if (!iterationCompilation.ok) return iterationCompilation;
   const claudeModels = env.registry.runtimes.claude ?? [];
   const needsDefaultManager = def.manager === undefined;
   const needsDefaultWorker = def.stages.some((stage) => stage.agentId === undefined);
@@ -272,7 +466,7 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
       target: stage.target,
       workOrder: stage.workOrder,
       riskTier: stage.riskTier,
-      dependsOn: [...stage.dependsOn],
+      dependsOn: [...(iterationCompilation.dependsOn.get(stage.id) ?? stage.dependsOn)],
       worker: assignment ? { runtime: assignment.runtime, model: assignment.model } : { runtime: 'claude', model: workerModel as string },
       requiredSkills: [],
       // Minimal-valid stage envelope: the stage reads its org and writes only its own declared target.
@@ -304,7 +498,7 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
 
   const proposal: PlanProposal = {
     schema: PLAN_PROPOSAL_SCHEMA,
-    proposalId: deriveProposalId(def, readScope),
+    proposalId: deriveProposalId(def, readScope, iterationCompilation.groups),
     project: def.project,
     title: def.title,
     summary,
@@ -317,6 +511,8 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     scope: proposalScope,
     governanceRefs,
     stages,
+    ...(iterationCompilation.groups.length > 0 ? { iterationGroups: iterationCompilation.groups } : {}),
+    ...(def.maxConcurrency === undefined ? {} : { maxConcurrency: def.maxConcurrency }),
     // Carry the profile as DATA, not merely as hash preimage. Without this line the declared
     // profile reaches deriveProposalId and nothing else, so the worker spawns with NO
     // --allowedTools at all — a capability cap that reads as enforced while capping nothing.

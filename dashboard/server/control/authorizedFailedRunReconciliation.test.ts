@@ -1,6 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -17,7 +16,7 @@ import { resolvePython } from '../runtime/python.ts';
 import { commitPreparedCoordination, type GitRunner } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { WorkflowRunRequest } from '../write/workflowRun.ts';
-import { openNoReparseFileTree, type NoReparseFileTree } from '../win32/noReparseFiles.ts';
+import { openNoReparseFileTree, type NoReparseFileTree } from '../platform/noReparseFiles.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { compileApprovedProposal } from './compiler.ts';
@@ -256,8 +255,16 @@ function fixture(): Fixture {
   const stateRoot = join(root, 'state');
   mkdirSync(repoRoot, { recursive: true });
   mkdirSync(join(repoRoot, 'scripts'), { recursive: true });
-  copyFileSync(join(SOURCE_ROOT, '.gitignore'), join(repoRoot, '.gitignore'));
-  copyFileSync(join(SOURCE_ROOT, 'scripts', 'cards.py'), join(repoRoot, 'scripts', 'cards.py'));
+  writeFileSync(
+    join(repoRoot, '.gitignore'),
+    readFileSync(join(SOURCE_ROOT, '.gitignore'), 'utf8').replaceAll('\r\n', '\n'),
+    'utf8',
+  );
+  writeFileSync(
+    join(repoRoot, 'scripts', 'cards.py'),
+    readFileSync(join(SOURCE_ROOT, 'scripts', 'cards.py'), 'utf8').replaceAll('\r\n', '\n'),
+    'utf8',
+  );
   const { workflow, artifactPaths, proposalSnapshot } = exactWorkflow();
   expect(workflow.name).toBe('wf-097e79d2cedb6372a0ddc5cd329e28a1f23bcedcf42e8d36');
   expect(workflow.stages).toHaveLength(13);
@@ -270,6 +277,7 @@ function fixture(): Fixture {
 
   git(root, ['init', '--bare', origin]);
   git(repoRoot, ['init', '-b', 'ops']);
+  git(repoRoot, ['config', 'core.autocrlf', 'false']);
   git(repoRoot, ['config', 'user.name', 'reconciliation-test']);
   git(repoRoot, ['config', 'user.email', 'reconciliation-test@agents.local']);
   git(repoRoot, ['remote', 'add', 'origin', origin]);
@@ -364,7 +372,7 @@ print(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, width=10**9), en
 
   it('settles all 13 exact cards in one canonical commit and one push', async () => {
     const f = fixture();
-    expect(git(f.repoRoot, ['config', 'core.autocrlf']).trim()).toBe('true');
+    expect(git(f.repoRoot, ['config', 'core.autocrlf']).trim()).toBe('false');
     const outcome = await reconcileAuthorized20260801FailedRun(deps(f));
 
     expect(outcome.replayed).toBe(false);
@@ -690,8 +698,12 @@ print(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, width=10**9), en
     rmSync(destination, { recursive: true });
     symlinkSync(external, destination, 'junction');
 
+    // Which guard refuses first is platform-dependent: git status cannot see a Windows junction,
+    // so the noReparse guard trips ('unsafe-path'); on POSIX the symlink IS a workspace change and
+    // the dirty-workspace refusal fires earlier. Both fail closed; the guard-level symlink property
+    // is proven directly in platform/noReparseFiles.posix.test.ts.
     await expect(reconcileAuthorized20260801FailedRun(deps(f)))
-      .rejects.toThrow('unsafe-path');
+      .rejects.toThrow(/unsafe-path|changed path outside the fixed settlement/);
     expect(readdirSync(external)).toEqual([]);
     expect(f.gitCalls.some((args) => args[0] === 'commit' || args[0] === 'push')).toBe(false);
     expect(f.storeImpl.phase).toBe('claimed');

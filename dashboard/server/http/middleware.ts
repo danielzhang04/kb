@@ -17,8 +17,10 @@
  * spawn) the gate modules already expose for their own unit tests.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { verifySession } from '../auth/session.ts';
+import { mintSession, verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
+import { bindAttribution, resetAttribution } from '../auth/operator.ts';
+import type { OperatorRequestLike } from '../auth/operator.ts';
 import { rateLimit, lockout, rateLimitHook } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 
@@ -66,20 +68,75 @@ export function verifiedSession(req: FastifyRequest): { token: string; claims: S
  * preserving the origin -> rate-limit -> session order. It is NOT applied to the auth ceremony routes
  * (which mint the very session this checks — gating them on a session would be circular) nor to the
  * health/readiness probes, static assets, or the auth ceremony routes.
+ *
+ * THE MODE SEAM. When `sessionConfig.operatorAuth` is set (`tailnet` mode — see `auth/mode.ts`), the
+ * request's transport is the credential and there is no session to present: the authenticator proves the
+ * operator, and this function MINTS a session for them. Because what it stashes is a genuine signed
+ * session, every downstream consumer is unchanged — `verifiedSession(req).claims.sub`, the `sessionToken`
+ * threaded into launches, and the gate modules that independently re-verify it all keep working. That is
+ * why this is the only place either mode is branched on, and why no route file knows a mode exists.
+ * Any client-supplied bearer is IGNORED in that mode: honouring one would reintroduce a forgeable
+ * credential beside the unforgeable transport proof.
  */
+export type ResolvedSession =
+  | { ok: true; token: string; claims: SessionClaims }
+  | { ok: false; status: 401 | 403; error: 'unauthenticated' | 'forbidden'; reason: string };
+
+/**
+ * The minimal request shape {@link resolveSession} reads: headers, plus the raw socket the tailnet peer
+ * proof needs. `socket` is optional so the PTY route's deliberately narrowed, hermetically testable
+ * request type still fits — an absent socket simply cannot prove a peer, which fails closed.
+ */
+export type SessionRequestLike = {
+  headers: FastifyRequest['headers'];
+  socket?: OperatorRequestLike['socket'];
+};
+
+/**
+ * Resolve the session for one request under WHICHEVER auth mode is configured — the single place either
+ * mode is decided. Every caller goes through it: the `requireSession` preHandler below, and the PTY
+ * route's three entry points, which read their bearer straight off the request instead of a preHandler
+ * stash. One branch, no second copy of the rule.
+ *
+ * `presentedToken` serves callers whose credential does not ride the usual headers (the PTY WebSocket
+ * carries its bearer in the subprotocol). It is IGNORED in `tailnet` mode, where the transport is the
+ * credential — honouring a client-supplied token there would put a forgeable credential beside an
+ * unforgeable proof.
+ */
+export function resolveSession(
+  req: SessionRequestLike,
+  sessionConfig: SessionConfig,
+  presentedToken?: string,
+): ResolvedSession {
+  // Clear any attribution a keep-alive-shared async context may carry from a prior request BEFORE the
+  // operator path (maybe) rebinds it. This is the single point every governed, audit-writing request
+  // passes through, so it guarantees no request inherits a stale identity. See operator.ts#bindAttribution.
+  resetAttribution();
+  const operatorAuth = sessionConfig.operatorAuth;
+  if (operatorAuth) {
+    const result = operatorAuth.authenticate(req as unknown as OperatorRequestLike);
+    // 403, not 401: no credential the client could supply would change this answer.
+    if (!result.ok) return { ok: false, status: 403, error: 'forbidden', reason: result.reason };
+    bindAttribution(result.attribution);
+    // Mint a REAL signed session so every gate module that independently re-verifies the token it is
+    // handed keeps working untouched.
+    return { ok: true, ...mintSession(result.subject, sessionConfig) };
+  }
+  const token = presentedToken ?? sessionToken(req);
+  if (!token) return { ok: false, status: 401, error: 'unauthenticated', reason: 'missing session token' };
+  const check = verifySession(token, sessionConfig);
+  if (!check.ok) return { ok: false, status: 401, error: 'unauthenticated', reason: check.reason };
+  return { ok: true, token, claims: check.claims };
+}
+
 export function requireSession(sessionConfig: SessionConfig) {
   return async function preHandlerRequireSession(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const token = sessionToken(req);
-    if (!token) {
-      reply.code(401).send({ error: 'unauthenticated', reason: 'missing session token' });
+    const resolved = resolveSession(req, sessionConfig);
+    if (!resolved.ok) {
+      reply.code(resolved.status).send({ error: resolved.error, reason: resolved.reason });
       return;
     }
-    const check = verifySession(token, sessionConfig);
-    if (!check.ok) {
-      reply.code(401).send({ error: 'unauthenticated', reason: check.reason });
-      return;
-    }
-    verifiedByReq.set(req, { token, claims: check.claims });
+    verifiedByReq.set(req, { token: resolved.token, claims: resolved.claims });
   };
 }
 
@@ -93,6 +150,12 @@ export function requireSession(sessionConfig: SessionConfig) {
  * derived client address IFF the app configures `trustProxy` — this app does not, so it is the socket).
  * The per-verified-owner limiter inside the vibe module (which correctly keys on the verified owner)
  * is unaffected.
+ *
+ * NOTE (tailnet mode): behind `tailscale serve` every request's socket peer is 127.0.0.1, so all
+ * requests share ONE throttle bucket. With the operator pinned to a single principal that is only a
+ * self-DoS ceiling, not a security gap, so it is left as-is. If `trustProxy` is ever enabled to key the
+ * limiter on the real client (via X-Forwarded-For), it MUST be for rate-limiting ONLY — never for auth:
+ * the auth boundary is the loopback peer-owner proof (peerUid.ts), which no forwarded header can satisfy.
  */
 export function rateLimitKey(req: FastifyRequest): string {
   const peer = req.ip ?? req.socket?.remoteAddress ?? 'unknown';

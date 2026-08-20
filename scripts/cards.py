@@ -179,7 +179,9 @@ def save(card: Card, queue_root: Path) -> Path:
     dest = Path(queue_root) / STATE_DIR[card.meta["state"]] / f"{card.meta['id']}.md"
     dest.parent.mkdir(parents=True, exist_ok=True)
     fm = yaml.safe_dump(card.meta, sort_keys=False, allow_unicode=True)
-    dest.write_text(f"---\n{fm}---\n\n{card.body}", encoding="utf-8")
+    # newline="\n" pins the canonical byte form on every platform; the default would
+    # translate to CRLF on Windows and break byte-for-byte origin-blob validation.
+    dest.write_text(f"---\n{fm}---\n\n{card.body}", encoding="utf-8", newline="\n")
     card.path = dest
     return dest
 

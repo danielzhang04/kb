@@ -8,6 +8,7 @@
  * enrolled, a localhost dev origin.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { resolveAuthMode } from '../auth/mode.ts';
 
 /** A minimal request shape — just the headers this check reads. */
 export interface OriginRequestLike {
@@ -41,13 +42,60 @@ function canonicalOrigin(value: string): string | null {
   }
 }
 
-/** The host:port authority of an origin string. */
-function originHost(value: string): string | null {
+interface AllowedHost {
+  host: string;
+  protocol: string;
+}
+
+/** Read the normalized authority and scheme of an allowlisted origin. */
+function allowedHost(value: string): AllowedHost | null {
   try {
-    return new URL(value).host;
+    const url = new URL(value);
+    return url.host ? { host: url.host, protocol: url.protocol } : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse an HTTP Host authority without canonicalizing its hostname. This deliberately accepts only
+ * a bare hostname (optionally followed by a numeric port) or a bracketed IPv6 literal.
+ */
+function parseHost(value: string): { hostname: string; port?: string } | null {
+  if (value.length === 0 || /[\s/@?#\\]/.test(value)) return null;
+
+  if (value.startsWith('[')) {
+    const close = value.indexOf(']');
+    if (close === -1) return null;
+    const hostname = value.slice(0, close + 1);
+    const suffix = value.slice(close + 1);
+    if (suffix === '') return { hostname };
+    if (!/^:\d+$/.test(suffix)) return null;
+    try {
+      new URL(`http://${hostname}`);
+    } catch {
+      return null;
+    }
+    return { hostname, port: suffix.slice(1) };
+  }
+
+  const colon = value.indexOf(':');
+  if (colon === -1) return { hostname: value };
+  if (value.indexOf(':', colon + 1) !== -1) return null;
+  const hostname = value.slice(0, colon);
+  const port = value.slice(colon + 1);
+  if (hostname === '' || !/^\d+$/.test(port)) return null;
+  return { hostname, port };
+}
+
+/** Match a request Host exactly, except for an explicit default port for this allowed scheme. */
+function matchesAllowedHost(requestHost: string, allowed: AllowedHost): boolean {
+  const parsed = parseHost(requestHost);
+  if (!parsed) return false;
+  if (requestHost === allowed.host) return true;
+
+  const defaultPort = allowed.protocol === 'https:' ? '443' : allowed.protocol === 'http:' ? '80' : undefined;
+  return parsed.port === defaultPort && parsed.hostname === allowed.host;
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {
@@ -69,12 +117,12 @@ export function assertOrigin(req: OriginRequestLike, expectedOrigin: AllowedOrig
   if (list.length === 0) return { ok: false, reason: 'no-allowlist' };
 
   const allowedOrigins = new Set<string>();
-  const allowedHosts = new Set<string>();
+  const allowedHosts: AllowedHost[] = [];
   for (const entry of list) {
     const o = canonicalOrigin(entry);
-    const h = originHost(entry);
+    const h = allowedHost(entry);
     if (o) allowedOrigins.add(o);
-    if (h) allowedHosts.add(h);
+    if (h) allowedHosts.push(h);
   }
 
   const origin = firstHeader(req.headers.origin);
@@ -84,7 +132,9 @@ export function assertOrigin(req: OriginRequestLike, expectedOrigin: AllowedOrig
   }
 
   const host = firstHeader(req.headers.host);
-  if (host === undefined || !allowedHosts.has(host)) return { ok: false, reason: 'host-not-allowed' };
+  if (host === undefined || !allowedHosts.some((allowed) => matchesAllowedHost(host, allowed))) {
+    return { ok: false, reason: 'host-not-allowed' };
+  }
 
   return { ok: true };
 }
@@ -115,15 +165,44 @@ export function originPlugin(app: FastifyInstance, opts: { allowedOrigins: Allow
 }
 
 /**
- * Resolve the configured allowlist from the environment. Fail-closed: empty unless a ts.net RP
- * origin is configured. The localhost dev origin is added ONLY when explicitly enrolled
- * (`DASHBOARD_DEV_ORIGIN`), per the D0.12 enrollment decision — localhost is never trusted by default.
+ * Resolve the configured allowlist from the environment. Fail-closed: empty unless this deployment's
+ * public origin is configured.
+ *
+ * Which variable names the origin follows the auth mode (`auth/mode.ts`):
+ * - `win32-desktop` uses the WebAuthn RP origin, plus the localhost dev origin ONLY when explicitly
+ *   enrolled (`DASHBOARD_DEV_ORIGIN`, D0.12) — localhost is never trusted by default.
+ * - `tailnet` derives it from the `tailscale serve` hostname and NOTHING else. It has no relying party
+ *   (a stale `DASHBOARD_RP_ORIGIN` must never quietly widen the allowlist), and — critically — no dev
+ *   origin: authentication there is AMBIENT (no cookie, no token), so an allowlisted dev origin would
+ *   hand full operator authority to any page served from it.
+ *
+ * This guard is load-bearing in `tailnet` mode in a way it was not before: it is the only thing standing
+ * between a hostile page in the operator's browser and the API. See the design spec's trust boundary.
  */
 export function resolveAllowedOrigins(env: Record<string, string | undefined> = process.env): string[] {
+  if (resolveAuthMode(env) === 'tailnet') {
+    const host = env.DASHBOARD_TAILNET_HOST?.trim();
+    return host ? [`https://${host}`] : [];
+  }
   const list: string[] = [];
   const rp = env.DASHBOARD_RP_ORIGIN?.trim();
   if (rp) list.push(rp);
   const dev = env.DASHBOARD_DEV_ORIGIN?.trim();
   if (dev) list.push(dev);
   return list;
+}
+
+/** Loopback fallback when no public origin is configured (dev/test). */
+const LOOPBACK_ORIGIN_FALLBACK = 'http://127.0.0.1:5317';
+
+/**
+ * The daemon's own public origin — the base a spend-grant approval link or any other self-referential
+ * URL is built on. MODE-AWARE, and deliberately the SAME derivation as {@link resolveAllowedOrigins}:
+ * the serve host in `tailnet` mode, the RP (or enrolled dev) origin in `win32-desktop`. Before this was
+ * mode-aware, tailnet mode — where `DASHBOARD_RP_ORIGIN` is banned — fell through to the loopback
+ * fallback, so every spend-grant approval link pointed at the wrong host:port and silently disabled a
+ * governance gate.
+ */
+export function resolveDaemonPublicOrigin(env: Record<string, string | undefined> = process.env): string {
+  return resolveAllowedOrigins(env)[0] ?? LOOPBACK_ORIGIN_FALLBACK;
 }

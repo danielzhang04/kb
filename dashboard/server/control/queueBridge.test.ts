@@ -12,9 +12,11 @@ import {
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
   type OwnedCard,
 } from './queueBridge.ts';
-import { createInMemoryControlPlaneStore } from './store.ts';
+import { createInMemoryControlPlaneStore, proposalSnapshotHash } from './store.ts';
 import { defaultPyRunner, type PyRunResult } from '../write/launch.ts';
 import type { PreambleRunResult } from '../write/preambleGate.ts';
+import { compileWorkflowDef } from '../workflows/compile.ts';
+import { validateServerCompiledPlanProposal } from './proposal.ts';
 
 const SUBJECT = 'dashboard-engine';
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -200,9 +202,24 @@ import {
 } from './queueBridge.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { MAX_DEFINITION_BYTES } from '../workflows/defs.ts';
-import { loadRuntimeSkillRegistry } from './environment.ts';
+import { loadRuntimeSkillRegistry, loadWorkflowCompileEnvironment } from './environment.ts';
 
 const KNOWN = new Set(['research']);
+const REAL_WORKFLOW_ENVIRONMENT = loadWorkflowCompileEnvironment(REPO_ROOT);
+
+function realIterationDemoCard(slug: string, riskTier: 'T1' | 'T2' = 'T2'): ParsedCard {
+  const card = baseCard();
+  return {
+    ...card,
+    meta: {
+      ...card.meta,
+      project: 'faceless-youtube',
+      'workflow-def': 'iteration-loop-demo',
+      parameters: { slug },
+      'risk-tier': riskTier,
+    },
+  };
+}
 
 function baseCard(bodyExtra = ''): ParsedCard {
   return {
@@ -265,6 +282,16 @@ function writeWorkflowDef(repoRoot: string, id: string, source: string): void {
   const workflows = join(repoRoot, 'orgs', 'kb-ops', 'workflows');
   mkdirSync(workflows, { recursive: true });
   writeFileSync(join(workflows, `${id}.md`), source, 'utf8');
+}
+
+function iterationGroupsHash(iterationGroups: unknown): string {
+  return proposalSnapshotHash({ iterationGroups } as never);
+}
+
+// `iterationDefinitionHash` uses the same canonical JSON SHA-256 primitive as `proposalSnapshotHash`,
+// but hashes an individual group rather than a proposal envelope.
+function iterationDefinitionHash(group: unknown): string {
+  return proposalSnapshotHash(group as never);
 }
 
 describe('cardToWorkflowRequest — mapping + Evidence exclusion', () => {
@@ -477,6 +504,212 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     } finally {
       rmSync(repoRoot, { recursive: true, force: true });
     }
+  });
+
+  it('launches one registered workflow run with the exact compiled iteration groups', async () => {
+    const card = realIterationDemoCard('exact-groups');
+    const registry = REAL_WORKFLOW_ENVIRONMENT.registry;
+    const knownProfiles = new Set(registry.workflowProfiles ?? []);
+    const mapped = cardToWorkflowRequest(card, { knownProfiles, repoRoot: REPO_ROOT });
+    const expected = compileWorkflowDef(mapped.def, REAL_WORKFLOW_ENVIRONMENT);
+    if (!expected.ok) throw new Error(expected.detail);
+    const expectedGroupsHash = iterationGroupsHash(expected.value.iterationGroups ?? []);
+    const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-iteration', cards: [] } });
+    const deps = commonDeps({
+      readCard: () => card,
+      loadRegistry: () => registry,
+      knownProfiles: () => knownProfiles,
+      compile: (def: Parameters<typeof compileWorkflowDef>[0]) => compileWorkflowDef(def, REAL_WORKFLOW_ENVIRONMENT),
+      launch: launch as never,
+      reconcile: vi.fn().mockResolvedValue(undefined),
+    });
+    delete (deps as Record<string, unknown>).validate;
+
+    const result = await dispatchClaimedCard(fakeCtx({ repoRoot: REPO_ROOT }).ctx, owned, deps);
+
+    expect(result).toMatchObject({ outcome: 'launched', runRef: 'run-iteration', reconciled: true });
+    expect(launch).toHaveBeenCalledOnce();
+    const snapshot = launch.mock.calls[0]![2].snapshot as { parameters?: Record<string, string>; iterationGroups?: unknown[] };
+    expect(snapshot.parameters).toEqual({ slug: 'exact-groups' });
+    expect(snapshot.iterationGroups).toHaveLength(4);
+    expect(iterationGroupsHash(snapshot.iterationGroups ?? [])).toBe(expectedGroupsHash);
+  });
+
+  it('preserves participant mandates routes maxCycles and definition hashes through workflow-def dispatch', async () => {
+    const card = realIterationDemoCard('materialized-groups');
+    const registry = REAL_WORKFLOW_ENVIRONMENT.registry;
+    const knownProfiles = new Set(registry.workflowProfiles ?? []);
+    const expected = compileWorkflowDef(cardToWorkflowRequest(card, { knownProfiles, repoRoot: REPO_ROOT }).def, REAL_WORKFLOW_ENVIRONMENT);
+    if (!expected.ok) throw new Error(expected.detail);
+    const expectedGroups = expected.value.iterationGroups ?? [];
+    const expectedDefinitionHashes = new Map(expectedGroups.map((group) => [group.iterationGroupId, iterationDefinitionHash(group)]));
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `bridge-iteration-${++n}`; })() });
+    const launch = vi.fn(async (_ctx: SurfaceContext, subject: string, input: {
+        proposalRef: string; revision: number; storedHash: string; snapshot: unknown; idempotencyKey: string;
+      }) => {
+        const parsed = validateServerCompiledPlanProposal(input.snapshot, registry);
+        if (!parsed.ok) return { status: 409, body: { error: parsed.detail } };
+        const created = store.createRun(subject, {
+          title: parsed.value.title,
+          proposalRef: input.proposalRef,
+          proposalRevision: input.revision,
+          expectedProposalHash: input.storedHash,
+          managerRuntime: parsed.value.manager.runtime,
+          managerModel: parsed.value.manager.model,
+          managerAssignment: parsed.value.manager.assignment ?? null,
+          idempotencyKey: input.idempotencyKey,
+          predecessorRunRef: null,
+          iterationGroups: structuredClone(parsed.value.iterationGroups ?? []),
+          stages: parsed.value.stages.map((stage) => ({
+            stageId: stage.id,
+            title: stage.title,
+            dependsOn: [...stage.dependsOn],
+            assignment: stage.assignment ?? null,
+            workflowProfile: stage.workflowProfile ?? null,
+            review: stage.review ?? null,
+            completionGate: stage.completionGate ?? null,
+          })),
+        });
+        return created.ok
+          ? { status: 201, body: { runRef: created.value.run.runRef, cards: [] } }
+          : { status: 409, body: { error: created.reason, detail: created.detail } };
+    });
+    const deps = commonDeps({
+      readCard: () => card,
+      loadRegistry: () => registry,
+      knownProfiles: () => knownProfiles,
+      compile: (def: Parameters<typeof compileWorkflowDef>[0]) => compileWorkflowDef(def, REAL_WORKFLOW_ENVIRONMENT),
+      launch: launch as never,
+      reconcile: vi.fn().mockResolvedValue(undefined),
+    });
+    delete (deps as Record<string, unknown>).validate;
+    delete (deps as Record<string, unknown>).snapshotHash;
+
+    const result = await dispatchClaimedCard(fakeCtx({ repoRoot: REPO_ROOT, controlStore: store }).ctx, owned, deps);
+    if (!result.runRef) throw new Error(result.detail ?? 'iteration run was not launched');
+    const detail = store.getRun(SUBJECT, result.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+
+    expect(detail.value.iterationLoops).toHaveLength(4);
+    expect(detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'pair-fix-accept')).toMatchObject({
+        participants: [
+          { participantId: 'pair-producer', mandate: expect.stringContaining('change the declared status marker to fixed') },
+          { participantId: 'pair-checker', mandate: expect.stringContaining('accept only the exact successor') },
+        ],
+        routes: [{
+          routeId: 'pair-to-checker', senderParticipantId: 'pair-producer', recipientParticipantId: 'pair-checker',
+          requestKinds: ['check'], baseResolutionStageIds: ['pair-producer'],
+        }, {
+          routeId: 'pair-to-producer', senderParticipantId: 'pair-checker', recipientParticipantId: 'pair-producer',
+          requestKinds: ['rework'], baseResolutionStageIds: ['pair-checker'],
+        }],
+        schedule: [{
+          stepId: 'pair-check', routeId: 'pair-to-checker',
+          after: { stepId: 'pair-rework', participantId: 'pair-producer', verdict: 'fulfilled' }, cycle: 'next',
+        }, {
+          stepId: 'pair-rework', routeId: 'pair-to-producer',
+          after: { stepId: 'pair-check', participantId: 'pair-checker', verdict: 'rework' }, cycle: 'current',
+        }],
+        maxCycles: 2,
+        definitionHash: expectedDefinitionHashes.get('pair-fix-accept'),
+      });
+    for (const loop of detail.value.iterationLoops) {
+      expect(loop.definitionHash).toBe(expectedDefinitionHashes.get(loop.iterationGroupId));
+    }
+  });
+
+  it('does not synthesize queue cards for iteration turns', async () => {
+    const card = realIterationDemoCard('no-turn-cards');
+    const registry = REAL_WORKFLOW_ENVIRONMENT.registry;
+    const knownProfiles = new Set(registry.workflowProfiles ?? []);
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `bridge-no-cards-${++n}`; })() });
+    const launch = vi.fn(async (_ctx: SurfaceContext, subject: string, input: {
+        proposalRef: string; revision: number; storedHash: string; snapshot: unknown; idempotencyKey: string;
+      }) => {
+        const parsed = validateServerCompiledPlanProposal(input.snapshot, registry);
+        if (!parsed.ok) return { status: 409, body: { error: parsed.detail } };
+        const created = store.createRun(subject, {
+          title: parsed.value.title,
+          proposalRef: input.proposalRef,
+          proposalRevision: input.revision,
+          expectedProposalHash: input.storedHash,
+          managerRuntime: parsed.value.manager.runtime,
+          managerModel: parsed.value.manager.model,
+          managerAssignment: parsed.value.manager.assignment ?? null,
+          idempotencyKey: input.idempotencyKey,
+          predecessorRunRef: null,
+          iterationGroups: structuredClone(parsed.value.iterationGroups ?? []),
+          stages: parsed.value.stages.map((stage) => ({
+            stageId: stage.id,
+            title: stage.title,
+            dependsOn: [...stage.dependsOn],
+            assignment: stage.assignment ?? null,
+            workflowProfile: stage.workflowProfile ?? null,
+            review: stage.review ?? null,
+            completionGate: stage.completionGate ?? null,
+          })),
+        });
+        return created.ok
+          ? { status: 201, body: { runRef: created.value.run.runRef, cards: [] } }
+          : { status: 409, body: { error: created.reason, detail: created.detail } };
+    });
+    const deps = commonDeps({
+      readCard: () => card,
+      loadRegistry: () => registry,
+      knownProfiles: () => knownProfiles,
+      compile: (def: Parameters<typeof compileWorkflowDef>[0]) => compileWorkflowDef(def, REAL_WORKFLOW_ENVIRONMENT),
+      launch: launch as never,
+      reconcile: vi.fn().mockResolvedValue(undefined),
+    });
+    delete (deps as Record<string, unknown>).validate;
+    delete (deps as Record<string, unknown>).snapshotHash;
+
+    const result = await dispatchClaimedCard(fakeCtx({ repoRoot: REPO_ROOT, controlStore: store }).ctx, owned, deps);
+    if (!result.runRef) throw new Error(result.detail ?? 'iteration run was not launched');
+    const detail = store.getRun(SUBJECT, result.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+
+    expect(result).toMatchObject({ outcome: 'launched', reconciled: true });
+    expect(launch).toHaveBeenCalledOnce();
+    expect(detail.value.stages).toHaveLength(8);
+    expect(detail.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
+    expect(detail.value.iterationLoops).toHaveLength(4);
+    expect(detail.value.attempts).toEqual([]);
+    expect(detail.value.sessions).toEqual([expect.objectContaining({ role: 'manager', stageRef: null })]);
+    expect(detail.value.humanRequests).toEqual([]);
+    expect(detail.value.stageGenerations).toEqual([]);
+    expect(detail.value.iterationRequests).toEqual([]);
+    expect(detail.value.iterationReceipts).toEqual([]);
+    expect(detail.value.generationSupersessions).toEqual([]);
+  });
+
+  it('rejects a workflow-def card whose declared tier cannot cover an iteration participant stage', async () => {
+    const card = realIterationDemoCard('low-tier', 'T1');
+    const launch = vi.fn();
+    const registry = REAL_WORKFLOW_ENVIRONMENT.registry;
+    const knownProfiles = new Set(registry.workflowProfiles ?? []);
+    const tierMatchedCard = { ...card, meta: { ...card.meta, 'risk-tier': 'T2' } };
+    const compiled = compileWorkflowDef(cardToWorkflowRequest(tierMatchedCard, {
+      knownProfiles, repoRoot: REPO_ROOT,
+    }).def, REAL_WORKFLOW_ENVIRONMENT);
+    if (!compiled.ok) throw new Error(compiled.detail);
+    expect(compiled.value.iterationGroups).toHaveLength(4);
+    const participantStageIds = new Set(compiled.value.iterationGroups?.flatMap((group) =>
+      group.participants.map((participant) => participant.stageRef)));
+    expect(compiled.value.stages.filter((stage) => stage.riskTier === 'T2').map((stage) => stage.id))
+      .toEqual(expect.arrayContaining([...participantStageIds]));
+
+    const result = await dispatchClaimedCard(fakeCtx({ repoRoot: REPO_ROOT }).ctx, owned, commonDeps({
+      readCard: () => card,
+      loadRegistry: () => registry,
+      knownProfiles: () => knownProfiles,
+      compile: (def: Parameters<typeof compileWorkflowDef>[0]) => compileWorkflowDef(def, REAL_WORKFLOW_ENVIRONMENT),
+      launch: launch as never,
+    }));
+
+    expect(result).toMatchObject({ outcome: 'failed', status: 400, reconciled: false });
+    expect(result.detail).toMatch(/required tier T2/i);
+    expect(launch).not.toHaveBeenCalled();
   });
 
   // Bug fix (2026-08-11): a bare YAML date (`channel: 2026-08-05`, no quotes) auto-types to a Python

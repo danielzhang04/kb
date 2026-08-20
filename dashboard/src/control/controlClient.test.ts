@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   activateRun,
@@ -7,6 +8,7 @@ import {
   decideProposalRevision,
   dryRunQuarantine,
   getExecutionPosture,
+  getRun,
   launchProposalRevision,
   listRunEvents,
   parseExecutionPosture,
@@ -16,7 +18,7 @@ import {
   AUTHORIZED_FAILED_RUN_PUBLISHED_UNCOMMITTED_CODE,
   isAuthorizedFailedRunPublishedUncommitted,
   rerouteManagedStage,
-  resolveReviewCompletionGate,
+  resolveIterationGate,
   respondToHumanRequest,
   resumeRunAfterHumanResponse,
   steerManagerAtCheckpoint,
@@ -69,6 +71,12 @@ const PASSKEY_EXECUTION = {
 };
 
 describe('control client execution unlock ceremony', () => {
+  it('uses no review DTO or review gate client surface after cutover', () => {
+    const source = readFileSync(new URL('./controlClient.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/\b(?:ReviewLoopDto|ReviewReceiptDto|resolveReviewCompletionGate|failedReviewReceiptRef)\b/);
+    expect(source).not.toContain('/review-completion-gates/');
+  });
+
   it('reads the authenticated execution posture with the bearer', async () => {
     const fetchImpl = recordedFetch({ execution: LOCKED_EXECUTION });
     await expect(getExecutionPosture('bearer', fetchImpl)).resolves.toEqual(LOCKED_EXECUTION);
@@ -241,16 +249,71 @@ describe('control client proposal CAS', () => {
 });
 
 describe('control client run and retention writes', () => {
-  it('resolves a review completion gate through its dedicated endpoint with no internal lineage refs', async () => {
-    const fetchImpl = recordedFetch({ ok: true, value: { request: { requestRef: 'request-1' } } });
-    await resolveReviewCompletionGate('request/1', {
-      expectedRequestRevision: 3, decision: 'changes-requested', idempotencyKey: 'human:request-1:3:changes-requested', response: 'Rework sources.',
-    }, 'bearer', fetchImpl);
-    expect(fetchImpl).toHaveBeenCalledWith(
-      '/api/control/review-completion-gates/request%2F1/resolve', expect.objectContaining({ method: 'POST' }),
+  it('retains complete iteration loop request receipt and residue fields from run detail', async () => {
+    const residue = {
+      unresolvedFindings: [{ findingId: 'finding-1', criterionId: 'quality', severity: 'blocking', summary: 'Missing source.', evidencePaths: ['draft.md'] }],
+      positions: [{ positionId: 'position-1', participantId: 'judge', summary: 'Needs evidence.', generationRefs: ['generation-1'] }],
+      recordedDissent: [{ dissentId: 'dissent-1', participantId: 'peer', positionId: 'position-1', summary: 'The source is adequate.' }],
+      requestRefs: ['iteration-request-1'], receiptRefs: ['iteration-receipt-1'],
+      activeGenerationRefs: ['generation-1'], acceptedGenerationRefs: [], nextRouteId: 'rework',
+      cycleUnit: 'judge verdicts', cyclesUsed: 2, maxCycles: 3,
+      attemptedRequestRef: 'iteration-request-2', attemptedRequestCycle: 3,
+      attemptedOutcome: {
+        schema: 'kb.iteration-outcome/v1', requestRef: 'iteration-request-2', iterationLoopRef: 'loop-1',
+        participantId: 'producer', cycle: 3, verdict: 'fulfilled', inputGenerationRefs: ['generation-1'],
+        criteria: [], findings: [], positions: [], recordedDissent: [], summary: 'No bytes changed.',
+      },
+      artifactSnapshots: [{ path: 'draft.md', regularFile: true, size: 10, sha256: 'before', afterRegularFile: true, afterSize: 10, afterSha256: 'after', byteIdentical: true }],
+      failureReason: 'required output was byte-identical',
+    };
+    const value = {
+      run: { runRef: 'run-1' }, ownerSubject: 'operator', stages: [], attempts: [], sessions: [], humanRequests: [],
+      stageGenerations: [{ generationRef: 'generation-1', runRef: 'run-1', logicalStageRef: 'stage-1', logicalStageId: 'draft', generation: 1, predecessorGenerationRef: null, attemptRef: 'attempt-1', canonicalResultOperationKey: 'result-1', resultHash: 'hash', resultCardRef: 'card-1', baseCommit: 'base', canonicalCommit: 'head', state: 'committed', createdAt: 'now', updatedAt: 'now' }],
+      generationSupersessions: [{ runRef: 'run-1', predecessorGenerationRef: 'generation-0', successorGenerationRef: 'generation-1', triggerReceiptRef: 'iteration-receipt-1', operationKey: 'supersede-1', createdAt: 'now' }],
+      iterationLoops: [{
+        iterationLoopRef: 'loop-1', runRef: 'run-1', definitionHash: 'definition', iterationGroupId: 'draft-loop', goal: 'Accept the draft.',
+        participants: [{ participantId: 'producer', stageRef: 'draft', role: 'contributor', perspective: 'Own the draft.', mandate: 'Revise it.' }],
+        routes: [{ routeId: 'rework', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['draft'] }],
+        activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'judge',
+        schedule: [{ stepId: 'judge', routeId: 'rework', cycle: 'current' }], artifacts: ['draft'], criteria: [{ id: 'quality', description: 'Complete.' }],
+        maxCycles: 3, cycleUnit: 'judge verdicts', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+        cyclesUsed: 2, state: 'awaiting-park-gate', activeGenerationRefs: ['generation-1'], lastReceiptRef: 'iteration-receipt-1',
+        interventionRef: 'gate-1', parkReason: 'no-progress', unresolvedResidue: residue, version: 7, createdAt: 'now', updatedAt: 'now',
+      }],
+      iterationRequests: [{ schema: 'kb.iteration-request/v1', requestRef: 'iteration-request-1', iterationLoopRef: 'loop-1', stepId: 'judge', routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', kind: 'review', cycle: 2, inputGenerationRefs: ['generation-1'], baseCommit: 'base', artifactHashes: { 'draft.md': 'hash' }, criteria: [{ id: 'quality', description: 'Complete.' }], unresolvedFindingRefs: ['finding-1'], preservedInvariants: ['keep citations'], nextAcceptanceCheck: 'quality', instructions: 'Judge it.' }],
+      iterationReceipts: [{ schema: 'kb.iteration-receipt/v1', receiptRef: 'iteration-receipt-1', requestRef: 'iteration-request-1', iterationLoopRef: 'loop-1', participantId: 'judge', cycle: 2, verdict: 'fail', inputGenerationRefs: ['generation-1'], criteria: [{ criterionId: 'quality', verdict: 'fail', findingIds: ['finding-1'] }], findings: residue.unresolvedFindings, resolvedFindingRefs: [], positions: residue.positions, recordedDissent: residue.recordedDissent, summary: 'Needs evidence.', outcomeHash: 'outcome', outputGenerationRefs: [], baseCommit: 'base', canonicalCommit: 'head', createdAt: 'now', version: 4 }],
+    };
+    const detail = await getRun('run-1', 'bearer', recordedFetch({ ok: true, value }));
+    expect(detail).toEqual(value);
+    expect(detail.iterationLoops[0]?.unresolvedResidue).toMatchObject({ cyclesUsed: 2, attemptedRequestCycle: 3 });
+    expect(detail.iterationReceipts[0]?.version).toBe(4);
+  });
+
+  it('resolves completion and reason-coded iteration-park gates through the dedicated iteration endpoint', async () => {
+    const completionFetch = recordedFetch({ ok: true, value: { gate: { requestRef: 'completion/1' }, loop: {}, receipt: {}, receiptVersion: 4, interventionRequest: null } });
+    const completion = await resolveIterationGate('completion/1', {
+      expectedGateRef: 'completion/1', expectedGateKind: null, expectedParkReason: null,
+      expectedRequestRevision: 3, expectedLoopVersion: 7, expectedGenerationRefs: ['generation-1'],
+      decision: 'changes-requested', idempotencyKey: 'human:completion-1:3:changes-requested', response: 'Rework sources.',
+    }, 'bearer', completionFetch);
+    expect(completion.gate).toEqual({ requestRef: 'completion/1' });
+    expect(completionFetch).toHaveBeenCalledWith(
+      '/api/control/iteration-gates/completion%2F1/resolve', expect.objectContaining({ method: 'POST' }),
     );
-    expect(requestBody(fetchImpl as unknown as ReturnType<typeof vi.fn>)).toEqual({
-      expectedRequestRevision: 3, decision: 'changes-requested', idempotencyKey: 'human:request-1:3:changes-requested', response: 'Rework sources.',
+    expect(requestBody(completionFetch as unknown as ReturnType<typeof vi.fn>)).toEqual({
+      expectedGateRef: 'completion/1', expectedGateKind: null, expectedParkReason: null,
+      expectedRequestRevision: 3, expectedLoopVersion: 7, expectedGenerationRefs: ['generation-1'],
+      decision: 'changes-requested', idempotencyKey: 'human:completion-1:3:changes-requested', response: 'Rework sources.',
+    });
+
+    const parkFetch = recordedFetch({ ok: true, value: { gate: { requestRef: 'park-1' }, loop: {}, receipt: null, receiptVersion: null, interventionRequest: null } });
+    await resolveIterationGate('park-1', {
+      expectedGateRef: 'park-1', expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
+      expectedRequestRevision: 1, expectedLoopVersion: 8, expectedGenerationRefs: ['generation-1'],
+      decision: 'declined', idempotencyKey: 'park-1:decline', response: null,
+    }, 'bearer', parkFetch);
+    expect(requestBody(parkFetch as unknown as ReturnType<typeof vi.fn>)).toMatchObject({
+      expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress', decision: 'declined',
     });
   });
 

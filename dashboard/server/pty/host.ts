@@ -26,6 +26,14 @@
  * environment where the native ConPTY prebuild is not present (it is vendored/built at the D3.1 gate).
  */
 import { createRequire } from 'node:module';
+import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from '../control/childEnv.ts';
+
+export {
+  buildChildEnv,
+  DEFAULT_ENV_ALLOWLIST,
+  DENIED_ENV_FRAGMENTS,
+  isDeniedEnvName,
+} from '../control/childEnv.ts';
 
 /** Options passed to the pty factory for one spawn. `env` is the ALREADY-allowlisted child env. */
 export interface PtySpawnOptions {
@@ -87,93 +95,6 @@ export const defaultPtyFactory: PtyFactory = (file, args, opts) => {
     kill: (signal) => proc.kill(signal),
   };
 };
-
-/**
- * The env-var names a spawned terminal is allowed to inherit. Deliberately minimal — enough for a
- * usable shell (PATH, temp dirs, home, locale) and nothing that carries a secret. Case variants are
- * listed explicitly because Windows env lookups are case-insensitive but the record keys are not.
- */
-export const DEFAULT_ENV_ALLOWLIST: readonly string[] = [
-  'PATH',
-  'Path',
-  'PATHEXT',
-  'SYSTEMROOT',
-  'SystemRoot',
-  'SYSTEMDRIVE',
-  'SystemDrive',
-  'WINDIR',
-  'windir',
-  'COMSPEC',
-  'ComSpec',
-  'TEMP',
-  'TMP',
-  'HOME',
-  'HOMEDRIVE',
-  'HOMEPATH',
-  'USERPROFILE',
-  'USERNAME',
-  'USERDOMAIN',
-  'NUMBER_OF_PROCESSORS',
-  'PROCESSOR_ARCHITECTURE',
-  'PROCESSOR_IDENTIFIER',
-  'LANG',
-  'LC_ALL',
-  'TERM',
-  'TZ',
-];
-
-/**
- * Names that must NEVER reach a spawned terminal, enforced on top of the allowlist as defence-in-depth.
- * Push credentials, the Claude Code OAuth token, and any API key are the whole reason the daemon does
- * not spawn terminals itself — the host must not hand them to a shell either. Matched case-insensitively,
- * and any name CONTAINING one of these fragments is also denied (so `MY_GITHUB_TOKEN` is caught too).
- */
-export const DENIED_ENV_FRAGMENTS: readonly string[] = [
-  'CLAUDE_CODE_OAUTH_TOKEN',
-  'ANTHROPIC_API_KEY',
-  'ANTHROPIC_AUTH_TOKEN',
-  'GITHUB_TOKEN',
-  'GH_TOKEN',
-  'GITHUB_PAT',
-  'GIT_ASKPASS',
-  'SSH_ASKPASS',
-  'GIT_PASSWORD',
-  'GIT_USERNAME',
-  'GIT_HTTP_EXTRAHEADER',
-  'NPM_TOKEN',
-  'TOKEN',
-  'PASSWORD',
-  'SECRET',
-  'CREDENTIAL',
-  'API_KEY',
-  'APIKEY',
-  'PRIVATE_KEY',
-];
-
-/** True when `name` is (or contains) a denied credential fragment (case-insensitive). */
-export function isDeniedEnvName(name: string): boolean {
-  const upper = name.toUpperCase();
-  return DENIED_ENV_FRAGMENTS.some((frag) => upper.includes(frag));
-}
-
-/**
- * Build the child shell's environment from an allowlist. For each allowed name present in the parent
- * env, copy it — UNLESS it matches the credential denylist (defence-in-depth). The result is a fresh
- * object; the parent env is never handed through by reference, and no denied secret can appear even if
- * the allowlist is later widened by mistake.
- */
-export function buildChildEnv(
-  parentEnv: Record<string, string | undefined>,
-  allowlist: readonly string[] = DEFAULT_ENV_ALLOWLIST,
-): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const name of allowlist) {
-    if (isDeniedEnvName(name)) continue; // never, even if allowlisted
-    const value = parentEnv[name];
-    if (typeof value === 'string' && value.length > 0) env[name] = value;
-  }
-  return env;
-}
 
 /** A live, host-tracked PTY session. */
 export interface PtySession {

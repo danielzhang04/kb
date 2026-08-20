@@ -477,6 +477,95 @@ def clone_fresh(operator_repo: Path, target: Path, run=subprocess.run) -> Path:
     return target
 
 
+def sync_ops_down(repo: Path, run=run_git) -> dict[str, str | int]:
+    """Fetch origin/ops and fast-forward the local ops ref without pushing."""
+    bare = _text(run(repo, ["rev-parse", "--is-bare-repository"]).stdout).strip() == "true"
+    if not bare:
+        branch = _text(
+            _run_without_check(run, repo, ["symbolic-ref", "--quiet", "HEAD"]).stdout
+        ).strip()
+        if branch != "refs/heads/ops":
+            raise RuntimeError("pull-only sync requires the local ops branch to be checked out")
+        if _text(run(repo, ["status", "--porcelain"]).stdout).strip():
+            raise RuntimeError("pull-only sync requires a clean local ops checkout")
+
+    local = _text(run(repo, ["rev-parse", "refs/heads/ops^{commit}"]).stdout).strip()
+    if COMMIT_RE.fullmatch(local) is None:
+        raise RuntimeError("local ops head is invalid")
+    run(
+        repo,
+        [
+            "fetch", "--no-tags", "origin",
+            "+refs/heads/ops:refs/remotes/origin/ops",
+        ],
+    )
+    remote = _text(
+        run(repo, ["rev-parse", "refs/remotes/origin/ops^{commit}"]).stdout
+    ).strip()
+    if COMMIT_RE.fullmatch(remote) is None:
+        raise RuntimeError("origin/ops head is invalid")
+    ancestry = _run_without_check(
+        run, repo, ["merge-base", "--is-ancestor", local, remote],
+    )
+    if ancestry.returncode == 1:
+        raise RuntimeError("local ops has diverged from origin/ops; refusing pull-only sync")
+    if ancestry.returncode != 0:
+        raise RuntimeError("could not verify pull-only ops ancestry")
+
+    if local != remote:
+        if bare:
+            run(repo, ["update-ref", "refs/heads/ops", remote, local])
+        else:
+            run(repo, ["merge", "--ff-only", "refs/remotes/origin/ops"])
+    updated = _text(run(repo, ["rev-parse", "refs/heads/ops^{commit}"]).stdout).strip()
+    if updated != remote:
+        raise RuntimeError("pull-only sync did not reach origin/ops")
+    return {"before": local, "after": updated, "updated": int(local != updated)}
+
+
+def _replayed_tree(
+    repo: Path,
+    manifest: dict,
+    source_ref: str,
+    onto: str,
+    run=run_git,
+) -> str:
+    """Compute the exact three-way result of replaying one source commit."""
+    try:
+        result = run(
+            repo,
+            [
+                "merge-tree", "--write-tree", "--merge-base", manifest["parent"],
+                onto, source_ref,
+            ],
+        )
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            f"bundle {manifest['id']} conflicts with current origin/ops"
+        ) from error
+    tree = _text(result.stdout).splitlines()[0] if _text(result.stdout).splitlines() else ""
+    if COMMIT_RE.fullmatch(tree) is None:
+        raise RuntimeError("bundle replay did not produce a valid tree")
+    return tree
+
+
+def _promotion_matches_replay(
+    repo: Path,
+    manifest: dict,
+    source_ref: str,
+    promoted: str,
+    run=run_git,
+) -> bool:
+    row = _text(
+        run(repo, ["rev-list", "--parents", "-n", "1", promoted]).stdout
+    ).strip().split()
+    if len(row) != 2 or row[0] != promoted:
+        raise RuntimeError("existing promotion commit is not single-parent")
+    expected_tree = _replayed_tree(repo, manifest, source_ref, row[1], run)
+    actual_tree = _text(run(repo, ["rev-parse", f"{promoted}^{{tree}}"]).stdout).strip()
+    return actual_tree == expected_tree
+
+
 def recover_receiptless_remote_prefix(
     spool: Path,
     repo: Path,
@@ -486,24 +575,52 @@ def recover_receiptless_remote_prefix(
     quarantine_prefix: str,
     run=run_git,
 ) -> None:
+    ancestry = _run_without_check(
+        run, repo, ["merge-base", "--is-ancestor", expected_remote, remote_head],
+    )
+    if ancestry.returncode == 1:
+        raise RuntimeError("origin/ops diverged from the last trusted promotion point")
+    if ancestry.returncode != 0:
+        raise RuntimeError("could not verify origin/ops promotion ancestry")
     rows = _text(
         run(repo, ["rev-list", "--reverse", "--parents", f"{expected_remote}..{remote_head}"]).stdout
     ).splitlines()
     pending = [item for item in chain if read_matching_receipt(spool, item) is None]
-    if len(rows) > len(pending):
-        raise RuntimeError("origin/ops contains commits outside the pending outbox prefix")
-    previous = expected_remote
-    for row, manifest in zip(rows, pending):
+    pending_by_id = {item["id"]: item for item in pending}
+    recovered: dict[str, tuple[int, str]] = {}
+    for position, row in enumerate(rows):
         fields = row.split()
-        if len(fields) != 2 or fields[1] != previous:
-            raise RuntimeError("receiptless remote prefix is not single-parent")
-        promoted = fields[0]
+        if len(fields) != 2:
+            raise RuntimeError("origin/ops advancement is not single-parent")
+        promoted, _parent = fields
         message = _text(run(repo, ["show", "-s", "--format=%B", promoted]).stdout).splitlines()
-        if message.count(f"KB-Outbox-ID: {manifest['id']}") != 1:
-            raise RuntimeError("receiptless remote commit has the wrong outbox trailer")
+        matches = [
+            identity for identity in pending_by_id
+            if message.count(f"KB-Outbox-ID: {identity}") == 1
+        ]
+        if len(matches) > 1:
+            raise RuntimeError("one remote commit claims multiple pending outbox items")
+        if not matches:
+            continue
+        identity = matches[0]
+        if identity in recovered:
+            raise RuntimeError("origin/ops contains duplicate promotion trailers")
+        manifest = pending_by_id[identity]
         source_ref = f"{quarantine_prefix}/{manifest['id']}"
-        if _run_without_check(run, repo, ["diff", "--quiet", source_ref, promoted]).returncode != 0:
-            raise RuntimeError("receiptless remote commit tree differs from its source commit")
+        if not _promotion_matches_replay(repo, manifest, source_ref, promoted, run):
+            raise RuntimeError("receiptless remote commit is not the exact rebased bundle delta")
+        recovered[identity] = (position, promoted)
+
+    gap = False
+    previous_position = -1
+    for manifest in pending:
+        match = recovered.get(manifest["id"])
+        if match is None:
+            gap = True
+            continue
+        if gap or match[0] <= previous_position:
+            raise RuntimeError("receiptless promotions are not a parent-order prefix")
+        previous_position, promoted = match
         receipt = {
             "schema": "kb.ops-promotion/v1",
             "id": manifest["id"],
@@ -512,9 +629,6 @@ def recover_receiptless_remote_prefix(
             "promotedAt": utc_now().isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         }
         write_receipt_durably(spool / "receipts" / f"{manifest['id']}.json", receipt)
-        previous = promoted
-    if previous != remote_head:
-        raise RuntimeError("receiptless remote prefix does not reach origin/ops")
 
 
 def promote_one(
@@ -532,18 +646,35 @@ def promote_one(
             ["log", "HEAD", "--format=%H", "--fixed-strings", f"--grep=KB-Outbox-ID: {manifest['id']}", "-1"],
         ).stdout
     ).strip()
-    if promoted and _run_without_check(run, repo, ["diff", "--quiet", source_ref, promoted]).returncode != 0:
-        raise RuntimeError("existing promotion commit tree differs from its source commit")
+    if promoted and not _promotion_matches_replay(
+        repo, manifest, source_ref, promoted, run,
+    ):
+        raise RuntimeError("existing promotion commit is not the exact rebased bundle delta")
     if not promoted:
-        run(repo, ["cherry-pick", "--no-commit", source_ref])
-        run(
-            repo,
-            ["commit", "-m", f"chore(outbox): promote {manifest['id']}", "-m", f"KB-Outbox-ID: {manifest['id']}"],
-        )
-        promoted = _text(run(repo, ["rev-parse", "HEAD"]).stdout).strip()
-        if COMMIT_RE.fullmatch(promoted) is None:
-            raise RuntimeError("promoted commit is invalid")
-        run(repo, ["push", "origin", "HEAD:refs/heads/ops"])
+        head = _text(run(repo, ["rev-parse", "HEAD^{commit}"]).stdout).strip()
+        expected_tree = _replayed_tree(repo, manifest, source_ref, head, run)
+        head_tree = _text(run(repo, ["rev-parse", "HEAD^{tree}"]).stdout).strip()
+        if expected_tree == head_tree:
+            promoted = head
+        else:
+            try:
+                run(repo, ["cherry-pick", "--no-commit", source_ref])
+            except subprocess.CalledProcessError as error:
+                _run_without_check(run, repo, ["cherry-pick", "--abort"])
+                raise RuntimeError(
+                    f"bundle {manifest['id']} conflicts with current origin/ops"
+                ) from error
+            staged_tree = _text(run(repo, ["write-tree"]).stdout).strip()
+            if staged_tree != expected_tree:
+                raise RuntimeError("staged promotion tree differs from the verified replay")
+            run(
+                repo,
+                ["commit", "-m", f"chore(outbox): promote {manifest['id']}", "-m", f"KB-Outbox-ID: {manifest['id']}"],
+            )
+            promoted = _text(run(repo, ["rev-parse", "HEAD"]).stdout).strip()
+            if COMMIT_RE.fullmatch(promoted) is None:
+                raise RuntimeError("promoted commit is invalid")
+            run(repo, ["push", "origin", "HEAD:refs/heads/ops"])
     return {
         "schema": "kb.ops-promotion/v1",
         "id": manifest["id"],
@@ -690,18 +821,27 @@ def create_return_bundle(
     run=run_git,
     clone=clone_fresh,
 ) -> tuple[Path, Path]:
+    if COMMIT_RE.fullmatch(expected_target) is None:
+        raise RuntimeError("expected promotion target is invalid")
     repo = clone(operator_repo, work_root / f"return-{secrets.token_hex(4)}")
     run(repo, ["fetch", "--no-tags", "origin", "ops"])
     target = _text(run(repo, ["rev-parse", "refs/remotes/origin/ops^{commit}"]).stdout).strip()
-    if target != expected_target:
-        raise RuntimeError("origin/ops does not equal the just-promoted target")
+    if COMMIT_RE.fullmatch(target) is None:
+        raise RuntimeError("origin/ops head is invalid")
+    ancestry = _run_without_check(
+        run, repo, ["merge-base", "--is-ancestor", expected_target, target],
+    )
+    if ancestry.returncode == 1:
+        raise RuntimeError("origin/ops diverged from the just-promoted target")
+    if ancestry.returncode != 0:
+        raise RuntimeError("could not verify return-bundle ops ancestry")
     run(repo, ["update-ref", "refs/kb-reconciled/ops", "refs/remotes/origin/ops"])
     bundle = repo.parent / f"ops-return-{secrets.token_hex(4)}.bundle"
     _run_with_timeout(
         run, repo, ["bundle", "create", str(bundle), "refs/kb-reconciled/ops"], TRANSPORT_TIMEOUT,
     )
     heads = _text(run(repo, ["bundle", "list-heads", str(bundle)]).stdout).splitlines()
-    if heads != [f"{expected_target} refs/kb-reconciled/ops"]:
+    if heads != [f"{target} refs/kb-reconciled/ops"]:
         raise RuntimeError("return bundle advertised ref mismatch")
     return bundle, repo
 
@@ -737,29 +877,54 @@ def upload_and_apply_reconciliation(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Promote VM outbox bundles from a trusted desktop")
-    parser.add_argument("--spool", type=Path, required=True, help="parent directory for immutable snapshots")
+    parser.add_argument("--spool", type=Path, help="parent directory for immutable snapshots")
     parser.add_argument("--repo", type=Path, required=True, help="operator checkout, queried only for origin URL")
-    parser.add_argument("--work-root", type=Path, required=True)
-    parser.add_argument("--vm-host", required=True)
-    parser.add_argument("--trusted-ops-head", required=True)
+    parser.add_argument("--work-root", type=Path)
+    parser.add_argument("--vm-host")
+    parser.add_argument("--trusted-ops-head")
+    parser.add_argument(
+        "--pull-only", action="store_true",
+        help="fetch and fast-forward the local ops checkout without promoting or pushing",
+    )
     parser.add_argument("--approval", type=Path)
     parser.add_argument("--approval-signature", type=Path)
     parser.add_argument("--approval-allowed-signers", type=Path)
     parser.add_argument("--max-attempts", type=int, default=3)
     args = parser.parse_args()
 
+    if args.pull_only:
+        print(json.dumps(sync_ops_down(args.repo), sort_keys=True))
+        return 0
+
+    missing = [
+        option for option, value in (
+            ("--spool", args.spool),
+            ("--work-root", args.work_root),
+            ("--vm-host", args.vm_host),
+            ("--trusted-ops-head", args.trusted_ops_head),
+        )
+        if value is None
+    ]
+    if missing:
+        parser.error("promotion mode requires " + ", ".join(missing))
+
     snapshot = args.spool / f"snapshot-{secrets.token_hex(12)}"
     fetch_vm_outbox(args.vm_host, snapshot)
     manifests = validate_snapshot(snapshot)
     chain = order_from_parent(manifests, args.trusted_ops_head)
     source_head = (snapshot / "SOURCE_HEAD").read_text(encoding="ascii").strip()
-    if not chain or chain[-1]["commit"] != source_head or chain[0]["parent"] != args.trusted_ops_head:
+    if not chain:
+        print("nothing to promote")
+        return 0
+    if chain[-1]["commit"] != source_head or chain[0]["parent"] != args.trusted_ops_head:
         raise RuntimeError("VM source head does not equal the closed outbox chain")
 
     all_receipted = all(read_matching_receipt(snapshot, item) is not None for item in chain)
+    if all_receipted:
+        print("nothing to promote")
+        return 0
     if (
-        not all_receipted
-        and any(any(INSTRUCTION.fullmatch(path) for path in item["paths"]) for item in chain)
+        any(any(INSTRUCTION.fullmatch(path) for path in item["paths"]) for item in chain)
         and args.approval_signature is None
     ):
         inspection_repo = clone_fresh(args.repo, args.work_root / f"approval-{secrets.token_hex(4)}")
@@ -783,8 +948,13 @@ def main() -> int:
     if result["pending"]:
         print(json.dumps(result, sort_keys=True))
         return 1
-    target = _last_promoted_target(snapshot, chain)
-    bundle, _repo = create_return_bundle(args.repo, args.work_root, target)
+    promotion_target = _last_promoted_target(snapshot, chain)
+    bundle, return_repo = create_return_bundle(args.repo, args.work_root, promotion_target)
+    target = _text(
+        run_git(return_repo, ["rev-parse", "refs/kb-reconciled/ops^{commit}"]).stdout
+    ).strip()
+    if COMMIT_RE.fullmatch(target) is None:
+        raise RuntimeError("return-bundle target is invalid")
     upload_and_apply_reconciliation(
         args.vm_host, bundle, snapshot / "receipts", source_head, target,
     )

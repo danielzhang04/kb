@@ -6,6 +6,8 @@ import {
   type CodexExecSpawnRequest,
 } from './codexExecAdapter.ts';
 import type { ExecutionProfile } from './policy.ts';
+import type { ProposalStage } from './proposal.ts';
+import type { IterationOutcomeContract } from './iterationOutcome.ts';
 
 const CODEX_PROFILE: ExecutionProfile = {
   id: 'worker-codex',
@@ -82,6 +84,46 @@ function probeEvents(message = 'PROBE-A-OK'): string {
   ].join('\n') + '\n';
 }
 
+function iterationTurn() {
+  const proposalStage: ProposalStage = {
+    id: 'judge', title: 'Judge', action: 'review:draft', target: 'orgs/faceless-youtube/output',
+    workOrder: 'Judge the draft.', riskTier: 'T2', dependsOn: ['producer'],
+    worker: { runtime: 'codex', model: CODEX_PROFILE.model }, requiredSkills: [],
+    scope: { read: ['orgs/faceless-youtube'], write: [] }, artifacts: [], checkpoints: [], humanGates: [],
+    workflowProfile: 'producer',
+  };
+  const request = {
+    schema: 'kb.iteration-request/v1' as const, requestRef: 'request-1', iterationLoopRef: 'loop-1',
+    stepId: 'review', routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge',
+    kind: 'review' as const, cycle: 1, inputGenerationRefs: ['generation-1'], baseCommit: 'b'.repeat(40),
+    artifactHashes: { draft: 'd'.repeat(64) }, criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    unresolvedFindingRefs: [], preservedInvariants: [], nextAcceptanceCheck: 'Apply quality.', instructions: 'Review the draft.',
+  };
+  const iterationContract: IterationOutcomeContract = {
+    request,
+    iterationGroup: {
+      iterationGroupId: 'draft-loop', goal: 'Accept the draft.',
+      participants: [
+        { participantId: 'producer', stageRef: 'producer', role: 'contributor', perspective: 'Create.', mandate: 'Create the draft.' },
+        { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Judge.', mandate: 'Apply quality.' },
+      ],
+      routes: [{ routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer'] }],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+      schedule: [{ stepId: 'review', routeId: 'to-judge', cycle: 'current' }], artifacts: ['draft'],
+      criteria: request.criteria, maxCycles: 3, cycleUnit: 'One draft verdict.',
+      terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+    },
+  };
+  const outcome = {
+    schema: 'kb.iteration-outcome/v1' as const, requestRef: request.requestRef,
+    iterationLoopRef: request.iterationLoopRef, participantId: 'judge', cycle: 1, verdict: 'pass' as const,
+    inputGenerationRefs: [...request.inputGenerationRefs],
+    criteria: [{ criterionId: 'quality', verdict: 'pass' as const, findingIds: [] }],
+    findings: [], positions: [], recordedDissent: [], summary: 'Draft passes.',
+  };
+  return { proposalStage, iterationContract, outcome };
+}
+
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('resolveCodexLaunchPair', () => {
@@ -118,6 +160,31 @@ describe('resolveCodexLaunchPair', () => {
 });
 
 describe('createCodexExecAdapter.execute', () => {
+  it('refuses a verdict-producing iteration turn without a contract before launching Codex', () => {
+    const spawner = vi.fn(() => fakeProcess().proc);
+    const adapter = createCodexExecAdapter({ spawner });
+    expect(() => adapter.execute({ ...executeInput(), expectsIterationOutcome: true } as never))
+      .toThrow(/iteration turn requires an immutable iteration contract/);
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it('forwards the generic iteration contract and validates the Codex result handoff', async () => {
+    const fake = fakeProcess();
+    const turn = iterationTurn();
+    const adapter = createCodexExecAdapter({ spawner: () => fake.proc });
+    const pending = adapter.execute(executeInput({
+      iterationContract: turn.iterationContract,
+      proposalStage: turn.proposalStage,
+    }));
+    fake.emitStdout(probeEvents(JSON.stringify(turn.outcome)));
+    fake.emitExit(0);
+    await expect(pending).resolves.toMatchObject({
+      state: 'succeeded', summary: turn.outcome.summary, iterationOutcome: turn.outcome,
+    });
+    expect(fake.stdin.join('')).toContain('SERVER-OWNED ITERATION CONTRACT');
+    expect(fake.stdin.join('')).toContain(turn.iterationContract.request.requestRef);
+  });
+
   it('spawns a first turn with the pinned headless argv and sends the prompt only over stdin', async () => {
     const fake = fakeProcess();
     let captured: CodexExecSpawnRequest | null = null;

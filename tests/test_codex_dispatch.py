@@ -184,60 +184,49 @@ def test_login_check_is_skipped_only_by_the_test_env_var(repo, prompt_file, tmp_
     assert seen == [True, False]
 
 
-def test_spawn_timeout_kills_tree_and_returns_124(tmp_path, monkeypatch):
+def test_spawn_timeout_terminates_tree_and_returns_124(tmp_path, monkeypatch):
+    """On timeout, spawn terminates the worker tree and returns the coreutils 124
+    convention after a BOUNDED reap. The platform-specific kill itself (nt taskkill
+    vs posix killpg) is unit-tested in test_codex_dispatch_posix.py; this asserts
+    spawn's timeout orchestration, platform-independently."""
     killed = {}
     _timing_out_proc(monkeypatch, killed)
+    terminated = {}
+    monkeypatch.setattr(codex_dispatch, "_terminate_worker_tree",
+                        lambda proc, **kw: terminated.update(pid=proc.pid))
 
-    def fake_run(cmd, **kw):
-        killed["kill_cmd"] = cmd
-        class R: returncode = 0
-        return R()
-
-    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
     assert _spawn_timeout(tmp_path) == (124, True)
     assert killed["timeout"] == 17 and killed["input"] == b"x" and killed["waited"]
-    assert killed["kill_cmd"][:2] == ["taskkill", "/PID"]
-    assert "4242" in killed["kill_cmd"]
-    assert "/T" in killed["kill_cmd"] and "/F" in killed["kill_cmd"]
+    assert terminated["pid"] == 4242               # spawn asked to kill the worker tree
     assert killed["wait_timeout"] == 30            # the reap is BOUNDED, never open-ended
 
 
-def test_spawn_timeout_without_taskkill_falls_back_to_proc_kill(tmp_path, monkeypatch):
-    """Non-Windows has no taskkill: the reaper must not die on FileNotFoundError."""
-    killed = {}
-    _timing_out_proc(monkeypatch, killed)
-
-    def fake_run(cmd, **kw):
-        raise FileNotFoundError(cmd[0])
-
-    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
-    assert _spawn_timeout(tmp_path) == (124, True)
-    assert killed["killed"] and killed["waited"]
-
-
-def test_spawn_timeout_survives_a_failing_taskkill_and_a_wedged_wait(tmp_path, monkeypatch,
-                                                                    capsys):
-    """taskkill exiting non-zero is reported, and a reap that never returns is
-    bounded — the dispatch still reports the timeout instead of hanging."""
+def test_spawn_timeout_bounded_wait_survives_a_wedged_reap(tmp_path, monkeypatch):
+    """A reap that never returns is bounded — the dispatch still reports the timeout
+    (124) instead of hanging."""
     killed = {}
     _timing_out_proc(monkeypatch, killed, wait_raises=True)
+    monkeypatch.setattr(codex_dispatch, "_terminate_worker_tree", lambda proc, **kw: None)
 
-    def fake_run(cmd, **kw):
-        class R: returncode = 128
-        return R()
-
-    monkeypatch.setattr(codex_dispatch.subprocess, "run", fake_run)
     assert _spawn_timeout(tmp_path) == (124, True)
     assert "waited" not in killed and killed["wait_timeout"] == 30
-    assert "taskkill" in capsys.readouterr().err
 
 
 def test_main_timeout_reports_failure(repo, prompt_file, tmp_path, monkeypatch, capsys):
     seen = _main_env(monkeypatch, tmp_path, rc=124)
+    published = {}
+    monkeypatch.setattr(
+        codex_dispatch,
+        "publish_ops",
+        lambda root, card, record: published.update(card=card, record=record) or (True, "pushed"),
+    )
     rc = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
                               "--timeout", "30"])
     assert rc == 124 and seen["timeout"] == 30
     assert "FAILED: timeout after 30s" in capsys.readouterr().out
+    assert published["card"].meta["state"] == "done"
+    assert "## Result\n\nFAILED: timeout after 30s" in published["card"].body
+    assert published["record"]["codex_exit"] == 124
 
 
 def test_main_genuine_exit_124_is_not_reported_as_our_timeout(repo, prompt_file, tmp_path,

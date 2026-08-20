@@ -60,7 +60,8 @@ function runDetail(overrides: { state?: string; requests?: unknown[] } = {}) {
         runRef: 'run-1', displayName: 'nightly render', shortRef: 4, title: 'Nightly render',
         state: overrides.state ?? 'waiting-human', publicationState: 'published', version: 4, managerGeneration: 1,
       },
-      stages: [], attempts: [], sessions: [], reviewLoops: [], reviewReceipts: [],
+      stages: [], attempts: [], sessions: [], stageGenerations: [], generationSupersessions: [],
+      iterationLoops: [], iterationRequests: [], iterationReceipts: [],
       humanRequests: overrides.requests ?? [{
         requestRef: 'request-1', runRef: 'run-1', displayName: 'nightly render', shortRef: 4, stageRef: null,
         kind: 'intervention', revision: 1, state: 'open',
@@ -90,6 +91,17 @@ afterEach(() => {
 });
 
 describe('ApprovalsLive', () => {
+  it('accepts run detail with generic iteration collections and no review collections', async () => {
+    const detail = runDetail();
+    (detail.value.iterationLoops as unknown[]).push({
+      iterationLoopRef: 'loop-1', iterationGroupId: 'group-1', state: 'awaiting-park-gate',
+      interventionRef: 'request-1', parkReason: 'exhausted', cyclesUsed: 3, maxCycles: 3,
+    });
+    const fetchImpl = controlFetch(detail);
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, { stored: 'sess-tok' }));
+    expect(await screen.findByTestId('inbox-row-run:request-1')).toBeTruthy();
+  });
+
   it('renders card items from the live feed with no session at all, and says run-side asks are hidden', async () => {
     const fetchImpl = vi.fn(async (_url: string) => inboxResponse());
     render(<SessionProvider><ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} /></SessionProvider>);

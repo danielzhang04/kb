@@ -902,6 +902,15 @@ describe('write surface — LOW: rerun cardId must be filename-safe (no glob met
 describe('auth surface — fail-closed WebAuthn reality (no passkey provisioned)', () => {
   const testWebAuthn = () => ({ rpID: 'localhost', rpName: 'test', origin: GOOD_ORIGIN });
 
+  it.each(['tailnet', 'win32-desktop'] as const)('exposes the guarded public auth context for %s', async (authMode) => {
+    ({ app } = buildApp({ authMode }));
+
+    const response = await app.inject({ method: 'GET', url: '/api/auth/context', headers: headers(false) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ mode: authMode });
+  });
+
   it('assert/verify 401s because the credential store is empty (no session can be minted)', async () => {
     ({ app } = buildApp({ webAuthnConfig: testWebAuthn, credentials: () => [] }));
 
@@ -1151,6 +1160,38 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.executionLatch?.snapshot().source).toBe('env-override');
     expect(createBridge).not.toHaveBeenCalled();
     expect(ctx.stopQueueBridge).toBeUndefined();
+  });
+
+  it('tailnet mode arms the latch AND starts the queue bridge at BOOT — no unlock call', () => {
+    const start = vi.fn();
+    const createBridge = vi.fn(() => ({ tick: vi.fn(), start, stop: vi.fn() }));
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      {
+        build: vi.fn().mockReturnValue(activatedTriple()) as never,
+        env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.command.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' },
+        createQueueBridge: createBridge as never,
+      },
+    );
+    expect(ctx.executionLatch?.snapshot()).toMatchObject({ state: 'unlocked', source: 'tailnet' });
+    expect(ctx.authMode).toBe('tailnet');
+    expect(createBridge).toHaveBeenCalledOnce();
+    expect(start).toHaveBeenCalledWith(15_000);
+    expect(ctx.stopQueueBridge).toBeTypeOf('function');
+  });
+
+  it('tailnet mode installs the operator authenticator on the shared session config', () => {
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, allowedOrigins: [GOOD_ORIGIN] },
+      { env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.command.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' } },
+    );
+    expect(ctx.sessionConfig.operatorAuth).toBeDefined();
+  });
+
+  it('win32-desktop mode leaves the session config free of any operator authenticator', () => {
+    const ctx = makeSurfaceContext({ repoRoot: REPO_A, allowedOrigins: [GOOD_ORIGIN] }, { env: {} });
+    expect(ctx.authMode).toBe('win32-desktop');
+    expect(ctx.sessionConfig.operatorAuth).toBeUndefined();
   });
 
   it('logs a non-launched dispatch outcome once', async () => {

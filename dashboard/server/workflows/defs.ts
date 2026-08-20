@@ -15,7 +15,7 @@
  * the text here.
  */
 import { classifyActionRisk } from '../control/policy.ts';
-import { isSafeRepoRelativePath, type ProposalRiskTier } from '../control/proposal.ts';
+import { ARTIFACT_PRODUCING_REQUEST_KINDS, isSafeRepoRelativePath, type ProposalRiskTier } from '../control/proposal.ts';
 import { parseYaml } from '../routing/yaml.ts';
 import { assertSupportedVersion } from '../schema/versions.ts';
 
@@ -40,6 +40,8 @@ const MAX_STAGE_HUMAN_GATES = 16;
 /** Read-scope list bound — mirrors proposal.ts MAX_LIST_ITEMS (64) so a def can never compile to an
  * over-budget `scope.read` the proposal validator would reject. */
 const MAX_READ_SCOPE_ITEMS = 64;
+const MAX_ITERATION_ITEMS = 64;
+const MAX_ITERATION_SUMMARY_CHARS = 4_000;
 
 /** Every workflow target must live under `orgs/<project>/` — see the containment note in validateStage. */
 const ORGS_DIR = 'orgs';
@@ -202,6 +204,60 @@ export interface WorkflowCompletionGateDef {
   requiresReview: 'pass';
 }
 
+export type WorkflowIterationRole = 'peer' | 'judge' | 'mediator' | 'manager' | 'coordinator' | 'contributor';
+export type WorkflowIterationRequestKind = 'review' | 'rework' | 'position' | 'reply' | 'delegate' | 'check';
+export type WorkflowIterationVerdict =
+  | 'fulfilled'
+  | 'accept' | 'rework'
+  | 'pass' | 'fail'
+  | 'consensus' | 'continue'
+  | 'complete' | 'parked';
+export type WorkflowIterationTerminalVerdict = 'accept' | 'pass' | 'consensus' | 'complete';
+
+export interface WorkflowIterationParticipantDef {
+  participantId: string;
+  stageRef: string;
+  role: WorkflowIterationRole;
+  perspective: string;
+  mandate: string;
+  goal?: string;
+}
+
+export interface WorkflowIterationRouteDef {
+  routeId: string;
+  senderParticipantId: string;
+  recipientParticipantId: string;
+  requestKinds: WorkflowIterationRequestKind[];
+}
+
+export interface WorkflowIterationScheduleStepDef {
+  stepId: string;
+  routeId: string;
+  after?: { stepId: string; participantId: string; verdict: WorkflowIterationVerdict };
+  cycle: 'current' | 'next';
+}
+
+export interface WorkflowIterationTerminalAuthorityDef {
+  participantId: string;
+  verdict: WorkflowIterationTerminalVerdict;
+}
+
+export interface WorkflowIterationGroupDef {
+  iterationGroupId: string;
+  goal?: string;
+  participants: WorkflowIterationParticipantDef[];
+  routes: WorkflowIterationRouteDef[];
+  activation: { seedParticipantId: string; seedArtifactIds: string[] };
+  initialStepId: string;
+  schedule: WorkflowIterationScheduleStepDef[];
+  artifacts: string[];
+  criteria: WorkflowReviewCriterionDef[];
+  maxCycles: number;
+  cycleUnit: string;
+  terminalAuthorities: WorkflowIterationTerminalAuthorityDef[];
+  completionGate?: WorkflowCompletionGateDef;
+}
+
 /** A closed declaration-side manager assignment. It is syntax only; compiler resolves authority later. */
 export interface WorkflowManagerAssignment {
   agentId: string;
@@ -221,6 +277,8 @@ export interface WorkflowDef {
    * Omitted keeps the normal production-workflow behaviour.
    */
   executionMode?: 'validation-slice';
+  /** Requested per-run worker concurrency. The activated executor retains the server-owned ceiling. */
+  maxConcurrency?: number;
   /** Existing workflow tool profile; distinct from the optional execution-profile assignment below. */
   profile: string;
   /** Durable workflow governor. Distinct from the optional executable manager assignment. */
@@ -244,6 +302,7 @@ export interface WorkflowDef {
   /** The Markdown body after the frontmatter (also the fallback work order for a stage). */
   description: string;
   stages: WorkflowStageDef[];
+  iterationGroups?: WorkflowIterationGroupDef[];
 }
 
 export type WorkflowDefResult = { ok: true; value: WorkflowDef } | { ok: false; detail: string };
@@ -301,6 +360,404 @@ function validateAgentProfileAssignment(
     return { ok: false, detail: `${label}.profileId must be a safe execution profile identifier of 1-128 characters` };
   }
   return { ok: true, value: { agentId, profileId } };
+}
+
+const ITERATION_ROLES = new Set<WorkflowIterationRole>(['peer', 'judge', 'mediator', 'manager', 'coordinator', 'contributor']);
+const ITERATION_REQUEST_KINDS = new Set<WorkflowIterationRequestKind>(['review', 'rework', 'position', 'reply', 'delegate', 'check']);
+const ITERATION_VERDICTS = new Set<WorkflowIterationVerdict>([
+  'fulfilled', 'accept', 'rework', 'pass', 'fail', 'consensus', 'continue', 'complete', 'parked',
+]);
+const TERMINAL_VERDICTS = new Set<WorkflowIterationTerminalVerdict>(['accept', 'pass', 'consensus', 'complete']);
+
+export function workflowIterationVerdictVocabulary(group: Pick<WorkflowIterationGroupDef, 'participants' | 'routes' | 'schedule'>):
+Record<string, WorkflowIterationVerdict[]> {
+  const vocabulary = new Map(group.participants.map((participant) => [
+    participant.participantId, new Set<WorkflowIterationVerdict>(['parked']),
+  ]));
+  for (const step of group.schedule) {
+    if (step.after) vocabulary.get(step.after.participantId)?.add(step.after.verdict);
+  }
+  for (const route of group.routes) {
+    if (route.requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
+      vocabulary.get(route.recipientParticipantId)?.add('fulfilled');
+    }
+  }
+  return Object.fromEntries([...vocabulary].map(([participantId, verdicts]) => [participantId, [...verdicts]]));
+}
+
+function validateIterationText(raw: unknown, label: string, max = MAX_WORK_ORDER_CHARS): { ok: true; value: string } | { ok: false; detail: string } {
+  if (typeof raw !== 'string' || raw.trim() === '' || raw.length > max || raw.includes('\0')) {
+    return { ok: false, detail: `${label} must be a non-empty bounded string` };
+  }
+  return { ok: true, value: raw };
+}
+
+function hasNextFreeScheduleCycle(schedule: readonly WorkflowIterationScheduleStepDef[]): boolean {
+  const currentSuccessors = new Map<string, string[]>();
+  for (const step of schedule) {
+    if (!step.after || step.cycle === 'next') continue;
+    const successors = currentSuccessors.get(step.after.stepId) ?? [];
+    successors.push(step.stepId);
+    currentSuccessors.set(step.after.stepId, successors);
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (stepId: string): boolean => {
+    if (visiting.has(stepId)) return true;
+    if (visited.has(stepId)) return false;
+    visiting.add(stepId);
+    for (const successor of currentSuccessors.get(stepId) ?? []) {
+      if (visit(successor)) return true;
+    }
+    visiting.delete(stepId);
+    visited.add(stepId);
+    return false;
+  };
+  return schedule.some((step) => visit(step.stepId));
+}
+
+function validateIterationGroups(
+  raw: unknown,
+  stages: readonly WorkflowStageDef[],
+): { ok: true; value: WorkflowIterationGroupDef[] } | { ok: false; detail: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: [] };
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_DEFINITION_STAGES) {
+    return { ok: false, detail: `iterationGroups must contain 1-${MAX_DEFINITION_STAGES} groups` };
+  }
+  const stageById = new Map(stages.map((stage) => [stage.id, stage]));
+  const assignedStages = new Set<string>();
+  const groupIds = new Set<string>();
+  const groups: WorkflowIterationGroupDef[] = [];
+  const groupFields = new Set([
+    'iterationGroupId', 'goal', 'participants', 'routes', 'activation', 'initialStepId', 'schedule',
+    'artifacts', 'criteria', 'maxCycles', 'cycleUnit', 'terminalAuthorities', 'completionGate',
+  ]);
+  for (let groupIndex = 0; groupIndex < raw.length; groupIndex += 1) {
+    const value = raw[groupIndex];
+    const label = `iterationGroups[${groupIndex}]`;
+    if (!isRecord(value)) return { ok: false, detail: `${label} must be a mapping` };
+    const unknown = Object.keys(value).find((key) => !groupFields.has(key));
+    if (unknown) return { ok: false, detail: `${label} has unknown field '${unknown}'` };
+    const iterationGroupId = asString(value.iterationGroupId);
+    if (iterationGroupId === null || !SAFE_ID_RE.test(iterationGroupId) || groupIds.has(iterationGroupId)) {
+      return { ok: false, detail: `${label}.iterationGroupId must be a unique safe identifier` };
+    }
+    groupIds.add(iterationGroupId);
+    let goal: string | undefined;
+    if (hasOwn(value, 'goal')) {
+      const parsed = validateIterationText(value.goal, `${label}.goal`, MAX_ITERATION_SUMMARY_CHARS);
+      if (!parsed.ok) return parsed;
+      goal = parsed.value;
+    }
+    if (!Array.isArray(value.participants) || value.participants.length < 2 || value.participants.length > MAX_DEFINITION_STAGES) {
+      return { ok: false, detail: `${label}.participants must contain 2-${MAX_DEFINITION_STAGES} participants` };
+    }
+    const participants: WorkflowIterationParticipantDef[] = [];
+    const participantsById = new Map<string, WorkflowIterationParticipantDef>();
+    const participantStages = new Set<string>();
+    for (let index = 0; index < value.participants.length; index += 1) {
+      const entry = value.participants[index];
+      const itemLabel = `${label}.participants[${index}]`;
+      if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be a mapping` };
+      const allowed = new Set(['participantId', 'stageRef', 'role', 'perspective', 'mandate', 'goal']);
+      const participantUnknown = Object.keys(entry).find((key) => !allowed.has(key));
+      if (participantUnknown) return { ok: false, detail: `${itemLabel} has unknown field '${participantUnknown}'` };
+      const participantId = asString(entry.participantId);
+      if (participantId === null || !SAFE_ID_RE.test(participantId) || participantsById.has(participantId)) {
+        return { ok: false, detail: `${label} participant ids must be unique safe identifiers` };
+      }
+      const stageRef = asString(entry.stageRef);
+      if (stageRef === null || !stageById.has(stageRef)) return { ok: false, detail: `${itemLabel}.stageRef must name an existing stage` };
+      if (participantStages.has(stageRef) || assignedStages.has(stageRef)) {
+        return { ok: false, detail: `participant stage '${stageRef}' may appear in only one iteration group` };
+      }
+      const role = asString(entry.role) as WorkflowIterationRole | null;
+      if (role === null || !ITERATION_ROLES.has(role)) return { ok: false, detail: `${itemLabel}.role is not declared` };
+      const perspective = validateIterationText(entry.perspective, `${itemLabel}.perspective`);
+      if (!perspective.ok) return perspective;
+      const mandate = validateIterationText(entry.mandate, `${itemLabel}.mandate`);
+      if (!mandate.ok) return mandate;
+      let participantGoal: string | undefined;
+      if (hasOwn(entry, 'goal')) {
+        const parsed = validateIterationText(entry.goal, `${itemLabel}.goal`, MAX_ITERATION_SUMMARY_CHARS);
+        if (!parsed.ok) return parsed;
+        participantGoal = parsed.value;
+      }
+      const participant = {
+        participantId, stageRef, role, perspective: perspective.value, mandate: mandate.value,
+        ...(participantGoal ? { goal: participantGoal } : {}),
+      };
+      participantStages.add(stageRef);
+      participantsById.set(participantId, participant);
+      participants.push(participant);
+    }
+    for (const stageRef of participantStages) assignedStages.add(stageRef);
+
+    if (!Array.isArray(value.routes) || value.routes.length === 0 || value.routes.length > MAX_ITERATION_ITEMS) {
+      return { ok: false, detail: `${label}.routes must contain 1-${MAX_ITERATION_ITEMS} routes` };
+    }
+    const routes: WorkflowIterationRouteDef[] = [];
+    const routesById = new Map<string, WorkflowIterationRouteDef>();
+    for (let index = 0; index < value.routes.length; index += 1) {
+      const entry = value.routes[index];
+      const itemLabel = `${label}.routes[${index}]`;
+      if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be a mapping` };
+      const allowed = new Set(['routeId', 'senderParticipantId', 'recipientParticipantId', 'requestKinds']);
+      const routeUnknown = Object.keys(entry).find((key) => !allowed.has(key));
+      if (routeUnknown) return { ok: false, detail: `${itemLabel} has unknown field '${routeUnknown}'` };
+      const routeId = asString(entry.routeId);
+      const senderParticipantId = asString(entry.senderParticipantId);
+      const recipientParticipantId = asString(entry.recipientParticipantId);
+      if (routeId === null || !SAFE_ID_RE.test(routeId) || routesById.has(routeId)) return { ok: false, detail: `${label} route ids must be unique safe identifiers` };
+      if (senderParticipantId === null || !participantsById.has(senderParticipantId)
+        || recipientParticipantId === null || !participantsById.has(recipientParticipantId)
+        || senderParticipantId === recipientParticipantId) {
+        return { ok: false, detail: `${itemLabel} must declare distinct existing sender and recipient participants` };
+      }
+      if (!Array.isArray(entry.requestKinds) || entry.requestKinds.length === 0) return { ok: false, detail: `${itemLabel}.requestKinds must be nonempty` };
+      const requestKinds: WorkflowIterationRequestKind[] = [];
+      const requestKindSet = new Set<string>();
+      for (const rawKind of entry.requestKinds) {
+        if (typeof rawKind !== 'string' || !ITERATION_REQUEST_KINDS.has(rawKind as WorkflowIterationRequestKind) || requestKindSet.has(rawKind)) {
+          return { ok: false, detail: `${itemLabel}.requestKinds must contain unique declared kinds` };
+        }
+        requestKindSet.add(rawKind);
+        requestKinds.push(rawKind as WorkflowIterationRequestKind);
+      }
+      if (requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
+        const recipient = participantsById.get(recipientParticipantId) as WorkflowIterationParticipantDef;
+        const recipientStage = stageById.get(recipient.stageRef) as WorkflowStageDef;
+        if (!recipientStage.artifacts || recipientStage.artifacts.length === 0) {
+          return {
+            ok: false,
+            detail: `${itemLabel} artifact-producing route '${routeId}' targets recipient '${recipientParticipantId}' stage '${recipient.stageRef}', which must declare at least one artifact`,
+          };
+        }
+      }
+      const route = { routeId, senderParticipantId, recipientParticipantId, requestKinds };
+      routes.push(route);
+      routesById.set(routeId, route);
+    }
+
+    if (!isRecord(value.activation) || Object.keys(value.activation).some((key) => key !== 'seedParticipantId' && key !== 'seedArtifactIds')) {
+      return { ok: false, detail: `${label}.activation must be a closed mapping` };
+    }
+    const activationRaw = value.activation;
+    const seedParticipantId = asString(activationRaw.seedParticipantId);
+    const seedParticipant = seedParticipantId === null ? undefined : participantsById.get(seedParticipantId);
+    if (!seedParticipant) return { ok: false, detail: `${label}.activation seed participant must belong to the group` };
+    const seedStageArtifactIds = (stageById.get(seedParticipant.stageRef)?.artifacts ?? []).map((artifact) => artifact.id);
+    const seedArtifactIdsRaw = activationRaw.seedArtifactIds;
+    if (!Array.isArray(seedArtifactIdsRaw) || seedArtifactIdsRaw.length === 0
+      || seedArtifactIdsRaw.some((id) => typeof id !== 'string' || !SAFE_ID_RE.test(id))
+      || new Set(seedArtifactIdsRaw).size !== seedArtifactIdsRaw.length
+      || seedStageArtifactIds.length !== seedArtifactIdsRaw.length
+      || seedStageArtifactIds.some((id) => !seedArtifactIdsRaw.includes(id))) {
+      return { ok: false, detail: `${label}.activation seed artifact ids must exactly match the seed participant stage artifacts` };
+    }
+    const activation = { seedParticipantId: seedParticipant.participantId, seedArtifactIds: [...seedArtifactIdsRaw] as string[] };
+
+    const initialStepId = asString(value.initialStepId);
+    if (initialStepId === null || !SAFE_ID_RE.test(initialStepId)) return { ok: false, detail: `${label}.initialStepId must be a safe identifier` };
+    if (!Array.isArray(value.schedule) || value.schedule.length === 0 || value.schedule.length > MAX_ITERATION_ITEMS) {
+      return { ok: false, detail: `${label}.schedule must contain 1-${MAX_ITERATION_ITEMS} deterministic steps` };
+    }
+    const schedule: WorkflowIterationScheduleStepDef[] = [];
+    const stepsById = new Map<string, WorkflowIterationScheduleStepDef>();
+    const triggerKeys = new Set<string>();
+    for (let index = 0; index < value.schedule.length; index += 1) {
+      const entry = value.schedule[index];
+      const itemLabel = `${label}.schedule[${index}]`;
+      if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be a mapping` };
+      const allowed = new Set(['stepId', 'routeId', 'after', 'cycle']);
+      const scheduleUnknown = Object.keys(entry).find((key) => !allowed.has(key));
+      if (scheduleUnknown) return { ok: false, detail: `${itemLabel} has unknown field '${scheduleUnknown}'` };
+      const stepId = asString(entry.stepId);
+      const routeId = asString(entry.routeId);
+      if (stepId === null || !SAFE_ID_RE.test(stepId) || stepsById.has(stepId)) return { ok: false, detail: `${label} schedule step ids must be unique` };
+      if (routeId === null || !routesById.has(routeId)) return { ok: false, detail: `${itemLabel} names an unknown route` };
+      const route = routesById.get(routeId) as WorkflowIterationRouteDef;
+      if (entry.cycle !== 'current' && entry.cycle !== 'next') return { ok: false, detail: `${itemLabel}.cycle must be current or next` };
+      let after: WorkflowIterationScheduleStepDef['after'];
+      if (hasOwn(entry, 'after')) {
+        if (!isRecord(entry.after)) return { ok: false, detail: `${itemLabel}.after must be a closed mapping` };
+        if (Object.keys(entry.after).some((key) => key !== 'stepId' && key !== 'participantId' && key !== 'verdict')) {
+          return { ok: false, detail: `${itemLabel}.after must be a closed mapping` };
+        }
+        const afterStepId = asString(entry.after.stepId);
+        const afterParticipantId = asString(entry.after.participantId);
+        const afterVerdict = asString(entry.after.verdict) as WorkflowIterationVerdict | null;
+        if (afterStepId === null || !SAFE_ID_RE.test(afterStepId) || afterParticipantId === null || !participantsById.has(afterParticipantId)
+          || afterVerdict === null || !ITERATION_VERDICTS.has(afterVerdict)) {
+          return { ok: false, detail: `${itemLabel}.after must name a declared step, participant, and verdict` };
+        }
+        if (route.senderParticipantId !== afterParticipantId) {
+          return { ok: false, detail: `${itemLabel} route sender must be the participant whose verdict activates the step` };
+        }
+        const triggerKey = `${afterStepId}\0${afterParticipantId}\0${afterVerdict}`;
+        if (triggerKeys.has(triggerKey)) return { ok: false, detail: `${label}.schedule has an ambiguous match that would open parallel turns` };
+        triggerKeys.add(triggerKey);
+        after = { stepId: afterStepId, participantId: afterParticipantId, verdict: afterVerdict };
+      } else if (stepId !== initialStepId) {
+        return { ok: false, detail: `${itemLabel}.after is required except on initialStepId` };
+      } else if (entry.cycle !== 'current') {
+        return { ok: false, detail: `${itemLabel}.cycle must be current when activation supplies no predecessor` };
+      }
+      const step = { stepId, routeId, ...(after ? { after } : {}), cycle: entry.cycle } as WorkflowIterationScheduleStepDef;
+      schedule.push(step);
+      stepsById.set(stepId, step);
+    }
+    if (!stepsById.has(initialStepId)) return { ok: false, detail: `${label}.initialStepId names an unknown schedule step` };
+    for (const step of schedule) {
+      if (!step.after) continue;
+      const predecessor = stepsById.get(step.after.stepId);
+      if (!predecessor) return { ok: false, detail: `${label}.schedule step '${step.stepId}' names an unknown predecessor step` };
+      const predecessorRoute = routesById.get(predecessor.routeId) as WorkflowIterationRouteDef;
+      if (predecessorRoute.recipientParticipantId !== step.after.participantId) {
+        return { ok: false, detail: `${label}.schedule step '${step.stepId}' predecessor verdict must come from its route recipient` };
+      }
+    }
+    const initialRoute = routesById.get((stepsById.get(initialStepId) as WorkflowIterationScheduleStepDef).routeId) as WorkflowIterationRouteDef;
+    if (initialRoute.senderParticipantId !== seedParticipantId) {
+      return { ok: false, detail: `${label}.initial schedule route must start at the activation seed participant` };
+    }
+
+    if (!Array.isArray(value.artifacts) || value.artifacts.length === 0 || new Set(value.artifacts).size !== value.artifacts.length
+      || value.artifacts.some((id) => typeof id !== 'string' || !SAFE_ID_RE.test(id))) {
+      return { ok: false, detail: `${label}.artifacts must be a nonempty unique list of safe artifact ids` };
+    }
+    const participantArtifactIds = new Set(participants.flatMap((participant) =>
+      (stageById.get(participant.stageRef)?.artifacts ?? []).map((artifact) => artifact.id)));
+    const unknownArtifact = value.artifacts.find((id) => !participantArtifactIds.has(id));
+    if (unknownArtifact) return { ok: false, detail: `${label}.artifacts references unknown participant artifact '${unknownArtifact}'` };
+    if (!Array.isArray(value.criteria) || value.criteria.length === 0 || value.criteria.length > MAX_REVIEW_CRITERIA) {
+      return { ok: false, detail: `${label}.criteria must contain 1-${MAX_REVIEW_CRITERIA} items` };
+    }
+    const criteria: WorkflowReviewCriterionDef[] = [];
+    const criterionIds = new Set<string>();
+    for (let index = 0; index < value.criteria.length; index += 1) {
+      const criterion = value.criteria[index];
+      if (!isRecord(criterion) || Object.keys(criterion).some((key) => key !== 'id' && key !== 'description')) {
+        return { ok: false, detail: `${label}.criteria[${index}] must be a closed mapping` };
+      }
+      const id = asString(criterion.id);
+      const description = validateIterationText(criterion.description, `${label}.criteria[${index}].description`, MAX_TITLE_CHARS);
+      if (id === null || !SAFE_ID_RE.test(id) || criterionIds.has(id) || !description.ok) {
+        return { ok: false, detail: `${label}.criteria must have unique safe ids and bounded descriptions` };
+      }
+      criterionIds.add(id);
+      criteria.push({ id, description: description.value });
+    }
+    if (typeof value.maxCycles !== 'number' || !Number.isSafeInteger(value.maxCycles) || value.maxCycles <= 0) {
+      return { ok: false, detail: `${label}.maxCycles must be a positive safe integer` };
+    }
+    const cycleUnit = validateIterationText(value.cycleUnit, `${label}.cycleUnit`, MAX_ITERATION_SUMMARY_CHARS);
+    if (!cycleUnit.ok) return cycleUnit;
+    if (!Array.isArray(value.terminalAuthorities) || value.terminalAuthorities.length === 0) {
+      return { ok: false, detail: `${label}.terminalAuthorities must be nonempty` };
+    }
+    const terminalAuthorities: WorkflowIterationTerminalAuthorityDef[] = [];
+    const authorityKeys = new Set<string>();
+    for (let index = 0; index < value.terminalAuthorities.length; index += 1) {
+      const authority = value.terminalAuthorities[index];
+      const itemLabel = `${label}.terminalAuthorities[${index}]`;
+      if (!isRecord(authority) || Object.keys(authority).some((key) => key !== 'participantId' && key !== 'verdict')) {
+        return { ok: false, detail: `${itemLabel} must be a closed mapping` };
+      }
+      const participantId = asString(authority.participantId);
+      const participant = participantId === null ? undefined : participantsById.get(participantId);
+      const verdict = asString(authority.verdict) as WorkflowIterationTerminalVerdict | null;
+      if (!participant || verdict === null || !TERMINAL_VERDICTS.has(verdict)) {
+        return { ok: false, detail: `${itemLabel} declares an invalid or undeclared terminal authority` };
+      }
+      const key = `${participantId}\0${verdict}`;
+      if (authorityKeys.has(key)) return { ok: false, detail: `${label}.terminalAuthorities must be unique` };
+      authorityKeys.add(key);
+      terminalAuthorities.push({ participantId: participant.participantId, verdict });
+    }
+    for (const participant of participants) {
+      if (participant.goal !== undefined
+        && ((participant.role !== 'manager' && participant.role !== 'coordinator')
+          || !terminalAuthorities.some((authority) => authority.participantId === participant.participantId))) {
+        return { ok: false, detail: `${label} participant goals require an accepting manager or coordinator terminal authority` };
+      }
+    }
+    if (!goal && !participants.some((participant) => participant.goal !== undefined)) {
+      return { ok: false, detail: `${label} requires a group goal or a goal-bearing accepting manager or coordinator` };
+    }
+
+    const terminalKeys = new Set(terminalAuthorities.map((authority) => `${authority.participantId}\0${authority.verdict}`));
+    const participantVocabulary = workflowIterationVerdictVocabulary({ participants, routes, schedule });
+    const successors = new Map<string, WorkflowIterationScheduleStepDef>();
+    const referencedRouteIds = new Set<string>();
+    for (const step of schedule) {
+      referencedRouteIds.add(step.routeId);
+      if (!step.after) continue;
+      const terminalKey = `${step.after.participantId}\0${step.after.verdict}`;
+      if (step.after.verdict === 'parked') {
+        return { ok: false, detail: `${label} parked must not have a participant successor step` };
+      }
+      if (terminalKeys.has(terminalKey)) {
+        return { ok: false, detail: `${label} terminal-authority verdict '${step.after.verdict}' must not have a successor step` };
+      }
+      successors.set(`${step.after.stepId}\0${step.after.participantId}\0${step.after.verdict}`, step);
+    }
+    for (const route of routes) {
+      if (!referencedRouteIds.has(route.routeId)) {
+        return { ok: false, detail: `${label} route '${route.routeId}' is not referenced by any schedule step` };
+      }
+    }
+    const reachable = [initialStepId];
+    const visited = new Set<string>();
+    const enteredParticipants = new Set<string>([seedParticipantId]);
+    while (reachable.length > 0) {
+      const stepId = reachable.pop() as string;
+      if (visited.has(stepId)) continue;
+      visited.add(stepId);
+      const step = stepsById.get(stepId) as WorkflowIterationScheduleStepDef;
+      const route = routesById.get(step.routeId) as WorkflowIterationRouteDef;
+      const recipient = participantsById.get(route.recipientParticipantId) as WorkflowIterationParticipantDef;
+      enteredParticipants.add(recipient.participantId);
+      for (const verdict of participantVocabulary[recipient.participantId] ?? []) {
+        // `parked` is universal and always hands control to the platform human gate, so it never
+        // requires (and may not declare) a participant successor.
+        if (verdict === 'parked' || terminalKeys.has(`${recipient.participantId}\0${verdict}`)) continue;
+        const successor = successors.get(`${stepId}\0${recipient.participantId}\0${verdict}`);
+        if (!successor) {
+          return { ok: false, detail: `${label} nonterminal verdict '${verdict}' from step '${stepId}' has no current-cycle or next-cycle successor` };
+        }
+        reachable.push(successor.stepId);
+      }
+    }
+    if (visited.size !== schedule.length) return { ok: false, detail: `${label}.schedule contains an unreachable step` };
+    if (hasNextFreeScheduleCycle(schedule)) {
+      return { ok: false, detail: `${label} reachable schedule cycle must include a cycle: next boundary` };
+    }
+    const danglingParticipant = participants.find((participant) => !enteredParticipants.has(participant.participantId));
+    if (danglingParticipant) {
+      return { ok: false, detail: `${label} participant '${danglingParticipant.participantId}' is not the recipient of a reachable schedule step` };
+    }
+
+    let completionGate: WorkflowCompletionGateDef | undefined;
+    if (hasOwn(value, 'completionGate')) {
+      const gate = value.completionGate;
+      if (!isRecord(gate) || Object.keys(gate).some((key) => !new Set(['id', 'kind', 'prompt', 'requiresReview']).has(key))) {
+        return { ok: false, detail: `${label}.completionGate must be a closed mapping` };
+      }
+      const id = asString(gate.id);
+      const prompt = validateIterationText(gate.prompt, `${label}.completionGate.prompt`, MAX_GATE_PROMPT_CHARS);
+      if (id === null || !SAFE_ID_RE.test(id) || gate.kind !== 'approval' || gate.requiresReview !== 'pass' || !prompt.ok) {
+        return { ok: false, detail: `${label}.completionGate must be an approval requiring review pass` };
+      }
+      completionGate = { id, kind: 'approval', prompt: prompt.value, requiresReview: 'pass' };
+    }
+    groups.push({
+      iterationGroupId, ...(goal ? { goal } : {}), participants, routes, activation, initialStepId,
+      schedule, artifacts: [...value.artifacts] as string[], criteria, maxCycles: value.maxCycles,
+      cycleUnit: cycleUnit.value, terminalAuthorities, ...(completionGate ? { completionGate } : {}),
+    });
+  }
+  return { ok: true, value: groups };
 }
 
 /**
@@ -559,8 +1016,9 @@ function validateStage(
       return { ok: false, detail: `${label}.review.subjectStageId must be a direct dependsOn stage id` };
     }
     const maxCreatorReworks = raw.review.maxCreatorReworks;
-    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks) || maxCreatorReworks < 0 || maxCreatorReworks > 2) {
-      return { ok: false, detail: `${label}.review.maxCreatorReworks must be an integer from 0 to 2` };
+    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks)
+      || maxCreatorReworks < 0 || maxCreatorReworks > Number.MAX_SAFE_INTEGER - 1) {
+      return { ok: false, detail: `${label}.review.maxCreatorReworks must be a nonnegative safe integer that can be incremented` };
     }
     if (!Array.isArray(raw.review.criteria) || raw.review.criteria.length < 1 || raw.review.criteria.length > MAX_REVIEW_CRITERIA) {
       return { ok: false, detail: `${label}.review.criteria must contain 1-${MAX_REVIEW_CRITERIA} items` };
@@ -650,7 +1108,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['schemaVersion', 'id', 'project', 'title', 'executionMode', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages']);
+  const allowed = new Set(['schemaVersion', 'id', 'project', 'title', 'executionMode', 'maxConcurrency', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages', 'iterationGroups']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -678,6 +1136,14 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       return { ok: false, detail: "executionMode must be 'validation-slice' when present" };
     }
     executionMode = 'validation-slice';
+  }
+  let maxConcurrency: number | undefined;
+  if (hasOwn(frontmatter, 'maxConcurrency')) {
+    if (typeof frontmatter.maxConcurrency !== 'number' || !Number.isSafeInteger(frontmatter.maxConcurrency)
+      || frontmatter.maxConcurrency <= 0) {
+      return { ok: false, detail: 'maxConcurrency must be a positive safe integer' };
+    }
+    maxConcurrency = frontmatter.maxConcurrency;
   }
   const profile = asString(frontmatter.profile);
   if (profile === null || profile.trim() === '' || profile.length > MAX_PROFILE_CHARS) {
@@ -731,6 +1197,13 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       gateIds.add(gate.id);
     }
     stages.push(stage.value);
+  }
+  const parsedIterationGroups = validateIterationGroups(frontmatter.iterationGroups, stages);
+  if (!parsedIterationGroups.ok) return parsedIterationGroups;
+  for (const group of parsedIterationGroups.value) {
+    if (!group.completionGate) continue;
+    if (gateIds.has(group.completionGate.id)) return { ok: false, detail: `duplicate human gate id '${group.completionGate.id}'` };
+    gateIds.add(group.completionGate.id);
   }
 
   // Dependency references must resolve and the graph must be acyclic (Kahn's algorithm).
@@ -804,8 +1277,10 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     ok: true,
     value: {
       schemaVersion: schemaVersion as number | undefined,
-      id, project, title, ...(executionMode ? { executionMode } : {}), profile, readScope: readScope.value, parameters: [...parameters],
+      id, project, title, ...(executionMode ? { executionMode } : {}), ...(maxConcurrency ? { maxConcurrency } : {}),
+      profile, readScope: readScope.value, parameters: [...parameters],
       ...(governedBy ? { governedBy } : {}), ...(manager ? { manager } : {}), description, stages,
+      ...(parsedIterationGroups.value.length > 0 ? { iterationGroups: parsedIterationGroups.value } : {}),
     },
   };
 }

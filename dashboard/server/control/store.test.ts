@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import {
   ControlStoreLimitError,
   AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
@@ -12,13 +13,12 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
   AUTHORIZED_20260801_FAILED_RUN_INPUT,
   AUTHORIZED_20260801_FAILED_RUN_REF,
-  MAX_HUMAN_REQUESTS_PER_RUN,
   createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
   exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
 } from './store.ts';
-import type { ControlPlaneStore } from './store.ts';
+import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
 
 const roots: string[] = [];
@@ -356,9 +356,9 @@ describe('authorized 2026-07-31 execution-lock recovery', () => {
       sessions: quarantined.sessions.filter((item: Record<string, unknown>) => item.runRef === runRef),
       humanRequests: quarantined.humanRequests.filter((item: Record<string, unknown>) => item.runRef === runRef),
       events: quarantined.events.filter((item: Record<string, unknown>) => item.runRef === runRef),
-      stageGenerations: [], reviewLoops: [], reviewReceipts: [], generationSupersessions: [],
+      stageGenerations: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [], generationSupersessions: [],
     }];
-    for (const field of ['runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'stageGenerations', 'reviewLoops', 'reviewReceipts', 'generationSupersessions']) {
+    for (const field of ['runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions']) {
       quarantined[field] = (quarantined[field] as Array<Record<string, unknown>>).filter((item) => item.runRef !== runRef);
     }
     writeFileSync(path, `${JSON.stringify(quarantined)}\n`, 'utf8');
@@ -602,233 +602,151 @@ function completeWorkerSession(store: ControlPlaneStore, sessionRef: string, ver
 }
 
 function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerRun(store), withCompletedWorkerSession = false) {
-  const current = store.getRun('alice', created.run.runRef);
-  if (!current.ok) throw new Error(current.detail);
-  const subject = current.value.stages.find((stage) => stage.stageId === 'build');
+  let detail = store.getRun('alice', created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  let subject = detail.value.stages.find((stage) => stage.stageId === 'build');
   if (!subject) throw new Error('checker subject missing');
   if (subject.canonicalCardRef === null) {
     const linked = store.linkStageCard('alice', subject.stageRef, subject.version, 'card-build');
     if (!linked.ok) throw new Error(linked.detail);
+    subject = linked.value;
   }
-  const afterCard = store.getRun('alice', created.run.runRef);
-  if (!afterCard.ok) throw new Error(afterCard.detail);
-  const cardedSubject = afterCard.value.stages.find((stage) => stage.stageId === 'build');
-  if (!cardedSubject?.canonicalCardRef) throw new Error('checker subject card missing');
-  const attempt = store.createAttempt('alice', cardedSubject.stageRef, {
-    expectedStageVersion: cardedSubject.version, runtime: 'codex', model: 'fixed',
+  const attempt = store.createAttempt('alice', subject.stageRef, {
+    expectedStageVersion: subject.version, runtime: 'codex', model: 'fixed',
   });
   if (!attempt.ok) throw new Error(attempt.detail);
-  let attemptVersion = attempt.value.version;
+  let currentAttempt = attempt.value;
   if (withCompletedWorkerSession) {
-    const session = store.createWorkerSession('alice', attempt.value.attemptRef, { expectedAttemptVersion: attemptVersion });
+    const session = store.createWorkerSession('alice', currentAttempt.attemptRef, { expectedAttemptVersion: currentAttempt.version });
     if (!session.ok) throw new Error(session.detail);
     completeWorkerSession(store, session.value.sessionRef, session.value.version);
-    attemptVersion += 1;
+    const refreshed = store.getRun('alice', created.run.runRef);
+    if (!refreshed.ok) throw new Error(refreshed.detail);
+    currentAttempt = refreshed.value.attempts.find((candidate) => candidate.attemptRef === currentAttempt.attemptRef)!;
   }
-  const starting = store.transitionAttempt('alice', attempt.value.attemptRef, attemptVersion, 'starting');
-  if (!starting.ok) throw new Error(starting.detail);
-  const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
-  if (!running.ok) throw new Error(running.detail);
-  const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
-  if (!succeeded.ok) throw new Error(succeeded.detail);
-  const detail = store.getRun('alice', created.run.runRef);
+  for (const state of ['starting', 'running', 'succeeded'] as const) {
+    const transitioned = store.transitionAttempt('alice', currentAttempt.attemptRef, currentAttempt.version, state);
+    if (!transitioned.ok) throw new Error(transitioned.detail);
+    currentAttempt = transitioned.value;
+  }
+  detail = store.getRun('alice', created.run.runRef);
   if (!detail.ok) throw new Error(detail.detail);
-  const currentStage = detail.value.stages.find((stage) => stage.stageRef === cardedSubject.stageRef);
-  if (!currentStage) throw new Error('checker subject disappeared');
+  subject = detail.value.stages.find((stage) => stage.stageId === 'build');
+  if (!subject?.canonicalCardRef) throw new Error('checker subject card missing');
   const input = {
-    expectedStageVersion: currentStage.version, expectedAttemptVersion: succeeded.value.version, expectedGeneration: 1,
-    operationKey: `result:${created.run.runRef}:build`, resultHash: 'd'.repeat(64), resultCardRef: cardedSubject.canonicalCardRef, baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40),
+    expectedStageVersion: subject.version, expectedAttemptVersion: currentAttempt.version, expectedGeneration: 1,
+    operationKey: `result:${created.run.runRef}:build`, resultHash: 'd'.repeat(64), resultCardRef: subject.canonicalCardRef,
+    baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40),
   };
-  const generation = store.recordStageGeneration('alice', currentStage.stageRef, input);
+  const generation = store.recordStageGeneration('alice', subject.stageRef, input);
   if (!generation.ok) throw new Error(generation.detail);
-  return { created, subject: currentStage, attempt: succeeded.value, generation: generation.value, input };
-}
-
-function checkerPassOutcome() {
-  return JSON.stringify({
-    schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'All criteria passed.',
-    criteria: [{ criterionId: 'grounded', verdict: 'pass', findingIds: [] }], findings: [],
-  });
-}
-
-function checkerFailOutcome() {
-  return JSON.stringify({
-    schema: 'kb.review-outcome/v1', decision: 'fail', summary: 'Grounding failed.',
-    criteria: [{ criterionId: 'grounded', verdict: 'fail', findingIds: ['missing-source'] }],
-    findings: [{ id: 'missing-source', criterionId: 'grounded', severity: 'blocking', summary: 'Source is missing.', evidencePaths: [] }],
-  });
-}
-
-function checkerParkedOutcome() {
-  return JSON.stringify({
-    schema: 'kb.review-outcome/v1', decision: 'parked', summary: 'Human intervention is required.',
-    criteria: [{ criterionId: 'grounded', verdict: 'unverified', findingIds: ['needs-human'] }],
-    findings: [{ id: 'needs-human', criterionId: 'grounded', severity: 'blocking', summary: 'Needs a human decision.', evidencePaths: [] }],
-  });
-}
-
-function prepareCheckerReview(
-  store: ControlPlaneStore,
-  committed: ReturnType<typeof commitCheckerSubject>,
-  checkerSessionTerminalState?: 'completed' | 'failed' | 'stopped',
-  outcome = checkerFailOutcome(),
-) {
-  const before = store.getRun('alice', committed.created.run.runRef);
-  if (!before.ok) throw new Error(before.detail);
-  const review = before.value.stages.find((stage) => stage.stageId === 'check');
-  const initialSubject = before.value.stages.find((stage) => stage.stageId === 'build');
-  if (!review || !initialSubject) throw new Error('review graph missing');
-  if (initialSubject.state !== 'succeeded') {
-    const subjectRunning = store.transitionStage('alice', initialSubject.stageRef, initialSubject.version, 'running');
-    if (!subjectRunning.ok) throw new Error(subjectRunning.detail);
-    const subjectSucceeded = store.transitionStage('alice', initialSubject.stageRef, subjectRunning.value.version, 'succeeded');
-    if (!subjectSucceeded.ok) throw new Error(subjectSucceeded.detail);
-  }
-  const checkerAttempt = store.createAttempt('alice', review.stageRef, {
-    expectedStageVersion: review.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
-    reviewSubjectGenerationRef: committed.generation.generationRef,
-    reviewSubjectResultHash: committed.generation.resultHash as string,
-    reviewSubjectCanonicalCommit: committed.generation.canonicalCommit as string,
-  });
-  if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
-  let checkerAttemptVersion = checkerAttempt.value.version;
-  if (checkerSessionTerminalState) {
-    const session = store.createWorkerSession('alice', checkerAttempt.value.attemptRef, { expectedAttemptVersion: checkerAttemptVersion });
-    if (!session.ok) throw new Error(session.detail);
-    checkerAttemptVersion += 1;
-    if (checkerSessionTerminalState === 'completed') completeWorkerSession(store, session.value.sessionRef, session.value.version);
-    else {
-      const terminal = store.transitionSession('alice', session.value.sessionRef, session.value.version, checkerSessionTerminalState);
-      if (!terminal.ok) throw new Error(terminal.detail);
-    }
-  }
-  const starting = store.transitionAttempt('alice', checkerAttempt.value.attemptRef, checkerAttemptVersion, 'starting');
-  if (!starting.ok) throw new Error(starting.detail);
-  const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
-  if (!running.ok) throw new Error(running.detail);
-  const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
-  if (!succeeded.ok) throw new Error(succeeded.detail);
-  const reviewReady = store.transitionStage('alice', review.stageRef, review.version + 1, 'ready');
-  if (!reviewReady.ok) throw new Error(reviewReady.detail);
-  const reviewRunning = store.transitionStage('alice', review.stageRef, reviewReady.value.version, 'running');
-  if (!reviewRunning.ok) throw new Error(reviewRunning.detail);
-  const reviewSucceeded = store.transitionStage('alice', review.stageRef, reviewRunning.value.version, 'succeeded');
-  if (!reviewSucceeded.ok) throw new Error(reviewSucceeded.detail);
-  const beforeReceipt = store.getRun('alice', committed.created.run.runRef);
-  if (!beforeReceipt.ok) throw new Error(beforeReceipt.detail);
-  const receiptReview = beforeReceipt.value.stages.find((stage) => stage.stageId === 'check');
-  const receiptLoop = beforeReceipt.value.reviewLoops[0];
-  if (!receiptReview || !receiptLoop) throw new Error('receipt review graph missing');
-  return {
-    reviewStageRef: review.stageRef,
-    checkerAttempt: succeeded.value,
-    receiptInput: {
-    expectedReviewStageVersion: receiptReview.version, expectedCheckerAttemptVersion: succeeded.value.version, expectedLoopVersion: receiptLoop.version,
-    subjectGenerationRef: committed.generation.generationRef, subjectResultHash: committed.generation.resultHash as string, checkerAttemptRef: succeeded.value.attemptRef,
-    outcome, operationKey: `review-outcome:${committed.created.run.runRef}:check:g${committed.generation.generation}`,
-    },
-  };
-}
-
-function failCheckerReview(
-  store: ControlPlaneStore,
-  committed: ReturnType<typeof commitCheckerSubject>,
-  checkerSessionTerminalState?: 'completed' | 'failed' | 'stopped',
-  outcome = checkerFailOutcome(),
-) {
-  const prepared = prepareCheckerReview(store, committed, checkerSessionTerminalState, outcome);
-  const receipt = store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput);
-  if (!receipt.ok) throw new Error(receipt.detail);
-  const current = store.getRun('alice', committed.created.run.runRef);
-  if (!current.ok) throw new Error(current.detail);
-  const subject = current.value.stages.find((stage) => stage.stageId === 'build');
-  const currentReview = current.value.stages.find((stage) => stage.stageId === 'check');
-  const loop = current.value.reviewLoops[0];
-  if (!subject || !currentReview || !loop || !subject.currentAttemptRef) throw new Error('failed graph missing');
-  return {
-    receipt: receipt.value,
-    input: {
-      expectedSubjectStageVersion: subject.version, expectedReviewStageVersion: currentReview.version, expectedLoopVersion: loop.version,
-      expectedSubjectAttemptRef: subject.currentAttemptRef, expectedSubjectAttemptVersion: committed.attempt.version,
-      expectedCheckerAttemptRef: prepared.checkerAttempt.attemptRef, expectedCheckerAttemptVersion: prepared.checkerAttempt.version,
-      expectedFailedReceiptRef: receipt.value.reviewReceiptRef, expectedGenerationRef: committed.generation.generationRef,
-      idempotencyKey: `rework:${committed.created.run.runRef}:build:g2`,
-    },
-  };
-}
-
-function exhaustedReviewInput(
-  store: ControlPlaneStore,
-  committed: ReturnType<typeof commitCheckerSubject>,
-  checkerSessionState?: 'completed' | 'failed' | 'stopped',
-) {
-  const failed = failCheckerReview(store, committed, checkerSessionState);
-  const { receipt } = failed;
-  const detail = store.getRun('alice', committed.created.run.runRef);
+  detail = store.getRun('alice', created.run.runRef);
   if (!detail.ok) throw new Error(detail.detail);
-  const subjectStage = detail.value.stages.find((stage) => stage.stageId === 'build');
-  const reviewStage = detail.value.stages.find((stage) => stage.stageId === 'check');
-  const loop = detail.value.reviewLoops[0];
-  if (!subjectStage || !reviewStage || !loop) throw new Error('exhausted review graph missing');
-  return {
-    receipt,
-    reworkInput: failed.input,
-    input: {
-      expectedSubjectStageVersion: subjectStage.version, expectedReviewStageVersion: reviewStage.version,
-      expectedLoopVersion: loop.version, expectedReceiptVersion: receipt.version,
-      expectedSubjectAttemptRef: subjectStage.currentAttemptRef ?? 'attempt-missing',
-      expectedSubjectAttemptVersion: failed.input.expectedSubjectAttemptVersion,
-      expectedCheckerAttemptRef: failed.input.expectedCheckerAttemptRef,
-      expectedCheckerAttemptVersion: failed.input.expectedCheckerAttemptVersion,
-      expectedGenerationRef: committed.generation.generationRef, expectedFailedReceiptRef: receipt.reviewReceiptRef,
-      idempotencyKey: `review-exhausted:${committed.created.run.runRef}:check:g1`,
+  subject = detail.value.stages.find((stage) => stage.stageId === 'build');
+  if (!subject) throw new Error('checker subject disappeared');
+  const runningStage = store.transitionStage('alice', subject.stageRef, subject.version, 'running');
+  if (!runningStage.ok) throw new Error(runningStage.detail);
+  const succeededStage = store.transitionStage('alice', subject.stageRef, runningStage.value.version, 'succeeded');
+  if (!succeededStage.ok) throw new Error(succeededStage.detail);
+  detail = store.getRun('alice', created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops[0];
+  if (!loop) throw new Error('checker iteration loop missing');
+  const activated = store.activateIterationLoop('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, seedGenerationRefs: [generation.value.generationRef],
+    artifactGenerationRefs: Object.fromEntries(loop.activation.seedArtifactIds.map((artifactId) => [artifactId, generation.value.generationRef])),
+    operationKey: `iteration-activate:${created.run.runRef}:${loop.iterationGroupId}:c1`,
+  });
+  if (!activated.ok) throw new Error(activated.detail);
+  return { created, subject: succeededStage.value, attempt: currentAttempt, generation: generation.value, input };
+}
+
+function failCheckerIteration(store: ControlPlaneStore, committed: ReturnType<typeof commitCheckerSubject>) {
+  let detail = store.getRun('alice', committed.created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops[0]!;
+  const reviewRoute = loop.routes.find((route) => route.requestKinds.includes('review'))!;
+  const judge = loop.participants.find((participant) => participant.participantId === reviewRoute.recipientParticipantId)!;
+  const request = store.recordIterationRequest('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, routeId: reviewRoute.routeId, kind: 'review',
+    inputGenerationRefs: [committed.generation.generationRef], baseCommit: committed.generation.canonicalCommit!,
+    artifactHashes: Object.fromEntries(loop.artifacts.map((artifactId) => [artifactId, committed.generation.resultHash!])),
+    unresolvedFindingRefs: [], preservedInvariants: [],
+    nextAcceptanceCheck: 'Apply grounded.', instructions: 'Judge the subject.',
+    operationKey: `iteration-request:${committed.created.run.runRef}:check:c1`,
+  });
+  if (!request.ok) throw new Error(request.detail);
+  detail = store.getRun('alice', committed.created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const judgeStage = detail.value.stages.find((stage) => stage.stageId === judge.stageRef)!;
+  const judgeAttempt = store.createAttempt('alice', judgeStage.stageRef, {
+    expectedStageVersion: judgeStage.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
+  });
+  if (!judgeAttempt.ok) throw new Error(judgeAttempt.detail);
+  let currentJudgeAttempt = judgeAttempt.value;
+  for (const state of ['starting', 'running', 'succeeded'] as const) {
+    const transitioned = store.transitionAttempt('alice', currentJudgeAttempt.attemptRef, currentJudgeAttempt.version, state);
+    if (!transitioned.ok) throw new Error(transitioned.detail);
+    currentJudgeAttempt = transitioned.value;
+  }
+  detail = store.getRun('alice', committed.created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const currentJudgeStage = detail.value.stages.find((stage) => stage.stageRef === judgeStage.stageRef)!;
+  const runningJudgeStage = store.transitionStage('alice', currentJudgeStage.stageRef, currentJudgeStage.version, 'running');
+  if (!runningJudgeStage.ok) throw new Error(runningJudgeStage.detail);
+  const succeededJudgeStage = store.transitionStage('alice', currentJudgeStage.stageRef, runningJudgeStage.value.version, 'succeeded');
+  if (!succeededJudgeStage.ok) throw new Error(succeededJudgeStage.detail);
+  detail = store.getRun('alice', committed.created.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const currentLoop = detail.value.iterationLoops[0]!;
+  const receipt = store.recordIterationReceipt('alice', currentLoop.iterationLoopRef, {
+    expectedLoopVersion: currentLoop.version, requestRef: request.value.requestRef,
+    outcome: {
+      schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef,
+      iterationLoopRef: currentLoop.iterationLoopRef, participantId: judge.participantId, cycle: request.value.cycle,
+      verdict: 'fail', inputGenerationRefs: [...request.value.inputGenerationRefs],
+      criteria: [{ criterionId: 'grounded', verdict: 'fail', findingIds: ['missing-source'] }],
+      findings: [{ findingId: 'missing-source', criterionId: 'grounded', severity: 'blocking', summary: 'Source is missing.', evidencePaths: [] }],
+      positions: [], recordedDissent: [], summary: 'Grounding failed.',
     },
-  };
+    outputGenerationRefs: [], baseCommit: committed.generation.baseCommit!,
+    canonicalCommit: committed.generation.canonicalCommit!, participantAttemptRef: currentJudgeAttempt.attemptRef,
+    operationKey: `iteration-receipt:${committed.created.run.runRef}:check:c1:fail`,
+  });
+  if (!receipt.ok) throw new Error(receipt.detail);
+  return receipt.value;
 }
 
 function queueCreatorRework(store: ControlPlaneStore, committed: ReturnType<typeof commitCheckerSubject>) {
-  const { input } = failCheckerReview(store, committed);
-  const queued = store.advanceReviewGeneration('alice', committed.created.run.runRef, input);
-  if (!queued.ok) throw new Error(queued.detail);
-  return queued.value;
-}
-
-function attachCheckerGate(store: ControlPlaneStore) {
-  const committed = commitCheckerSubject(store);
-  const { receipt } = failCheckerReview(store, committed, undefined, checkerPassOutcome());
+  const receipt = failCheckerIteration(store, committed);
   const detail = store.getRun('alice', committed.created.run.runRef);
   if (!detail.ok) throw new Error(detail.detail);
-  const reviewStage = detail.value.stages.find((stage) => stage.stageId === 'check');
-  const subjectStage = detail.value.stages.find((stage) => stage.stageId === 'build');
-  const loop = detail.value.reviewLoops[0];
-  if (!reviewStage || !subjectStage || !loop) throw new Error('review completion gate graph missing');
-  const attachInput = {
-    expectedReceiptVersion: receipt.version,
-    expectedLoopVersion: loop.version,
-    expectedReviewStageVersion: reviewStage.version,
-    idempotencyKey: `review-gate:${committed.created.run.runRef}:check:g1`,
-  };
-  const attached = store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, attachInput);
-  if (!attached.ok) throw new Error(attached.detail);
-  return { committed, receipt, attachInput, attached: attached.value };
+  const loop = detail.value.iterationLoops[0]!;
+  const nextStep = loop.schedule.find((step) => step.after?.verdict === 'fail')!;
+  const queued = store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, expectedReceiptRef: receipt.receiptRef,
+    expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: nextStep.stepId,
+    operationKey: `iteration-advance:${committed.created.run.runRef}:creator`,
+  });
+  if (!queued.ok) throw new Error(queued.detail);
+  const current = store.getRun('alice', committed.created.run.runRef);
+  if (!current.ok) throw new Error(current.detail);
+  const currentLoop = current.value.iterationLoops[0]!;
+  const route = currentLoop.routes.find((candidate) =>
+    candidate.routeId === currentLoop.schedule.find((step) => step.stepId === currentLoop.currentStepId)?.routeId)!;
+  const predecessor = current.value.stageGenerations.find((generation) =>
+    generation.generationRef === currentLoop.activeGenerationRefs[0])!;
+  const request = store.recordIterationRequest('alice', currentLoop.iterationLoopRef, {
+    expectedLoopVersion: currentLoop.version, routeId: route.routeId, kind: 'rework',
+    inputGenerationRefs: [...currentLoop.activeGenerationRefs], baseCommit: predecessor.canonicalCommit!,
+    artifactHashes: Object.fromEntries(currentLoop.artifacts.map((artifactId) => [artifactId, predecessor.resultHash!])),
+    unresolvedFindingRefs: receipt.findings.map((finding) => finding.findingId),
+    preservedInvariants: [], nextAcceptanceCheck: 'Resolve the blocking findings.', instructions: 'Rework the subject.',
+    operationKey: `iteration-request:${committed.created.run.runRef}:creator:c2`,
+  });
+  if (!request.ok) throw new Error(request.detail);
+  return request.value;
 }
-
-function reviewGateResolutionInput(
-  attached: ReturnType<typeof attachCheckerGate>['attached'],
-  decision: 'approved' | 'rejected' | 'changes-requested',
-) {
-  return {
-    expectedRequestRevision: attached.request.revision,
-    expectedReceiptVersion: attached.receipt.version,
-    expectedLoopVersion: attached.loop.version,
-    expectedReviewStageVersion: attached.reviewStage.version,
-    expectedSubjectStageVersion: attached.subjectStage.version,
-    decision,
-    idempotencyKey: `resolve-${decision}`,
-    response: `human chose ${decision}`,
-  };
-}
-
 type PersistedRow = Record<string, unknown>;
 interface PersistedReviewBundle {
   subject?: string;
@@ -839,6 +757,9 @@ interface PersistedReviewBundle {
   humanRequests: PersistedRow[];
   events: PersistedRow[];
   stageGenerations: PersistedRow[];
+  iterationLoops: PersistedRow[];
+  iterationRequests: PersistedRow[];
+  iterationReceipts: PersistedRow[];
   reviewLoops: PersistedRow[];
   reviewReceipts: PersistedRow[];
   generationSupersessions: PersistedRow[];
@@ -848,8 +769,82 @@ interface PersistedReviewDocument extends PersistedReviewBundle {
   quarantine: Array<PersistedReviewBundle & { quarantinedAt: string }>;
 }
 
+function canonicalJsonForTest(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJsonForTest).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJsonForTest(record[key])}`).join(',')}}`;
+}
+
+function iterationRequestFingerprintForTest(request: PersistedRow): string {
+  const { subject: _subject, runRef: _runRef, operationKey: _operationKey,
+    operationFingerprint: _operationFingerprint, ...body } = request;
+  return createHash('sha256').update(canonicalJsonForTest(body)).digest('hex');
+}
+
 function persistedReviewBundle(document: PersistedReviewDocument, location: 'active' | 'quarantine'): PersistedReviewBundle {
-  if (location === 'active') return document;
+  const addLegacyMigrationInputs = (bundle: PersistedReviewBundle): PersistedReviewBundle => {
+    const state = new Map([
+      ['awaiting-seed', 'awaiting-subject'], ['awaiting-turn', 'checking'], ['running-turn', 'checking'],
+      ['rework-queued', 'rework-queued'], ['failed', 'failed'], ['exhausted', 'parked'], ['parked', 'parked'],
+      ['awaiting-completion-gate', 'awaiting-gate'], ['awaiting-park-gate', 'parked'], ['passed', 'passed'], ['declined', 'parked'],
+    ]);
+    bundle.reviewLoops = bundle.iterationLoops.map((loop) => {
+      const participants = loop.participants as PersistedRow[];
+      const routes = loop.routes as PersistedRow[];
+      const judge = participants.find((participant) => participant.role === 'judge') as PersistedRow;
+      const route = routes.find((candidate) => candidate.recipientParticipantId === judge.participantId && (candidate.requestKinds as string[]).includes('review')) as PersistedRow;
+      const producer = participants.find((participant) => participant.participantId === route.senderParticipantId) as PersistedRow;
+      const subjectStage = bundle.stages.find((stage) => stage.stageId === producer.stageRef) as PersistedRow;
+      const reviewStage = bundle.stages.find((stage) => stage.stageId === judge.stageRef) as PersistedRow;
+      return {
+        subject: loop.subject, reviewLoopRef: loop.iterationLoopRef, runRef: loop.runRef,
+        reviewStageRef: reviewStage.stageRef, subjectStageRef: subjectStage.stageRef,
+        maxCreatorReworks: Number(loop.maxCycles) - 1,
+        reviewDefinitionHash: createHash('sha256').update(canonicalJsonForTest({
+          workflowProfile: reviewStage.workflowProfile, assignment: reviewStage.assignment,
+          review: reviewStage.review, completionGate: reviewStage.completionGate,
+        })).digest('hex'),
+        reworksUsed: Math.max(0, Number(loop.cyclesUsed) - ((loop.activeGenerationRefs as string[]).length ? 1 : 0)),
+        state: state.get(String(loop.state)), activeGenerationRef: (loop.activeGenerationRefs as string[])[0] ?? null,
+        acceptedGenerationRef: (loop.acceptedGenerationRefs as string[] | undefined)?.[0] ?? null,
+        activeReceiptRef: loop.lastReceiptRef ?? null, interventionRequestRef: loop.interventionRef ?? null,
+        version: Number(loop.version) + 1, createdAt: loop.createdAt, updatedAt: loop.updatedAt,
+      };
+    });
+    bundle.reviewReceipts = bundle.iterationReceipts.map((receipt) => {
+      const loop = bundle.iterationLoops.find((candidate) => candidate.iterationLoopRef === receipt.iterationLoopRef) as PersistedRow;
+      const legacyLoop = bundle.reviewLoops.find((candidate) => candidate.reviewLoopRef === loop.iterationLoopRef) as PersistedRow;
+      const subjectGeneration = bundle.stageGenerations.find((candidate) =>
+        candidate.generationRef === (receipt.inputGenerationRefs as string[])[0]) as PersistedRow;
+      const outcome = {
+        schema: 'kb.review-outcome/v1', decision: receipt.verdict, summary: receipt.summary,
+        criteria: receipt.criteria,
+        findings: (receipt.findings as PersistedRow[]).map((finding) => ({
+          id: finding.findingId, criterionId: finding.criterionId, severity: finding.severity,
+          summary: finding.summary, evidencePaths: finding.evidencePaths,
+        })),
+      };
+      const canonical = (value: any): string => value === null || typeof value !== 'object' ? JSON.stringify(value)
+        : Array.isArray(value) ? `[${value.map(canonical).join(',')}]`
+          : `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+      return {
+        subject: receipt.subject, operationFingerprint: receipt.operationFingerprint,
+        reviewReceiptRef: receipt.receiptRef, runRef: receipt.runRef,
+        reviewStageRef: legacyLoop.reviewStageRef, subjectStageRef: legacyLoop.subjectStageRef,
+        subjectGenerationRef: (receipt.inputGenerationRefs as string[])[0], subjectResultHash: subjectGeneration.resultHash,
+        checkerAttemptRef: receipt.participantAttemptRef, outcome,
+        outcomeHash: createHash('sha256').update(canonical(outcome)).digest('hex'), operationKey: receipt.operationKey,
+        state: receipt.verdict === 'pass' ? (loop.completionGateRef ? 'awaiting-completion-gate' : 'passed')
+          : receipt.verdict === 'parked' ? 'parked' : 'failed',
+        completionRequestRef: loop.completionGateRef ?? null,
+        interventionRequestRef: loop.interventionRef ?? null, version: receipt.version,
+        createdAt: receipt.createdAt, finalizedAt: loop.completionGateRef ? null : receipt.createdAt,
+      };
+    });
+    return bundle;
+  };
+  if (location === 'active') return addLegacyMigrationInputs(document);
   const bundle = {
     subject: String(document.runs[0]?.subject),
     quarantinedAt: '2026-07-18T12:00:00.000Z',
@@ -857,48 +852,1271 @@ function persistedReviewBundle(document: PersistedReviewDocument, location: 'act
     stages: structuredClone(document.stages), attempts: structuredClone(document.attempts),
     sessions: structuredClone(document.sessions), humanRequests: structuredClone(document.humanRequests),
     events: structuredClone(document.events), stageGenerations: structuredClone(document.stageGenerations),
-    reviewLoops: structuredClone(document.reviewLoops), reviewReceipts: structuredClone(document.reviewReceipts),
+    iterationLoops: structuredClone(document.iterationLoops), iterationRequests: structuredClone(document.iterationRequests),
+    iterationReceipts: structuredClone(document.iterationReceipts), reviewLoops: [], reviewReceipts: [],
     generationSupersessions: structuredClone(document.generationSupersessions),
   };
   document.quarantine.push(bundle);
-  return bundle;
+  return addLegacyMigrationInputs(bundle);
 }
 
-function requiredPersistedRow(rows: PersistedRow[], label: string): PersistedRow {
-  const row = rows[0];
-  if (!row) throw new Error(`persisted ${label} missing`);
-  return row;
+function task2IterationGroup() {
+  return {
+    iterationGroupId: 'draft-check', goal: 'Accept the draft.',
+    participants: [
+      { participantId: 'author', stageRef: 'build', role: 'contributor' as const, perspective: 'Create the draft.', mandate: 'Write the declared draft.' },
+      { participantId: 'judge', stageRef: 'check', role: 'judge' as const, perspective: 'Check the draft.', mandate: 'Apply every criterion.' },
+    ],
+    routes: [
+      { routeId: 'to-judge', senderParticipantId: 'author', recipientParticipantId: 'judge', requestKinds: ['review' as const], baseResolutionStageIds: ['build'] },
+      { routeId: 'to-author', senderParticipantId: 'judge', recipientParticipantId: 'author', requestKinds: ['rework' as const], baseResolutionStageIds: ['check'] },
+    ],
+    activation: { seedParticipantId: 'author', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+    schedule: [
+      { stepId: 'review', routeId: 'to-judge', after: { stepId: 'rework', participantId: 'author', verdict: 'fulfilled' as const }, cycle: 'next' as const },
+      { stepId: 'rework', routeId: 'to-author', after: { stepId: 'review', participantId: 'judge', verdict: 'fail' as const }, cycle: 'current' as const },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'grounded', description: 'The draft is grounded.' }],
+    maxCycles: 3, cycleUnit: 'One author generation and one judge verdict.',
+    terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' as const }],
+    completionGate: { id: 'publish', kind: 'approval' as const, prompt: 'Approve the accepted draft.', requiresReview: 'pass' as const },
+  };
 }
 
-function fillHumanRequestCap(store: ControlPlaneStore, runRef: string) {
-  const filled = store.createHumanRequests('alice', runRef, {
-    idempotencyKey: 'fill-human-request-cap',
-    requests: Array.from({ length: MAX_HUMAN_REQUESTS_PER_RUN }, (_, index) => ({
-      kind: 'input' as const, title: `Input ${index}`, prompt: 'Supply a bounded input.',
-    })),
+function createTask2IterationRun(store: ControlPlaneStore, group = task2IterationGroup()) {
+  const snapshot = {
+    schema: 'kb.plan-proposal/v1', manager: {}, iterationGroups: [structuredClone(group)], stages: [
+      { id: 'build', title: 'Build', dependsOn: [], artifacts: [{ id: 'draft', path: 'draft.md' }] },
+      { id: 'check', title: 'Check', dependsOn: ['build'], artifacts: [] },
+    ],
+  } as unknown as JsonObject;
+  const proposal = createApprovedProposal(store, 'alice', snapshot);
+  return store.createRun('alice', {
+    title: 'Iteration run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+    expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+    idempotencyKey: `iteration-${group.iterationGroupId}`, iterationGroups: [structuredClone(group)],
+    stages: [{ stageId: 'build', title: 'Build', dependsOn: [] }, { stageId: 'check', title: 'Check', dependsOn: ['build'] }],
   });
-  if (!filled.ok) throw new Error(filled.detail);
 }
 
-function succeedQueuedCreatorAttempt(store: ControlPlaneStore, runRef: string) {
+function corruptIterationLoop(runRef: string): PersistedRow {
+  const group = task2IterationGroup();
+  return {
+    subject: 'alice', ...group, iterationLoopRef: 'iteration-loop-corrupt', runRef,
+    definitionHash: '0'.repeat(64), cyclesUsed: 0, state: 'awaiting-seed', activeGenerationRefs: [],
+    version: 0, createdAt: '2026-08-12T12:00:00.000Z', updatedAt: '2026-08-12T12:00:00.000Z',
+  };
+}
+
+
+function task4IterationGroup(prefix = 'draft', withCompletionGate = false) {
+  const build = `${prefix}-build`;
+  const check = `${prefix}-check`;
+  const author = `${prefix}-author`;
+  const judge = `${prefix}-judge`;
+  const artifact = `${prefix}-artifact`;
+  return {
+    iterationGroupId: `${prefix}-loop`, goal: `Accept ${prefix}.`,
+    participants: [
+      { participantId: author, stageRef: build, role: 'contributor' as const, perspective: `Create ${prefix}.`, mandate: `Write ${prefix}.` },
+      { participantId: judge, stageRef: check, role: 'judge' as const, perspective: `Check ${prefix}.`, mandate: `Judge ${prefix}.` },
+    ],
+    routes: [
+      { routeId: `${prefix}-to-judge`, senderParticipantId: author, recipientParticipantId: judge, requestKinds: ['review' as const], baseResolutionStageIds: [build] },
+      { routeId: `${prefix}-to-author`, senderParticipantId: judge, recipientParticipantId: author, requestKinds: ['rework' as const], baseResolutionStageIds: [check] },
+    ],
+    activation: { seedParticipantId: author, seedArtifactIds: [artifact] }, initialStepId: `${prefix}-review`,
+    schedule: [
+      { stepId: `${prefix}-review`, routeId: `${prefix}-to-judge`, after: { stepId: `${prefix}-rework`, participantId: author, verdict: 'fulfilled' as const }, cycle: 'next' as const },
+      { stepId: `${prefix}-rework`, routeId: `${prefix}-to-author`, after: { stepId: `${prefix}-review`, participantId: judge, verdict: 'fail' as const }, cycle: 'current' as const },
+    ],
+    artifacts: [artifact], criteria: [{ id: `${prefix}-criterion`, description: `${prefix} is acceptable.` }],
+    maxCycles: 2, cycleUnit: `One ${prefix} generation and verdict.`,
+    terminalAuthorities: [{ participantId: judge, verdict: 'pass' as const }],
+    ...(withCompletionGate ? { completionGate: { id: `${prefix}-approval`, kind: 'approval' as const, prompt: `Approve ${prefix}.`, requiresReview: 'pass' as const } } : {}),
+  };
+}
+
+function createTask4IterationRun(store: ControlPlaneStore, groups = [task4IterationGroup()]) {
+  const stages = groups.flatMap((group) => [
+    { stageId: group.participants[0]!.stageRef, title: `${group.iterationGroupId} build`, dependsOn: [] as string[] },
+    { stageId: group.participants[1]!.stageRef, title: `${group.iterationGroupId} check`, dependsOn: [group.participants[0]!.stageRef] },
+  ]);
+  const snapshot = {
+    schema: 'kb.plan-proposal/v1', manager: {}, iterationGroups: structuredClone(groups),
+    stages: groups.flatMap((group) => [
+      { id: group.participants[0]!.stageRef, title: `${group.iterationGroupId} build`, dependsOn: [], artifacts: [{ id: group.artifacts[0], path: `${group.iterationGroupId}.md` }] },
+      { id: group.participants[1]!.stageRef, title: `${group.iterationGroupId} check`, dependsOn: [group.participants[0]!.stageRef], artifacts: [] },
+    ]),
+  } as unknown as JsonObject;
+  const proposal = createApprovedProposal(store, 'alice', snapshot);
+  const created = store.createRun('alice', {
+    title: 'Task 4 iteration run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+    expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+    idempotencyKey: `task4-${groups.map((group) => group.iterationGroupId).join('-')}`,
+    iterationGroups: structuredClone(groups), stages,
+  });
+  if (!created.ok) throw new Error(created.detail);
+  return created.value;
+}
+
+function commitTask4Seed(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
   const detail = store.getRun('alice', runRef);
   if (!detail.ok) throw new Error(detail.detail);
-  const subject = detail.value.stages.find((stage) => stage.stageId === 'build');
-  if (!subject?.currentAttemptRef) throw new Error('queued creator attempt missing');
-  const attempt = detail.value.attempts.find((item) => item.attemptRef === subject.currentAttemptRef);
-  if (!attempt) throw new Error('queued creator attempt disappeared');
-  const starting = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, 'starting');
+  const stage = detail.value.stages.find((candidate) => candidate.stageId === `${prefix}-build`);
+  if (!stage) throw new Error('seed stage missing');
+  const linked = store.linkStageCard('alice', stage.stageRef, stage.version, `card-${prefix}`);
+  if (!linked.ok) throw new Error(linked.detail);
+  const attempt = store.createAttempt('alice', stage.stageRef, { expectedStageVersion: linked.value.version, runtime: 'codex', model: 'fixed' });
+  if (!attempt.ok) throw new Error(attempt.detail);
+  const starting = store.transitionAttempt('alice', attempt.value.attemptRef, attempt.value.version, 'starting');
   if (!starting.ok) throw new Error(starting.detail);
-  const running = store.transitionAttempt('alice', attempt.attemptRef, starting.value.version, 'running');
+  const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
   if (!running.ok) throw new Error(running.detail);
-  const succeeded = store.transitionAttempt('alice', attempt.attemptRef, running.value.version, 'succeeded');
+  const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
   if (!succeeded.ok) throw new Error(succeeded.detail);
   const current = store.getRun('alice', runRef);
   if (!current.ok) throw new Error(current.detail);
-  const currentSubject = current.value.stages.find((stage) => stage.stageId === 'build');
-  if (!currentSubject) throw new Error('creator stage disappeared');
-  return { attempt: succeeded.value, stage: currentSubject };
+  const currentStage = current.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)!;
+  const generation = store.recordStageGeneration('alice', stage.stageRef, {
+    expectedStageVersion: currentStage.version, expectedAttemptVersion: succeeded.value.version, expectedGeneration: 1,
+    operationKey: `result:${runRef}:${stage.stageId}`,
+    resultHash: createHash('sha256').update(prefix).digest('hex'), resultCardRef: `card-${prefix}`,
+    baseCommit: 'b'.repeat(40), canonicalCommit: createHash('sha1').update(prefix).digest('hex'),
+  });
+  if (!generation.ok) throw new Error(generation.detail);
+  const afterGeneration = store.getRun('alice', runRef);
+  if (!afterGeneration.ok) throw new Error(afterGeneration.detail);
+  const committedStage = afterGeneration.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)!;
+  const runningStage = store.transitionStage('alice', committedStage.stageRef, committedStage.version, 'running');
+  if (!runningStage.ok) throw new Error(runningStage.detail);
+  const completed = store.transitionStage('alice', runningStage.value.stageRef, runningStage.value.version, 'succeeded');
+  if (!completed.ok) throw new Error(completed.detail);
+  return generation.value;
 }
+
+function activateTask4Loop(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const generation = commitTask4Seed(store, runRef, prefix);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const activated = store.activateIterationLoop('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, seedGenerationRefs: [generation.generationRef],
+    artifactGenerationRefs: { [`${prefix}-artifact`]: generation.generationRef },
+    operationKey: `iteration-activate:${runRef}:${prefix}-loop:c1`,
+  });
+  if (!activated.ok) throw new Error(activated.detail);
+  return { generation, loop: activated.value };
+}
+
+function task4Request(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const generation = detail.value.stageGenerations.find((candidate) => candidate.generationRef === loop.activeGenerationRefs[0])!;
+  return store.recordIterationRequest('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, routeId: `${prefix}-to-judge`, kind: 'review',
+    inputGenerationRefs: [generation.generationRef], baseCommit: generation.canonicalCommit!,
+    artifactHashes: { [`${prefix}-artifact`]: generation.resultHash! }, unresolvedFindingRefs: [], preservedInvariants: [],
+    nextAcceptanceCheck: `Apply ${prefix}-criterion.`, instructions: `Judge ${prefix}.`, operationKey: `iteration-request:${runRef}:${prefix}:c1`,
+  });
+}
+
+function task4Receipt(store: ControlPlaneStore, runRef: string, prefix = 'draft', verdict: 'pass' | 'fail' = 'fail') {
+  const request = task4Request(store, runRef, prefix);
+  if (!request.ok) throw new Error(request.detail);
+  const completed = completeTask4JudgeStage(store, runRef, prefix);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const generation = detail.value.stageGenerations.find((candidate) => candidate.generationRef === request.value.inputGenerationRefs[0])!;
+  const findingId = `${prefix}-finding`;
+  return store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, requestRef: request.value.requestRef,
+    outcome: {
+      schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef,
+      participantId: `${prefix}-judge`, cycle: request.value.cycle, verdict, inputGenerationRefs: [...request.value.inputGenerationRefs],
+      criteria: [{ criterionId: `${prefix}-criterion`, verdict, findingIds: verdict === 'fail' ? [findingId] : [] }],
+      findings: verdict === 'fail' ? [{ findingId, criterionId: `${prefix}-criterion`, severity: 'blocking', summary: `${prefix} failed.`, evidencePaths: [] }] : [],
+      positions: [],
+      recordedDissent: [], summary: `${prefix} ${verdict}.`,
+    },
+    outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!,
+    participantAttemptRef: completed.attempt.attemptRef, operationKey: `iteration-receipt:${runRef}:${prefix}:c1:${verdict}`,
+  });
+}
+
+function completeTask4JudgeStage(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const request = task4Request(store, runRef, prefix);
+  if (!request.ok) throw new Error(request.detail);
+  let detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  let stage = detail.value.stages.find((candidate) => candidate.stageId === `${prefix}-check`)!;
+  const existingAttempt = stage.currentAttemptRef === null ? undefined
+    : detail.value.attempts.find((candidate) => candidate.attemptRef === stage.currentAttemptRef);
+  if (stage.state === 'succeeded' && existingAttempt?.state === 'succeeded') {
+    return { request: request.value, attempt: existingAttempt };
+  }
+  const attempt = store.createAttempt('alice', stage.stageRef, {
+    expectedStageVersion: stage.version, runtime: 'codex', model: 'fixed',
+  });
+  if (!attempt.ok) throw new Error(attempt.detail);
+  let currentAttempt = attempt.value;
+  for (const state of ['starting', 'running', 'succeeded'] as const) {
+    const transitioned = store.transitionAttempt('alice', currentAttempt.attemptRef, currentAttempt.version, state);
+    if (!transitioned.ok) throw new Error(transitioned.detail);
+    currentAttempt = transitioned.value;
+  }
+  detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  stage = detail.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)!;
+  const running = store.transitionStage('alice', stage.stageRef, stage.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const succeeded = store.transitionStage('alice', running.value.stageRef, running.value.version, 'succeeded');
+  if (!succeeded.ok) throw new Error(succeeded.detail);
+  return { request: request.value, attempt: currentAttempt };
+}
+
+function makeTask4RunRunningWithTerminalManager(store: ControlPlaneStore, runRef: string) {
+  let detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const manager = detail.value.sessions.find((session) => session.sessionRef === detail.value.run.managerSessionRef)!;
+  const stopped = store.transitionSession('alice', manager.sessionRef, manager.version, 'stopped');
+  if (!stopped.ok) throw new Error(stopped.detail);
+  const refreshed = store.getRun('alice', runRef);
+  if (!refreshed.ok) throw new Error(refreshed.detail);
+  const running = store.transitionRun('alice', runRef, refreshed.value.run.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  return running.value;
+}
+
+function parkTask4NoProgress(store: ControlPlaneStore, runRef: string, operationSuffix: string) {
+  const requested = requestTask4ProducerTurn(store, runRef);
+  let detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops[0]!;
+  let attempt = detail.value.attempts.find((candidate) => candidate.logicalGeneration === 2)!;
+  const session = store.createWorkerSession('alice', attempt.attemptRef, { expectedAttemptVersion: attempt.version });
+  if (!session.ok) throw new Error(session.detail);
+  detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === attempt.attemptRef)!;
+  for (const state of ['starting', 'running'] as const) {
+    const transitioned = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, state);
+    if (!transitioned.ok) throw new Error(transitioned.detail);
+    attempt = transitioned.value;
+  }
+  const sessionStarting = store.transitionSession('alice', session.value.sessionRef, session.value.version, 'starting');
+  if (!sessionStarting.ok) throw new Error(sessionStarting.detail);
+  const sessionRunning = store.transitionSession('alice', session.value.sessionRef, sessionStarting.value.version, 'running');
+  if (!sessionRunning.ok) throw new Error(sessionRunning.detail);
+  detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const producer = detail.value.stages.find((candidate) => candidate.stageId === 'draft-build')!;
+  if (producer.state !== 'running') {
+    const running = store.transitionStage('alice', producer.stageRef, producer.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+  }
+  const outcome = {
+    schema: 'kb.iteration-outcome/v1' as const, requestRef: requested.request.requestRef,
+    iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-author', cycle: requested.request.cycle,
+    verdict: 'fulfilled' as const, inputGenerationRefs: [...requested.request.inputGenerationRefs],
+    criteria: [], findings: [], positions: [], recordedDissent: [], summary: 'No changed artifact was produced.',
+  };
+  return store.parkIterationLoop('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'no-progress',
+    nextRouteId: requested.request.routeId, attemptedRequestRef: requested.request.requestRef, attemptedOutcome: outcome,
+    artifactSnapshots: [{
+      path: 'draft-loop.md', regularFile: true, size: 6, sha256: 'a'.repeat(64),
+      afterRegularFile: true, afterSize: 6, afterSha256: 'a'.repeat(64), byteIdentical: true,
+    }],
+    failureReason: 'required artifact is byte-identical to its pinned input',
+    operationKey: `park-no-progress-${operationSuffix}`,
+  });
+}
+
+function queueTask4ProducerTurn(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const failed = task4Receipt(store, runRef, prefix, 'fail');
+  if (!failed.ok) throw new Error(failed.detail);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const advanced = store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version,
+    expectedReceiptRef: failed.value.receiptRef,
+    expectedActiveGenerationRefs: [...loop.activeGenerationRefs],
+    nextStepId: `${prefix}-rework`,
+    operationKey: `iteration-advance:${runRef}:${prefix}:producer`,
+  });
+  if (!advanced.ok) throw new Error(advanced.detail);
+  return { failed: failed.value, loop: advanced.value };
+}
+
+function requestTask4ProducerTurn(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const queued = queueTask4ProducerTurn(store, runRef, prefix);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const predecessor = detail.value.stageGenerations.find((generation) => generation.state === 'committed')!;
+  const requested = store.recordIterationRequest('alice', queued.loop.iterationLoopRef, {
+    expectedLoopVersion: queued.loop.version,
+    routeId: `${prefix}-to-author`,
+    kind: 'rework',
+    inputGenerationRefs: [...queued.loop.activeGenerationRefs],
+    baseCommit: predecessor.canonicalCommit!,
+    artifactHashes: { [`${prefix}-artifact`]: predecessor.resultHash! },
+    unresolvedFindingRefs: [`${prefix}-finding`],
+    preservedInvariants: [`${prefix}-criterion`],
+    nextAcceptanceCheck: `Resolve ${prefix}-finding.`,
+    instructions: `Rework ${prefix}.`,
+    operationKey: `iteration-request:${runRef}:${prefix}:producer`,
+  });
+  if (!requested.ok) throw new Error(requested.detail);
+  return { ...queued, request: requested.value };
+}
+
+function commitTask4ProducerTurn(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const requested = requestTask4ProducerTurn(store, runRef, prefix);
+  let detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const stage = detail.value.stages.find((candidate) => candidate.stageId === `${prefix}-build`)!;
+  const predecessor = stage.currentGenerationRef === null ? undefined : detail.value.stageGenerations.find((candidate) =>
+    candidate.generationRef === stage.currentGenerationRef);
+  let attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === stage.currentAttemptRef)!;
+  if (stage.state !== 'running') {
+    const runningStage = store.transitionStage('alice', stage.stageRef, stage.version, 'running');
+    if (!runningStage.ok) throw new Error(runningStage.detail);
+  }
+  for (const state of ['starting', 'running', 'succeeded'] as const) {
+    detail = store.getRun('alice', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === attempt.attemptRef)!;
+    const transitioned = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, state);
+    if (!transitioned.ok) throw new Error(transitioned.detail);
+  }
+  detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const currentStage = detail.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)!;
+  attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === attempt.attemptRef)!;
+  const committed = store.recordStageGeneration('alice', stage.stageRef, {
+    expectedStageVersion: currentStage.version,
+    expectedAttemptVersion: attempt.version,
+    expectedGeneration: attempt.logicalGeneration!,
+    operationKey: `iteration-result:${runRef}:${stage.stageId}:${requested.request.requestRef}`,
+    resultHash: 'e'.repeat(64),
+    resultCardRef: null,
+    baseCommit: attempt.baseCommit ?? predecessor?.canonicalCommit ?? 'b'.repeat(40),
+    canonicalCommit: 'e'.repeat(40),
+  });
+  if (!committed.ok) throw new Error(committed.detail);
+  return { ...requested, generation: committed.value, attempt };
+}
+
+describe('Task 4 generic iteration state machine', () => {
+  it('records a producer iteration request while a rework successor is queued', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const requested = requestTask4ProducerTurn(store, created.run.runRef);
+    expect(requested.loop).toMatchObject({
+      state: 'rework-queued', currentStepId: 'draft-rework', turnOwnerParticipantId: 'draft-author', cyclesUsed: 1,
+    });
+    expect(requested.request).toMatchObject({ kind: 'rework', cycle: 1, inputGenerationRefs: requested.loop.activeGenerationRefs });
+    const detail = store.getRun('alice', created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'running-turn', cyclesUsed: 1 })],
+      stageGenerations: [expect.objectContaining({ generation: 1, state: 'committed' })],
+      attempts: expect.arrayContaining([expect.objectContaining({ logicalGeneration: 2, state: 'queued' })]),
+    } });
+  });
+
+  it('mints a durable fulfilled receipt with output lineage after canonical integration', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task4-producer-commit-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const turn = commitTask4ProducerTurn(store, created.run.runRef);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const receipt = store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version,
+      requestRef: turn.request.requestRef,
+      outcome: {
+        schema: 'kb.iteration-outcome/v1', requestRef: turn.request.requestRef,
+        iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-author', cycle: turn.request.cycle,
+        verdict: 'fulfilled', inputGenerationRefs: [...turn.request.inputGenerationRefs], criteria: [], findings: [],
+        positions: [], recordedDissent: [], summary: 'Draft successor committed.',
+      },
+      outputGenerationRefs: [turn.generation.generationRef],
+      baseCommit: turn.generation.baseCommit!, canonicalCommit: turn.generation.canonicalCommit!,
+      participantAttemptRef: turn.attempt.attemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:producer`,
+    });
+    expect(receipt).toMatchObject({ ok: true, value: {
+      verdict: 'fulfilled', inputGenerationRefs: turn.request.inputGenerationRefs,
+      outputGenerationRefs: [turn.generation.generationRef], baseCommit: turn.generation.baseCommit,
+      canonicalCommit: turn.generation.canonicalCommit,
+    } });
+    expect(store.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'failed', lastReceiptRef: receipt.ok && receipt.value.receiptRef })],
+      generationSupersessions: [expect.objectContaining({
+        predecessorGenerationRef: turn.request.inputGenerationRefs[0],
+        successorGenerationRef: turn.generation.generationRef,
+        triggerReceiptRef: turn.failed.receiptRef,
+        operationKey: `rework:${created.run.runRef}:draft-build:g2`,
+      })],
+    } });
+  });
+
+  it('rejects output generation refs on every non-fulfilled iteration receipt', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    const activated = activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    if (!request.ok) throw new Error(request.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const generation = detail.value.stageGenerations.find((candidate) =>
+      candidate.generationRef === request.value.inputGenerationRefs[0])!;
+    const findingId = 'non-fulfilled-output-finding';
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version,
+      requestRef: request.value.requestRef,
+      outcome: {
+        schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef,
+        iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-judge', cycle: request.value.cycle,
+        verdict: 'fail', inputGenerationRefs: [...request.value.inputGenerationRefs],
+        criteria: [{ criterionId: 'draft-criterion', verdict: 'fail', findingIds: [findingId] }],
+        findings: [{ findingId, criterionId: 'draft-criterion', severity: 'blocking', summary: 'Draft failed.', evidencePaths: [] }],
+        positions: [], recordedDissent: [], summary: 'Draft failed.',
+      },
+      outputGenerationRefs: [activated.generation.generationRef],
+      baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!,
+      participantAttemptRef: generation.attemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:invalid-output`,
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('rejects a fulfilled receipt whose output lineage does not match the committed successor', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task6-fulfilled-lineage-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const turn = commitTask4ProducerTurn(store, created.run.runRef);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const input = {
+      expectedLoopVersion: loop.version, requestRef: turn.request.requestRef,
+      outcome: {
+        schema: 'kb.iteration-outcome/v1' as const, requestRef: turn.request.requestRef,
+        iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-author', cycle: turn.request.cycle,
+        verdict: 'fulfilled' as const, inputGenerationRefs: [...turn.request.inputGenerationRefs], criteria: [], findings: [],
+        positions: [], recordedDissent: [], summary: 'Draft successor committed.',
+      },
+      outputGenerationRefs: [turn.generation.generationRef], baseCommit: turn.generation.baseCommit!,
+      canonicalCommit: 'f'.repeat(40), participantAttemptRef: turn.attempt.attemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:producer`,
+    };
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, input)).toMatchObject({ ok: false, reason: 'conflict' });
+
+    const accepted = store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      ...input, canonicalCommit: turn.generation.canonicalCommit!, operationKey: `${input.operationKey}:valid`,
+    });
+    if (!accepted.ok) throw new Error(accepted.detail);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    document.iterationReceipts[0]!.canonicalCommit = 'f'.repeat(40);
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(/invalid control-plane iteration receipt/);
+  });
+
+  it('records one iteration request and receipt idempotently by operation key', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    expect(request).toMatchObject({ ok: true });
+    expect(task4Request(store, created.run.runRef)).toMatchObject({ ok: true, replayed: true, value: { requestRef: request.ok ? request.value.requestRef : '' } });
+    const receipt = task4Receipt(store, created.run.runRef);
+    expect(receipt).toMatchObject({ ok: true });
+    const replayDetail = store.getRun('alice', created.run.runRef);
+    if (!replayDetail.ok) throw new Error(replayDetail.detail);
+    const participantAttemptRef = receipt.ok ? receipt.value.participantAttemptRef : undefined;
+    if (!participantAttemptRef) throw new Error('iteration receipt attempt missing');
+    const replay = store.recordIterationReceipt('alice', receipt.ok ? receipt.value.iterationLoopRef : '', receipt.ok ? {
+      expectedLoopVersion: 999, requestRef: receipt.value.requestRef,
+      outcome: { schema: 'kb.iteration-outcome/v1', requestRef: receipt.value.requestRef, iterationLoopRef: receipt.value.iterationLoopRef, participantId: 'draft-judge', cycle: 1, verdict: 'fail', inputGenerationRefs: [...receipt.value.inputGenerationRefs], criteria: receipt.value.criteria, findings: receipt.value.findings, positions: receipt.value.positions, recordedDissent: receipt.value.recordedDissent, summary: receipt.value.summary },
+      outputGenerationRefs: [], baseCommit: receipt.value.baseCommit, canonicalCommit: receipt.value.canonicalCommit,
+      participantAttemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:c1:fail`,
+    } : {} as never);
+    expect(replay).toMatchObject({ ok: true, replayed: true, value: { receiptRef: receipt.ok ? receipt.value.receiptRef : '' } });
+    const detail = store.getRun('alice', created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: { iterationRequests: [expect.anything()], iterationReceipts: [expect.anything()] } });
+  });
+
+  it('turns a parked verdict into exactly one restart-durable linked gate resolvable approve and decline', () => {
+    for (const decision of ['approved', 'declined'] as const) {
+      const root = mkdtempSync(join(tmpdir(), `control-store-task4-verdict-park-${decision}-`));
+      roots.push(root);
+      const store = createFileControlPlaneStore(root, deterministicOptions());
+      const created = createTask4IterationRun(store);
+      activateTask4Loop(store, created.run.runRef);
+      const request = task4Request(store, created.run.runRef);
+      if (!request.ok) throw new Error(request.detail);
+      const before = store.getRun('alice', created.run.runRef);
+      if (!before.ok) throw new Error(before.detail);
+      const loop = before.value.iterationLoops[0]!;
+      const generation = before.value.stageGenerations.find((item) => item.generationRef === request.value.inputGenerationRefs[0])!;
+      const receipt = store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+        expectedLoopVersion: loop.version, requestRef: request.value.requestRef,
+        outcome: {
+          schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef,
+          participantId: 'draft-judge', cycle: request.value.cycle, verdict: 'parked',
+          inputGenerationRefs: [...request.value.inputGenerationRefs],
+          criteria: [{ criterionId: 'draft-criterion', verdict: 'unverified', findingIds: [] }],
+          findings: [],
+          positions: [], recordedDissent: [], summary: 'Participant parked explicitly.',
+        },
+        outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!,
+      participantAttemptRef: completeTask4JudgeStage(store, created.run.runRef).attempt.attemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:parked:${decision}`,
+      });
+      if (!receipt.ok) throw new Error(receipt.detail);
+      let restarted = createFileControlPlaneStore(root, deterministicOptions());
+      const parked = restarted.getRun('alice', created.run.runRef);
+      if (!parked.ok) throw new Error(parked.detail);
+      const parkedLoop = parked.value.iterationLoops[0]!;
+      const gates = parked.value.humanRequests.filter((item) => item.gateKind === 'iteration-park');
+      expect(parkedLoop).toMatchObject({ state: 'awaiting-park-gate', parkReason: 'parked', interventionRef: gates[0]?.requestRef,
+        unresolvedResidue: { requestRefs: [request.value.requestRef], receiptRefs: [receipt.value.receiptRef],
+          activeGenerationRefs: loop.activeGenerationRefs, acceptedGenerationRefs: [] } });
+      expect(gates).toHaveLength(1);
+      const resolved = restarted.resolveIterationGate('alice', gates[0]!.requestRef, {
+        expectedRequestRevision: gates[0]!.revision, expectedLoopVersion: parkedLoop.version,
+        expectedReceiptVersion: 1, decision, operationKey: `resolve-parked-verdict-${decision}`,
+      });
+      expect(resolved).toMatchObject({ ok: true, value: { loop: { state: decision === 'approved' ? 'passed' : 'declined' } } });
+      restarted = createFileControlPlaneStore(root, deterministicOptions());
+      expect(restarted.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: {
+        humanRequests: [expect.objectContaining({ requestRef: gates[0]!.requestRef, state: 'resolved' })],
+        iterationLoops: [expect.objectContaining({ state: decision === 'approved' ? 'passed' : 'declined' })],
+      } });
+    }
+  });
+
+  it('activates an awaiting seed loop atomically and idempotently from its pinned seed generation', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    const { generation, loop } = activateTask4Loop(store, created.run.runRef);
+    expect(loop).toMatchObject({ state: 'awaiting-turn', cyclesUsed: 1, currentStepId: 'draft-review', turnOwnerParticipantId: 'draft-judge', activeGenerationRefs: [generation.generationRef] });
+    expect(store.activateIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: 0, seedGenerationRefs: [generation.generationRef], artifactGenerationRefs: { 'draft-artifact': generation.generationRef },
+      operationKey: `iteration-activate:${created.run.runRef}:draft-loop:c1`,
+    })).toMatchObject({ ok: true, replayed: true, value: { version: loop.version } });
+  });
+
+  it('advances only the declared route with matching loop and generation CAS versions', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-review', operationKey: 'advance-wrong-route',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework', operationKey: 'advance-declared-route',
+    })).toMatchObject({ ok: true, value: { state: 'rework-queued', currentStepId: 'draft-rework', turnOwnerParticipantId: 'draft-author', cyclesUsed: 1 } });
+  });
+
+  it('replays a queued generic producer attempt only for the matching operation key and fingerprint', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task4-advance-replay-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const failed = task4Receipt(store, created.run.runRef, 'draft', 'fail');
+    if (!failed.ok) throw new Error(failed.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const genericInput = {
+      expectedLoopVersion: loop.version, expectedReceiptRef: failed.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework',
+      operationKey: 'advance-generic-replay',
+    };
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, genericInput)).toMatchObject({
+      ok: true, value: { state: 'rework-queued', activeGenerationRefs: loop.activeGenerationRefs },
+    });
+
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.advanceIterationTurn('alice', loop.iterationLoopRef, genericInput)).toMatchObject({
+      ok: true, replayed: true, value: { state: 'rework-queued', activeGenerationRefs: loop.activeGenerationRefs },
+    });
+    const after = restarted.getRun('alice', created.run.runRef);
+    expect(after).toMatchObject({ ok: true, value: {
+      stageGenerations: [expect.objectContaining({ generation: 1, state: 'committed' })],
+      generationSupersessions: [],
+      attempts: expect.arrayContaining([expect.objectContaining({ logicalGeneration: 2, state: 'queued' })]),
+    } });
+    expect(restarted.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      ...genericInput, operationKey: 'advance-generic-different-caller-key',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('uses the persisted current step when a four-step schedule reuses a route', () => {
+    const group = task4IterationGroup();
+    group.initialStepId = 'draft-review-b';
+    (group as { schedule: Array<{ stepId: string; routeId: string; after: { stepId: string; participantId: string; verdict: 'fulfilled' | 'fail' }; cycle: 'current' | 'next' }> }).schedule = [
+      { stepId: 'draft-review-a', routeId: 'draft-to-judge', after: { stepId: 'draft-rework-a', participantId: 'draft-author', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'draft-rework-a', routeId: 'draft-to-author', after: { stepId: 'draft-review-a', participantId: 'draft-judge', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'draft-review-b', routeId: 'draft-to-judge', after: { stepId: 'draft-rework-b', participantId: 'draft-author', verdict: 'fulfilled' }, cycle: 'current' },
+      { stepId: 'draft-rework-b', routeId: 'draft-to-author', after: { stepId: 'draft-review-b', participantId: 'draft-judge', verdict: 'fail' }, cycle: 'next' },
+    ];
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store, [group]);
+    activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    if (!request.ok) throw new Error(request.detail);
+    expect(request.value.stepId).toBe('draft-review-b');
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    let detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework-a', operationKey: 'reused-route-wrong-successor',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const advanced = store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework-b', operationKey: 'reused-route-declared-successor',
+    });
+    expect(advanced).toMatchObject({ ok: true, value: { currentStepId: 'draft-rework-b' } });
+    detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const generation = detail.value.stageGenerations[0]!;
+    const advancedLoop = detail.value.iterationLoops[0]!;
+    expect(store.recordIterationRequest('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: advanced.ok ? advanced.value.version : -1, routeId: 'draft-to-author', kind: 'rework',
+      inputGenerationRefs: [...advancedLoop.activeGenerationRefs], baseCommit: generation.canonicalCommit!,
+      artifactHashes: { 'draft-artifact': generation.resultHash! }, unresolvedFindingRefs: ['draft-finding'], preservedInvariants: [],
+      nextAcceptanceCheck: 'Resolve the finding.', instructions: 'Rework the draft.', operationKey: 'reused-route-cycle-two-request',
+    })).toMatchObject({ ok: true, value: { stepId: 'draft-rework-b', cycle: 2 } });
+  });
+
+  it('rejects exhausted-reason parking before the declared cycle bound is exhausted', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.parkIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'exhausted',
+      nextRouteId: 'draft-to-author', operationKey: 'park-exhausted-too-early',
+    })).toMatchObject({ ok: false, reason: 'ineligible', detail: expect.stringContaining('not exhausted') });
+  });
+
+  it('blocks a generic rework on a run-wide non-iteration intervention', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const intervention = store.createHumanRequest('alice', created.run.runRef, {
+      kind: 'intervention', title: 'Launch reconciliation', prompt: 'Reconcile the launch before more work.',
+    });
+    if (!intervention.ok) throw new Error(intervention.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework',
+      operationKey: 'advance-blocked-by-reconciliation',
+    })).toMatchObject({ ok: false, reason: 'ineligible', detail: expect.stringContaining('open gate or intervention') });
+  });
+
+  it('rejects a stale turn owner duplicate successor or receipt from the wrong participant', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    if (!request.ok) throw new Error(request.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const generation = detail.value.stageGenerations[0]!;
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, requestRef: request.value.requestRef,
+      outcome: { schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-author', cycle: 1, verdict: 'fail', inputGenerationRefs: [...request.value.inputGenerationRefs], criteria: [{ criterionId: 'draft-criterion', verdict: 'fail', findingIds: ['draft-finding'] }], findings: [{ findingId: 'draft-finding', criterionId: 'draft-criterion', severity: 'blocking', summary: 'failed', evidencePaths: [] }], positions: [], recordedDissent: [], summary: 'failed' },
+      outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!, participantAttemptRef: generation.attemptRef, operationKey: 'wrong-participant',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const after = store.getRun('alice', created.run.runRef);
+    if (!after.ok) throw new Error(after.detail);
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...after.value.iterationLoops[0]!.activeGenerationRefs], nextStepId: 'draft-rework', operationKey: 'stale-owner',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: after.value.iterationLoops[0]!.version, requestRef: request.value.requestRef,
+      outcome: { schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-judge', cycle: 1, verdict: 'fail', inputGenerationRefs: [...request.value.inputGenerationRefs], criteria: receipt.value.criteria, findings: receipt.value.findings, positions: receipt.value.positions, recordedDissent: [], summary: receipt.value.summary },
+      outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!, participantAttemptRef: generation.attemptRef, operationKey: 'duplicate-successor-receipt',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('parks an explicit participant stop atomically with every unresolved finding position artifact and next route', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task4-park-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const parked = store.parkIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'parked', nextRouteId: 'draft-to-author', operationKey: 'park-draft-explicit',
+    });
+    expect(parked).toMatchObject({ ok: true, value: { loop: { state: 'awaiting-park-gate', parkReason: 'parked', unresolvedResidue: {
+      unresolvedFindings: [{ findingId: 'draft-finding' }], positions: [],
+      activeGenerationRefs: loop.activeGenerationRefs, nextRouteId: 'draft-to-author', cyclesUsed: 1, maxCycles: 2,
+    } }, gate: { kind: 'approval', gateKind: 'iteration-park', state: 'open' } } });
+    const restarted = createFileControlPlaneStore(root, deterministicOptions()).getRun('alice', created.run.runRef);
+    expect(restarted).toMatchObject({ ok: true, value: { iterationLoops: [expect.objectContaining({
+      state: 'awaiting-park-gate', parkReason: 'parked', interventionRef: parked.ok ? parked.value.gate.requestRef : '',
+    })] } });
+  });
+
+  it('scopes an open iteration park gate to its group while a sibling group completes', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store, [task4IterationGroup('left'), task4IterationGroup('right')]);
+    activateTask4Loop(store, created.run.runRef, 'left');
+    activateTask4Loop(store, created.run.runRef, 'right');
+    const leftReceipt = task4Receipt(store, created.run.runRef, 'left');
+    if (!leftReceipt.ok) throw new Error(leftReceipt.detail);
+    let detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const left = detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'left-loop')!;
+    expect(store.parkIterationLoop('alice', left.iterationLoopRef, {
+      expectedLoopVersion: left.version, expectedReceiptRef: leftReceipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...left.activeGenerationRefs], reason: 'parked', nextRouteId: 'left-to-author', operationKey: 'park-left',
+    })).toMatchObject({ ok: true });
+    expect(task4Receipt(store, created.run.runRef, 'right', 'pass')).toMatchObject({ ok: true });
+    detail = store.getRun('alice', created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: { iterationLoops: expect.arrayContaining([
+      expect.objectContaining({ iterationGroupId: 'left-loop', state: 'awaiting-park-gate' }),
+      expect.objectContaining({ iterationGroupId: 'right-loop', state: 'passed' }),
+    ]) } });
+  });
+
+  it('scopes an open iteration completion gate to its group while a sibling group takes a turn', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store, [task4IterationGroup('left', true), task4IterationGroup('right')]);
+    activateTask4Loop(store, created.run.runRef, 'left');
+    activateTask4Loop(store, created.run.runRef, 'right');
+    expect(task4Receipt(store, created.run.runRef, 'left', 'pass')).toMatchObject({ ok: true });
+    expect(task4Request(store, created.run.runRef, 'right')).toMatchObject({ ok: true });
+    expect(store.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: { iterationLoops: expect.arrayContaining([
+      expect.objectContaining({ iterationGroupId: 'left-loop', state: 'awaiting-completion-gate' }),
+      expect.objectContaining({ iterationGroupId: 'right-loop', state: 'running-turn' }),
+    ]) } });
+  });
+
+  it('approves the exact parked generation set or declines without adding a cycle', () => {
+    for (const decision of ['approved', 'declined'] as const) {
+      const store = createInMemoryControlPlaneStore(deterministicOptions());
+      const created = createTask4IterationRun(store);
+      activateTask4Loop(store, created.run.runRef);
+      const receipt = task4Receipt(store, created.run.runRef);
+      if (!receipt.ok) throw new Error(receipt.detail);
+      let detail = store.getRun('alice', created.run.runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      const loop = detail.value.iterationLoops[0]!;
+      const parked = store.parkIterationLoop('alice', loop.iterationLoopRef, {
+        expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+        expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'parked', nextRouteId: 'draft-to-author', operationKey: `park-${decision}`,
+      });
+      if (!parked.ok) throw new Error(parked.detail);
+      const resolved = store.resolveIterationGate('alice', parked.value.gate.requestRef, {
+        expectedRequestRevision: parked.value.gate.revision, expectedLoopVersion: parked.value.loop.version,
+        expectedReceiptVersion: parked.value.receiptVersion, decision, operationKey: `resolve-${decision}`,
+      });
+      expect(resolved).toMatchObject({ ok: true, value: { loop: {
+        state: decision === 'approved' ? 'passed' : 'declined', cyclesUsed: 1,
+        ...(decision === 'approved' ? { acceptedGenerationRefs: loop.activeGenerationRefs } : {}),
+      } } });
+      expect(store.resolveIterationGate('alice', parked.value.gate.requestRef, {
+        expectedRequestRevision: parked.value.gate.revision, expectedLoopVersion: parked.value.loop.version,
+        expectedReceiptVersion: parked.value.receiptVersion, decision, operationKey: `resolve-${decision}`,
+      })).toMatchObject({ ok: true, replayed: true, value: { interventionRequest: null } });
+      detail = store.getRun('alice', created.run.runRef);
+      expect(detail.ok && detail.value.iterationLoops[0]!.cyclesUsed).toBe(1);
+    }
+  });
+
+  it('keeps post-acceptance completion approval distinct from iteration-park approval', () => {
+    const completionStore = createInMemoryControlPlaneStore(deterministicOptions());
+    const completionRun = createTask4IterationRun(completionStore, [task4IterationGroup('draft', true)]);
+    activateTask4Loop(completionStore, completionRun.run.runRef);
+    expect(task4Receipt(completionStore, completionRun.run.runRef, 'draft', 'pass')).toMatchObject({ ok: true });
+    const completion = completionStore.getRun('alice', completionRun.run.runRef);
+    if (!completion.ok) throw new Error(completion.detail);
+    expect(completion.value.iterationLoops[0]).toMatchObject({ state: 'awaiting-completion-gate', completionGateRef: expect.any(String) });
+    expect(completion.value.humanRequests).toContainEqual(expect.objectContaining({ requestRef: completion.value.iterationLoops[0]!.completionGateRef, kind: 'approval' }));
+    const completionGate = completion.value.humanRequests.find((request) => request.requestRef === completion.value.iterationLoops[0]!.completionGateRef)!;
+    expect(completionStore.resolveIterationGate('alice', completionGate.requestRef, {
+      expectedRequestRevision: completionGate.revision, expectedLoopVersion: completion.value.iterationLoops[0]!.version,
+      expectedReceiptVersion: 1, decision: 'changes-requested', operationKey: 'completion-needs-changes',
+    })).toMatchObject({ ok: true, value: { loop: { state: 'parked' }, interventionRequest: { kind: 'intervention' } } });
+
+    const parkStore = createInMemoryControlPlaneStore(deterministicOptions());
+    const parkRun = createTask4IterationRun(parkStore);
+    activateTask4Loop(parkStore, parkRun.run.runRef);
+    const receipt = task4Receipt(parkStore, parkRun.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const beforePark = parkStore.getRun('alice', parkRun.run.runRef);
+    if (!beforePark.ok) throw new Error(beforePark.detail);
+    const loop = beforePark.value.iterationLoops[0]!;
+    const parked = parkStore.parkIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'parked', nextRouteId: 'draft-to-author', operationKey: 'park-explicit-stop',
+    });
+    if (!parked.ok) throw new Error(parked.detail);
+    expect(parked.value.gate).toMatchObject({ kind: 'approval', gateKind: 'iteration-park' });
+    expect(parkStore.resolveIterationGate('alice', parked.value.gate.requestRef, {
+      expectedRequestRevision: 1, expectedLoopVersion: parked.value.loop.version, expectedReceiptVersion: parked.value.receiptVersion,
+      decision: 'changes-requested', operationKey: 'extend-parked-run',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+  });
+
+  it('settles success only when every iteration group is terminal passed', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    completeTask4JudgeStage(store, created.run.runRef);
+    expect(task4Receipt(store, created.run.runRef, 'draft', 'pass')).toMatchObject({ ok: true });
+    const running = makeTask4RunRunningWithTerminalManager(store, created.run.runRef);
+    expect(store.transitionRun('alice', created.run.runRef, running.version, 'succeeded'))
+      .toMatchObject({ ok: true, value: { state: 'succeeded' } });
+  });
+
+  it('keeps a declined completion-gated or iteration-parked group from successful settlement', () => {
+    const completionStore = createInMemoryControlPlaneStore(deterministicOptions());
+    const completionRun = createTask4IterationRun(completionStore, [task4IterationGroup('draft', true)]);
+    activateTask4Loop(completionStore, completionRun.run.runRef);
+    completeTask4JudgeStage(completionStore, completionRun.run.runRef);
+    const completionReceipt = task4Receipt(completionStore, completionRun.run.runRef, 'draft', 'pass');
+    if (!completionReceipt.ok) throw new Error(completionReceipt.detail);
+    let completionDetail = completionStore.getRun('alice', completionRun.run.runRef);
+    if (!completionDetail.ok) throw new Error(completionDetail.detail);
+    const completionLoop = completionDetail.value.iterationLoops[0]!;
+    const completionGate = completionDetail.value.humanRequests.find((request) =>
+      request.requestRef === completionLoop.completionGateRef)!;
+    expect(completionStore.resolveIterationGate('alice', completionGate.requestRef, {
+      expectedRequestRevision: completionGate.revision, expectedLoopVersion: completionLoop.version,
+      expectedReceiptVersion: 1, decision: 'declined', operationKey: 'decline-completion-task7',
+    })).toMatchObject({ ok: true, value: { loop: { state: 'parked' } } });
+    const completionRunning = makeTask4RunRunningWithTerminalManager(completionStore, completionRun.run.runRef);
+    expect(completionStore.transitionRun('alice', completionRun.run.runRef, completionRunning.version, 'succeeded'))
+      .toMatchObject({ ok: false, reason: 'invalid' });
+
+    const parkStore = createInMemoryControlPlaneStore(deterministicOptions());
+    const group = task4IterationGroup();
+    group.maxCycles = 1;
+    group.schedule[1]!.cycle = 'next';
+    const parkRun = createTask4IterationRun(parkStore, [group]);
+    activateTask4Loop(parkStore, parkRun.run.runRef);
+    completeTask4JudgeStage(parkStore, parkRun.run.runRef);
+    const failed = task4Receipt(parkStore, parkRun.run.runRef, 'draft', 'fail');
+    if (!failed.ok) throw new Error(failed.detail);
+    let parkDetail = parkStore.getRun('alice', parkRun.run.runRef);
+    if (!parkDetail.ok) throw new Error(parkDetail.detail);
+    const failedLoop = parkDetail.value.iterationLoops[0]!;
+    const parked = parkStore.parkIterationLoop('alice', failedLoop.iterationLoopRef, {
+      expectedLoopVersion: failedLoop.version, expectedReceiptRef: failed.value.receiptRef,
+      expectedActiveGenerationRefs: [...failedLoop.activeGenerationRefs], reason: 'exhausted',
+      nextRouteId: 'draft-to-author', operationKey: 'park-declined-task7',
+    });
+    if (!parked.ok) throw new Error(parked.detail);
+    expect(parkStore.resolveIterationGate('alice', parked.value.gate.requestRef, {
+      expectedRequestRevision: parked.value.gate.revision, expectedLoopVersion: parked.value.loop.version,
+      expectedReceiptVersion: parked.value.receiptVersion, decision: 'declined', operationKey: 'decline-park-task7',
+    })).toMatchObject({ ok: true, value: { loop: { state: 'declined' } } });
+    const parkRunning = makeTask4RunRunningWithTerminalManager(parkStore, parkRun.run.runRef);
+    expect(parkStore.transitionRun('alice', parkRun.run.runRef, parkRunning.version, 'succeeded'))
+      .toMatchObject({ ok: false, reason: 'invalid' });
+  });
+
+  it('resolves exhausted and no-progress iteration-park gates with identical approve or decline semantics', () => {
+    for (const decision of ['approved', 'declined'] as const) {
+      for (const reason of ['exhausted', 'no-progress'] as const) {
+        const store = createInMemoryControlPlaneStore(deterministicOptions());
+        const group = task4IterationGroup();
+        group.maxCycles = reason === 'exhausted' ? 1 : 2;
+        if (reason === 'exhausted') group.schedule[1]!.cycle = 'next';
+        const created = createTask4IterationRun(store, [group]);
+        activateTask4Loop(store, created.run.runRef);
+        let parked;
+        if (reason === 'exhausted') {
+          const failed = task4Receipt(store, created.run.runRef, 'draft', 'fail');
+          if (!failed.ok) throw new Error(failed.detail);
+          const detail = store.getRun('alice', created.run.runRef);
+          if (!detail.ok) throw new Error(detail.detail);
+          const loop = detail.value.iterationLoops[0]!;
+          parked = store.parkIterationLoop('alice', loop.iterationLoopRef, {
+            expectedLoopVersion: loop.version, expectedReceiptRef: failed.value.receiptRef,
+            expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason,
+            nextRouteId: 'draft-to-author', operationKey: `park-${reason}-${decision}-task7`,
+          });
+        } else {
+          parked = parkTask4NoProgress(store, created.run.runRef, `${decision}-task7`);
+        }
+        if (!parked.ok) throw new Error(parked.detail);
+        expect(parked.value.gate).toMatchObject({ kind: 'approval', gateKind: 'iteration-park', state: 'open' });
+        const resolved = store.resolveIterationGate('alice', parked.value.gate.requestRef, {
+          expectedRequestRevision: parked.value.gate.revision, expectedLoopVersion: parked.value.loop.version,
+          expectedReceiptVersion: parked.value.receiptVersion, decision,
+          operationKey: `resolve-${reason}-${decision}-task7`,
+        });
+        expect(resolved).toMatchObject({ ok: true, value: { loop: {
+          state: decision === 'approved' ? 'passed' : 'declined',
+          cyclesUsed: parked.value.loop.cyclesUsed,
+        }, interventionRequest: null } });
+      }
+    }
+  });
+
+  it('rejects corrupted attempted request outcome artifact snapshot or failure reason in no-progress residue', () => {
+    const corruptions: Array<(residue: PersistedRow) => void> = [
+      (residue) => { residue.attemptedRequestRef = 'iteration-request-outside'; },
+      (residue) => { (residue.attemptedOutcome as PersistedRow).summary = ''; },
+      (residue) => { ((residue.artifactSnapshots as PersistedRow[])[0]!).afterSha256 = 'invalid'; },
+      (residue) => { ((residue.artifactSnapshots as PersistedRow[])[0]!).byteIdentical = false; },
+      (residue) => { residue.failureReason = ''; },
+    ];
+    for (const [index, corrupt] of corruptions.entries()) {
+      const root = mkdtempSync(join(tmpdir(), `control-store-task7-residue-${index}-`));
+      roots.push(root);
+      const store = createFileControlPlaneStore(root, deterministicOptions());
+      const created = createTask4IterationRun(store);
+      activateTask4Loop(store, created.run.runRef);
+      const parked = parkTask4NoProgress(store, created.run.runRef, `durability-${index}`);
+      if (!parked.ok) throw new Error(parked.detail);
+      expect(createFileControlPlaneStore(root, deterministicOptions()).getRun('alice', created.run.runRef))
+        .toMatchObject({ ok: true, value: { iterationLoops: [expect.objectContaining({ parkReason: 'no-progress' })] } });
+      const path = join(root, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+      const residue = document.iterationLoops[0]!.unresolvedResidue as PersistedRow;
+      corrupt(residue);
+      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions()))
+        .toThrow(/invalid control-plane iteration no-progress residue/);
+    }
+  });
+
+});
+
+describe('Task 2 generic iteration durability', () => {
+  it('materializes approved iteration groups with immutable definition hashes and version zero', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask2IterationRun(store);
+    if (!created.ok) throw new Error(created.detail);
+    expect(created.value.iterationLoops).toEqual([expect.objectContaining({
+      iterationGroupId: 'draft-check', definitionHash: expect.stringMatching(/^[a-f0-9]{64}$/), version: 0,
+      completionGate: task2IterationGroup().completionGate,
+    })]);
+  });
+
+  it('materializes cycle zero awaiting seed with no schedule step or turn owner', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask2IterationRun(store);
+    if (!created.ok) throw new Error(created.detail);
+    expect(created.value.iterationLoops[0]).toMatchObject({ cyclesUsed: 0, state: 'awaiting-seed', activeGenerationRefs: [] });
+    expect(created.value.iterationLoops[0].currentStepId).toBeUndefined();
+    expect(created.value.iterationLoops[0].turnOwnerParticipantId).toBeUndefined();
+  });
+
+  it('rejects an iteration group whose participant stage artifact or route is outside the approved run snapshot', () => {
+    for (const mutate of [
+      (group: ReturnType<typeof task2IterationGroup>) => { group.participants[1]!.stageRef = 'outside'; },
+      (group: ReturnType<typeof task2IterationGroup>) => { group.activation.seedArtifactIds = ['outside']; },
+      (group: ReturnType<typeof task2IterationGroup>) => { group.routes[0]!.baseResolutionStageIds = ['outside']; },
+    ]) {
+      const group = task2IterationGroup();
+      mutate(group);
+      const result = createTask2IterationRun(createInMemoryControlPlaneStore(deterministicOptions()), group);
+      expect(result).toMatchObject({ ok: false, reason: 'invalid' });
+    }
+  });
+
+  it('returns invalid instead of throwing for malformed iteration shapes in the approved stored snapshot', () => {
+    for (const group of [
+      { ...task2IterationGroup(), activation: null },
+      { ...task2IterationGroup(), routes: [{ ...task2IterationGroup().routes[0], baseResolutionStageIds: null }] },
+      { ...task2IterationGroup(), participants: null },
+    ] as any[]) {
+      const store = createInMemoryControlPlaneStore(deterministicOptions());
+      expect(() => createTask2IterationRun(store, group)).not.toThrow();
+      expect(createTask2IterationRun(createInMemoryControlPlaneStore(deterministicOptions()), group))
+        .toMatchObject({ ok: false, reason: 'invalid' });
+    }
+  });
+
+  it('migrates persisted review loops receipts completion gates and supersessions into generic records on load', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task2-migrate-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(first);
+    queueCreatorRework(first, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    const loop = document.iterationLoops[0]!;
+    const successorAttempt = document.attempts.find((attempt) => attempt.logicalGeneration === 2)!;
+    const successorGenerationRef = 'generation-legacy-migration-successor';
+    document.stageGenerations.push({
+      subject: 'alice', operationFingerprint: 'e'.repeat(64),
+      generationRef: successorGenerationRef, runRef: committed.generation.runRef,
+      logicalStageRef: committed.generation.logicalStageRef, logicalStageId: committed.generation.logicalStageId,
+      generation: 2, predecessorGenerationRef: committed.generation.generationRef,
+      attemptRef: successorAttempt.attemptRef, canonicalResultOperationKey: null,
+      resultHash: null, resultCardRef: null, baseCommit: null, canonicalCommit: null, state: 'queued',
+      createdAt: successorAttempt.createdAt, updatedAt: successorAttempt.updatedAt,
+    });
+    loop.state = 'rework-queued';
+    document.generationSupersessions.push({
+      subject: 'alice', runRef: committed.generation.runRef,
+      predecessorGenerationRef: committed.generation.generationRef, successorGenerationRef,
+      triggerReceiptRef: loop.lastReceiptRef, operationKey: 'legacy-rework-supersession',
+      operationFingerprint: 'f'.repeat(64), createdAt: successorAttempt.createdAt,
+    });
+    persistedReviewBundle(document, 'active');
+    for (const row of document.generationSupersessions) {
+      row.failedReviewReceiptRef = row.triggerReceiptRef;
+      delete row.triggerReceiptRef;
+    }
+    delete (document as unknown as { iterationLoops?: unknown }).iterationLoops;
+    delete (document as unknown as { iterationRequests?: unknown }).iterationRequests;
+    delete (document as unknown as { iterationReceipts?: unknown }).iterationReceipts;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).not.toThrow();
+    const migrated = JSON.parse(readFileSync(path, 'utf8')) as Record<string, any>;
+    expect(migrated).not.toHaveProperty('reviewLoops');
+    expect(migrated).not.toHaveProperty('reviewReceipts');
+    expect(migrated.iterationLoops[0]).toMatchObject({ completionGate: CHECKER_COMPLETION_GATE, state: 'rework-queued' });
+    expect(migrated.iterationReceipts).toHaveLength(1);
+    expect(migrated.iterationRequests).toHaveLength(1);
+    expect(migrated.generationSupersessions[0]).toHaveProperty('triggerReceiptRef');
+    expect(migrated.generationSupersessions[0]).not.toHaveProperty('failedReviewReceiptRef');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).not.toThrow();
+
+    const failedRoot = mkdtempSync(join(tmpdir(), 'control-store-task2-failed-migrate-'));
+    roots.push(failedRoot);
+    const failedStore = createFileControlPlaneStore(failedRoot, deterministicOptions());
+    const failedCommitted = commitCheckerSubject(failedStore);
+    failCheckerIteration(failedStore, failedCommitted);
+    const failedPath = join(failedRoot, 'control', 'control-plane.json');
+    const failedDocument = JSON.parse(readFileSync(failedPath, 'utf8')) as PersistedReviewDocument;
+    persistedReviewBundle(failedDocument, 'active');
+    delete (failedDocument as unknown as { iterationLoops?: unknown }).iterationLoops;
+    delete (failedDocument as unknown as { iterationRequests?: unknown }).iterationRequests;
+    delete (failedDocument as unknown as { iterationReceipts?: unknown }).iterationReceipts;
+    writeFileSync(failedPath, `${JSON.stringify(failedDocument)}\n`, 'utf8');
+    createFileControlPlaneStore(failedRoot, deterministicOptions());
+    const failedMigrated = JSON.parse(readFileSync(failedPath, 'utf8')) as Record<string, any>;
+    expect(failedMigrated.iterationLoops[0]).toMatchObject({ state: 'failed' });
+  });
+
+  it('rejects tampered legacy review outcome content instead of re-blessing it during migration', () => {
+    const corruptions: Array<[string, (outcome: PersistedRow) => void]> = [
+      ['schema', (outcome) => { outcome.schema = 'kb.iteration-outcome/v1'; }],
+      ['summary', (outcome) => { outcome.summary = 'Tampered after persistence.'; }],
+      ['criteria', (outcome) => { ((outcome.criteria as PersistedRow[])[0]!).verdict = 'pass'; }],
+      ['findings', (outcome) => { ((outcome.findings as PersistedRow[])[0]!).summary = 'Tampered finding.'; }],
+    ];
+    for (const [name, corrupt] of corruptions) {
+      const root = mkdtempSync(join(tmpdir(), `control-store-legacy-outcome-${name}-`));
+      roots.push(root);
+      const store = createFileControlPlaneStore(root, deterministicOptions());
+      const committed = commitCheckerSubject(store);
+      failCheckerIteration(store, committed);
+      const path = join(root, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+      const legacy = persistedReviewBundle(document, 'active');
+      delete (document as unknown as { iterationLoops?: unknown }).iterationLoops;
+      delete (document as unknown as { iterationRequests?: unknown }).iterationRequests;
+      delete (document as unknown as { iterationReceipts?: unknown }).iterationReceipts;
+      corrupt(legacy.reviewReceipts[0]!.outcome as PersistedRow);
+      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions()), name)
+        .toThrow(/invalid control-plane review receipt/);
+    }
+  });
+
+  it('rejects a corrupted generic loop request receipt generation gate or supersession fixture on load', () => {
+    const cases: Array<[string, (document: any) => void]> = [
+      ['definition hash', (document) => { document.iterationLoops[0].definitionHash = '0'.repeat(64); }],
+      ['request route', (document) => { document.iterationRequests[0].routeId = 'outside'; }],
+      ['receipt outcome', (document) => { document.iterationReceipts[0].outcomeHash = '0'.repeat(64); }],
+      ['generation result', (document) => { document.stageGenerations[0].resultHash = '0'.repeat(64); }],
+      ['completion gate', (document) => { document.iterationLoops[0].completionGate.prompt = ''; }],
+      ['supersession receipt', (document) => { document.generationSupersessions[0].triggerReceiptRef = 'receipt-outside'; }],
+      ['loop state', (document) => { document.iterationLoops[0].state = 'awaiting-turn'; }],
+    ];
+    for (const [name, corrupt] of cases) {
+      const root = mkdtempSync(join(tmpdir(), 'control-store-generic-corrupt-'));
+      roots.push(root);
+      const store = createFileControlPlaneStore(root, deterministicOptions());
+      const created = createTask4IterationRun(store, [task4IterationGroup('draft', true)]);
+      activateTask4Loop(store, created.run.runRef);
+      commitTask4ProducerTurn(store, created.run.runRef);
+      const path = join(root, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(path, 'utf8'));
+      corrupt(document);
+      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions()), name).toThrow(/invalid control-plane/);
+    }
+  });
+
+  it('rejects corruption at the quarantine and restore boundaries independently of load validation', () => {
+    let boundary: 'quarantine' | 'restore' | null = null;
+    const store = createInMemoryControlPlaneStore({
+      ...deterministicOptions(),
+      beforeIterationBoundaryValidationForTest(kind: 'quarantine' | 'restore', target: any) {
+        if (kind === boundary) target.iterationLoops.push(corruptIterationLoop(
+          kind === 'restore' ? target.run.runRef : target.runs[0].runRef,
+        ));
+      },
+    });
+    const active = createTask2IterationRun(store);
+    if (!active.ok) throw new Error(active.detail);
+    boundary = 'quarantine';
+    expect(() => store.quarantineRuns('alice', [active.value.run.runRef], '0'.repeat(64)))
+      .toThrow(/invalid control-plane iteration/);
+
+    boundary = null;
+    const plain = createRun(store, 'bob');
+    const stoppedRun = store.transitionRun('bob', plain.run.runRef, plain.run.version, 'interrupted');
+    if (!stoppedRun.ok) throw new Error(stoppedRun.detail);
+    for (const stage of plain.stages) {
+      const stopped = store.transitionStage('bob', stage.stageRef, stage.version, 'stopped');
+      if (!stopped.ok) throw new Error(stopped.detail);
+    }
+    const stoppedManager = store.transitionSession('bob', plain.sessions[0]!.sessionRef, plain.sessions[0]!.version, 'stopped');
+    if (!stoppedManager.ok) throw new Error(stoppedManager.detail);
+    const plan = store.dryRunQuarantine('bob', [plain.run.runRef]);
+    if (!plan.ok) throw new Error(plan.detail);
+    expect(store.quarantineRuns('bob', [plain.run.runRef], plan.value.planHash)).toMatchObject({ ok: true });
+    boundary = 'restore';
+    expect(() => store.restoreRun('bob', plain.run.runRef)).toThrow(/invalid control-plane iteration/);
+  });
+
+  it('returns run detail with iteration collections and no review collections after cutover', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task2-projection-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createCheckerRun(store);
+    expect(created.iterationLoops).toHaveLength(1);
+    expect(created).not.toHaveProperty('reviewLoops');
+    expect(created).not.toHaveProperty('reviewReceipts');
+    const document = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as Record<string, unknown>;
+    expect(document).not.toHaveProperty('reviewLoops');
+    expect(document).not.toHaveProperty('reviewReceipts');
+    expect(document).toHaveProperty('iterationLoops');
+  });
+
+  it('rejects cyclesUsed inflation beyond the receipt and generation graph', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task2-cycles-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    failCheckerIteration(store, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    document.iterationLoops[0]!.cyclesUsed = document.iterationLoops[0]!.maxCycles;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(/iteration cycle evidence/);
+  });
+
+  it('binds an iteration request fingerprint to the canonical request content', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task2-request-fingerprint-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    failCheckerIteration(store, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    document.iterationRequests[0]!.instructions = 'Tampered after persistence.';
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(/iteration request fingerprint/);
+  });
+
+  it('rejects dangling finding refs and empty rework instructions or acceptance checks', () => {
+    for (const testCase of [
+      { rework: false, mutate: (request: PersistedRow) => { request.unresolvedFindingRefs = ['finding-missing']; } },
+      { rework: true, mutate: (request: PersistedRow) => { request.instructions = ''; } },
+      { rework: true, mutate: (request: PersistedRow) => { request.nextAcceptanceCheck = ''; } },
+    ]) {
+      const root = mkdtempSync(join(tmpdir(), 'control-store-task2-rework-request-'));
+      roots.push(root);
+      const store = createFileControlPlaneStore(root, deterministicOptions());
+      const committed = commitCheckerSubject(store);
+      failCheckerIteration(store, committed);
+      const path = join(root, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+      const request = document.iterationRequests[0]!;
+      if (testCase.rework) {
+        request.routeId = 'check-to-manager';
+        request.senderParticipantId = 'check-judge';
+        request.recipientParticipantId = 'build-manager';
+        request.kind = 'rework';
+      }
+      testCase.mutate(request);
+      request.operationFingerprint = iterationRequestFingerprintForTest(request);
+      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(/iteration request/);
+    }
+  });
+
+  it('reports an oversized legacy migration with measured source and migrated sizes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task2-oversized-migration-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    failCheckerIteration(store, committed);
+    const path = join(root, 'control', 'control-plane.json');
+    const genericBytes = statSync(path).size;
+    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    persistedReviewBundle(document, 'active');
+    delete (document as unknown as { iterationLoops?: unknown }).iterationLoops;
+    delete (document as unknown as { iterationRequests?: unknown }).iterationRequests;
+    delete (document as unknown as { iterationReceipts?: unknown }).iterationReceipts;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    const legacyBytes = statSync(path).size;
+    expect(genericBytes).toBeGreaterThan(legacyBytes);
+    const maxDocumentBytes = Math.floor((legacyBytes + genericBytes) / 2);
+    expect(() => createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes }))
+      .toThrow(new RegExp(`migration.*${maxDocumentBytes}.*source ${legacyBytes}.*migrated \\d+`, 'i'));
+  });
+});
 
 function settleRetryPredecessor(
   store: ControlPlaneStore,
@@ -1252,67 +2470,7 @@ describe('run graph, attempts, and managed sessions', () => {
     })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
   });
 
-  it('appends committed subject lineage and a replay-safe parsed checker receipt', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    expect(store.recordStageGeneration('alice', committed.subject.stageRef, committed.input)).toMatchObject({ ok: true, replayed: true });
-    const afterGeneration = store.getRun('alice', committed.created.run.runRef);
-    if (!afterGeneration.ok) throw new Error(afterGeneration.detail);
-    expect(afterGeneration.value).toMatchObject({
-      stageGenerations: [expect.objectContaining({ generationRef: committed.generation.generationRef, resultHash: 'd'.repeat(64), canonicalCommit: 'a'.repeat(40) })],
-      reviewLoops: [expect.objectContaining({ state: 'checking', activeGenerationRef: committed.generation.generationRef })],
-    });
-    const checker = afterGeneration.value.stages.find((stage) => stage.stageId === 'check');
-    if (!checker) throw new Error('checker stage missing');
-    const checkerAttempt = store.createAttempt('alice', checker.stageRef, {
-      expectedStageVersion: checker.version, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
-      reviewSubjectGenerationRef: committed.generation.generationRef, reviewSubjectResultHash: 'd'.repeat(64), reviewSubjectCanonicalCommit: 'a'.repeat(40),
-    });
-    if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
-    const starting = store.transitionAttempt('alice', checkerAttempt.value.attemptRef, checkerAttempt.value.version, 'starting');
-    if (!starting.ok) throw new Error(starting.detail);
-    const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
-    if (!running.ok) throw new Error(running.detail);
-    const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
-    if (!succeeded.ok) throw new Error(succeeded.detail);
-    const beforeReceipt = store.getRun('alice', committed.created.run.runRef);
-    if (!beforeReceipt.ok) throw new Error(beforeReceipt.detail);
-    const review = beforeReceipt.value.stages.find((stage) => stage.stageId === 'check');
-    const loop = beforeReceipt.value.reviewLoops[0];
-    if (!review || !loop) throw new Error('review loop missing');
-    const receiptInput = {
-      expectedReviewStageVersion: review.version, expectedCheckerAttemptVersion: succeeded.value.version, expectedLoopVersion: loop.version,
-      subjectGenerationRef: committed.generation.generationRef, subjectResultHash: 'd'.repeat(64), checkerAttemptRef: succeeded.value.attemptRef,
-      outcome: checkerPassOutcome(), operationKey: `review-outcome:${committed.created.run.runRef}:check:g1`,
-    };
-    const receipt = store.recordReviewReceipt('alice', review.stageRef, receiptInput);
-    expect(receipt).toMatchObject({ ok: true, value: { state: 'awaiting-completion-gate', subjectGenerationRef: committed.generation.generationRef, finalizedAt: null } });
-    expect(store.recordReviewReceipt('alice', review.stageRef, receiptInput)).toMatchObject({ ok: true, replayed: true });
-    const accepted = store.getRun('alice', committed.created.run.runRef);
-    if (!accepted.ok) throw new Error(accepted.detail);
-    expect(accepted.value).toMatchObject({
-      reviewLoops: [expect.objectContaining({ state: 'awaiting-gate', acceptedGenerationRef: null })],
-      reviewReceipts: [expect.objectContaining({ state: 'awaiting-completion-gate', subjectResultHash: 'd'.repeat(64) })],
-    });
-    expect(accepted.value.stages.find((stage) => stage.stageId === 'build')).toMatchObject({ acceptedGenerationRef: null });
-  });
 
-  it('fails closed for stale or mismatched generation and receipt lineage', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    expect(store.recordStageGeneration('alice', committed.subject.stageRef, { ...committed.input, operationKey: 'result-other', resultHash: 'e'.repeat(64) }))
-      .toMatchObject({ ok: false, reason: 'invalid' });
-    const detail = store.getRun('alice', committed.created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    const review = detail.value.stages.find((stage) => stage.stageId === 'check');
-    const loop = detail.value.reviewLoops[0];
-    if (!review || !loop) throw new Error('review loop missing');
-    expect(store.recordReviewReceipt('alice', review.stageRef, {
-      expectedReviewStageVersion: review.version, expectedCheckerAttemptVersion: 1, expectedLoopVersion: loop.version,
-      subjectGenerationRef: committed.generation.generationRef, subjectResultHash: 'e'.repeat(64), checkerAttemptRef: 'attempt-missing',
-      outcome: checkerPassOutcome(), operationKey: 'review-mismatch',
-    })).toMatchObject({ ok: false, reason: 'conflict' });
-  });
 
   it('blocks generic stage and checker-attempt bypasses until immutable review lineage exists', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
@@ -1337,382 +2495,21 @@ describe('run graph, attempts, and managed sessions', () => {
     })).toMatchObject({ ok: false, reason: 'conflict' });
   });
 
-  it('atomically appends a bounded queued creator successor after a failed checker receipt', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    const { input } = failCheckerReview(store, committed);
-    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, {
-      ...input, expectedLoopVersion: input.expectedLoopVersion - 1,
-    } as never)).toMatchObject({ ok: false, reason: 'conflict' });
-    expect(store.getRun('alice', committed.created.run.runRef)).toMatchObject({
-      ok: true, value: { stageGenerations: [expect.anything()], generationSupersessions: [] },
-    });
-    const advanced = store.advanceReviewGeneration('alice', committed.created.run.runRef, input as never);
-    expect(advanced).toMatchObject({ ok: true, value: { generation: 2, state: 'queued', resultHash: null, baseCommit: null, canonicalCommit: null } });
-    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, input as never)).toMatchObject({ ok: true, replayed: true });
-    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, {
-      ...input, expectedSubjectAttemptVersion: input.expectedSubjectAttemptVersion + 1,
-    } as never)).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
-    const after = store.getRun('alice', committed.created.run.runRef);
-    expect(after).toMatchObject({ ok: true, value: {
-      generationSupersessions: [expect.objectContaining({ predecessorGenerationRef: committed.generation.generationRef })],
-      reviewLoops: [expect.objectContaining({ state: 'rework-queued', reworksUsed: 1, activeReceiptRef: null })],
-    } });
-  });
 
-  it('does not mutate failed review state when the creator rework bound is exhausted', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
-    const { input } = failCheckerReview(store, committed);
-    const before = store.getRun('alice', committed.created.run.runRef);
-    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({
-      ok: false, reason: 'ineligible', detail: expect.stringContaining('bound is exhausted'),
-    });
-    expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
-  });
 
-  it('parks an exhausted failed review with one server-derived intervention and exact replay', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
-    const { input, reworkInput } = exhaustedReviewInput(store, committed);
-    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, reworkInput)).toMatchObject({
-      ok: false, reason: 'ineligible', detail: expect.stringContaining('bound is exhausted'),
-    });
-    expect(store.getRun('alice', committed.created.run.runRef)).toMatchObject({
-      ok: true, value: { humanRequests: [], reviewLoops: [expect.objectContaining({ state: 'failed' })] },
-    });
-    const parked = store.parkExhaustedReview('alice', committed.created.run.runRef, input);
-    expect(parked).toMatchObject({
-      ok: true,
-      value: {
-        receipt: { state: 'failed', interventionRequestRef: expect.any(String), version: input.expectedReceiptVersion + 1 },
-        loop: { state: 'parked', interventionRequestRef: expect.any(String), version: input.expectedLoopVersion + 1 },
-        interventionRequest: {
-          kind: 'intervention', state: 'open', stageRef: expect.any(String), response: null,
-          title: 'Review intervention: Check', prompt: 'Creator rework bound exhausted: Grounding failed.',
-        },
-      },
-    });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true, replayed: true });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
-      ...input, expectedReceiptVersion: input.expectedReceiptVersion + 1,
-    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
-      ...input, expectedGenerationRef: 'generation-wrong',
-    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
-      ...input, expectedSubjectAttemptRef: 'attempt-wrong',
-    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
-      ...input, expectedCheckerAttemptVersion: input.expectedCheckerAttemptVersion + 1,
-    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
-    const detail = store.getRun('alice', committed.created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    expect(detail.value.humanRequests.filter((request) => request.kind === 'intervention')).toHaveLength(1);
-  });
 
-  it('requires exact exhausted-review lineage, versions, and bound eligibility', () => {
-    const below = createInMemoryControlPlaneStore(deterministicOptions());
-    const belowCommitted = commitCheckerSubject(below, createCheckerRun(below, 'alice', 1));
-    const belowExhausted = exhaustedReviewInput(below, belowCommitted);
-    expect(below.parkExhaustedReview('alice', belowCommitted.created.run.runRef, belowExhausted.input)).toMatchObject({
-      ok: false, reason: 'ineligible', detail: expect.stringContaining('not exhausted'),
-    });
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
-    const { input } = exhaustedReviewInput(store, committed);
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
-      ...input, expectedSubjectStageVersion: input.expectedSubjectStageVersion + 1,
-    })).toMatchObject({ ok: false, reason: 'conflict' });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
-      ...input, expectedGenerationRef: 'generation-wrong',
-    })).toMatchObject({ ok: false, reason: 'conflict' });
-  });
 
-  it.each(['failed', 'stopped'] as const)('rejects exhausted parking when the checker worker session is %s', (state) => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
-    const { input } = exhaustedReviewInput(store, committed, state);
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({
-      ok: false, reason: 'conflict', detail: expect.stringContaining('lineage'),
-    });
-  });
 
-  it('does not mutate an exhausted review when the Human Request cap is reached or its operation is reserved', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
-    const { input } = exhaustedReviewInput(store, committed);
-    fillHumanRequestCap(store, committed.created.run.runRef);
-    const before = store.getRun('alice', committed.created.run.runRef);
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: false, reason: 'limit' });
-    expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
-    expect(store.createHumanRequests('alice', committed.created.run.runRef, {
-      idempotencyKey: input.idempotencyKey, requests: [{ kind: 'intervention', title: 'No', prompt: 'No.' }],
-    })).toMatchObject({ ok: false, reason: 'invalid' });
-  });
 
-  it('leaves a capped exhausted-review file byte-identical', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const store = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
-    const { input } = exhaustedReviewInput(store, committed);
-    fillHumanRequestCap(store, committed.created.run.runRef);
-    const path = join(root, 'control', 'control-plane.json');
-    const before = readFileSync(path, 'utf8');
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: false, reason: 'limit' });
-    expect(readFileSync(path, 'utf8')).toBe(before);
-  });
 
-  it('parks when exactly one Human Request slot remains', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 0));
-    const { input } = exhaustedReviewInput(store, committed);
-    const filled = store.createHumanRequests('alice', committed.created.run.runRef, {
-      idempotencyKey: 'fill-human-request-cap-minus-one',
-      requests: Array.from({ length: MAX_HUMAN_REQUESTS_PER_RUN - 1 }, (_, index) => ({
-        kind: 'input' as const, title: `Input ${index}`, prompt: 'Supply a bounded input.',
-      })),
-    });
-    if (!filled.ok) throw new Error(filled.detail);
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true });
-  });
 
-  it('parks the exhausted second generation exactly once and survives replay and restart', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const store = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(store, createCheckerRun(store, 'alice', 1));
-    const firstFailure = failCheckerReview(store, committed);
-    const advanced = store.advanceReviewGeneration('alice', committed.created.run.runRef, firstFailure.input);
-    if (!advanced.ok) throw new Error(advanced.detail);
-    const successor = succeedQueuedCreatorAttempt(store, committed.created.run.runRef);
-    const secondGeneration = store.recordStageGeneration('alice', successor.stage.stageRef, {
-      expectedStageVersion: successor.stage.version, expectedAttemptVersion: successor.attempt.version, expectedGeneration: 2,
-      operationKey: `result:${committed.created.run.runRef}:build:g2`, resultHash: 'e'.repeat(64), resultCardRef: null,
-      baseCommit: committed.generation.canonicalCommit as string, canonicalCommit: 'c'.repeat(40),
-    });
-    if (!secondGeneration.ok) throw new Error(secondGeneration.detail);
-    const second = { ...committed, attempt: successor.attempt, generation: secondGeneration.value };
-    const secondFailure = failCheckerReview(store, second);
-    const current = store.getRun('alice', committed.created.run.runRef);
-    if (!current.ok) throw new Error(current.detail);
-    const subjectStage = current.value.stages.find((stage) => stage.stageId === 'build');
-    const reviewStage = current.value.stages.find((stage) => stage.stageId === 'check');
-    const loop = current.value.reviewLoops[0];
-    if (!subjectStage || !reviewStage || !loop) throw new Error('second failed review graph missing');
-    const input = {
-      expectedSubjectStageVersion: subjectStage.version, expectedReviewStageVersion: reviewStage.version,
-      expectedLoopVersion: loop.version, expectedReceiptVersion: secondFailure.receipt.version,
-      expectedSubjectAttemptRef: secondFailure.input.expectedSubjectAttemptRef,
-      expectedSubjectAttemptVersion: secondFailure.input.expectedSubjectAttemptVersion,
-      expectedCheckerAttemptRef: secondFailure.input.expectedCheckerAttemptRef,
-      expectedCheckerAttemptVersion: secondFailure.input.expectedCheckerAttemptVersion,
-      expectedGenerationRef: secondGeneration.value.generationRef, expectedFailedReceiptRef: secondFailure.receipt.reviewReceiptRef,
-      idempotencyKey: `review-exhausted:${committed.created.run.runRef}:check:g2`,
-    };
-    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, {
-      ...secondFailure.input, idempotencyKey: `rework:${committed.created.run.runRef}:build:g3`,
-    })).toMatchObject({
-      ok: false, reason: 'ineligible', detail: expect.stringContaining('bound is exhausted'),
-    });
-    const parked = store.parkExhaustedReview('alice', committed.created.run.runRef, input);
-    expect(parked).toMatchObject({ ok: true, value: { receipt: { state: 'failed' }, loop: { state: 'parked' } } });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true, replayed: true });
-    expect(store.parkExhaustedReview('alice', committed.created.run.runRef, {
-      ...input, expectedSubjectAttemptVersion: input.expectedSubjectAttemptVersion + 1,
-    })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.parkExhaustedReview('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true, replayed: true });
-    const detail = restarted.getRun('alice', committed.created.run.runRef);
-    expect(detail).toMatchObject({ ok: true, value: {
-      stageGenerations: [expect.anything(), expect.anything()],
-      reviewLoops: [expect.objectContaining({ reworksUsed: 1, state: 'parked' })],
-    } });
-  });
 
-  it('attaches and resolves a review completion gate atomically, blocking generic request mutation', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    const { receipt } = failCheckerReview(store, committed, undefined, checkerPassOutcome());
-    const before = store.getRun('alice', committed.created.run.runRef);
-    if (!before.ok) throw new Error(before.detail);
-    const review = before.value.stages.find((stage) => stage.stageId === 'check');
-    const subject = before.value.stages.find((stage) => stage.stageId === 'build');
-    const loop = before.value.reviewLoops[0];
-    if (!review || !subject || !loop) throw new Error('gate graph missing');
-    const key = `review-gate:${committed.created.run.runRef}:check:g1`;
-    const attached = store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, {
-      expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version, expectedReviewStageVersion: review.version, idempotencyKey: key,
-    });
-    expect(attached).toMatchObject({ ok: true, value: { request: { kind: 'approval', stageRef: review.stageRef }, receipt: { completionRequestRef: expect.any(String) } } });
-    if (!attached.ok) throw new Error(attached.detail);
-    expect(store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, {
-      expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version, expectedReviewStageVersion: review.version, idempotencyKey: key,
-    })).toMatchObject({ ok: true, replayed: true });
-    expect(store.reviseHumanRequest('alice', attached.value.request.requestRef, attached.value.request.revision, 'no', 'no')).toMatchObject({ ok: false, reason: 'invalid' });
-    expect(store.respondHumanRequest('alice', attached.value.request.requestRef, {
-      expectedRevision: attached.value.request.revision, decision: 'approved', idempotencyKey: 'generic-blocked', response: null,
-    })).toMatchObject({ ok: false, reason: 'invalid' });
-    const resolved = store.resolveReviewCompletionGate('alice', attached.value.request.requestRef, {
-      expectedRequestRevision: attached.value.request.revision, expectedReceiptVersion: attached.value.receipt.version,
-      expectedLoopVersion: attached.value.loop.version, expectedReviewStageVersion: attached.value.reviewStage.version,
-      expectedSubjectStageVersion: attached.value.subjectStage.version, decision: 'approved', idempotencyKey: 'review-gate-approved',
-    });
-    expect(resolved).toMatchObject({ ok: true, value: { receipt: { state: 'passed' }, loop: { state: 'passed' }, subjectStage: { acceptedGenerationRef: committed.generation.generationRef } } });
-  });
 
-  it('creates exactly one linked intervention for a parser-parked review outcome', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    const prepared = prepareCheckerReview(store, committed, undefined, checkerParkedOutcome());
-    const receipt = store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput);
-    if (!receipt.ok) throw new Error(receipt.detail);
-    expect(store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput)).toMatchObject({ ok: true, replayed: true });
-    const detail = store.getRun('alice', committed.created.run.runRef);
-    expect(detail).toMatchObject({ ok: true, value: {
-      reviewReceipts: [expect.objectContaining({ reviewReceiptRef: receipt.value.reviewReceiptRef, state: 'parked', completionRequestRef: null, interventionRequestRef: expect.any(String) })],
-      reviewLoops: [expect.objectContaining({ state: 'parked', interventionRequestRef: expect.any(String) })],
-      humanRequests: [expect.objectContaining({ kind: 'intervention', state: 'open', response: null })],
-    } });
-  });
 
-  it('fails attach at the Human Request cap without mutating the run graph', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    const { receipt } = failCheckerReview(store, committed, undefined, checkerPassOutcome());
-    fillHumanRequestCap(store, committed.created.run.runRef);
-    const before = store.getRun('alice', committed.created.run.runRef);
-    if (!before.ok) throw new Error(before.detail);
-    const reviewStage = before.value.stages.find((stage) => stage.stageId === 'check');
-    const loop = before.value.reviewLoops[0];
-    if (!reviewStage || !loop) throw new Error('gate graph missing');
-    expect(store.attachReviewCompletionGate('alice', receipt.reviewReceiptRef, {
-      expectedReceiptVersion: receipt.version, expectedLoopVersion: loop.version,
-      expectedReviewStageVersion: reviewStage.version,
-      idempotencyKey: `review-gate:${committed.created.run.runRef}:check:g1`,
-    })).toMatchObject({ ok: false, reason: 'limit' });
-    expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
-  });
 
-  it('fails parser parking and negative gate resolution at the Human Request cap without partial mutation', () => {
-    {
-      const store = createInMemoryControlPlaneStore(deterministicOptions());
-      const committed = commitCheckerSubject(store);
-      const prepared = prepareCheckerReview(store, committed, undefined, checkerParkedOutcome());
-      fillHumanRequestCap(store, committed.created.run.runRef);
-      const before = store.getRun('alice', committed.created.run.runRef);
-      expect(store.recordReviewReceipt('alice', prepared.reviewStageRef, prepared.receiptInput)).toMatchObject({ ok: false, reason: 'limit' });
-      expect(store.getRun('alice', committed.created.run.runRef)).toEqual(before);
-    }
-    {
-      const store = createInMemoryControlPlaneStore(deterministicOptions());
-      const gate = attachCheckerGate(store);
-      const remaining = MAX_HUMAN_REQUESTS_PER_RUN - 1;
-      const filled = store.createHumanRequests('alice', gate.committed.created.run.runRef, {
-        idempotencyKey: 'fill-negative-resolution-cap',
-        requests: Array.from({ length: remaining }, (_, index) => ({
-          kind: 'input' as const, title: `Input ${index}`, prompt: 'Supply a bounded input.',
-        })),
-      });
-      if (!filled.ok) throw new Error(filled.detail);
-      const before = store.getRun('alice', gate.committed.created.run.runRef);
-      expect(store.resolveReviewCompletionGate(
-        'alice', gate.attached.request.requestRef, reviewGateResolutionInput(gate.attached, 'rejected'),
-      )).toMatchObject({ ok: false, reason: 'limit' });
-      expect(store.getRun('alice', gate.committed.created.run.runRef)).toEqual(before);
-    }
-  });
 
-  it('replays an exact gate resolution and rejects every mutated CAS field as an idempotency conflict', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const gate = attachCheckerGate(store);
-    const input = reviewGateResolutionInput(gate.attached, 'approved');
-    expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input)).toMatchObject({ ok: true });
-    expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input)).toMatchObject({ ok: true, replayed: true });
-    for (const field of [
-      'expectedRequestRevision', 'expectedReceiptVersion', 'expectedLoopVersion',
-      'expectedReviewStageVersion', 'expectedSubjectStageVersion',
-    ] as const) {
-      expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, {
-        ...input, [field]: input[field] + 1,
-      })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
-    }
-  });
 
-  it.each(['rejected', 'changes-requested'] as const)('resolves %s with exactly one linked intervention and exact replay', (decision) => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const gate = attachCheckerGate(store);
-    const input = reviewGateResolutionInput(gate.attached, decision);
-    const resolved = store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input);
-    expect(resolved).toMatchObject({
-      ok: true,
-      value: {
-        receipt: { state: 'parked', completionRequestRef: gate.attached.request.requestRef, interventionRequestRef: expect.any(String) },
-        loop: { state: 'parked', interventionRequestRef: expect.any(String) },
-        request: { state: 'resolved', response: { decision } },
-        interventionRequest: { kind: 'intervention', state: 'open', response: null },
-      },
-    });
-    expect(store.resolveReviewCompletionGate('alice', gate.attached.request.requestRef, input)).toMatchObject({ ok: true, replayed: true });
-    const detail = store.getRun('alice', gate.committed.created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    const interventions = detail.value.humanRequests.filter((request) => request.kind === 'intervention');
-    expect(interventions).toHaveLength(1);
-    expect(detail.value.reviewReceipts[0].interventionRequestRef).toBe(interventions[0]?.requestRef);
-    expect(detail.value.reviewLoops[0].interventionRequestRef).toBe(interventions[0]?.requestRef);
-  });
 
-  it('rejects review rework when the bound checker worker session is failed or stopped', () => {
-    for (const state of ['failed', 'stopped'] as const) {
-      const store = createInMemoryControlPlaneStore(deterministicOptions());
-      const committed = commitCheckerSubject(store);
-      const { input } = failCheckerReview(store, committed, state);
-      expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({
-        ok: false, reason: 'conflict', detail: expect.stringContaining('not completed'),
-      });
-    }
-  });
-
-  it('does not permit a loop-managed creator stage to succeed while its active generation is queued', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    queueCreatorRework(store, committed);
-    const detail = store.getRun('alice', committed.created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    const subject = detail.value.stages.find((stage) => stage.stageId === 'build');
-    if (!subject) throw new Error('creator stage missing');
-    const running = store.transitionStage('alice', subject.stageRef, subject.version, 'running');
-    if (!running.ok) throw new Error(running.detail);
-    expect(store.transitionStage('alice', subject.stageRef, running.value.version, 'succeeded')).toMatchObject({
-      ok: false, reason: 'invalid', detail: expect.stringContaining('review lineage'),
-    });
-    expect(store.rerouteStage('alice', subject.stageRef, {
-      expectedStageVersion: running.value.version, expectedAttemptRef: subject.currentAttemptRef ?? 'attempt-missing', expectedAttemptVersion: 1,
-      runtime: 'claude', model: 'claude-sonnet-5', idempotencyKey: 'reject-loop-creator-reroute',
-    })).toMatchObject({ ok: false, reason: 'invalid', detail: expect.stringContaining('loop-managed creator') });
-  });
-
-  it('does not permit a checker stage to succeed before its bound checker attempt succeeds', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    const committed = commitCheckerSubject(store);
-    const detail = store.getRun('alice', committed.created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    const subject = detail.value.stages.find((stage) => stage.stageId === 'build');
-    const review = detail.value.stages.find((stage) => stage.stageId === 'check');
-    if (!subject || !review) throw new Error('checker graph missing');
-    const subjectRunning = store.transitionStage('alice', subject.stageRef, subject.version, 'running');
-    if (!subjectRunning.ok) throw new Error(subjectRunning.detail);
-    const subjectSucceeded = store.transitionStage('alice', subject.stageRef, subjectRunning.value.version, 'succeeded');
-    if (!subjectSucceeded.ok) throw new Error(subjectSucceeded.detail);
-    const reviewReady = store.transitionStage('alice', review.stageRef, review.version, 'ready');
-    if (!reviewReady.ok) throw new Error(reviewReady.detail);
-    const reviewRunning = store.transitionStage('alice', review.stageRef, reviewReady.value.version, 'running');
-    if (!reviewRunning.ok) throw new Error(reviewRunning.detail);
-    expect(store.transitionStage('alice', review.stageRef, reviewRunning.value.version, 'succeeded')).toMatchObject({
-      ok: false, reason: 'invalid', detail: expect.stringContaining('review lineage'),
-    });
-  });
 
   it('tracks canonical publication phases with run-version CAS', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
@@ -2192,6 +2989,157 @@ describe('run graph, attempts, and managed sessions', () => {
     expect(reconciled.value.sessions.every((session) => session.state === 'completed' || session.state === 'stopped')).toBe(true);
   });
 
+  it('refuses canonical projection release while a dependency iteration loop has not passed', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const upstream = task4IterationGroup('upstream');
+    const consumer = task4IterationGroup('consumer');
+    const stages = [
+      { stageId: 'upstream-build', title: 'Upstream seed', dependsOn: [] as string[] },
+      { stageId: 'upstream-check', title: 'Upstream decision', dependsOn: [] as string[] },
+      { stageId: 'consumer-build', title: 'Consumer seed', dependsOn: ['upstream-check'] },
+      { stageId: 'consumer-check', title: 'Consumer decision', dependsOn: [] as string[] },
+    ];
+    const proposal = createApprovedProposal(store, 'alice', {
+      schema: 'kb.plan-proposal/v1', manager: {}, iterationGroups: [upstream, consumer],
+      stages: [
+        { id: 'upstream-build', title: 'Upstream seed', dependsOn: [], artifacts: [{ id: 'upstream-artifact', path: 'upstream.md' }] },
+        { id: 'upstream-check', title: 'Upstream decision', dependsOn: [], artifacts: [] },
+        { id: 'consumer-build', title: 'Consumer seed', dependsOn: ['upstream-check'], artifacts: [{ id: 'consumer-artifact', path: 'consumer.md' }] },
+        { id: 'consumer-check', title: 'Consumer decision', dependsOn: [], artifacts: [] },
+      ],
+    } as unknown as JsonObject);
+    const launched = store.createRun('alice', {
+      title: 'Canonical dependency guard', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+      expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'canonical-dependency-guard', iterationGroups: [upstream, consumer], stages,
+    });
+    if (!launched.ok) throw new Error(launched.detail);
+    const runRef = launched.value.run.runRef;
+
+    const createChain = (stageId: string, complete: boolean) => {
+      let detail = store.getRun('alice', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      let stage = detail.value.stages.find((candidate) => candidate.stageId === stageId)!;
+      const linked = store.linkStageCard('alice', stage.stageRef, stage.version, `card-${stageId}`);
+      if (!linked.ok) throw new Error(linked.detail);
+      const created = store.createAttempt('alice', stage.stageRef, {
+        expectedStageVersion: linked.value.version, runtime: 'codex', model: 'fixed',
+      });
+      if (!created.ok) throw new Error(created.detail);
+      const session = store.createWorkerSession('alice', created.value.attemptRef, {
+        expectedAttemptVersion: created.value.version,
+      });
+      if (!session.ok) throw new Error(session.detail);
+      if (complete) {
+        detail = store.getRun('alice', runRef);
+        if (!detail.ok) throw new Error(detail.detail);
+        let attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === created.value.attemptRef)!;
+        for (const state of ['starting', 'running', 'succeeded'] as const) {
+          const transitioned = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, state);
+          if (!transitioned.ok) throw new Error(transitioned.detail);
+          attempt = transitioned.value;
+        }
+        let currentSession = session.value;
+        for (const state of ['starting', 'running', 'completed'] as const) {
+          const transitioned = store.transitionSession('alice', currentSession.sessionRef, currentSession.version, state);
+          if (!transitioned.ok) throw new Error(transitioned.detail);
+          currentSession = transitioned.value;
+        }
+      }
+      detail = store.getRun('alice', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      stage = detail.value.stages.find((candidate) => candidate.stageId === stageId)!;
+      return {
+        stage,
+        attempt: detail.value.attempts.find((candidate) => candidate.attemptRef === created.value.attemptRef)!,
+        session: detail.value.sessions.find((candidate) => candidate.sessionRef === session.value.sessionRef)!,
+      };
+    };
+    const commitSeed = (stageId: string, prefix: string) => {
+      const chain = createChain(stageId, true);
+      const generation = store.recordStageGeneration('alice', chain.stage.stageRef, {
+        expectedStageVersion: chain.stage.version, expectedAttemptVersion: chain.attempt.version, expectedGeneration: 1,
+        operationKey: `result:${runRef}:${stageId}`, resultHash: createHash('sha256').update(prefix).digest('hex'),
+        resultCardRef: `card-${stageId}`, baseCommit: 'b'.repeat(40),
+        canonicalCommit: createHash('sha1').update(prefix).digest('hex'),
+      });
+      if (!generation.ok) throw new Error(generation.detail);
+      return generation.value;
+    };
+
+    const upstreamGeneration = commitSeed('upstream-build', 'upstream');
+    let detail = store.getRun('alice', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    let upstreamSeed = detail.value.stages.find((stage) => stage.stageId === 'upstream-build')!;
+    const upstreamRunning = store.transitionStage('alice', upstreamSeed.stageRef, upstreamSeed.version, 'running');
+    if (!upstreamRunning.ok) throw new Error(upstreamRunning.detail);
+    const upstreamSucceeded = store.transitionStage('alice', upstreamSeed.stageRef, upstreamRunning.value.version, 'succeeded');
+    if (!upstreamSucceeded.ok) throw new Error(upstreamSucceeded.detail);
+    detail = store.getRun('alice', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const upstreamLoop = detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'upstream-loop')!;
+    const activatedUpstream = store.activateIterationLoop('alice', upstreamLoop.iterationLoopRef, {
+      expectedLoopVersion: upstreamLoop.version, seedGenerationRefs: [upstreamGeneration.generationRef],
+      artifactGenerationRefs: { 'upstream-artifact': upstreamGeneration.generationRef },
+      operationKey: `iteration-activate:${runRef}:upstream-loop:c1`,
+    });
+    if (!activatedUpstream.ok) throw new Error(activatedUpstream.detail);
+    const upstreamRequest = task4Request(store, runRef, 'upstream');
+    if (!upstreamRequest.ok) throw new Error(upstreamRequest.detail);
+    const upstreamJudge = createChain('upstream-check', true);
+    const judgeRunning = store.transitionStage('alice', upstreamJudge.stage.stageRef, upstreamJudge.stage.version, 'running');
+    if (!judgeRunning.ok) throw new Error(judgeRunning.detail);
+    const judgeSucceeded = store.transitionStage('alice', upstreamJudge.stage.stageRef, judgeRunning.value.version, 'succeeded');
+    if (!judgeSucceeded.ok) throw new Error(judgeSucceeded.detail);
+
+    const consumerGeneration = commitSeed('consumer-build', 'consumer');
+    detail = store.getRun('alice', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const consumerLoop = detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'consumer-loop')!;
+    const activatedConsumer = store.activateIterationLoop('alice', consumerLoop.iterationLoopRef, {
+      expectedLoopVersion: consumerLoop.version, seedGenerationRefs: [consumerGeneration.generationRef],
+      artifactGenerationRefs: { 'consumer-artifact': consumerGeneration.generationRef },
+      operationKey: `iteration-activate:${runRef}:consumer-loop:c1`,
+    });
+    if (!activatedConsumer.ok) throw new Error(activatedConsumer.detail);
+    const consumerRequest = task4Request(store, runRef, 'consumer');
+    if (!consumerRequest.ok) throw new Error(consumerRequest.detail);
+    createChain('consumer-check', false);
+
+    detail = store.getRun('alice', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const reconcileRequired = store.transitionPublication('alice', runRef, detail.value.run.version, 'reconcile-required');
+    if (!reconcileRequired.ok) throw new Error(reconcileRequired.detail);
+    detail = store.getRun('alice', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const targets: ReadonlyMap<string, readonly [
+      CanonicalStageProjectionInput['state'],
+      CanonicalStageProjectionInput['attemptState'],
+      CanonicalStageProjectionInput['sessionState'],
+    ]> = new Map([
+      ['upstream-build', ['stopped', 'stopped', 'stopped']],
+      ['upstream-check', ['succeeded', 'succeeded', 'completed']],
+      ['consumer-build', ['ready', 'queued', 'pending']],
+      ['consumer-check', ['stopped', 'stopped', 'stopped']],
+    ] as const);
+    const projections = detail.value.stages.map((stage) => {
+      const attempt = detail.ok && detail.value.attempts.find((candidate) => candidate.attemptRef === stage.currentAttemptRef)!;
+      const session = detail.ok && detail.value.sessions.find((candidate) => candidate.sessionRef === attempt.managedSessionRef)!;
+      const target = targets.get(stage.stageId)!;
+      return {
+        stageRef: stage.stageRef, expectedStageVersion: stage.version, canonicalCardRef: stage.canonicalCardRef!,
+        state: target[0], attemptRef: attempt.attemptRef, expectedAttemptVersion: attempt.version,
+        attemptState: target[1], sessionRef: session.sessionRef, expectedSessionVersion: session.version,
+        sessionState: target[2],
+      };
+    });
+    expect(store.reconcileCanonicalProjection('alice', runRef, {
+      expectedRunVersion: reconcileRequired.value.version, expectedProposalHash: proposal.hash, stages: projections,
+    })).toMatchObject({
+      ok: false, reason: 'invalid', detail: 'canonical projection bypasses accepted iteration dependencies',
+    });
+  });
+
   it('creates an idempotent generation-linked Manager successor only after the current head stops', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const created = createRun(store);
@@ -2483,36 +3431,6 @@ describe('durability, crash recovery, and retention', () => {
     expect(createFileControlPlaneStore(root, deterministicOptions()).getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: { run: { agentWorkspaceLaunch: null } } });
   });
 
-  it('migrates legacy persisted runs and stages without assignment fields to null', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const created = createRun(first);
-    const path = join(root, 'control', 'control-plane.json');
-    const legacy = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown> & { runs: Array<Record<string, unknown>>; stages: Array<Record<string, unknown>> };
-    delete legacy.runs[0].managerAssignment;
-    for (const stage of legacy.stages) {
-      delete stage.assignment;
-      delete stage.currentGeneration;
-      delete stage.currentGenerationRef;
-      delete stage.acceptedGenerationRef;
-    }
-    delete legacy.stageGenerations;
-    delete legacy.reviewLoops;
-    delete legacy.reviewReceipts;
-    writeFileSync(path, `${JSON.stringify(legacy)}\n`, 'utf8');
-
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    const detail = restarted.getRun('alice', created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    expect(detail.value.run.managerAssignment).toBeNull();
-    expect(detail.value.stages.every((stage) => stage.assignment === null)).toBe(true);
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
-      runs: [{ managerAssignment: null }],
-      stages: [{ assignment: null, currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null }, { assignment: null, currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null }],
-      stageGenerations: [], reviewLoops: [], reviewReceipts: [],
-    });
-  });
 
   it('migrates missing checker contract fields in active and quarantined legacy stage rows to null', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
@@ -2544,7 +3462,7 @@ describe('durability, crash recovery, and retention', () => {
     for (const stage of [...migrated.stages, ...migrated.quarantine[0].stages]) {
       expect(stage).toMatchObject({ workflowProfile: null, review: null, completionGate: null });
     }
-    expect(migrated.quarantine[0]).toMatchObject({ stageGenerations: [], reviewLoops: [], reviewReceipts: [] });
+    expect(migrated.quarantine[0]).toMatchObject({ stageGenerations: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [] });
   });
 
   it('fails closed for malformed present checker contracts in active and quarantined persisted rows', () => {
@@ -2586,214 +3504,14 @@ describe('durability, crash recovery, and retention', () => {
       ok: true,
       value: {
         stageGenerations: [expect.objectContaining({ generationRef: committed.generation.generationRef, state: 'committed' })],
-        reviewLoops: [expect.objectContaining({ state: 'checking', activeGenerationRef: committed.generation.generationRef })],
+        iterationLoops: [expect.objectContaining({ state: 'awaiting-turn', activeGenerationRefs: [committed.generation.generationRef] })],
       },
     });
   });
 
-  it('preserves an attached unresolved completion gate across restart with exact attach replay', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const gate = attachCheckerGate(first);
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.getRun('alice', gate.committed.created.run.runRef)).toMatchObject({
-      ok: true,
-      value: {
-        reviewReceipts: [expect.objectContaining({ state: 'awaiting-completion-gate', completionRequestRef: gate.attached.request.requestRef })],
-        reviewLoops: [expect.objectContaining({ state: 'awaiting-gate' })],
-        humanRequests: [expect.objectContaining({ requestRef: gate.attached.request.requestRef, state: 'open', response: null })],
-      },
-    });
-    expect(restarted.attachReviewCompletionGate('alice', gate.receipt.reviewReceiptRef, gate.attachInput)).toMatchObject({ ok: true, replayed: true });
-  });
 
-  it('preserves a parser-parked receipt and its one linked intervention across restart', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first);
-    failCheckerReview(first, committed, undefined, checkerParkedOutcome());
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    const detail = restarted.getRun('alice', committed.created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    const interventions = detail.value.humanRequests.filter((request) => request.kind === 'intervention');
-    expect(interventions).toHaveLength(1);
-    expect(detail.value.reviewReceipts[0]).toMatchObject({ state: 'parked', completionRequestRef: null, interventionRequestRef: interventions[0]?.requestRef });
-    expect(detail.value.reviewLoops[0]).toMatchObject({ state: 'parked', interventionRequestRef: interventions[0]?.requestRef });
-  });
 
-  it('preserves an exhausted failed receipt and its one linked intervention across restart', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first, createCheckerRun(first, 'alice', 0));
-    const exhausted = exhaustedReviewInput(first, committed);
-    const parked = first.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input);
-    if (!parked.ok) throw new Error(parked.detail);
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input)).toMatchObject({
-      ok: true, replayed: true,
-      value: { receipt: { state: 'failed' }, loop: { state: 'parked' }, interventionRequest: { requestRef: parked.value.interventionRequest.requestRef } },
-    });
-  });
 
-  it.each(['active', 'quarantine'] as const)('fails closed on %s persisted review-request tampering', (location) => {
-    const cases: Array<{
-      name: string;
-      graph: 'attached' | 'resolved' | 'parked' | 'exhausted' | 'exhausted-sessions';
-      mutate: (bundle: PersistedReviewBundle) => void;
-    }> = [
-      { name: 'missing linked request', graph: 'attached', mutate: (bundle) => { bundle.humanRequests = []; } },
-      { name: 'missing request ref', graph: 'attached', mutate: (bundle) => { delete requiredPersistedRow(bundle.humanRequests, 'request').requestRef; } },
-      { name: 'missing request operation', graph: 'attached', mutate: (bundle) => { delete requiredPersistedRow(bundle.humanRequests, 'request').operationKey; } },
-      { name: 'duplicate request ref', graph: 'attached', mutate: (bundle) => { bundle.humanRequests.push(structuredClone(requiredPersistedRow(bundle.humanRequests, 'request'))); } },
-      { name: 'duplicate request operation', graph: 'attached', mutate: (bundle) => {
-        const duplicate = structuredClone(requiredPersistedRow(bundle.humanRequests, 'request'));
-        duplicate.requestRef = 'request-duplicate';
-        bundle.humanRequests.push(duplicate);
-      } },
-      { name: 'wrong request run', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').runRef = 'run-wrong'; } },
-      { name: 'wrong request stage', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').stageRef = 'stage-wrong'; } },
-      { name: 'wrong request kind', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').kind = 'input'; } },
-      { name: 'wrong unresolved state', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').state = 'resolved'; } },
-      { name: 'open request with response', graph: 'attached', mutate: (bundle) => {
-        const request = requiredPersistedRow(bundle.humanRequests, 'request');
-        request.response = {
-          requestRevision: 1, decision: 'approved', respondedBy: request.subject,
-          idempotencyKey: 'forged', response: null, respondedAt: request.updatedAt,
-        };
-      } },
-      { name: 'wrong resolved decision', graph: 'resolved', mutate: (bundle) => {
-        const response = requiredPersistedRow(bundle.humanRequests, 'request').response as PersistedRow;
-        response.decision = 'rejected';
-      } },
-      { name: 'wrong resolved response revision', graph: 'resolved', mutate: (bundle) => {
-        const response = requiredPersistedRow(bundle.humanRequests, 'request').response as PersistedRow;
-        response.requestRevision = 2;
-      } },
-      { name: 'arbitrary attach fingerprint', graph: 'attached', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').operationFingerprint = 'f'.repeat(64); } },
-      { name: 'arbitrary resolution fingerprint', graph: 'resolved', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'request').resolutionOperationFingerprint = 'f'.repeat(64); } },
-      { name: 'mismatched loop intervention', graph: 'parked', mutate: (bundle) => { requiredPersistedRow(bundle.reviewLoops, 'loop').interventionRequestRef = 'request-wrong'; } },
-      { name: 'mismatched receipt intervention', graph: 'parked', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').interventionRequestRef = 'request-wrong'; } },
-      { name: 'resolved intervention request', graph: 'parked', mutate: (bundle) => {
-        const intervention = requiredPersistedRow(bundle.humanRequests, 'intervention');
-        intervention.state = 'resolved';
-        intervention.response = {
-          requestRevision: 1, decision: 'responded', respondedBy: intervention.subject,
-          idempotencyKey: 'forged', response: null, respondedAt: intervention.updatedAt,
-        };
-      } },
-      { name: 'reserved orphan', graph: 'attached', mutate: (bundle) => {
-        const orphan = structuredClone(requiredPersistedRow(bundle.humanRequests, 'request'));
-        orphan.requestRef = 'request-orphan';
-        orphan.operationKey = 'review-gate:run-orphan:check:g1';
-        bundle.humanRequests.push(orphan);
-      } },
-      { name: 'outcome state mismatch', graph: 'parked', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').state = 'failed'; } },
-      { name: 'exhausted request operation', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').operationKey = 'review-exhausted:run-wrong:check:g1'; } },
-      { name: 'exhausted request fingerprint', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').operationFingerprint = 'f'.repeat(64); } },
-      { name: 'exhausted request title', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').title = 'Caller prose'; } },
-      { name: 'exhausted request prompt', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.humanRequests, 'intervention').prompt = 'Caller prose'; } },
-      { name: 'exhausted receipt link', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').interventionRequestRef = null; } },
-      { name: 'exhausted loop state', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.reviewLoops, 'loop').state = 'failed'; } },
-      { name: 'exhausted receipt state', graph: 'exhausted', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').state = 'parked'; } },
-      { name: 'exhausted creator attempt state', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.attempts, 'creator').state = 'failed'; } },
-      { name: 'exhausted checker attempt state', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
-        const attempt = bundle.attempts.find((item) => item.attemptRef === receipt.checkerAttemptRef);
-        if (!attempt) throw new Error('checker attempt missing');
-        attempt.state = 'failed';
-      } },
-      { name: 'exhausted checker attempt provenance', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
-        const attempt = bundle.attempts.find((item) => item.attemptRef === receipt.checkerAttemptRef);
-        if (!attempt) throw new Error('checker attempt missing');
-        attempt.reviewSubjectGenerationRef = 'generation-wrong';
-      } },
-      { name: 'exhausted creator generation provenance', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.stageGenerations, 'generation').attemptRef = 'attempt-wrong'; } },
-      { name: 'exhausted creator stage attempt ref', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.stages, 'subject').currentAttemptRef = 'attempt-wrong'; } },
-      { name: 'exhausted checker receipt ref', graph: 'exhausted-sessions', mutate: (bundle) => { requiredPersistedRow(bundle.reviewReceipts, 'receipt').checkerAttemptRef = 'attempt-wrong'; } },
-      { name: 'exhausted worker session missing', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const session = bundle.sessions.find((item) => item.role === 'worker' && item.stageRef === requiredPersistedRow(bundle.stages, 'subject').stageRef);
-        if (!session) throw new Error('creator worker session missing');
-        bundle.sessions = bundle.sessions.filter((item) => item.sessionRef !== session.sessionRef);
-      } },
-      { name: 'exhausted worker session mismatch', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const session = bundle.sessions.find((item) => item.role === 'worker' && item.stageRef === requiredPersistedRow(bundle.stages, 'subject').stageRef);
-        if (!session) throw new Error('creator worker session missing');
-        session.attemptRef = 'attempt-wrong';
-      } },
-      { name: 'exhausted worker session not completed', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const session = bundle.sessions.find((item) => item.role === 'worker' && item.stageRef === requiredPersistedRow(bundle.stages, 'subject').stageRef);
-        if (!session) throw new Error('creator worker session missing');
-        session.state = 'failed';
-      } },
-      { name: 'exhausted checker worker session missing', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
-        const session = bundle.sessions.find((item) => item.role === 'worker' && item.attemptRef === receipt.checkerAttemptRef);
-        if (!session) throw new Error('checker worker session missing');
-        bundle.sessions = bundle.sessions.filter((item) => item.sessionRef !== session.sessionRef);
-      } },
-      { name: 'exhausted checker worker session mismatch', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
-        const session = bundle.sessions.find((item) => item.role === 'worker' && item.attemptRef === receipt.checkerAttemptRef);
-        if (!session) throw new Error('checker worker session missing');
-        session.attemptRef = 'attempt-wrong';
-      } },
-      { name: 'exhausted checker worker session not completed', graph: 'exhausted-sessions', mutate: (bundle) => {
-        const receipt = requiredPersistedRow(bundle.reviewReceipts, 'receipt');
-        const session = bundle.sessions.find((item) => item.role === 'worker' && item.attemptRef === receipt.checkerAttemptRef);
-        if (!session) throw new Error('checker worker session missing');
-        session.state = 'failed';
-      } },
-      { name: 'over-cap request count', graph: 'attached', mutate: (bundle) => {
-        const linked = requiredPersistedRow(bundle.humanRequests, 'request');
-        for (let index = 0; index < MAX_HUMAN_REQUESTS_PER_RUN; index += 1) {
-          bundle.humanRequests.push({
-            subject: linked.subject, requestRef: `request-cap-${index}`, runRef: linked.runRef, stageRef: null,
-            kind: 'input', revision: 1, state: 'open', title: 'Input', prompt: 'Supply input.', response: null,
-            createdAt: linked.createdAt, updatedAt: linked.updatedAt, resolutionOperationFingerprint: null,
-          });
-        }
-      } },
-    ];
-    for (const testCase of cases) {
-      const root = mkdtempSync(join(tmpdir(), `control-store-${testCase.name.replaceAll(' ', '-')}-`));
-      roots.push(root);
-      const first = createFileControlPlaneStore(root, deterministicOptions());
-      if (testCase.graph === 'parked') {
-        const committed = commitCheckerSubject(first);
-        failCheckerReview(first, committed, undefined, checkerParkedOutcome());
-      } else if (testCase.graph === 'exhausted') {
-        const committed = commitCheckerSubject(first, createCheckerRun(first, 'alice', 0));
-        const exhausted = exhaustedReviewInput(first, committed);
-        const parked = first.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input);
-        if (!parked.ok) throw new Error(parked.detail);
-      } else if (testCase.graph === 'exhausted-sessions') {
-        const committed = commitCheckerSubject(first, createCheckerRun(first, 'alice', 0), true);
-        const exhausted = exhaustedReviewInput(first, committed, 'completed');
-        const parked = first.parkExhaustedReview('alice', committed.created.run.runRef, exhausted.input);
-        if (!parked.ok) throw new Error(parked.detail);
-      } else {
-        const gate = attachCheckerGate(first);
-        if (testCase.graph === 'resolved') {
-          const resolved = first.resolveReviewCompletionGate(
-            'alice', gate.attached.request.requestRef, reviewGateResolutionInput(gate.attached, 'approved'),
-          );
-          if (!resolved.ok) throw new Error(resolved.detail);
-        }
-      }
-      const path = join(root, 'control', 'control-plane.json');
-      const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
-      const bundle = persistedReviewBundle(document, location);
-      testCase.mutate(bundle);
-      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-      expect(() => createFileControlPlaneStore(root, deterministicOptions()), testCase.name).toThrow(/invalid control-plane/);
-    }
-    // ~40 tampered graphs, each a real file-backed store in a fresh temp root: the default 5s ceiling
-    // is under the real cost of this case whenever the whole suite competes for the same disk/CPU.
-  }, 30_000);
 
   it('fails closed on a persisted queued-generation result tamper', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
@@ -2808,127 +3526,7 @@ describe('durability, crash recovery, and retention', () => {
     expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane stage generation');
   });
 
-  it('persists queued rework lineage across restart and rejects supersession tampering', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first);
-    const { input } = failCheckerReview(first, committed);
-    expect(first.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({ ok: true });
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
-      ok: true,
-      value: {
-        stageGenerations: expect.arrayContaining([expect.objectContaining({ generation: 2, state: 'queued', predecessorGenerationRef: committed.generation.generationRef })]),
-        reviewLoops: [expect.objectContaining({ state: 'rework-queued', reworksUsed: 1 })],
-        generationSupersessions: [expect.objectContaining({ predecessorGenerationRef: committed.generation.generationRef })],
-      },
-    });
-    const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as { generationSupersessions: Array<Record<string, unknown>> };
-    document.generationSupersessions[0].successorGenerationRef = committed.generation.generationRef;
-    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane generation supersession');
-  });
 
-  it('fails closed on queued rework stage-pointer, review-projection, and terminal-subject tampering', () => {
-    for (const tamper of ['creator-pointer', 'review-projection', 'subject-terminal'] as const) {
-      const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-      roots.push(root);
-      const first = createFileControlPlaneStore(root, deterministicOptions());
-      const committed = commitCheckerSubject(first);
-      queueCreatorRework(first, committed);
-      const path = join(root, 'control', 'control-plane.json');
-      const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
-      const subject = document.stages.find((stage) => stage.stageId === 'build');
-      const review = document.stages.find((stage) => stage.stageId === 'check');
-      if (!subject || !review) throw new Error('persisted queued rework stages missing');
-      if (tamper === 'creator-pointer') subject.currentAttemptRef = 'attempt-tampered';
-      if (tamper === 'review-projection') review.state = 'ready';
-      if (tamper === 'subject-terminal') subject.state = 'succeeded';
-      writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-      expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane queued rework stage projection');
-    }
-  });
-
-  it('normalizes a running queued rework and its active creator attempt to an interrupted crash pair', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first);
-    queueCreatorRework(first, committed);
-    const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>>; attempts: Array<Record<string, unknown>> };
-    const subject = document.stages.find((stage) => stage.stageId === 'build');
-    if (!subject || typeof subject.currentAttemptRef !== 'string') throw new Error('persisted queued creator missing');
-    const attempt = document.attempts.find((item) => item.attemptRef === subject.currentAttemptRef);
-    if (!attempt) throw new Error('persisted queued creator attempt missing');
-    subject.state = 'running';
-    attempt.state = 'running';
-    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
-      ok: true,
-      value: {
-        stages: expect.arrayContaining([expect.objectContaining({ stageId: 'build', state: 'interrupted' })]),
-        attempts: expect.arrayContaining([expect.objectContaining({ attemptRef: subject.currentAttemptRef, state: 'interrupted' })]),
-      },
-    });
-  });
-
-  it('preserves a crash-interrupted stage with a successfully completed queued creator attempt for reconciliation', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first);
-    queueCreatorRework(first, committed);
-    const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>>; attempts: Array<Record<string, unknown>> };
-    const subject = document.stages.find((stage) => stage.stageId === 'build');
-    if (!subject || typeof subject.currentAttemptRef !== 'string') throw new Error('persisted queued creator missing');
-    const attempt = document.attempts.find((item) => item.attemptRef === subject.currentAttemptRef);
-    if (!attempt) throw new Error('persisted queued creator attempt missing');
-    subject.state = 'running';
-    attempt.state = 'succeeded';
-    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
-      ok: true,
-      value: {
-        stages: expect.arrayContaining([expect.objectContaining({ stageId: 'build', state: 'interrupted' })]),
-        attempts: expect.arrayContaining([expect.objectContaining({ attemptRef: subject.currentAttemptRef, state: 'succeeded' })]),
-      },
-    });
-  });
-
-  it('requires the queued creator base commit, then preserves a finalized successor across restart', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first);
-    queueCreatorRework(first, committed);
-    const successor = succeedQueuedCreatorAttempt(first, committed.created.run.runRef);
-    const correct = {
-      expectedStageVersion: successor.stage.version, expectedAttemptVersion: successor.attempt.version, expectedGeneration: 2,
-      operationKey: `result:${committed.created.run.runRef}:build:g2`, resultHash: 'e'.repeat(64),
-      resultCardRef: null, baseCommit: 'a'.repeat(40), canonicalCommit: 'c'.repeat(40),
-    };
-    expect(first.recordStageGeneration('alice', successor.stage.stageRef, { ...correct, baseCommit: 'b'.repeat(40) })).toMatchObject({
-      ok: false, reason: 'conflict', detail: expect.stringContaining('base lineage'),
-    });
-    expect(first.recordStageGeneration('alice', successor.stage.stageRef, { ...correct, resultCardRef: 'card-rework-output' })).toMatchObject({
-      ok: false, reason: 'invalid', detail: expect.stringContaining('result card'),
-    });
-    expect(first.recordStageGeneration('alice', successor.stage.stageRef, correct)).toMatchObject({ ok: true, value: { generation: 2, state: 'committed' } });
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.getRun('alice', committed.created.run.runRef)).toMatchObject({
-      ok: true,
-      value: {
-        stageGenerations: expect.arrayContaining([expect.objectContaining({ generation: 2, state: 'committed', baseCommit: 'a'.repeat(40) })]),
-        generationSupersessions: [expect.objectContaining({ predecessorGenerationRef: committed.generation.generationRef })],
-      },
-    });
-  });
 
   it('fails closed when a persisted creator rework attempt has incoherent base lineage', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
@@ -2957,67 +3555,7 @@ describe('durability, crash recovery, and retention', () => {
     expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane stage generation');
   });
 
-  it('rejects advance when persisted stage projections no longer show the completed review transaction', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first);
-    const { input } = failCheckerReview(first, committed);
-    const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
-    const subject = document.stages.find((stage) => stage.stageId === 'build');
-    if (!subject) throw new Error('persisted creator stage missing');
-    subject.state = 'ready';
-    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    expect(restarted.advanceReviewGeneration('alice', committed.created.run.runRef, input)).toMatchObject({ ok: false, reason: 'conflict' });
-  });
 
-  it('fails closed when a persisted successor generation loses its supersession link', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const committed = commitCheckerSubject(first);
-    queueCreatorRework(first, committed);
-    const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as { generationSupersessions: unknown[] };
-    document.generationSupersessions = [];
-    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane generation supersession completeness');
-  });
-
-  it('materializes legacy checker loops without inferring subject lineage and interrupts unbound queued checker attempts', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    const created = createCheckerRun(first);
-    const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as {
-      attempts: Array<Record<string, unknown>>;
-      reviewLoops: unknown[];
-      stages: Array<Record<string, unknown>>;
-    };
-    const checker = document.stages.find((stage) => stage.stageId === 'check');
-    if (!checker) throw new Error('persisted checker stage missing');
-    document.reviewLoops = [];
-    checker.currentAttemptRef = 'attempt-legacy-checker';
-    document.attempts.push({
-      subject: 'alice', attemptRef: 'attempt-legacy-checker', runRef: created.run.runRef, stageRef: checker.stageRef,
-      generation: 1, predecessorAttemptRef: null, runtime: VERIFY_ASSIGNMENT.runtime, model: VERIFY_ASSIGNMENT.model,
-      state: 'queued', version: 1, managedSessionRef: null, createdAt: checker.createdAt, updatedAt: checker.updatedAt,
-    });
-    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-
-    const restarted = createFileControlPlaneStore(root, deterministicOptions());
-    const detail = restarted.getRun('alice', created.run.runRef);
-    if (!detail.ok) throw new Error(detail.detail);
-    expect(detail.value).toMatchObject({
-      reviewLoops: [expect.objectContaining({ state: 'awaiting-subject', activeGenerationRef: null, acceptedGenerationRef: null })],
-      attempts: [expect.objectContaining({ attemptRef: 'attempt-legacy-checker', state: 'interrupted', reviewSubjectGenerationRef: null })],
-    });
-    expect(detail.value.stages.find((stage) => stage.stageId === 'check')).toMatchObject({ currentAttemptRef: null });
-    expect(detail.value.stages.find((stage) => stage.stageId === 'build')).toMatchObject({ currentGenerationRef: null, acceptedGenerationRef: null });
-  });
 
   it('fails closed when persisted assignment provenance is present but malformed', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
@@ -3032,40 +3570,6 @@ describe('durability, crash recovery, and retention', () => {
     expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane assignment provenance');
   });
 
-  it('fails closed when persisted review durability rows or projection refs are malformed', () => {
-    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(root);
-    const first = createFileControlPlaneStore(root, deterministicOptions());
-    createRun(first);
-    const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown> & { stages: Array<Record<string, unknown>> };
-    document.stages[0].currentGenerationRef = 'not a safe ref';
-    document.reviewLoops = [{ reviewLoopRef: 'bad-loop' }];
-    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane stage generation projection');
-    const secondRoot = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(secondRoot);
-    const second = createFileControlPlaneStore(secondRoot, deterministicOptions());
-    createRun(second);
-    const secondPath = join(secondRoot, 'control', 'control-plane.json');
-    const malformed = JSON.parse(readFileSync(secondPath, 'utf8')) as Record<string, unknown>;
-    malformed.reviewLoops = [{ reviewLoopRef: 'bad-loop' }];
-    writeFileSync(secondPath, `${JSON.stringify(malformed)}\n`, 'utf8');
-    expect(() => createFileControlPlaneStore(secondRoot, deterministicOptions())).toThrow('invalid control-plane review loop');
-    const thirdRoot = mkdtempSync(join(tmpdir(), 'control-store-'));
-    roots.push(thirdRoot);
-    const third = createFileControlPlaneStore(thirdRoot, deterministicOptions());
-    const thirdCreated = createCheckerRun(third);
-    const thirdPath = join(thirdRoot, 'control', 'control-plane.json');
-    const missingLoop = JSON.parse(readFileSync(thirdPath, 'utf8')) as Record<string, unknown>;
-    missingLoop.reviewLoops = [];
-    writeFileSync(thirdPath, `${JSON.stringify(missingLoop)}\n`, 'utf8');
-    const migrated = createFileControlPlaneStore(thirdRoot, deterministicOptions());
-    expect(migrated.getRun('alice', thirdCreated.run.runRef)).toMatchObject({
-      ok: true,
-      value: { reviewLoops: [expect.objectContaining({ state: 'awaiting-subject' })] },
-    });
-  });
 
   it('atomically persists, then normalizes active crash residue once on restart', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
@@ -3773,11 +4277,6 @@ describe('read scope', () => {
     });
     if (!ask.ok) throw new Error(ask.detail);
 
-    // `'own-subject'` is the default on every one of these, so a caller that does not opt in — which is
-    // EVERY caller except a verified operator session — sees a foreign run exactly as it did before:
-    // not-found. This is also the whole of the "a non-operator subject cannot do this" pin, because a
-    // non-operator never obtains `'all-subjects'` (`routes.ts#readScope` derives it from the session
-    // subject alone, and is pinned over HTTP in routes.test.ts).
     expect(store.transitionRun('operator', engineRun.runRef, engineRun.version, 'running'))
       .toMatchObject({ ok: false, reason: 'not-found' });
     expect(store.createHumanRequest('operator', engineRun.runRef, { kind: 'input', title: 'x', prompt: 'y' }))
@@ -3794,18 +4293,17 @@ describe('read scope', () => {
       expectedRunVersion: engineRun.version, expectedManagerGeneration: engineRun.managerGeneration,
       idempotencyKey: 'k', kind: 'message', message: 'nope',
     })).toMatchObject({ ok: false, reason: 'not-found' });
-    expect(store.resolveReviewCompletionGate('operator', ask.value.requestRef, {
+    expect(store.resolveIterationGate('operator', ask.value.requestRef, {
       expectedRequestRevision: 1, expectedReceiptVersion: 1, expectedLoopVersion: 1,
-      expectedReviewStageVersion: 1, expectedSubjectStageVersion: 1,
-      decision: 'approved', idempotencyKey: 'k', response: null,
+      decision: 'approved', operationKey: 'k', response: null,
     })).toMatchObject({ ok: false, reason: 'not-found' });
 
-    // Nothing above left a mark on the foreign run.
     const owned = store.getRun('dashboard-engine', engineRun.runRef);
     if (!owned.ok) throw new Error(owned.detail);
     expect(owned.value.run.state).toBe('planned');
     expect(owned.value.humanRequests).toEqual([expect.objectContaining({ state: 'open' })]);
   });
+
 
   it('names the owning subject on every run DTO, so one mixed list can be told apart', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
@@ -3945,24 +4443,4 @@ describe('read scope', () => {
     }, 'all-subjects')).toMatchObject({ ok: false, reason: 'conflict' });
   });
 
-  it('lets the operator resolve a review completion gate owned by another subject, lineage intact', () => {
-    const store = createInMemoryControlPlaneStore(deterministicOptions());
-    // The run-tab submits a gate through EITHER the generic respond path or this one, so both are
-    // widened or half the Inbox still dead-ends. The owner here is the checker fixture's own subject —
-    // what matters is only that it is not the caller.
-    const { attached } = attachCheckerGate(store);
-    const input = reviewGateResolutionInput(attached, 'approved');
-
-    expect(store.resolveReviewCompletionGate('operator', attached.request.requestRef, input))
-      .toMatchObject({ ok: false, reason: 'not-found' });
-
-    const resolved = store.resolveReviewCompletionGate('operator', attached.request.requestRef, input, 'all-subjects');
-    if (!resolved.ok) throw new Error(resolved.detail);
-    expect(resolved.value.request.response).toMatchObject({ respondedBy: 'operator', decision: 'approved' });
-    expect(resolved.value.receipt.state).toBe('passed');
-    expect(resolved.value.loop.state).toBe('passed');
-    // The whole lineage stayed with its owner, who can still read the resolved gate without a scope.
-    expect(store.getHumanRequest('alice', attached.request.requestRef))
-      .toMatchObject({ ok: true, value: { state: 'resolved' } });
-  });
 });

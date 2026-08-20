@@ -17,7 +17,13 @@ def canonical(value: dict) -> bytes:
 
 
 def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=repo, check=check, capture_output=True, text=True)
+    return subprocess.run(
+        ["git", "-c", "core.longpaths=true", *args],
+        cwd=repo,
+        check=check,
+        capture_output=True,
+        text=True,
+    )
 
 
 def configure(repo: Path) -> None:
@@ -132,6 +138,43 @@ def test_reconciliation_applies_exact_promoted_tree_and_is_idempotent(tmp_path, 
         raise AssertionError("reconciled item replayed")
 
     assert promote_pending(desktop_spool, operator, tmp_path / "promotion-again", trusted, run_git=must_not_promote, clone_fresh=must_not_promote) == {"promoted": 0, "pending": 0, "failed": 0}
+
+
+def test_reconciliation_refuses_receipt_without_exact_rebased_delta(tmp_path, monkeypatch):
+    origin, operator, vm, spool, trusted, source, manifest = integration_fixture(tmp_path)
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "task-17-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "task-17-test@example.invalid")
+    assert promote_pending(spool, operator, tmp_path / "promotion-work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    target = git(origin, "rev-parse", "refs/heads/ops").stdout.strip()
+    bundle_repo = tmp_path / "bundle-repo"
+    git(tmp_path, "clone", str(origin), str(bundle_repo))
+    git(bundle_repo, "update-ref", "refs/kb-reconciled/ops", target)
+    returned_bundle = tmp_path / "ops-return.bundle"
+    git(bundle_repo, "bundle", "create", str(returned_bundle), "refs/kb-reconciled/ops")
+    returned_receipts = tmp_path / "returned-receipts"
+    returned_receipts.mkdir()
+    receipt = json.loads(
+        (spool / "receipts" / f"{manifest['id']}.json").read_text(encoding="utf-8")
+    )
+    receipt["promotedCommit"] = trusted
+    (returned_receipts / f"{manifest['id']}.json").write_bytes(canonical(receipt))
+
+    with pytest.raises(RuntimeError, match="exact rebased bundle delta"):
+        apply_reconciliation(
+            vm,
+            spool,
+            returned_bundle,
+            returned_receipts,
+            source,
+            target,
+            readiness=lambda: {"quiescent": True, "blockers": []},
+            run=make_git_runner(git_user=None),
+        )
+
+    assert git(vm, "rev-parse", "HEAD").stdout.strip() == source
 
 
 def test_reconciliation_retains_only_the_newest_100_promoted_entries(tmp_path, monkeypatch):

@@ -17,6 +17,11 @@ import { performAssertion, realWebAuthnBrowser } from './webauthnClient';
 import type { WebAuthnBrowserLike } from './webauthnClient';
 
 export type FetchLike = typeof fetch;
+export type AuthMode = 'win32-desktop' | 'tailnet';
+
+export interface AuthContext {
+  mode: AuthMode;
+}
 
 export interface Session {
   token: string;
@@ -161,6 +166,23 @@ async function responseFailure(label: string, response: Response): Promise<Error
     // A status code is still enough to fail closed and choose generic operator copy.
   }
   return new Error(`${label}: ${response.status}${detail ? ` (${detail})` : ''}`);
+}
+
+/** Discover the server's single authentication mode. Any unreadable or unknown response fails closed. */
+export async function fetchAuthContext(fetchImpl: FetchLike = fetch): Promise<AuthContext> {
+  const response = await fetchImpl('/api/auth/context', { method: 'GET' });
+  if (!response.ok) throw await responseFailure('auth/context failed', response);
+  const body = await response.json() as unknown;
+  if (
+    !body
+    || typeof body !== 'object'
+    || Array.isArray(body)
+    || ((body as Record<string, unknown>).mode !== 'win32-desktop'
+      && (body as Record<string, unknown>).mode !== 'tailnet')
+  ) {
+    throw new Error('auth/context returned an invalid mode');
+  }
+  return { mode: (body as AuthContext).mode };
 }
 
 /**

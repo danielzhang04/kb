@@ -174,8 +174,11 @@ function detailFor(stages: StageDto[], attempts: AttemptDto[]): RunDetailDto {
     attempts,
     sessions: [],
     humanRequests: [],
-    reviewLoops: [],
-    reviewReceipts: [],
+    stageGenerations: [],
+    iterationLoops: [],
+    iterationRequests: [],
+    iterationReceipts: [],
+    generationSupersessions: [],
   };
 }
 

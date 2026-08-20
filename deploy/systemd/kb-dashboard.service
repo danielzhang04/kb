@@ -15,6 +15,15 @@ Environment=DASHBOARD_EXECUTION_ACTIVATED=0
 Environment=KB_COORDINATION_PUBLICATION=outbox
 Environment=KB_VM_RUNTIME=1
 Environment=GIT_CONFIG_GLOBAL=/dev/null
+# Tailnet-trust auth mode: every request proven to have arrived through the tailnet-only
+# `tailscale serve` proxy IS the operator, and execution is armed at boot. The site-specific
+# DASHBOARD_TAILNET_HOST is injected by bootstrap_vm.py. The emergency brake is the STOP file plus
+# `systemctl stop` — both non-interactive. DASHBOARD_EXECUTION_ACTIVATED stays 0: arming comes from the
+# mode, not that gate. See docs/superpowers/specs/2026-08-18-tailnet-trust-mode-design.md.
+Environment=DASHBOARD_AUTH_MODE=tailnet
+# REQUIRED, fail-closed (Daniel, 2026-08-18): the single tailnet identity that IS the operator. Pinned
+# because tailnet membership on this VM is root-equivalent (passwordless sudo), so an unpinned operator
+# would grant authority to every node on the tailnet. bootstrap_vm.py injects the value.
 UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
 ExecStartPre=/usr/bin/python3 -I -B /usr/local/lib/kb/validate_vm_runtime.py --phase static --ops-root /var/lib/kb/ops --unit kb-dashboard.service
 ExecStart=/usr/bin/node --experimental-strip-types server/index.ts

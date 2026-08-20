@@ -23,6 +23,7 @@ import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { registerSessionRunRoutes } from './pty/sessionRunRoutes.ts';
 import { originPlugin } from './security/origin.ts';
+import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
@@ -172,13 +173,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       // ignore â€” best-effort teardown
     }
   });
-  // Loopback-only readiness for repair/export tooling. It must stay OUTSIDE the origin guard:
-  // export_tier0.py and backup_tier0.py call it with curl, apply_ops_reconciliation.py and
-  // activate_release.py with urllib. None sends an Origin, all send Host: 127.0.0.1:<port>, and
-  // deploy/systemd/kb-dashboard.service sets no DASHBOARD_RP_ORIGIN, so the allowlist is empty and the
-  // guard 403s all four. The DoS amplification S2 raised is closed by the 1s serviceCgroupChildCount
-  // memoization, not by this hook. Do NOT attach the read-rate hook either: the restore drill polls
-  // every 0.25s (240 req/min) against a 300/min budget with a 60s lockout — far too close to the edge.
+  // Loopback-only readiness for repair/export tooling. It is registered OUTSIDE the origin-guarded scope
+  // on purpose: export_tier0.py and backup_tier0.py call it with curl, apply_ops_reconciliation.py and
+  // activate_release.py with urllib, all sending Host: 127.0.0.1:<port> and no Origin. That Host matches
+  // NO allowlisted origin in either auth mode (win32's RP origin or tailnet's serve host), so inside the
+  // guard all four would 403; keeping /readyz outside it is what lets loopback tooling reach it. The DoS
+  // amplification S2 raised is closed by the 1s serviceCgroupChildCount memoization, not by this hook. Do
+  // NOT attach the read-rate hook either: the restore drill polls every 0.25s (240 req/min) against a
+  // 300/min budget with a 60s lockout — far too close to the edge.
   app.get('/readyz', async () => await surfaceCtx.readiness());
   app.register(async (scope) => {
     originPlugin(scope, { allowedOrigins: surfaceCtx.allowedOrigins });
@@ -190,7 +192,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerPlaneA(scope, repoRoot);
     registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
-    registerAgents(scope, repoRoot);
+    registerAgents(scope, repoRoot, undefined, surfaceCtx.runtimeCapabilities);
     // The Schedules panel's governed HEARTBEAT edit (-> work-branch PR, never auto-merged) needs the
     // SAME one-per-process session config, side-effect runners and audit sink the write surface uses.
     // Without a session config it fails closed with 503; without an audit sink it fails open and simply
@@ -292,7 +294,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       runPy: surfaceCtx.runPy,
       appendAuditLocal: surfaceCtx.appendAuditLocal,
       schtasksRun: surfaceCtx.schtasksRun,
+      runnerState: surfaceCtx.runnerState,
+      runnerProcessStartTime: surfaceCtx.runnerProcessStartTime,
       livenessCache: surfaceCtx.livenessCache,
+      platform: surfaceCtx.runtimeCapabilities.platform,
       now: surfaceCtx.now,
       dryRun: resolveStrandedArchiveDryRun(),
       windowMs: resolveStrandedArchiveWindowMs(),
@@ -340,8 +345,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   return app;
 }
 
-/** Start the daemon on the loopback interface. */
+/**
+ * Start the daemon on the loopback interface.
+ *
+ * The auth mode's boot invariants are asserted BEFORE anything is built or bound, so a misconfigured
+ * `tailnet` daemon refuses to run rather than serving ambient-auth routes on the wrong interface or the
+ * wrong platform. Failing here surfaces as a non-zero exit and a systemd restart loop — loud, and the
+ * safe direction.
+ */
 export async function start(port: number = PORT, host: string = HOST, options: { repoRoot?: string } = {}): Promise<FastifyInstance> {
+  assertAuthModeBoot({ bindHost: host });
   const app = buildApp({ repoRoot: options.repoRoot, validateData: true });
   await app.listen({ port, host });
   return app;

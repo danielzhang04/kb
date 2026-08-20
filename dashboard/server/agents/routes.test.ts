@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
-import { registerAgents } from './routes.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { readSystemWorkers, registerAgents } from './routes.ts';
 
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'agent-detail-'));
@@ -181,5 +182,42 @@ describe('agent declaration detail route', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().codebases).toEqual([]);
     await app.close();
+  });
+});
+
+function policyRepo(): string {
+  const root = mkdtempSync(join(tmpdir(), 'system-workers-'));
+  mkdirSync(join(root, 'governance'), { recursive: true });
+  writeFileSync(join(root, 'governance', 'model-routing.yaml'), [
+    'runtimes:',
+    '  claude:',
+    '    default_worker: worker-desktop',
+    '  codex:',
+    '    default_worker: codex-worker',
+    '',
+  ].join('\n'), 'utf8');
+  return root;
+}
+
+describe('system worker platform registration', () => {
+  it('keeps the Windows scheduled worker triggerable', () => {
+    const workers = readSystemWorkers(policyRepo(), runtimeCapabilities('win32'));
+    expect(workers.find((worker) => worker.id === 'codex-worker')?.dashboardTriggerable).toBe(true);
+    expect(workers.find((worker) => worker.id === 'worker-desktop')?.dashboardTriggerable).toBe(false);
+  });
+
+  it('keeps Linux runner triggering disabled for this cutover', () => {
+    const root = policyRepo();
+    const capabilities = runtimeCapabilities('linux');
+    expect(capabilities.runnerTrigger).toBe(false);
+    expect(readSystemWorkers(root, capabilities).find((worker) => worker.id === 'codex-worker')?.dashboardTriggerable)
+      .toBe(false);
+  });
+
+  it('retains the closed Linux runner mapping behind the disabled capability', () => {
+    const root = policyRepo();
+    const futureCapabilities = { ...runtimeCapabilities('linux'), runnerTrigger: true };
+    expect(readSystemWorkers(root, futureCapabilities).find((worker) => worker.id === 'codex-worker')?.dashboardTriggerable)
+      .toBe(true);
   });
 });

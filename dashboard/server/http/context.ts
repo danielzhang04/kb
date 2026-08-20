@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path';
 import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
 import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { SessionConfig } from '../auth/session.ts';
+import type { AuthMode } from '../auth/mode.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 import type { WebAuthnConfig } from '../auth/webauthn.ts';
@@ -24,7 +25,12 @@ import type { VibeSpawner } from '../vibe/session.ts';
 import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
 import type { ComposerWorkspaceStore } from '../composer/store.ts';
 import type { RunnerTrigger } from '../runner/trigger.ts';
-import type { LivenessCache, SchtasksRunner } from '../runner/liveness.ts';
+import type {
+  LivenessCache,
+  ProcessStartTimeReader,
+  RunnerStateReader,
+  SchtasksRunner,
+} from '../runner/liveness.ts';
 import type { ControlPlaneStore } from '../control/store.ts';
 import type { ManagedSessionBroker } from '../control/broker.ts';
 import type {
@@ -82,6 +88,8 @@ export interface SurfaceContext {
   /** One shared session config (secret resolved ONCE) so a token minted at assert/verify verifies at
    *  every write route. Re-resolving per request would mint a fresh random secret and break everything. */
   sessionConfig: SessionConfig;
+  /** Deployment authentication mode resolved once at the HTTP composition root. */
+  authMode: AuthMode;
   allowedOrigins: AllowedOrigins;
   /** The MUTATION budget (POST/PUT/PATCH/DELETE/...) on the governed scope. */
   rateGuard: LockoutGuard;
@@ -166,6 +174,9 @@ export interface SurfaceContext {
    *  a recording fake in tests; production leaves it undefined and `ownerLiveness` shells the real
    *  `schtasks /Query`. Never involves a credential. */
   schtasksRun?: SchtasksRunner;
+  /** Linux detached-runner state and /proc probes. */
+  runnerState?: RunnerStateReader;
+  runnerProcessStartTime?: ProcessStartTimeReader;
   /** Per-context TTL cache backing the liveness probe, created once per process in `makeSurfaceContext`
    *  (so a slow schtasks is queried at most once per TTL across responds) and fresh per test context. */
   livenessCache?: LivenessCache;
@@ -175,7 +186,10 @@ export interface SurfaceContext {
   naming?: NamingRegistry;
 }
 
-/** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
+/** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise.
+ *  Operator attribution is deliberately NOT stamped here: it is applied at the single row-write point
+ *  (`audit/log.ts#appendAuditRowLocal`), so writers that bypass this wrapper — notably `pty/route.ts`,
+ *  which appends through its own context — are covered by the same one seam. */
 export function auditFn(ctx: SurfaceContext): AppendAuditFn {
   if (ctx.appendAudit) return ctx.appendAudit;
   return (repoRoot, event, options = {}) => realAppendAudit(repoRoot, event, {

@@ -184,6 +184,7 @@ function git(cwd: string, args: readonly string[]): string {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 32 * 1024 * 1024,
+    windowsHide: true,
   });
 }
 

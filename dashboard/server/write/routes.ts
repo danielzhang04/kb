@@ -196,11 +196,17 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
           publication: ctx.coordinationPublication,
           outboxRoot: ctx.outboxRoot,
         });
-        const runner = owner ? (ctx.triggerRunner ?? defaultTriggerRunner)(owner) : {
-          status: 'unbound' as const,
-          owner: '',
-          detail: 'card has no assigned owner',
-        };
+        const runner = !owner
+          ? { status: 'unbound' as const, owner: '', detail: 'card has no assigned owner' }
+          : !ctx.runtimeCapabilities.runnerTrigger
+            ? {
+              status: 'unavailable' as const,
+              owner,
+              detail: `background runner trigger is unavailable on ${ctx.runtimeCapabilities.platform}`,
+            }
+            : ctx.triggerRunner
+              ? ctx.triggerRunner(owner)
+              : defaultTriggerRunner(owner, { platform: ctx.runtimeCapabilities.platform });
         return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath, runner });
       } catch (err) {
         return reply.code(500).send({
@@ -514,8 +520,11 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       try {
         liveness = ownerLiveness(str(parsed.meta.owner), parsed, {
           run: ctx.schtasksRun,
+          readState: ctx.runnerState,
+          processStartTime: ctx.runnerProcessStartTime,
           cache: ctx.livenessCache,
           now: ctx.now ? () => ctx.now!().getTime() : undefined,
+          platform: ctx.runtimeCapabilities.platform,
         });
       } catch {
         liveness = { consumer: 'none', online: false, detail: '' };

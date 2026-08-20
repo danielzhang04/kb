@@ -1,9 +1,18 @@
 import type {
   ProposalCompletionGate,
+  ProposalIterationGroup,
+  ProposalIterationParticipant,
+  ProposalIterationRequestKind,
+  ProposalIterationRole,
+  ProposalIterationRoute,
+  ProposalIterationScheduleStep,
+  ProposalIterationTerminalAuthority,
+  ProposalIterationVerdict,
   ProposalReview,
+  ProposalReviewCriterion,
   ResolvedAgentAssignment,
 } from './proposal.ts';
-import type { ReviewOutcome } from './reviewOutcome.ts';
+import type { IterationOutcome } from './iterationOutcome.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -165,46 +174,214 @@ export interface GenerationSupersession {
   runRef: string;
   predecessorGenerationRef: string;
   successorGenerationRef: string;
-  failedReviewReceiptRef: string;
+  triggerReceiptRef: string;
   operationKey: string;
   createdAt: string;
 }
 
-export interface ReviewLoop {
-  reviewLoopRef: string;
+export type IterationRole = ProposalIterationRole;
+export type IterationRequestKind = ProposalIterationRequestKind;
+export type IterationVerdict = ProposalIterationVerdict;
+export type IterationParkReason = 'exhausted' | 'no-progress' | 'parked';
+export interface IterationParticipant extends ProposalIterationParticipant {}
+export interface IterationRoute extends ProposalIterationRoute {}
+export interface IterationScheduleStep extends ProposalIterationScheduleStep {}
+export interface IterationTerminalAuthority extends ProposalIterationTerminalAuthority {}
+
+export interface IterationFinding {
+  findingId: string;
+  criterionId: string;
+  severity: 'blocking' | 'advisory';
+  summary: string;
+  evidencePaths: string[];
+}
+
+export interface IterationPosition {
+  positionId: string;
+  participantId: string;
+  summary: string;
+  generationRefs: string[];
+}
+
+export interface IterationDissent {
+  dissentId: string;
+  participantId: string;
+  positionId: string;
+  summary: string;
+}
+
+export interface IterationArtifactSnapshot {
+  path: string;
+  /** Pre-launch lstat/hash evidence. Null size/hash means the path was absent or irregular. */
+  regularFile: boolean;
+  size: number | null;
+  sha256: string | null;
+  /** Pre-integration lstat/hash evidence for the worker result. */
+  afterRegularFile: boolean;
+  afterSize: number | null;
+  afterSha256: string | null;
+  byteIdentical: boolean;
+}
+
+export interface IterationResidue {
+  unresolvedFindings: IterationFinding[];
+  positions: IterationPosition[];
+  recordedDissent: IterationDissent[];
+  requestRefs: string[];
+  receiptRefs: string[];
+  activeGenerationRefs: string[];
+  acceptedGenerationRefs: string[];
+  nextRouteId: string;
+  cycleUnit: string;
+  cyclesUsed: number;
+  maxCycles: number;
+  /** Present only when an artifact-producing turn parks before canonical integration. */
+  attemptedRequestRef?: string;
+  /** The parser-bounded worker outcome retained without minting a receipt. */
+  attemptedOutcome?: IterationOutcome;
+  artifactSnapshots?: IterationArtifactSnapshot[];
+  failureReason?: string;
+}
+
+export interface IterationRequest {
+  schema: 'kb.iteration-request/v1';
+  requestRef: string;
+  iterationLoopRef: string;
+  /** Server-owned schedule identity bound into the canonical request fingerprint. */
+  stepId?: string;
+  routeId: string;
+  senderParticipantId: string;
+  recipientParticipantId: string;
+  kind: IterationRequestKind;
+  cycle: number;
+  inputGenerationRefs: string[];
+  baseCommit: string;
+  artifactHashes: Record<string, string>;
+  criteria: ProposalReviewCriterion[];
+  unresolvedFindingRefs: string[];
+  preservedInvariants: string[];
+  nextAcceptanceCheck: string;
+  instructions: string;
+}
+
+export interface IterationReceipt extends Omit<IterationOutcome, 'schema'> {
+  schema: 'kb.iteration-receipt/v1';
+  receiptRef: string;
+  outcomeHash: string;
+  outputGenerationRefs: string[];
+  baseCommit: string;
+  canonicalCommit: string;
+  /** Exact participant attempt that produced this outcome. */
+  participantAttemptRef: string;
+  createdAt: string;
+  /** Public compare-and-swap version for the iteration gate route. */
+  version: number;
+}
+
+export interface IterationLoop extends ProposalIterationGroup {
+  iterationLoopRef: string;
   runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  maxCreatorReworks: number;
-  reviewDefinitionHash: string;
-  reworksUsed: number;
-  state: 'awaiting-subject' | 'checking' | 'rework-queued' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
-  activeGenerationRef: string | null;
-  acceptedGenerationRef: string | null;
-  activeReceiptRef: string | null;
-  interventionRequestRef: string | null;
+  definitionHash: string;
+  cyclesUsed: number;
+  state:
+    | 'awaiting-seed' | 'awaiting-turn' | 'running-turn'
+    | 'failed' | 'rework-queued' | 'exhausted'
+    | 'parked' | 'awaiting-completion-gate' | 'awaiting-park-gate'
+    | 'passed' | 'declined';
+  turnOwnerParticipantId?: string;
+  currentStepId?: string;
+  activeGenerationRefs: string[];
+  acceptedGenerationRefs?: string[];
+  lastReceiptRef?: string;
+  /** Distinct post-semantic-acceptance approval gate. */
+  completionGateRef?: string;
+  /** Iteration park or rejected-completion intervention. */
+  interventionRef?: string;
+  parkReason?: IterationParkReason;
+  unresolvedResidue?: IterationResidue;
   version: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface ReviewReceipt {
-  reviewReceiptRef: string;
-  runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  subjectGenerationRef: string;
-  subjectResultHash: string;
-  checkerAttemptRef: string;
-  outcome: ReviewOutcome;
-  outcomeHash: string;
+export interface ActivateIterationLoopInput {
+  expectedLoopVersion: number;
+  seedGenerationRefs: string[];
+  artifactGenerationRefs: Record<string, string>;
   operationKey: string;
-  state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
-  completionRequestRef: string | null;
-  interventionRequestRef: string | null;
-  version: number;
-  createdAt: string;
-  finalizedAt: string | null;
+  /** Server-selected routing used only when the initial schedule step is artifact-producing. */
+  successorRuntime?: string;
+  successorModel?: string;
+}
+
+export interface RecordIterationRequestInput {
+  expectedLoopVersion: number;
+  routeId: string;
+  kind: IterationRequestKind;
+  inputGenerationRefs: string[];
+  baseCommit: string;
+  artifactHashes: Record<string, string>;
+  unresolvedFindingRefs: string[];
+  preservedInvariants: string[];
+  nextAcceptanceCheck: string;
+  instructions: string;
+  operationKey: string;
+}
+
+export interface RecordIterationReceiptInput {
+  expectedLoopVersion: number;
+  requestRef: string;
+  outcome: IterationOutcome;
+  outputGenerationRefs: string[];
+  baseCommit: string;
+  canonicalCommit: string;
+  participantAttemptRef: string;
+  operationKey: string;
+}
+
+export interface AdvanceIterationTurnInput {
+  expectedLoopVersion: number;
+  expectedReceiptRef: string;
+  expectedActiveGenerationRefs: string[];
+  nextStepId: string;
+  operationKey: string;
+  /** Server-selected routing used only when the generic transition must mint a producer successor. */
+  successorRuntime?: string;
+  successorModel?: string;
+}
+
+export interface ParkIterationLoopInput {
+  expectedLoopVersion: number;
+  /** Required for receipt-driven exhausted/explicit parks; absent for a pre-integration no-progress park. */
+  expectedReceiptRef?: string;
+  expectedActiveGenerationRefs: string[];
+  reason: IterationParkReason;
+  nextRouteId: string;
+  attemptedRequestRef?: string;
+  attemptedOutcome?: IterationOutcome;
+  artifactSnapshots?: IterationArtifactSnapshot[];
+  failureReason?: string;
+  operationKey: string;
+}
+
+export interface IterationParkResult {
+  loop: IterationLoop;
+  receipt: IterationReceipt | null;
+  receiptVersion: number | null;
+  gate: HumanRequest;
+}
+
+export interface ResolveIterationGateInput {
+  expectedRequestRevision: number;
+  expectedLoopVersion: number;
+  expectedReceiptVersion: number | null;
+  decision: 'approved' | 'declined' | 'rejected' | 'changes-requested';
+  operationKey: string;
+  response?: string | null;
+}
+
+export interface IterationGateResult extends IterationParkResult {
+  interventionRequest: HumanRequest | null;
 }
 
 export interface Attempt {
@@ -218,10 +395,6 @@ export interface Attempt {
   state: AttemptState;
   version: number;
   managedSessionRef: string | null;
-  /** Immutable checker base; null for ordinary and legacy attempts. */
-  reviewSubjectGenerationRef: string | null;
-  reviewSubjectResultHash: string | null;
-  reviewSubjectCanonicalCommit: string | null;
   /** Logical creator-generation lineage; null for ordinary/legacy attempts. */
   logicalGeneration: number | null;
   baseGenerationRef: string | null;
@@ -270,6 +443,8 @@ export interface HumanRequest {
   runRef: string;
   stageRef: string | null;
   kind: HumanRequestKind;
+  /** Generic iteration-gate discriminator; completion approvals leave this absent. */
+  gateKind?: 'iteration-park';
   revision: number;
   state: 'open' | 'resolved';
   title: string;
@@ -338,8 +513,25 @@ export interface RunDetail {
   humanRequests: HumanRequest[];
   stageGenerations: StageGeneration[];
   generationSupersessions: GenerationSupersession[];
-  reviewLoops: ReviewLoop[];
-  reviewReceipts: ReviewReceipt[];
+  iterationLoops: IterationLoop[];
+  iterationRequests: IterationRequest[];
+  iterationReceipts: IterationReceipt[];
+}
+
+/** HTTP-only residue fields derived from the authoritative request collection. */
+export interface IterationResidueDto extends IterationResidue {
+  /** May exceed cyclesUsed because a no-progress attempt rolls cycle accounting back before parking. */
+  attemptedRequestCycle?: number;
+}
+
+/** HTTP representation of an iteration loop; persisted loop state remains unchanged. */
+export interface IterationLoopDto extends Omit<IterationLoop, 'unresolvedResidue'> {
+  unresolvedResidue?: IterationResidueDto;
+}
+
+/** Authoritative run-detail response shape exposed by the control API. */
+export interface RunDetailDto extends Omit<RunDetail, 'iterationLoops'> {
+  iterationLoops: IterationLoopDto[];
 }
 
 export interface StorageInventoryItem {

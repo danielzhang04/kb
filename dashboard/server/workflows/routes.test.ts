@@ -235,6 +235,48 @@ describe('workflow definition routes', () => {
     }));
   });
 
+  it('drives the shipped iteration demo through launch and seeds only each loop owner', async () => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/workflows/iteration-loop-demo/launch', headers: headers(token),
+      payload: await launchPayload(app, 'iteration-loop-demo', 'iteration-demo-launch', {
+        parameters: { slug: 'route-launch-projection' },
+      }),
+    });
+    expect(response.statusCode, response.body).toBe(202);
+    const body = response.json() as { runRef: string };
+    const run = controlStore.getRun('operator', body.runRef);
+    expect(run.ok).toBe(true);
+    if (!run.ok) return;
+
+    expect(run.value.run).toMatchObject({ publicationState: 'published', state: 'waiting-human' });
+    expect(run.value.stages).toHaveLength(8);
+    expect(run.value.stages.every((stage) => stage.canonicalCardRef !== null)).toBe(true);
+    expect(run.value.iterationLoops).toHaveLength(4);
+    expect(run.value.iterationLoops.every((loop) => loop.state === 'awaiting-seed' && loop.cyclesUsed === 0)).toBe(true);
+
+    const seedStageIds = run.value.iterationLoops.map((loop) => {
+      const seed = loop.participants.find((participant) => participant.participantId === loop.activation.seedParticipantId);
+      if (!seed) throw new Error(`loop '${loop.iterationGroupId}' has no seed participant`);
+      return seed.stageRef;
+    }).sort();
+    const attemptedStageIds = run.value.attempts.map((attempt) => {
+      const stage = run.value.stages.find((candidate) => candidate.stageRef === attempt.stageRef);
+      if (!stage) throw new Error(`attempt '${attempt.attemptRef}' has no stage`);
+      return stage.stageId;
+    }).sort();
+    expect(attemptedStageIds).toEqual(seedStageIds);
+    expect(run.value.sessions.filter((session) => session.role === 'worker')).toHaveLength(seedStageIds.length);
+
+    // The opening exception remains narrow: a linked non-seed stage still cannot steal the turn.
+    const nonSeed = run.value.stages.find((stage) => stage.stageId === 'pair-checker');
+    if (!nonSeed?.assignment) throw new Error('pair-checker assignment is missing');
+    expect(controlStore.createAttempt('operator', nonSeed.stageRef, {
+      expectedStageVersion: nonSeed.version,
+      runtime: nonSeed.assignment.runtime,
+      model: nonSeed.assignment.model,
+    })).toEqual({ ok: false, reason: 'conflict', detail: 'iteration attempt is not the active turn owner' });
+  });
+
   it('records the canonical audit action names plus the policy snapshot', async () => {
     await app.inject({
       method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),

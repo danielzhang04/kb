@@ -186,7 +186,7 @@ export function NavItem({
  * else unlocks at POINT OF ACTION through the same context, so this is the only unlock button in the app.
  */
 function SessionChip(): React.JSX.Element {
-  const { session, locked, requireSession } = useSession();
+  const { mode, session, locked, requireSession } = useSession();
   const [, retick] = useState(0);
   // Re-render on a coarse tick so the remaining-time readout stays honest while the tab sits open.
   useEffect(() => {
@@ -207,6 +207,20 @@ function SessionChip(): React.JSX.Element {
         onClick={() => void requireSession()}
       >
         Unlock
+      </button>
+    );
+  }
+  if (mode === 'tailnet') {
+    return (
+      <button
+        type="button"
+        className="mc-session-chip"
+        data-testid="session-chip"
+        disabled
+        title="This dashboard is authenticated by the ambient tailnet connection."
+      >
+        <span className="mc-status-dot mc-status-dot--running" aria-hidden="true" />
+        <span className="mc-session-chip__label">Tailnet · connected</span>
       </button>
     );
   }
@@ -236,6 +250,18 @@ function SignInView(): React.JSX.Element {
         <h2>Sign in</h2>
         <p>Unlock this dashboard with your device passkey.</p>
         <SessionChip />
+      </section>
+    </main>
+  );
+}
+
+/** Neutral boot shell while auth-mode discovery is pending; it exposes neither authenticated data nor
+ * the desktop passkey affordance before the server selects the flow. */
+function BootingView(): React.JSX.Element {
+  return (
+    <main className="mc-main">
+      <section className="code-view" aria-label="Starting dashboard" aria-live="polite">
+        <h2>Starting dashboard</h2>
       </section>
     </main>
   );
@@ -536,10 +562,9 @@ function persistOpenComposerRefs(refs: string[]): void {
   }
 }
 
-/** The app's single session boundary: everything below `SessionProvider` shares one bearer and one
- *  passkey ceremony (see `lib/sessionContext.tsx`). `ExecutionArmingProvider` sits directly under it as
- *  the app's ONE arming owner, so that single sign-in also arms execution from whatever view is on
- *  screen — a per-view effect would skip anyone who signs in while not looking at Home. */
+/** The app's single auth boundary: desktop shares one bearer/passkey ceremony, while tailnet shares the
+ *  ambient transport session (see `lib/sessionContext.tsx`). `ExecutionArmingProvider` is the desktop
+ *  arming owner; tailnet execution is already armed at server boot and makes no client arming call. */
 export function App(): React.JSX.Element {
   return (
     <SessionProvider>
@@ -551,7 +576,8 @@ export function App(): React.JSX.Element {
 }
 
 function AppShell(): React.JSX.Element {
-  const { locked } = useSession();
+  const { mode, locked } = useSession();
+  if (mode === null) return <BootingView />;
   return locked ? <SignInView /> : <AuthenticatedAppShell />;
 }
 

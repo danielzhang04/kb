@@ -254,4 +254,48 @@ describe('compileApprovedProposal', () => {
       detail: "stage 'one': action-not-in-server-owned-registry",
     });
   });
+
+  it('does not grant checker-readonly tools from an iteration role label', () => {
+    for (const role of ['judge', 'mediator'] as const) {
+      const iterationProposal: PlanProposal = {
+        ...proposal,
+        stages: [
+          proposal.stages[0],
+          {
+            ...proposal.stages[1],
+            action: 'implement:two',
+            // Deliberately disjoint: normal scope authorizes the target via write, while a role-driven
+            // checker-readonly projection would replace it with the server-only read scope and fail.
+            scope: { read: ['dashboard/server'], write: ['dashboard/src'] },
+          },
+        ],
+        iterationGroups: [{
+          iterationGroupId: `${role}-role-is-data`,
+          goal: 'Produce an accepted result.',
+          participants: [
+            { participantId: 'producer', stageRef: 'one', role: 'manager', perspective: 'Build.', mandate: 'Build the result.' },
+            { participantId: role, stageRef: 'two', role, perspective: 'Check.', mandate: 'Assess the result.' },
+          ],
+          routes: [
+            { routeId: `to-${role}`, senderParticipantId: 'producer', recipientParticipantId: role, requestKinds: ['review'], baseResolutionStageIds: ['one'] },
+          ],
+          activation: { seedParticipantId: 'producer', seedArtifactIds: ['result'] },
+          initialStepId: 'assess',
+          schedule: [{ stepId: 'assess', routeId: `to-${role}`, cycle: 'current' }],
+          artifacts: ['result'],
+          criteria: [{ id: 'quality', description: 'Result is complete.' }],
+          maxCycles: 1,
+          cycleUnit: 'One assessment.',
+          terminalAuthorities: [{ participantId: role, verdict: 'pass' }],
+        }],
+      };
+      const result = compileApprovedProposal(iterationProposal, 'abc', 'abc', environment);
+      expect(result).toMatchObject({ ok: true });
+      if (!result.ok) continue;
+      expect(result.value.stagePolicies.find((policy) => policy.stageId === 'two')?.decision).toMatchObject({
+        disposition: 'allow',
+        reason: 'inside-approved-envelope',
+      });
+    }
+  });
 });

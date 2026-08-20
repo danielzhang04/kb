@@ -263,6 +263,8 @@ role_default: { runtime: claude, model: sonnet }
     expect(WORKFLOW_CARD_OP_SCRIPT).toContain('if op["managed"] or card.meta["depends-on"]');
     const runnerSource = readFileSync(fileURLToPath(new URL('../../../scripts/agent_runner.ps1', import.meta.url)), 'utf8');
     expect(runnerSource).toContain('if (not card.meta.get("execution-controller")');
+    const posixRunnerSource = readFileSync(fileURLToPath(new URL('../../../scripts/agent_runner.py', import.meta.url)), 'utf8');
+    expect(posixRunnerSource).toContain('if (not card.meta.get("execution-controller")');
     const dispatchSource = readFileSync(fileURLToPath(new URL('../../../scripts/dispatch.py', import.meta.url)), 'utf8');
     expect(dispatchSource).toMatch(/deps = child\.meta\.get\("depends-on"\) or \[\][\s\S]*if not deps:[\s\S]*continue/);
   });

@@ -18,6 +18,8 @@
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
+import { resolveAuthMode, resolveTailnetConfig } from '../auth/mode.ts';
+import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
 import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
@@ -122,7 +124,16 @@ export function makeSurfaceContext(
   overrides: Partial<SurfaceContext> = {},
   activation: SurfaceActivationSeam = {},
 ): SurfaceContext {
-  const sessionConfig = overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() };
+  // The auth-mode seam, resolved ONCE here with the same env source the activation gate reads. In
+  // `tailnet` mode the operator authenticator rides on `sessionConfig` — the one object every
+  // `requireSession` call site already receives — so the mode reaches all of them without a route edit.
+  const authMode = resolveAuthMode(activation.env);
+  const tailnet = authMode === 'tailnet' ? resolveTailnetConfig(activation.env) : null;
+  const sessionConfig = overrides.sessionConfig ?? {
+    secret: resolveSessionSecret(),
+    ttlMs: resolveSessionTtlMs(),
+    ...(tailnet ? { operatorAuth: createTailnetOperatorAuth(tailnet) } : {}),
+  };
   const repoRoot = overrides.repoRoot ?? resolveRepoRoot();
   const coordinationPublication = overrides.coordinationPublication
     ?? resolveCoordinationPublication(activation.env as NodeJS.ProcessEnv | undefined);
@@ -222,7 +233,8 @@ export function makeSurfaceContext(
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
-    allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
+    authMode: overrides.authMode ?? authMode,
+    allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(activation.env),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
     readRateGuard: overrides.readRateGuard ?? makeDefaultReadRateGuard(),
     // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
@@ -269,6 +281,8 @@ export function makeSurfaceContext(
     managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs ?? DEFAULT_MANAGER_START_ACK_TIMEOUT_MS,
     triggerRunner: overrides.triggerRunner,
     schtasksRun: overrides.schtasksRun,
+    runnerState: overrides.runnerState,
+    runnerProcessStartTime: overrides.runnerProcessStartTime,
     // One liveness cache per context (see resumeRegistry) — persists across responds within this process,
     // fresh per test context so schtasks probe results never leak between tests.
     livenessCache: overrides.livenessCache ?? new Map(),
@@ -305,7 +319,10 @@ export function makeSurfaceContext(
             seq: event.entry.seq,
           }));
         }
-        if (execution && state.source === 'passkey' && serviceCaller) {
+        // The queue bridge runs for a deliberately ARMED daemon: a passkey unlock (an operator just
+        // asked for it) or `tailnet` mode (armed at boot by deployment posture). `env-override` is
+        // excluded on purpose — it is the headless/testing arm and must stay inert.
+        if (execution && (state.source === 'passkey' || state.source === 'tailnet') && serviceCaller) {
           const bridge = buildQueueBridge({
             repoRoot: ctx.repoRoot,
             runPy: ctx.runPy,

@@ -63,6 +63,14 @@ function spyDeps(): ActivationDeps {
     createWorkers: vi.fn().mockReturnValue({}) as never,
     createCodexWorkers: vi.fn().mockReturnValue({}) as never,
     createSessionChains: vi.fn().mockReturnValue({ get: vi.fn().mockReturnValue(null), record: vi.fn().mockResolvedValue(undefined) }) as never,
+    createAttemptIo: vi.fn().mockReturnValue({
+      append: vi.fn(), read: vi.fn().mockReturnValue([]), onAppend: vi.fn().mockReturnValue(() => {}),
+      stop: vi.fn(), bufferedAttemptCountForTest: vi.fn().mockReturnValue(0),
+    }) as never,
+    createPaidActions: vi.fn().mockReturnValue({
+      paidActionService: { execute: vi.fn(), snapshot: vi.fn().mockReturnValue([]) },
+      spendGrantStore: { resolve: vi.fn().mockReturnValue(null) },
+    }) as never,
     createRegistry: vi.fn().mockReturnValue({ register: vi.fn(), cancel: vi.fn(), clear: vi.fn() }) as never,
     createManagers: vi.fn().mockReturnValue({ ensure: vi.fn() }) as never,
     createCancellation: vi.fn().mockReturnValue({ cancelManager: vi.fn(), cancelWorker: vi.fn() }) as never,
@@ -157,6 +165,19 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(typeof result?.cancelAutomatic).toBe('function');
     expect(typeof result?.containManagerStart).toBe('function');
     expect(typeof result?.verifyCanonicalResult).toBe('function');
+    expect(result?.attemptIo).toBe((deps.createAttemptIo as ReturnType<typeof vi.fn>).mock.results[0].value);
+    expect(result?.paidActionService).toBe((deps.createPaidActions as ReturnType<typeof vi.fn>).mock.results[0].value.paidActionService);
+    expect(result?.spendGrantStore).toBe((deps.createPaidActions as ReturnType<typeof vi.fn>).mock.results[0].value.spendGrantStore);
+  });
+
+  it('constructs activation-owned state stores only through their injectable factories', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(deps.createAttemptIo).toHaveBeenCalledWith({ root: expect.stringContaining('attempt-io') });
+    expect(deps.createPaidActions).toHaveBeenCalledWith({
+      stateRoot: '/state',
+      worktreeRoot: expect.stringContaining('worktrees'),
+    });
   });
 
   it('delegates terminal-root proof to the existing exact g1 canonical result lookup', async () => {
@@ -196,6 +217,16 @@ describe('buildActivatedExecution — gate ON', () => {
     }
     // And the window accounting adapter is still built on the WINDOW budget, not the attempt budget.
     expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ globalBudget: DEFAULT_BUDGET }));
+  });
+
+  it('keeps legacy runs at one worker while reserving two slots for an explicit definition concurrency', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ maxConcurrency: 2 }));
+    expect(deps.createEngine).toHaveBeenCalledWith(expect.objectContaining({
+      maxConcurrency: 2,
+      defaultRunConcurrency: 1,
+    }));
   });
 
   it('refuses at construction when a per-attempt budget exceeds the window ceiling on any field', () => {
@@ -434,6 +465,29 @@ describe('createExecutionLatch (runtime unlock)', () => {
     expect(deps.createEngine).toHaveBeenCalledTimes(1);
     // Lock still works against an env-overridden daemon; a restart re-applies the override.
     expect(latch.lock({ subject: 'operator' }).state).toBe('locked');
+  });
+
+  it('tailnet mode arms the latch AT BOOT with its own source', () => {
+    const { deps, latch } = latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' });
+    expect(latch.snapshot()).toMatchObject({ state: 'unlocked', source: 'tailnet', unlockedBy: DASHBOARD_EXECUTOR_SUBJECT });
+    expect(latch.current()).not.toBeNull();
+    expect(deps.createEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it('tailnet mode arms without DASHBOARD_EXECUTION_ACTIVATED, and outranks it when both are set', () => {
+    expect(latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' }).latch.snapshot().source).toBe('tailnet');
+    expect(latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_EXECUTION_ACTIVATED: '1' }).latch.snapshot().source)
+      .toBe('tailnet');
+  });
+
+  it('lock remains the fail-safe direction in tailnet mode', () => {
+    const { latch } = latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' });
+    expect(latch.lock({ subject: 'operator' })).toEqual({ state: 'locked', source: null, unlockedAt: null, unlockedBy: null });
+    expect(latch.current()).toBeNull();
+  });
+
+  it('win32-desktop mode still boots LOCKED', () => {
+    expect(latchHarness({ DASHBOARD_AUTH_MODE: 'win32-desktop' }).latch.snapshot().state).toBe('locked');
   });
 
   it('refuses an unsafe unlock subject and leaves the daemon locked when construction throws', () => {

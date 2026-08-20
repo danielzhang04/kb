@@ -13,6 +13,8 @@ import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from './branch.ts';
 import type { PyRunner } from './launch.ts';
+import type { RunnerState } from '../runner/trigger.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
 const CONFIG = {
   secret: Buffer.from('card-respond-test-secret-0123456789'),
@@ -65,7 +67,13 @@ interface Harness {
   auditRows: AuditRow[];
 }
 
-function harness(repoRoot: string, schtasksRun: (task: string) => string = () => 'Status: Ready'): Harness {
+function harness(
+  repoRoot: string,
+  schtasksRun: (task: string) => string = () => 'Status: Ready',
+  platform: NodeJS.Platform = process.platform,
+  runnerState: () => RunnerState | null = () => ({ pid: 42, startTime: 99 }),
+  runnerProcessStartTime: (pid: number) => number | null = () => 99,
+): Harness {
   const order: string[] = [];
   const pyOps: Array<Record<string, unknown>> = [];
   const auditRows: AuditRow[] = [];
@@ -98,8 +106,11 @@ function harness(repoRoot: string, schtasksRun: (task: string) => string = () =>
     runPy: py,
     opsGit: git,
     now: () => new Date('2026-07-19T12:00:00.000Z'),
+    runtimeCapabilities: runtimeCapabilities(platform),
     // G3: inject the schtasks reader so the post-commit liveness probe never shells a real Task Scheduler.
     schtasksRun,
+    runnerState,
+    runnerProcessStartTime,
     appendAuditLocal: (_repo, event: AuditEvent) => {
       order.push('audit:local');
       const row = { ts: '2026-07-19T12:00:00.000Z', ...event };
@@ -293,6 +304,26 @@ describe('POST /api/write/card-respond', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().liveness).toMatchObject({ consumer: 'scheduled-task', online: false });
+  });
+
+  it('G3: Linux liveness uses the matching PID/start-time seam without invoking schtasks', async () => {
+    const repo = makeRepo();
+    writeCard(repo, 'inbox', 'input-linux', 'inbox', 'needs-input:x', 'codex-worker');
+    const schtasksRun = () => { throw new Error('Linux must not invoke schtasks'); };
+    const h = harness(repo, schtasksRun, 'linux');
+    app = h.app;
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/write/card-respond', headers: headers(),
+      payload: { cardId: 'input-linux', action: 'reply', message: 'Steer note.' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().liveness).toEqual({
+      consumer: 'runner-process',
+      online: true,
+      detail: 'runner kb-codex-runner is running (pid 42)',
+    });
   });
 
   it('404s an unknown card and 401s without a session', async () => {

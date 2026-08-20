@@ -14,7 +14,9 @@ import { defaultNamingRegistry } from '../naming.ts';
 import type { NamingRegistry } from '../naming.ts';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { scanWorkflowDefs } from '../workflows/routes.ts';
-import { taskForOwner } from '../runner/trigger.ts';
+import { runnerForOwner, taskForOwner } from '../runner/trigger.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 import {
   buildRoster,
   isContainedRepoPath,
@@ -155,14 +157,21 @@ export interface SystemWorkerResponse {
 }
 
 /** Runtime defaults are the canonical system-worker registry; observations never create workers. */
-export function readSystemWorkers(repoRoot: string): SystemWorkerResponse[] {
+export function readSystemWorkers(
+  repoRoot: string,
+  capabilities: RuntimeCapabilities = runtimeCapabilities(),
+): SystemWorkerResponse[] {
   const policy = loadPolicy(repoRoot);
   return Object.entries(policy.runtimes ?? {})
     .flatMap(([runtime, config]) => config?.default_worker ? [{
       id: config.default_worker,
       runtime,
       addressable: true as const,
-      dashboardTriggerable: taskForOwner(config.default_worker) !== null,
+      dashboardTriggerable: capabilities.runnerTrigger && (
+        capabilities.platform === 'win32'
+          ? taskForOwner(config.default_worker) !== null
+          : capabilities.platform === 'linux' && runnerForOwner(config.default_worker, repoRoot) !== null
+      ),
       registrationSource: 'runtime-default' as const,
     }] : [])
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -178,6 +187,7 @@ export function registerAgents(
   app: FastifyInstance,
   repoRoot: string = resolveRepoRoot(),
   naming: NamingRegistry = defaultNamingRegistry(),
+  capabilities: RuntimeCapabilities = runtimeCapabilities(),
 ): void {
   app.get('/api/agents', async () => {
     const policy = loadPolicy(repoRoot);
@@ -185,7 +195,7 @@ export function registerAgents(
     const index = indexRepo(repoRoot, naming);
     return buildRoster(index, repoRoot, policy, override, naming);
   });
-  app.get('/api/agents/system-workers', async () => readSystemWorkers(repoRoot));
+  app.get('/api/agents/system-workers', async () => readSystemWorkers(repoRoot, capabilities));
   app.get('/api/agents/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const detail = readAgentDetail(repoRoot, id);
