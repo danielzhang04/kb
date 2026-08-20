@@ -652,3 +652,10 @@
 - FAILED: three concurrent background test shells got killed by the harness and left orphaned vitest/pytest trees (`taskkill /T`). Long verification = ONE sequential background job writing to a scratch file.
 - FAILED: codex 0.148.0 Windows spawn still broken; 0.147.0 pin lives only in an old session scratchpad (`node_modules/.bin` is the PATH entry, not the pin root). Global fix owed.
 - REMAINS: Daniel merges #139 + deploys; cloud CLI applies the 6 deploy-handoff items (ops seed of agents/**, python deps, Brain provisioning, exact-value validator check); post-merge ceremony (sync_skills, U7/U9 arming, gate-3 maintainer fire, sweep worktree+clone).
+
+## 2026-08-20 bricks 3-variant trial (boss overnight #2)
+- WORKED: variant-per-branch + sequential clone-checkout gen train — worktrees can't inherit untracked .env/staging records, and workers correctly refused to copy credential stores; running gens in the clone (untracked files persist across checkout) solved it inside the credential law.
+- WORKED: adversarial review of the RECUT PLAN caught 2 CRITICALs (verbatim era restoration smuggling back an owner-prohibited tier; deletion of keep-listed process machinery) before any file was edited — restoration plans need the same adversarial gate as new function.
+- WORKED: 'no notification/monitor exists, do not create one' phrasing + explicit pixel-hygiene warnings cut sonnet gen-worker idle-stops from every-run to one.
+- LESSON: gitignored pixels vanish from working tree on branch switch when archived copies get COMMITTED per-branch — restore cross-branch sets via git restore --source before any cross-variant consumer runs.
+- REMAINS: Daniel's variant pick (artifact 53c84a37) → merge winner, canonicals, acts 2-4, full gen; render-register experiment is the next frontier (all 36 frames miss it identically — engine-side, not doctrine).
