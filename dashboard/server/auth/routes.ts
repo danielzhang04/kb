@@ -70,6 +70,9 @@ function isNamespacedChallenge(base64urlChallenge: string): boolean {
 
 /** Register the auth ceremony routes on an ALREADY-GUARDED scope (origin + rate-limit hooks applied). */
 export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
+  /** Tell the browser which authentication flow applies without exposing operator or server config. */
+  scope.get('/api/auth/context', async (_req, reply) => reply.send({ mode: ctx.authMode }));
+
   scope.post('/api/auth/register/options', async (_req, reply) => {
     let config;
     try {

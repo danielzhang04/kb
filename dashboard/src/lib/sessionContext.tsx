@@ -1,7 +1,7 @@
 /**
- * The dashboard's ONE unlock: a single React context holding the WebAuthn session bearer minted by
- * `authClient.signIn`. Every surface that needs a governed token calls `useSession().requireSession()`
- * instead of threading `sessionToken`/`onRequestSession` props and owning its own unlock button.
+ * The dashboard's ONE authentication boundary: desktop holds the WebAuthn bearer minted by
+ * `authClient.signIn`, while tailnet supplies an ambient sentinel because the transport authenticates
+ * every request. Governed surfaces call `useSession().requireSession()` instead of owning auth flows.
  *
  *   - The token lives here (memory) + tab-scoped `sessionStorage` via authClient — nowhere else. This
  *     module does not touch the network or the WebAuthn API itself; authClient stays the only minter.
@@ -11,33 +11,45 @@
  *     the stored copy is cleared, and every consumer re-locks together — on expiry and on the
  *     `SESSION_INVALIDATED_EVENT` a governed 401 raises.
  *
- * `signIn` is injected (same DI seam as `authClient`/`webauthnClient`) so this is testable with no
- * real passkey.
+ * Mode discovery and `signIn` are injected so this is testable with no network or real passkey.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX, ReactNode } from 'react';
 import {
   clearStoredSession,
+  fetchAuthContext as realFetchAuthContext,
   isSessionFresh,
   persistSession,
   readStoredSession,
   SESSION_INVALIDATED_EVENT,
   signIn as realSignIn,
+  type AuthContext,
+  type AuthMode,
   type Session,
 } from './authClient';
 
+/** Existing clients attach this harmless sentinel; tailnet server auth ignores bearer contents. */
+export const TAILNET_AMBIENT_SESSION: Session = Object.freeze({
+  token: 'tailnet-ambient',
+  expiresAt: Date.UTC(9999, 11, 31, 23, 59, 59, 999),
+});
+
 export interface SessionContextValue {
+  /** Server-selected auth mode, or null while the one boot-time discovery request is pending. */
+  mode: AuthMode | null;
   /** The live bearer, or null when locked. */
   session: Session | null;
-  /** `!isSessionFresh(session)` — the single source of truth for "show the locked state". */
+  /** Tailnet is always unlocked; desktop remains bearer-derived; loading is fail-closed. */
   locked: boolean;
-  /** Fresh session → returned as-is; locked → run (or join) the passkey ceremony. Null on refusal. */
+  /** Tailnet returns the ambient sentinel; desktop runs (or joins) the passkey ceremony when needed. */
   requireSession(): Promise<Session | null>;
 }
 
 export interface SessionProviderDeps {
   /** The passkey ceremony. Tests inject a fake; production uses `authClient.signIn`. */
   signIn?: () => Promise<Session>;
+  /** The one boot-time auth-mode request. Tests inject a fake; production uses `fetchAuthContext`. */
+  fetchAuthContext?: () => Promise<AuthContext>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -52,16 +64,43 @@ export function SessionProvider({
   // Expiry is handled by ONE timer armed at `expiresAt` (deterministic under fake timers, and it
   // re-renders consumers the moment the bearer dies); `locked` is still derived through
   // `isSessionFresh` so a not-yet-fired timer can never render an expired session as unlocked.
-  const [session, setSessionState] = useState<Session | null>(() => readStoredSession());
-  const sessionRef = useRef<Session | null>(session);
+  const [storedSession, setStoredSession] = useState<Session | null>(() => readStoredSession());
+  const [mode, setMode] = useState<AuthMode | null>(null);
+  const sessionRef = useRef<Session | null>(storedSession);
+  const modeRef = useRef<AuthMode | null>(null);
   const inFlight = useRef<Promise<Session | null> | null>(null);
+  const modeRequest = useRef<Promise<AuthContext> | null>(null);
   const signInImpl = deps?.signIn ?? realSignIn;
   const signInRef = useRef(signInImpl);
   signInRef.current = signInImpl;
+  const fetchAuthContextImpl = deps?.fetchAuthContext ?? realFetchAuthContext;
+  const fetchAuthContextRef = useRef(fetchAuthContextImpl);
+  fetchAuthContextRef.current = fetchAuthContextImpl;
 
   const applySession = useCallback((next: Session | null): void => {
     sessionRef.current = next;
-    setSessionState(next);
+    setStoredSession(next);
+  }, []);
+
+  // StrictMode replays effects in development. Keep the request in a ref so one provider mount still
+  // performs exactly one discovery call; any failure selects desktop, the fail-closed passkey path.
+  useEffect(() => {
+    let alive = true;
+    const request = modeRequest.current
+      ?? Promise.resolve().then(() => fetchAuthContextRef.current());
+    modeRequest.current = request;
+    void request
+      .then((context) => {
+        if (!alive) return;
+        modeRef.current = context.mode;
+        setMode(context.mode);
+      })
+      .catch(() => {
+        if (!alive) return;
+        modeRef.current = 'win32-desktop';
+        setMode('win32-desktop');
+      });
+    return () => { alive = false; };
   }, []);
 
   // A governed 401 clears tab storage and raises this signal; drop the in-memory copy so every
@@ -73,12 +112,14 @@ export function SessionProvider({
   }, [applySession]);
 
   useEffect(() => {
-    if (!session) return;
-    const timer = setTimeout(() => applySession(null), Math.max(0, session.expiresAt - Date.now()));
+    if (mode !== 'win32-desktop' || !storedSession) return;
+    const timer = setTimeout(() => applySession(null), Math.max(0, storedSession.expiresAt - Date.now()));
     return () => clearTimeout(timer);
-  }, [session, applySession]);
+  }, [mode, storedSession, applySession]);
 
   const requireSession = useCallback(async (): Promise<Session | null> => {
+    if (modeRef.current === null) return null;
+    if (modeRef.current === 'tailnet') return TAILNET_AMBIENT_SESSION;
     if (isSessionFresh(sessionRef.current)) return sessionRef.current;
     if (inFlight.current) return inFlight.current;
 
@@ -103,9 +144,20 @@ export function SessionProvider({
     return attempt;
   }, [applySession]);
 
+  const session = mode === 'tailnet'
+    ? TAILNET_AMBIENT_SESSION
+    : mode === 'win32-desktop'
+      ? storedSession
+      : null;
+  const locked = mode === null
+    ? true
+    : mode === 'tailnet'
+      ? false
+      : !isSessionFresh(storedSession);
+
   const value = useMemo<SessionContextValue>(
-    () => ({ session, locked: !isSessionFresh(session), requireSession }),
-    [session, requireSession],
+    () => ({ mode, session, locked, requireSession }),
+    [mode, session, locked, requireSession],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

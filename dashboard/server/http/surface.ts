@@ -127,7 +127,8 @@ export function makeSurfaceContext(
   // The auth-mode seam, resolved ONCE here with the same env source the activation gate reads. In
   // `tailnet` mode the operator authenticator rides on `sessionConfig` — the one object every
   // `requireSession` call site already receives — so the mode reaches all of them without a route edit.
-  const tailnet = resolveAuthMode(activation.env) === 'tailnet' ? resolveTailnetConfig(activation.env) : null;
+  const authMode = resolveAuthMode(activation.env);
+  const tailnet = authMode === 'tailnet' ? resolveTailnetConfig(activation.env) : null;
   const sessionConfig = overrides.sessionConfig ?? {
     secret: resolveSessionSecret(),
     ttlMs: resolveSessionTtlMs(),
@@ -232,6 +233,7 @@ export function makeSurfaceContext(
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
+    authMode: overrides.authMode ?? authMode,
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(activation.env),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
     readRateGuard: overrides.readRateGuard ?? makeDefaultReadRateGuard(),

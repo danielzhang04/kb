@@ -902,6 +902,15 @@ describe('write surface — LOW: rerun cardId must be filename-safe (no glob met
 describe('auth surface — fail-closed WebAuthn reality (no passkey provisioned)', () => {
   const testWebAuthn = () => ({ rpID: 'localhost', rpName: 'test', origin: GOOD_ORIGIN });
 
+  it.each(['tailnet', 'win32-desktop'] as const)('exposes the guarded public auth context for %s', async (authMode) => {
+    ({ app } = buildApp({ authMode }));
+
+    const response = await app.inject({ method: 'GET', url: '/api/auth/context', headers: headers(false) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ mode: authMode });
+  });
+
   it('assert/verify 401s because the credential store is empty (no session can be minted)', async () => {
     ({ app } = buildApp({ webAuthnConfig: testWebAuthn, credentials: () => [] }));
 
@@ -1165,6 +1174,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
       },
     );
     expect(ctx.executionLatch?.snapshot()).toMatchObject({ state: 'unlocked', source: 'tailnet' });
+    expect(ctx.authMode).toBe('tailnet');
     expect(createBridge).toHaveBeenCalledOnce();
     expect(start).toHaveBeenCalledWith(15_000);
     expect(ctx.stopQueueBridge).toBeTypeOf('function');
@@ -1180,6 +1190,7 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
 
   it('win32-desktop mode leaves the session config free of any operator authenticator', () => {
     const ctx = makeSurfaceContext({ repoRoot: REPO_A, allowedOrigins: [GOOD_ORIGIN] }, { env: {} });
+    expect(ctx.authMode).toBe('win32-desktop');
     expect(ctx.sessionConfig.operatorAuth).toBeUndefined();
   });
 

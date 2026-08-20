@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path';
 import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
 import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { SessionConfig } from '../auth/session.ts';
+import type { AuthMode } from '../auth/mode.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 import type { WebAuthnConfig } from '../auth/webauthn.ts';
@@ -87,6 +88,8 @@ export interface SurfaceContext {
   /** One shared session config (secret resolved ONCE) so a token minted at assert/verify verifies at
    *  every write route. Re-resolving per request would mint a fresh random secret and break everything. */
   sessionConfig: SessionConfig;
+  /** Deployment authentication mode resolved once at the HTTP composition root. */
+  authMode: AuthMode;
   allowedOrigins: AllowedOrigins;
   /** The MUTATION budget (POST/PUT/PATCH/DELETE/...) on the governed scope. */
   rateGuard: LockoutGuard;

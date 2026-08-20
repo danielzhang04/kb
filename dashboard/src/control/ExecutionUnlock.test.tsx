@@ -19,10 +19,12 @@ import { ControlApiError } from './controlClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession, SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
 
+const win32Context = async () => ({ mode: 'win32-desktop' as const });
+
 /** The one unlock: a stored fresh bearer the provider reads on mount. */
 function unlocked(ui: React.ReactElement): React.ReactElement {
   persistSession({ token: 'session-token', expiresAt: Date.now() + 60_000 });
-  return <SessionProvider>{ui}</SessionProvider>;
+  return <SessionProvider deps={{ fetchAuthContext: win32Context }}>{ui}</SessionProvider>;
 }
 
 function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
@@ -138,6 +140,21 @@ describe('ExecutionUnlock — execution arms with the sign-in', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('treats tailnet execution as armed at boot without reading or unlocking the latch', async () => {
+    const armingClient = client(vi.fn(async () => PASSKEY_UNLOCKED), [LOCKED]);
+    render(
+      <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' }) }}>
+        <ExecutionArmingProvider client={armingClient}><ExecutionUnlock /></ExecutionArmingProvider>
+      </SessionProvider>,
+    );
+
+    expect(await screen.findByText('Execution armed · tailnet')).toBeTruthy();
+    expect(screen.getByText('Execution is armed by the tailnet deployment at server boot.')).toBeTruthy();
+    expect(armingClient.getPosture).not.toHaveBeenCalled();
+    expect(armingClient.unlock).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('treats a 409 from an already-armed latch as success, not a failure', async () => {
     // The race a second tab (or a retry) creates: the POST is refused because the latch is already
     // armed. The authoritative posture, not the refusal, is what the operator is told.
@@ -228,7 +245,7 @@ describe('ExecutionUnlock — execution arms with the sign-in', () => {
   it('tells a signed-out tab that signing in is what arms execution', () => {
     const unlock = vi.fn(async () => PASSKEY_UNLOCKED);
     const armingClient = client(unlock, [LOCKED]);
-    render(<SessionProvider><ExecutionUnlock client={armingClient} /></SessionProvider>);
+    render(<SessionProvider deps={{ fetchAuthContext: win32Context }}><ExecutionUnlock client={armingClient} /></SessionProvider>);
 
     expect(screen.getByText('Execution locked')).toBeTruthy();
     expect(screen.getByText('Execution arms with your sign-in. Unlock this tab and execution arms with it.')).toBeTruthy();
@@ -250,7 +267,7 @@ describe('ExecutionUnlock — execution arms with the sign-in', () => {
     const signIn = vi.fn(async () => mints[Math.min(mint++, mints.length - 1)] as Session);
     persistSession(mints[0] as Session);
     render(
-      <SessionProvider deps={{ signIn }}>
+      <SessionProvider deps={{ signIn, fetchAuthContext: win32Context }}>
         <ExecutionArmingProvider client={armingClient}><ExecutionUnlock /></ExecutionArmingProvider>
       </SessionProvider>,
     );
@@ -270,7 +287,7 @@ describe('ExecutionUnlock — execution arms with the sign-in', () => {
     persistSession(mints[1] as Session);
     cleanup();
     render(
-      <SessionProvider>
+      <SessionProvider deps={{ fetchAuthContext: win32Context }}>
         <ExecutionArmingProvider client={armingClient}><ExecutionUnlock /></ExecutionArmingProvider>
       </SessionProvider>,
     );
@@ -290,7 +307,7 @@ describe('ExecutionUnlock — execution arms with the sign-in', () => {
 
     expect(await screen.findByText('Arming execution…')).toBeTruthy();
 
-    view.rerender(<SessionProvider><ExecutionUnlock client={clientB} /></SessionProvider>);
+    view.rerender(<SessionProvider deps={{ fetchAuthContext: win32Context }}><ExecutionUnlock client={clientB} /></SessionProvider>);
     expect(await screen.findByText('Execution armed · passkey')).toBeTruthy();
 
     await act(async () => {

@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   clearStoredSession,
+  fetchAuthContext,
   invalidateSessionOnGovernedAuthFailure,
   persistSession,
   readStoredSession,
@@ -24,6 +25,23 @@ const fakeBrowser: WebAuthnBrowserLike = {
   startRegistration: async () => ({}) as never,
   startAuthentication: async () => ({ id: 'cred-1', rawId: 'cred-1', type: 'public-key', response: {}, clientExtensionResults: {} }) as never,
 };
+
+describe('fetchAuthContext', () => {
+  it.each(['win32-desktop', 'tailnet'] as const)('accepts the server auth mode %s', async (mode) => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ mode }));
+
+    await expect(fetchAuthContext(fetchImpl as unknown as typeof fetch)).resolves.toEqual({ mode });
+    expect(fetchImpl).toHaveBeenCalledWith('/api/auth/context', { method: 'GET' });
+  });
+
+  it.each([
+    jsonResponse({ mode: 'unknown' }),
+    jsonResponse({}),
+    jsonResponse({ error: 'unavailable' }, false, 503),
+  ])('throws instead of guessing when the response is unusable', async (response) => {
+    await expect(fetchAuthContext(async () => response)).rejects.toThrow();
+  });
+});
 
 describe('signIn', () => {
   it('runs the assertion ceremony and returns the minted session', async () => {

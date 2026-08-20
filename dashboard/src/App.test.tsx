@@ -29,9 +29,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Resolve the new boot-time mode handshake as desktop while preserving each test's projection mock. */
+async function renderApp(): Promise<ReturnType<typeof render>> {
+  const fetchImpl = globalThis.fetch;
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === '/api/auth/context') {
+      return Promise.resolve(new Response(JSON.stringify({ mode: 'win32-desktop' }), { status: 200 }));
+    }
+    return fetchImpl(input, init);
+  }));
+  const view = render(<App />);
+  await waitFor(() => expect(screen.queryByLabelText('Starting dashboard')).toBeNull());
+  return view;
+}
+
 describe('App shell — entity-first sidebar navigation', () => {
-  it('renders the sidebar as unlabelled groups (dividers, no group headers) with every nav item', () => {
-    render(<App />);
+  it('renders the sidebar as unlabelled groups (dividers, no group headers) with every nav item', async () => {
+    await renderApp();
 
     expect(screen.getByLabelText('Primary navigation')).toBeTruthy();
 
@@ -61,8 +75,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     }
   });
 
-  it('does not render any dropped verb-IA destination', () => {
-    render(<App />);
+  it('does not render any dropped verb-IA destination', async () => {
+    await renderApp();
     // D3.5 makes `Sentinel` a real destination again, so it is not in the dropped set. `Runs` and
     // `Run Canvas` joined that set when runs collapsed into Workflows.
     for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Runs', 'Run Canvas']) {
@@ -70,14 +84,14 @@ describe('App shell — entity-first sidebar navigation', () => {
     }
   });
 
-  it('lands on the Home rollup view by default', () => {
-    render(<App />);
+  it('lands on the Home rollup view by default', async () => {
+    await renderApp();
     expect(screen.getByLabelText('Home view')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
   });
 
-  it('carries NO stop floor: the sidebar ends at the nav and the stop controls live on Sentinel', () => {
-    render(<App />);
+  it('carries NO stop floor: the sidebar ends at the nav and the stop controls live on Sentinel', async () => {
+    await renderApp();
     // spec §6 — the pinned floor region is gone from the shell entirely: no region, no controls.
     expect(screen.queryByTestId('stop-floor')).toBeNull();
     expect(screen.queryByLabelText('Stop floor')).toBeNull();
@@ -98,9 +112,49 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
   });
 
-  it('renders the passkey sign-in view before mounting the data shell', () => {
+  it('shows a neutral boot shell while auth-mode discovery is pending', async () => {
     window.sessionStorage.clear();
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/auth/context') {
+        return Promise.resolve(new Response(JSON.stringify({ mode: 'win32-desktop' }), { status: 200 }));
+      }
+      return new Promise<Response>(() => {});
+    }));
+
     render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Starting dashboard' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Sign in' })).toBeNull();
+    expect(screen.queryByLabelText('Home view')).toBeNull();
+
+    // Drain the deliberately async mode request before teardown so it cannot outlive this test.
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+  });
+
+  it('boots tailnet directly into the app without any passkey or execution-arm request', async () => {
+    window.sessionStorage.clear();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/auth/context') {
+        return Promise.resolve(new Response(JSON.stringify({ mode: 'tailnet' }), { status: 200 }));
+      }
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByLabelText('Home view')).toBeTruthy();
+    expect(screen.getByTestId('session-chip').textContent).toBe('Tailnet · connected');
+    const urls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(urls).not.toContain('/api/auth/assert/options');
+    expect(urls).not.toContain('/api/auth/assert/verify');
+    expect(urls).not.toContain('/api/control/execution/posture');
+    expect(urls).not.toContain('/api/control/execution/unlock');
+  });
+
+  it('renders the passkey sign-in view before mounting the data shell', async () => {
+    window.sessionStorage.clear();
+    await renderApp();
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy();
     const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
     expect(chip.textContent).toBe('Unlock');
@@ -113,7 +167,7 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.queryByLabelText('Home view')).toBeNull();
   });
 
-  it('keeps the sign-in view up when every pre-auth projection would reject with 401', () => {
+  it('keeps the sign-in view up when every pre-auth projection would reject with 401', async () => {
     window.sessionStorage.clear();
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'unauthenticated' }), {
@@ -122,19 +176,19 @@ describe('App shell — entity-first sidebar navigation', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    expect(() => render(<App />)).not.toThrow();
+    await renderApp();
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy();
     expect(screen.queryByLabelText('Home view')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
   });
 
-  it('restores an unexpired tab session after a refresh-sized remount', () => {
+  it('restores an unexpired tab session after a refresh-sized remount', async () => {
     window.sessionStorage.setItem(
       'kb-dashboard-session-v1',
       JSON.stringify({ token: 'restored-token', expiresAt: Date.now() + 60_000 }),
     );
-    render(<App />);
+    await renderApp();
 
     const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
     expect(chip.textContent).toMatch(/^Unlocked · expires in \d+m$/);
@@ -147,7 +201,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       'kb-dashboard-session-v1',
       JSON.stringify({ token: 'rotated-secret-token', expiresAt: Date.now() + 60_000 }),
     );
-    render(<App />);
+    await renderApp();
     expect(screen.getByTestId('session-chip').textContent).toMatch(/^Unlocked/);
 
     await invalidateSessionOnGovernedAuthFailure(new Response(JSON.stringify({
@@ -159,11 +213,11 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
   });
 
-  it('lays the sidebar out as a two-zone column: [+ New] header, then the scrollable nav — and ends there', () => {
+  it('lays the sidebar out as a two-zone column: [+ New] header, then the scrollable nav — and ends there', async () => {
     // U5.1 item 7 — the sidebar is a flex column pinned to the viewport height. jsdom can't compute the
     // 100dvh/zoom layout, so this pins the STRUCTURE the CSS relies on: the nav zone exists (it carries
     // overflow-y:auto) and is now the LAST child, because the pinned floor below it was removed (§6).
-    render(<App />);
+    await renderApp();
     const sidebar = screen.getByLabelText('Primary navigation');
     expect(sidebar.querySelector('.mc-nav')).toBeTruthy();
     expect(sidebar.lastElementChild?.className).toBe('mc-nav');
@@ -172,28 +226,31 @@ describe('App shell — entity-first sidebar navigation', () => {
   });
 
   it('returns to sign-in when the Home index read reports a governed 401', async () => {
+    let resolveIndex!: (response: Response) => void;
+    const indexResponse = new Promise<Response>((resolve) => { resolveIndex = resolve; });
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/index') {
-        return Promise.resolve(new Response(JSON.stringify({ error: 'unauthenticated' }), {
-          status: 401,
-          headers: { 'content-type': 'application/json' },
-        }));
+        return indexResponse;
       }
       return new Promise(() => {});
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<App />);
+    await renderApp();
     expect(screen.getByLabelText('Home view')).toBeTruthy();
 
+    resolveIndex(new Response(JSON.stringify({ error: 'unauthenticated' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy());
     expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
   });
 
-  it('exposes a quiet theme toggle that flips the pinned data-theme and persists the choice', () => {
+  it('exposes a quiet theme toggle that flips the pinned data-theme and persists the choice', async () => {
     window.localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
-    render(<App />);
+    await renderApp();
 
     const toggle = screen.getByRole('button', { name: /switch to light theme/i });
     fireEvent.click(toggle);
@@ -206,8 +263,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(window.localStorage.getItem('mc-theme')).toBe('dark');
   });
 
-  it('routes each live destination to its mapped view', () => {
-    render(<App />);
+  it('routes each live destination to its mapped view', async () => {
+    await renderApp();
 
     fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(screen.getByRole('button', { name: 'Workflows' }).getAttribute('aria-current')).toBe('page');
@@ -230,8 +287,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Home view')).toBeTruthy();
   });
 
-  it('routes the U3 entity destinations (Agents/Tasks/Projects/Ledgers) to their real views', () => {
-    render(<App />);
+  it('routes the U3 entity destinations (Agents/Tasks/Projects/Ledgers) to their real views', async () => {
+    await renderApp();
     for (const label of ['Agents', 'Tasks', 'Projects', 'Ledgers']) {
       const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
       expect(btn.disabled).toBe(false);
@@ -244,8 +301,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     }
   });
 
-  it('routes the Sentinel destination to the layer-panel set with its four sub-tabs (D3.5)', () => {
-    render(<App />);
+  it('routes the Sentinel destination to the layer-panel set with its four sub-tabs (D3.5)', async () => {
+    await renderApp();
     const btn = screen.getByRole('button', { name: 'Sentinel' }) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
@@ -268,8 +325,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Flight Recorder panel')).toBeTruthy();
   });
 
-  it('routes the live Atlas destination (Atlas V1 voice-worker mirror) to its real view', () => {
-    render(<App />);
+  it('routes the live Atlas destination (Atlas V1 voice-worker mirror) to its real view', async () => {
+    await renderApp();
     // Atlas went live in Atlas V1 — the greyed "soon" stub was promoted to a full top-level view.
     const btn = screen.getByRole('button', { name: /^Atlas/ }) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
@@ -281,8 +338,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(view.textContent ?? '').not.toMatch(/built in U3/i);
   });
 
-  it('routes the live Terminal destination (D3.2 PTY pane) to its real view', () => {
-    render(<App />);
+  it('routes the live Terminal destination (D3.2 PTY pane) to its real view', async () => {
+    await renderApp();
     const btn = screen.getByRole('button', { name: /^Terminal/ }) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
@@ -306,7 +363,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       return new Promise<Response>(() => {});
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<App />);
+    await renderApp();
 
     fireEvent.click(screen.getByRole('button', { name: /^Terminal/ }));
     expect(await screen.findByText('Terminal is disabled on this host.')).toBeTruthy();
@@ -315,8 +372,8 @@ describe('App shell — entity-first sidebar navigation', () => {
     }));
   });
 
-  it('keeps the Terminal workspace mounted across navigation', () => {
-    render(<App />);
+  it('keeps the Terminal workspace mounted across navigation', async () => {
+    await renderApp();
     const terminalButton = screen.getByRole('button', { name: /^Terminal/ });
     fireEvent.click(terminalButton);
 
@@ -334,8 +391,8 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   });
 
-  it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {
-    render(<App />);
+  it('the sidebar-wide collapse toggle switches the shell into rail mode and back', async () => {
+    await renderApp();
 
     const toggle = screen.getByRole('button', { name: 'Collapse sidebar' });
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
@@ -378,7 +435,7 @@ describe('App shell — Composer workspaces', () => {
       return new Promise<Response>(() => {});
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<App />);
+    await renderApp();
 
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
 
@@ -405,7 +462,7 @@ describe('App shell — Composer workspaces', () => {
       return new Promise<Response>(() => {});
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<App />);
+    await renderApp();
 
     fireEvent.click(screen.getByRole('button', { name: 'New' }));
     await screen.findByRole('tab', { name: 'Atlas research' });
@@ -456,7 +513,7 @@ describe('App shell — Composer workspaces', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     window.localStorage.setItem('kb-composer-open-refs-v1', JSON.stringify(['cw-1']));
-    render(<App />);
+    await renderApp();
 
     await screen.findByRole('tab', { name: 'Original' });
     fireEvent.click(screen.getByRole('tab', { name: 'Original' }));
@@ -527,9 +584,10 @@ describe('App shell — the Inbox deep-links to the surface that owns each gate'
 
   it('carries an inbox row through to the card surface that holds its work order', async () => {
     serveInbox();
-    render(<App />);
+    await renderApp();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    // The resolved count adds "1 pending" to the accessible name; target the stable nav-label prefix.
+    fireEvent.click(screen.getByRole('button', { name: /^Inbox/ }));
     const row = await screen.findByTestId('inbox-row-card:card-77');
     // The row is the plain line + where it lives; it answers nothing itself.
     expect(row.textContent).toContain('approve:oauth-gate');
@@ -545,7 +603,7 @@ describe('App shell — the Inbox deep-links to the surface that owns each gate'
 
   it('carries a Home waiting-on-you row to the same card surface', async () => {
     serveInbox();
-    render(<App />);
+    await renderApp();
 
     // Home is the landing view; its waiting rows deep-link exactly like the Inbox rows do.
     const row = await screen.findByRole('button', { name: /Open approve:oauth-gate/i });

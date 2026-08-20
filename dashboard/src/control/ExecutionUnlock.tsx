@@ -19,6 +19,20 @@ const defaultClient: ExecutionUnlockClient = {
   unlock: (token) => unlockExecution(token),
 };
 
+/** Client representation of the server-owned tailnet arm-at-boot posture. No control call creates it. */
+const TAILNET_ARMED_STATE: ExecutionArmingState = {
+  posture: {
+    state: 'unlocked',
+    source: 'tailnet',
+    unlockedAt: new Date().toISOString(),
+    unlockedBy: 'tailnet',
+  },
+  pending: false,
+  error: null,
+  retry: null,
+  signedIn: true,
+};
+
 /** What the operator is told about the automatic arm. `retry` exists ONLY after a failed attempt. */
 export interface ExecutionArmingState {
   /** The authoritative server posture, or null while unknown / unreadable. */
@@ -171,7 +185,9 @@ export function ExecutionArmingProvider({
   client?: ExecutionUnlockClient;
   children: ReactNode;
 }): JSX.Element {
-  const arming = useSessionArmedExecution(client, true);
+  const { mode } = useSession();
+  const sessionArming = useSessionArmedExecution(client, mode === 'win32-desktop');
+  const arming = mode === 'tailnet' ? TAILNET_ARMED_STATE : sessionArming;
   return <ExecutionArmingContext.Provider value={arming}>{children}</ExecutionArmingContext.Provider>;
 }
 
@@ -199,10 +215,11 @@ export function ExecutionUnlock({
   client?: ExecutionUnlockClient;
   onPostureChange?: (posture: ExecutionPostureDto | null) => void;
 }): JSX.Element {
+  const { mode } = useSession();
   const hosted = useExecutionArming();
   // Always called; inert whenever a provider above already owns the attempt (see the hook's doc).
-  const local = useSessionArmedExecution(client, hosted === null);
-  const arming = hosted ?? local;
+  const local = useSessionArmedExecution(client, hosted === null && mode === 'win32-desktop');
+  const arming = hosted ?? (mode === 'tailnet' ? TAILNET_ARMED_STATE : local);
   const { posture, pending, error, retry, signedIn } = arming;
 
   // Held in a ref so a parent's inline callback cannot restart anything; the effect tracks POSTURE only.
@@ -239,7 +256,9 @@ export function ExecutionUnlock({
         ) : null}
       </div>
       <p className="v-home__execution-help">
-        {signedIn
+        {mode === 'tailnet'
+          ? 'Execution is armed by the tailnet deployment at server boot.'
+          : signedIn
           ? 'Execution arms with your sign-in. The dashboard makes that governed, audited call for you — no second prompt, no second click.'
           : 'Execution arms with your sign-in. Unlock this tab and execution arms with it.'}
       </p>
