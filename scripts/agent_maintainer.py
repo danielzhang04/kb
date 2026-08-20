@@ -292,26 +292,32 @@ class _ScanState:
 
 
 def _iter_files(source: Path, suffixes: frozenset[str], source_name: str, state: _ScanState) -> Iterator[Path]:
-    """Stream source candidates with bounded ``scandir`` traversal and no directory links."""
+    """Stream source candidates in deterministic order with no directory links."""
     if source.is_file():
         candidates: Iterator[Path] = iter((source,))
     elif source.is_dir():
+        def sorted_entries(path: Path) -> Iterator[os.DirEntry[str]]:
+            scan = os.scandir(path)
+            try:
+                return iter(sorted(scan, key=lambda entry: entry.name))
+            finally:
+                scan.close()
+
         def walk() -> Iterator[Path]:
-            scans = [os.scandir(source)]
+            scans = [sorted_entries(source)]
             try:
                 while scans:
                     try:
                         entry = next(scans[-1])
                     except StopIteration:
-                        scans.pop().close()
+                        scans.pop()
                         continue
                     if entry.is_dir(follow_symlinks=False):
-                        scans.append(os.scandir(entry.path))
+                        scans.append(sorted_entries(Path(entry.path)))
                     elif entry.is_file(follow_symlinks=False):
                         yield Path(entry.path)
             finally:
-                for scan in scans:
-                    scan.close()
+                scans.clear()
 
         candidates = walk()
     else:
@@ -588,7 +594,7 @@ def _sweep_stale_forecast_leases(repo_root: Path) -> None:
     if not scratch.is_dir():
         return
     now = time.time()
-    for candidate in scratch.iterdir():
+    for candidate in sorted(scratch.iterdir(), key=lambda path: path.name):
         try:
             stale = now - candidate.stat().st_mtime >= FORECAST_STALE_LEASE_SECONDS
         except OSError:

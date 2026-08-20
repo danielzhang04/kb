@@ -20,11 +20,11 @@ from scripts.brain.store import (
 
 
 SNIPPET_LIMIT = 200
+PYTHON_LAUNCHER = "py -3" if os.name == "nt" else "python3"
 
 
 def _index_build_help() -> str:
-    python = "py -3" if os.name == "nt" else "python3"
-    return f"index not built — run: {python} -m scripts.brain.indexer build"
+    return f"index not built — run: {PYTHON_LAUNCHER} -m scripts.brain.indexer build"
 
 
 class _StrictArgumentParser(argparse.ArgumentParser):

@@ -93,7 +93,9 @@ def test_cli_reports_missing_index_with_the_documented_exit_code(
     monkeypatch.setattr(brain_query, "SentenceTransformerEmbedder", FakeEmbedder)
 
     assert brain_query.main(["find alpha", "--index", str(tmp_path / "missing")]) == 2
-    assert capsys.readouterr().err.strip() == "index not built — run: py -3 -m scripts.brain.indexer build"
+    assert capsys.readouterr().err.strip() == (
+        f"index not built — run: {brain_query.PYTHON_LAUNCHER} -m scripts.brain.indexer build"
+    )
 
 
 def test_cli_surfaces_model_mismatch_verbatim(
@@ -137,7 +139,9 @@ def test_cli_json_index_not_built_emits_error_object_on_stdout(
 
     assert code == 2
     captured = capsys.readouterr()
-    assert captured.err.strip() == "index not built — run: py -3 -m scripts.brain.indexer build"
+    assert captured.err.strip() == (
+        f"index not built — run: {brain_query.PYTHON_LAUNCHER} -m scripts.brain.indexer build"
+    )
     assert json.loads(captured.out) == {"error": "index-not-built"}
 
 

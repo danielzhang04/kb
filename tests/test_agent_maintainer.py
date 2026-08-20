@@ -358,7 +358,7 @@ def test_source_file_bound_stops_before_later_malformed_file_is_scanned(tmp_path
     assert result.reason.startswith("file bound reached for eval reports")
 
 
-def test_scandir_file_bound_does_not_consume_entries_past_cap(tmp_path, monkeypatch):
+def test_scandir_file_bound_sorts_entries_before_applying_cap(tmp_path, monkeypatch):
     sources = _empty_sources(tmp_path)
     for number in range(MAX_FILES_PER_SOURCE + 5):
         (sources["eval_reports"] / f"clean-{number:03}.md").write_text("# clean", encoding="utf-8")
@@ -386,7 +386,7 @@ def test_scandir_file_bound_does_not_consume_entries_past_cap(tmp_path, monkeypa
 
     result = run_fire(tmp_path, sources)
 
-    assert consumed <= MAX_FILES_PER_SOURCE
+    assert consumed == MAX_FILES_PER_SOURCE + 5
     assert result.parked is True
     assert result.reason.startswith("file bound reached for eval reports")
 
