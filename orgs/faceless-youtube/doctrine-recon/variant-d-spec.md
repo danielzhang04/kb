@@ -1,4 +1,4 @@
-# Variant D — design spec (2026-08-20, rev 2 after adversarial REJECT of rev 1)
+# Variant D — design spec (2026-08-20, rev 3 — rev-2 verdict `variant-d-spec-adv-r2.md` F2/A2/N1–N4 resolved below)
 
 Owner: boss session. Base: `claude/bricks-variant-vb` tip (`17becaaf`), new branch `claude/bricks-variant-vd`.
 Evidence: `V/scratchpad/taste-audit/vd-{chain,palette,occupancy,crowd-density}-forensics*.md` + adversarial
@@ -54,9 +54,13 @@ patch, and updates the tests that mirror it. The writing-plans step produces the
   material, plus at most two supporting colours; complements are valid when those facts create them; a palette turn
   changes the dominant field, not the names of the same pair. Colour with no physical or story cause is not written.*
 - `visual-prompt-writer/SKILL.md` Step 3 plan lock: palette recorded **per stage** as *field + basis* (liked-era
-  requirement, dropped by the restoration). Transport (F7): the stage's field+basis sentence goes in the base shot's
-  existing `notes` field — no schema change; a standalone shot is its own stage (F7 "distinct stage" = distinct
-  `stage` id, standalones count as one each, same-place re-bases are distinct).
+  requirement, dropped by the restoration). Transport (F7/N3, two halves): (i) **pixels** — the drawable light and
+  material facts that realize the chosen field are written into the base shot's `still_prompt`, replacing lower-value
+  words (forge sends only `still_prompt`, `forge.py` 1238/1432-1441); (ii) **review** — the base shot's existing
+  `notes` carries one sentence prefixed `Palette basis: <field> — <light/material cause>` (the prefix keeps it apart
+  from the policy flags, fact ids and elevation text `notes` already holds); `build_review_artifact.py` maps that
+  sentence to every card of the same stage and renders it apart from the manifest `reason`. A standalone shot is its
+  own stage; same-place re-bases are distinct stages.
 - `references/critics.md` 52-56: keep "do not police palette codes"; the one plan-level check becomes: a dominant axis
   repeated across distinct stages without a stated basis. Holds exempt.
 - `image-generation/SKILL.md` fresh-eyes review gate: invoke the existing scene-board command
@@ -77,9 +81,17 @@ patch, and updates the tests that mirror it. The writing-plans step produces the
   at the existing human gate. No three-person promise; `shots-schema.md` 179 wording limited to the verified path.
 - `visual-prompt-writer/SKILL.md` 140-141: decision order subject → acting participants → occupancy → class → cast →
   tableau; 125 keeps the grammar as the only normative home.
-- The critic's human-use question lives at `style-bible.md` 190-200 (Casting/Staging canonical question;
-  `critics.md` 50 is only a pointer — anchor correction): it becomes *who acts in this sentence, and would removing
-  every visible person hide that causal subject?* plus *is each crowd's narrated subject genuinely the mass?*
+- The critic's six canonical questions live at `style-bible.md` 180-202 (`critics.md` 47-50 is the pointer and
+  promises SIX — count unchanged, N1). Exact edit — question 3 only; 5 (Staging interest) untouched:
+  OLD `3. **Casting.** Is every story-named or story-referenced figure cast from the registry — including inside
+  diegetic media (a brochure figure, a portrait, a poster who IS a named character)? Does every role read at a glance
+  (a king reads as a king)? Is any named figure in the wrong canonical outfit without the shot authoring the change?`
+  NEW `3. **Casting.** Who acts in this sentence — would removing every visible person hide that causal subject? Is
+  every story-named or story-referenced figure cast from the registry — including inside diegetic media (a brochure
+  figure, a portrait, a poster who IS a named character)? Does every role read at a glance (a king reads as a king)?
+  Is any named figure in the wrong canonical outfit without the shot authoring the change? Where a crowd is depicted,
+  is its narrated subject genuinely the mass, and does the scene geometry hold it beyond something with the near
+  zone empty?` All three existing checks survive; the two occupancy/crowd judgments join them.
 - `scripts/lint_shots.py`: diagnostics only — zero-human runs (ids, duration, VO), crowd shots with VO and
   neighbours, 1–2-cast shots with asset/base renderability.
 
@@ -91,16 +103,16 @@ patch, and updates the tests that mirror it. The writing-plans step produces the
   `## 2d. CROWD-RIG clause` heading (the suffix section is renumbered; grammar/bible/IG references to "§2d" follow);
   grammar 127-130 becomes "forge appends §2d from `figures`"; the rig-hold descriptor's cross-reference (bible 96)
   stays true. Zero forge code change; one new test asserting `Kit.prompt_for(..., figures={"crowd": True})` contains
-  the clause bytes and a seedless-crowd call still refuses. Every "authored by VPW" assertion in grammar, IG, lint
-  messages and tests is deleted or replaced in the same patch.
-- Criterion at `visual-grammar.md` 147 (crowd half, with §3.3) restores `30d2b7e8` VPW 68-72 / grammar 128-131: *a
-  crowd is written in the primary scene clause as a bounded group inside a named capacity-limiting boundary — behind
-  a pane, between rails, through a doorway, along a pavement, on a far bank — with the near zone explicitly empty;
-  never a co-planar gathering later called "small" or "rear-zone".* Probe: "small/restrained" → 24–45 bodies; count +
-  appended container → 20; count inside bounding geometry + empty near aisle → 14–15 twice. No size threshold
-  (F5: largest figures stayed ≈40% even when bounded — judged, not measured).
-- `lint_shots.py`: when `figures.crowd` is true, report whether the prompt names a boundary noun with a spatial
-  relation and an empty near zone. Diagnostic.
+  the clause bytes and a seedless-crowd call still refuses (`forge.py` 490-495, independent of the move). Every
+  "authored by VPW" / "§2d" copy in grammar, IG (`SKILL.md` 182), lint messages and tests (`test_forge_style_tile.py`
+  243 hard-codes the suffix heading) is deleted or replaced in the same patch, before the test gate.
+- Criterion at `visual-grammar.md` 147 (crowd half, with §3.3) restores `30d2b7e8` VPW 68-72 / grammar 128-131 as
+  one positive sentence (N2 — no "never", no lexical lint): *a crowd is written in the primary scene clause as a
+  bounded group held beyond something the scene already has — a pane, rails, a doorway, a pavement, a far bank —
+  with the near zone empty, so the geometry sets its count and scale.* Probe: "small/restrained" → 24–45 bodies;
+  count + appended container → 20; count inside bounding geometry + empty near aisle → 14–15 twice. No size threshold
+  (F5). Whether the geometry actually bounds and recedes is the critic's judgment under question 3 (§3.3); lint
+  does not read crowd prose.
 
 ### 3.5 Prompt length — measured answer to Daniel
 Authored `still_prompt` median words/shot: liked 73 → fresh 61 → va 46 / vb 39 / vc 59 (reproduced by the reviewer).
@@ -113,10 +125,17 @@ median quota (F8).
 1. **Doctrine build** on `claude/bricks-variant-vd` per §3 with the plan's old→new matrix; test suites green
    (`py -3 -m pytest` in `visual-prompt-writer/scripts` and `image-generation/scripts`; vb baseline 101 + 166 = 267);
    echo sweep for every deleted phrase across skills/kit/tests; mojibake sweep; `git diff --check`.
-2. **Lint fragment scope (F2):** `lint_shots.py` gains a declared fragment scope (the file states its act span) under
-   which the two whole-file sizing checks (duration ≥85% runtime, count ≥ runtime/5) are reported as deferred, every
-   other rule runs, and `--write` derives `vo_text` for the covered span. This is a scope condition on existing
-   checks, not a new rule. The critic then runs on the fragment through its normal path.
+2. **Lint fragment scope (F2) — exact contract.** `lint_shots.py <shots.json> [--write] [--fragment]`. `--fragment`
+   declares that `long_form.shots` cover the script from its start through the VO span of the last shot; nothing is
+   written into the JSON (no dead metadata in the eventual full file). Under it, `lint_piece` (174-179) computes
+   `runtime_s` for the two sizing checks from the **covered** span — the script words from the start through the end
+   of the last matched anchor's tile (`tile()` 124-129 already yields that boundary) at the header pace — instead of
+   the whole script, and prints `fragment scope: covered N/M script words`. Every other rule is unchanged; shorts and
+   thumbnail pieces are unaffected; `--fragment` with no `long_form.shots` or with an unmatched last anchor is a HARD.
+   `--write` behaves as today (derives `vo_text` for the covered shots when no HARD remains). Tests: vb's 45-shot file
+   → 2 sizing HARDs without the flag (existing behaviour), 0 with it; the same file truncated to 20 shots with the flag
+   → the duration HARD still fires against the covered span. The critic then runs on the linted fragment through its
+   normal path with its brief stating the covered span.
 3. **VPW A1 under D:** plan lock = partition/cast/place boundaries + per-stage field+basis + the acting participant per
    beat; shots authored; stage decisions after, by §3.1. Pixel levers made explicit: re-stage validated holds (vb
    L05→L06, L08→L09 class; vc L09→L10 class) only where the critic's symmetric test passes; rewrite every stage's
@@ -132,9 +151,12 @@ median quota (F8).
 ## 5. Acceptance (boss-verified, no author-visible targets)
 - Doctrine diff: each change sits at the cited home; no new section headers beyond the bible §2d move; superseded
   phrases grep to zero across skills, kit, tests; tests green; forge crowd-expansion byte test passes.
-- Fragment: lint fragment scope reports 0 HARD (sizing deferred); critic pass after ≤1 repair round; every chain
-  passes the symmetric test; every stage base carries field+basis in `notes`; no crowd prompt without boundary +
-  empty near zone; per-shot word-count diff vs vb reviewed (facts replaced, not added).
+- Fragment: `lint --fragment` 0 HARD; critic pass after ≤1 repair round; every chain passes the symmetric test;
+  every stage base carries its light/material facts in `still_prompt` and a `Palette basis:` sentence in `notes`;
+  crowd geometry judged by the critic (question 3). **No-growth review is dispositive (N4):** a per-shot table of
+  authored word deltas vs vb; any positive delta must name, in the same row, the lower-value words it replaced, or
+  the shot is re-authored before gen; assembled-provider deltas are reported separately (crowd shots gain the
+  forge-appended §2d — expected, reported, not counted as authored growth). No aggregate target.
 - Renders: 12/12 attempted; parks honest; the blind reviewer's distributions reported, not targeted.
 
 ## 6. Cost and records (F12)
