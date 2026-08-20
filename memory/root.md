@@ -1,5 +1,29 @@
 # Root agent memory
 
+## Loopback origins do not make browser cookies port-scoped
+
+### Context
+- A local action UI initially used an HttpOnly SameSite cookie after a one-time pairing ceremony; adversarial review showed that another service on a different `127.0.0.1` port would still receive that host cookie.
+
+### Root Cause / Core Insight
+- Browser cookie scope follows host/domain and path, not TCP port, while raw local clients can forge Origin headers. Loopback-only binding and SameSite therefore do not turn a cookie into a per-service capability.
+
+### The Pattern (transferable)
+- Next time a privileged localhost UI spans an untrusted multi-service host, I will keep its authority in page memory and require an explicit per-request bearer header, or use an OS/WebView channel; I will not use a host cookie as the capability.
+- Signal to recognize: multiple localhost ports exist and a cookie is the only proof that a request came from the paired UI.
+
+## Model-visible integrations need two independent boundaries
+
+### Context
+- Atlas needed broad read/preparation tools without letting model output directly launch apps, mutate files, click a browser, or send email.
+
+### Root Cause / Core Insight
+- Allowlisting adapter inputs is insufficient if the same model-facing surface can execute them. Exposure policy and trusted execution authority are separate controls and must both fail closed.
+
+### The Pattern (transferable)
+- Next time I add an agent integration, I will project explicit tools per caller surface and expose only reads or typed proposal preparation to the model; execution will require a separately authenticated, hash-bound, one-shot coordinator.
+- Signal to recognize: a tool registry is shared by MCP, voice, UI, and planner callers, or a new connector method is about to be registered globally.
+
 ## 2026-08-03 — Round-1 Lane C generation
 
 - A nominal `3q-turn-right` STEP-1 card can remain front-facing while fully passing the visual rig. Treat this as a content failure, preserve it as evidence, and withhold its dependent scene under a no-content-retry lane rule.

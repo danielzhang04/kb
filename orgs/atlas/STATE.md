@@ -1,8 +1,17 @@
 # atlas — STATE
 
-_Updated: 2026-07-21 (V1 COMPLETE — all gates passed — Fable 5 boss session)_
+_Updated: 2026-08-20 (omni-interface foundation committed locally; remote push awaits approval)_
 
 ## Now
+- **CURRENT UPDATE 2026-08-20 — OMNI-INTERFACE FOUNDATION COMPLETE LOCALLY.** Dedicated branch
+  `codex/atlas-enhancements-20260820`, commit `280a67a9`: standalone Jarvis-style UI, five tabs,
+  local files, named desktop apps, paired browser contracts, Google Workspace contracts,
+  deny-default model/MCP surfaces, paired proposal execution, and persistent redacted receipts.
+  Verification: Atlas `225 passed, 1 skipped`; dashboard changed tests `8 passed`; typecheck/build;
+  production dependency audit `0 vulnerabilities`; independent security verdict `PASS` and final
+  code/UX verdict `READY`. VM capability/access is absent. Remote push was blocked by the approval
+  reviewer pending Daniel's explicit approval of `origin`; active handoff:
+  `handoffs/2026-08-20-atlas-omni-interface.md`.
 - **V1 "HANDS" WAVE COMPLETE 2026-07-21 — ALL THREE GATES PASSED at the desk.** T3-T12 built,
   graded (95/96/97/96/95/96/96/97/97 — every card past the T2 bar), Gate A (status surface),
   Gate B (persona co-authored), Gate C (voice card filed with read-back confirm -> engaged
@@ -41,8 +50,10 @@ _Updated: 2026-07-21 (V1 COMPLETE — all gates passed — Fable 5 boss session)
   Run: `cd kb-worktrees\atlas\atlas; .venv\Scripts\python -m worker.app console --input-device 2`.
 
 ## Next
-- Execute T3→T12 per plan order (Slice 1 first: T4/T5/T6/T7/T8 after T3 refactor), gates
-  one at a time at their plan positions.
+- Daniel end review: approve or decline pushing commit `280a67a9` to `origin`, then review the
+  activation checklist before any Google OAuth or signed-in browser pairing.
+- If approved, pair a trusted browser bridge with atomic origin/document enforcement, enable Google
+  only in a disposable account, desk-test fixed desktop profiles, and visually approve the UI.
 - Deferred (named): TTFT input diet, spoken voice-switch, hot-follow BT routing, SSE panel
   upgrade, tray widget, panel write-back, Agent-SDK in-process workflows (V2), native MCP
   retest on livekit-agents upgrade past the #2519-class bug.
