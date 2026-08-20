@@ -123,6 +123,24 @@ function parseEvent(raw) {
   return event;
 }
 
+/** Parse valid, non-blank JSONL records, skipping malformed or partial lines. */
+function parseJsonLines(text) {
+  if (typeof text !== "string") {
+    return [];
+  }
+  const records = [];
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      records.push(JSON.parse(trimmed));
+    } catch (_err) {
+      /* a partial trailing line is normal on a live transcript or log */
+    }
+  }
+  return records;
+}
+
 /**
  * Does this payload belong to `expected`?
  *
@@ -209,9 +227,9 @@ module.exports = {
   SUBAGENT_GUARD_LINE,
   emit,
   emitContext,
-  isEventFor,
   noop,
   parseEvent,
+  parseJsonLines,
   readCappedFile,
   readEventFor,
   readStdin,

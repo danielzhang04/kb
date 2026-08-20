@@ -85,8 +85,7 @@
 }
 
 .fg-node--selected .fg-node__name,
-.fg-node--selected .fg-node__meta,
-.fg-node--selected .fg-node__role {
+.fg-node--selected .fg-node__meta {
   color: var(--paper);
 }
 

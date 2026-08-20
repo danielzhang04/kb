@@ -47,6 +47,7 @@ import type { SessionListEntry, SessionListResponse } from '../../../../server/t
 import type { StepVerdict } from '../../../../server/trace/stepCheck.ts';
 import { checkSteps } from '../../../../server/trace/stepCheck.ts';
 import { ModelBadge } from '../../../components/ModelBadge';
+import { localTimestampLabel } from '../../../lib/scheduleWords';
 import { useSession } from '../../../lib/sessionContext';
 import { useReadPanel } from '../../../lib/useReadPanel';
 import { useRuntimeCapabilities } from '../../../lib/runtimeCapabilities';
@@ -59,7 +60,7 @@ import '../../../styles/views/agentPlatformRunEnvelope.css';
  */
 export const PREFERRED_SESSION_ID = '76c6e6b5-0f33-4fc0-8085-b66a9e593e21';
 
-export interface RunEnvelopeProps {
+interface RunEnvelopeProps {
   /** Pin the subject explicitly. Suppresses the picker AND its list request; ignored when `envelope`
    *  is supplied. A parent that already knows which session it wants pays for one request, not two. */
   sessionId?: string;
@@ -87,9 +88,7 @@ const VERDICT_STYLE: Record<StepVerdict, { modifier: string; label: string }> = 
 
 /** The option label for one transcript: its id, its project directory, and when it last changed. */
 function sessionLabel(entry: SessionListEntry): string {
-  const when = Number.isNaN(Date.parse(entry.modifiedAt))
-    ? entry.modifiedAt
-    : new Date(entry.modifiedAt).toLocaleString();
+  const when = localTimestampLabel(entry.modifiedAt);
   return entry.project === null ? `${entry.sessionId} — ${when}` : `${entry.sessionId} — ${entry.project} — ${when}`;
 }
 

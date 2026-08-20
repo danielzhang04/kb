@@ -37,7 +37,7 @@ export type StepRule =
  */
 export type StepVerdict = 'pass' | 'fail' | 'not-evaluated';
 
-export interface StepCheckRow {
+interface StepCheckRow {
   /** The `tool_use.id` of the step this row judges. */
   stepId: string;
   /** The rule kind that produced the row (one row per step per rule). */
@@ -51,7 +51,7 @@ export interface StepCheckRow {
   detail?: string;
 }
 
-export interface StepCheckReport {
+interface StepCheckReport {
   results: StepCheckRow[];
 }
 

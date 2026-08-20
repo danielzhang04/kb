@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
 import type { AgentRosterEntry } from '../../../../server/agents/roster';
 import type { GradesHistory, GradeHistorySource } from '../../../../server/panels/gradesHistory';
@@ -11,29 +11,17 @@ const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 function GradesHistoryBody(): React.JSX.Element {
   const { session } = useSession();
-  const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
-  const [rosterState, setRosterState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [agent, setAgent] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const { data: rosterData, state: rosterState } = useReadPanel<AgentRosterEntry[]>(session ? '/api/agents' : null);
+  const roster = useMemo(
+    () => (Array.isArray(rosterData) ? rosterData : []).filter((row) => SAFE_AGENT_ID.test(row.id)),
+    [rosterData],
+  );
 
   useEffect(() => {
-    if (!session) return;
-    let cancelled = false;
-    void fetch('/api/agents')
-      .then((response) => {
-        if (!response.ok) throw new Error('roster unavailable');
-        return response.json() as Promise<AgentRosterEntry[]>;
-      })
-      .then((rows) => {
-        if (cancelled) return;
-        const safe = (Array.isArray(rows) ? rows : []).filter((row) => SAFE_AGENT_ID.test(row.id));
-        setRoster(safe);
-        setAgent((current) => current || safe[0]?.id || '');
-        setRosterState('ready');
-      })
-      .catch(() => { if (!cancelled) setRosterState('unavailable'); });
-    return () => { cancelled = true; };
-  }, [session]);
+    if (rosterState === 'ready') setAgent((current) => current || roster[0]?.id || '');
+  }, [roster, rosterState]);
 
   const { data, state } = useReadPanel<GradesHistory>(session && agent ? `/api/panels/grades-history?agent=${encodeURIComponent(agent)}` : null);
 
@@ -98,5 +86,3 @@ export const panel: AgentPlatformPanel = {
   description: 'Per-identity task grades and eval evidence, newest first, with no promotion advice.',
   render: () => <GradesHistoryBody />,
 };
-
-export { GradesHistoryBody };

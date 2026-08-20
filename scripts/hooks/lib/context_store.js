@@ -356,7 +356,6 @@ function appendActivity(sessionId, entry, env) {
 
 module.exports = {
   ACTIVITY_LIMIT,
-  ACTIVITY_MAX_CHARS,
   GUARD_LINE,
   HEADINGS,
   HEADING_ORDER,

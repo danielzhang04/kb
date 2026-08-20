@@ -16,7 +16,6 @@ import json
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import time
@@ -26,6 +25,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterator, Mapping
 
 from scripts import agent_evals
+from scripts.agent_definitions import has_unsafe_link_component
 from scripts.kb_paths import resolve_state_root
 
 
@@ -126,26 +126,6 @@ def _contains_path(root: Path, candidate: Path) -> bool:
         return False
 
 
-def _has_unsafe_link_component(repo_root: Path, path: PurePosixPath) -> bool:
-    """Reject symlinks and Windows reparse points in every existing path component."""
-    current = repo_root
-    for part in path.parts:
-        current = current / part
-        try:
-            metadata = os.lstat(current)
-        except FileNotFoundError:
-            # The remaining components cannot exist yet, so there is no link to follow.
-            return False
-        except OSError:
-            # Do not treat an unreadable component as a safe proposal target.
-            return True
-        if stat.S_ISLNK(metadata.st_mode) or (
-            getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
-        ):
-            return True
-    return False
-
-
 def validate_target_path(target_path: str, repo_root: Path | str) -> str:
     """Return a canonical allowed target, resolving lexical and symlink escape attempts."""
     path = _normalise_target_path(target_path)
@@ -159,7 +139,9 @@ def validate_target_path(target_path: str, repo_root: Path | str) -> str:
         (root / "memory").resolve(),
         (root / "routines" / "roles").resolve(),
     )
-    if _has_unsafe_link_component(root, path) or not any(_contains_path(allowed, candidate) for allowed in allowed_roots):
+    if has_unsafe_link_component(root, path.parts, missing_ok=True) or not any(
+        _contains_path(allowed, candidate) for allowed in allowed_roots
+    ):
         raise TargetWallError(f"proposal target escapes its permitted root: {target_path!r}")
     return path.as_posix()
 
@@ -563,7 +545,7 @@ def _forecast_scratch_path(repo_root: Path) -> tuple[Path, PurePosixPath]:
 def _forecast_scratch_parent(repo_root: Path) -> Path:
     """Create the prescribed scratch parent only when it is safe and contained."""
     anchor, relative = _forecast_scratch_path(repo_root)
-    if _has_unsafe_link_component(anchor, relative):
+    if has_unsafe_link_component(anchor, relative.parts, missing_ok=True):
         raise ForecastError("forecast scratch path contains a link or reparse point")
     parent = anchor / Path(*relative.parts)
     parent.mkdir(parents=True, exist_ok=True)

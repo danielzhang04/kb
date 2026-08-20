@@ -55,7 +55,7 @@ import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 
 /** The two autonomy verdicts this projection can report (`acts-alone` is a dispatch-side class, not a
  *  ladder state, so it is deliberately absent here). */
-export type AutonomyVerdict = 'autonomous' | 'queues-for-me';
+type AutonomyVerdict = 'autonomous' | 'queues-for-me';
 
 export const AUTONOMOUS = 'autonomous';
 export const QUEUES_FOR_ME = 'queues-for-me';
@@ -65,7 +65,7 @@ const RESERVED_EVAL_KEYS = ['task_type', 'card_id', 'kind'] as const;
 /** A grade row as it arrives from `ledgers/grades/*.tsv` (all cells strings) or from a typed test. */
 export type GradeRow = Record<string, unknown>;
 
-export interface TierConfig {
+interface TierConfig {
   /** Graded runs required in the current streak. */
   window: number;
   /** A run scoring below this, inside the last `window`, blocks autonomy. */
@@ -151,18 +151,18 @@ function rowKey(row: GradeRow): string {
 }
 
 /** promotion.py:_is_reserved_eval_row — eval evidence is never promotion evidence. */
-export function isReservedEvalRow(row: GradeRow): boolean {
+function isReservedEvalRow(row: GradeRow): boolean {
   if (String(row.worker ?? '') === EVAL_WORKER) return true;
   return RESERVED_EVAL_KEYS.some((key) => String(row[key] ?? '').startsWith('eval:'));
 }
 
 /** promotion.py:_promotion_rows — the sole row boundary for this projection. */
-export function promotionRows(rows: GradeRow[]): GradeRow[] {
+function promotionRows(rows: GradeRow[]): GradeRow[] {
   return rows.filter((row) => !isReservedEvalRow(row));
 }
 
 /** promotion.py:97-104 — a below-floor run RESETS the streak. Malformed score ⇒ reset (fail closed). */
-export function belowFloor(row: GradeRow, tier: string): boolean {
+function belowFloor(row: GradeRow, tier: string): boolean {
   const cfg = TIERS[tier];
   if (!cfg) return !passed(row.pass); // trust.py:38-41 — unknown tier: any failure is a floor break
   if (cfg.floorKind === 'fail') return !passed(row.pass);
@@ -172,7 +172,7 @@ export function belowFloor(row: GradeRow, tier: string): boolean {
 }
 
 /** promotion.py:107-116 — a failed run never counts toward the window, whatever its score. */
-export function belowBar(row: GradeRow, tier: string): boolean {
+function belowBar(row: GradeRow, tier: string): boolean {
   const cfg = TIERS[tier];
   if (!cfg) return !passed(row.pass); // trust.py:31-35 — unknown tier: only the pass flag is meaningful
   if (!passed(row.pass)) return true;
@@ -182,7 +182,7 @@ export function belowBar(row: GradeRow, tier: string): boolean {
 }
 
 /** promotion.py:119-133 — `window` consecutive above-floor runs, none of the last `window` below bar. */
-export function streakIsAutonomous(matching: GradeRow[], tier: string): boolean {
+function streakIsAutonomous(matching: GradeRow[], tier: string): boolean {
   const cfg = TIERS[tier];
   if (!cfg) return false;
   let streak: GradeRow[] = [];
@@ -236,7 +236,7 @@ export function isFrozen(repoRoot: string): boolean {
  * module gates nothing; `promotion.py` still decides real dispatch), but it means the panel can show a
  * more permissive earned verdict than the fleet acts on until `graders.yaml` is space-indented again.
  */
-export function allowedGraders(repoRoot: string): Set<string> {
+function allowedGraders(repoRoot: string): Set<string> {
   const out = new Set<string>();
   const path = join(repoRoot, 'governance', 'graders.yaml');
   if (!existsSync(path)) return out;

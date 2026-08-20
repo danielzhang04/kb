@@ -20,7 +20,7 @@
  */
 
 /** The weight classes the tier ramp encodes. Ordered cheap -> deep. */
-export type ModelWeight = 'cheap' | 'standard' | 'deep';
+type ModelWeight = 'cheap' | 'standard' | 'deep';
 
 /**
  * Every model name governance/model-routing.yaml can put in front of this badge, mapped to its weight.
@@ -66,7 +66,7 @@ export function modelWeight(tier: string | null | undefined): ModelWeight | null
   return key in ALIAS_WEIGHT ? ALIAS_WEIGHT[key] : null;
 }
 
-export interface ModelBadgeProps {
+interface ModelBadgeProps {
   /** A routing alias (`sonnet`, `codex-deep`, ...). Unknown/absent values degrade to a plain chip. */
   tier?: string | null;
   /** Display text, when the concrete model id is more useful than the alias (e.g. `gpt-5.6-sol`). */

@@ -57,5 +57,3 @@ export const panel: AgentPlatformPanel = {
   description: 'Candidate ADD lessons mined from transcripts; review-only, never written to memory.',
   render: () => <ProposedLessonsBody />,
 };
-
-export { ProposedLessonsBody };

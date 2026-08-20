@@ -84,39 +84,14 @@ _REQUIRED_META = ("id", "capability", "judge", "rubric_version", "k", "source",
                   "immutable", "tier")
 
 
-@dataclass
-class EvalCard:
-    meta: dict
-    body: str
-    path: Path
-
-    @property
-    def id(self) -> str:
-        return str(self.meta["id"])
-
-    @property
-    def capability(self) -> str:
-        return str(self.meta["capability"])
-
+class EvalCard(canary.Canary):
     @property
     def judge(self) -> str:
         return str(self.meta["judge"])
 
     @property
-    def input(self) -> dict:
-        return self.meta.get("input") or {}
-
-    @property
     def k(self) -> int:
         return max(1, int(self.meta.get("k", 1) or 1))
-
-    @property
-    def tier(self) -> str:
-        return str(self.meta.get("tier") or "T1")
-
-    @property
-    def rubric_version(self) -> str:
-        return str(self.meta.get("rubric_version", "1"))
 
 
 def suite_dir(repo_root: Path, agent_id: str) -> Path:
@@ -550,18 +525,7 @@ def _suite_manifest_entries(directory: Path) -> list[tuple[str, str]]:
 
 
 def _read_suite_manifest(directory: Path) -> dict[str, str]:
-    path = Path(directory) / canary.MANIFEST_NAME
-    out: dict[str, str] = {}
-    if not path.exists():
-        return out
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split()
-        if len(parts) >= 2:
-            out[parts[1]] = parts[0]
-    return out
+    return canary._read_manifest(Path(directory))
 
 
 def verify_suite_manifest(directory: Path) -> tuple[bool, list[str]]:
@@ -632,14 +596,6 @@ def _render_table(report: SuiteReport) -> str:
     return "\n".join(rows)
 
 
-def _safe_cost_fn():
-    try:
-        import ledger
-        return ledger.cost_today
-    except ImportError:
-        return None
-
-
 def _force_utf8_stdio() -> None:
     """A Windows cp1252 console raises `UnicodeEncodeError` out of `print()`
     on a non-cp1252 character (e.g. `→`/`中` embedded in a card's `reason`,
@@ -679,7 +635,7 @@ def main(argv=None) -> int:
     repo_root = Path(args.repo).resolve()
 
     # Preamble supremacy: STOP-file / API-key / budget gate before anything runs.
-    problems = preamble.check(repo_root, cost_today_fn=_safe_cost_fn())
+    problems = preamble.check(repo_root, cost_today_fn=canary._safe_cost_fn())
     if problems:
         print("PREAMBLE FAIL: " + "; ".join(problems), file=sys.stderr)
         return EXIT_TAMPER

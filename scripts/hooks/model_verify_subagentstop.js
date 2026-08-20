@@ -60,15 +60,7 @@ const audit = require("./lib/model_audit.js");
  * Returns null when no assistant record carries a model.
  */
 function firstRespondingModel(text) {
-  for (const line of String(text).split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    let record;
-    try {
-      record = JSON.parse(trimmed);
-    } catch (_err) {
-      continue; // a partial trailing line is normal on a live transcript
-    }
+  for (const record of io.parseJsonLines(text)) {
     if (!record || typeof record !== "object" || record.type !== "assistant") continue;
     const message = record.message;
     const model = message && typeof message === "object" ? message.model : undefined;

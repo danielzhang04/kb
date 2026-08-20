@@ -78,17 +78,8 @@ function describeContent(content) {
 
 /** One `- <role>: <phrase>` line per turn, redacted and capped by the shared store summarizer. */
 function summariseTranscript(text, turns) {
-  const lines = String(text).split(/\r?\n/);
   const rendered = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    let record;
-    try {
-      record = JSON.parse(trimmed);
-    } catch (_err) {
-      continue; // a partial trailing line is normal on a live transcript
-    }
+  for (const record of io.parseJsonLines(text)) {
     if (!record || typeof record !== "object") continue;
     const role = record.type === "user" ? "user" : record.type === "assistant" ? "assistant" : null;
     if (!role) continue;

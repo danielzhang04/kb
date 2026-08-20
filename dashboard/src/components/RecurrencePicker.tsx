@@ -1,6 +1,15 @@
 /** A deliberately bounded, Google-Calendar-style schedule editor for governed PR proposals. */
 import { useEffect, useRef, useState } from 'react';
-import { describeSchedule, presetSchedule, type RecurrencePreset } from '../lib/scheduleWords';
+import {
+  compileRecurrence,
+  decomposeRecurrence,
+  describeSchedule,
+  presetSchedule,
+  recurrenceTimeErrors as timeErrors,
+  type RecurrenceDay as Day,
+  type RecurrencePreset,
+  type StructuredRecurrence as StructuredValue,
+} from '../lib/scheduleWords';
 import './RecurrencePicker.css';
 
 const DAYS = [
@@ -8,73 +17,10 @@ const DAYS = [
   { label: 'Thu', cron: 'thu' }, { label: 'Fri', cron: 'fri' }, { label: 'Sat', cron: 'sat' }, { label: 'Sun', cron: 'sun' },
 ] as const;
 
-type Day = (typeof DAYS)[number]['cron'];
-
-interface StructuredValue { days: Day[]; times: string[]; }
-
-export interface RecurrencePickerProps {
+interface RecurrencePickerProps {
   initialCron?: string | null;
   onChange: (cron: string) => void;
   onValidityChange?: (isValid: boolean) => void;
-}
-
-function uniqueSorted(values: string[]): string[] { return [...new Set(values)].sort((a, b) => a.localeCompare(b)); }
-
-function timeErrors(times: string[]): Map<number, string> {
-  const errors = new Map<number, string>();
-  const seen = new Map<string, number>();
-  times.forEach((time, index) => {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) { errors.set(index, `Time ${index + 1} is invalid.`); return; }
-    const first = seen.get(time);
-    if (first !== undefined) {
-      errors.set(first, `Time ${first + 1} duplicates time ${index + 1}.`);
-      errors.set(index, `Time ${index + 1} duplicates time ${first + 1}.`);
-    } else seen.set(time, index);
-  });
-  return errors;
-}
-
-function numbers(field: string, maximum: number): number[] | null {
-  if (!/^\d+(?:,\d+)*$/.test(field)) return null;
-  const values = field.split(',').map(Number);
-  return values.every((value) => Number.isInteger(value) && value >= 0 && value <= maximum) ? [...new Set(values)].sort((a, b) => a - b) : null;
-}
-
-function days(field: string): Day[] | null {
-  if (field === '*') return DAYS.map((item) => item.cron);
-  const aliases: Record<string, Day> = { '0': 'sun', '7': 'sun', '1': 'mon', '2': 'tue', '3': 'wed', '4': 'thu', '5': 'fri', '6': 'sat' };
-  const values = field.toLowerCase().split(',').map((value) => aliases[value] ?? (DAYS.some((item) => item.cron === value) ? value as Day : null));
-  if (values.some((value) => value === null)) return null;
-  return DAYS.filter((item) => values.includes(item.cron)).map((item) => item.cron);
-}
-
-/** Return a structured representation only when cron can name exactly the selected times. */
-export function decomposeRecurrence(cron: string | null | undefined): StructuredValue | null {
-  const fields = (cron ?? '').trim().split(/\s+/);
-  if (fields.length !== 5 || fields[2] !== '*' || fields[3] !== '*') return null;
-  const minutes = numbers(fields[0], 59);
-  const hours = numbers(fields[1], 23);
-  const selectedDays = days(fields[4]);
-  if (!minutes || !hours || !selectedDays || (minutes.length > 1 && hours.length > 1)) return null;
-  const times = minutes.length === 1
-    ? hours.map((hour) => `${String(hour).padStart(2, '0')}:${String(minutes[0]).padStart(2, '0')}`)
-    : minutes.map((minute) => `${String(hours[0]).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
-  return { days: selectedDays, times };
-}
-
-/** Compile only the custom-picker subset to cron. Cross-product time sets are intentionally refused. */
-export function compileRecurrence(value: StructuredValue): string | null {
-  if (timeErrors(value.times).size > 0) return null;
-  const times = uniqueSorted(value.times);
-  const selectedDays = DAYS.filter((item) => value.days.includes(item.cron)).map((item) => item.cron);
-  if (times.length === 0 || selectedDays.length === 0) return null;
-  const hours = uniqueSorted(times.map((time) => time.slice(0, 2)));
-  const minutes = uniqueSorted(times.map((time) => time.slice(3, 5)));
-  if (hours.length > 1 && minutes.length > 1) return null;
-  const minuteField = minutes.map(Number).sort((a, b) => a - b).join(',');
-  const hourField = hours.map(Number).sort((a, b) => a - b).join(',');
-  const dayField = selectedDays.length === DAYS.length ? '*' : selectedDays.join(',');
-  return `${minuteField} ${hourField} * * ${dayField}`;
 }
 
 function preview(value: StructuredValue): string {

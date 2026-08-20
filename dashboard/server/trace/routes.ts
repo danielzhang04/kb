@@ -148,7 +148,7 @@ async function describeDir(dir: string, project: string | null): Promise<Session
  * Every transcript under `root` and ONE level of project sub-directories — the same shape
  * {@link findSession} looks in, so a listed id is always a fetchable id. Never a recursive walk.
  */
-export async function listSessions(root: string): Promise<SessionListResponse> {
+async function listSessions(root: string): Promise<SessionListResponse> {
   let entries: Dirent[] = [];
   try {
     entries = await readdir(root, { withFileTypes: true });

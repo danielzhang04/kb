@@ -77,10 +77,10 @@ export const WATCH_REFRESH_DEBOUNCE_MS = 500;
 export const WATCH_REFRESH_MAX_WAIT_MS = 5_000;
 
 /** How often the "as of" staleness stamp re-renders. Only the stamp — no data is read on this tick. */
-export const WATCH_STALENESS_TICK_MS = 5_000;
+const WATCH_STALENESS_TICK_MS = 5_000;
 
 /** How many finished runs the tail list shows. Beyond this the Runs view is the right surface. */
-export const RECENT_RUN_LIMIT = 8;
+const RECENT_RUN_LIMIT = 8;
 
 /**
  * How many LIVE runs get the per-run detail + event fan-out. Each costs a governed detail read plus a
@@ -106,10 +106,10 @@ const LIVE_RUN_STATES: ReadonlySet<RunState> = new Set<RunState>([
  * ========================================================================= */
 
 /** What an agent is doing, in the four shapes that need different words and different arithmetic. */
-export type AgentPhase = 'running' | 'waiting' | 'finished' | 'idle';
+type AgentPhase = 'running' | 'waiting' | 'finished' | 'idle';
 
 /** Collapse a stage-level state word into the phase that drives its verb and its elapsed clock. */
-export function agentPhase(state: string): AgentPhase {
+function agentPhase(state: string): AgentPhase {
   switch (state) {
     case 'running':
       return 'running';
@@ -138,7 +138,7 @@ export function agentPhase(state: string): AgentPhase {
  * The distinction that matters: a FAILED agent is not a finished agent. Both are terminal, but only
  * one of them is bad news, and a single green "done" for both is the panel quietly hiding failures.
  */
-export function agentDot(state: string): string {
+function agentDot(state: string): string {
   switch (state) {
     case 'running':
       return 'running';
@@ -160,7 +160,7 @@ export function agentDot(state: string): string {
  * stage-only states it has no case for (`ready`, `blocked`) fall through it as raw machine tokens, so
  * they get their plain-word answer here and everything else defers to the shared labeller.
  */
-export function agentStateLabel(state: string): string {
+function agentStateLabel(state: string): string {
   switch (state) {
     case 'ready':
       return 'ready to start';
@@ -172,7 +172,7 @@ export function agentStateLabel(state: string): string {
 }
 
 /** Whole seconds an attempt has been (or was) working, or null when its timestamps are unusable. */
-export function elapsedSeconds(attempt: AttemptDto, stillOpen: boolean, now: number): number | null {
+function elapsedSeconds(attempt: AttemptDto, stillOpen: boolean, now: number): number | null {
   const started = Date.parse(attempt.createdAt);
   if (Number.isNaN(started)) return null;
   const ended = stillOpen ? now : Date.parse(attempt.updatedAt);
@@ -181,14 +181,14 @@ export function elapsedSeconds(attempt: AttemptDto, stillOpen: boolean, now: num
 }
 
 /** A tool count we are willing to state, and whether it is exact or a floor. Null means "don't claim". */
-export interface ToolCount {
+interface ToolCount {
   count: number;
   /** True when the event walk was bounded out, so this is "at least this many", not a total. */
   atLeast: boolean;
 }
 
 /** Tool calls per attempt across the whole run, plus whether the walk actually reached the end. */
-export interface ToolTally {
+interface ToolTally {
   byAttempt: Map<string, number>;
   complete: boolean;
 }
@@ -199,7 +199,7 @@ export interface ToolTally {
  * Bounded by {@link WATCH_EVENT_MAX_PAGES}: an unbounded client loop against a run that is still
  * emitting is a hang. Hitting the bound sets `complete: false`, which the UI reports as a floor.
  */
-export async function readToolTally(
+async function readToolTally(
   runRef: string,
   token: string,
   fetchPage: typeof listRunEvents = listRunEvents,
@@ -225,7 +225,7 @@ export async function readToolTally(
  * An attempt absent from the tally is UNKNOWN, never zero — the only reason to render a number here is
  * having counted one. Note there is no `?? 0` anywhere on this path, deliberately.
  */
-export function toolCountFor(tally: ToolTally | null, attemptRef: string | null): ToolCount | null {
+function toolCountFor(tally: ToolTally | null, attemptRef: string | null): ToolCount | null {
   if (tally === null || attemptRef === null) return null;
   const count = tally.byAttempt.get(attemptRef);
   if (count === undefined) return null;
@@ -233,7 +233,7 @@ export function toolCountFor(tally: ToolTally | null, attemptRef: string | null)
 }
 
 /** One agent's live position inside a run: its overlay, its attempt, and what it has been doing. */
-export interface AgentCard {
+interface AgentCard {
   agentId: string;
   overlay: AgentRunOverlay;
   /** The active attempt, or the agent's most recent one when the overlay has no active attempt. */
@@ -243,7 +243,7 @@ export interface AgentCard {
 }
 
 /** The activity line under an agent's name: what it is doing, for how long, over how many tools. */
-export function activityLine(card: AgentCard, now: number, refreshedAt: number): string {
+function activityLine(card: AgentCard, now: number, refreshedAt: number): string {
   const phase = agentPhase(card.overlay.state);
   const open = phase === 'running' || phase === 'waiting';
   const seconds = card.attempt === null ? null : elapsedSeconds(card.attempt, open, now);

@@ -49,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # `py -3 -m scripts.eval_trigger`
 
 import agent_evals  # noqa: E402
+import canary  # noqa: E402
 import preamble  # noqa: E402
 from agent_definitions import parse_agent_definition  # noqa: E402
 
@@ -297,30 +298,8 @@ def _render_report(mapping: dict[str, list[str]], git_range: str, repo_root: Pat
     return "\n".join(header + rollup + body)
 
 
-def _safe_cost_fn():
-    try:
-        import ledger
-        return ledger.cost_today
-    except ImportError:
-        return None
-
-
-def _force_utf8_stdio() -> None:
-    """A Windows cp1252 console raises `UnicodeEncodeError` out of `print()`
-    on a non-cp1252 character (e.g. `→`/`中` embedded in a card's `reason`,
-    surfaced here via the mapping/report tables that echo `agent_evals`
-    `CardResult.reason` strings verbatim). Uncaught, that would exit non-zero
-    and break this CLI's HARD exit-0-ALWAYS contract. Reconfiguring both
-    streams to UTF-8 with `errors="replace"` at entry makes `print()`
-    incapable of raising on encoding. `hasattr` guards environments where
-    `.reconfigure` does not exist."""
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8", errors="replace")
-
-
 def main(argv=None) -> int:
-    _force_utf8_stdio()
+    agent_evals._force_utf8_stdio()
     ap = argparse.ArgumentParser(
         prog="eval_trigger",
         description="Report-only mapping: changed paths -> affected agent eval suites")
@@ -338,7 +317,7 @@ def main(argv=None) -> int:
 
     # Preamble supremacy is called first even though this CLI never blocks on
     # it — a failure only skips --run's card execution below.
-    problems = preamble.check(repo_root, cost_today_fn=_safe_cost_fn())
+    problems = preamble.check(repo_root, cost_today_fn=canary._safe_cost_fn())
     if problems:
         print("PREAMBLE FAIL: " + "; ".join(problems), file=sys.stderr)
 

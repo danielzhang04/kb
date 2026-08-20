@@ -5,32 +5,27 @@
  * memory/, and does not touch dashboard/server/index.ts (wired separately).
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { resolveRepoRoot } from '../planeA/routes.ts';
 
-export interface LessonProposalEntry {
+interface LessonProposalEntry {
   lesson: string;
   confidence: 'high' | 'med' | 'low';
   evidence: string;
   sourceSession: string;
 }
 
-export interface LessonProposalFile {
+interface LessonProposalFile {
   file: string;
   status: 'PROPOSED';
   sourceSession: string;
   entries: LessonProposalEntry[];
 }
 
-export interface LessonProposalResponse {
+interface LessonProposalResponse {
   files: LessonProposalFile[];
   entries: Array<LessonProposalEntry & { file: string }>;
-}
-
-/** dashboard/server/lessons/routes.ts → ../../../ is the repository root. */
-export function resolveRepoRoot(): string {
-  return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 }
 
 function proposalRoot(repoRoot: string): string {
@@ -42,7 +37,7 @@ function header(text: string, key: string): string | null {
 }
 
 /** Parse only the deliberately small markdown contract emitted by session_miner.py. */
-export function parseProposalFile(file: string, text: string): LessonProposalFile | null {
+function parseProposalFile(file: string, text: string): LessonProposalFile | null {
   if (header(text, 'status') !== 'PROPOSED') return null;
   const sourceSession = header(text, 'source_session');
   if (sourceSession === null) return null;
@@ -58,7 +53,7 @@ export function parseProposalFile(file: string, text: string): LessonProposalFil
   return { file, status: 'PROPOSED', sourceSession, entries };
 }
 
-export function listLessonProposals(repoRoot: string = resolveRepoRoot()): LessonProposalResponse {
+function listLessonProposals(repoRoot: string = resolveRepoRoot()): LessonProposalResponse {
   const root = proposalRoot(repoRoot);
   if (!existsSync(root)) return { files: [], entries: [] };
   const files = readdirSync(root, { withFileTypes: true })

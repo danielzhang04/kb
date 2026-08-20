@@ -55,7 +55,7 @@ import type { AppendAuditFn } from '../http/context.ts';
 import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
 
 /** The most recent recorded beat of one cadence. */
-export interface ScheduleLastRun {
+interface ScheduleLastRun {
   /** `YYYY-MM-DD` from the dispatch-ledger row. */
   date: string;
   /** The emitted card's id. */
@@ -96,7 +96,7 @@ export interface SchedulesPanel {
 }
 
 /** A bounded, newest-first audit trail for a declared cadence. */
-export interface ScheduleHistoryRun {
+interface ScheduleHistoryRun {
   card: string | null;
   project: string | null;
   scheduledFor: string | null;
@@ -167,7 +167,7 @@ export function scheduleHint(schedule: string | null | undefined): string {
 export const HEARTBEAT_RELPATH = /^(HEARTBEAT\.md|orgs\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/HEARTBEAT\.md)$/;
 
 /** The commit subject every dashboard-originated schedule edit carries. */
-export const SCHEDULE_EDIT_MESSAGE = 'heartbeat: schedule edit via dashboard';
+const SCHEDULE_EDIT_MESSAGE = 'heartbeat: schedule edit via dashboard';
 
 /** The repo-relative HEARTBEAT.md that declares `project`'s cadences. */
 function heartbeatFileFor(project: string): string {

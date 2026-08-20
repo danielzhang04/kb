@@ -1,13 +1,9 @@
 /** Hygiene report route. It only serves a pre-generated dry-run report. */
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { resolveStatePath } from '../../../scripts/hooks/lib/kb_paths.js';
-
-export function resolveRepoRoot(): string {
-  return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
-}
+import { resolveRepoRoot } from '../planeA/routes.ts';
 
 export function resolveReportPath(
   repoRoot: string = resolveRepoRoot(),
