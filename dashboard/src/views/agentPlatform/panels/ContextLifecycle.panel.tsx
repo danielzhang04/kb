@@ -31,6 +31,7 @@
 import { useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
 import type { ContextSection, ContextSessionSummary } from '../../../../server/contextLifecycle/routes';
+import { localTimestampLabel } from '../../../lib/scheduleWords';
 import { useReadPanel } from '../../../lib/useReadPanel';
 import '../../../styles/views/agentPlatformContextLifecycle.css';
 
@@ -47,11 +48,6 @@ interface StoreResponse {
   sessionId: string;
   modifiedAt: string;
   sections: ContextSection[];
-}
-
-function shortTime(iso: string): string {
-  const parsed = Date.parse(iso);
-  return Number.isNaN(parsed) ? iso : new Date(parsed).toLocaleString();
 }
 
 /** One `## heading` + body block, rendered as preformatted text — stores are markdown, not HTML. */
@@ -140,7 +136,7 @@ function ContextLifecycleBody(): React.JSX.Element {
         </button>
         <div className="ap-ctxlife__head">
           <h4 className="ap-ctxlife__title">{store.sessionId}</h4>
-          <span className="ap-ctxlife__meta">last written {shortTime(store.modifiedAt)}</span>
+          <span className="ap-ctxlife__meta">last written {localTimestampLabel(store.modifiedAt)}</span>
         </div>
         <RegroundingPreview sections={store.sections} />
         <section className="ap-ctxlife__full" data-testid="ap-ctxlife-full">
@@ -207,7 +203,7 @@ function ContextLifecycleBody(): React.JSX.Element {
                 onClick={() => setOpenId(session.sessionId)}
               >
                 <span className="ap-ctxlife__id">{session.sessionId}</span>
-                <span className="ap-ctxlife__meta">{shortTime(session.modifiedAt)}</span>
+                <span className="ap-ctxlife__meta">{localTimestampLabel(session.modifiedAt)}</span>
               </button>
             ))}
           </div>

@@ -33,6 +33,7 @@
  */
 import type { AgentPlatformPanel } from '../types';
 import type { ModelAuditResponse, ModelAuditRow } from '../../../../server/modelAudit/routes';
+import { localTimestampLabel } from '../../../lib/scheduleWords';
 import { useReadPanel } from '../../../lib/useReadPanel';
 import './ModelAudit.css';
 
@@ -45,11 +46,6 @@ const VERDICT_HELP: Record<string, string> = {
   match: 'the transcript shows the model that was asked for',
   mismatch: 'the transcript shows a DIFFERENT model than the one asked for',
 };
-
-function shortTime(iso: string): string {
-  const parsed = Date.parse(iso);
-  return Number.isNaN(parsed) ? iso : new Date(parsed).toLocaleString();
-}
 
 /** A row's stable-enough identity for React. The log has no ids; index breaks ties. */
 function rowKey(row: ModelAuditRow, index: number): string {
@@ -155,7 +151,7 @@ function ModelAuditBody(): React.JSX.Element {
         </span>
         {data?.modifiedAt ? (
           <span className="ap-modelaudit__meta" data-testid="ap-modelaudit-modified">
-            log last written {shortTime(data.modifiedAt)}
+            log last written {localTimestampLabel(data.modifiedAt)}
           </span>
         ) : null}
       </div>

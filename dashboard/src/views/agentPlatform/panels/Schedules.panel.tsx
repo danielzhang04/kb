@@ -201,4 +201,4 @@ function SchedulesBody(): React.JSX.Element {
 }
 
 export const panel: AgentPlatformPanel = { id: 'schedules', order: 6, title: 'Schedules', description: 'Declared HEARTBEAT cadences, recent outcomes, and governed schedule proposals.', placement: 'sidebar', render: () => <SchedulesBody /> };
-export { SchedulesBody, unboundedCron };
+export { SchedulesBody };

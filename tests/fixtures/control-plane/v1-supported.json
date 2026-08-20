@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "nextEventCursor": 1,
+  "proposals": [],
+  "runs": [],
+  "stages": [],
+  "attempts": [],
+  "sessions": [],
+  "humanRequests": [],
+  "events": [],
+  "stageGenerations": [],
+  "iterationLoops": [],
+  "iterationRequests": [],
+  "iterationReceipts": [],
+  "generationSupersessions": [],
+  "quarantine": []
+}

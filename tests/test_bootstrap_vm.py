@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import stat
 import subprocess
 import sys
@@ -8,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from deploy import bootstrap_vm
+from deploy import bootstrap_vm, control_plane_schema
 from scripts import backup_tier0
 
 
@@ -100,6 +99,28 @@ def test_bootstrap_reapplies_ops_git_identity_on_rerun(tmp_path, monkeypatch):
     assert commands.count(["git", "-C", "/var/lib/kb/ops", "config", "--replace-all", "user.name", "kb-dashboard"]) == 2
 
 
+def test_seed_uses_generated_current_schema(tmp_path):
+    bootstrap_vm.seed_control_plane(tmp_path)
+
+    raw = (tmp_path / "control/control-plane.json").read_bytes()
+    assert raw == control_plane_schema.EMPTY_CONTROL_PLANE
+    assert json.loads(raw)["version"] == control_plane_schema.CONTROL_PLANE_SCHEMA_VERSION == 2
+
+
+def test_seed_collection_set_matches_store_document_contract():
+    seeded = json.loads(control_plane_schema.EMPTY_CONTROL_PLANE)
+    assert {key for key, value in seeded.items() if isinstance(value, list)} == set(
+        control_plane_schema.CONTROL_PLANE_COLLECTIONS
+    )
+
+
+def test_python_accepts_supported_sparse_v1_before_typescript_migration():
+    fixture = Path(__file__).parent / "fixtures/control-plane/v1-sparse-legacy.json"
+    assert control_plane_schema.assert_control_plane_schema(
+        json.loads(fixture.read_text(encoding="utf-8"))
+    )["version"] == 1
+
+
 def test_bootstrap_seeds_the_empty_control_plane_document(tmp_path, monkeypatch):
     state_root = tmp_path / "state"
     state_root.mkdir(exist_ok=True)
@@ -116,7 +137,7 @@ def test_bootstrap_seeds_the_empty_control_plane_document(tmp_path, monkeypatch)
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: commands.append(argv))
 
-    assert (state_root / "control/control-plane.json").read_bytes() == b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"iterationLoops":[],"iterationRequests":[],"iterationReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
+    assert (state_root / "control/control-plane.json").read_bytes() == control_plane_schema.EMPTY_CONTROL_PLANE
     assert ["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard", "-m", "0700", f"{state_root}/control"] in commands
     assert ["chown", "kb-dashboard:kb-dashboard", str(state_root / "control/control-plane.json")] in commands
     assert (state_root / "control", 0o700) in modes
@@ -131,10 +152,10 @@ def test_bootstrap_does_not_clobber_an_existing_control_plane_document(tmp_path,
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
     control_plane = state_root / "control/control-plane.json"
-    control_plane.write_bytes(b'{"live":"state"}\n')
+    control_plane.write_bytes(control_plane_schema.EMPTY_CONTROL_PLANE)
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
-    assert control_plane.read_bytes() == b'{"live":"state"}\n'
+    assert control_plane.read_bytes() == control_plane_schema.EMPTY_CONTROL_PLANE
 
 
 def test_bootstrap_seed_passes_the_tier_zero_state_validator(tmp_path, monkeypatch):
@@ -230,61 +251,17 @@ def test_bootstrap_refuses_a_truncated_existing_control_plane_document(tmp_path,
         bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
 
-def empty_control_plane_from_store_source(source: str) -> bytes:
-    match = re.search(
-        r"function\s+emptyDocument\s*\([^)]*\)\s*:\s*StoreDocument\s*\{\s*return\s*(\{(?P<entries>.*?)\})\s*;",
-        source,
-        re.DOTALL,
+def test_bootstrap_refuses_an_invalid_existing_control_plane_schema(tmp_path, monkeypatch):
+    state_root = tmp_path / "state"
+    control = state_root / "control"
+    control.mkdir(parents=True)
+    (control / "control-plane.json").write_bytes(
+        (Path(__file__).parent / "fixtures/control-plane/future-v3.json").read_bytes()
     )
-    assert match is not None, "could not find emptyDocument's returned object literal"
 
-    entries = re.sub(r"//[^\r\n]*|/\*[\s\S]*?\*/", "", match.group("entries"))
-    entry_pattern = re.compile(r"\s*(?P<key>[A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*(?P<value>\d+|\[\])\s*,?")
-    document = {}
-    position = 0
-    while position < len(entries):
-        if not entries[position:].strip():
-            break
-        entry = entry_pattern.match(entries, position)
-        assert entry is not None, "emptyDocument contains an unsupported object-literal entry"
-        document[entry.group("key")] = [] if entry.group("value") == "[]" else int(entry.group("value"))
-        position = entry.end()
-
-    return json.dumps(document, separators=(",", ":")).encode("utf-8") + b"\n"
-
-
-def replace_empty_document_entries(source: str, replacement) -> str:
-    match = re.search(
-        r"function\s+emptyDocument\s*\([^)]*\)\s*:\s*StoreDocument\s*\{\s*return\s*(\{(?P<entries>.*?)\})\s*;",
-        source,
-        re.DOTALL,
-    )
-    assert match is not None
-    return source[:match.start("entries")] + replacement(match.group("entries")) + source[match.end("entries"):]
-
-
-def test_bootstrap_empty_control_plane_matches_daemon_empty_document():
-    source = (Path(bootstrap_vm.__file__).parent.parent / "dashboard/server/control/store.ts").read_text(encoding="utf-8")
-
-    assert empty_control_plane_from_store_source(source) == bootstrap_vm.EMPTY_CONTROL_PLANE
-
-
-def test_empty_control_plane_parser_tolerates_comments_and_detects_drift():
-    source = (Path(bootstrap_vm.__file__).parent.parent / "dashboard/server/control/store.ts").read_text(encoding="utf-8")
-
-    assert empty_control_plane_from_store_source(replace_empty_document_entries(
-        source,
-        lambda entries: entries.replace("\n    version: 1,", "\n    // schema version\n    version: 1, /* cursor follows */"),
-    )) == bootstrap_vm.EMPTY_CONTROL_PLANE
-
-    mutations = (
-        lambda entries: entries + "    added: [],\n",
-        lambda entries: entries.replace("\n    quarantine: [],", ""),
-        lambda entries: entries.replace("version: 1,\n    nextEventCursor: 1", "nextEventCursor: 1,\n    version: 1"),
-        lambda entries: entries.replace("version: 1", "version: 2"),
-    )
-    for mutate in mutations:
-        assert empty_control_plane_from_store_source(replace_empty_document_entries(source, mutate)) != bootstrap_vm.EMPTY_CONTROL_PLANE
+    monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
+    with pytest.raises(RuntimeError, match="control-plane state is corrupt"):
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
 
 
 def test_bootstrap_fails_if_the_installed_state_root_is_missing(tmp_path, monkeypatch):
@@ -374,6 +351,12 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
     monkeypatch.setattr(bootstrap_vm.tempfile, "mkstemp", mkstemp)
     bootstrap_vm.install_root_validators(key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
     assert ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/usr/local/lib/kb"] in commands
+    installed_helpers = {
+        command[-1].rsplit("/", 1)[-1]
+        for command in commands
+        if command[-1].startswith("/usr/local/lib/kb/") and command[6] == "0555"
+    }
+    assert "control_plane_schema.py" in installed_helpers
     for helper in ("activate_release.py", "apply_ops_reconciliation.py", "export_tier0.py"):
         assert any(
             command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0555"]

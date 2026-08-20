@@ -1,18 +1,25 @@
 import {
-  closeSync,
   existsSync,
-  mkdirSync,
-  openSync,
   readFileSync,
-  rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { dirname, join } from 'node:path';
-import { renameWithRetrySync } from '../atomicRename.ts';
+import { join } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
+import {
+  persistControlDocumentSync,
+  type PersistenceDeps,
+  type SaveDurability,
+} from './persistence.ts';
+import { assertWriterLeaseForRoot } from './writerLease.ts';
+import type { FileControlPlaneAccess } from './writerLease.ts';
+import {
+  legacyGroupForStages,
+  loadAndMigrate,
+  normalizeCrash,
+} from './migrations.ts';
+import { CONTROL_PLANE_SCHEMA_VERSION, type ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
 import type {
   ProposalCompletionGate,
   ProposalIterationGroup,
@@ -26,6 +33,15 @@ import type {
   ManagedStartSpec,
 } from './broker.ts';
 import type { PublicOperationalEvent } from './publicEvents.ts';
+import { TERMINAL_ATTEMPT } from './types.ts';
+import { MAX_DEPLOYMENT_OPERATION_RECEIPTS } from './controlPlaneLimits.ts';
+import {
+  assertDeploymentCollection,
+  canTransitionDeployment,
+  isTerminalDeploymentState,
+  validateCreateDeploymentInput,
+  validateTransitionDeploymentInput,
+} from './deploymentState.ts';
 import type {
   Attempt,
   AttemptState,
@@ -33,6 +49,8 @@ import type {
   AdvanceIterationTurnInput,
   AgentWorkspaceLaunchProvenance,
   ControlResult,
+  CreateDeploymentInput,
+  Deployment,
   GenerationSupersession,
   HumanRequest,
   HumanRequestDecision,
@@ -59,16 +77,29 @@ import type {
   ResolveIterationGateInput,
   Run,
   RunDetail,
+  RunDto,
   RunMetadata,
-  RunState,
   Stage,
   StageGeneration,
   StageState,
   StorageInventory,
   StorageInventoryItem,
+  TransitionDeploymentInput,
 } from './types.ts';
+import {
+  RUN_LIFECYCLE_KINDS,
+  canQuarantineRun,
+  canTransitionRun,
+  isTerminalRun,
+  lifecycleForKind,
+  projectRunState,
+  runLifecycleKind,
+  type RunLifecycleKind,
+} from './runLifecycle.ts';
 
 export const MAX_CONTROL_DOCUMENT_BYTES = 128 * 1024 * 1024;
+/** Snapshot/restore of the control plane must include this grant sidecar with control-plane.json. */
+export const CONTROL_PLANE_ACCEPTED_SIZE_FILENAME = 'control-plane.accepted-size.json';
 export const MAX_PROPOSAL_SNAPSHOT_BYTES = 512 * 1024;
 export const MAX_EVENTS_PER_RUN = 100_000;
 export const MAX_EVENT_PAGE = 1_000;
@@ -101,11 +132,9 @@ const EVENT_STATUSES = new Set(['pending', 'running', 'success', 'failure', 'sto
 const EVENT_FIELDS = new Set([
   'kind', 'source', 'stageRef', 'attemptRef', 'sessionRef', 'status', 'summary', 'command', 'toolName', 'path', 'diff', 'checkpoint',
 ]);
-const RUN_STATES = new Set<RunState>(['planned', 'recovering', 'running', 'waiting-human', 'stopping', 'succeeded', 'failed', 'stopped', 'interrupted', 'archived']);
 const STAGE_STATES = new Set<StageState>(['blocked', 'ready', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const ATTEMPT_STATES = new Set<AttemptState>(['queued', 'starting', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const SESSION_STATES = new Set<ManagedSessionState>(['pending', 'starting', 'running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']);
-const TERMINAL_RUN = new Set<RunState>(['succeeded', 'failed', 'stopped', 'archived']);
 
 /** The single human identity the daemon mints WebAuthn sessions for (`server/auth/routes.ts` OPERATOR.id).
  *  Every other subject in this document is a machine: the dashboard engine, an executor, a test fixture. */
@@ -142,12 +171,10 @@ export const OPERATOR_SUBJECT = 'operator';
 export type ReadScope = 'own-subject' | 'all-subjects';
 
 const TERMINAL_STAGE = new Set<StageState>(['succeeded', 'failed', 'stopped']);
-const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);
 const TERMINAL_SESSION = new Set<ManagedSessionState>(['completed', 'failed', 'stopped']);
 const RETRY_SETTLED_STAGE = new Set<StageState>([...TERMINAL_STAGE, 'interrupted']);
 const RETRY_SETTLED_ATTEMPT = new Set<AttemptState>([...TERMINAL_ATTEMPT, 'interrupted']);
 const RETRY_SETTLED_SESSION = new Set<ManagedSessionState>([...TERMINAL_SESSION, 'interrupted']);
-const QUARANTINE_ELIGIBLE = new Set<RunState>(['succeeded', 'failed', 'stopped', 'interrupted', 'archived']);
 const QUARANTINE_SETTLED_STAGE = new Set<StageState>([...TERMINAL_STAGE, 'interrupted']);
 const QUARANTINE_SETTLED_ATTEMPT = new Set<AttemptState>([...TERMINAL_ATTEMPT, 'interrupted']);
 const QUARANTINE_SETTLED_SESSION = new Set<ManagedSessionState>([...TERMINAL_SESSION, 'interrupted']);
@@ -161,18 +188,6 @@ const ACTIVATION_PHASES = new Set<RunActivationPhase>(['claimed', 'roots-activat
  * Manager. `transitionRun` refuses it outright (see below): archiving also has to resolve the run's open
  * requests atomically, so `archiveRun` is the ONLY writer of this edge.
  */
-const RUN_EDGES: Readonly<Record<RunState, ReadonlySet<RunState>>> = {
-  planned: new Set(['recovering', 'running', 'waiting-human', 'stopping', 'failed', 'stopped', 'interrupted']),
-  recovering: new Set(['running', 'waiting-human', 'stopping', 'failed', 'stopped', 'interrupted']),
-  running: new Set(['waiting-human', 'stopping', 'succeeded', 'failed', 'stopped', 'interrupted']),
-  'waiting-human': new Set(['planned', 'recovering', 'running', 'stopping', 'failed', 'stopped', 'interrupted', 'archived']),
-  stopping: new Set(['stopped', 'failed', 'interrupted']),
-  succeeded: new Set(['archived']),
-  failed: new Set(['archived']),
-  stopped: new Set(['archived']),
-  interrupted: new Set(['recovering', 'running', 'waiting-human', 'stopping', 'failed', 'stopped', 'archived']),
-  archived: new Set(),
-};
 const PUBLICATION_EDGES: Readonly<Record<Run['publicationState'], ReadonlySet<Run['publicationState']>>> = {
   pending: new Set(['waiting-human', 'publishing', 'reconcile-required']),
   'waiting-human': new Set(['pending', 'reconcile-required']),
@@ -216,11 +231,11 @@ const SESSION_EDGES: Readonly<Record<ManagedSessionState, ReadonlySet<ManagedSes
  * would be two mutable copies of one fact. {@link publicProposal} projects `subject` onto `ownerSubject`
  * on the way out, exactly as `detail`/`metadata` do for a run.
  */
-interface StoredProposal extends Omit<ProposalRevision, 'ownerSubject'> {
+export interface StoredProposal extends Omit<ProposalRevision, 'ownerSubject'> {
   subject: string;
 }
 
-interface StoredRun extends Run {
+export interface StoredRun extends Run {
   subject: string;
   launchOperationKey?: string | null;
   launchOperationFingerprint?: string | null;
@@ -230,9 +245,20 @@ interface StoredRun extends Run {
   authorizedFailedRunReconciliation?: StoredAuthorizedFailedRunReconciliation | null;
 }
 
+interface StoredDeployment extends Deployment {
+  operationReceipts: Array<{
+    key: string;
+    fingerprint: string;
+    operation: 'create' | 'transition';
+    deploymentRevision: number;
+    result: Deployment;
+    recordedAt: string;
+  }>;
+}
+
 export type RunActivationPhase = 'claimed' | 'roots-activated' | 'dispatched' | 'failed';
 
-interface StoredRunActivationReceipt {
+export interface StoredRunActivationReceipt {
   idempotencyKey: string;
   fingerprint: string;
   phase: RunActivationPhase;
@@ -240,27 +266,27 @@ interface StoredRunActivationReceipt {
   updatedAt: string;
 }
 
-interface StoredStage extends Stage {
+export interface StoredStage extends Stage {
   subject: string;
 }
 
-interface StoredStageGeneration extends StageGeneration {
-  subject: string;
-  operationFingerprint: string;
-}
-
-interface StoredGenerationSupersession extends GenerationSupersession {
+export interface StoredStageGeneration extends StageGeneration {
   subject: string;
   operationFingerprint: string;
 }
 
-interface StoredIterationLoop extends IterationLoop {
+export interface StoredGenerationSupersession extends GenerationSupersession {
+  subject: string;
+  operationFingerprint: string;
+}
+
+export interface StoredIterationLoop extends IterationLoop {
   subject: string;
   advanceOperationKey?: string;
   advanceOperationFingerprint?: string;
 }
 
-interface StoredIterationRequest extends IterationRequest {
+export interface StoredIterationRequest extends IterationRequest {
   subject: string;
   runRef: string;
   stepId: string;
@@ -268,7 +294,7 @@ interface StoredIterationRequest extends IterationRequest {
   operationFingerprint: string;
 }
 
-interface StoredIterationReceipt extends IterationReceipt {
+export interface StoredIterationReceipt extends IterationReceipt {
   subject: string;
   runRef: string;
   routeId: string;
@@ -276,7 +302,7 @@ interface StoredIterationReceipt extends IterationReceipt {
   operationFingerprint: string;
 }
 
-interface StoredAttempt extends Attempt {
+export interface StoredAttempt extends Attempt {
   subject: string;
   rerouteOperationKey?: string | null;
   rerouteOperationFingerprint?: string | null;
@@ -285,7 +311,7 @@ interface StoredAttempt extends Attempt {
   iterationAdvanceReceiptRef?: string | null;
 }
 
-interface StoredSession extends ManagedSession {
+export interface StoredSession extends ManagedSession {
   subject: string;
   operationKey: string | null;
   operationFingerprint: string | null;
@@ -315,7 +341,7 @@ interface StoredBrokerReceipt {
   createdAt: string;
 }
 
-interface StoredHumanRequest extends HumanRequest {
+export interface StoredHumanRequest extends HumanRequest {
   subject: string;
   operationKey?: string | null;
   operationFingerprint?: string | null;
@@ -340,60 +366,13 @@ export interface AuthorizedFailedRunReconciliationReceipt {
 
 interface StoredAuthorizedFailedRunReconciliation extends AuthorizedFailedRunReconciliationReceipt {}
 
-interface StoredEvent extends OperationalEvent {
+export interface StoredEvent extends OperationalEvent {
   subject: string;
   operationKey?: string | null;
   operationFingerprint?: string | null;
 }
 
-/* Legacy store-row migration input. These fields are accepted only while decoding a persisted v1 file. */
-interface LegacyStoreReviewLoopMigrationRow {
-  subject: string;
-  reviewLoopRef: string;
-  runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  maxCreatorReworks: number;
-  reviewDefinitionHash: string;
-  reworksUsed: number;
-  state: 'awaiting-subject' | 'checking' | 'rework-queued' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
-  activeGenerationRef: string | null;
-  acceptedGenerationRef: string | null;
-  activeReceiptRef: string | null;
-  interventionRequestRef: string | null;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LegacyStoreReviewReceiptMigrationRow {
-  subject: string;
-  operationFingerprint: string;
-  reviewReceiptRef: string;
-  runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  subjectGenerationRef: string;
-  subjectResultHash: string;
-  checkerAttemptRef: string;
-  outcome: {
-    schema: 'kb.review-outcome/v1';
-    decision: 'pass' | 'fail' | 'parked';
-    summary: string;
-    criteria: Array<{ criterionId: string; verdict: 'pass' | 'fail' | 'unverified'; findingIds: string[] }>;
-    findings: Array<{ id: string; criterionId: string; severity: 'blocking' | 'advisory'; summary: string; evidencePaths: string[] }>;
-  };
-  outcomeHash: string;
-  operationKey: string;
-  state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
-  completionRequestRef: string | null;
-  interventionRequestRef: string | null;
-  version: number;
-  createdAt: string;
-  finalizedAt: string | null;
-}
-
-interface QuarantinedRunBundle {
+export interface QuarantinedRunBundle {
   subject: string;
   quarantinedAt: string;
   run: StoredRun;
@@ -409,9 +388,7 @@ interface QuarantinedRunBundle {
   generationSupersessions: StoredGenerationSupersession[];
 }
 
-interface StoreDocument {
-  version: 1;
-  nextEventCursor: number;
+export interface StoreDocumentCollections {
   proposals: StoredProposal[];
   runs: StoredRun[];
   stages: StoredStage[];
@@ -425,7 +402,21 @@ interface StoreDocument {
   iterationReceipts: StoredIterationReceipt[];
   generationSupersessions: StoredGenerationSupersession[];
   quarantine: QuarantinedRunBundle[];
+  deployments: StoredDeployment[];
 }
+
+export interface StoreDocument extends StoreDocumentCollections {
+  version: 2;
+  documentRevision: number;
+  nextEventCursor: number;
+}
+
+type StoreDocumentCollectionEquality =
+  keyof StoreDocumentCollections extends ControlPlaneCollection
+    ? ControlPlaneCollection extends keyof StoreDocumentCollections ? true : false
+    : false;
+const STORE_DOCUMENT_COLLECTIONS_MATCH_GENERATED: StoreDocumentCollectionEquality = true;
+void STORE_DOCUMENT_COLLECTIONS_MATCH_GENERATED;
 
 function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun): string | null {
   // The one Daniel-authorized settlement is a CLOSED record: it stopped every stage, attempt, and
@@ -463,8 +454,15 @@ function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun
 export interface ControlStoreOptions {
   now?: () => Date;
   newId?: () => string;
+  bootId?: string;
   maxDocumentBytes?: number;
   maxEventsPerRun?: number;
+  /** @internal */
+  persistenceDepsForTest?: PersistenceDeps;
+  /** @internal Exact persisted byte size for durability tests and the explicitly enabled VM benchmark. */
+  persistenceTargetBytesForTest?: number;
+  /** @internal Future migration-edge regression seam. */
+  loadAndMigrateForTest?: typeof loadAndMigrate;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
   beforeIterationBoundaryValidationForTest?: (
     boundary: 'quarantine' | 'restore',
@@ -745,6 +743,16 @@ export interface BrokerStoreBackend {
 }
 
 export interface ControlPlaneStore extends BrokerStoreBackend {
+  getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision'>;
+  getDeployment(deploymentRef: string): ControlResult<Deployment>;
+  listDeployments(): Deployment[];
+  createDeployment(subject: string, input: CreateDeploymentInput): ControlResult<Deployment>;
+  transitionDeployment(
+    subject: string,
+    deploymentRef: string,
+    input: TransitionDeploymentInput,
+  ): ControlResult<Deployment>;
+
   listProposalRevisions(subject: string, proposalRef?: string): ProposalRevisionMetadata[];
   listProposalRevisionsForComposer(subject: string, sourceComposerRef: string, scope?: ReadScope): ProposalRevisionMetadata[];
   getProposalRevision(subject: string, proposalRef: string, revision: number, scope?: ReadScope): ControlResult<ProposalRevision>;
@@ -785,7 +793,12 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   ): ControlResult<RunActivationReceipt>;
   /** Fail a claimed activation and return an undispatched run to waiting-human. */
   failRunActivation(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt>;
-  transitionRun(subject: string, runRef: string, expectedVersion: number, state: RunState): ControlResult<Run>;
+  transitionRun(
+    subject: string,
+    runRef: string,
+    expectedVersion: number,
+    state: Exclude<RunLifecycleKind, 'paused-for-deploy'>,
+  ): ControlResult<Run>;
   /** Terminal operator dismissal: `archived` run + its answerable open requests resolved, one commit. */
   archiveRun(subject: string, runRef: string, input: ArchiveRunInput, scope?: ReadScope): ControlResult<ArchiveRunResult>;
   transitionPublication(
@@ -832,7 +845,7 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   /**
    * Housekeeping sweep, not a governed HTTP write — no subject, no session, no idempotency key from a
    * caller. Auto-closes every OPEN, non-review-linked Human Request whose parent run has reached a
-   * terminal state (mirrors `TERMINAL_RUN`), with an honest `'auto-closed'` response — it never claims
+   * terminal state (mirrors `isTerminalRun`), with an honest `'auto-closed'` response — it never claims
    * a human answered. `transitionRun` calls the same predicate inline (same commit as the transition);
    * this method additionally sweeps the WHOLE document, so it also catches a request whose run went
    * terminal before this shipped or by some path other than a transition. Called from the boot +
@@ -888,14 +901,21 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
 
 export class ControlStoreLimitError extends Error {}
 export class ControlStoreMigrationLimitError extends ControlStoreLimitError {}
+export class ControlStoreReadOnlyError extends Error {
+  constructor() {
+    super('control-plane store is read-only');
+    this.name = 'ControlStoreReadOnlyError';
+  }
+}
 
 function genericPersistenceDocument(document: StoreDocument): StoreDocument {
   return clone(document);
 }
 
-function emptyDocument(): StoreDocument {
+export function emptyStoreDocumentForTest(): StoreDocument {
   return {
-    version: 1,
+    version: 2,
+    documentRevision: 0,
     nextEventCursor: 1,
     proposals: [],
     runs: [],
@@ -910,6 +930,7 @@ function emptyDocument(): StoreDocument {
     iterationReceipts: [],
     generationSupersessions: [],
     quarantine: [],
+    deployments: [],
   };
 }
 
@@ -1102,15 +1123,6 @@ function sameCheckerContract(left: CheckerContractProvenance, right: CheckerCont
   return canonicalJson(left as unknown as JsonValue) === canonicalJson(right as unknown as JsonValue);
 }
 
-function reviewLoopDefinitionHash(stage: Pick<StoredStage, 'workflowProfile' | 'assignment' | 'review' | 'completionGate'>): string {
-  return sha256(canonicalJson({
-    workflowProfile: stage.workflowProfile,
-    assignment: stage.assignment,
-    review: stage.review,
-    completionGate: stage.completionGate,
-  } as unknown as JsonValue));
-}
-
 function generationOperationKey(runRef: string, stageId: string, generation: number): string {
   return generation === 1 ? `result:${runRef}:${stageId}` : `result:${runRef}:${stageId}:g${generation}`;
 }
@@ -1204,7 +1216,7 @@ function proposalMetadata(value: StoredProposal): ProposalRevisionMetadata {
   };
 }
 
-function publicRun(value: StoredRun): Run {
+function internalRun(value: StoredRun): Run {
   const {
     subject: _subject,
     launchOperationKey: _launchOperationKey,
@@ -1216,6 +1228,16 @@ function publicRun(value: StoredRun): Run {
     ...run
   } = value;
   return clone(run);
+}
+
+function publicDeployment(deployment: StoredDeployment): Deployment {
+  const { operationReceipts: _operationReceipts, ...result } = deployment;
+  return clone(result);
+}
+
+export function publicRun(value: StoredRun): RunDto {
+  const { lifecycle, ...run } = internalRun(value);
+  return { ...run, state: projectRunState(lifecycle) };
 }
 
 function publicStage(value: StoredStage): Stage {
@@ -1424,7 +1446,7 @@ function detail(document: StoreDocument, subject: string, run: StoredRun): RunDe
   const iterationLoops = document.iterationLoops.filter((item) => item.subject === subject && item.runRef === run.runRef);
   const iterationReceipts = document.iterationReceipts.filter((item) => item.subject === subject && item.runRef === run.runRef);
   return {
-    run: publicRun(run),
+    run: internalRun(run),
     // Always the RUN's own subject, never the caller's: under `'all-subjects'` those differ, and the
     // field exists precisely to name the owner of a run the caller does not own.
     ownerSubject: run.subject,
@@ -1442,7 +1464,7 @@ function detail(document: StoreDocument, subject: string, run: StoredRun): RunDe
 
 function metadata(document: StoreDocument, subject: string, run: StoredRun): RunMetadata {
   return {
-    ...publicRun(run),
+    ...internalRun(run),
     ownerSubject: run.subject,
     stageCount: document.stages.filter((item) => item.subject === subject && item.runRef === run.runRef).length,
     attemptCount: document.attempts.filter((item) => item.subject === subject && item.runRef === run.runRef).length,
@@ -1480,7 +1502,7 @@ function inventoryItem(bundle: QuarantinedRunBundle | Omit<QuarantinedRunBundle,
   return {
     runRef: bundle.run.runRef,
     title: bundle.run.title,
-    state: bundle.run.state,
+    state: projectRunState(bundle.run.lifecycle),
     updatedAt: bundle.run.updatedAt,
     eventCount: bundle.events.length,
     estimatedBytes: bundleBytes(bundle),
@@ -1490,7 +1512,7 @@ function inventoryItem(bundle: QuarantinedRunBundle | Omit<QuarantinedRunBundle,
 }
 
 function bundleIsQuarantineEligible(bundle: Omit<QuarantinedRunBundle, 'quarantinedAt'>): boolean {
-  return QUARANTINE_ELIGIBLE.has(bundle.run.state)
+  return canQuarantineRun(bundle.run.lifecycle)
     && bundle.stages.every((stage) => QUARANTINE_SETTLED_STAGE.has(stage.state))
     && bundle.attempts.every((attempt) => QUARANTINE_SETTLED_ATTEMPT.has(attempt.state))
     && bundle.sessions.every((session) => QUARANTINE_SETTLED_SESSION.has(session.state))
@@ -1620,7 +1642,7 @@ function exactAuthorized20260731NeverStartedState(
   if (run.runRef !== AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF
     || request.requestRef !== AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF
     || request.runRef !== run.runRef
-    || run.publicationState !== 'published' || run.state !== 'waiting-human'
+    || run.publicationState !== 'published' || runLifecycleKind(run.lifecycle) !== 'waiting-human'
     || input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1
     || run.version !== input.expectedRunVersion || run.managerGeneration !== input.expectedManagerGeneration
     || (run.activationReceipts ?? []).length !== 0
@@ -1902,7 +1924,7 @@ function exactAuthorized20260801Graph(
     || run.title !== 'Validate one all-Codex faceless-video opening slice'
     || run.proposalRef !== AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF || run.proposalRevision !== 1
     || run.proposalHash !== AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH
-    || run.publicationState !== 'published' || run.state !== 'failed'
+    || run.publicationState !== 'published' || runLifecycleKind(run.lifecycle) !== 'failed'
     || run.version !== (phase === 'committed' ? 8 : 7)
     || run.managerSessionRef !== AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF || run.managerGeneration !== 1
     || run.launchOperationKey !== 'agent-workspace-launch:4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960:thin-slice-run:f481bfb5-584d-4200-b0f1-8b1fc0556209'
@@ -2042,7 +2064,7 @@ function classifyAuthorized20260801FailedRun(
     return ok({
       disposition: 'replay',
       receipt: publicReceipt,
-      result: { run: publicRun(run), event: publicEvent(event), receipt: publicReceipt },
+      result: { run: internalRun(run), event: publicEvent(event), receipt: publicReceipt },
     });
   }
   return exactAuthorized20260801Graph(document, subject, null)
@@ -2189,213 +2211,38 @@ function runCanSucceed(document: StoreDocument, run: StoredRun): boolean {
     && document.sessions.filter(matches).every((session) => TERMINAL_SESSION.has(session.state) || session.state === 'interrupted');
 }
 
-function assertDocument(document: unknown): asserts document is StoreDocument {
-  if (!document || typeof document !== 'object') throw new Error('invalid control-plane store');
-  const candidate = document as Partial<StoreDocument>;
-  const arrays = ['proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'quarantine'] as const;
-  if (candidate.version !== 1 || !Number.isSafeInteger(candidate.nextEventCursor) || (candidate.nextEventCursor ?? 0) < 1) {
-    throw new Error('invalid control-plane store');
-  }
-  if (arrays.some((field) => !Array.isArray(candidate[field]))) throw new Error('invalid control-plane store');
-  let previous = 0;
-  for (const event of candidate.events ?? []) {
-    if (!Number.isSafeInteger(event.cursor) || event.cursor <= previous || event.cursor >= (candidate.nextEventCursor ?? 0)) {
-      throw new Error('invalid control-plane event cursor sequence');
+function validateStoreDocument(document: StoreDocument): void {
+  assertDeploymentCollection(document.deployments);
+  const validateRows = (bundle: Pick<StoreDocumentCollections, 'runs' | 'stages'>): void => {
+    for (const run of bundle.runs) {
+      if (normalizeAssignment(run.managerAssignment) === undefined) {
+        throw new Error('invalid control-plane assignment provenance');
+      }
+      if (normalizeAgentWorkspaceLaunch(run.agentWorkspaceLaunch) === undefined) {
+        throw new Error('invalid control-plane agent-workspace launch provenance');
+      }
     }
-    previous = event.cursor;
-  }
-  for (const run of candidate.runs ?? []) {
+    for (const stage of bundle.stages) {
+      if (normalizeAssignment(stage.assignment) === undefined) {
+        throw new Error('invalid control-plane assignment provenance');
+      }
+      if (normalizeCheckerContract(stage) === undefined) {
+        throw new Error('invalid control-plane checker contract provenance');
+      }
+    }
+  };
+  validateRows(document);
+  for (const run of document.runs) {
     assertActivationReceipts(run);
-    validateAuthorized20260801FailedRunDurability(candidate.events ?? [], run);
+    validateAuthorized20260801FailedRunDurability(document.events, run);
   }
-  validateAuthorized20260731RecoveryDurability(candidate.humanRequests ?? [], candidate.events ?? []);
-  for (const bundle of candidate.quarantine ?? []) {
+  validateAuthorized20260731RecoveryDurability(document.humanRequests, document.events);
+  for (const bundle of document.quarantine) {
+    validateRows({ runs: [bundle.run], stages: bundle.stages });
     assertActivationReceipts(bundle.run);
     validateAuthorized20260731RecoveryDurability(bundle.humanRequests, bundle.events);
     validateAuthorized20260801FailedRunDurability(bundle.events, bundle.run);
   }
-}
-
-function appendRecoveryEvent(
-  document: StoreDocument,
-  subject: string,
-  runRef: string,
-  stamp: string,
-  pendingActivation: boolean,
-): void {
-  document.events.push({
-    subject,
-    cursor: document.nextEventCursor,
-    runRef,
-    kind: 'lifecycle',
-    source: 'system',
-    stageRef: null,
-    attemptRef: null,
-    sessionRef: null,
-    status: pendingActivation ? 'waiting' : 'interrupted',
-    summary: pendingActivation
-      ? 'dashboard restarted; an undispatched activation was returned to waiting-human for durable recovery'
-      : 'dashboard restarted; active control-plane records were normalized to interrupted',
-    command: null,
-    toolName: null,
-    path: null,
-    diff: null,
-    checkpoint: null,
-    createdAt: stamp,
-  });
-  document.nextEventCursor += 1;
-}
-
-function normalizeStoredStageCheckerContract(stage: StoredStage): boolean {
-  const checkerContract = normalizeCheckerContract(stage);
-  if (!checkerContract) throw new Error('invalid control-plane checker contract provenance');
-  let changed = false;
-  if (stage.workflowProfile === undefined) {
-    stage.workflowProfile = null;
-    changed = true;
-  }
-  if (stage.review === undefined) {
-    stage.review = null;
-    changed = true;
-  }
-  if (stage.completionGate === undefined) {
-    stage.completionGate = null;
-    changed = true;
-  }
-  return changed;
-}
-
-function normalizeStoredStageGenerationProjection(stage: StoredStage): boolean {
-  let changed = false;
-  if (stage.currentGeneration === undefined) {
-    stage.currentGeneration = 1;
-    changed = true;
-  }
-  if (stage.currentGenerationRef === undefined) {
-    stage.currentGenerationRef = null;
-    changed = true;
-  }
-  if (stage.acceptedGenerationRef === undefined) {
-    stage.acceptedGenerationRef = null;
-    changed = true;
-  }
-  if (!Number.isSafeInteger(stage.currentGeneration) || stage.currentGeneration < 1
-    || (stage.currentGenerationRef !== null && (typeof stage.currentGenerationRef !== 'string' || !SAFE_REF_RE.test(stage.currentGenerationRef)))
-    || (stage.acceptedGenerationRef !== null && (typeof stage.acceptedGenerationRef !== 'string' || !SAFE_REF_RE.test(stage.acceptedGenerationRef)))) {
-    throw new Error('invalid control-plane stage generation projection');
-  }
-  return changed;
-}
-
-function migrateLegacyStoreAttemptProvenance(
-  attempt: StoredAttempt,
-  generationByRef: ReadonlyMap<string, StoredStageGeneration>,
-): boolean {
-  const raw = attempt as StoredAttempt & {
-    reviewSubjectGenerationRef?: unknown;
-    reviewSubjectResultHash?: unknown;
-    reviewSubjectCanonicalCommit?: unknown;
-  };
-  let changed = false;
-  const legacy = [raw.reviewSubjectGenerationRef, raw.reviewSubjectResultHash, raw.reviewSubjectCanonicalCommit];
-  if (legacy.some((value) => value !== undefined && value !== null)
-    && (typeof raw.reviewSubjectGenerationRef !== 'string' || !SAFE_REF_RE.test(raw.reviewSubjectGenerationRef)
-      || typeof raw.reviewSubjectResultHash !== 'string' || !HASH_RE.test(raw.reviewSubjectResultHash)
-      || typeof raw.reviewSubjectCanonicalCommit !== 'string' || !CANONICAL_COMMIT_RE.test(raw.reviewSubjectCanonicalCommit))) {
-    throw new Error('invalid legacy store attempt provenance');
-  }
-  if (legacy.every((value) => value !== undefined && value !== null)) {
-    const generation = generationByRef.get(raw.reviewSubjectGenerationRef as string);
-    if (!generation || generation.subject !== attempt.subject || generation.runRef !== attempt.runRef
-      || generation.resultHash !== raw.reviewSubjectResultHash
-      || generation.canonicalCommit !== raw.reviewSubjectCanonicalCommit) {
-      throw new Error('invalid control-plane checker attempt generation provenance');
-    }
-  }
-  for (const field of ['reviewSubjectGenerationRef', 'reviewSubjectResultHash', 'reviewSubjectCanonicalCommit'] as const) {
-    if (Object.prototype.hasOwnProperty.call(raw, field)) {
-      delete raw[field];
-      changed = true;
-    }
-  }
-  for (const field of ['logicalGeneration', 'baseGenerationRef', 'baseCommit'] as const) {
-    if (attempt[field] === undefined) {
-      attempt[field] = null;
-      changed = true;
-    }
-  }
-  if (attempt.logicalGeneration !== null && (!Number.isSafeInteger(attempt.logicalGeneration) || attempt.logicalGeneration < 1)
-    || (attempt.baseGenerationRef !== null && (typeof attempt.baseGenerationRef !== 'string' || !SAFE_REF_RE.test(attempt.baseGenerationRef)))
-    || (attempt.baseCommit !== null && (typeof attempt.baseCommit !== 'string' || !CANONICAL_COMMIT_RE.test(attempt.baseCommit)))) {
-    throw new Error('invalid control-plane iteration attempt provenance');
-  }
-  return changed;
-}
-
-function prepareLegacyStoreMigration(document: StoreDocument): boolean {
-  let changed = false;
-  const bundles = [document as StoreDocument & LegacyStoreMigrationBundle,
-    ...document.quarantine.map((bundle) => bundle as QuarantinedRunBundle & LegacyStoreMigrationBundle)];
-  for (const bundle of bundles) {
-    const raw = bundle as unknown as LegacyStoreMigrationBundle & Record<string, unknown>;
-    for (const field of ['stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions'] as const) {
-      if (raw[field] === undefined) {
-        raw[field] = [];
-        changed = true;
-      } else if (!Array.isArray(raw[field])) {
-        throw new Error('invalid control-plane iteration collections');
-      }
-    }
-    if (raw.reviewLoops !== undefined && !Array.isArray(raw.reviewLoops)
-      || raw.reviewReceipts !== undefined && !Array.isArray(raw.reviewReceipts)) {
-      throw new Error('invalid legacy store collections');
-    }
-    for (const loop of raw.reviewLoops ?? []) {
-      if (loop.interventionRequestRef === undefined) { loop.interventionRequestRef = null; changed = true; }
-    }
-    for (const receipt of raw.reviewReceipts ?? []) {
-      if (receipt.interventionRequestRef === undefined) { receipt.interventionRequestRef = null; changed = true; }
-      if (receipt.version === undefined) { receipt.version = 1; changed = true; }
-    }
-  }
-  const generationBundles = [
-    { stages: document.stages, generations: document.stageGenerations },
-    ...document.quarantine.map((bundle) => ({ stages: bundle.stages, generations: bundle.stageGenerations })),
-  ];
-  for (const { stages, generations } of generationBundles) for (const generation of generations) {
-    if (generation.resultCardRef === undefined) {
-      const stage = stages.find((item) => item.stageRef === generation.logicalStageRef);
-      generation.resultCardRef = generation.generation === 1 && stage && stage.canonicalCardRef !== null
-        ? stage.canonicalCardRef : null;
-      changed = true;
-    }
-    if (generation.baseCommit === undefined) {
-      generation.baseCommit = null;
-      changed = true;
-    }
-  }
-  for (const request of [...document.humanRequests, ...document.quarantine.flatMap((bundle) => bundle.humanRequests)]) {
-    if (request.resolutionOperationFingerprint === undefined) { request.resolutionOperationFingerprint = null; changed = true; }
-    if (request.legacyRecoveryOperationKey === undefined) { request.legacyRecoveryOperationKey = null; changed = true; }
-    if (request.legacyRecoveryOperationFingerprint === undefined) { request.legacyRecoveryOperationFingerprint = null; changed = true; }
-    if (request.legacyRecoveryEventCursor === undefined) { request.legacyRecoveryEventCursor = null; changed = true; }
-  }
-  for (const bundle of [{ loops: document.iterationLoops, receipts: document.iterationReceipts },
-    ...document.quarantine.map((item) => ({ loops: item.iterationLoops, receipts: item.iterationReceipts }))]) {
-    const receiptByRef = new Map(bundle.receipts.map((receipt) => [receipt.receiptRef, receipt]));
-    for (const loop of bundle.loops) {
-      const rawLoop = loop as StoredIterationLoop & { gateRef?: unknown };
-      if (rawLoop.gateRef === undefined) continue;
-      if (typeof rawLoop.gateRef !== 'string') throw new Error('invalid control-plane iteration gate');
-      const receipt = loop.lastReceiptRef === undefined ? undefined : receiptByRef.get(loop.lastReceiptRef);
-      const rawReceipt = receipt as (StoredIterationReceipt & { completionRequestRef?: unknown }) | undefined;
-      if (rawReceipt?.completionRequestRef === rawLoop.gateRef) loop.completionGateRef = rawLoop.gateRef;
-      else loop.interventionRef = rawLoop.gateRef;
-      delete rawLoop.gateRef;
-      changed = true;
-    }
-  }
-  return changed;
 }
 
 function iterationDefinitionHash(group: ProposalIterationGroup): string {
@@ -2469,262 +2316,6 @@ function hasBlockingIterationRequest(document: StoreDocument, loop: StoredIterat
         && stage.stageId === participant.stageRef && stage.stageRef === request.stageRef)));
     return requestLoop === undefined || requestLoop.iterationLoopRef === loop.iterationLoopRef;
   });
-}
-
-function legacyGroupForStages(
-  subjectStage: StoredStage,
-  reviewStage: StoredStage,
-  snapshot?: JsonObject,
-): ProposalIterationGroup {
-  const groups = snapshot && Array.isArray(snapshot.iterationGroups)
-    ? snapshot.iterationGroups as unknown as ProposalIterationGroup[] : [];
-  const approved = groups.find((group) => Array.isArray(group.participants)
-    && group.participants.some((participant) => participant.stageRef === subjectStage.stageId)
-    && group.participants.some((participant) => participant.stageRef === reviewStage.stageId));
-  if (approved) return clone(approved);
-  // Sanctioned legacy store migration reader. Persisted review stages without an approved generic
-  // definition are projected here at the read boundary; new writes never enter this path.
-  const review = reviewStage.review as ProposalReview;
-  const snapshotStages = snapshot && Array.isArray(snapshot.stages) ? snapshot.stages as unknown as Array<Record<string, unknown>> : [];
-  const source = snapshotStages.find((stage) => stage.id === subjectStage.stageId);
-  const artifacts = Array.isArray(source?.artifacts)
-    ? source.artifacts.map((artifact) => isPlainRecord(artifact) && typeof artifact.id === 'string' ? artifact.id : '').filter(Boolean)
-    : [];
-  const artifactIds = artifacts.length > 0 ? artifacts : [`${subjectStage.stageId}-artifact`];
-  const producerId = `${subjectStage.stageId}-manager`;
-  const judgeId = `${reviewStage.stageId}-judge`;
-  const reviewStep = `${reviewStage.stageId}-review`;
-  const reworkStep = `${reviewStage.stageId}-rework`;
-  return {
-    iterationGroupId: `${reviewStage.stageId}-iteration`,
-    goal: `Accept '${subjectStage.title}' against the declared review criteria.`,
-    participants: [
-      { participantId: producerId, stageRef: subjectStage.stageId, role: 'manager', perspective: `Own stage '${subjectStage.stageId}'.`, mandate: subjectStage.title },
-      { participantId: judgeId, stageRef: reviewStage.stageId, role: 'judge', perspective: `Review stage '${subjectStage.stageId}'.`, mandate: reviewStage.title },
-    ],
-    routes: [
-      { routeId: `${reviewStage.stageId}-to-judge`, senderParticipantId: producerId, recipientParticipantId: judgeId, requestKinds: ['review'], baseResolutionStageIds: [subjectStage.stageId] },
-      { routeId: `${reviewStage.stageId}-to-manager`, senderParticipantId: judgeId, recipientParticipantId: producerId, requestKinds: ['rework'], baseResolutionStageIds: [reviewStage.stageId] },
-    ],
-    activation: { seedParticipantId: producerId, seedArtifactIds: artifactIds },
-    initialStepId: reviewStep,
-    schedule: [
-      { stepId: reviewStep, routeId: `${reviewStage.stageId}-to-judge`, after: { stepId: reworkStep, participantId: producerId, verdict: 'fulfilled' }, cycle: 'next' },
-      { stepId: reworkStep, routeId: `${reviewStage.stageId}-to-manager`, after: { stepId: reviewStep, participantId: judgeId, verdict: 'fail' }, cycle: 'current' },
-    ],
-    artifacts: artifactIds,
-    criteria: clone(review.criteria),
-    maxCycles: review.maxCreatorReworks + 1,
-    cycleUnit: `One '${subjectStage.stageId}' generation followed by one '${reviewStage.stageId}' verdict.`,
-    terminalAuthorities: [{ participantId: judgeId, verdict: 'pass' }],
-    ...(reviewStage.completionGate ? { completionGate: clone(reviewStage.completionGate) } : {}),
-  };
-}
-
-function migrateLegacyStoreLoop(
-  loop: LegacyStoreReviewLoopMigrationRow,
-  stages: readonly StoredStage[],
-  snapshot?: JsonObject,
-): StoredIterationLoop {
-  const subject = stages.find((stage) => stage.stageRef === loop.subjectStageRef);
-  const review = stages.find((stage) => stage.stageRef === loop.reviewStageRef);
-  if (!subject || !review) throw new Error('invalid control-plane review loop');
-  const group = legacyGroupForStages(subject, review, snapshot);
-  const producer = group.participants.find((participant) => participant.stageRef === subject.stageId)!;
-  const judge = group.participants.find((participant) => participant.stageRef === review.stageId)!;
-  const reviewStep = group.schedule.find((step) => group.routes.find((route) =>
-    route.routeId === step.routeId)?.recipientParticipantId === judge.participantId);
-  const reworkStep = group.schedule.find((step) => group.routes.find((route) =>
-    route.routeId === step.routeId)?.recipientParticipantId === producer.participantId);
-  const state: IterationLoop['state'] = ({
-    'awaiting-subject': 'awaiting-seed', checking: 'awaiting-turn', 'rework-queued': 'rework-queued',
-    failed: 'failed', parked: 'parked', 'awaiting-gate': 'awaiting-completion-gate', passed: 'passed',
-  } as const)[loop.state];
-  return {
-    subject: loop.subject, ...group, iterationLoopRef: loop.reviewLoopRef, runRef: loop.runRef,
-    definitionHash: iterationDefinitionHash(group), cyclesUsed: loop.activeGenerationRef === null ? 0 : loop.reworksUsed + 1,
-    state,
-    ...(state === 'awaiting-turn' ? { turnOwnerParticipantId: judge.participantId, currentStepId: reviewStep?.stepId } : {}),
-    ...(state === 'rework-queued' ? { turnOwnerParticipantId: producer.participantId, currentStepId: reworkStep?.stepId } : {}),
-    activeGenerationRefs: loop.activeGenerationRef === null ? [] : [loop.activeGenerationRef],
-    ...(loop.acceptedGenerationRef === null ? {} : { acceptedGenerationRefs: [loop.acceptedGenerationRef] }),
-    ...(loop.activeReceiptRef === null ? {} : { lastReceiptRef: loop.activeReceiptRef }),
-    ...(loop.interventionRequestRef === null ? {} : { interventionRef: loop.interventionRequestRef }),
-    version: Math.max(0, loop.version - 1), createdAt: loop.createdAt, updatedAt: loop.updatedAt,
-  };
-}
-
-function decodeLegacyStoreReviewOutcome(
-  value: unknown,
-  loop: StoredIterationLoop,
-  request: StoredIterationRequest,
-): ReturnType<typeof parseIterationOutcome> {
-  const invalid = () => ({ ok: false as const, detail: 'invalid legacy review outcome' });
-  if (!isPlainRecord(value)) return invalid();
-  const exactKeys = (record: Record<string, unknown>, expected: readonly string[]): boolean =>
-    Object.keys(record).length === expected.length && expected.every((key) => Object.prototype.hasOwnProperty.call(record, key));
-  if (!exactKeys(value, ['schema', 'decision', 'summary', 'criteria', 'findings'])
-    || value.schema !== 'kb.review-outcome/v1'
-    || !Array.isArray(value.findings)
-    || value.findings.some((finding) => !isPlainRecord(finding)
-      || !exactKeys(finding, ['id', 'criterionId', 'severity', 'summary', 'evidencePaths']))) {
-    return invalid();
-  }
-  const findings = value.findings.map((finding) => {
-    const { id, ...rest } = finding as Record<string, unknown>;
-    return { ...rest, findingId: id };
-  });
-  return parseIterationOutcome(JSON.stringify({
-    schema: 'kb.iteration-outcome/v1', requestRef: request.requestRef,
-    iterationLoopRef: request.iterationLoopRef, participantId: request.recipientParticipantId,
-    cycle: request.cycle, verdict: value.decision, inputGenerationRefs: request.inputGenerationRefs,
-    criteria: value.criteria, findings, positions: [], recordedDissent: [], summary: value.summary,
-  }), { iterationGroup: loop, request });
-}
-
-function migrateLegacyStoreReceipt(
-  receipt: LegacyStoreReviewReceiptMigrationRow,
-  loop: StoredIterationLoop,
-  generationByRef: ReadonlyMap<string, StoredStageGeneration>,
-): { request: StoredIterationRequest; receipt: StoredIterationReceipt } {
-  const judge = loop.participants.find((participant) => participant.role === 'judge');
-  const route = judge && loop.routes.find((candidate) => candidate.recipientParticipantId === judge.participantId);
-  const sender = route && loop.participants.find((participant) => participant.participantId === route.senderParticipantId);
-  const generation = generationByRef.get(receipt.subjectGenerationRef);
-  if (!judge || !route || !sender || !generation?.canonicalCommit || !generation.baseCommit
-    || generation.subject !== receipt.subject || generation.runRef !== receipt.runRef
-    || generation.resultHash !== receipt.subjectResultHash
-    || sha256(canonicalJson(receipt.outcome as unknown as JsonValue)) !== receipt.outcomeHash) {
-    throw new Error('invalid control-plane review receipt');
-  }
-  const requestRef = `iteration-request-${sha256(receipt.reviewReceiptRef).slice(0, 48)}`;
-  const request: StoredIterationRequest = {
-    subject: receipt.subject, runRef: receipt.runRef, operationKey: `iteration-request:${receipt.operationKey}`,
-    operationFingerprint: '', schema: 'kb.iteration-request/v1', requestRef,
-    iterationLoopRef: loop.iterationLoopRef, stepId: loop.schedule.find((step) => step.routeId === route.routeId)?.stepId ?? loop.initialStepId,
-    routeId: route.routeId,
-    senderParticipantId: sender.participantId, recipientParticipantId: judge.participantId, kind: 'review',
-    cycle: generation.generation, inputGenerationRefs: [generation.generationRef], baseCommit: generation.canonicalCommit,
-    artifactHashes: Object.fromEntries(loop.artifacts.map((artifact) => [artifact, generation.resultHash as string])),
-    criteria: clone(loop.criteria), unresolvedFindingRefs: [], preservedInvariants: [],
-    nextAcceptanceCheck: 'Apply every declared criterion.', instructions: judge.mandate,
-  };
-  request.operationFingerprint = iterationRequestFingerprint(request);
-  const parsed = decodeLegacyStoreReviewOutcome(receipt.outcome, loop, request);
-  if (!parsed.ok) throw new Error('invalid control-plane review receipt');
-  const { schema: _schema, ...outcome } = parsed.value;
-  return { request, receipt: {
-    subject: receipt.subject, runRef: receipt.runRef, routeId: route.routeId,
-    operationKey: receipt.operationKey, operationFingerprint: receipt.operationFingerprint,
-    version: receipt.version, participantAttemptRef: receipt.checkerAttemptRef,
-    schema: 'kb.iteration-receipt/v1', receiptRef: receipt.reviewReceiptRef, ...outcome,
-    outcomeHash: sha256(canonicalJson(outcome as unknown as JsonValue)), outputGenerationRefs: [],
-    baseCommit: generation.baseCommit, canonicalCommit: generation.canonicalCommit, createdAt: receipt.createdAt,
-  } };
-}
-
-type LegacyStoreMigrationBundle = Pick<StoreDocument,
-  'stages' | 'attempts' | 'stageGenerations' | 'generationSupersessions'
-  | 'iterationLoops' | 'iterationRequests' | 'iterationReceipts'> & {
-    reviewLoops?: LegacyStoreReviewLoopMigrationRow[];
-    reviewReceipts?: LegacyStoreReviewReceiptMigrationRow[];
-  };
-
-function decodeLegacyStoreRows(document: StoreDocument): boolean {
-  let changed = false;
-  const proposalForRun = (runRef: string): JsonObject | undefined => {
-    const run = document.runs.find((item) => item.runRef === runRef)
-      ?? document.quarantine.find((bundle) => bundle.run.runRef === runRef)?.run;
-    const proposals = run && (document.proposals.find((item) => item.subject === run.subject && item.proposalRef === run.proposalRef && item.revision === run.proposalRevision));
-    return proposals?.snapshot;
-  };
-  const migrate = (bundle: LegacyStoreMigrationBundle): void => {
-    const legacyLoops = bundle.reviewLoops ?? [];
-    const legacyReceipts = bundle.reviewReceipts ?? [];
-    if (!Array.isArray(legacyLoops) || !Array.isArray(legacyReceipts)) {
-      throw new Error('invalid legacy store collections');
-    }
-    const genericRuntimeExists = bundle.iterationLoops.length > 0 || bundle.iterationRequests.length > 0
-      || bundle.iterationReceipts.length > 0;
-    const loopByRef = new Map(bundle.iterationLoops.map((loop) => [loop.iterationLoopRef, loop]));
-    for (const legacy of genericRuntimeExists ? [] : legacyLoops) {
-      if (loopByRef.has(legacy.reviewLoopRef)) continue;
-      const generic = migrateLegacyStoreLoop(legacy, bundle.stages, proposalForRun(legacy.runRef));
-      bundle.iterationLoops.push(generic);
-      loopByRef.set(generic.iterationLoopRef, generic);
-      changed = true;
-    }
-    const legacyLoopByReviewStage = new Map(legacyLoops.map((loop) => [loop.reviewStageRef, loop]));
-    const generationByRef = new Map(bundle.stageGenerations.map((generation) => [generation.generationRef, generation]));
-    const requestRefs = new Set(bundle.iterationRequests.map((request) => request.requestRef));
-    const receiptRefs = new Set(bundle.iterationReceipts.map((receipt) => receipt.receiptRef));
-    for (const legacy of genericRuntimeExists ? [] : legacyReceipts) {
-      const legacyLoop = legacyLoopByReviewStage.get(legacy.reviewStageRef);
-      const loop = legacyLoop && loopByRef.get(legacyLoop.reviewLoopRef);
-      if (!loop) throw new Error('invalid control-plane review receipt loop migration');
-      const generic = migrateLegacyStoreReceipt(legacy, loop, generationByRef);
-      if (!requestRefs.has(generic.request.requestRef)) {
-        bundle.iterationRequests.push(generic.request);
-        requestRefs.add(generic.request.requestRef);
-        changed = true;
-      }
-      if (!receiptRefs.has(generic.receipt.receiptRef)) {
-        bundle.iterationReceipts.push(generic.receipt);
-        receiptRefs.add(generic.receipt.receiptRef);
-        changed = true;
-      }
-      if (loop.lastReceiptRef === legacy.reviewReceiptRef) {
-        if (legacy.completionRequestRef === null) delete loop.completionGateRef;
-        else loop.completionGateRef = legacy.completionRequestRef;
-        if (legacy.interventionRequestRef === null) delete loop.interventionRef;
-        else loop.interventionRef = legacy.interventionRequestRef;
-      }
-    }
-    for (const receipt of bundle.iterationReceipts) {
-      const raw = receipt as StoredIterationReceipt & {
-        state?: unknown; completionRequestRef?: unknown; interventionRequestRef?: unknown;
-        finalizedAt?: unknown; checkerAttemptRef?: unknown; subjectResultHash?: unknown;
-      };
-      if (!SAFE_REF_RE.test(receipt.participantAttemptRef)) {
-        throw new Error('invalid legacy store receipt attempt reference');
-      }
-      const loop = loopByRef.get(receipt.iterationLoopRef);
-      if (loop?.lastReceiptRef === receipt.receiptRef) {
-        if (typeof raw.completionRequestRef === 'string') loop.completionGateRef = raw.completionRequestRef;
-        if (typeof raw.interventionRequestRef === 'string') loop.interventionRef = raw.interventionRequestRef;
-      }
-      for (const field of ['state', 'completionRequestRef', 'interventionRequestRef', 'finalizedAt', 'checkerAttemptRef', 'subjectResultHash'] as const) {
-        if (Object.prototype.hasOwnProperty.call(raw, field)) {
-          delete raw[field];
-          changed = true;
-        }
-      }
-    }
-    for (const supersession of bundle.generationSupersessions) {
-      const raw = supersession as StoredGenerationSupersession & { failedReviewReceiptRef?: unknown };
-      if (!supersession.triggerReceiptRef && typeof raw.failedReviewReceiptRef === 'string') {
-        supersession.triggerReceiptRef = raw.failedReviewReceiptRef;
-      }
-      if (Object.prototype.hasOwnProperty.call(raw, 'failedReviewReceiptRef')) {
-        delete raw.failedReviewReceiptRef;
-        changed = true;
-      }
-    }
-    for (const attempt of bundle.attempts) {
-      if (migrateLegacyStoreAttemptProvenance(attempt, generationByRef)) changed = true;
-    }
-    if (Object.prototype.hasOwnProperty.call(bundle, 'reviewLoops')) {
-      delete bundle.reviewLoops;
-      changed = true;
-    }
-    if (Object.prototype.hasOwnProperty.call(bundle, 'reviewReceipts')) {
-      delete bundle.reviewReceipts;
-      changed = true;
-    }
-  };
-  migrate(document as StoreDocument & LegacyStoreMigrationBundle);
-  for (const bundle of document.quarantine) migrate(bundle as QuarantinedRunBundle & LegacyStoreMigrationBundle);
-  return changed;
 }
 
 type IterationDurabilityBundle = Pick<StoreDocument,
@@ -3186,196 +2777,11 @@ function validateIterationDurability(
   }
 }
 
-function legacyReviewLoopRef(stage: StoredStage): string {
-  return `review-loop-${sha256(`${stage.runRef}\0${stage.stageRef}`)}`;
-}
-
-/**
- * Pre-foundation review contracts are durable compiler provenance, but their checker attempts have
- * no subject-generation binding.  We preserve those attempts as unbound history and interrupt any
- * live one; only a fresh, explicitly bound checker attempt may ever produce a receipt.
- */
-function materializeLegacyStoreReviewLoops(
-  stages: readonly StoredStage[],
-  attempts: readonly StoredAttempt[],
-  loops: LegacyStoreReviewLoopMigrationRow[],
-  stamp: string,
-): boolean {
-  let changed = false;
-  for (const reviewStage of stages) {
-    if (reviewStage.review === null || loops.some((loop) => loop.reviewStageRef === reviewStage.stageRef)) continue;
-    const subjectStage = stages.find((stage) => stage.subject === reviewStage.subject && stage.runRef === reviewStage.runRef
-      && stage.stageId === reviewStage.review?.subjectStageId);
-    if (!subjectStage || reviewStage.dependsOn.length !== 1 || reviewStage.dependsOn[0] !== subjectStage.stageId
-      || reviewStage.workflowProfile !== 'checker-readonly') {
-      throw new Error('invalid control-plane legacy review contract');
-    }
-    loops.push({
-      subject: reviewStage.subject,
-      reviewLoopRef: legacyReviewLoopRef(reviewStage),
-      runRef: reviewStage.runRef,
-      reviewStageRef: reviewStage.stageRef,
-      subjectStageRef: subjectStage.stageRef,
-      maxCreatorReworks: reviewStage.review.maxCreatorReworks,
-      reviewDefinitionHash: reviewLoopDefinitionHash(reviewStage),
-      reworksUsed: 0,
-      state: 'awaiting-subject',
-      activeGenerationRef: null,
-      acceptedGenerationRef: null,
-      activeReceiptRef: null,
-      interventionRequestRef: null,
-      version: 1,
-      createdAt: reviewStage.createdAt,
-      updatedAt: stamp,
-    });
-    changed = true;
-  }
-  for (const reviewStage of stages.filter((stage) => stage.review !== null)) {
-    for (const attempt of attempts.filter((candidate) => candidate.stageRef === reviewStage.stageRef)) {
-      if (TERMINAL_ATTEMPT.has(attempt.state) || attempt.state === 'interrupted') continue;
-      attempt.state = 'interrupted';
-      attempt.version += 1;
-      attempt.updatedAt = stamp;
-      if (reviewStage.currentAttemptRef === attempt.attemptRef) {
-        reviewStage.currentAttemptRef = null;
-        reviewStage.version += 1;
-        reviewStage.updatedAt = stamp;
-      }
-      changed = true;
-    }
-  }
-  return changed;
-}
-
-function normalizeCrash(document: StoreDocument, stamp: string): boolean {
-  let changed = prepareLegacyStoreMigration(document);
-  for (const run of document.runs) {
-    let runChanged = false;
-    if (run.activationReceipts === undefined) {
-      run.activationReceipts = [];
-      changed = true;
-    }
-    if (run.authorizedFailedRunReconciliation === undefined) {
-      run.authorizedFailedRunReconciliation = null;
-      changed = true;
-    }
-    assertActivationReceipts(run);
-    const pendingActivation = latestPendingActivationReceipt(run);
-    const managerAssignment = normalizeAssignment(run.managerAssignment);
-    if (managerAssignment === undefined) throw new Error('invalid control-plane assignment provenance');
-    if (run.managerAssignment === undefined) {
-      run.managerAssignment = null;
-      changed = true;
-    }
-    const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(run.agentWorkspaceLaunch);
-    if (agentWorkspaceLaunch === undefined) throw new Error('invalid control-plane agent workspace launch provenance');
-    if (run.agentWorkspaceLaunch === undefined) {
-      run.agentWorkspaceLaunch = null;
-      changed = true;
-    }
-    if (run.state === 'running' || run.state === 'recovering' || run.state === 'stopping') {
-      run.state = pendingActivation ? 'waiting-human' : 'interrupted';
-      run.version += 1;
-      run.updatedAt = stamp;
-      runChanged = true;
-    }
-    for (const stage of document.stages.filter((item) => item.subject === run.subject && item.runRef === run.runRef)) {
-      const assignment = normalizeAssignment(stage.assignment);
-      if (assignment === undefined) throw new Error('invalid control-plane assignment provenance');
-      if (stage.assignment === undefined) {
-        stage.assignment = null;
-        changed = true;
-      }
-      if (normalizeStoredStageCheckerContract(stage)) changed = true;
-      if (normalizeStoredStageGenerationProjection(stage)) changed = true;
-      if (stage.state !== 'running') continue;
-      stage.state = 'interrupted';
-      stage.version += 1;
-      stage.updatedAt = stamp;
-      runChanged = true;
-    }
-    const generationByRef = new Map(document.stageGenerations.map((generation) => [generation.generationRef, generation]));
-    for (const attempt of document.attempts.filter((item) => item.subject === run.subject && item.runRef === run.runRef)) {
-      if (migrateLegacyStoreAttemptProvenance(attempt, generationByRef)) changed = true;
-      if (attempt.state !== 'starting' && attempt.state !== 'running') continue;
-      attempt.state = 'interrupted';
-      attempt.version += 1;
-      attempt.updatedAt = stamp;
-      runChanged = true;
-    }
-    for (const session of document.sessions.filter((item) => item.subject === run.subject && item.runRef === run.runRef)) {
-      session.brokerSteering ??= [];
-      session.brokerReceipts ??= [];
-      session.brokerStopRequested ??= false;
-      if (session.state !== 'starting' && session.state !== 'running' && session.state !== 'waiting') continue;
-      session.state = 'interrupted';
-      session.version += 1;
-      session.updatedAt = stamp;
-      session.brokerStopRequested = false;
-      runChanged = true;
-    }
-    if (runChanged) {
-      appendRecoveryEvent(document, run.subject, run.runRef, stamp, run.state === 'waiting-human' && pendingActivation !== undefined);
-      changed = true;
-    }
-  }
-  for (const bundle of document.quarantine) {
-    if (bundle.run.activationReceipts === undefined) {
-      bundle.run.activationReceipts = [];
-      changed = true;
-    }
-    if (bundle.run.authorizedFailedRunReconciliation === undefined) {
-      bundle.run.authorizedFailedRunReconciliation = null;
-      changed = true;
-    }
-    assertActivationReceipts(bundle.run);
-    const managerAssignment = normalizeAssignment(bundle.run.managerAssignment);
-    if (managerAssignment === undefined) throw new Error('invalid control-plane assignment provenance');
-    if (bundle.run.managerAssignment === undefined) {
-      bundle.run.managerAssignment = null;
-      changed = true;
-    }
-    for (const stage of bundle.stages) {
-      const assignment = normalizeAssignment(stage.assignment);
-      if (assignment === undefined) throw new Error('invalid control-plane assignment provenance');
-      if (stage.assignment === undefined) {
-        stage.assignment = null;
-        changed = true;
-      }
-      if (normalizeStoredStageCheckerContract(stage)) changed = true;
-      if (normalizeStoredStageGenerationProjection(stage)) changed = true;
-    }
-    const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(bundle.run.agentWorkspaceLaunch);
-    if (agentWorkspaceLaunch === undefined) throw new Error('invalid control-plane agent workspace launch provenance');
-    if (bundle.run.agentWorkspaceLaunch === undefined) {
-      bundle.run.agentWorkspaceLaunch = null;
-      changed = true;
-    }
-    const generationByRef = new Map(bundle.stageGenerations.map((generation) => [generation.generationRef, generation]));
-    for (const attempt of bundle.attempts) {
-      if (migrateLegacyStoreAttemptProvenance(attempt, generationByRef)) changed = true;
-    }
-    const raw = bundle as QuarantinedRunBundle & LegacyStoreMigrationBundle;
-    if (bundle.iterationLoops.length === 0
-      && materializeLegacyStoreReviewLoops(bundle.stages, bundle.attempts, raw.reviewLoops ?? (raw.reviewLoops = []), stamp)) changed = true;
-  }
-  const rawDocument = document as StoreDocument & LegacyStoreMigrationBundle;
-  if (document.iterationLoops.length === 0
-    && materializeLegacyStoreReviewLoops(document.stages, document.attempts,
-      rawDocument.reviewLoops ?? (rawDocument.reviewLoops = []), stamp)) changed = true;
-  if (decodeLegacyStoreRows(document)) changed = true;
-  for (const bundle of document.quarantine) validateGenericIterationBundle(bundle);
-  validateGenericIterationBundle(document);
-  validateAuthorized20260731RecoveryDurability(document.humanRequests, document.events);
-  for (const run of document.runs) validateAuthorized20260801FailedRunDurability(document.events, run);
-  for (const bundle of document.quarantine) {
-    validateAuthorized20260731RecoveryDurability(bundle.humanRequests, bundle.events);
-    validateAuthorized20260801FailedRunDurability(bundle.events, bundle.run);
-  }
-  return changed;
-}
-
-function makeStore(load: () => StoreDocument, save: (document: StoreDocument) => void, options: ControlStoreOptions): ControlPlaneStore {
+function makeStore(
+  load: () => StoreDocument,
+  save: (document: StoreDocument, durability?: SaveDurability) => void,
+  options: ControlStoreOptions,
+): ControlPlaneStore {
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? randomUUID;
   const maxEvents = options.maxEventsPerRun ?? MAX_EVENTS_PER_RUN;
@@ -3443,8 +2849,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
     revision: receipt.revision,
   });
 
-  const commit = (document: StoreDocument): void => {
-    save(document);
+  const commit = (document: StoreDocument, durability: SaveDurability = 'ordinary'): void => {
+    document.documentRevision += 1;
+    save(document, durability);
   };
 
   interface IterationTransitionTarget {
@@ -3506,7 +2913,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
     const result = mutate({ loop, ...(request ? { request } : {}), ...(receipt ? { receipt } : {}) });
     if (!result.ok) return result;
     validateGenericIterationBundle(iterationBundleForRun(document, loop.subject, loop.runRef));
-    save(document);
+    commit(document);
     return result;
   };
 
@@ -3618,6 +3025,115 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
   };
 
   return {
+    getControlDocumentMetadata() {
+      const { version, documentRevision } = load();
+      return { version, documentRevision };
+    },
+
+    getDeployment(deploymentRef) {
+      const deployment = load().deployments.find((item) => item.deploymentRef === deploymentRef);
+      return deployment ? ok(publicDeployment(deployment)) : fail('not-found', 'deployment was not found');
+    },
+
+    listDeployments() {
+      return load().deployments
+        .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt) || a.deploymentRef.localeCompare(b.deploymentRef))
+        .map(publicDeployment);
+    },
+
+    createDeployment(subject, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validateCreateDeploymentInput(input)) {
+        return fail('invalid', 'deployment creation input is invalid');
+      }
+      const document = load();
+      const fingerprint = sha256(canonicalJson({ subject, input } as unknown as JsonValue));
+      const prior = document.deployments.flatMap((deployment) => deployment.operationReceipts)
+        .find((receipt) => receipt.key === input.idempotencyKey);
+      if (prior) {
+        if (prior.operation !== 'create' || prior.fingerprint !== fingerprint) {
+          return fail('idempotency-conflict', 'deployment idempotencyKey was reused with different content');
+        }
+        return ok(clone(prior.result), true);
+      }
+      if (document.deployments.some((deployment) => deployment.deploymentRef === input.deploymentRef)
+        || document.deployments.some((deployment) => !isTerminalDeploymentState(deployment.state))) {
+        return fail('conflict', 'a deployment with this reference or another nonterminal deployment already exists');
+      }
+      const deployment: StoredDeployment = {
+        deploymentRef: input.deploymentRef,
+        revision: 1,
+        targetCommit: input.targetCommit,
+        previousCommit: input.previousCommit,
+        state: input.initialState,
+        requestedAt: input.requestedAt,
+        parkWarnAt: input.parkWarnAt,
+        swapDeadlineAt: null,
+        fenceRevision: 0,
+        drainAcks: {},
+        blockers: [],
+        progress: { kind: 'idle', attemptRef: null, since: null, detail: null },
+        abortRequestedAt: null,
+        error: null,
+        terminalOutcome: null,
+        acknowledgedBy: null,
+        operationReceipts: [],
+      };
+      const result = publicDeployment(deployment);
+      deployment.operationReceipts.push({
+        key: input.idempotencyKey,
+        fingerprint,
+        operation: 'create',
+        deploymentRevision: deployment.revision,
+        result: clone(result),
+        recordedAt: stamp(),
+      });
+      document.deployments.push(deployment);
+      commit(document, 'deploy-critical');
+      return ok(result);
+    },
+
+    transitionDeployment(subject, deploymentRef, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validNonEmpty(deploymentRef, MAX_SHORT_TEXT)
+        || !validateTransitionDeploymentInput(input)) {
+        return fail('invalid', 'deployment transition input is invalid');
+      }
+      const document = load();
+      const fingerprint = sha256(canonicalJson({ subject, deploymentRef, input } as unknown as JsonValue));
+      const prior = document.deployments.flatMap((deployment) => deployment.operationReceipts)
+        .find((receipt) => receipt.key === input.idempotencyKey);
+      if (prior) {
+        if (prior.operation !== 'transition' || prior.fingerprint !== fingerprint) {
+          return fail('idempotency-conflict', 'deployment idempotencyKey was reused with different content');
+        }
+        return ok(clone(prior.result), true);
+      }
+      const deployment = document.deployments.find((item) => item.deploymentRef === deploymentRef);
+      if (!deployment) return fail('not-found', 'deployment was not found');
+      if (deployment.revision !== input.expectedRevision || deployment.state !== input.expectedState
+        || !canTransitionDeployment(deployment.state, input.nextState)) {
+        return fail('conflict', 'deployment revision, state, or transition changed');
+      }
+      deployment.state = input.nextState;
+      Object.assign(deployment, clone(input.patch));
+      deployment.revision += 1;
+      const result = publicDeployment(deployment);
+      deployment.operationReceipts.push({
+        key: input.idempotencyKey,
+        fingerprint,
+        operation: 'transition',
+        deploymentRevision: deployment.revision,
+        result: clone(result),
+        recordedAt: stamp(),
+      });
+      while (deployment.operationReceipts.length > MAX_DEPLOYMENT_OPERATION_RECEIPTS) {
+        const transitionReceipt = deployment.operationReceipts.findIndex((receipt) => receipt.operation === 'transition');
+        if (transitionReceipt < 0) throw new Error('deployment transition receipt eviction invariant failed');
+        deployment.operationReceipts.splice(transitionReceipt, 1);
+      }
+      commit(document, 'deploy-critical');
+      return { ok: true, value: result, replayed: undefined };
+    },
+
     listProposalRevisions(subject, proposalRef) {
       return load().proposals
         .filter((item) => item.subject === subject && (proposalRef === undefined || item.proposalRef === proposalRef))
@@ -3735,7 +3251,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         && item.proposalRef === proposalRef
         && item.proposalRevision === revision
         && item.launchOperationKey !== launchOperationKey
-        && !TERMINAL_RUN.has(item.state));
+        && !isTerminalRun(item.lifecycle));
       return active ? metadata(document, subject, active) : null;
     },
 
@@ -3880,7 +3396,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         const predecessor = findRun(document, subject, predecessorRunRef);
         if (!predecessor) return fail('not-found', 'predecessor run was not found');
         if (predecessor.version !== input.expectedPredecessorVersion) return fail('conflict', 'predecessor run version changed');
-        if (!TERMINAL_RUN.has(predecessor.state) && predecessor.state !== 'interrupted') {
+        if (!isTerminalRun(predecessor.lifecycle) && runLifecycleKind(predecessor.lifecycle) !== 'interrupted') {
           return fail('invalid', 'only a terminal or interrupted run can have a Retry successor');
         }
         if (predecessor.proposalHash !== proposal.hash) return fail('conflict', 'Retry successor must bind the same approved proposal hash');
@@ -3915,7 +3431,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         proposalRevision: proposal.revision,
         proposalHash: proposal.hash,
         publicationState: 'pending',
-        state: 'planned',
+        lifecycle: lifecycleForKind('planned', null),
         version: 1,
         managerSessionRef,
         managerGeneration: 1,
@@ -4006,7 +3522,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (receipt.fingerprint !== fingerprint) {
         return fail('idempotency-conflict', 'idempotencyKey was reused with different activation content');
       }
-      return ok({ run: publicRun(run), phase: receipt.phase }, true);
+      return ok({ run: internalRun(run), phase: receipt.phase }, true);
     },
 
     hasActiveRunActivation(subject, runRef) {
@@ -4016,7 +3532,8 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const receipts = run.activationReceipts ?? [];
       const latest = receipts[receipts.length - 1];
       return ok(latestPendingActivationReceipt(run) !== undefined
-        || (latest?.phase === 'dispatched' && (run.state === 'recovering' || run.state === 'running')));
+        || (latest?.phase === 'dispatched'
+          && ['recovering', 'running'].includes(runLifecycleKind(run.lifecycle))));
     },
 
     claimRunActivation(subject, runRef, input) {
@@ -4037,10 +3554,10 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
           return fail('conflict', 'run activation previously failed');
         }
         if (receipt.phase === 'dispatched') {
-          return ok({ run: publicRun(run), phase: receipt.phase }, true);
+          return ok({ run: internalRun(run), phase: receipt.phase }, true);
         }
         if (run.publicationState !== 'published'
-          || (run.state !== 'recovering' && run.state !== 'waiting-human')) {
+          || !['recovering', 'waiting-human'].includes(runLifecycleKind(run.lifecycle))) {
           return fail('conflict', 'claimed run activation state changed');
         }
         const requests = document.humanRequests.filter((request) =>
@@ -4048,20 +3565,20 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         if (requests.length === 0 || requests.some((request) => !boundaryAccepted(request))) {
           return fail('conflict', 'run activation Human Request boundaries are absent or unresolved');
         }
-        if (run.state === 'waiting-human') {
-          run.state = 'recovering';
+        if (runLifecycleKind(run.lifecycle) === 'waiting-human') {
+          run.lifecycle = lifecycleForKind('recovering', null);
           run.version += 1;
           run.updatedAt = stamp();
           commit(document);
         }
-        return ok({ run: publicRun(run), phase: receipt.phase }, true);
+        return ok({ run: internalRun(run), phase: receipt.phase }, true);
       }
       const pending = latestPendingActivationReceipt(run);
-      if (pending && run.state !== 'waiting-human') {
+      if (pending && runLifecycleKind(run.lifecycle) !== 'waiting-human') {
         return fail('idempotency-conflict', 'run activation is already claimed by another idempotencyKey');
       }
       if (run.version !== input.expectedRunVersion || run.managerGeneration !== input.expectedManagerGeneration
-        || run.publicationState !== 'published' || run.state !== 'waiting-human') {
+        || run.publicationState !== 'published' || runLifecycleKind(run.lifecycle) !== 'waiting-human') {
         return fail('conflict', 'run activation state changed');
       }
       const requests = document.humanRequests.filter((request) =>
@@ -4085,11 +3602,11 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         updatedAt: claimedAt,
       };
       receipts.push(claimedReceipt);
-      run.state = 'recovering';
+      run.lifecycle = lifecycleForKind('recovering', null);
       run.version += 1;
       run.updatedAt = claimedAt;
       commit(document);
-      return ok({ run: publicRun(run), phase: claimedReceipt.phase });
+      return ok({ run: internalRun(run), phase: claimedReceipt.phase });
     },
 
     advanceRunActivation(subject, runRef, input, phase) {
@@ -4112,10 +3629,10 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         dispatched: 2,
       };
       if (rank[receipt.phase] >= rank[phase]) {
-        return ok({ run: publicRun(run), phase: receipt.phase }, true);
+        return ok({ run: internalRun(run), phase: receipt.phase }, true);
       }
-      if ((phase === 'roots-activated' && run.state !== 'recovering')
-        || (phase === 'dispatched' && run.state !== 'running')) {
+      if ((phase === 'roots-activated' && runLifecycleKind(run.lifecycle) !== 'recovering')
+        || (phase === 'dispatched' && runLifecycleKind(run.lifecycle) !== 'running')) {
         return fail('conflict', 'run activation state changed');
       }
       if (phase === 'dispatched' && receipt.phase !== 'roots-activated') {
@@ -4124,7 +3641,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       receipt.phase = phase;
       receipt.updatedAt = stamp();
       commit(document);
-      return ok({ run: publicRun(run), phase: receipt.phase });
+      return ok({ run: internalRun(run), phase: receipt.phase });
     },
 
     failRunActivation(subject, runRef, input) {
@@ -4140,44 +3657,47 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       }
       if (receipt.phase === 'dispatched') return fail('conflict', 'dispatched run activation cannot fail');
       if (receipt.phase === 'failed') {
-        return ok({ run: publicRun(run), phase: receipt.phase }, true);
+        return ok({ run: internalRun(run), phase: receipt.phase }, true);
       }
       receipt.phase = 'failed';
       receipt.updatedAt = stamp();
-      if (run.state === 'recovering' || run.state === 'running') {
-        run.state = 'waiting-human';
+      if (['recovering', 'running'].includes(runLifecycleKind(run.lifecycle))) {
+        run.lifecycle = lifecycleForKind('waiting-human', null);
         run.version += 1;
         run.updatedAt = receipt.updatedAt;
       }
       commit(document);
-      return ok({ run: publicRun(run), phase: receipt.phase });
+      return ok({ run: internalRun(run), phase: receipt.phase });
     },
 
     transitionRun(subject, runRef, expectedVersion, state) {
       const document = load();
       const run = findRun(document, subject, runRef);
       if (!run) return fail('not-found', 'run was not found');
-      if (!RUN_STATES.has(state)) return fail('invalid', 'run state is invalid');
+      if (!(RUN_LIFECYCLE_KINDS as readonly string[]).includes(state)) {
+        return fail('invalid', 'run state is invalid');
+      }
       // Archiving resolves the run's open requests in the SAME commit, so a bare transition to it would
       // leave a dismissed run still holding open asks. `archiveRun` owns that edge exclusively.
       if (state === 'archived') return fail('invalid', 'archiving a run goes through archiveRun, not a bare transition');
       if (run.version !== expectedVersion) return fail('conflict', 'run version changed');
-      if (run.state === state) return ok(publicRun(run), true);
-      if (!RUN_EDGES[run.state].has(state)) return fail('invalid', `run transition ${run.state}->${state} is not allowed`);
-      if (run.state === 'waiting-human' && ['planned', 'recovering', 'running'].includes(state)
+      const priorKind = runLifecycleKind(run.lifecycle);
+      if (priorKind === state) return ok(internalRun(run), true);
+      if (!canTransitionRun(run.lifecycle, state)) return fail('invalid', `run transition ${priorKind}->${state} is not allowed`);
+      if (priorKind === 'waiting-human' && ['planned', 'recovering', 'running'].includes(state)
         && !boundariesAccepted(document, subject, runRef)) {
         return fail('invalid', 'waiting-human run boundaries are unresolved or not accepted');
       }
       if (state === 'succeeded' && !runCanSucceed(document, run)) {
         return fail('invalid', 'run cannot succeed while a descendant is nonterminal or a stage is incomplete');
       }
-      run.state = state;
+      run.lifecycle = lifecycleForKind(state, null);
       run.version += 1;
       run.updatedAt = stamp();
       // A bare transition can land a run on a terminal state (`archived` goes through `archiveRun`
       // exclusively — rejected above). Close its open requests in the SAME commit, so a run that just
       // failed/stopped/succeeded can never leave a haunting ask behind the way the pre-fix zombies did.
-      if (TERMINAL_RUN.has(state)) {
+      if (isTerminalRun(run.lifecycle)) {
         autoCloseOpenHumanRequestsForRun(
           document, subject, runRef, run.updatedAt, `terminal:${state}`,
           `Automatically closed — the run reached its terminal state ('${state}') without this being answered.`,
@@ -4185,7 +3705,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         );
       }
       commit(document);
-      return ok(publicRun(run));
+      return ok(internalRun(run));
     },
 
     transitionPublication(subject, runRef, expectedVersion, state) {
@@ -4194,7 +3714,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       if (!run) return fail('not-found', 'run was not found');
       if (!PUBLICATION_STATES.has(state)) return fail('invalid', 'publication state is invalid');
       if (run.version !== expectedVersion) return fail('conflict', 'run version changed');
-      if (run.publicationState === state) return ok(publicRun(run), true);
+      if (run.publicationState === state) return ok(internalRun(run), true);
       if (!PUBLICATION_EDGES[run.publicationState].has(state)) {
         return fail('invalid', `publication transition ${run.publicationState}->${state} is not allowed`);
       }
@@ -4205,7 +3725,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       run.version += 1;
       run.updatedAt = stamp();
       commit(document);
-      return ok(publicRun(run));
+      return ok(internalRun(run));
     },
 
     reconcileCanonicalProjection(subject, runRef, input) {
@@ -4276,7 +3796,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         }
       }
       const states = input.stages.map((stage) => stage.state);
-      const runState: RunState = states.every((state) => state === 'succeeded') ? 'succeeded'
+      const runState: Exclude<RunLifecycleKind, 'paused-for-deploy'> = states.every((state) => state === 'succeeded') ? 'succeeded'
         : states.some((state) => state === 'failed') ? 'failed'
           : states.some((state) => state === 'stopped') ? 'stopped'
             : states.some((state) => state === 'running') ? 'running' : 'waiting-human';
@@ -4314,7 +3834,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         manager.updatedAt = changedAt;
       }
       run.publicationState = 'published';
-      run.state = runState;
+      run.lifecycle = lifecycleForKind(runState, null);
       run.version += 1;
       run.updatedAt = changedAt;
       if (runState === 'succeeded' && !runCanSucceed(document, run)) {
@@ -5334,7 +4854,8 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         return fail('invalid', 'only a ready or blocked stage can reroute before execution');
       }
       const run = findRun(document, subject, stage.runRef);
-      if (!run || run.publicationState !== 'published' || TERMINAL_RUN.has(run.state) || run.state === 'stopping') {
+      if (!run || run.publicationState !== 'published' || isTerminalRun(run.lifecycle)
+        || runLifecycleKind(run.lifecycle) === 'stopping') {
         return fail('invalid', 'run is not in a published reroutable state');
       }
       if (document.humanRequests.some((request) =>
@@ -5482,7 +5003,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const document = load();
       const run = findRun(document, subject, runRef);
       if (!run) return fail('not-found', 'run was not found');
-      if (TERMINAL_RUN.has(run.state)) return fail('invalid', 'terminal runs require a successor run, not a Manager replacement');
+      if (isTerminalRun(run.lifecycle)) return fail('invalid', 'terminal runs require a successor run, not a Manager replacement');
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT) || !validNonEmpty(input.runtime, MAX_SHORT_TEXT) || !validNonEmpty(input.model, MAX_SHORT_TEXT)) {
         return fail('invalid', 'successor routing and idempotencyKey are required');
       }
@@ -5500,8 +5021,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const current = document.sessions.find((item) => item.subject === subject && item.sessionRef === run.managerSessionRef);
       if (!current) return fail('conflict', 'current manager session is missing');
       if (!TERMINAL_SESSION.has(current.state) && current.state !== 'interrupted') return fail('conflict', 'current manager session is still active');
-      if (run.state !== 'recovering' && !RUN_EDGES[run.state].has('recovering')) {
-        return fail('invalid', `run transition ${run.state}->recovering is not allowed`);
+      const priorKind = runLifecycleKind(run.lifecycle);
+      if (priorKind !== 'recovering' && !canTransitionRun(run.lifecycle, 'recovering')) {
+        return fail('invalid', `run transition ${priorKind}->recovering is not allowed`);
       }
       const createdAt = stamp();
       const session: StoredSession = {
@@ -5525,7 +5047,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       run.managerSessionRef = session.sessionRef;
       run.managerGeneration = session.generation;
       // A replacement Manager may rehydrate while a boundary is open, but recovery cannot release it.
-      if (run.state !== 'waiting-human') run.state = 'recovering';
+      if (runLifecycleKind(run.lifecycle) !== 'waiting-human') {
+        run.lifecycle = lifecycleForKind('recovering', null);
+      }
       run.version += 1;
       run.updatedAt = createdAt;
       document.sessions.push(session);
@@ -5566,12 +5090,12 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         if (replay.operationFingerprint !== fingerprint) {
           return fail('idempotency-conflict', 'idempotencyKey was reused with different manager command content');
         }
-        return ok({ run: publicRun(run), event: publicEvent(replay) }, true);
+        return ok({ run: internalRun(run), event: publicEvent(replay) }, true);
       }
       if (run.version !== input.expectedRunVersion || run.managerGeneration !== input.expectedManagerGeneration) {
         return fail('conflict', 'run version or manager generation changed');
       }
-      if (TERMINAL_RUN.has(run.state)) return fail('invalid', 'terminal runs cannot accept manager commands');
+      if (isTerminalRun(run.lifecycle)) return fail('invalid', 'terminal runs cannot accept manager commands');
       const manager = document.sessions.find((item) =>
         item.subject === owner && item.sessionRef === run.managerSessionRef && item.role === 'manager',
       );
@@ -5600,15 +5124,16 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       document.nextEventCursor += 1;
       document.events.push(event);
       if (input.kind === 'stop') {
-        if (run.state !== 'stopping' && !RUN_EDGES[run.state].has('stopping')) {
-          return fail('invalid', `run transition ${run.state}->stopping is not allowed`);
+        const priorKind = runLifecycleKind(run.lifecycle);
+        if (priorKind !== 'stopping' && !canTransitionRun(run.lifecycle, 'stopping')) {
+          return fail('invalid', `run transition ${priorKind}->stopping is not allowed`);
         }
-        run.state = 'stopping';
+        run.lifecycle = lifecycleForKind('stopping', null);
         run.version += 1;
         run.updatedAt = createdAt;
       }
       commit(document);
-      return ok({ run: publicRun(run), event: publicEvent(event) });
+      return ok({ run: internalRun(run), event: publicEvent(event) });
     },
 
     requestRunCancellation(subject, runRef, input) {
@@ -5627,11 +5152,12 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         if (replay.operationFingerprint !== fingerprint) {
           return fail('idempotency-conflict', 'cancellation idempotencyKey was reused with different content');
         }
-        return ok({ run: publicRun(run), event: publicEvent(replay) }, true);
+        return ok({ run: internalRun(run), event: publicEvent(replay) }, true);
       }
       if (run.version !== input.expectedRunVersion) return fail('conflict', 'run version changed');
-      if (run.state !== 'stopping' && !RUN_EDGES[run.state].has('stopping')) {
-        return fail('invalid', `run transition ${run.state}->stopping is not allowed`);
+      const priorKind = runLifecycleKind(run.lifecycle);
+      if (priorKind !== 'stopping' && !canTransitionRun(run.lifecycle, 'stopping')) {
+        return fail('invalid', `run transition ${priorKind}->stopping is not allowed`);
       }
       const createdAt = stamp();
       const event: StoredEvent = {
@@ -5656,13 +5182,13 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       };
       document.nextEventCursor += 1;
       document.events.push(event);
-      if (run.state !== 'stopping') {
-        run.state = 'stopping';
+      if (priorKind !== 'stopping') {
+        run.lifecycle = lifecycleForKind('stopping', null);
         run.version += 1;
         run.updatedAt = createdAt;
       }
       commit(document);
-      return ok({ run: publicRun(run), event: publicEvent(event) });
+      return ok({ run: internalRun(run), event: publicEvent(event) });
     },
 
     brokerReserveStart(subject, input) {
@@ -6212,7 +5738,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       document.nextEventCursor = event.cursor + 1;
       commit(document);
       return ok({
-        run: publicRun(run),
+        run: internalRun(run),
         event: publicEvent(event),
         receipt: publicAuthorizedFailedRunReceipt(receipt),
       });
@@ -6276,9 +5802,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         if (run.archiveOperationFingerprint !== fingerprint) {
           return fail('idempotency-conflict', 'archive idempotencyKey was reused with a different reason');
         }
-        return ok({ run: publicRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() }, true);
+        return ok({ run: internalRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() }, true);
       }
-      if (!RUN_EDGES[run.state].has('archived')) {
+      if (!canTransitionRun(run.lifecycle, 'archived')) {
         return fail('invalid', 'only a finished, stopped, interrupted, or waiting-human run can be archived');
       }
       const archivedAt = stamp();
@@ -6293,13 +5819,13 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
           response: reason,
         }, archivedAt);
       }
-      run.state = 'archived';
+      run.lifecycle = lifecycleForKind('archived', null);
       run.version += 1;
       run.updatedAt = archivedAt;
       run.archiveOperationKey = input.idempotencyKey;
       run.archiveOperationFingerprint = fingerprint;
       commit(document);
-      return ok({ run: publicRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() });
+      return ok({ run: internalRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() });
     },
 
     /**
@@ -6314,10 +5840,11 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const atISO = new Date(nowMs).toISOString();
       const closed: StoredHumanRequest[] = [];
       for (const run of document.runs) {
-        if (!TERMINAL_RUN.has(run.state)) continue;
+        if (!isTerminalRun(run.lifecycle)) continue;
+        const terminalKind = runLifecycleKind(run.lifecycle);
         closed.push(...autoCloseOpenHumanRequestsForRun(
-          document, run.subject, run.runRef, atISO, `terminal:${run.state}`,
-          `Automatically closed — the run reached its terminal state ('${run.state}') without this being answered.`,
+          document, run.subject, run.runRef, atISO, `terminal:${terminalKind}`,
+          `Automatically closed — the run reached its terminal state ('${terminalKind}') without this being answered.`,
           maxEvents,
         ));
       }
@@ -6499,7 +6026,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
 }
 
 export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {}): ControlPlaneStore {
-  let document = emptyDocument();
+  let document = emptyStoreDocumentForTest();
   const maxBytes = options.maxDocumentBytes ?? MAX_CONTROL_DOCUMENT_BYTES;
   return makeStore(
     () => {
@@ -6518,72 +6045,189 @@ export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {
   );
 }
 
+const READ_ONLY_CONTROL_STORE_METHODS = new Set<keyof ControlPlaneStore>([
+  'getControlDocumentMetadata', 'getDeployment', 'listDeployments',
+  'listProposalRevisions', 'listProposalRevisionsForComposer', 'getProposalRevision',
+  'listRuns', 'getRun', 'findActiveRunForRevision', 'getRunActivationReceipt', 'hasActiveRunActivation',
+  'getHumanRequest', 'preflightAuthorized20260731ExecutionLock',
+  'preflightAuthorized20260801FailedRunReconciliation', 'listEvents', 'inventory', 'dryRunQuarantine',
+]);
+
+function readOnlyControlPlaneStore(store: ControlPlaneStore): ControlPlaneStore {
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver) as unknown;
+      if (typeof property !== 'string' || typeof value !== 'function'
+        || READ_ONLY_CONTROL_STORE_METHODS.has(property as keyof ControlPlaneStore)) return value;
+      return () => { throw new ControlStoreReadOnlyError(); };
+    },
+  });
+}
+
 /** File-backed daemon store. Every mutation replaces one sibling temp file atomically. */
-export function createFileControlPlaneStore(stateRoot: string, options: ControlStoreOptions = {}): ControlPlaneStore {
+export function createFileControlPlaneStore(
+  stateRoot: string,
+  access: FileControlPlaneAccess,
+  options: ControlStoreOptions = {},
+): ControlPlaneStore {
   const path = join(stateRoot, 'control', 'control-plane.json');
+  const acceptedSizePath = join(stateRoot, 'control', CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
   const maxBytes = options.maxDocumentBytes ?? MAX_CONTROL_DOCUMENT_BYTES;
+  const persistenceTargetBytes = options.persistenceTargetBytesForTest;
+  if (persistenceTargetBytes !== undefined) {
+    if (process.env.NODE_ENV !== 'test' && process.env.KB_VM_DURABILITY_BENCHMARK !== '1') {
+      throw new Error('persistenceTargetBytesForTest is available only in tests or the VM durability benchmark');
+    }
+    if (!Number.isSafeInteger(persistenceTargetBytes) || persistenceTargetBytes < 1) {
+      throw new Error('persistenceTargetBytesForTest must be a positive safe integer');
+    }
+  }
+  let acceptedMaxBytes = maxBytes;
+  if (access.mode === 'already-locked') assertWriterLeaseForRoot(access.lease, stateRoot);
+  if (access.mode === 'read-only-harness') {
+    const loadReadOnly = (): StoreDocument => {
+      if (!existsSync(path)) throw new ControlStoreReadOnlyError();
+      if (statSync(path).size > maxBytes) {
+        throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
+      }
+      const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)
+        || (parsed as Record<string, unknown>).version !== CONTROL_PLANE_SCHEMA_VERSION) {
+        throw new ControlStoreReadOnlyError();
+      }
+      const document = parsed as StoreDocument;
+      validateStoreDocument(document);
+      validateGenericIterationBundle(document);
+      for (const bundle of document.quarantine) validateGenericIterationBundle(bundle);
+      return clone(document);
+    };
+    loadReadOnly();
+    return readOnlyControlPlaneStore(makeStore(
+      loadReadOnly,
+      () => { throw new ControlStoreReadOnlyError(); },
+      options,
+    ));
+  }
+  const lease = access.lease;
+  const migrateDocument = options.loadAndMigrateForTest ?? loadAndMigrate;
+  const startupStamp = (options.now ?? (() => new Date()))().toISOString();
+  const bootId = options.bootId ?? lease.bootId;
   const requiresGenericRewrite = (raw: Record<string, unknown>): boolean => {
     const quarantined = Array.isArray(raw.quarantine) ? raw.quarantine as Array<Record<string, unknown>> : [];
     return Object.hasOwn(raw, 'reviewLoops') || Object.hasOwn(raw, 'reviewReceipts')
-      || !Object.hasOwn(raw, 'iterationLoops') || !Object.hasOwn(raw, 'iterationRequests') || !Object.hasOwn(raw, 'iterationReceipts')
+      || !Object.hasOwn(raw, 'iterationLoops') || !Object.hasOwn(raw, 'iterationRequests')
+      || !Object.hasOwn(raw, 'iterationReceipts')
       || quarantined.some((bundle) => Object.hasOwn(bundle, 'reviewLoops') || Object.hasOwn(bundle, 'reviewReceipts')
-        || !Object.hasOwn(bundle, 'iterationLoops') || !Object.hasOwn(bundle, 'iterationRequests') || !Object.hasOwn(bundle, 'iterationReceipts'));
+        || !Object.hasOwn(bundle, 'iterationLoops') || !Object.hasOwn(bundle, 'iterationRequests')
+        || !Object.hasOwn(bundle, 'iterationReceipts'));
   };
-  const hydrate = (encoded: string, validate = true): { document: StoreDocument; requiresRewrite: boolean } => {
-    const parsed: unknown = JSON.parse(encoded);
-    assertDocument(parsed);
-    const rewrite = requiresGenericRewrite(parsed as unknown as Record<string, unknown>);
-    prepareLegacyStoreMigration(parsed);
-    for (const stage of [...parsed.stages, ...parsed.quarantine.flatMap((bundle) => bundle.stages)]) {
-      normalizeStoredStageGenerationProjection(stage);
-    }
-    if (rewrite || !validate) return { document: parsed, requiresRewrite: rewrite };
-    validateGenericIterationBundle(parsed);
-    for (const bundle of parsed.quarantine) validateGenericIterationBundle(bundle);
-    return { document: parsed, requiresRewrite: rewrite };
+  const hydrate = (encoded: string): StoreDocument => {
+    const migrated = migrateDocument(encoded, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp }).document;
+    validateStoreDocument(migrated);
+    validateGenericIterationBundle(migrated);
+    for (const bundle of migrated.quarantine) validateGenericIterationBundle(bundle);
+    return migrated;
   };
   const load = (): StoreDocument => {
-    if (!existsSync(path)) return emptyDocument();
-    if (statSync(path).size > maxBytes) throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
-    return hydrate(readFileSync(path, 'utf8')).document;
-  };
-  const save = (document: StoreDocument): void => {
-    const persisted = genericPersistenceDocument(document);
-    const encoded = `${JSON.stringify(persisted)}\n`;
-    if (Buffer.byteLength(encoded, 'utf8') > maxBytes) throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
-    let fd: number | null = null;
-    try {
-      fd = openSync(temp, 'wx', 0o600);
-      writeFileSync(fd, encoded, 'utf8');
-      closeSync(fd);
-      fd = null;
-      renameWithRetrySync(temp, path);
-    } finally {
-      if (fd !== null) closeSync(fd);
-      if (existsSync(temp)) rmSync(temp, { force: true });
+    assertWriterLeaseForRoot(lease, stateRoot);
+    if (!existsSync(path)) return emptyStoreDocumentForTest();
+    if (statSync(path).size > acceptedMaxBytes) {
+      throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
     }
+    return hydrate(readFileSync(path, 'utf8'));
   };
-  let recovered = emptyDocument();
-  let rewrite = false;
+  const save = (
+    document: StoreDocument,
+    durability: SaveDurability = 'ordinary',
+    enforceConfiguredLimit = true,
+  ): void => {
+    assertWriterLeaseForRoot(lease, stateRoot);
+    const persisted = genericPersistenceDocument(document);
+    const canonical = JSON.stringify(persisted);
+    const canonicalBytes = Buffer.byteLength(canonical, 'utf8') + 1;
+    if (persistenceTargetBytes !== undefined && persistenceTargetBytes < canonicalBytes) {
+      throw new ControlStoreLimitError(
+        `persistence target ${persistenceTargetBytes} bytes is smaller than encoded document ${canonicalBytes} bytes`,
+      );
+    }
+    const encoded = persistenceTargetBytes === undefined
+      ? `${canonical}\n`
+      : `${canonical}${' '.repeat(persistenceTargetBytes - canonicalBytes)}\n`;
+    if (enforceConfiguredLimit && Buffer.byteLength(encoded, 'utf8') > acceptedMaxBytes) {
+      throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
+    }
+    persistControlDocumentSync(path, encoded, durability, options.persistenceDepsForTest);
+  };
+  let recovered = emptyStoreDocumentForTest();
+  let migrated = false;
+  let legacyRewrite = false;
   let sourceBytes = 0;
   if (existsSync(path)) {
     sourceBytes = statSync(path).size;
-    if (sourceBytes > maxBytes) throw new ControlStoreLimitError(`control-plane store exceeds ${maxBytes} bytes`);
-    const initial = hydrate(readFileSync(path, 'utf8'), false);
+    const source = readFileSync(path, 'utf8');
+    const parsed: unknown = JSON.parse(source);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && existsSync(acceptedSizePath)) {
+      try {
+        const basis: unknown = JSON.parse(readFileSync(acceptedSizePath, 'utf8'));
+        const sourceVersion = Number((parsed as Record<string, unknown>).version);
+        if (basis === null || typeof basis !== 'object' || Array.isArray(basis)
+          || Object.keys(basis).sort().join(',') !== 'maxBytes,schema,schemaVersion'
+          || (basis as Record<string, unknown>).schema !== 'kb.control-plane-accepted-size/v1'
+          || !Number.isSafeInteger((basis as Record<string, unknown>).schemaVersion)
+          || Number((basis as Record<string, unknown>).schemaVersion) < 1
+          || Number((basis as Record<string, unknown>).schemaVersion) > sourceVersion
+          || !Number.isSafeInteger((basis as Record<string, unknown>).maxBytes)
+          || Number((basis as Record<string, unknown>).maxBytes) < 1) {
+          throw new Error('invalid accepted-size sidecar shape');
+        }
+        acceptedMaxBytes = Math.max(maxBytes, Number((basis as Record<string, unknown>).maxBytes));
+      } catch {
+        // Advisory recovery metadata: the configured base limit remains authoritative when unreadable.
+        console.warn('[control-store] ignoring invalid control-plane accepted-size sidecar');
+      }
+    }
+    if (sourceBytes > acceptedMaxBytes) {
+      throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
+    }
+    legacyRewrite = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      && (parsed as Record<string, unknown>).version === 1
+      && requiresGenericRewrite(parsed as Record<string, unknown>);
+    const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp });
     recovered = initial.document;
-    rewrite = initial.requiresRewrite;
+    validateStoreDocument(recovered);
+    validateGenericIterationBundle(recovered);
+    for (const bundle of recovered.quarantine) validateGenericIterationBundle(bundle);
+    migrated = initial.applied.length > 0;
   }
-  const normalized = normalizeCrash(recovered, (options.now ?? (() => new Date()))().toISOString());
-  if (normalized || rewrite) {
+  const normalized = normalizeCrash(recovered, { stamp: startupStamp, bootId });
+  if (normalized || migrated) {
+    recovered.documentRevision += 1;
     const migratedBytes = Buffer.byteLength(`${JSON.stringify(genericPersistenceDocument(recovered))}\n`, 'utf8');
-    if (rewrite && migratedBytes > maxBytes) {
+    if (legacyRewrite && migratedBytes > maxBytes) {
       throw new ControlStoreMigrationLimitError(
         `control-plane legacy migration would exceed the ${maxBytes} byte limit (source ${sourceBytes} bytes; migrated ${migratedBytes} bytes)`,
       );
     }
-    save(recovered);
+    const migrationGrowth = migratedBytes - sourceBytes;
+    const pureSchemaMigrationOverage = migrated && !legacyRewrite && migratedBytes > maxBytes && migrationGrowth > 0;
+    const nextAcceptedMaxBytes = pureSchemaMigrationOverage
+      ? acceptedMaxBytes + migrationGrowth
+      : acceptedMaxBytes;
+    acceptedMaxBytes = nextAcceptedMaxBytes;
+    save(recovered, 'deploy-critical');
+    if (pureSchemaMigrationOverage) {
+      assertWriterLeaseForRoot(lease, stateRoot);
+      persistControlDocumentSync(
+        acceptedSizePath,
+        `${JSON.stringify({
+          schema: 'kb.control-plane-accepted-size/v1',
+          schemaVersion: recovered.version,
+          maxBytes: acceptedMaxBytes,
+        })}\n`,
+        'deploy-critical',
+        options.persistenceDepsForTest,
+      );
+    }
   }
   return makeStore(load, save, options);
 }

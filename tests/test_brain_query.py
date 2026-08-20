@@ -91,9 +91,12 @@ def test_cli_reports_missing_index_with_the_documented_exit_code(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(brain_query, "SentenceTransformerEmbedder", FakeEmbedder)
+    expected_launcher = "py -3" if os.name == "nt" else "python3"
 
     assert brain_query.main(["find alpha", "--index", str(tmp_path / "missing")]) == 2
-    assert capsys.readouterr().err.strip() == "index not built — run: py -3 -m scripts.brain.indexer build"
+    assert capsys.readouterr().err.strip() == (
+        f"index not built — run: {expected_launcher} -m scripts.brain.indexer build"
+    )
 
 
 def test_cli_surfaces_model_mismatch_verbatim(
@@ -132,12 +135,15 @@ def test_cli_json_index_not_built_emits_error_object_on_stdout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(brain_query, "SentenceTransformerEmbedder", FakeEmbedder)
+    expected_launcher = "py -3" if os.name == "nt" else "python3"
 
     code = brain_query.main(["find alpha", "--index", str(tmp_path / "missing"), "--json"])
 
     assert code == 2
     captured = capsys.readouterr()
-    assert captured.err.strip() == "index not built — run: py -3 -m scripts.brain.indexer build"
+    assert captured.err.strip() == (
+        f"index not built — run: {expected_launcher} -m scripts.brain.indexer build"
+    )
     assert json.loads(captured.out) == {"error": "index-not-built"}
 
 

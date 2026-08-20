@@ -23,7 +23,9 @@ vi.mock('node:fs', async (importOriginal) => {
 
 const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
 const { ATOMIC_RENAME_ATTEMPTS, renameWithRetrySync } = await import('./atomicRename.ts');
-const { createFileControlPlaneStore } = await import('./control/store.ts');
+const { createExistingRootFileStoreHarnessForTest } = await import('./control/test-fixtures/controlStore.ts');
+const fileStores = createExistingRootFileStoreHarnessForTest();
+const createFileControlPlaneStore = fileStores.open;
 
 function fail(code: string): Error {
   return Object.assign(new Error(`${code}: operation not permitted, rename`), { code });
@@ -35,6 +37,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   renameBehavior = null;
+  fileStores.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 

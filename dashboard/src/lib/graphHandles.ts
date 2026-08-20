@@ -25,7 +25,7 @@ export interface GraphPoint {
 }
 
 /** The handle-id pair an edge should use: which side it leaves, and which side it arrives at. */
-export interface HandlePair {
+interface HandlePair {
   sourceHandle: string;
   targetHandle: string;
 }
@@ -63,7 +63,7 @@ export function nearestHandles(source: GraphPoint | undefined, target: GraphPoin
  * and no top-level id. Requiring it here would reject the real array at every call site and push a
  * cast into both callers, which is precisely the type hole a shared helper should not create.
  */
-export interface NodeChangeLike {
+interface NodeChangeLike {
   type: string;
   id?: string | undefined;
   position?: GraphPoint | undefined;

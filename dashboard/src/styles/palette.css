@@ -24,8 +24,7 @@
   flex-direction: column;
   background: var(--bg-elevated);
   /* OVERLAYS GET A STRONG EDGE (field-guide restyle 2026-08-18) — a floating surface is outlined with a
-   * definite near-foreground line, not the hairline used for surfaces that sit in the page. Value swap
-   * only; the twin of the rule on .mc-new__menu in app.css. */
+   * definite near-foreground line, not the hairline used for surfaces that sit in the page. */
   /* Overlay edge uses --fg-faint (not --border-strong) per the field-guide direction: overlays get a strong near-fg edge; resting surfaces get hairlines. */
   border: 1px solid var(--fg-faint);
   border-radius: var(--radius-lg);

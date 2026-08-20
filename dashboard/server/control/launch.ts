@@ -25,6 +25,7 @@ import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
 import { OPERATOR_SUBJECT, type CreateHumanRequestInput } from './store.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
+import { runLifecycleKind } from './runLifecycle.ts';
 
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
 export interface LaunchOutcome {
@@ -471,7 +472,8 @@ export async function executeApprovedLaunch(
       const latest = ctx.controlStore.getRun(sub, runRef);
       if (latest.ok && latest.value.run.publicationState === 'publishing') {
         ctx.controlStore.transitionPublication(sub, runRef, latest.value.run.version, 'reconcile-required');
-      } else if (latest.ok && latest.value.run.publicationState === 'published' && latest.value.run.state === 'planned') {
+      } else if (latest.ok && latest.value.run.publicationState === 'published'
+        && runLifecycleKind(latest.value.run.lifecycle) === 'planned') {
         ctx.controlStore.transitionRun(sub, runRef, latest.value.run.version, 'waiting-human');
       }
       ctx.controlStore.createHumanRequest(sub, runRef, {

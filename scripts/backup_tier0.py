@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
+from deploy.control_plane_schema import assert_control_plane_schema
+
 
 BACKUP_REPORT_KEYS = {
     "version", "operation", "startedAt", "finishedAt", "durationSeconds", "snapshot",
@@ -410,18 +412,7 @@ def _json_object(path: Path) -> dict:
 def validate_state_json(target: Path) -> bool:
     try:
         document = _json_object(target / "var/lib/kb/state/control/control-plane.json")
-        required = {
-            "version", "nextEventCursor", "proposals", "runs", "stages", "attempts", "sessions",
-            "humanRequests", "events", "quarantine",
-        }
-        if (
-            document.get("version") != 1
-            or type(document.get("nextEventCursor")) is not int
-            or document["nextEventCursor"] < 1
-            or not required.issubset(document)
-            or any(type(document[key]) is not list for key in required - {"version", "nextEventCursor"})
-        ):
-            return False
+        assert_control_plane_schema(document)
         runs = document["runs"]
         stages = document["stages"]
         attempts = document["attempts"]
@@ -453,7 +444,7 @@ def validate_state_json(target: Path) -> bool:
                 return False
             attempt_refs.add(attempt["attemptRef"])
         return True
-    except (OSError, RuntimeError, UnicodeError, json.JSONDecodeError):
+    except (OSError, RuntimeError, UnicodeError, ValueError, json.JSONDecodeError):
         return False
 
 

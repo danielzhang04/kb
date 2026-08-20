@@ -17,11 +17,11 @@ export const GRADES_HISTORY_LIMIT = 100;
 /** Grade shards are append-only evidence, not an unbounded request payload. */
 export const GRADES_HISTORY_MAX_SHARD_BYTES = 256 * 1024;
 /** This exact ledger schema is pinned: positional parsing must not guess at changed columns. */
-export const GRADES_HISTORY_HEADER = 'ts\tworker\tproject\ttask_type\ttier\tscore\tpass\trubric_version\tinspector_id\tcard_id';
+const GRADES_HISTORY_HEADER = 'ts\tworker\tproject\ttask_type\ttier\tscore\tpass\trubric_version\tinspector_id\tcard_id';
 
 export type GradeHistorySource = 'eval' | 'task';
 
-export interface GradeHistoryRow {
+interface GradeHistoryRow {
   date: string;
   grade: string;
   passed: boolean | null;
@@ -182,7 +182,7 @@ function scanGradeShard(shard: GradeShard, agent: string, capacity: number): Sha
 }
 
 /** The eval namespace names its tested identity in task_type; normal task grades name it in worker. */
-export function sourceForAgent(row: Record<string, string>, agent: string): GradeHistorySource | null {
+function sourceForAgent(row: Record<string, string>, agent: string): GradeHistorySource | null {
   const taskType = text(row.task_type);
   const evalMatch = EVAL_TASK_TYPE.exec(taskType);
   if (text(row.worker) === 'eval-suite') return evalMatch?.[1] === agent ? 'eval' : null;

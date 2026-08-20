@@ -13,6 +13,8 @@ import type {
   ResolvedAgentAssignment,
 } from './proposal.ts';
 import type { IterationOutcome } from './iterationOutcome.ts';
+import type { DeploymentState } from './deploymentState.ts';
+import type { RunLifecycleKind } from './runLifecycle.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -61,24 +63,97 @@ export interface ProposalRevisionMetadata {
   approval: Omit<ProposalApproval, 'idempotencyKey' | 'note'> | null;
 }
 
-export type RunState =
-  | 'planned'
-  | 'recovering'
-  | 'running'
-  | 'waiting-human'
-  | 'stopping'
-  | 'succeeded'
-  | 'failed'
-  | 'stopped'
-  | 'interrupted'
-  /**
-   * Operator-dismissed. A terminal, absorbing state reachable only from a settled or parked run
-   * (`archiveRun`): the run keeps every record it had, stops appearing in default list projections,
-   * and its answerable open requests are resolved in the same commit. Nothing transitions out of it.
-   */
-  | 'archived';
+export interface DeployPause {
+  deploymentRef: string;
+  pausedAt: string;
+  priorKind: Exclude<RunLifecycleKind, 'paused-for-deploy'>;
+  resumeStreak: number;
+  lastResumeAttemptCursor: number | null;
+  resumeClaim: {
+    deploymentRef: string;
+    bootId: string;
+    claimantRef: string;
+  } | null;
+}
+
+export type RunLifecycle =
+  | {
+      kind: Exclude<RunLifecycleKind, 'paused-for-deploy'>;
+      deployPause: null;
+    }
+  | {
+      kind: 'paused-for-deploy';
+      deployPause: DeployPause;
+    };
+
+export interface DeploymentProgress {
+  kind: 'idle' | 'waiting-attempt' | 'parked' | 'swapping' | 'rehydrating';
+  attemptRef: string | null;
+  since: string | null;
+  detail: string | null;
+}
+
+export interface DeploymentTerminalOutcome {
+  kind: 'succeeded' | 'aborted' | 'failed';
+  at: string;
+  by: string;
+}
+
+export interface DeploymentAcknowledgement {
+  subject: string;
+  at: string;
+}
+
+export interface Deployment {
+  deploymentRef: string;
+  revision: number;
+  targetCommit: string;
+  previousCommit: string;
+  state: DeploymentState;
+  requestedAt: string;
+  parkWarnAt: string;
+  swapDeadlineAt: string | null;
+  fenceRevision: number;
+  drainAcks: Record<string, { fenceRevision: number; acknowledgedAt: string }>;
+  blockers: string[];
+  progress: DeploymentProgress;
+  abortRequestedAt: string | null;
+  error: string | null;
+  terminalOutcome: DeploymentTerminalOutcome | null;
+  acknowledgedBy: DeploymentAcknowledgement | null;
+}
+
+export interface DeploymentTransitionPatch {
+  swapDeadlineAt?: string | null;
+  blockers?: string[];
+  progress?: DeploymentProgress;
+  abortRequestedAt?: string | null;
+  error?: string | null;
+  terminalOutcome?: DeploymentTerminalOutcome | null;
+  acknowledgedBy?: DeploymentAcknowledgement | null;
+}
+
+export interface CreateDeploymentInput {
+  deploymentRef: string;
+  initialState: 'waiting-confirmation' | 'requested';
+  targetCommit: string;
+  previousCommit: string;
+  requestedAt: string;
+  parkWarnAt: string;
+  idempotencyKey: string;
+}
+
+export interface TransitionDeploymentInput {
+  expectedRevision: number;
+  expectedState: DeploymentState;
+  nextState: DeploymentState;
+  idempotencyKey: string;
+  patch: DeploymentTransitionPatch;
+}
+
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
+export const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
 
 /** Immutable server-derived origin for a workflow launched from an agent Composer workspace. */
@@ -97,7 +172,7 @@ export interface Run {
   proposalRevision: number;
   proposalHash: string;
   publicationState: 'pending' | 'waiting-human' | 'publishing' | 'published' | 'reconcile-required';
-  state: RunState;
+  lifecycle: RunLifecycle;
   version: number;
   managerSessionRef: string;
   managerGeneration: number;
@@ -107,6 +182,10 @@ export interface Run {
   agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RunDto extends Omit<Run, 'lifecycle'> {
+  state: RunLifecycleKind;
 }
 
 export interface RunMetadata extends Run {
@@ -530,14 +609,15 @@ export interface IterationLoopDto extends Omit<IterationLoop, 'unresolvedResidue
 }
 
 /** Authoritative run-detail response shape exposed by the control API. */
-export interface RunDetailDto extends Omit<RunDetail, 'iterationLoops'> {
+export interface RunDetailDto extends Omit<RunDetail, 'run' | 'iterationLoops'> {
+  run: RunDto;
   iterationLoops: IterationLoopDto[];
 }
 
 export interface StorageInventoryItem {
   runRef: string;
   title: string;
-  state: RunState;
+  state: RunLifecycleKind;
   updatedAt: string;
   eventCount: number;
   estimatedBytes: number;

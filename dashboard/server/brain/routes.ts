@@ -1,8 +1,8 @@
 /** Read-only HTTP bridge to the local semantic-brain query CLI. */
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
+import { resolveRepoRoot } from '../planeA/routes.ts';
 import { resolvePython } from '../runtime/python.ts';
 
 const execFile = promisify(execFileCallback);
@@ -12,15 +12,10 @@ const QUERY_TIMEOUT_MS = 60_000;
 
 export type RunBrainQuery = (query: string, k: number) => Promise<string>;
 
-export interface BrainSearchOptions {
+interface BrainSearchOptions {
   repoRoot?: string;
   runQuery?: RunBrainQuery;
   platform?: NodeJS.Platform;
-}
-
-/** The dashboard lives at `<repo>/dashboard/server/brain/routes.ts`. */
-export function resolveRepoRoot(): string {
-  return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 }
 
 function defaultRunQuery(repoRoot: string, platform: NodeJS.Platform): RunBrainQuery {

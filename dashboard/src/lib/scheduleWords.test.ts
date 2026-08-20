@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeSchedule, nextScheduleWindow, presetSchedule, relativeScheduleWindow } from './scheduleWords';
+import { describeSchedule, localTimestampLabel, nextScheduleWindow, presetSchedule, relativeScheduleWindow } from './scheduleWords';
 
 describe('scheduleWords', () => {
   it.each([
@@ -19,6 +19,12 @@ describe('scheduleWords', () => {
     expect(presetSchedule('daily')).toBe('daily');
     expect(presetSchedule('weekday')).toBe('0 9 * * mon-fri');
     expect(presetSchedule('weekly', 'sat')).toBe('0 9 * * sat');
+  });
+
+  it('formats valid local timestamps and preserves invalid input', () => {
+    const iso = '2026-08-19T13:24:00.000Z';
+    expect(localTimestampLabel(iso)).toBe(new Date(iso).toLocaleString());
+    expect(localTimestampLabel('not-a-time')).toBe('not-a-time');
   });
 
   it('calculates a display-only next window for word and cron schedules', () => {

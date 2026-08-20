@@ -144,6 +144,12 @@ def test_readCappedFile_returns_null_for_missing_and_oversized(tmp_path):
     assert json.loads(r.stdout.decode("utf-8")) == ["hello", None, None]
 
 
+def test_parseJsonLines_skips_blank_malformed_and_partial_records(tmp_path):
+    source = 'io.emit(JSON.stringify(io.parseJsonLines("\\n{\\\"ok\\\":1}\\nnot-json\\n42\\n{\\\"tail\\\":")));'
+    r = run_js(source, tmp_path, b"{}")
+    assert json.loads(r.stdout.decode("utf-8")) == [{"ok": 1}, 42]
+
+
 def test_the_two_guard_sentences_are_distinct_and_the_subagent_one_is_true_of_a_child(tmp_path):
     """A spawned child has NEVER seen the parent's context, so "already has" would be a lie to it."""
     r = run_js('io.emit(JSON.stringify([io.GUARD_LINE, io.SUBAGENT_GUARD_LINE]));', tmp_path, b"{}")

@@ -15,6 +15,7 @@ from scripts import backup_tier0
 
 
 COMMIT = "a" * 40
+CONTROL_FIXTURES = Path(__file__).parent / "fixtures/control-plane"
 
 
 def _symlinks_available() -> bool:
@@ -165,6 +166,14 @@ def valid_restored_tree(tmp_path: Path) -> Path:
     }
     (receipts / f"{COMMIT}.json").write_bytes(canonical(receipt))
     return target
+
+
+def control_path(target: Path) -> Path:
+    return target / "var/lib/kb/state/control/control-plane.json"
+
+
+def write_fixture(target: Path, name: str) -> None:
+    control_path(target).write_bytes((CONTROL_FIXTURES / name).read_bytes())
 
 
 def fake_restore_runner(ops: Path, fsck: bool = True, readiness: dict | None = None):
@@ -423,6 +432,38 @@ def test_state_validator_rejects_a_stage_that_references_an_absent_run(tmp_path)
     path = target / "var/lib/kb/state/control/control-plane.json"
     value = json.loads(path.read_text(encoding="utf-8")); value["runs"] = []
     path.write_text(json.dumps(value), encoding="utf-8")
+    assert backup_tier0.validate_state_json(target) is False
+
+
+@pytest.mark.parametrize("name", ["v1-sparse-legacy.json", "v2-empty.json"])
+@requires_symlink
+def test_restore_accepts_supported_control_schema(tmp_path, name):
+    target = valid_restored_tree(tmp_path)
+    write_fixture(target, name)
+    assert backup_tier0.validate_state_json(target) is True
+
+
+@pytest.mark.parametrize("name", ["future-v3.json", "malformed.json"])
+@requires_symlink
+def test_restore_rejects_unsupported_or_malformed_control_schema(tmp_path, name):
+    target = valid_restored_tree(tmp_path)
+    write_fixture(target, name)
+    assert backup_tier0.validate_state_json(target) is False
+
+
+@requires_symlink
+def test_restore_rejects_duplicate_control_key(tmp_path):
+    target = valid_restored_tree(tmp_path)
+    control_path(target).write_bytes(b'{"version":2,"version":2}\n')
+    assert backup_tier0.validate_state_json(target) is False
+
+
+@requires_symlink
+def test_restore_retains_run_stage_attempt_reference_checks(tmp_path):
+    target = valid_restored_tree(tmp_path)
+    value = json.loads(control_path(target).read_text(encoding="utf-8"))
+    value["runs"] = []
+    control_path(target).write_text(json.dumps(value), encoding="utf-8")
     assert backup_tier0.validate_state_json(target) is False
 
 

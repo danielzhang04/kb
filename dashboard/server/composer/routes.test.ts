@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Fastify from 'fastify';
@@ -15,6 +15,7 @@ import { createProviderIdProtector } from './protector.ts';
 import { createInMemoryComposerStore } from './store.ts';
 import { lockout, rateLimit } from '../security/ratelimit.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 const PROVIDER_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const SECRET = Buffer.from('composer-routes-test-secret-0123456789');
@@ -22,6 +23,11 @@ const SECRET_TEXT = SECRET.toString('utf8');
 const sessionConfig = { secret: SECRET, ttlMs: 60_000 };
 const okPreamble: PreambleRunner = () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
 const frozenPreamble: PreambleRunner = () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP file present', stderr: '' });
+let testStateRoot: string;
+
+beforeEach(() => {
+  testStateRoot = mkdtempSync(join(tmpdir(), 'kb-composer-routes-state-'));
+});
 
 function token(subject = 'operator'): string {
   return mintSession(subject, sessionConfig).token;
@@ -77,7 +83,9 @@ function buildApp(overrides: Partial<SurfaceContext> = {}) {
     overrides.composerStore ??
     createInMemoryComposerStore({ protector: createProviderIdProtector(SECRET) });
   const ctx = makeSurfaceContext({
+    controlStore: createInMemoryControlPlaneStore(),
     repoRoot: '/repo',
+    stateRoot: testStateRoot,
     sessionConfig,
     composerStore,
     runPreamble: okPreamble,
@@ -111,6 +119,7 @@ let app: FastifyInstance | undefined;
 afterEach(async () => {
   if (app) await app.close();
   app = undefined;
+  rmSync(testStateRoot, { recursive: true, force: true });
 });
 
 describe('Composer workspace catalog routes', () => {

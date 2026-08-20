@@ -41,6 +41,9 @@ import { createInternalServiceCaller, isExecutionActivated, DASHBOARD_EXECUTOR_S
 import { dispatchClaimedCard, type OwnedCard } from './queueBridge.ts';
 import { defaultPyRunner } from '../write/launch.ts';
 import type { SurfaceContext } from '../http/context.ts';
+import { runLifecycleKind } from './runLifecycle.ts';
+import { createFileControlPlaneStore } from './store.ts';
+import { acquireWriterLease } from './writerLease.ts';
 
 export class AcceptanceRefusal extends Error {}
 
@@ -203,8 +206,10 @@ export async function pollRunTerminal(ctx: SurfaceContext, runRef: string, maxMs
   const stop = new Set(['succeeded', 'failed', 'stopped', 'interrupted', 'waiting-human']);
   for (;;) {
     const got = ctx.controlStore.getRun(DASHBOARD_EXECUTOR_SUBJECT, runRef);
-    if (got.ok && stop.has(got.value.run.state)) return got.value.run.state;
-    if (Date.now() > deadline) return got.ok ? got.value.run.state : 'unknown';
+    if (got.ok && stop.has(runLifecycleKind(got.value.run.lifecycle))) {
+      return runLifecycleKind(got.value.run.lifecycle);
+    }
+    if (Date.now() > deadline) return got.ok ? runLifecycleKind(got.value.run.lifecycle) : 'unknown';
     await new Promise((r) => setTimeout(r, 2_000));
   }
 }
@@ -213,7 +218,12 @@ export async function pollRunTerminal(ctx: SurfaceContext, runRef: string, maxMs
  * Run the synthetic acceptance. Returns the exit code (0 = all checks passed). NEVER call at import — the
  * `import.meta.main` guard is the only entry. Leaves the throwaway dirs on failure for inspection.
  */
-export async function main(): Promise<number> {
+export interface SyntheticAcceptanceOptions {
+  /** @internal */
+  leaseFactory?: typeof acquireWriterLease;
+}
+
+export async function main(options: SyntheticAcceptanceOptions = {}): Promise<number> {
   assertAcceptanceGate();
   const sourceRepo = process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 
@@ -222,6 +232,7 @@ export async function main(): Promise<number> {
   // any dispatch could push. A failure here aborts with no run.
   assertCoordinationRemoteIsolated(repoRoot, sourceRepo);
   const stateRoot = mkdtempSync(join(tmpdir(), 'wave-a-accept-state-'));
+  const lease = (options.leaseFactory ?? acquireWriterLease)({ stateRoot, bootId: 'synthetic-acceptance' });
   // Point THIS process (never the live daemon) at the throwaway roots, gate already on.
   process.env.DASHBOARD_REPO_ROOT = repoRoot;
   process.env.DASHBOARD_STATE_ROOT = stateRoot;
@@ -240,7 +251,8 @@ export async function main(): Promise<number> {
     git(repoRoot, ['commit', '-m', `test(wave-a): synthetic acceptance trigger ${id}`]);
     record(checks, 'synthetic trigger card minted + committed (throwaway repo)', true, `${id}`);
 
-    const ctx = makeSurfaceContext();
+    const controlStore = createFileControlPlaneStore(stateRoot, { mode: 'already-locked', lease });
+    const ctx = makeSurfaceContext({ controlStore });
     record(checks, 'gate ON: runAutomatic + controlBroker constructed', ctx.runAutomatic !== undefined && ctx.controlBroker !== undefined);
     const execution = ctx.executionLatch?.current();
     if (!execution) throw new AcceptanceRefusal('execution latch did not expose the armed harness window');
@@ -317,6 +329,7 @@ export async function main(): Promise<number> {
     keepArtifacts = keepArtifacts || !passed;
     return passed ? 0 : 1;
   } finally {
+    lease.release();
     if (!keepArtifacts) {
       rmSync(repoRoot, { recursive: true, force: true });
       rmSync(coordinationRemote, { recursive: true, force: true });

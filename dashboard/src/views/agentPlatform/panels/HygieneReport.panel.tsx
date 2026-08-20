@@ -40,5 +40,3 @@ export const panel: AgentPlatformPanel = {
   description: 'Dry-run candidates for human review; this panel never cleans or deletes.',
   render: () => <HygieneReportBody />,
 };
-
-export { HygieneReportBody };

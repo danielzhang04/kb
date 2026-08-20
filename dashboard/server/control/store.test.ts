@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import {
+  CONTROL_PLANE_ACCEPTED_SIZE_FILENAME,
   ControlStoreLimitError,
   AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
@@ -13,16 +14,53 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
   AUTHORIZED_20260801_FAILED_RUN_INPUT,
   AUTHORIZED_20260801_FAILED_RUN_REF,
-  createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
+  emptyStoreDocumentForTest,
   exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
 } from './store.ts';
+import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
+import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
+import { applyMigrationEdgeForTest, loadAndMigrate } from './migrations.ts';
+import { createNodePersistenceDeps } from './persistence.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
 
 const roots: string[] = [];
+const fileStores = createExistingRootFileStoreHarnessForTest();
+const createFileControlPlaneStore = fileStores.open;
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
+
+function persistedV1(value: unknown): any {
+  return applyMigrationEdgeForTest(value, 1, { stamp: '2026-08-20T00:00:00.000Z' });
+}
+
+function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
+  return {
+    version: 1,
+    nextEventCursor: 1,
+    proposals: [],
+    runs: Array.from({ length: 64 }, (_, index) => ({
+      subject: 'alice', runRef: `run-large-${index}`, predecessorRunRef: null,
+      title: `Large run ${index}`, proposalRef: `proposal-${index}`, proposalRevision: 1,
+      proposalHash: `${index.toString(16).padStart(2, '0')}${'a'.repeat(62)}`,
+      publicationState: 'published', state: 'succeeded', version: 1,
+      managerSessionRef: `manager-${index}`, managerGeneration: 1,
+      createdAt: stamp, updatedAt: stamp,
+    })),
+    stages: [], attempts: [], sessions: [], humanRequests: [], events: [],
+    stageGenerations: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+    generationSupersessions: [], quarantine: [],
+  };
+}
+
+it('binds store collection keys to the generated control-plane manifest', () => {
+  const listKeys = Object.entries(emptyStoreDocumentForTest())
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key]) => key)
+    .sort();
+  expect(listKeys).toEqual([...CONTROL_PLANE_COLLECTIONS].sort());
+});
 
 describe('authorized 2026-08-01 proposal provenance', () => {
   const snapshot = JSON.parse(readFileSync(join(
@@ -232,6 +270,7 @@ const CHECKER_COMPLETION_GATE = {
   id: 'approve-check', kind: 'approval' as const, prompt: 'Approve the checker result.', requiresReview: 'pass' as const,
 };
 afterEach(() => {
+  fileStores.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -248,11 +287,14 @@ describe('authorized 2026-07-31 execution-lock recovery', () => {
     roots.push(root);
     const store = createFileControlPlaneStore(root, authorizedLegacyOptions());
     seedAuthorizedLegacyExecutionLock(store);
+    const legacyPath = join(root, 'control', 'control-plane.json');
+    writeFileSync(legacyPath, `${JSON.stringify(persistedV1(JSON.parse(readFileSync(legacyPath, 'utf8'))))}\n`, 'utf8');
     const normalized = createFileControlPlaneStore(root);
     const normalizedDocument = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
       humanRequests: Array<Record<string, unknown>>;
     };
-    expect(normalizedDocument.humanRequests[0]).toMatchObject({
+    expect(normalizedDocument.humanRequests.find((request) =>
+      request.requestRef === AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF)).toMatchObject({
       legacyRecoveryOperationKey: null,
       legacyRecoveryOperationFingerprint: null,
       legacyRecoveryEventCursor: null,
@@ -1328,7 +1370,7 @@ describe('Task 4 generic iteration state machine', () => {
     });
     if (!accepted.ok) throw new Error(accepted.detail);
     const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as PersistedReviewDocument;
     document.iterationReceipts[0]!.canonicalCommit = 'f'.repeat(40);
     writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
     expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(/invalid control-plane iteration receipt/);
@@ -1716,7 +1758,7 @@ describe('Task 4 generic iteration state machine', () => {
     expect(task4Receipt(store, created.run.runRef, 'draft', 'pass')).toMatchObject({ ok: true });
     const running = makeTask4RunRunningWithTerminalManager(store, created.run.runRef);
     expect(store.transitionRun('alice', created.run.runRef, running.version, 'succeeded'))
-      .toMatchObject({ ok: true, value: { state: 'succeeded' } });
+      .toMatchObject({ ok: true, value: { lifecycle: { kind: 'succeeded', deployPause: null } } });
   });
 
   it('keeps a declined completion-gated or iteration-parked group from successful settlement', () => {
@@ -1888,7 +1930,7 @@ describe('Task 2 generic iteration durability', () => {
     const committed = commitCheckerSubject(first);
     queueCreatorRework(first, committed);
     const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as PersistedReviewDocument;
     const loop = document.iterationLoops[0]!;
     const successorAttempt = document.attempts.find((attempt) => attempt.logicalGeneration === 2)!;
     const successorGenerationRef = 'generation-legacy-migration-successor';
@@ -1934,7 +1976,7 @@ describe('Task 2 generic iteration durability', () => {
     const failedCommitted = commitCheckerSubject(failedStore);
     failCheckerIteration(failedStore, failedCommitted);
     const failedPath = join(failedRoot, 'control', 'control-plane.json');
-    const failedDocument = JSON.parse(readFileSync(failedPath, 'utf8')) as PersistedReviewDocument;
+    const failedDocument = persistedV1(JSON.parse(readFileSync(failedPath, 'utf8'))) as PersistedReviewDocument;
     persistedReviewBundle(failedDocument, 'active');
     delete (failedDocument as unknown as { iterationLoops?: unknown }).iterationLoops;
     delete (failedDocument as unknown as { iterationRequests?: unknown }).iterationRequests;
@@ -1959,7 +2001,7 @@ describe('Task 2 generic iteration durability', () => {
       const committed = commitCheckerSubject(store);
       failCheckerIteration(store, committed);
       const path = join(root, 'control', 'control-plane.json');
-      const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+      const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as PersistedReviewDocument;
       const legacy = persistedReviewBundle(document, 'active');
       delete (document as unknown as { iterationLoops?: unknown }).iterationLoops;
       delete (document as unknown as { iterationRequests?: unknown }).iterationRequests;
@@ -2050,7 +2092,7 @@ describe('Task 2 generic iteration durability', () => {
     const committed = commitCheckerSubject(store);
     failCheckerIteration(store, committed);
     const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as PersistedReviewDocument;
     document.iterationLoops[0]!.cyclesUsed = document.iterationLoops[0]!.maxCycles;
     writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
     expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(/iteration cycle evidence/);
@@ -2104,7 +2146,7 @@ describe('Task 2 generic iteration durability', () => {
     failCheckerIteration(store, committed);
     const path = join(root, 'control', 'control-plane.json');
     const genericBytes = statSync(path).size;
-    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as PersistedReviewDocument;
     persistedReviewBundle(document, 'active');
     delete (document as unknown as { iterationLoops?: unknown }).iterationLoops;
     delete (document as unknown as { iterationRequests?: unknown }).iterationRequests;
@@ -2115,6 +2157,154 @@ describe('Task 2 generic iteration durability', () => {
     const maxDocumentBytes = Math.floor((legacyBytes + genericBytes) / 2);
     expect(() => createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes }))
       .toThrow(new RegExp(`migration.*${maxDocumentBytes}.*source ${legacyBytes}.*migrated \\d+`, 'i'));
+  });
+
+  it('loads and mutates a migration-grown document across every boot', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task2-large-v1-no-legacy-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    mkdirSync(dirname(path), { recursive: true });
+    const stamp = '2026-08-20T00:00:00.000Z';
+    const source = largeV1MigrationSource(stamp);
+    const sourceEncoded = `${JSON.stringify(source)}\n`;
+    const projected = applyMigrationEdgeForTest(source, 2, { stamp }) as Record<string, unknown>;
+    projected.documentRevision = 1;
+    const projectedEncoded = `${JSON.stringify(projected)}\n`;
+    const sourceBytes = Buffer.byteLength(sourceEncoded, 'utf8');
+    const projectedBytes = Buffer.byteLength(projectedEncoded, 'utf8');
+    expect(projectedBytes).toBeGreaterThan(sourceBytes);
+    const maxDocumentBytes = Math.floor((sourceBytes + projectedBytes) / 2);
+    writeFileSync(path, sourceEncoded, 'utf8');
+
+    const loaded = createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
+    expect(loaded.listRuns('alice')).toHaveLength(64);
+    expect(loaded.createProposalRevision('alice', {
+      sourceComposerRef: 'large-v1-first-boot', sourceTurnId: 'turn-first', title: 'First boot', snapshot: {},
+    }).ok).toBe(true);
+
+    const secondBoot = createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
+    expect(secondBoot.listRuns('alice')).toHaveLength(64);
+    expect(secondBoot.createProposalRevision('alice', {
+      sourceComposerRef: 'large-v1-second-boot', sourceTurnId: 'turn-second', title: 'Second boot', snapshot: {},
+    }).ok).toBe(true);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, documentRevision: 3 });
+  });
+
+  it.each([
+    ['truncated', '{"schema":'],
+    ['wrong shape', JSON.stringify({ schema: 'kb.control-plane-accepted-size/v1', maxBytes: 999 })],
+  ])('ignores a %s accepted-size sidecar and lets the configured base limit decide', (_name, sidecar) => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-invalid-size-sidecar-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    expect(createApprovedProposal(store).approval?.decision).toBe('approved');
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    writeFileSync(join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME), `${sidecar}\n`, 'utf8');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const baseLimit = statSync(path).size + 1;
+      expect(() => createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes: baseLimit }))
+        .not.toThrow();
+      expect(warn).toHaveBeenCalledWith('[control-store] ignoring invalid control-plane accepted-size sidecar');
+      expect(() => createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes: 1 }))
+        .toThrow(ControlStoreLimitError);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('boots when a valid older grant is below a newly raised configured limit', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-raised-base-limit-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    expect(createApprovedProposal(store).approval?.decision).toBe('approved');
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    const raisedLimit = statSync(path).size + 100;
+    writeFileSync(join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME), `${JSON.stringify({
+      schema: 'kb.control-plane-accepted-size/v1', schemaVersion: 2, maxBytes: 1,
+    })}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, {
+      ...deterministicOptions(), maxDocumentBytes: raisedLimit,
+    })).not.toThrow();
+  });
+
+  it('accumulates a future migration grant on top of the existing accepted size', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-future-size-grant-'));
+    roots.push(root);
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    const sidecarPath = join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
+    mkdirSync(control, { recursive: true });
+    const stamp = '2026-08-20T00:00:00.000Z';
+    const source = largeV1MigrationSource(stamp);
+    const sourceEncoded = `${JSON.stringify(source)}\n`;
+    const projected = applyMigrationEdgeForTest(source, 2, { stamp }) as Record<string, unknown>;
+    projected.documentRevision = 1;
+    const projectedEncoded = `${JSON.stringify(projected)}\n`;
+    const maxDocumentBytes = Math.floor((Buffer.byteLength(sourceEncoded) + Buffer.byteLength(projectedEncoded)) / 2);
+    writeFileSync(path, sourceEncoded, 'utf8');
+    createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
+    const firstGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
+    expect(statSync(path).size).toBeGreaterThan(maxDocumentBytes);
+    expect(firstGrant).toMatchObject({ schemaVersion: 2 });
+
+    expect(() => createFileControlPlaneStore(root, {
+      ...deterministicOptions(),
+      maxDocumentBytes,
+      loadAndMigrateForTest: (encoded, target, context) => {
+        const result = loadAndMigrate(encoded, target, context);
+        if ((JSON.parse(encoded) as { version: number }).version === 2) {
+          for (const run of result.document.runs) run.title = `${run.title}x`;
+          return { document: result.document, applied: [{ from: 2, to: 3, breaking: true, down: 'present' }] };
+        }
+        return result;
+      },
+    })).not.toThrow();
+    const secondGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
+    expect(secondGrant.schemaVersion).toBe(2);
+    expect(secondGrant.maxBytes).toBeGreaterThan(firstGrant.maxBytes);
+  });
+
+  it('does not advance the accepted-size sidecar when the validating migration save fails', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-size-grant-save-failure-'));
+    roots.push(root);
+    const control = join(root, 'control');
+    const path = join(control, 'control-plane.json');
+    const sidecarPath = join(control, CONTROL_PLANE_ACCEPTED_SIZE_FILENAME);
+    mkdirSync(control, { recursive: true });
+    const stamp = '2026-08-20T00:00:00.000Z';
+    const source = largeV1MigrationSource(stamp);
+    const sourceEncoded = `${JSON.stringify(source)}\n`;
+    const projectedEncoded = `${JSON.stringify(applyMigrationEdgeForTest(source, 2, { stamp }))}\n`;
+    const maxDocumentBytes = Math.floor((Buffer.byteLength(sourceEncoded) + Buffer.byteLength(projectedEncoded)) / 2);
+    writeFileSync(path, sourceEncoded, 'utf8');
+    const delegate = createNodePersistenceDeps();
+    const persistenceDepsForTest = {
+      ...delegate,
+      rename: (temp: string, target: string) => {
+        if (target === path) throw new Error('injected validating save refusal');
+        delegate.rename(temp, target);
+      },
+    };
+    expect(() => createFileControlPlaneStore(root, {
+      ...deterministicOptions(), maxDocumentBytes, persistenceDepsForTest,
+    })).toThrow(/injected validating save refusal/);
+    expect(existsSync(sidecarPath)).toBe(false);
+  });
+
+  it('refuses a corrupted persisted stage generation projection at hydration', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task2-stage-generation-projection-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    createRun(store);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    document.stages[0]!.currentGeneration = 0;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions()))
+      .toThrow('invalid control-plane stage generation projection');
   });
 });
 
@@ -2538,7 +2728,7 @@ describe('run graph, attempts, and managed sessions', () => {
       idempotencyKey: 'retry-run-1', predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version,
       stages: first.stages.map((stage) => ({ stageId: stage.stageId, title: stage.title, dependsOn: stage.dependsOn })),
     });
-    expect(successor.ok && successor.value.run).toMatchObject({ predecessorRunRef: first.run.runRef, state: 'planned' });
+    expect(successor.ok && successor.value.run).toMatchObject({ predecessorRunRef: first.run.runRef, lifecycle: { kind: 'planned', deployPause: null } });
     expect(store.createRun('alice', {
       title: 'Bad retry', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
       expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
@@ -2591,7 +2781,7 @@ describe('run graph, attempts, and managed sessions', () => {
       stages: created.stages.map((stage) => ({ stageId: stage.stageId, title: stage.title, dependsOn: stage.dependsOn })),
     });
 
-    expect(successor).toMatchObject({ ok: true, value: { run: { predecessorRunRef: created.run.runRef, state: 'planned' } } });
+    expect(successor).toMatchObject({ ok: true, value: { run: { predecessorRunRef: created.run.runRef, lifecycle: { kind: 'planned', deployPause: null } } } });
   });
 
   it('refuses Retry while publication, canonical work, sessions, or Human Requests remain unresolved', () => {
@@ -2668,7 +2858,7 @@ describe('run graph, attempts, and managed sessions', () => {
     })).toMatchObject({ ok: false, reason: 'not-approved' });
 
     const created = createRun(store);
-    expect(created.run).toMatchObject({ state: 'planned', managerGeneration: 1, proposalHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(created.run).toMatchObject({ lifecycle: { kind: 'planned', deployPause: null }, managerGeneration: 1, proposalHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(created.stages.map((stage) => stage.state)).toEqual(['ready', 'blocked']);
     const linked = store.linkStageCard('alice', created.stages[0].stageRef, created.stages[0].version, 'card-build');
     expect(linked.ok && linked.value).toMatchObject({ canonicalCardRef: 'card-build', version: 2 });
@@ -2920,7 +3110,7 @@ describe('run graph, attempts, and managed sessions', () => {
     const requested = store.requestRunCancellation('alice', created.run.runRef, input);
     expect(requested).toMatchObject({
       ok: true,
-      value: { run: { state: 'stopping' }, event: { kind: 'lifecycle', source: 'human', status: 'waiting' } },
+      value: { run: { lifecycle: { kind: 'stopping', deployPause: null } }, event: { kind: 'lifecycle', source: 'human', status: 'waiting' } },
     });
     if (!requested.ok) throw new Error(requested.detail);
     expect(store.requestRunCancellation('alice', created.run.runRef, {
@@ -2980,7 +3170,7 @@ describe('run graph, attempts, and managed sessions', () => {
     expect(reconciled).toMatchObject({
       ok: true,
       value: {
-        run: { state: 'succeeded', publicationState: 'published' },
+        run: { lifecycle: { kind: 'succeeded', deployPause: null }, publicationState: 'published' },
         stages: [{ state: 'succeeded' }, { state: 'succeeded' }],
         attempts: [{ state: 'succeeded' }, { state: 'succeeded' }],
       },
@@ -3158,7 +3348,7 @@ describe('run graph, attempts, and managed sessions', () => {
     });
     expect(store.getRun('alice', created.run.runRef)).toMatchObject({
       ok: true,
-      value: { run: { state: 'recovering', managerGeneration: 2, managerSessionRef: successor.ok ? successor.value.sessionRef : '' } },
+      value: { run: { lifecycle: { kind: 'recovering', deployPause: null }, managerGeneration: 2, managerSessionRef: successor.ok ? successor.value.sessionRef : '' } },
     });
   });
 
@@ -3202,7 +3392,7 @@ describe('Human Requests and operational events', () => {
     const claimed = store.claimRunActivation('alice', detail.run.runRef, input);
     expect(claimed).toMatchObject({
       ok: true,
-      value: { phase: 'claimed', run: { state: 'recovering', version: detail.run.version + 1 } },
+      value: { phase: 'claimed', run: { lifecycle: { kind: 'recovering', deployPause: null }, version: detail.run.version + 1 } },
     });
     expect(store.getRun('alice', detail.run.runRef)).toMatchObject({
       ok: true, value: { run: expect.not.objectContaining({ activationReceipts: expect.anything() }) },
@@ -3211,12 +3401,12 @@ describe('Human Requests and operational events', () => {
     expect(reopened.getRunActivationReceipt('alice', detail.run.runRef, input)).toMatchObject({
       ok: true,
       replayed: true,
-      value: { phase: 'claimed', run: { state: 'waiting-human', version: detail.run.version + 2 } },
+      value: { phase: 'claimed', run: { lifecycle: { kind: 'waiting-human', deployPause: null }, version: detail.run.version + 2 } },
     });
     expect(reopened.claimRunActivation('alice', detail.run.runRef, input)).toMatchObject({
       ok: true,
       replayed: true,
-      value: { phase: 'claimed', run: { state: 'recovering', version: detail.run.version + 3 } },
+      value: { phase: 'claimed', run: { lifecycle: { kind: 'recovering', deployPause: null }, version: detail.run.version + 3 } },
     });
     expect(reopened.advanceRunActivation('alice', detail.run.runRef, input, 'roots-activated')).toMatchObject({
       ok: true, value: { phase: 'roots-activated' },
@@ -3308,10 +3498,10 @@ describe('Human Requests and operational events', () => {
     acknowledgeActivationManager(store, detail.run.runRef);
     const reopened = createFileControlPlaneStore(root, deterministicOptions());
     expect(reopened.getRunActivationReceipt('alice', detail.run.runRef, input)).toMatchObject({
-      ok: true, value: { phase: 'roots-activated', run: { state: 'waiting-human' } },
+      ok: true, value: { phase: 'roots-activated', run: { lifecycle: { kind: 'waiting-human', deployPause: null } } },
     });
     expect(reopened.claimRunActivation('alice', detail.run.runRef, input)).toMatchObject({
-      ok: true, replayed: true, value: { phase: 'roots-activated', run: { state: 'recovering' } },
+      ok: true, replayed: true, value: { phase: 'roots-activated', run: { lifecycle: { kind: 'recovering', deployPause: null } } },
     });
     expect(reopened.advanceRunActivation('alice', detail.run.runRef, input, 'roots-activated')).toMatchObject({
       ok: true, replayed: true, value: { phase: 'roots-activated' },
@@ -3336,14 +3526,14 @@ describe('Human Requests and operational events', () => {
     const reopened = createFileControlPlaneStore(root, deterministicOptions());
     const visible = reopened.getRun('alice', detail.run.runRef);
     if (!visible.ok) throw new Error(visible.detail);
-    expect(visible.value.run.state).toBe('waiting-human');
+    expect(visible.value.run.lifecycle.kind).toBe('waiting-human');
     const refreshedInput = {
       expectedRunVersion: visible.value.run.version,
       expectedManagerGeneration: visible.value.run.managerGeneration,
       idempotencyKey: `activate:${detail.run.runRef}:${visible.value.run.version}:after-restart`,
     };
     expect(reopened.claimRunActivation('alice', detail.run.runRef, refreshedInput)).toMatchObject({
-      ok: true, value: { phase: 'claimed', run: { state: 'recovering' } },
+      ok: true, value: { phase: 'claimed', run: { lifecycle: { kind: 'recovering', deployPause: null } } },
     });
     expect(reopened.getRunActivationReceipt('alice', detail.run.runRef, oldInput)).toMatchObject({
       ok: true, value: { phase: 'failed' },
@@ -3365,7 +3555,7 @@ describe('Human Requests and operational events', () => {
     })).toMatchObject({ ok: false, reason: 'conflict' });
     expect(store.getRun('alice', detail.run.runRef)).toMatchObject({
       ok: true,
-      value: { run: { state: 'waiting-human', version: detail.run.version } },
+      value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null }, version: detail.run.version } },
     });
   });
 
@@ -3425,7 +3615,7 @@ describe('durability, crash recovery, and retention', () => {
     const restarted = createFileControlPlaneStore(root, deterministicOptions());
     expect(restarted.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: { run: { agentWorkspaceLaunch: provenance } } });
     const path = join(root, 'control', 'control-plane.json');
-    const legacy = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+    const legacy = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as { runs: Array<Record<string, unknown>> };
     delete legacy.runs[0].agentWorkspaceLaunch;
     writeFileSync(path, `${JSON.stringify(legacy)}\n`, 'utf8');
     expect(createFileControlPlaneStore(root, deterministicOptions()).getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: { run: { agentWorkspaceLaunch: null } } });
@@ -3438,7 +3628,7 @@ describe('durability, crash recovery, and retention', () => {
     const first = createFileControlPlaneStore(root, deterministicOptions());
     createRun(first);
     const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as {
+    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as {
       runs: Array<Record<string, unknown>>;
       stages: Array<Record<string, unknown>>;
       quarantine: Array<Record<string, unknown>>;
@@ -3472,7 +3662,7 @@ describe('durability, crash recovery, and retention', () => {
       const first = createFileControlPlaneStore(root, deterministicOptions());
       createRun(first);
       const path = join(root, 'control', 'control-plane.json');
-      const document = JSON.parse(readFileSync(path, 'utf8')) as {
+      const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as {
         runs: Array<Record<string, unknown>>;
         stages: Array<Record<string, unknown>>;
         quarantine: Array<Record<string, unknown>>;
@@ -3487,7 +3677,11 @@ describe('durability, crash recovery, and retention', () => {
         document.stages[0].workflowProfile = { injected: true };
       }
       writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
-      expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane checker contract provenance');
+      expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(
+        location === 'active'
+          ? 'invalid control-plane checker contract provenance'
+          : 'invalid control-plane legacy review contract',
+      );
     };
     check('active');
     check('quarantine');
@@ -3563,7 +3757,7 @@ describe('durability, crash recovery, and retention', () => {
     const first = createFileControlPlaneStore(root, deterministicOptions());
     createRun(first);
     const path = join(root, 'control', 'control-plane.json');
-    const document = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>>; stages: Array<Record<string, unknown>> };
+    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as { runs: Array<Record<string, unknown>>; stages: Array<Record<string, unknown>> };
     document.runs[0].managerAssignment = { agentId: 'fyt-runner' };
     document.stages[0].assignment = 'not-an-assignment';
     writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
@@ -3605,13 +3799,13 @@ describe('durability, crash recovery, and retention', () => {
     if (!managerRunning.ok) throw new Error(managerRunning.detail);
 
     const path = join(root, 'control', 'control-plane.json');
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 1, nextEventCursor: 1 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, nextEventCursor: 1 });
     expect(readdirSync(join(root, 'control')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
 
     const restarted = createFileControlPlaneStore(root, clock);
     const recovered = restarted.getRun('alice', created.run.runRef);
     if (!recovered.ok) throw new Error(recovered.detail);
-    expect(recovered.value.run.state).toBe('interrupted');
+    expect(recovered.value.run.lifecycle.kind).toBe('interrupted');
     expect(recovered.value.stages[0].state).toBe('interrupted');
     expect(recovered.value.attempts[0].state).toBe('interrupted');
     expect(recovered.value.sessions.map((session) => session.state)).toEqual(['interrupted', 'interrupted']);
@@ -3746,6 +3940,17 @@ describe('durability, crash recovery, and retention', () => {
 
   it('enforces a hard document byte ceiling before replacing durable state', () => {
     const store = createInMemoryControlPlaneStore({ ...deterministicOptions(), maxDocumentBytes: 200 });
+    expect(() => createApprovedProposal(store)).toThrow(ControlStoreLimitError);
+  });
+
+  it('rejects a persistence target smaller than the encoded document', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-persistence-target-too-small-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, {
+      ...deterministicOptions(),
+      persistenceTargetBytesForTest: 1,
+    });
+
     expect(() => createApprovedProposal(store)).toThrow(ControlStoreLimitError);
   });
 });
@@ -3909,7 +4114,7 @@ describe('run archival', () => {
       idempotencyKey: `archive:${run.runRef}:1`, reason: 'obsolete thin-slice validation run',
     });
     if (!archived.ok) throw new Error(archived.detail);
-    expect(archived.value.run.state).toBe('archived');
+    expect(archived.value.run.lifecycle.kind).toBe('archived');
     expect(archived.value.run.version).toBe(run.version + 1);
     expect(archived.value.resolvedRequests.map((item) => item.requestRef)).toEqual([requestRef]);
     expect(archived.value.pinnedRequestRefs).toEqual([]);
@@ -3947,7 +4152,7 @@ describe('run archival', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const settled = settleRetryPredecessor(store);
     expect(store.archiveRun('alice', settled.run.runRef, { idempotencyKey: 'archive-failed-run' }))
-      .toMatchObject({ ok: true, value: { run: { state: 'archived' } } });
+      .toMatchObject({ ok: true, value: { run: { lifecycle: { kind: 'archived', deployPause: null } } } });
 
     const live = createRun(store, 'bob');
     const running = store.transitionRun('bob', live.run.runRef, live.run.version, 'running');
@@ -3985,7 +4190,7 @@ describe('run archival', () => {
     const reopened = createFileControlPlaneStore(root, deterministicOptions());
     const detail = reopened.getRun('alice', run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    expect(detail.value.run.state).toBe('archived');
+    expect(detail.value.run.lifecycle.kind).toBe('archived');
     // The idempotency record survived the restart too, so a retried request still replays.
     expect(reopened.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' }))
       .toMatchObject({ ok: true, replayed: true });
@@ -4024,7 +4229,7 @@ describe('Human Request auto-close', () => {
     const request = requestOnRun(store, run.runRef);
 
     const failed = store.transitionRun('alice', run.runRef, running.value.version, 'failed');
-    expect(failed).toMatchObject({ ok: true, value: { state: 'failed' } });
+    expect(failed).toMatchObject({ ok: true, value: { lifecycle: { kind: 'failed', deployPause: null } } });
 
     const detail = store.getRun('alice', run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
@@ -4073,7 +4278,7 @@ describe('Human Request auto-close', () => {
     if (!request.ok) throw new Error(request.detail);
 
     const stopped = store.transitionRun('alice', run.runRef, running.value.version, 'stopped');
-    expect(stopped).toMatchObject({ ok: true, value: { state: 'stopped' } });
+    expect(stopped).toMatchObject({ ok: true, value: { lifecycle: { kind: 'stopped', deployPause: null } } });
     const afterStop = store.getRun('alice', run.runRef);
     if (!afterStop.ok) throw new Error(afterStop.detail);
     expect(afterStop.value.humanRequests[0]).toMatchObject({ requestRef: request.value.requestRef, state: 'open' });
@@ -4185,7 +4390,7 @@ describe('Human Request auto-close', () => {
     // Simulate data written before this fix existed: the run reached `failed` WITHOUT going through the
     // (now-patched) `transitionRun`, so its request is still `open` on disk — the shape every pre-existing
     // zombie was actually found in.
-    const document = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as { runs: Array<Record<string, unknown>> };
     const record = document.runs.find((candidate) => candidate.runRef === run.runRef);
     if (!record) throw new Error('seeded run missing from the raw document');
     record.state = 'failed';
@@ -4300,7 +4505,7 @@ describe('read scope', () => {
 
     const owned = store.getRun('dashboard-engine', engineRun.runRef);
     if (!owned.ok) throw new Error(owned.detail);
-    expect(owned.value.run.state).toBe('planned');
+    expect(owned.value.run.lifecycle.kind).toBe('planned');
     expect(owned.value.humanRequests).toEqual([expect.objectContaining({ state: 'open' })]);
   });
 
@@ -4392,7 +4597,7 @@ describe('read scope', () => {
       idempotencyKey: 'operator-stops', kind: 'stop',
     }, 'all-subjects');
     if (!stopped.ok) throw new Error(stopped.detail);
-    expect(stopped.value.run.state).toBe('stopping');
+    expect(stopped.value.run.lifecycle.kind).toBe('stopping');
 
     // Both events are on the ENGINE's timeline — an operator-partitioned event would be invisible to
     // the run's own reader, uncounted against its event cap, and orphaned by a quarantine.
@@ -4401,7 +4606,7 @@ describe('read scope', () => {
     expect(events.value.map((event) => event.summary))
       .toEqual(['engine run started', 'Inspect the diff first.', 'operator requested Manager stop']);
     expect(store.getRun('dashboard-engine', engineRun.runRef)).toMatchObject({
-      ok: true, value: { ownerSubject: 'dashboard-engine', run: { state: 'stopping' } },
+      ok: true, value: { ownerSubject: 'dashboard-engine', run: { lifecycle: { kind: 'stopping', deployPause: null } } },
     });
   });
 
@@ -4420,7 +4625,7 @@ describe('read scope', () => {
     if (!archived.ok) throw new Error(archived.detail);
     // Existing archive semantics, unchanged: terminal `archived` run, every answerable ask resolved in
     // the same commit with the operator's reason, and the resolution reported back.
-    expect(archived.value.run.state).toBe('archived');
+    expect(archived.value.run.lifecycle.kind).toBe('archived');
     expect(archived.value.pinnedRequestRefs).toEqual([]);
     expect(archived.value.resolvedRequests).toEqual([expect.objectContaining({
       requestRef: ask.value.requestRef, state: 'resolved',
@@ -4430,7 +4635,7 @@ describe('read scope', () => {
 
     // The run and its request are still the engine's.
     expect(store.getRun('dashboard-engine', engineRun.runRef)).toMatchObject({
-      ok: true, value: { ownerSubject: 'dashboard-engine', run: { state: 'archived' } },
+      ok: true, value: { ownerSubject: 'dashboard-engine', run: { lifecycle: { kind: 'archived', deployPause: null } } },
     });
     expect(store.listRuns('operator', 'all-subjects').map((run) => run.ownerSubject)).toEqual(['dashboard-engine']);
 

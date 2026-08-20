@@ -4,6 +4,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolvePython } from './python.ts';
+import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 export interface EvidencePayload {
   schema: 'kb.phase1-evidence/v1';
@@ -293,7 +294,12 @@ async function localComposerRefusal(): Promise<number> {
   // The probe's bearer is freshly minted from the verified-assertion boundary and is confined to this
   // in-process request. It is never read from the environment, rendered, or written to the evidence files.
   const sessionConfig = { secret: Buffer.from('gate2-probe-session-secret-32-bytes'), ttlMs: 60_000 };
-  const built = buildApp({ validateData: false, runtimeCapabilities: runtimeCapabilities('linux'), sessionConfig });
+  const built = buildApp({
+    validateData: false,
+    runtimeCapabilities: runtimeCapabilities('linux'),
+    sessionConfig,
+    controlStore: createInMemoryControlPlaneStore(),
+  });
   try {
     const token = mintSessionFromVerifiedAssertion({ verified: true }, 'gate2-human-armed', sessionConfig).token;
     const response = await built.inject({

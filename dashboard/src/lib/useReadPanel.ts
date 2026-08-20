@@ -25,9 +25,9 @@ import { useEffect, useState } from 'react';
  * `idle` — nothing was asked for (a null url). Distinct from `loading` on purpose: a panel that paints
  * its empty state during `idle` would flash "nothing found" before it had asked anything.
  */
-export type ReadPanelState = 'idle' | 'loading' | 'ready' | 'unavailable';
+type ReadPanelState = 'idle' | 'loading' | 'ready' | 'unavailable';
 
-export interface ReadPanelResult<T> {
+interface ReadPanelResult<T> {
   /** The parsed body of the most recent successful read, or null before/instead of one. */
   data: T | null;
   state: ReadPanelState;

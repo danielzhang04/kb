@@ -37,6 +37,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const io = require("./hook_io.js");
 const store = require("./context_store.js");
 
 const AUDIT_FILE_NAME = "model-audit.jsonl";
@@ -189,27 +190,14 @@ function readRows(env) {
   } catch (_err) {
     return [];
   }
-  const rows = [];
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const row = JSON.parse(trimmed);
-      if (row && typeof row === "object") rows.push(row);
-    } catch (_err) {
-      /* a partial trailing line is normal on a live log */
-    }
-  }
-  return rows;
+  return io.parseJsonLines(text).filter((row) => row && typeof row === "object");
 }
 
 module.exports = {
-  AUDIT_FILE_NAME,
   allowedModels,
   appendRow,
   auditPath,
   parseAllowedModels,
   readRows,
-  routingPath,
   verdictFor,
 };

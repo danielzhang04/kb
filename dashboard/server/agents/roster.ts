@@ -217,12 +217,12 @@ export interface DeclaredAgent {
   projects: string[];
 }
 
-export interface AgentIo {
+interface AgentIo {
   inputs: YamlValue | null;
   outputs: YamlValue | null;
 }
 
-export interface AgentDefaults {
+interface AgentDefaults {
   budgetUsd: string | number | null;
   maxRetries: string | number | null;
   escalation: string | number | null;

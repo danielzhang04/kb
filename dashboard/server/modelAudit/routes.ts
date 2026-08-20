@@ -39,7 +39,7 @@ const MAX_LOG_BYTES = 4 * 1024 * 1024;
 const MAX_ROWS = 500;
 
 /** The verdict vocabulary the hooks write. Anything else is passed through untouched and shown raw. */
-export type ModelAuditVerdict = 'allowed' | 'unknown' | 'unspecified' | 'unverified' | 'match' | 'mismatch';
+type ModelAuditVerdict = 'allowed' | 'unknown' | 'unspecified' | 'unverified' | 'match' | 'mismatch';
 
 /** One audit row. Every field is optional because a row only ever carries what its event supplied. */
 export interface ModelAuditRow {

@@ -198,6 +198,14 @@ def test_effective_unit_must_use_the_local_outbox():
         validate_vm_runtime.validate_static_unit(show, VALID_UNIT_TEXT.replace("KB_COORDINATION_PUBLICATION=outbox", "KB_COORDINATION_PUBLICATION=github"))
 
 
+def test_effective_unit_must_enable_vm_runtime():
+    show = valid_static_unit()
+    text = VALID_UNIT_TEXT.replace("KB_VM_RUNTIME=1", "KB_VM_RUNTIME=0")
+    with pytest.raises(RuntimeError, match="VM runtime") as refusal:
+        validate_vm_runtime.validate_static_unit(show, text)
+    assert "0" not in str(refusal.value)
+
+
 def test_effective_unit_rejects_environment_files():
     show = valid_static_unit()
     show["EnvironmentFiles"] = "/etc/kb-dashboard/session.env"

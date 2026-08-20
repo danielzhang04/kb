@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "nextEventCursor": 1,
+  "proposals": [],
+  "runs": [],
+  "stages": [],
+  "attempts": [
+    {
+      "subject": "alice",
+      "attemptRef": "attempt-provenance",
+      "runRef": "run-provenance",
+      "stageRef": "stage-check",
+      "reviewSubjectGenerationRef": "generation-build",
+      "reviewSubjectResultHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "reviewSubjectCanonicalCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "sessions": [],
+  "humanRequests": [],
+  "events": [],
+  "stageGenerations": [
+    {
+      "subject": "alice",
+      "generationRef": "generation-build",
+      "runRef": "run-provenance",
+      "resultHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "canonicalCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "iterationLoops": [],
+  "iterationRequests": [],
+  "iterationReceipts": [],
+  "generationSupersessions": [],
+  "quarantine": []
+}

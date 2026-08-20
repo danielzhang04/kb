@@ -83,7 +83,7 @@ export interface AgentDetailDto {
  * pulls in `node:fs`, and a runtime edge from the client into it drags the node builtins into the
  * browser bundle (`lib/clientImportGraph.test.ts` is the gate on that).
  */
-export interface AgentDeclarationProblemDto {
+interface AgentDeclarationProblemDto {
   id: string;
   source: string;
   problem: string;

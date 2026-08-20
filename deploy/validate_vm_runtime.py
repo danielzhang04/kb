@@ -152,6 +152,8 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
         raise RuntimeError("dashboard unit does not unset credential channels: " + ",".join(missing))
     if environment["KB_COORDINATION_PUBLICATION"] != "outbox":
         raise RuntimeError("dashboard unit must select local outbox publication")
+    if environment["KB_VM_RUNTIME"] != "1":
+        raise RuntimeError("dashboard unit must enable VM runtime")
     if show["ReadOnlyPaths"] != "/opt/kb-releases" or set(show["ReadWritePaths"].split()) != {"/var/lib/kb/ops", "/var/lib/kb/state"}:
         raise RuntimeError("effective unit filesystem policy mismatch")
 

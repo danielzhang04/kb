@@ -16,7 +16,6 @@ import json
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import time
@@ -26,11 +25,13 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterator, Mapping
 
 from scripts import agent_evals
+from scripts.agent_definitions import has_unsafe_link_component
 from scripts.kb_paths import resolve_state_root
 
 
 MAX_PROPOSALS_PER_FIRE = 5
 MAX_FILES_PER_SOURCE = 100
+MAX_ENTRIES_PER_DIRECTORY = 10_000
 MAX_BYTES_PER_FILE = 128 * 1024
 MAX_LEDGER_ROWS_PER_FILE = 1_000
 
@@ -126,26 +127,6 @@ def _contains_path(root: Path, candidate: Path) -> bool:
         return False
 
 
-def _has_unsafe_link_component(repo_root: Path, path: PurePosixPath) -> bool:
-    """Reject symlinks and Windows reparse points in every existing path component."""
-    current = repo_root
-    for part in path.parts:
-        current = current / part
-        try:
-            metadata = os.lstat(current)
-        except FileNotFoundError:
-            # The remaining components cannot exist yet, so there is no link to follow.
-            return False
-        except OSError:
-            # Do not treat an unreadable component as a safe proposal target.
-            return True
-        if stat.S_ISLNK(metadata.st_mode) or (
-            getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
-        ):
-            return True
-    return False
-
-
 def validate_target_path(target_path: str, repo_root: Path | str) -> str:
     """Return a canonical allowed target, resolving lexical and symlink escape attempts."""
     path = _normalise_target_path(target_path)
@@ -159,7 +140,9 @@ def validate_target_path(target_path: str, repo_root: Path | str) -> str:
         (root / "memory").resolve(),
         (root / "routines" / "roles").resolve(),
     )
-    if _has_unsafe_link_component(root, path) or not any(_contains_path(allowed, candidate) for allowed in allowed_roots):
+    if has_unsafe_link_component(root, path.parts, missing_ok=True) or not any(
+        _contains_path(allowed, candidate) for allowed in allowed_roots
+    ):
         raise TargetWallError(f"proposal target escapes its permitted root: {target_path!r}")
     return path.as_posix()
 
@@ -310,26 +293,34 @@ class _ScanState:
 
 
 def _iter_files(source: Path, suffixes: frozenset[str], source_name: str, state: _ScanState) -> Iterator[Path]:
-    """Stream source candidates with bounded ``scandir`` traversal and no directory links."""
+    """Stream source candidates in deterministic name order, one directory listing at a time (each level capped by MAX_ENTRIES_PER_DIRECTORY, parks beyond it), with no directory links. Sorting changes which files a capped fire reads on every platform, not only Linux."""
     if source.is_file():
         candidates: Iterator[Path] = iter((source,))
     elif source.is_dir():
-        def walk() -> Iterator[Path]:
-            scans = [os.scandir(source)]
+        def sorted_entries(path: Path) -> Iterator[os.DirEntry[str]]:
+            scan = os.scandir(path)
             try:
-                while scans:
-                    try:
-                        entry = next(scans[-1])
-                    except StopIteration:
-                        scans.pop().close()
-                        continue
-                    if entry.is_dir(follow_symlinks=False):
-                        scans.append(os.scandir(entry.path))
-                    elif entry.is_file(follow_symlinks=False):
-                        yield Path(entry.path)
+                entries = list(scan)
             finally:
-                for scan in scans:
-                    scan.close()
+                scan.close()
+            if len(entries) > MAX_ENTRIES_PER_DIRECTORY:
+                raise InputParseError(
+                    f"parse failure: {source_name} directory exceeds {MAX_ENTRIES_PER_DIRECTORY} entries: {path.name}"
+                )
+            return iter(sorted(entries, key=lambda entry: entry.name))
+
+        def walk() -> Iterator[Path]:
+            scans = [sorted_entries(source)]
+            while scans:
+                try:
+                    entry = next(scans[-1])
+                except StopIteration:
+                    scans.pop()
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    scans.append(sorted_entries(Path(entry.path)))
+                elif entry.is_file(follow_symlinks=False):
+                    yield Path(entry.path)
 
         candidates = walk()
     else:
@@ -563,7 +554,7 @@ def _forecast_scratch_path(repo_root: Path) -> tuple[Path, PurePosixPath]:
 def _forecast_scratch_parent(repo_root: Path) -> Path:
     """Create the prescribed scratch parent only when it is safe and contained."""
     anchor, relative = _forecast_scratch_path(repo_root)
-    if _has_unsafe_link_component(anchor, relative):
+    if has_unsafe_link_component(anchor, relative.parts, missing_ok=True):
         raise ForecastError("forecast scratch path contains a link or reparse point")
     parent = anchor / Path(*relative.parts)
     parent.mkdir(parents=True, exist_ok=True)
@@ -606,7 +597,7 @@ def _sweep_stale_forecast_leases(repo_root: Path) -> None:
     if not scratch.is_dir():
         return
     now = time.time()
-    for candidate in scratch.iterdir():
+    for candidate in sorted(scratch.iterdir(), key=lambda path: path.name):
         try:
             stale = now - candidate.stat().st_mtime >= FORECAST_STALE_LEASE_SECONDS
         except OSError:

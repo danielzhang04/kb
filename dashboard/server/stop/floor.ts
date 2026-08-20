@@ -234,7 +234,7 @@ export async function requestStop(cardId: string, session: SessionInput, deps: F
   });
 }
 
-export type PauseCadenceOutcome =
+type PauseCadenceOutcome =
   | { ok: true; path: string }
   | Unauthenticated
   | { ok: false; reason: 'invalid-cadence'; detail: string };

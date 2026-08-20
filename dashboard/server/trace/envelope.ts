@@ -32,7 +32,7 @@ import { joinToolResults } from '../planeB/join.ts';
  * kept only if it is a NUMBER; anything else (including a new field) is dropped until someone adds it
  * here deliberately.
  */
-export interface StepUsage {
+interface StepUsage {
   input_tokens?: number;
   output_tokens?: number;
   cache_creation_input_tokens?: number;

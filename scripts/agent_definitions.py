@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 import re
 import stat
-from typing import Any
+from typing import Any, Iterable
 
 import yaml
 
@@ -75,13 +75,17 @@ def parse_agent_definition(text: str) -> AgentDefinitionMetadata:
     )
 
 
-def _unsafe_link_component(repo_root: Path, relative: tuple[str, ...]) -> bool:
+def has_unsafe_link_component(
+    repo_root: Path, relative: Iterable[str], *, missing_ok: bool = False
+) -> bool:
     """Reject symlinks and Windows reparse points in existing path components."""
     current = repo_root
     for part in relative:
         current = current / part
         try:
             metadata = os.lstat(current)
+        except FileNotFoundError:
+            return not missing_ok
         except OSError:
             return True
         if stat.S_ISLNK(metadata.st_mode) or (
@@ -105,7 +109,7 @@ def load_agent_definition(path: Path) -> AgentDefinitionMetadata:
     agents_dir = repo_root / "agents"
     canonical = requested.resolve()
     if (
-        _unsafe_link_component(repo_root, ("agents", requested.name))
+        has_unsafe_link_component(repo_root, ("agents", requested.name))
         or canonical.parent != agents_dir
         or canonical.name != requested.name
     ):

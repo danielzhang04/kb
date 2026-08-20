@@ -53,6 +53,7 @@ import {
 // U12: the "effective model only, never declaredModel" rule now lives in one place for every agent
 // surface — see the rationale there.
 import { effectiveModelOf } from '../../../lib/agentPresentation';
+import { useReadPanel } from '../../../lib/useReadPanel';
 import '../../../styles/views/agentPlatformAgentManagement.css';
 
 /** The declaration as the client types it — the six U3 fields included (U12). */
@@ -267,33 +268,12 @@ function AgentDetailCard({
 }
 
 function AgentManagementBody(): React.JSX.Element {
-  const [roster, setRoster] = useState<AgentRosterEntry[]>([]);
-  const [listState, setListState] = useState<LoadState>('loading');
+  const { data: rosterData, state: listState } = useReadPanel<AgentRosterEntry[]>('/api/agents');
+  const roster = Array.isArray(rosterData) ? rosterData : [];
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AgentDetailDto | null>(null);
   const [detailState, setDetailState] = useState<LoadState>('idle');
   const [failure, setFailure] = useState<DetailFailure | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch('/api/agents')
-      .then((r) => {
-        if (!r.ok) throw new Error(`roster request failed (${r.status})`);
-        return r.json() as Promise<AgentRosterEntry[]>;
-      })
-      .then((rows) => {
-        if (cancelled) return;
-        setRoster(Array.isArray(rows) ? rows : []);
-        setListState('ready');
-      })
-      .catch(() => {
-        // A dead daemon is an expected input for a read-only panel: name the state, never crash.
-        if (!cancelled) setListState('unavailable');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const declaredRows = roster.filter((a) => a.declared);
   const observedRows = roster.filter((a) => !a.declared);

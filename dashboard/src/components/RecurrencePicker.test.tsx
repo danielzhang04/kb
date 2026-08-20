@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { compileRecurrence, decomposeRecurrence, RecurrencePicker } from './RecurrencePicker';
+import { compileRecurrence, decomposeRecurrence } from '../lib/scheduleWords';
+import { RecurrencePicker } from './RecurrencePicker';
 
 afterEach(() => cleanup());
 

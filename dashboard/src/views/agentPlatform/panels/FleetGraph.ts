@@ -28,10 +28,6 @@ import type { Dag } from '../../../../server/dag/graph';
 // not canvas concerns — they moved to one shared module so no second surface can restate them wrongly.
 import { effectiveModelOf, normalizeRole } from '../../../lib/agentPresentation';
 
-// Re-exported so this module stays the single import for everything the fleet canvas needs, and so
-// `normalizeRole`'s existing consumers/tests keep their import path. The IMPLEMENTATION is shared.
-export { FLEET_ROLES, normalizeRole, type FleetRole } from '../../../lib/agentPresentation';
-
 /** One agent on the fleet canvas. */
 export interface FleetNode {
   /** Canvas node id — `agent:<agentId>`, so an agent id can never collide with anything else drawn. */
@@ -60,7 +56,7 @@ export interface FleetEdge {
 }
 
 /** A declared `buildsOn` predecessor that is not a fleet member — printed as text, never drawn. */
-export interface UnresolvedBuildsOn {
+interface UnresolvedBuildsOn {
   /** The agent whose declaration names the predecessor. */
   agentId: string;
   /** The predecessor id exactly as declared. */

@@ -1,10 +1,14 @@
 import Fastify from 'fastify';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionConfig } from './session.ts';
 import { rememberChallenge } from './credentialStore.ts';
 import { registerAuthRoutes } from './routes.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
+import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 const verifyAssertionMock = vi.hoisted(() => vi.fn());
 const verifyRegistrationMock = vi.hoisted(() => vi.fn());
@@ -18,6 +22,11 @@ const SESSION: SessionConfig = {
   secret: Buffer.from('auth-route-test-secret-thirty-two-b!'), ttlMs: 60_000, now: () => 1_700_000_000_000,
 };
 const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: 'http://localhost:5317' });
+let testStateRoot: string;
+
+beforeEach(() => {
+  testStateRoot = mkdtempSync(join(tmpdir(), 'kb-auth-routes-state-'));
+});
 
 /** A lightweight ctx for `registerAuthRoutes` alone: real defaults for anything these routes never
  *  touch (control store, pty host, ...) are harmless since nothing here invokes them; git/audit are
@@ -26,7 +35,9 @@ function buildApp(overrides: Record<string, unknown> = {}) {
   const audit: Array<Record<string, unknown>> = [];
   const app = Fastify();
   const ctx = makeSurfaceContext({
+    controlStore: createInMemoryControlPlaneStore(),
     repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
+    stateRoot: testStateRoot,
     sessionConfig: SESSION,
     webAuthnConfig: TEST_WEBAUTHN,
     credentials: () => [],
@@ -49,6 +60,7 @@ describe('auth ceremony routes', () => {
     app = undefined;
     verifyAssertionMock.mockReset();
     verifyRegistrationMock.mockReset();
+    rmSync(testStateRoot, { recursive: true, force: true });
   });
 
   it.each(['tailnet', 'win32-desktop'] as const)('reports only the %s auth mode', async (authMode) => {

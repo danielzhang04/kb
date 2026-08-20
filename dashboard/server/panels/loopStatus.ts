@@ -111,7 +111,7 @@ const CARD_STATE_VALUES = new Set<string>([
 ]);
 
 /** How a run was found. A HAND RUN has no dispatch-ledger row at all — see {@link readHandRuns}. */
-export type LoopRunSource = 'dispatch' | 'hand-run';
+type LoopRunSource = 'dispatch' | 'hand-run';
 
 /** One recorded run of one loop — a dispatch-ledger row joined to its queue card, or a hand-run card
  *  found by its `action` with no ledger row behind it. */

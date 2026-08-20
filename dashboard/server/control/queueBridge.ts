@@ -33,6 +33,7 @@ import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
 import type { JsonObject, RunDetail } from './types.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
+import { runLifecycleKind } from './runLifecycle.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
 import type { CoordinationPublication } from '../write/outbox.ts';
 
@@ -1000,7 +1001,9 @@ export async function settleFleetLedgerForRun(deps: SettleRunLedgerDeps, input: 
   const subject = input.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
   const got = deps.controlStore.getRun(subject, input.runRef);
   if (!got.ok) return { settled: false, emitted: 0, blocked: false };
-  if (!TERMINAL_RUN_STATES.includes(got.value.run.state)) return { settled: false, emitted: 0, blocked: false };
+  if (!TERMINAL_RUN_STATES.includes(runLifecycleKind(got.value.run.lifecycle))) {
+    return { settled: false, emitted: 0, blocked: false };
+  }
   const stages = collectTerminalStageCosts(got.value, input.readUsageMicros ?? ZERO_USAGE_MICROS);
   const res = await settleFleetCostLedger(
     {

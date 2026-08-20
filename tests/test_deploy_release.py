@@ -1,7 +1,9 @@
+import base64
 import hashlib
 import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -12,14 +14,25 @@ from types import SimpleNamespace
 
 import pytest
 
+from deploy.control_plane_schema import (
+    RELEASE_ATTESTATION_KEYS,
+    RELEASE_ATTESTATION_SCHEMA,
+    ROLLBACK_STATE_SCHEMA,
+    STATE_MIGRATION,
+    STATE_SCHEMA,
+)
 
 public_key_module = types.ModuleType("release_signing_public")
 public_key_module.RELEASE_PUBLIC_KEY = ""
 sys.modules.setdefault("release_signing_public", public_key_module)
 
 from deploy import activate_release
+from deploy import bootstrap_vm
 from deploy.activate_release import require_root_staging
 from scripts import deploy_platform_release
+
+
+TEST_RELEASE_COMMIT = "d" * 40
 
 
 def canonical_attestation(commit: str = "a" * 40, digest: str = "b" * 64) -> bytes:
@@ -41,6 +54,165 @@ def write_release_archive(path: Path, commit: str = "a" * 40) -> None:
             info = tarfile.TarInfo(name)
             info.size = len(data)
             archive.addfile(info, io.BytesIO(data))
+
+
+def canonical_attestation_pair(tmp_path: Path, schema_version: int) -> tuple[Path, Path]:
+    archive = tmp_path / f"kb-platform-{TEST_RELEASE_COMMIT}.tar.gz"
+    write_release_archive(archive, TEST_RELEASE_COMMIT)
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    attestation = tmp_path / "attestation.json"
+    if schema_version == 1:
+        attestation.write_bytes(canonical_attestation(TEST_RELEASE_COMMIT, digest))
+    elif schema_version == 2:
+        value = {
+            "archive": archive.name,
+            "schema": RELEASE_ATTESTATION_SCHEMA,
+            "sha256": digest,
+            "sourceCommit": TEST_RELEASE_COMMIT,
+            "stateSchema": STATE_SCHEMA,
+            "rollbackStateSchema": ROLLBACK_STATE_SCHEMA,
+            "stateMigration": STATE_MIGRATION,
+            "workflow": "kb-platform-release",
+        }
+        attestation.write_bytes(
+            (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        )
+    else:
+        raise ValueError("schema_version must be 1 or 2")
+    return archive, attestation
+
+
+def rewrite_attestation(path: Path, mutate) -> None:
+    value = json.loads(path.read_bytes())
+    mutate(value)
+    path.write_bytes((json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode())
+
+
+def installed_root_validator_files(tmp_path: Path) -> list[str]:
+    key_payload = (
+        len(b"ssh-ed25519").to_bytes(4, "big")
+        + b"ssh-ed25519"
+        + (32).to_bytes(4, "big")
+        + b"\0" * 32
+    )
+    release_public_key = tmp_path / "release.pub"
+    release_public_key.write_text(
+        f"ssh-ed25519 {base64.b64encode(key_payload).decode('ascii')}\n",
+        encoding="ascii",
+    )
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.install_root_validators(
+        release_public_key,
+        "kb.command.ts.net",
+        "daniel.zhang.t1@gmail.com",
+        run=run,
+    )
+    return [
+        Path(command[-1]).name
+        for command in commands
+        if command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0555"]
+    ]
+
+
+def test_desktop_parser_accepts_exact_v1_and_v2(tmp_path):
+    for schema_version in (1, 2):
+        archive, attestation = canonical_attestation_pair(tmp_path, schema_version)
+        assert deploy_platform_release.parse_local_attestation(
+            attestation, archive
+        )["sourceCommit"] == TEST_RELEASE_COMMIT
+
+
+def test_local_probe_script_accepts_canonical_v2_from_resident_layout(tmp_path):
+    _archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    deploy_root = Path(__file__).parents[1] / "deploy"
+    resident = tmp_path / "usr/local/lib/kb"
+    resident.mkdir(parents=True)
+    for name in installed_root_validator_files(tmp_path):
+        shutil.copy2(deploy_root / name, resident / name)
+    (resident / "release_signing_public.py").write_text("RELEASE_PUBLIC_KEY = ''\n", encoding="ascii")
+    probe = (
+        "from pathlib import Path; "
+        "from activate_release import parse_attestation; "
+        f"assert parse_attestation(Path({str(attestation)!r}).read_bytes())['sourceCommit'] == {TEST_RELEASE_COMMIT!r}"
+    )
+    subprocess.run([sys.executable, "-B", "-c", probe], cwd=resident, check=True)
+
+
+@pytest.mark.parametrize("missing", sorted(RELEASE_ATTESTATION_KEYS))
+def test_desktop_parser_rejects_each_missing_v2_key(tmp_path, missing):
+    archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    rewrite_attestation(attestation, lambda value: value.pop(missing))
+    with pytest.raises(RuntimeError, match="closed canonical"):
+        deploy_platform_release.parse_local_attestation(attestation, archive)
+
+
+def test_desktop_parser_rejects_extra_or_noncanonical_v2(tmp_path):
+    archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    rewrite_attestation(attestation, lambda value: value.update(extra="x"))
+    with pytest.raises(RuntimeError, match="closed canonical"):
+        deploy_platform_release.parse_local_attestation(attestation, archive)
+    archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    attestation.write_text(json.dumps(json.loads(attestation.read_text()), indent=2))
+    with pytest.raises(RuntimeError, match="closed canonical"):
+        deploy_platform_release.parse_local_attestation(attestation, archive)
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("stateSchema", "02"),
+    ("rollbackStateSchema", "1.0"),
+    ("stateMigration", "forward"),
+])
+def test_desktop_parser_rejects_structurally_invalid_v2_values(tmp_path, field, value):
+    archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    rewrite_attestation(attestation, lambda body: body.__setitem__(field, value))
+    with pytest.raises(RuntimeError, match=r"^attestation registry metadata mismatch$"):
+        deploy_platform_release.parse_local_attestation(attestation, archive)
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("stateSchema", "02"),
+    ("rollbackStateSchema", "1.0"),
+    ("stateMigration", "forward"),
+])
+def test_resident_parser_rejects_structurally_invalid_v2_values(tmp_path, field, value):
+    _archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    rewrite_attestation(attestation, lambda body: body.__setitem__(field, value))
+    with pytest.raises(RuntimeError, match=r"^attestation registry metadata mismatch$"):
+        activate_release.parse_attestation(attestation.read_bytes())
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("stateSchema", "3"),
+    ("rollbackStateSchema", "0"),
+    ("stateMigration", "compatible"),
+])
+def test_desktop_parser_rejects_structurally_valid_nonregistry_v2_values(tmp_path, field, value):
+    archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    rewrite_attestation(attestation, lambda body: body.__setitem__(field, value))
+    with pytest.raises(RuntimeError, match=r"^attestation registry metadata mismatch$"):
+        deploy_platform_release.parse_local_attestation(attestation, archive)
+
+
+def test_resident_parser_accepts_structurally_valid_future_v2_registry_values(tmp_path):
+    _archive, attestation = canonical_attestation_pair(tmp_path, 2)
+    rewrite_attestation(attestation, lambda value: value.update(
+        stateSchema="3", rollbackStateSchema="2", stateMigration="compatible",
+    ))
+    parsed = activate_release.parse_attestation(attestation.read_bytes())
+    assert (parsed["stateSchema"], parsed["rollbackStateSchema"], parsed["stateMigration"]) == (
+        "3", "2", "compatible",
+    )
+
+
+def test_resident_parser_preserves_exact_v1_five_key_compatibility():
+    parsed = activate_release.parse_attestation(canonical_attestation())
+    assert set(parsed) == {"archive", "schema", "sha256", "sourceCommit", "workflow"}
+    assert parsed["schema"] == "kb.release-attestation/v1"
 
 
 def fake_io(events: list[str], *, signature_ok: bool):

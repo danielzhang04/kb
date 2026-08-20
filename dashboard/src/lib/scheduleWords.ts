@@ -5,8 +5,21 @@
 
 export type RecurrencePreset = 'daily' | 'weekday' | 'weekly' | 'custom-raw';
 
+export function localTimestampLabel(iso: string): string {
+  const parsed = Date.parse(iso);
+  return Number.isNaN(parsed) ? iso : new Date(parsed).toLocaleString();
+}
+
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 type Day = (typeof DAYS)[number];
+const EDITOR_DAYS: readonly Day[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+export type RecurrenceDay = Day;
+
+export interface StructuredRecurrence {
+  days: Day[];
+  times: string[];
+}
 
 const DAY_LABEL: Record<Day, string> = {
   sun: 'Sun', mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat',
@@ -14,7 +27,7 @@ const DAY_LABEL: Record<Day, string> = {
 
 const DAY_NUMBER: Record<string, Day> = { '0': 'sun', '7': 'sun', '1': 'mon', '2': 'tue', '3': 'wed', '4': 'thu', '5': 'fri', '6': 'sat' };
 
-export interface ScheduleDescription {
+interface ScheduleDescription {
   label: string;
   preset: RecurrencePreset;
   /** A raw value is deliberately only exposed by the editor, never a schedule card. */
@@ -27,9 +40,9 @@ function day(value: string): Day | null {
   return DAY_NUMBER[normalized] ?? (DAYS.includes(normalized as Day) ? normalized as Day : null);
 }
 
-function parseDays(field: string): Day[] | null {
+function parseDays(field: string, allowWeekdayRange = true): Day[] | null {
   if (field === '*') return [...DAYS];
-  if (field.toLowerCase() === 'mon-fri') return ['mon', 'tue', 'wed', 'thu', 'fri'];
+  if (allowWeekdayRange && field.toLowerCase() === 'mon-fri') return ['mon', 'tue', 'wed', 'thu', 'fri'];
   if (!/^[a-z0-9,]+$/i.test(field)) return null;
   const values = field.split(',').map(day);
   return values.some((value) => value === null) ? null : [...new Set(values as Day[])].sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b));
@@ -51,6 +64,55 @@ function formatTime(hour: number, minute: number): string {
   const suffix = hour >= 12 ? 'PM' : 'AM';
   const twelveHour = hour % 12 || 12;
   return `${twelveHour}:${String(minute).padStart(2, '0')} ${suffix}`;
+}
+
+export function recurrenceTimeErrors(times: string[]): Map<number, string> {
+  const errors = new Map<number, string>();
+  const seen = new Map<string, number>();
+  times.forEach((time, index) => {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+      errors.set(index, `Time ${index + 1} is invalid.`);
+      return;
+    }
+    const first = seen.get(time);
+    if (first !== undefined) {
+      errors.set(first, `Time ${first + 1} duplicates time ${index + 1}.`);
+      errors.set(index, `Time ${index + 1} duplicates time ${first + 1}.`);
+    } else {
+      seen.set(time, index);
+    }
+  });
+  return errors;
+}
+
+/** Return a structured representation only when cron can name exactly the selected times. */
+export function decomposeRecurrence(cron: string | null | undefined): StructuredRecurrence | null {
+  const fields = (cron ?? '').trim().split(/\s+/);
+  if (fields.length !== 5 || fields[2] !== '*' || fields[3] !== '*') return null;
+  const minutes = parseNumbers(fields[0], 59);
+  const hours = parseNumbers(fields[1], 23);
+  const parsedDays = parseDays(fields[4], false);
+  if (!minutes || !hours || !parsedDays || (minutes.length > 1 && hours.length > 1)) return null;
+  const selectedDays = EDITOR_DAYS.filter((selected) => parsedDays.includes(selected));
+  const selectedTimes = minutes.length === 1
+    ? hours.map((hour) => `${String(hour).padStart(2, '0')}:${String(minutes[0]).padStart(2, '0')}`)
+    : minutes.map((minute) => `${String(hours[0]).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  return { days: selectedDays, times: selectedTimes };
+}
+
+/** Compile only the custom-picker subset to cron. Cross-product time sets are intentionally refused. */
+export function compileRecurrence(value: StructuredRecurrence): string | null {
+  if (recurrenceTimeErrors(value.times).size > 0) return null;
+  const selectedTimes = [...new Set(value.times)].sort((a, b) => a.localeCompare(b));
+  const selectedDays = EDITOR_DAYS.filter((selected) => value.days.includes(selected));
+  if (selectedTimes.length === 0 || selectedDays.length === 0) return null;
+  const hours = [...new Set(selectedTimes.map((time) => time.slice(0, 2)))].sort((a, b) => a.localeCompare(b));
+  const minutes = [...new Set(selectedTimes.map((time) => time.slice(3, 5)))].sort((a, b) => a.localeCompare(b));
+  if (hours.length > 1 && minutes.length > 1) return null;
+  const minuteField = minutes.map(Number).sort((a, b) => a - b).join(',');
+  const hourField = hours.map(Number).sort((a, b) => a - b).join(',');
+  const dayField = selectedDays.length === EDITOR_DAYS.length ? '*' : selectedDays.join(',');
+  return `${minuteField} ${hourField} * * ${dayField}`;
 }
 
 function describeCron(schedule: string): ScheduleDescription | null {

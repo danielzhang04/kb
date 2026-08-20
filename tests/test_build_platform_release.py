@@ -29,7 +29,7 @@ def release_source(root: Path) -> Path:
         "dashboard/dist/app.js", "dashboard/server/index.ts", "dashboard/src/lib/timelineModel.ts", "dashboard/package.json",
         "dashboard/package-lock.json", "dashboard/node_modules/pkg/index.js", "scripts/cards.py",
         "schemas/compatibility.json", "dashboard/config/repositories.json",
-        "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/export_tier0.py",
+        "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/control_plane_schema.py", "deploy/export_tier0.py",
         "deploy/validate_vm_runtime.py", "deploy/systemd/kb-dashboard.service",
     ):
         path = source / rel
@@ -54,6 +54,7 @@ def test_release_is_versioned_and_excludes_data(tmp_path: Path):
         assert "dashboard/src/lib/timelineModel.ts" in names
         assert "deploy/activate_release.py" in names
         assert "deploy/bootstrap_vm.py" in names
+        assert "deploy/control_plane_schema.py" in names
         assert "deploy/export_tier0.py" in names
         assert "deploy/validate_vm_runtime.py" in names
         assert "deploy/systemd/kb-dashboard.service" in names
@@ -63,14 +64,26 @@ def test_release_is_versioned_and_excludes_data(tmp_path: Path):
         assert "MANIFEST.sha256" in names
         manifest = archive.extractfile("MANIFEST.sha256").read().decode("utf-8")
         assert "  dashboard/src/lib/timelineModel.ts\n" in manifest
-    assert json.loads(attestation.read_text(encoding="utf-8")) == {
-        "archive": output.name,
-        "schema": "kb.release-attestation/v1",
+    assert attestation.read_bytes().endswith(b"\n")
+
+
+def test_release_attestation_uses_registry_metadata(tmp_path):
+    source = release_source(tmp_path)
+    output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
+    attestation = tmp_path / f"kb-platform-{VERSION}.attestation.json"
+    build_release(source, VERSION, output, attestation)
+    value = json.loads(attestation.read_bytes())
+    assert set(value) == {
+        "archive", "schema", "sha256", "sourceCommit", "stateSchema",
+        "rollbackStateSchema", "stateMigration", "workflow",
+    }
+    assert value == {
+        "archive": output.name, "schema": "kb.release-attestation/v2",
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-        "sourceCommit": VERSION,
+        "sourceCommit": VERSION, "stateSchema": "2",
+        "rollbackStateSchema": "1", "stateMigration": "breaking",
         "workflow": "kb-platform-release",
     }
-    assert attestation.read_bytes().endswith(b"\n")
 
 
 def test_utf8_manifest_is_accepted_by_the_release_consumer(tmp_path: Path):

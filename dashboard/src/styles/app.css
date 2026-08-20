@@ -31,7 +31,7 @@
  *              --tier-t1 / --tier-t2 / --tier-t3   (escalating warmth = risk)
  *              --model-cheap / --model-standard / --model-deep  (aliases of the tier ramp — see MODEL below)
  *   Spacing    --space-0 (2px) / --space-1 (4px) .. --space-12 (48px), --gap (alias = --space-3)
- *   Type       --font-sans / --font-mono / --font-serif (system stacks only, no external fonts)
+ *   Type       --font-sans / --font-mono (system stacks only, no external fonts)
  *              --text-xs 11 / --text-sm 12 / --text-base 13 / --text-md 14 / --text-lg 16 / --text-xl 20
  *   Type ROLES --type-title / --type-section / --type-body / --type-meta / --type-metric (-size/-weight)
  *              + --tracking-eyebrow.  A VIEW STYLES BY ROLE, never by raw --text-* or a px literal.
@@ -178,12 +178,6 @@
   /* ---- Type (system stacks only — self-contained, no external fonts) ---- */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
-  /* Field-guide restyle 2026-08-18 — GROUNDWORK ONLY. The reference sets its display headings in an old-
-   * style serif; this token makes that available without spending it, because the structural section
-   * reframe that would consume it is ON HOLD. Nothing in the app resolves to it today except the opt-in
-   * .mc-title--display class below, which no view applies yet. Do NOT retarget an existing heading class
-   * onto this until the reframe lands. System stacks only, same rule as the other two. */
-  --font-serif: 'Iowan Old Style', Georgia, Palatino, 'Book Antiqua', 'Times New Roman', serif;
   --text-xs: 11px; /* eyebrow / badge / col-headers */
   --text-sm: 12px; /* secondary / timestamps / nav labels */
   --text-base: 13px; /* body / table cell — dense tool */
@@ -440,19 +434,6 @@ select option {
 /* Sans numbers that still need to align (KPI values, live counts, ledger figures). */
 .mc-num {
   font-variant-numeric: tabular-nums;
-}
-
-/* ---- Display title (field-guide restyle 2026-08-18) — ADDITIVE + OPT-IN, applied by nothing yet.
- * The reference sets its display headings in an old-style serif at a slightly negative tracking and a
- * medium weight. This is that treatment, parked as a class so the structural section reframe (ON HOLD)
- * can adopt it in one line per surface when it lands. It deliberately does NOT set a size: it composes
- * with whatever type ROLE the element already carries (--type-title-size etc.), so applying it changes
- * the FACE and not the scale, and kb stays dense. Do not fold this into .mc-topbar__title or any other
- * existing heading class — that retarget is the reframe's call, not this pass's. ---- */
-.mc-title--display {
-  font-family: var(--font-serif);
-  letter-spacing: -0.02em;
-  font-weight: 500;
 }
 
 /* ============================================================================
