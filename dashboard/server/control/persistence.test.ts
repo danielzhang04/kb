@@ -1,6 +1,7 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import {
   createNodePersistenceDeps,
@@ -8,7 +9,26 @@ import {
   persistControlDocumentSync,
   spyPersistenceDeps,
 } from './persistence.ts';
-import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
+import {
+  createDeploymentFixture,
+  createExistingRootFileStoreHarnessForTest,
+  createLeasedFileStoreForTest,
+} from './test-fixtures/controlStore.ts';
+
+const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(
+  new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
+
+const readDocument = (path: string): Record<string, any> => JSON.parse(readFileSync(path, 'utf8'));
+
+it('pads only test documents to an exact persisted byte target', () => {
+  const opened = createLeasedFileStoreForTest({ persistenceTargetBytesForTest: 8192 });
+  try {
+    opened.store.createDeployment('operator', createDeploymentFixture());
+    expect(statSync(opened.path).size).toBe(8192);
+  } finally {
+    opened.close();
+  }
+});
 
 it('orders both Linux barriers for deploy-critical persistence', () => {
   const calls: string[] = [];
@@ -126,5 +146,69 @@ it('injects a real spy and coalesces migration plus crash normalization into one
   } finally {
     fileStores.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('coalesces each deploy-critical mutation into one persisted transaction', () => {
+  const calls: string[] = [];
+  const deps = spyPersistenceDeps(calls, createNodePersistenceDeps());
+  const opened = createLeasedFileStoreForTest(
+    { persistenceDepsForTest: deps }, fixture('v1-supported.json'),
+  );
+  try {
+    expect(calls.filter((call) => call === 'rename')).toHaveLength(1); // migration
+    const migrated = readDocument(opened.path);
+    calls.length = 0;
+    const made = opened.store.createDeployment('operator', createDeploymentFixture());
+    expect(made.ok).toBe(true);
+    expect(calls.filter((call) => call === 'rename')).toHaveLength(1);
+    const afterCreate = readDocument(opened.path);
+    expect(afterCreate.documentRevision).toBe(migrated.documentRevision + 1);
+    expect(afterCreate.deployments[0].revision).toBe(1);
+    expect(afterCreate.deployments[0].operationReceipts).toHaveLength(1);
+    calls.length = 0;
+    if (!made.ok) throw new Error(made.detail);
+    const input = {
+      expectedRevision: made.value.revision,
+      expectedState: made.value.state,
+      nextState: 'aborted',
+      idempotencyKey: 'abort-1',
+      patch: {
+        terminalOutcome: {
+          kind: 'aborted',
+          at: '2026-08-20T01:00:00.000Z',
+          by: 'operator',
+        },
+      },
+    } as const;
+    const first = opened.store.transitionDeployment('operator', made.value.deploymentRef, input);
+    expect(first.ok).toBe(true);
+    expect(calls.filter((call) => call === 'rename')).toHaveLength(1);
+    const afterTransition = readDocument(opened.path);
+    expect(afterTransition.documentRevision).toBe(afterCreate.documentRevision + 1);
+    expect(afterTransition.deployments[0].revision).toBe(2);
+    expect(afterTransition.deployments[0].operationReceipts).toHaveLength(2);
+    const transitionBytes = readFileSync(opened.path);
+    calls.length = 0;
+    expect(opened.store.transitionDeployment('operator', made.value.deploymentRef, input))
+      .toMatchObject({ ok: true, replayed: true });
+    expect(calls.filter((call) => call === 'rename')).toHaveLength(0);
+    expect(readFileSync(opened.path)).toEqual(transitionBytes);
+    expect(opened.store.transitionDeployment('operator', made.value.deploymentRef,
+      {
+        ...input,
+        nextState: 'failed',
+        patch: {
+          terminalOutcome: {
+            kind: 'failed',
+            at: '2026-08-20T01:00:00.000Z',
+            by: 'operator',
+          },
+        },
+      })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(calls.filter((call) => call === 'rename')).toHaveLength(0);
+    expect(readFileSync(opened.path)).toEqual(transitionBytes);
+  } finally {
+    opened.close();
   }
 });
