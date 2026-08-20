@@ -58,8 +58,10 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 
 ## Step 2 — Decide what each line depicts (run per VO line)
 1. **Classify → pick a class** from the grammar's narration→shot-class table; record it as `shot_class`.
-2. **INVENT the shot** against the example-shots bar — **non-literal by default**, literal only for a
-   concrete physical action or object. A shot that merely draws its line's words fails → reclassify.
+2. **INVENT the shot** against the example-shots bar. Reach first for the restored non-literal moves:
+   symbolic stand-in, map/plan, number-or-text object, reaction, empty-world/aftermath, or hero-object.
+   Literal re-enactment is one option, reserved for a concrete physical action or object. A shot that
+   merely draws its line's words fails → reclassify.
    **The beat's true subject bears the frame** — a person, an object, or a place: where the subject is a
    person, a party, a decision, or an act, the bodies doing it are what stages it; where it is genuinely a
    thing, place, or mechanism, that is. Non-literal changes the DEPICTION, never the scene's occupancy:
@@ -68,11 +70,13 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 3. **Reference figures, poses, and expressions by registry vocabulary NAME, backticked, inline** in the
    prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). **On a
    registry-backed (named cast) figure, never describe body pose, finger mechanics, or facial
-   expression in words** — that figure's seed carries them, and naming the asset IS the authoring act. A
-   pose, expression, prop, plate or place name the registry lacks may still be written; the Pass-1 gate
-   surfaces it for the human's pre-gen approval, and a veto comes back to you as a restage. A new named
-   CAST member is minted through the standard cast-generation wave without a separate human slot (G2,
-   2026-08-12) — you still plan it into the cast list at Step 3a.
+   expression in words** — that figure's seed carries them, and naming the asset IS the authoring act.
+   Pose, expression, interaction, and costume are CLOSED-WORLD: the named primitive must already resolve
+   in `registry.json` or the video's approved library manifest, and a figure keeps its registry-pinned
+   costume. Snap the sentence to the nearest primitive. If none is close, name no invented token or prose
+   pose; put `ELEVATION — primitive needed: <act>; BLOCKED until minted + approved` in `notes`. A new named
+   CAST member still follows the standard cast-generation wave without a separate human slot (G2,
+   2026-08-12) and is planned at Step 3a.
    **COMPOSE the figure's sentence FROM that vocabulary.** The bodily act a sentence gives a figure IS the
    primitive bound to it, written around the backticked name ("stands `action-powerstance`, `expr-smug`, at
    the head of an assembly line"), never a second act the seed cannot hold. The card is minted holding the
@@ -81,10 +85,8 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    REPLACES the act:** the sentence still says what the body is DOING, phrased inside that primitive's own
    vocabulary ("`hold-both-hands`, carrying a cardboard box of desk things") — a clause that names the pose
    and describes no act mints the card against the pose REFERENCE alone, and the pose does not land.
-   **Default: conform the sentence to the CLOSEST existing primitive** — the library nearly always carries the beat, and bending the
-   sentence to it costs nothing. A beat that genuinely needs an act no primitive holds is an ASSET
-   decision, not a sentence: it was planned at 3a as a Pass-1 mint (asset base first, shot after), never
-   invented here.
+   **Conform the sentence to the CLOSEST existing primitive.** A beat no primitive can carry is the
+   blocked elevation above; the primitive is minted and approved before the shot can be authored.
    **A crowd-rig figure has no seeded pose or expression, so plain scene prose is its ONLY expression
    channel** — write the beat's simple expression ("grinning", "worried", "deadpan") and the group's
    whole-body attitude, exactly as any other scene fact. An unauthored crowd renders uniformly neutral,
@@ -94,12 +96,10 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    both HARD-refuse the other shapes).
    **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** Stage its distance against
    the single crowd-distance law in `visual-grammar.md` §2. **Crowd is for genuine MASSES.**
-   An anonymous individual who BEARS the beat — performs the gag, reacts, decides — is **CAST**, never
-   demoted to the rear zone and never staged as the bare `` `base` `` rig (both engines refuse that
-   casting by name). It was planned into the cast list at step 3a: resolved to an existing cast member
-   where the story says it IS one, otherwise a NEW named cast member minted through the standard
-   cast-generation waves. Only people with no story-bearing part are staged at crowd scale, and a beat
-   that is genuinely a mass is staged as mass action. Tier law: `visual-grammar.md §2`.
+   **One seeded figure is the default, cheap staging for a human beat.** An anonymous individual who
+   performs, reacts, or decides is promoted to CAST — existing where the story identifies one, otherwise
+   a new named member from the standard cast wave — never the bare `` `base` `` rig. Crowd is the
+   exception, chosen only when the visible mass itself is the story point. Tier law: `visual-grammar.md §2`.
    The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
    gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
    high-risk case in `notes`. Field spec: `shots-schema.md §2`.
@@ -138,9 +138,10 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    clause (`visual-grammar.md §2` ordering law; on a delta the final clause is its one change, §1 chain
    logic). Absence is authored as a positive state of the surface, never a "no X, no Y" list (same file,
    header block).
-5. **Group into stages/chains per the grammar's chain logic** — consecutive shots on one set share a
-   `stage`, one `base` first, each `delta` changing exactly ONE physically feasible semantic transformation in
-   `changed_elements`, ≤2 deltas, then a re-base or a hard cut. **A figure's ENTRANCE is never a delta**
+5. **Use a stage chain only for a genuine progressive reveal** — something visible changes at each cut
+   and the story needs that change. Otherwise author standalone cuts, even on the same set. A chain has one
+   `base` first, each `delta` naming exactly ONE physically feasible, visually distinct semantic
+   transformation in `changed_elements`, ≤2 deltas, then a re-base or hard cut. **A figure's ENTRANCE is never a delta**
    (a delta seeds parent + canonical only, so a figure the parent frame does not contain has nothing to
    inherit): stage it as a `base`, or open a new stage on that shot. A place anchor is figure-free or already compatible
    with the later count/scale demand. Completion states quantify the end state (`all`, `entirely`, or what
@@ -166,20 +167,15 @@ split across two — which a coordinator merges in narration order, then ONE who
 - **The video's named cast** — complete, planned before authoring, and derived from the script: include every recurring or
   story-bearing person or institution whose identity matters. Do not add or remove cast to chase population;
   if a later identity is genuinely needed, revise the plan before continuing, never invent a slug mid-pass.
-  **An ANONYMOUS story-bearer is planned INTO this list here, at 3a time** — resolved to an existing cast
-  member where the story says it IS one, otherwise minted as a NEW named cast member through the standard
-  cast-generation waves (same canonical + seeding rounds as any other cast), or the beat is restaged as
-  mass action. There is no anonymous-foreground tier to fall back on (`visual-grammar.md §2`).
+  **An ANONYMOUS story-bearer is planned INTO this list here, at 3a time** — one seeded figure is the
+  default human staging, resolved to existing cast where the story identifies one or minted as NEW named
+  cast through the standard wave. Crowd is reserved for a beat whose point is the mass itself; there is
+  no anonymous-foreground tier (`visual-grammar.md §2`).
 - **The acts the beats need — matched to the primitive library HERE, once.** Walk the planned beats and
-  bind each figure's act to an existing pose/action primitive; where the closest one carries the beat, the
-  SENTENCE conforms to it at 2.3 (the default, and what almost every beat takes). A beat that genuinely
-  needs an act no primitive holds — a bodily action, or a way of holding an object, the library cannot
-  express — routes to the ASSET BASE FIRST: list it for `image-generation`'s Pass-1 gate as a REUSABLE
-  primitive (minted on the base rig, ruled on by the human, then seeded by the shot that needed it, and by
-  every later one). Both bounds: a video that mints NOTHING while a real act is missing has re-posed a
-  stance card in prose, which is the rig defect this exists to stop; a video that mints one per beat has an
-  infinitely expanding asset base. The ceiling is a HANDFUL of deliberate drops per video — never a
-  per-shot invention — and a vetoed one comes back as a restage against what exists.
+  bind each figure's act, expression, and costume to the existing registry/library catalog. The sentence
+  conforms to the nearest pose/action primitive and the figure keeps its pinned costume. If nothing close
+  carries the beat, emit the Step 2 elevation flag and block the shot; image-generation mints and approves
+  the reusable primitive first, then VPW re-authors against the now-live catalog. Never freestyle the gap.
 - **Places, stages + environments:** decide now which sets recur and carry held `stage` chains and which
   are one-frame standalones. A **`place`** is a recurring diegetic set identity (kebab-case, e.g.
   `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +

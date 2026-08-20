@@ -204,7 +204,7 @@ def test_casting_the_rig_template_is_refused_fail_loud_never_dropped_in_silence(
     bad = seeding_law_violations(K, _req(delta=PERFORMER), [PLATE])
     assert len(bad) == 1, bad
     assert "casts `base`" in bad[0] and "RIG TEMPLATE" in bad[0], bad
-    assert "NEW named cast member" in bad[0] and "mass action" in bad[0], bad
+    assert "NEW named cast member" in bad[0] and "mass itself is the story point" in bad[0], bad
     # no card can buy it off: the tier does not exist, so there is no slate that makes it legal
     assert any("casts `base`" in b for b in seeding_law_violations(
         K, _req(delta=PERFORMER),
@@ -235,16 +235,14 @@ def test_the_abolished_tier_leaves_no_seed_role_prose_behind():
     assert "pinned costume unless this beat authors a change" in cast_text, cast_text
 
 
-def test_the_anon_foreground_refusal_routes_to_cast_or_mass_action_not_a_performer():
-    """Conflict row 2: the anti-demotion clause survives P2 with only its FALLBACK rewired. The
-    refusal that used to send an author to the performer tier now sends them to the standard
-    cast-generation waves, or to mass action."""
+def test_the_anon_foreground_refusal_routes_to_cast_and_reserves_crowd_for_mass_story():
+    """The refusal promotes one story-bearer to seeded cast; crowd remains a mass-story choice."""
     bad = seeding_law_violations(K, _req(delta="A dock at dawn.",
                                          figures={"anon_foreground": ["the worker"]}), [PLATE])
     assert len(bad) == 1 and "anon_foreground" in bad[0], bad
     assert "seeded performer" not in bad[0] and "`base` plus" not in bad[0], bad
     assert "NEW named cast member" in bad[0] and "standard cast-generation waves" in bad[0], bad
-    assert "mass action" in bad[0], bad
+    assert "mass itself is the story point" in bad[0], bad
 
 
 def test_over_cap_names_the_seed_that_did_not_fit_and_never_truncates():
@@ -534,7 +532,7 @@ def test_a_base_casting_refuses_the_whole_batch_and_mints_nothing():
     spec, err = _batch(shots, out, ["E01"])
     assert spec is None, [i["name"] for i in spec] if spec else spec
     assert "E01" in err and "casts `base`" in err, err
-    assert "NEW named cast member" in err and "mass action" in err, err
+    assert "NEW named cast member" in err and "mass itself is the story point" in err, err
 
 
 def test_a_named_characters_card_is_minted_holding_the_beats_own_act():

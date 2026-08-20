@@ -1,0 +1,20 @@
+{
+  "invalid_catalog_pose": {
+    "id": "R5-invalid",
+    "still_prompt": "`miniscribe-rep` holds `action-not-in-catalog`.",
+    "notes": "",
+    "expected_hard": true
+  },
+  "valid_catalog_pose": {
+    "id": "R5-valid",
+    "still_prompt": "`miniscribe-rep` holds `action-powerstance`.",
+    "notes": "",
+    "expected_hard": false
+  },
+  "unknown_pose": {
+    "id": "R5-bypass",
+    "still_prompt": "`miniscribe-rep` holds `invented-pose`.",
+    "notes": "",
+    "expected_hard": true
+  }
+}

@@ -36,10 +36,10 @@ each class carries a RANGE (a staged interaction: handshake, tug-of-war, handoff
 
 | When the narration is… | Show a shot of class… |
 | --- | --- |
-| an abstract force/property/state (trust, inflation, dominance, "cut off") | **symbolic stand-in object** or **personification** — one concrete object/creature that *embodies* it |
+| an abstract force/property/state (trust, inflation, dominance, "cut off") | **symbolic stand-in** or **hero-object** — one concrete object/creature that *embodies* it |
 | a relationship/deal/conflict between parties | **staged interaction** between personified parties (handshake, linked arms, tug-of-war, argument) |
 | an institution/nation/company as an actor | **personified character with one identity tag** (flag-tie, hat, uniform) or its **iconic landmark** |
-| a bare number/stat/date/quantity | **number glued to its referent object**, a **diegetic dateline**, or a **countable mass** |
+| a bare number/stat/date/quantity | **number/text-object** glued to its referent, a **diegetic dateline**, or a **countable mass** |
 | a comparison or a trend | **physicalized imbalance** (tipping scale, relative size) or a **deliberately-crude in-world chart** |
 | a historical event/announcement/shock | **diegetic media** (period TV/radio/newspaper) or a **dialogue reenactment** |
 | a mechanism / "how it really works" | **register-shift to a clean infographic + animate the one transform** |
@@ -47,16 +47,16 @@ each class carries a RANGE (a staged interaction: handshake, tug-of-war, handoff
 | a claim/boast/euphemism/spin | **ironic counterpoint** (image contradicts the words) or **literal-unmasking** |
 | a dry aside/punchline | **reaction shot on the payload word** or a **deadpan cutaway to a mundane/absurd object** |
 | a line with a vivid verb/idiom | **draw the phrase literally** (a visual pun on the idiom, not the fact) |
-| a grim/violent/tragic beat | **aftermath / witness / stylized-safe + palette shift** — never gore |
+| a grim/violent/tragic beat or emotional low point | **empty-world / aftermath / witness + palette turn** — never gore |
 | scale/magnitude | **scale as argument** (relative size) or **crowd multiplication** |
 | a real physical action/object | **literal depiction** (the one place it's correct) |
 
 Record the class by its canonical name from the `shot_class` enum (`shots-schema.md §1`).
 
 **The literal / non-literal bar:**
-- **Non-literal is the DEFAULT** — draw what the beat MEANS, never the words of the sentence.
-- **Literal is reserved for a concrete physical action or object** the line actually describes.
-- **When a line could go either way, go non-literal** — skew harder than the shipped reference set.
+- **Symbolic stand-in, map, number/text-object, reaction, empty-world/aftermath, and hero-object are
+  first-class moves.** Draw what the beat means; literal re-enactment is one option for a concrete
+  physical action or object, never the automatic translation of narration.
 - Non-literal changes the depiction, not the scene's occupancy: symbolic, physicalized-imbalance and ironic-counterpoint shots remain full representative scenes, never the same scene with its people removed.
 - The calibration is `../example-shots.md`: match its depiction THINKING, never clone its content.
 - A shot that merely draws its line's words is a failure → reclassify it.
@@ -69,12 +69,11 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
   (`style-bible.md §1`). **A figureless run past ~10s is a self-audit flag** (SKILL step 3c), never a
   lint failure: taste is the human's call and no rule will ever make it.
 
-**Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
-it, each `delta` changes exactly ONE physically feasible semantic transformation, **≤2 deltas**, then a re-base or a hard cut. A world,
-setting, subject, or register change is a **hard cut**, never a delta. **Where consecutive beats play on the
-SAME set, the CHAIN is the default:** stage them as one base + deltas rather than re-inventing the
-place each cut. Departure is what a changed place, subject, or register earns; the guard against long
-single-set runs is the ≤2-delta cap and the re-base, not a standing bias against staying. **A delta PROMPT is a compact
+**Chain logic:** one idea per FRAME. A chain exists only for a genuine progressive reveal: something
+visible changes at each cut and the story needs that change. Sharing a set is not enough; standalone
+cuts are normal. The `base` establishes the stage, each `delta` changes exactly ONE physically feasible,
+visually distinct semantic transformation, **≤2 deltas**, then a re-base or hard cut. A world, setting,
+subject, or register change is always a hard cut. **A delta PROMPT is a compact
 restatement of the held scene, then the change as its FINAL clause** — the base's identity and
 load-bearing facts carried over tightened, never re-invented or paraphrased into different nouns, closing
 on the one change plus "only this changes; everything else exactly as established". A delta regenerates
@@ -98,22 +97,18 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   **Institutions may be personified cast** with one identity tag, or represented by their iconic
   landmark, building, letterhead, or product as the beat requires; reused consistently.
 - **Stage poses that HOLD** — every still is a tableau readable for its full duration, never a freeze
-  of mid-motion. Pose menu: a salute · a planted wide stance (triumph/arrival) · presenting an object
-  · a held point at a target · arms-crossed appraisal · a slump (defeat) · leaning in (conspiracy) ·
-  recoil onto the back foot (shock). A travel or continuous-action beat stages its MEANING as a
-  tableau, or lets the change arrive at a cut.
+  of mid-motion. Choose only from the live registry/library primitive catalog; a travel or continuous
+  action stages its meaning with the nearest available hold, or is elevated and blocked until a fitting
+  primitive is minted and approved.
 - **Reference cast, poses, and expressions by their registry vocabulary NAME, backticked, inline in
   the prompt prose** — "MacGregor, `expr-smug`, `action-salute`, stage-left, facing right".
   `image-generation` resolves each name to its file. **A cast name may be authored and minted at the
   Pass-1 gate** — a backticked cast name absent from `registry.json` is an authoring gap
-  `image-generation` surfaces there for approval. **A pose, interaction, or expression name must
-  ALREADY exist in `registry.json`:** unlike a cast name, a new pose or interaction template is a rare,
-  separately gated build — it changes how every figure that uses it is drawn, and a fresh one breaks
-  more than it buys. Author from the inventory: where the closest primitive carries the beat, CONFORM the
-  sentence to it — a figure sentence is composed FROM the vocabulary, and the card is minted holding the
-  act that sentence authors. Where a beat genuinely needs an act NO primitive holds, it is a deliberate
-  Pass-1 mint — a reusable primitive built and ruled on BEFORE the shot seeds it — or the beat is
-  restaged. Never a per-shot invention: the asset base grows by a handful of deliberate drops per video.
+  `image-generation` surfaces there for approval. **Pose, interaction, expression, and costume are
+  CLOSED-WORLD:** the primitive must ALREADY exist in `registry.json` or the video's approved library,
+  and the figure keeps its pinned costume. Conform the sentence to the closest entry. If none is near,
+  write no invented token or prose pose; emit the VPW elevation flag and block the shot until the reusable
+  primitive is minted, approved, and registered.
   A named asset is the authoring act, and the prompt may not narrate what the seed already carries — no
   eyelid, brow, nose, ear, finger, palm, or proportion prose next to a named pose or expression. Prose
   competing with a seed is how one figure's attributes bleed onto another. **This is a rule about
@@ -127,9 +122,9 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   an unbuilt prop is the failure — it resolves to nothing.
 - **Emotion acts through mouth and body, restrained by default:** the beat's lead gets a legible
   expression sized to its register, secondary characters hold one, posture carries the rest. Register
-  dial (`../storytelling-grammar.md §1.4`): `expr-smug` on con/boast beats · hopeful-warm on the sell
-  · `expr-deadpan` on ironic counterpoint · `expr-worried` on the turn · grim-flat on
-  human-cost beats. Reserve strong faces for beats that warrant them; a swap is a legitimate delta.
+  dial (`../storytelling-grammar.md §1.4`): `expr-smug` on con/boast beats · `expr-delighted` on the sell
+  · `expr-deadpan` on ironic counterpoint · `expr-worried` on the turn. Reserve strong faces for beats
+  that warrant them; an expression change earns a delta only when it visibly advances the story.
 - **Co-stars share eye-line and height** unless the size gap or the disconnection IS the argument. A named face
   that carries the beat states its orientation and the foreground/occlusion protection that keeps it visible.
 - **Roles read at a glance.** Named cast wear pinned canonical outfits (`registry.json`) unless the
@@ -165,19 +160,20 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   stay place-exempt, and many shots should not be using plates at all.
 - **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
   member acting alone is staged as an individual.
-- **Every human in frame is either NAMED CAST or CROWD — no third tier, no promotion path.** NAMED CAST
+- **Every human in frame is either NAMED CAST or CROWD — no third tier.** NAMED CAST
   has a backticked slug and a canonical, and it is seeded; CROWD is declared `"crowd": true`
   (`shots-schema.md §2`) and seeded from the crowd exemplar.
-  **A story-bearing foreground individual must not be replaced with an empty object, nor demoted to
-  rear-zone crowd, to avoid spending a figure — cast it, or stage the beat as mass action** — the
+  **One seeded figure is the default, cheap way to stage a human beat.** A story-bearing individual must
+  not be replaced with an empty object or demoted to rear-zone crowd to avoid a figure — promote it to
+  cast. Crowd is the exception, chosen only when the visible mass is the story point — the
   demotion is the measured way a joke becomes wallpaper
   (`videos/2026-07-28-bricks-fresh/scratchpad/authoring-audit.md` §1: 19 of 26 idiom-puns staged their
   story-bearer as background crowd).
-  An anonymous foreground human does not exist; an anonymous person with an individual count, action, or
-  face requirement is CAST or the beat becomes mass action. **An anonymous story-bearer is PLANNED as a
+  An anonymous foreground human does not exist; an anonymous person with an individual action or face
+  requirement is CAST. **An anonymous story-bearer is PLANNED as a
   NEW named cast member and minted through the standard cast-generation waves — the same canonical and
   seeding rounds every other cast member runs, no shortcut mint — resolved instead to an EXISTING cast
-  member where the story says it IS one, or the beat is restaged as mass action.** That plan is made at
+  member where the story says it IS one.** That plan is made at
   authoring time, at the cast-planning step (`visual-prompt-writer` SKILL step 3a), not improvised at
   gen time: `forge.py`'s `shot_cast` never resolves the bare `` `base` `` rig as a figure, and
   `seeding_law_violations` refuses a shot that casts it, by name. Named cast spends a foreground slot
@@ -213,9 +209,9 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   | 2 cast + crowd, fresh | step-1 figure A · step-1 figure B · plate · crowd exemplar | nothing |
   | 2 cast, delta beat | parent frame · canonical A · canonical B · one changed pose *or* expression | nothing — unchanged, single-step, exactly as today |
 
-  Stated positively: **a fresh two-cast shot is the BASE of a stage; every later two-cast beat in that
-  place is a delta on it.** Crowd-rig figures are a mass, not identities, and don't count against the
-  cap.
+  A fresh two-cast shot that begins a genuine progressive reveal is its stage BASE; later beats are
+  deltas only while the visible story change continues. Crowd-rig figures are a mass, not identities,
+  and don't count against the cap.
 - **An `interaction` slug is a TWO-FIGURE geometry reference, never one figure's pose.** The asset is
   two blank mannequins carrying the clasp geometry and eye-line; it resolves the contact BETWEEN two
   bodies and binds to neither alone. So `handshake` / `handoff` / `fistbump` are
@@ -283,8 +279,8 @@ frame. Everything in frame earns its place by meaning, palette code, or staging.
 - **Locked camera** — no authored moves except deliberate exceptions. **Hard cuts only**, no transitions.
 - **No long-form word-captions** — text is diegetic; shorts keep word-highlight captions.
 - **Red is the only emphasis ink**, semantic (alarm / prohibition / ownership / the last punch element).
-- **Numbers live in-world** — a baked diegetic element or a delta-chain, never floating text; an
-  enumeration realizes as a delta-chain or baked diegetic text.
+- **Numbers live in-world** — a baked diegetic object, or a progressive chain when the accumulation is
+  itself the story reveal; never floating text.
 
 Full grammar + dial values: `universal.md §13a-iii` + `motion-tokens.json` / `audio-tokens.json`.
 

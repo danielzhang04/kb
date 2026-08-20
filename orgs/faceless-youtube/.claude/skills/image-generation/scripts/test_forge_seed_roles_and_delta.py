@@ -460,7 +460,8 @@ def test_every_recipe_shape_states_complete_attribute_ownership():
     assert "preserve its set, palette, outline weight and lighting" in plate, plate
 
     tile = _prose((forge_module.STYLE_ANCHOR_ROLE, "style-tile", None))
-    assert "Take NOTHING else" in tile and "PALETTE SATURATION and TEMPERATURE" in tile, tile
+    assert "Take NOTHING else" in tile and "PALETTE SATURATION" in tile, tile
+    assert "SATURATION and TEMPERATURE" not in tile, tile
 
 
 def test_manual_delta_declaration_must_bind_primitive_to_the_authored_character():

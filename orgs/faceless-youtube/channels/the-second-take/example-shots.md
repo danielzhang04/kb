@@ -44,8 +44,8 @@ place, since a law-violating exemplar teaches the violation.
 
 > MacGregor commissioned a Captain Thomas Strangeways to write a three-hundred-and-fifty-page book
 
-**Ideal shot:** a lone figure, `back-to-viewer` on the `base` rig, steps through the guidebook propped open like a doorway; its spine stands full-frame-height beside the walker, stamped 350 PAGES; radiant golden paradise light spills out from between the pages ahead.
-**Why:** the shipped version glued "350 pages" to a floating book as a label; staging the count as a doorway argues why nobody read past the cover, the harder bar this file sets.
+**Ideal shot:** the guidebook stands open like a full-frame doorway, its spine stamped 350 PAGES; tiny unread page-lines recede toward radiant paradise light between the covers, while a discarded magnifying glass lies far below.
+**Why:** the shipped version used a floating label; making the book itself the hero-object turns the count into scale and argues why nobody read past the cover.
 
 ## 6. Symbolic stand-in (mined, Poyais habit)
 
@@ -65,7 +65,7 @@ place, since a law-violating exemplar teaches the violation.
 
 > with a capital city, a national bank, its own money
 
-**Ideal shot:** base, an empty golden paradise, lush hills under a radiant sky, nothing built yet; delta 1 adds a cream colonnaded capital skyline folding into the mid-right vista; delta 2 adds a columned national bank grounded foreground-left; delta 3 adds a fan of engraved banknotes laid into the lower-right. Each delta holds everything prior; one element changes per cut.
+**Ideal shot:** base, a cream colonnaded capital skyline already folded into an otherwise empty golden paradise; delta 1 adds a columned national bank grounded foreground-left; delta 2 adds a fan of engraved banknotes laid into the lower-right. Each delta holds everything prior; one story-bearing element changes per cut.
 **Why:** three claims building the same lie share one stage inside the video's own `place`, cutting on
 the noun each promises, never re-establishing the vista from scratch.
 
@@ -79,10 +79,9 @@ dust hanging in thin morning light.
 
 > Later: Every morning for a year, that room opened without a single visitor
 
-**Ideal shot (in-place follow-up):** `place: poyais-brokerage`. A lone clerk on the `crowd-exemplar`
-rig stands behind the counter, ledger open, the chairs behind him still empty; the room goes
-unrestated — the shot seeds off the plate and spends its prompt only on what changed: a counter now
-staffed.
+**Ideal shot (in-place follow-up):** `place: poyais-brokerage`. The same counter holds one open ledger
+beside an untouched key; every chair remains empty under cold, desaturated morning light. The room
+seeds off the plate; the empty-world aftermath, not a decorative delta, carries the year without visitors.
 **Why:** the plate is the place's no-cast establishing frame; every later shot in that place seeds off
 it instead of re-describing the counter, chairs, and light from scratch — the mechanism C-4/C-5 pin (a
 recurring set holds its content across every visit to it), shown here as a pair instead of argued in

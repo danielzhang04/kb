@@ -411,7 +411,7 @@ def test_a_delta_that_changes_an_expression_must_carry_that_expressions_pixels()
 
 
 def test_a_delta_restating_the_expression_its_chain_holds_stays_parent_plus_canonical():
-    """The default delta authoring re-states the whole recipe while only a prop changes; the
+    """A genuine progressive delta may re-state the held recipe while only a prop changes; the
     builder derives that no expression CHANGED, so no primitive is demanded (and no cap slot)."""
     spec, err, _ = _run(_doc(
         {"id": "E1", "place": "office", "stage": "office", "stage_role": "base",

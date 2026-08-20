@@ -44,13 +44,15 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    each other), causality? On a multi-figure shot, is the geometry actually PINNED — relative scale, who
 >    looks where, what touches what — or left for the generator to guess? Would a viewer who knows the
 >    story spot a wrongness?
-> 2. **Literal-check against the bar.** Does the shot merely draw the WORDS of its line where the grammar
->    wants its meaning? Non-literal is the default and skews harder than a competent first idea; literal
->    is correct only for a concrete physical action or object. Judge against `example-shots.md`.
-> 3. **Prompt construction.** Does every backticked name exist in `registry.json`? Flag each one that does
->    not — not automatically an error (image-gen's Pass-1 gate can approve a new asset), but an unflagged
->    typo or a silently invented slug is. Then: is body pose, finger mechanics, or facial expression
->    written as PROSE on a SEEDED figure, where the registry name is the authoring act? (A crowd-rig
+> 2. **Depiction choice against the bar.** Does the shot merely draw the WORDS of its line? Look for the
+>    missing first-class move — symbolic stand-in, map, number/text-object, reaction, empty-world/
+>    aftermath, or hero-object. Literal re-enactment is one option for concrete action, not the default.
+> 3. **Prompt construction.** Does every pose/expression/interaction token resolve in `registry.json` or
+>    the approved video library, and does every seeded figure keep its pinned costume? Any miss is blocked:
+>    snap to the nearest primitive, or require the explicit elevation flag until one is minted and approved.
+>    Then: is body pose, finger mechanics, costume, or facial expression
+>    written as PROSE on a SEEDED figure, where the registry name is the authoring act? Freestyle prose
+>    poses remain critic-judged. (A crowd-rig
 >    figure is the opposite case — prose is its ONLY expression channel, so beat-fit expression and group
 >    attitude there are correct, and their ABSENCE on a crowd beat whose energy lives in the VO is the
 >    finding.) Is absence positive? Is crowd-rig text left in the prompt, or does its distance fail
@@ -83,12 +85,14 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    figure toward background scale by implication even though nothing said so outright? (Mechanism:
 >    audit-drift §D/§E1 — L66's crowd clause was correctly written for the CROWD and still miniaturized the
 >    foreman by proximity, because nothing pinned his plane/scale against Wiles's.)
-> 7. **Action-chain cause→effect readability.** Lint proves only the narrowest omission: two adjacent shots
+> 7. **Chain necessity and cause→effect readability.** A chain exists only for a genuine progressive reveal:
+>    each delta must make a visibly distinct, story-needed change. A shared set, expression tweak, label,
+>    decorative prop, or local reposition does not earn one. Lint proves the decidable floor; then inspect two adjacent shots
 >    in one `place` whose VO continues on a shared prop, where the later shot declares no chain at all and no
 >    `hard_cut: true`. It stays silent the moment ANY chain is declared, and it never reads `still_prompt`
 >    — so whether a declared chain actually READS as one causal action is entirely yours. Walk a `stage`
 >    chain (or a run of shots without `hard_cut`) as an audience would: does
->    shot N+1 visibly follow FROM shot N's action, and does the chain's last shot deliver the payload the
+>    shot N+1 visibly follow FROM shot N's action, materially change the frame, and deliver the payload the
 >    VO promises (the consequence, the reaction, the reveal)? A chain that is mechanically linked but reads
 >    as disconnected aftermath portraits still fails. (Mechanism: audit-drift §E4 — L89-L91 were three
 >    individually competent portraits with no visible cause-and-effect between "pried open," "swapped the
@@ -102,8 +106,8 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    beat; otherwise the environment, the product itself, or an anonymous bearer doctrine already allows
 >    carries the frame, and a personified prop recurring as a general-purpose mascot (pre-reset it was an
 >    OPENING device) is the finding. The fix direction is a cast member — or an entity — the beat genuinely
->    belongs to (an existing one, or a new one planned at step 3a) or a restage as mass action, never a
->    demotion of the beat to rear-zone crowd. (Mechanism: vpw-log.md Phase B3, the bulk
+>    belongs to (an existing one, or a new one planned at step 3a). One seeded figure is the cheap default
+>    for a human beat; crowd is chosen only when mass is the point, never as a casting escape. (Mechanism: vpw-log.md Phase B3, the bulk
 >    `anon_foreground`→named-cast conversion pass; audit-drift §E7 — L100/L101 cast two specific named leads
 >    for a beat the script only ever calls "the managers.")
 >
@@ -115,13 +119,12 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 > still-life stretch is a plan-level fact the human should see, not a per-shot quibble. **Cadence taste** — flag a slow static hold with no earned progressive
 > reveal, legibility, or gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid the
 > payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Place
-> monotony** — flag a span that keeps re-staging beats in a place the narration had every reason to leave
-> (the chain is the default while a set holds; a changed place, subject, or register is what earns
-> departure — §1 chain logic), and equally a span where vantage, figure scale, depth shape, or palette
+> monotony** — flag a span that keeps re-staging beats in one place after the narration has moved on,
+> and equally a span where vantage, figure scale, depth shape, or palette
 > temperature repeats shot after shot: the repetition across the list is the defect, not any one frame.
 > Name the span and the beat that should have changed; impose no cap, count, or target. **Stage
-> grouping** — the **SEMANTIC call only**: *are these really one held set?* A long-form plan revisiting a setting
-> with zero stage chains is a finding; never demand an arbitrary number. The mechanical caps (one `base`, ≤2 `delta`s,
+> grouping** — the **SEMANTIC call only**: *is this a genuine progressive reveal on one held set?* Zero
+> chains is valid; never demand one for recurrence alone. The mechanical caps (one `base`, ≤2 `delta`s,
 > contiguity, delta timing, order) are `lint_shots.py`'s job; do not re-flag them.
 >
 > **NEVER flag these — over-triggering is the failure mode:**
@@ -129,7 +132,7 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >   load-bearing* facts, never brevity, and never demand inventory-style prompts.
 > - Style choices the style bible owns (the locked rig, palette codes, negative space, the humor dial).
 >   You are not the style police; the bible and the post-gen review own the pixels.
-> - Non-literal depictions that feel "indirect" — non-literal is the channel default and the point.
+> - Non-literal depictions that feel "indirect" — they are first-class moves and often the point.
 > - A character or thing shown at or after its first narration mention, absent real setup→payoff
 >   withholding. Disclosure order fires ONLY on deliberate withholding.
 > - A held pose as "static" — stillness is the medium; flag only a *freeze of motion* or a dead

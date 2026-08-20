@@ -58,15 +58,10 @@ def test_the_cast_exemption_waives_the_RULING_and_keeps_the_ROW():
 
 
 def test_vpw_promises_the_gate_only_for_what_the_gate_actually_rules_on():
-    """VPW is the file an author reads while writing the prompt, so it carries the same split —
-    scoped to primitives/props/places, with cast named separately and routed to the mint."""
-    assert ("A pose, expression, prop, plate or place name the registry lacks may still be "
-            "written; the Pass-1 gate surfaces it for the human's pre-gen approval, and a veto "
-            "comes back to you as a restage.") in VPW_TEXT
-    assert ("A new named CAST member is minted through the standard cast-generation wave without "
-            "a separate human slot (G2, 2026-08-12) — you still plan it into the cast list at "
-            "Step 3a.") in VPW_TEXT
-    # the unconditional promise the exemption contradicted must not survive anywhere in VPW
+    """VPW keeps primitives closed-world while routing a new cast identity through its own wave."""
+    assert "Pose, expression, interaction, and costume are CLOSED-WORLD" in VPW_TEXT
+    assert "ELEVATION — primitive needed: <act>; BLOCKED until minted + approved" in VPW_TEXT
+    assert "CAST member still follows the standard cast-generation wave" in VPW_TEXT
     assert "A name the registry lacks may still be written" not in VPW_TEXT
 
 
@@ -80,18 +75,10 @@ def test_the_two_skills_agree_on_who_owes_a_human_ruling():
     assert "without a separate human slot" in VPW_TEXT
 
 
-def test_the_visual_grammar_pass1_sentence_is_left_alone():
-    """visual-grammar's Pass-1 sentence is PRIMITIVE-scoped and was correct before this fix. It is
-    pinned here so a later sweep of the same words does not 'consistency-fix' a correct file into
-    saying something about cast that it deliberately does not say."""
-    assert ("Where a beat genuinely needs an act NO primitive holds, it is a deliberate Pass-1 "
-            "mint — a reusable primitive built and ruled on BEFORE the shot seeds it — or the "
-            "beat is restaged.") in GRAMMAR_TEXT
-    # its scope line, the reason the sentence is correct as written: it rules on PRIMITIVES, and
-    # explicitly contrasts them with cast names rather than legislating for them.
-    assert ("**A pose, interaction, or expression name must ALREADY exist in `registry.json`:** "
-            "unlike a cast name") in GRAMMAR_TEXT
-    assert "earns a slot" not in GRAMMAR_TEXT
+def test_the_visual_grammar_blocks_unknown_primitives_before_the_shot():
+    """A missing primitive is elevated and approved outside the shot authoring path."""
+    assert "write no invented token or prose pose; emit the VPW elevation flag" in GRAMMAR_TEXT
+    assert "primitive is minted, approved, and registered" in GRAMMAR_TEXT
 
 
 if __name__ == "__main__":

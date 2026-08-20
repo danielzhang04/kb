@@ -292,15 +292,11 @@ def test_g7_anon_foreground_gets_forges_named_refusal_not_a_generic_unknown_key(
     hard, soft = _fig({"anon_foreground": ["one anonymous person"]})
     assert len(hard) == 1, hard
     assert "unknown key" not in hard[0], hard
-    assert "abolished" in hard[0] and "crowd exemplar" in hard[0], hard
-    # TWO remedies (P2, 2026-08-12): the seeded-performer route is abolished with the tier, and
-    # its slot in the refusal is taken by the disposition Daniel ruled — cast it (existing cast
-    # member, else a NEW one through the standard cast-generation waves) or stage mass action.
-    # forge.py states the same two in the same order: a refusal that names a dead tier sends the
-    # author back into the failure the rollback exists to end.
+    assert "abolished" in hard[0] and "standard cast-generation waves" in hard[0], hard
+    # The remedy is seeded cast: existing where the story identifies one, otherwise a NEW member
+    # through the standard cast-generation waves. Crowd is legal only when mass is the story point.
     assert "seeded performer" not in hard[0] and "`base` plus" not in hard[0], hard
     assert "NEW named cast member" in hard[0] and "standard cast-generation waves" in hard[0], hard
-    assert "mass action" in hard[0], hard
 
 
 def test_g7_crowd_false_is_soft_not_hard():
@@ -448,7 +444,7 @@ def test_g9_multiple_declared_delta_changes_are_not_one_transformation():
         "id": "L01", "stage_role": "delta", "still_prompt": "Only this changes: the card turns red.",
         "changed_elements": ["the card turns red", "a hand enters frame"],
     })], hard)
-    assert len(hard) == 1 and "exactly one declared changed element" in hard[0], hard
+    assert len(hard) == 1 and "exactly one non-empty `changed_elements` string" in hard[0], hard
 
 
 def test_g9_inherited_completion_word_is_not_the_delta_completion_state():
@@ -456,6 +452,19 @@ def test_g9_inherited_completion_word_is_not_the_delta_completion_state():
                   "a torn page hangs on the wall; everything else exactly as established.",
                   "a torn page hangs on the wall")
     assert hard == [], hard
+
+
+# R5 — closed declared-token catalog: known tokens pass; unknowns and elevation flags block.
+def test_r5_closed_catalog():
+    cases = [("`cast` `action-present` `expr-deadpan`", "", 0),
+             ("`cast` `action-freestyle`", "", 1),
+             ("`cast` `invented-pose`", "", 1),
+             ("`cast`", "ELEVATION — primitive needed: cartwheel; BLOCKED until minted + approved", 1)]
+    for prompt, notes, expected in cases:
+        hard = []
+        L.primitive_catalog_check("lf", [("L01", {"still_prompt": prompt, "notes": notes})],
+                                  {"cast", "action-present", "expr-deadpan"}, hard)
+        assert len(hard) == expected, hard
 
 
 # =========================================================================

@@ -1,9 +1,8 @@
 """Plain-assert test for lint_shots.stage_check — the delta-chain structural caps (HARD).
 Run: py -3 .claude/skills/visual-prompt-writer/scripts/test_stage_check.py
 
-The ≤2-delta cap and the ONE-base-first rule are the mechanical shadow of the shots-schema
-delta-chain contract (base + ≤2 deltas, then re-base or hard-cut). These caps were prose-only
-until made HARD in stage_check; this file pins them so they can't silently regress."""
+The ≤2-delta cap, ONE-base-first rule, and material-change floor are the mechanical shadow of
+the progressive-reveal contract. Zero chains is valid; shared scenery never creates a quota."""
 import lint_shots
 
 
@@ -57,20 +56,21 @@ none = [{"id": "L01"}, {"id": "L02"}, {"id": "L03"}, {"id": "L04"}, {"id": "L05"
 hard, _ = caps(none)
 assert hard == [], "no-stage standalone shots are clean: %r" % hard
 
-# Strict v2 long-form plans at the configured size need a planned stage chain, but no quota.
 long_none = [{"id": f"L{i:02d}"} for i in range(1, 41)]
-hard, _ = [], []
-lint_shots.stage_check("long-form", long_none, hard, _, require_stage=True)
-assert any("zero stage-bearing shots/base roles" in h for h in hard), hard
+hard, _ = caps(long_none)
+assert hard == [], "zero chains is valid at every plan length: %r" % hard
 
-short_none = [{"id": f"L{i:02d}"} for i in range(1, 40)]
-hard, _ = [], []
-lint_shots.stage_check("long-form", short_none, hard, _, require_stage=False)
-assert hard == [], "the zero guard is limited to configured long-form plans: %r" % hard
+def feasible(change):
+    hard = []
+    lint_shots.delta_feasibility_check("t", [("L02", {
+        "id": "L02", "stage_role": "delta", "changed_elements": change,
+        "still_prompt": "held room; only this changes; everything else exactly as established",
+    })], hard)
+    return hard
 
-stage_bearing = [_base("L01", "g")] + [{"id": f"L{i:02d}"} for i in range(2, 41)]
-hard, _ = [], []
-lint_shots.stage_check("long-form", stage_bearing, hard, _, require_stage=True)
-assert hard == [], "one planned stage chain satisfies the zero guard: %r" % hard
+assert feasible([]), "an empty change must fail"
+assert feasible(["+ tiny decorative tab"]), "a minor detail must fail"
+assert feasible(["~ empty executive chair moves to the side"]), "local reposition must fail"
+assert feasible(["+ revenue tower rises across the hall"]) == [], "a structural reveal is material"
 
 print("PASS test_stage_check")

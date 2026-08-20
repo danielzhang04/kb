@@ -216,9 +216,8 @@ def test_a_shot_with_no_interaction_slug_is_silent():
 # theoretical: it removed `expr-shock` and `expr-pleading` from the library while 13 shots of the
 # current file still name them.
 #
-# The signal is a MESSAGE, never a refusal: the no-lint P8 verdict forecloses a guard here, and a
-# shot may legitimately be authored ahead of the Pass-1 mint that gives its slug pixels. The batch
-# `why` line is the deliverable an operator reads, so that is where the drop is reported.
+# The signal is a bypass diagnostic: VPW lint blocks unknown primitives before batch; this `why`
+# line catches stale or hand-authored input that skipped that gate.
 def test_an_unregistered_slug_is_named_in_the_batch_why_line():
     """`expr-shock` is the real P12 removal, on the real registry."""
     reqs = _batch([

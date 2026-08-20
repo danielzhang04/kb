@@ -286,25 +286,18 @@ def _dur(sh):
         return None
 
 
-def stage_check(label, shots, hard, soft, require_stage=False):
+def stage_check(label, shots, hard, soft):
     """Held-stage field checks. Q4: the structural caps of the delta-chain contract — exactly
     one base FIRST and at most 2 deltas — are HARD (they bound drift; lint owns the mechanical
-    caps). Timing/changed_elements/contiguity remain SOFT heads-ups. Never touches the vo_ref
-    matcher — stage fields are optional metadata layered on top of the anchor contract. Strict v2
-    long-form plans at the configured size get only a zero-stage guard, never a stage quota."""
+    caps). Timing and contiguity remain SOFT heads-ups. Never touches the vo_ref matcher — stage
+    fields are optional and zero chains is valid; a chain exists only for a progressive reveal."""
     runs = []  # contiguous runs of (stage_id, [shots])
-    has_stage_bearing_shot = False
     for sh in shots:
         sid = sh.get("stage")
-        has_stage_bearing_shot |= bool(sid) or sh.get("stage_role") == "base"
         if runs and sid and runs[-1][0] == sid:
             runs[-1][1].append(sh)
         else:
             runs.append((sid, [sh]))
-    if require_stage and not has_stage_bearing_shot:
-        hard.append(f"[{label}] strict v2 long-form plan has {len(shots)} shots but zero "
-                    "stage-bearing shots/base roles — add a planned stage chain where a setting "
-                    "revisits; this is a zero guard, not a stage quota.")
     seen = {}
     for sid, grp in runs:
         if not sid:
@@ -323,8 +316,6 @@ def stage_check(label, shots, hard, soft, require_stage=False):
             d = _dur(s)
             if d and (d > 3.5 or (base_dur and d > base_dur)):
                 soft.append(f"[{label}] {s.get('id','?')} (stage '{sid}' delta): {d}s — deltas should be fast (~1.5-3s) and not longer than the base.")
-            if not s.get("changed_elements"):
-                soft.append(f"[{label}] {s.get('id','?')} (stage '{sid}' delta): no changed_elements — a delta must name what changed.")
     for sid, c in seen.items():
         if c > 1:
             soft.append(f"[{label}] stage '{sid}' appears in {c} non-contiguous runs — a stage should be one consecutive run.")
@@ -1255,7 +1246,7 @@ def figures_check(label, objs, hard, soft):
                 f"it by name (SystemExit, `seeding_law_violations`): name the figure in the video's cast "
                 f"(seeded) - an existing cast member where the story says it IS one, otherwise "
                 f"a NEW named cast member minted through the standard cast-generation waves at "
-                f"Step 3a - or stage the beat as mass action (crowd exemplar).")
+                f"Step 3a. Crowd is legal only when the visible mass itself is the story point.")
             unknown = [k for k in unknown if k != "anon_foreground"]
         if unknown:
             hard.append(f"[{label}] {pid}: `figures` has unknown key(s) {unknown!r}. The field is "
@@ -1313,6 +1304,15 @@ _PRECISION_DELTA = re.compile(
     r"\b(?:majority|most|all\s+but)\b[^.;:]{0,80}\b(?:remove|rearrange|clear|erase))",
     re.IGNORECASE)
 
+_NON_MATERIAL_DELTA = re.compile(
+    # General no-op shapes from the audit rule: cosmetic-only change, explicit low salience,
+    # local reposition, secondary fixture/detail, label-only metadata, or decorative trim.
+    r"\b(?:crowd\s+attitude|hair\s+silhouettes?|expression\s+changes?\s+from\s+\w+\s+to\s+(?:neutral|deadpan|smug)|tiny|discreet|ambiguous|inert|low|short|decorative|ornamental)\b|"
+    r"\bmoves?\s+(?:to|onto)\b(?!.*\baway\s+from\b)|\b(?:year|date|chronology|reported)\b.*\b(?:marker|rail|block)\b|\b(?:safety|inspection)\s+gate\b|\b(?:check|tick)[ -]?(?:box|square)s?\b|"
+    r"\btab\b.*\battach|\b(?:bay|slot)\b.*\b(?:close|wrap)s?\s+(?:around|over)|\bbands?\b.*\bseal|\b(?:bundle|packet)s?\b.*\b(?:fill|sit|appear)|"
+    r"\b(?:bracket|outline|frame)\b.*\b(?:enclose|surround)s?|\b(?:empty|blank)\b.*\b(?:tray|container|holder)\b|\b(?:docket|form|papers?)\b.*\b(?:join|occupy|attach)(?:s|ies)?\b|\b(?:ribbon|trim|ornament)\b|\b(?:tooth|notch|tick)\b",
+    re.IGNORECASE)
+
 
 def spatial_tier_check(label, objs, hard):
     """HARD only on a declared *background* crowd without rear geometry, a crowd stated in
@@ -1337,8 +1337,8 @@ def spatial_tier_check(label, objs, hard):
         if match:
             hard.append(
                 f"[{label}] {pid}: individually staged anonymous {match.group()!r} sits inside "
-                "`figures.crowd: true`. Give that person cast identity or restage the beat as mass action; "
-                "crowd is not a third actor tier.")
+                "`figures.crowd: true`. Promote that human beat to one seeded cast figure; crowd is "
+                "reserved for a visible mass as the story point, not a third actor tier.")
 
 
 def delta_feasibility_check(label, objs, hard):
@@ -1349,10 +1349,19 @@ def delta_feasibility_check(label, objs, hard):
         if sh.get("stage_role") != "delta":
             continue
         changes = sh.get("changed_elements")
-        if isinstance(changes, list) and len(changes) != 1:
+        if not isinstance(changes, list) or len(changes) != 1 or not isinstance(changes[0], str) \
+                or not changes[0].strip():
             hard.append(
-                f"[{label}] {pid}: delta has {len(changes)} declared changed elements; it must express "
-                "exactly one declared changed element (one semantic transformation).")
+                f"[{label}] {pid}: delta must declare exactly one non-empty `changed_elements` string "
+                "naming a visually distinct, story-needed transformation.")
+            continue
+        hit = _NON_MATERIAL_DELTA.search(changes[0])
+        weak = hit.group(0) if hit else None
+        if weak:
+            hard.append(
+                f"[{label}] {pid}: delta change {changes[0]!r} is visually non-distinct ({weak!r}) — "
+                "a cosmetic/detail/label/reposition change does not earn a regenerated frame; hard-cut "
+                "to a new depiction or author a genuine progressive reveal.")
         prompt = sh.get("still_prompt") or ""
         change = re.split(r"\bonly\s+this\s+changes\s*:\s*", prompt, maxsplit=1,
                           flags=re.IGNORECASE)[-1]
@@ -2061,31 +2070,7 @@ def lettering_route_check(label, objs, suffix, hard):
 
 
 def interaction_cast_check(label, objs, chars, interactions, hard):
-    """HARD. An `interaction` primitive is a TWO-FIGURE geometry reference, never a pose.
-
-    What the asset IS (`image-generation/SKILL.md`): "an interaction template is two blank
-    base mannequins carrying clasp geometry + eye-line". It resolves the contact between two
-    bodies; it has no meaning bound to one.
-
-    The 2026-08-04 fresh fifth's L29 is the whole case. `handshake` bound to the
-    most-recently-named character, so the slate minted a SOLO reference sheet
-    (`fig-terry-johnson--handshake--expr-delighted`) whose payload said "the character
-    ALONE, fully resolved" while its third seed was a two-person handshake - a hand extended
-    into empty air, an amputated forearm, or a second figure fused into the identity card
-    that then bleeds into the scene. The prose was exemplary (plane, eye line and relative
-    head scale all stated), so the two-figure presence law passed cleanly. Lint could not see
-    it; forge now routes the template scene-level, and this is the authoring-side rule.
-
-    TWO refusals, one per way of breaking it:
-      * fewer than 2 seeded figures - a solo shot has no second body for the clasp geometry
-        (named cast, counted exactly as the figure cap counts them);
-      * on a `stage_role: delta` - a two-figure delta seeds [parent + canonical A + canonical
-        B + one proved primitive] and has no slot left, and the grammar's own figure-cap table
-        says a fresh two-figure shot is the BASE of a stage and every later two-figure beat in
-        that place is a delta on it. Author the contact geometry on the base.
-
-    Degrades silently with no figure or no interaction vocabulary, like every other
-    registry-reading check here."""
+    """HARD: interaction geometry needs two seeded figures and a fresh base."""
     if not chars or not interactions:
         return
     for pid, sh in objs:
@@ -2108,31 +2093,58 @@ def interaction_cast_check(label, objs, chars, interactions, hard):
                 f"[{label}] {pid}: authors the interaction template "
                 f"{', '.join('`' + s + '`' for s in slugs)} on a stage `delta`. A two-figure "
                 f"delta seeds parent + both canonicals + one proved primitive, with no slot "
-                f"for the template; the figure-cap table stages a fresh two-figure shot as the "
-                f"stage BASE and every later two-figure beat as a delta on it. Author the "
+                f"for the template; when the contact begins a genuine progressive reveal, stage the "
+                f"fresh two-figure shot as its BASE. Author the "
                 f"contact geometry on the base.")
 
 
-def video_interactions(data, vdir):
-    """The `interaction`-kind vocabulary for THIS video: channel registry UNION the video's
-    own Pass-1 library, mirroring `video_chars` (and `forge.py`'s `merge_vocabulary`).
-    Best-effort - either source missing degrades the interaction check silently."""
+def video_assets(data, vdir, kinds=None):
+    """Named assets of selected kinds, or every declared asset when ``kinds`` is omitted."""
     names = set()
     if data.get("channel"):
         try:
             reg = json.loads((vdir.parent.parent / "visual-kit" / "registry"
                               / "registry.json").read_text(encoding="utf-8"))
             names |= {a["name"] for a in reg.get("assets", [])
-                      if a.get("kind") == "interaction" and a.get("name")}
+                      if (kinds is None or a.get("kind") in kinds) and a.get("name")}
         except (OSError, ValueError, KeyError):
             pass
     try:
         mani = json.loads((vdir / "assets" / "library" / "manifest.json").read_text(encoding="utf-8"))
         names |= {e["name"] for e in mani.get("assets", [])
-                  if e.get("kind") == "interaction" and e.get("name")}
+                  if (kinds is None or e.get("kind") in kinds) and e.get("name")}
     except (OSError, ValueError, KeyError):
         pass
     return names
+
+
+PRIMITIVE_KINDS = {"pose", "action", "expression", "interaction", "costume"}
+_ELEVATION_FLAG = re.compile(r"\bELEVATION\b[^\n]*\bprimitive\s+needed\b", re.IGNORECASE)
+
+
+def video_primitives(data, vdir):
+    return video_assets(data, vdir, PRIMITIVE_KINDS)
+
+
+def video_interactions(data, vdir):
+    return video_assets(data, vdir, {"interaction"})
+
+
+def primitive_catalog_check(label, objs, token_catalog, hard):
+    """R5 HARD: every backticked token resolves; an elevation flag keeps its shot blocked."""
+    for pid, sh in objs:
+        prompt = sh.get("still_prompt") or sh.get("gen_prompt") or ""
+        unresolved = sorted({token for token in _BACKTICK.findall(prompt)
+                             if token not in token_catalog})
+        if unresolved:
+            hard.append(
+                f"[{label}] {pid}: backticked token(s) {unresolved!r} do not resolve in the "
+                "channel registry or approved video library. Snap to the nearest catalog token; if none "
+                "is close, remove the token and elevate the blocked shot until one is minted + approved.")
+        notes = sh.get("notes") or ""
+        if _ELEVATION_FLAG.search(notes):
+            hard.append(f"[{label}] {pid}: explicit primitive ELEVATION is unresolved — shot remains "
+                        "BLOCKED until the primitive is minted, approved, and present in the catalog.")
 
 
 def bool_field_check(label, objs, field, hard):
@@ -2335,6 +2347,21 @@ def video_chars(data, vdir):
     return chars
 
 
+def declared_cast(data, vdir):
+    """The video-local closed cast declaration VPW reuses during scoped repair."""
+    try:
+        log = (vdir / "vpw-log.md").read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    section = re.search(r"^## Closed named cast\s*$([\s\S]*?)(?=^## |\Z)", log, re.MULTILINE)
+    return set(_BACKTICK.findall(section.group(1))) if section else set()
+
+
+def video_token_catalog(data, vdir):
+    """Every declared backtick namespace: channel/video assets plus the video-local cast list."""
+    return video_chars(data, vdir) | declared_cast(data, vdir) | video_assets(data, vdir)
+
+
 def seat_support_check(label, objs, chars, soft, hard):
     """C-7 HARD. A SEEDED figure carrying the registry `sit` pose primitive - bound by
     backtick ORDER to the most-recently-named character, mirroring forge.py's
@@ -2508,8 +2535,8 @@ def semantic_cast_check(label, shots, id2text, chars, hard):
                 f"the shot casts {', '.join('`' + c + '`' for c in unjustified)}, whose name "
                 f"appears nowhere in this VO span or its neighbours - the L100 defect (bulk "
                 f"generic->named conversion casting a specific lead the narration never names "
-                f"here). Either the VO's own words justify the named lead nearby, or recast the "
-                f"shot to the generic role.")
+                f"here). Either the VO's own words justify the named lead nearby, or re-author the "
+                f"beat: one seeded figure when an individual bears it, crowd only when the mass does.")
 
 
 def _shot_prompts(shots):
@@ -2535,6 +2562,7 @@ def main(argv):
     script_md = vdir / "script.md"
     chars = video_chars(data, vdir)          # C-7/C-8: this video's seeded-figure vocabulary
     interactions = video_interactions(data, vdir)   # the two-figure template vocabulary
+    token_catalog = video_token_catalog(data, vdir) # R5: closed declared backtick vocabulary
 
     # S3: the VO word-timings render actually matches against (empty if not yet voiced).
     vo_manifest_path = vdir / "assets" / "voiceover.manifest.json"
@@ -2573,8 +2601,7 @@ def main(argv):
 
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"))
-    stage_check("long-form", lf_shots, hard, soft,
-                require_stage=strict_schema and len(lf_shots) >= 40)
+    stage_check("long-form", lf_shots, hard, soft)
     suffix = data.get("global_prompt_suffix") or ""
     suffix_one_voice_check(suffix, hard, vdir)   # C-2(a): the TAIL voice matches its channel home
     lf_prompts = _shot_prompts(lf_shots)
@@ -2588,6 +2615,7 @@ def main(argv):
     render_technique_check("long-form", lf_prompts, hard)
     shot_class_check("long-form", lf_shots, hard, soft, strict_schema)
     figures_check("long-form", lf_objs, hard, soft)
+    primitive_catalog_check("long-form", lf_objs, token_catalog, hard)
     spatial_tier_check("long-form", lf_objs, hard)
     delta_feasibility_check("long-form", lf_objs, hard)
     place_anchor_check("long-form", lf_objs, hard)
@@ -2629,6 +2657,7 @@ def main(argv):
     control_leak_check("thumbnail", th_prompts, suffix, hard)
     render_technique_check("thumbnail", th_prompts, hard)
     place_context_exempt_check("thumbnail", th_objs, hard)
+    primitive_catalog_check("thumbnail", th_objs, token_catalog, hard)
     long_literal_word_check("thumbnail", th_prompts, suffix, soft, lf_vocab)
     negation_list_check("thumbnail", th_prompts, suffix, soft)
     ordered += lf_shots
@@ -2667,6 +2696,8 @@ def main(argv):
         render_technique_check(slabel, sprompts, hard)
         shot_class_check(slabel, sshots, hard, soft, strict_schema)
         figures_check(slabel, sshot_objs + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)
+        primitive_catalog_check(slabel, sshot_objs + ([("first_frame", ff_obj)] if ff_obj else []),
+                                token_catalog, hard)
         spatial_tier_check(slabel, sshot_objs, hard)
         delta_feasibility_check(slabel, sshot_objs, hard)
         place_anchor_check(slabel, sshot_objs + ([("first_frame", ff_obj)] if ff_obj else []), hard)

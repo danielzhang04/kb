@@ -158,9 +158,9 @@ _SECTION_3 = _flat(_MD.split("## 3. The rig checklist")[1].split("## 4. Palette"
 # sits eleven lines below them: a reword that let costume or head tone drift into that list would
 # have gone through silently. Pinned as prose (the human reads §3 at Gate 2), not via forge.
 def test_p1_pin_the_identity_fail_law_survives_verbatim_in_section_3():
-    for span in ("head tone AND hair must MATCH its canonical",
+    for span in ("head tone, hair, AND pinned costume must MATCH its canonical",
                  "identity FAIL even when every form invariant passes",
-                 "the pinned canonical costume is identity; a wrong outfit fails unless authored"):
+                 "A different costume is legal only when an approved catalog entry supplies it"):
         assert span in _SECTION_3, span
         assert span in _FLAT_MD, span
 
@@ -243,19 +243,13 @@ def test_a_scene_prompt_is_bible_head_then_authored_text_then_the_file_suffix_ta
     assert text == k.desc_style + "\n\n" + authored + "\n\n" + suffix, text
     assert text.count(authored) == 1, text
     assert text.startswith(k.desc_style) and text.endswith(suffix), text
-    # era §2b survivors the head voice must still carry (archaeology D1)
-    # P1 PIN — the last two spans are the §2b SATURATION clause in its 2026-08-18 wording (verified
-    # byte-identical to HEAD): warm-tinted neutrals plus "cools its LIGHT, never its neutrals" are
-    # floor law, re-rolled by explicit Daniel ruling 2026-08-18. The saturation floor "never drains
-    # to greyscale" is unchanged and remains pinned. median_sat is the one measured axis that
-    # separates Daniel's liked frames from his disliked ones.
+    # The head voice pins craft while carrying the scene's authored palette, including cool lows.
     for phrase in ("Draw in the SAME art style as the reference image", "FLAT cel-shaded CARTOON",
                    "an even\nMEDIUM-THICK".replace("\n", " "), "#241a12",
                    "gentle soft cel shading", "No text, no words, no labels",
                    "simple flat colours with gentle soft cel shading",
-                   "any grey or neutral clearly TINTED WARM, "
-                   "so the frame never drains to greyscale; a genuinely cold scene cools its LIGHT, "
-                   "never its neutrals"):
+                   "authored locked 2–3-colour scene palette",
+                   "including cool or desaturated palettes when the story beat calls for them"):
         assert phrase in text, (phrase, text)
     # a request with no suffix (an ad-hoc gen, a STEP-1 identity card) assembles exactly as before
     step1 = k.prompt_for("environment", "A neutral reference figure.")

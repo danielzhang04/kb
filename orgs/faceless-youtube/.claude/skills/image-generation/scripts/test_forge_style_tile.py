@@ -41,15 +41,13 @@ EXPECTED_PLATE_COMPOSITION = (
     "zone. Outside it, keep the set rich and working with its real furniture, stock, and machinery."
 )
 
-# The poyais-era TWO VOICES, verbatim from the era import SHA `ff36f63`:
-#   HEAD — style-bible.md:90-93 (§2b STYLE-ONLY descriptor)
-#   TAIL — videos/2026-07-04-poyais/shots.json `global_prompt_suffix` (643 chars)
-# Restored 2026-08-05. These literals are the drift-lock: the doc that drifts fails the test.
+# The two provider voices: authored-palette HEAD plus the separately gated, byte-pinned TAIL.
+# These literals are the drift-lock: the doc that drifts fails the test.
 ERA_STYLE_ONLY = (
     "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an "
     "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle "
-    "soft cel shading, and any grey or neutral clearly TINTED WARM, so the frame never drains to greyscale; "
-    "a genuinely cold scene cools its LIGHT, never its neutrals — rounded friendly shapes, no realistic detail. No text, no "
+    "soft cel shading, using the authored locked 2–3-colour scene palette — including cool or desaturated "
+    "palettes when the story beat calls for them — rounded friendly shapes, no realistic detail. No text, no "
     "words, no labels.")
 ERA_SUFFIX = (
     "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm "
@@ -267,9 +265,10 @@ def test_the_tiles_role_prose_grants_register_only_and_denies_the_place():
     text = seed_roles_text([{"path": TILE, "role": STYLE_ANCHOR_ROLE,
                              "character": STYLE_TILE}])
     for required in ("SCENE STYLE TILE", "register sample ONLY", "LINE WEIGHT",
-                     "outline colour (#241a12)", "FLAT-CEL RENDER", "PALETTE SATURATION and TEMPERATURE", "Take NOTHING else",
+                     "outline colour (#241a12)", "FLAT-CEL RENDER", "PALETTE SATURATION", "Take NOTHING else",
                      "NOT the place it depicts"):
         assert required in text, (required, text)
+    assert "SATURATION and TEMPERATURE" not in text, text
     # the generic `environment` prose is the exact opposite instruction and must never appear
     assert "preserve its authored place facts" not in text, text
 

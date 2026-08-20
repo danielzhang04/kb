@@ -11,22 +11,22 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 {
   "schema": "faceless-youtube/shots@2", "channel": "<channels/ folder slug, e.g. the-second-take — NOT the display name>", "video_slug": "YYYY-MM-DD-slug",
   "source_idea_id": "<id from idea-backlog.md>", "generated": "YYYY-MM-DD", "status": "shots-drafted",
-  "global_prompt_suffix": "copied VERBATIM from visual-grammar.md's header — the LETTERING clause only; the style recipe lives in style-bible.md §2b and is never restated here",
+  "global_prompt_suffix": "copied VERBATIM from visual-grammar.md's header; never re-derived or edited per video",
   "long_form": { "aspect_ratio": "16:9", "shots": [
       {
         "id": "L01", "duration_s": 4, "synthetic": false,
         "vo_ref": "VERBATIM opening words of the VO line, copied exactly from script.md — ≥4 where the sentence has them, else its full text",
         "vo_text": "DERIVED by lint_shots.py --write; never hand-authored",
         "place": "OPTIONAL kebab-case recurring diegetic SET id (e.g. \"miniscribe-boardroom\") — distinct from `stage`; omit on the exempt shot_class values, a short's `first_frame`, and the thumbnail block",
-        "stage": "OPTIONAL id shared by consecutive shots on ONE persistent set (e.g. \"guidebook-desk\"); omit or unique = a standalone one-frame stage",
-        "stage_role": "base | delta — base establishes the set + subject; delta = ONE element added or moved on the SAME set", "changed_elements": ["+ golden city rises"],
+        "stage": "OPTIONAL id for a genuine progressive reveal on ONE persistent set; omit for ordinary standalone cuts",
+        "stage_role": "base | delta — base establishes the set + subject; delta = ONE story-needed, visually distinct transformation", "changed_elements": ["+ golden city rises"],
         "place_anchor": "OPTIONAL on a non-delta shot: video-relative assets/scenes/<human-approved-frame>.png to preserve this video's approved place; never a cross-video env reference, never a shot outside its own `place`",
         "hard_cut": "OPTIONAL true — this shot's action deliberately does NOT continue the previous shot's, even though it reads like it might (see `place` §2's action-chain law)",
         "place_owner": "ON A PLACE'S PLATE ONLY: the owner literal drawn on this frame (e.g. \"MINISCRIBE\"), quoted verbatim in this shot's still_prompt too — see the place-owner law; mutually exclusive with `owner_ambiguity`",
         "owner_ambiguity": "ON A PLACE'S PLATE ONLY: true — this place's ownership is intentionally left unmarked (see the place-owner law); mutually exclusive with `place_owner`",
         "shot_class": "the canonical closed list (picked from visual-grammar.md's narration→shot-class table): personified-character, staged-interaction, symbolic-stand-in-object, number-glued-to-object, diegetic-device, map-plan-view, physicalized-imbalance, register-shift-infographic, ironic-counterpoint, reaction-shot, idiom-pun, aftermath-palette-turn, crowd-multiplication, literal",
         "source": "ai-gen | stock | hybrid | chart | screencap | archival (§3)",
-        "still_prompt": "the image-gen prompt: subject, composition/framing + scale, lighting, palette, and the shot's load-bearing scene FACTS. Cast, poses, and expressions are named INLINE by their registry vocabulary name, backticked. In-video text is DIEGETIC + baked here, quoted VERBATIM and kept SHORT (1–4 words)",
+        "still_prompt": "the image-gen prompt: subject, composition/framing + scale, lighting, locked 2–3-colour beat palette, and load-bearing scene FACTS. Cast and catalog-resolved poses/expressions are named INLINE and backticked; costume stays registry-pinned. In-video text is DIEGETIC + baked, quoted VERBATIM and kept SHORT (1–4 words)",
         "figures": { "crowd": true },
         "stock_query": "search terms — only when source is stock|hybrid|archival, else omit",
         "notes": "policy/accuracy flags (analysis-not-gore, YMYL, borderline) + the [F-NN] ledger ids behind any supplied literal"
@@ -69,8 +69,8 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   place carrying a long run declares 2-3 plate VARIANTS that `place_anchor` selects between — both
   stated once, with their bounds, in `visual-grammar.md` §2's plate bullet. **A place RECURS when the file REVISITS it after
   leaving** — its shots form two or more NON-CONTIGUOUS runs. An unbroken single visit, however many shots
-  long, is a STAGE: its chain base already IS the frame every later shot of the run seeds, so declaring a
-  place there buys nothing and demanding a dedicated cast-free plate for a set the video never returns to is
+  long, is not a recurrence. It may use a stage only when the shots form a genuine progressive reveal;
+  otherwise its cuts stay standalone. Demanding a dedicated cast-free plate for a set the video never returns to is
   pure generation cost. (That is the decidable reading of "recurring set". The old "≥2 shots declare it"
   test was circular — whether a set qualified depended on whether the author had declared it — and it read
   two adjacent shots as a recurrence.) A single-visit, unbranded place needs no plate: its first generated
@@ -109,23 +109,23 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   the supplied-text law's "omit" escape (§4 resolution 3):** blanking an owner-branded surface with no cue
   is legal ONLY paired with `owner_ambiguity: true` — a silent blank no longer satisfies the place-owner law
   the way it satisfies an ordinary unsupported-glyph field.
-- **Action-chain law (lint-enforced, HARD = presence).** Fires on exactly one shape, all four conditions at
+- **Action-continuity law (lint-enforced, HARD = presence).** Fires on exactly one shape, all four conditions at
   once: two shots ADJACENT IN FILE declare the same `place`, both shots' `vo_text` name a shared concrete
   prop noun, the later shot declares no `stage`/`stage_role` chain **at all**, and it does not declare
-  `hard_cut: true`. That is an unlinked continuation — three shots visibly continuing one action (pry the
-  box, swap the sheet, get caught) must not run as three independent seedless roots. The test reads the
+  `hard_cut: true`. That is an unlinked visible transformation — a progressive action (pry the box, swap
+  the sheet, get caught) must either carry its causal pixels or cut deliberately. The test reads the
   NARRATION, never `still_prompt` idioms: "the same X" is routinely intra-frame English ("at the same
   eye-line" is the clause the two-figure law itself demands), and a lint that cries wolf gets routed around.
   A shot that declares any chain of its own has made a positive continuity statement and stays silent —
   whether that chain reads as coherent CAUSE→EFFECT is the shot critic's judgment (`critics.md`), never
   lint's, and no author is ever pushed into declaring `hard_cut: true` about an action that does continue.
-- **`stage` / `stage_role` / `changed_elements` — held evolving stages, INTENT ONLY.** Consecutive shots
-  sharing a `stage` id sit on ONE persistent set: the `base` establishes it, each `delta` adds or moves
-  exactly ONE element named in `changed_elements` (`"+ cathedral rises"`, `"- ship"`), each its own shot
+- **`stage` / `stage_role` / `changed_elements` — genuine progressive reveals only.** Sharing a set does
+  not earn a chain. The `base` establishes one persistent scene; each `delta` changes exactly ONE
+  story-needed, visually distinct element named in `changed_elements` (`"+ cathedral rises"`, `"- ship"`)
   with its own verbatim `vo_ref`. **Delta-vs-layer boundary:** an INTEGRATIVE change (the element joins
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
-  page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
-  `base`, first, per stage · **≤2 deltas** per chain · contiguity.
+  page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint HARD-enforces non-empty
+  material change, exactly one `base` first, **≤2 deltas**, and contiguity.
 - **Delta character-entrance law (lint-enforced, HARD).** A seeded figure's FIRST appearance on a set is
   never a `delta`. The delta seeding path supplies [in-chain parent + canonical] and nothing else, so a
   figure absent from the parent FRAME has no pixels to inherit: its pose and expression become prose
@@ -185,11 +185,13 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   character (`style-bible.md` §1: it never appears as ITSELF), `forge.py`'s `shot_cast` does not resolve
   it as a figure, and `seeding_law_violations` refuses a shot that names it. An anonymous foreground
   story-bearer is CAST — resolved to an existing cast member where the story says it IS one, otherwise
-  planned at VPW step 3a as a NEW named cast member and minted through the standard cast-generation waves
-  — or the beat is restaged as mass action (`figures.crowd`). A prop making its FIRST appearance has
+  planned at VPW step 3a as a NEW named cast member and minted through the standard cast-generation waves.
+  One seeded figure is the default human beat; `figures.crowd` is reserved for a visible mass as the story
+  point. Pose, expression, interaction, and costume are closed-world: use a catalog token and the figure's
+  pinned costume, snap to the nearest primitive, or emit the elevation flag and block until minted and
+  approved. A prop making its FIRST appearance has
   no entry to name and is described in prose instead (`visual-grammar.md` §2 owns that rule).
-  `image-generation` resolves names → files and surfaces any name the registry lacks at its Pass-1 human
-  gate, before a token is spent.
+  `image-generation` resolves names → files; lint HARD-fails unresolved pose/expression/interaction tokens.
 - **Seat/support law (lint-enforced, HARD).** A seeded figure carrying the registry `sit` pose primitive
   (the binding is the backtick order — a `sit` token bound to the most-recently-named character, mirroring
   `forge.py`'s `shot_cast` — **never the English verb "sits"**, which this project's own prose uses
@@ -214,15 +216,8 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   for one thing only: the post-Pass-1 lettering assertion.
 - **Transitions are HARD CUTS only** — no transition field exists; continuity comes from held stages.
 - **`global_prompt_suffix` is copied verbatim** from `visual-grammar.md`'s header — never re-derived per
-  video — and appended to every `still_prompt`, `first_frame`, and thumbnail `gen_prompt`. **One-voice law
-  (lint-enforced, HARD):** the suffix carries **no style vocabulary at all** — it is the lettering clause
-  and nothing else. Three refusals, one per way of breaking it: a banned render-technique term (below),
-  soft/gradient-permissive wording ("gentle", "soft", "blended"/"feathered"), or the style RECIPE's own
-  terms restated here (cel shading, flat colour fills, hard-edged single-step shadow, outline, line weight,
-  palette, a hex colour…). The last one is architecture, not taste: the recipe has exactly one home —
-  `style-bible.md` §2b, which `forge.py` assembles onto every generation — and a suffix that also carries it
-  is a second COPY of a living document, which becomes a second VOICE the moment either side is edited.
-  That divergence is how the global smooth/glossy drift happened. **Banned
+  video — and appended to every `still_prompt`, `first_frame`, and thumbnail `gen_prompt`. Lint HARD-fails
+  any divergence from that channel-owned string. **Banned
   render-technique terms (lint-enforced, HARD, prompts AND suffix, case-insensitive, exact list):**
   `gradient`, `gloss`/`glossy`, `specular`, `bloom`, `depth-of-field`/`depth of field`, `blurred
   background`/`blurred behind`, `soft focus`, `photoreal*`, `subsurface`, `rim light`. Scene-light NOUNS —

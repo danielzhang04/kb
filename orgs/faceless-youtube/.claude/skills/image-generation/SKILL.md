@@ -44,8 +44,7 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
    (character | group | prop | pose | expression | interaction), the shot ids needing it, and the satisfying file.
    - A **named character** earns a Pass-1 row (an asset that must exist before the shot seeds it) even for one
      shot — free-drawn in a scene it falls off the rig. So does a
-     **figure inside diegetic media** (a brochure figure, portrait, poster), in its registry-pinned costume unless
-     the shot authored a change. A **group**'s canonical is a group frame (N members together, matching outfits)
+     **figure inside diegetic media** (a brochure figure, portrait, poster), in its registry-pinned costume. A **group**'s canonical is a group frame (N members together, matching outfits)
      locking member count, costume, look and rig, no pose/expression; a member who ever acts alone is promoted to
      its own slot. A **recurring identifiable prop** — an object across shots whose look must MATCH — gets ONE
      canonical (`assets/library/prop-<name>.png`, prefix required) seeding every appearance, no pose/expression.
@@ -55,12 +54,9 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      pre-generated as portable canonicals (they are not; see the Pass-1/Pass-2 split above), but because their
      PIXELS seed other scenes, and nothing seeds a scene on a ruling nobody made. A **pose / expression /
      interaction primitive** the shots name is listed on the same terms.
-   - An **act no library primitive covers** earns a slot on those same terms — minted as a REUSABLE
-     pose/action primitive on the base rig, BEFORE the shot that needs it (the law is the §Seed law row
-     "Exposed hands are seeded, never free-drawn"; this is where it becomes a listed item). Rare by
-     construction: VPW conforms its figure sentences to the closest existing primitive by default, so what
-     reaches this row is the beat the library genuinely cannot hold — a deliberate drop into the asset
-     base, never a per-shot invention, and never a scene left to draw the act free-hand.
+   - VPW never sends an unknown pose, expression, interaction, or costume token into this list. It snaps
+     to the nearest approved primitive; if none is close, its elevation flag blocks the shot. Mint that
+     reusable primitive separately on the base rig, approve and register it, then return the shot to VPW.
    - The **crowd exemplar is minted per VIDEO** (`assets/library/crowd-exemplar.png`), through that same
      slot and gate — carrying THIS video's era dress, its 2–3 flat head tones and its 2–3 hair/headwear
      silhouettes (bible §2d). It is an **ANCHOR, not a uniform**: it fixes rig discipline, the tone set and
@@ -167,7 +163,7 @@ words; **every text-bearing gen seeds the lettering exemplar** (`refs/env/letter
 stamp/seal/mark gen seeds the stamp exemplar **plus its destination plate** for scale and palette (§5).
 **Every CAST-FREE gen seeds the scene style tile** (`refs/env/scene-style-tile.png`, §5) — forge DERIVES this and
 the lettering exemplar from the frame itself (no figure in frame; a quoted literal), never from an authored field.
-The tile is the pixel anchor for line register and palette on a frame with no cast to carry it, and its seed-role
+The tile is the pixel anchor for line register and saturation on a frame with no cast to carry it, and its seed-role
 prose grants it **nothing else** — not content, not layout, not the place it depicts. A figure-bearing gen does not
 take it: its cast seeds already draw the register.
 
@@ -180,10 +176,9 @@ time when it is set. **Figures are NAMED CAST or CROWD; there is no third tier a
 foreground tier.** Named cast seeds from its Pass-1 canonical; crowd gets the §2d clause. An anonymous
 foreground human does not exist: `shot_cast` never resolves the bare `` `base` `` rig as a figure, and
 `seeding_law_violations` refuses a shot that casts it, by name.
-`figures.anon_foreground` is a known-but-abolished key, refused by the same law with the same remedy —
-cast the figure (an existing cast member where the story says it IS one, otherwise a NEW named cast member
-minted through the standard cast-generation waves at VPW step 3a), or stage the beat as mass action
-(crowd exemplar). A declared `figures` field also forces the §2c append; without it Forge adds no
+`figures.anon_foreground` is a known-but-abolished key. One seeded cast figure is the default, cheap
+human beat (existing where the story identifies one, otherwise NEW named cast from the standard wave);
+crowd is the exception only when visible mass is the story point. A declared `figures` field also forces the §2c append; without it Forge adds no
 anonymous-figure clause. The authored delta
 changes only the variables it names while the style policy remains binding. **Pre-flight a batch with `forge.py
 gen --dry-run`**: it prints every assembled prompt and resolves every seed with zero API calls — read the prompts
@@ -251,7 +246,7 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
 | **(b) Seeded composition** (default with characters) | locked character(s) in a composed environment | ONE gen, `--mode environment`, multi-seeding the shot's tagged figure frames plus any true continuity/place input. Delta = the `still_prompt`'s scene/placement facts only; pose, expression, hands and tone route by seed |
 | **(c) Character-free scene** | a map, a cast-free plate, an object | ONE `--mode environment`/`style` gen; a root may be zero-seed under the bible descriptor + style suffix, while a chain/anchored request keeps its continuity seed |
 | **(d) One-shot single-character** | a simple shot, one prominent character | single gen `--mode identity` seeding that character's canonical (+ its expression/pose frames); full rig check still applies |
-| **(e) Seeded delta-chain** (a held STAGE) | consecutive shots sharing a `stage` id where the change is INTEGRATIVE | the `base` uses (b)/(c)/(d); each `delta` seeds the PREVIOUS in-stage frame and changes ONLY that shot's `changed_elements`; **≤2 deltas**, then re-base or hard-cut |
+| **(e) Seeded delta-chain** (a genuine progressive reveal) | consecutive shots on one held stage where each visible change advances the story | the `base` uses (b)/(c)/(d); each `delta` seeds the previous frame and changes its ONE visually distinct `changed_elements` item; **≤2 deltas**, then re-base or hard-cut |
 
 **The BOUNDARY rule.** **DELTA-CHAIN when the change is INTEGRATIVE** (the element joins the scene's architecture):
 technique (e), one element per delta, the carry-over holding the set. A **re-base inside the SAME location** seeds the
@@ -417,7 +412,7 @@ The pass rules three axes together, per shot, at **ordinary viewing scale**:
    pass|fail|skipped, note}]`; **`stamp_review.py` parks any shot carrying a failed item even when the axis
    severities came back clean**. Independently of spelling, every text-bearing generated frame takes the
    review artifact's lettering-register row: judge family match against the locked crude-marker exemplar (§5).
-3. **Style/taste** — does it read as its `shot_class` at a glance, on-recipe per §5 **AND rich — committed scene
+3. **Style/taste** — does it read as its `shot_class` at a glance, on-recipe per §5 **AND rich — locked 2–3-colour beat
    palette, layered depth by overlap and scale (§5), light/atmosphere, environments filled edge-to-edge; a
    standalone prop or artifact keeps its full silhouette and its air unless the crop is the payload
    (`visual-grammar.md` §3)** — or is it slop: generic, cluttered,

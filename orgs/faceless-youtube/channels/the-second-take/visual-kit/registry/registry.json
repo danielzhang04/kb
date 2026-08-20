@@ -656,7 +656,7 @@
       "character": null,
       "kind": "environment",
       "tag": "style anchor",
-      "note": "Warm-neutrals doctrine remint (2026-08-18, commit 33676421): 1980s home-electronics retail shop interior, fore/mid/background depth read, committed warm palette (golden oak, cream, warm amber). Supersedes the 2026-08-05 computer-shop anchor (archived at videos/2026-07-28-bricks-fresh/scratchpad/plate-regen/old/scene-style-tile.png). Seeded into every CAST-FREE plate/scene gen; contributes ONLY line register + palette saturation AND temperature, never content, layout, or the depicted place."
+      "note": "1980s home-electronics retail shop interior, fore/mid/background depth read. Seeded into every CAST-FREE plate/scene gen; contributes ONLY line register + palette saturation, never temperature, hues, content, layout, or the depicted place."
     },
     {
       "name": "rival-pc",

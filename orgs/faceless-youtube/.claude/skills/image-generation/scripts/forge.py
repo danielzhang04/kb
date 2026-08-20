@@ -282,8 +282,8 @@ def assemble_prompt(descriptor, payload, figures_text="", righold="", generated_
     STYLE-ONLY descriptor at the HEAD and the video's `global_prompt_suffix` at the TAIL. That is
     the poyais-era shape, restored 2026-08-05: the era stated style twice, at both ends, on 87% of
     its 117 shots (98% carried `#241a12` inline, 99% carried "flat-cel"/"house style"), and this
-    provider weights the LAST instruction hardest — so the tail is where line weight, the warm-biased
-    scene palette and the single-red-accent law actually land. Between 2026-07-30 and 2026-08-04 the
+    provider weights the LAST instruction hardest — so the tail is where line weight, the scene's
+    palette and the single-red-accent constraint actually land. Between 2026-07-30 and 2026-08-04 the
     tail voice shrank to 46 lettering-only characters and style became head-only; the register drift
     under investigation dates from exactly there.
 
@@ -525,8 +525,8 @@ def shot_cast(reg, text):
     27bc7e2 to ratify a seeded-performer tier; that tier is abolished (2026-08-12) and the
     exclusion is restored. What is NOT restored is the exclusion's silence — a prompt naming
     `` `base` `` used to resolve to `[]` here and travel on unremarked. `seeding_law_violations`
-    now refuses that casting by name, so an author who writes one is told to cast the figure or
-    restage the beat as mass action instead of being handed a frame that seeded nothing."""
+    now refuses that casting by name, so an author who writes one is told to cast the figure; crowd
+    is a separate mass-story choice, never the cheaper substitute for one seeded person."""
     chars = reg.get("characters", {})
     assets = {a["name"]: a for a in reg.get("assets", [])}
     cast = []
@@ -859,8 +859,8 @@ def seeding_law_violations(k, r, seeds):
                    f"({'; '.join(anon)}). It is abolished: an anonymous foreground human does not "
                    f"exist (visual-grammar §2). Cast the figure — an existing cast member where "
                    f"the story says it IS one, otherwise a NEW named cast member minted through "
-                   f"the standard cast-generation waves at Step 3a — or stage the beat as mass "
-                   f"action (crowd exemplar).")
+                   f"the standard cast-generation waves at Step 3a. Crowd is legal only when the "
+                   f"visible mass itself is the story point.")
     # THE SAME REFUSAL, RE-POINTED at the other way of authoring that tier. `shot_cast` excludes
     # `base` again, so a prompt naming it resolves to no cast entry — and a bare exclusion is
     # SILENT: the figure minted no card, seeded nothing, and the shot then measured `cast_free`,
@@ -872,8 +872,8 @@ def seeding_law_violations(k, r, seeds):
                    f"(style-bible §1: it never appears as ITSELF). An anonymous foreground "
                    f"story-bearer is not a tier: cast the figure — an existing cast member where "
                    f"the story says it IS one, otherwise a NEW named cast member minted through "
-                   f"the standard cast-generation waves at Step 3a — or stage the beat as mass "
-                   f"action (`figures.crowd`).")
+                   f"the standard cast-generation waves at Step 3a. Crowd is legal only when the "
+                   f"visible mass itself is the story point.")
     if (crowd and not any(_stem(s).startswith("crowd-exemplar") for s in seeds)
             and not any(str(o).startswith("crowd-exemplar") for o in omitted)):
         bad.append(f"{name}: `figures.crowd` is declared but the slate carries no crowd exemplar "
@@ -1468,22 +1468,11 @@ def seed_roles_text(seed_roles):
         elif role == "prop":
             detail = f"the `{character}` prop canonical — preserve that object's design"
         elif role == STYLE_ANCHOR_ROLE:
-            # The era's own words for what a `refs/env/` register anchor grants, restored
-            # 2026-08-05 from `ff36f63:.../refs/env/README.md`: "the anchor pins line weight,
-            # outline color (#241a12), flat-cel render, and palette discipline, not the content".
-            # AMENDED 2026-08-06 (grayscale drift): "palette DISCIPLINE" is a restraint word — it
-            # transfers "few colours", which is what the rest of the prompt already says three times
-            # over (§2b "simple", the authored `Palette:` line, and its semantic-only red). The tile
-            # is the register's chroma AUTHORITY — it measures
-            # mean saturation 0.407 with only 16% of its area near-neutral — and "and nothing else"
-            # was opting that chroma out, leaving grey the only instruction the prompt could
-            # satisfy. It now grants SATURATION and TEMPERATURE, matched in the new frame's own
-            # hues, so a cool authored palette renders cool-and-coloured instead of drained.
+            # The tile transfers line/flat-cel register and saturation, never scene temperature or hues.
             detail = ("the channel's SCENE STYLE TILE — a register sample ONLY. It pins LINE "
                       "WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE "
-                      "SATURATION and TEMPERATURE — match how strongly its flat fills are coloured "
-                      "and how warm or cool they are; lay THIS frame's own hues down at that same "
-                      "strength and temperature; a frame drained "
+                      "SATURATION — match how strongly its flat fills are coloured while using THIS "
+                      "frame's authored locked hues and temperature; a frame drained "
                       "to neutral grey has failed to take the register. Take NOTHING else "
                       "from it — not its content, not its objects, not its layout or camera, and "
                       "NOT the place it depicts. This image is not a location and never appears "
@@ -2174,9 +2163,9 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         # a cast member authored before it was ever minted. Read off the raw prose, because by
         # construction the cast recipe cannot hold it.
         #
-        # A MESSAGE, never a refusal: a shot may legitimately be authored ahead of the Pass-1 mint
-        # that gives its slug pixels (P8's asset-base-gen-first path), and the no-lint P8 verdict
-        # forecloses a guard here. `assets_omitted` is deliberately NOT honoured — that key records
+        # A bypass diagnostic, not authoring permission: VPW lint blocks an unknown primitive before
+        # this path, while a new cast slug may still enter the standard cast-generation wave.
+        # `assets_omitted` is deliberately NOT honoured — that key records
         # a REGISTERED asset held back on purpose, and letting it silence a name the registry never
         # had would re-open the exact silence this closes.
         unregistered = [t for t in backticked(prompt) if t not in chars and t not in reg_assets]
@@ -2188,7 +2177,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         scene_level = set(_interaction_primitives(k.reg, cast_recipe, omitted))
         for c, prims in cast_recipe:
             pose, expr = _split_primitives(k.reg, prims, omitted)
-            # A delta re-stating the expression its chain already holds is the DEFAULT authoring
+            # A delta may re-state the expression its progressive chain already holds
             # (parent + canonical carry it in pixels). A delta naming a DIFFERENT expression is
             # authoring a change, and the law below demands pixels for it — the walk is the only
             # place that knows which of the two this is.

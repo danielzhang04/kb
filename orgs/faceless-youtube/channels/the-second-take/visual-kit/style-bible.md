@@ -16,24 +16,22 @@ every reference frame was generated against it, so `image-generation` proposes c
   ratios:** `2:3` character
   portraits/turnarounds · `1:1` props · `16:9` scenes.
 - **A character CANONICAL RESTS.** Every cast canonical inherits the base template's RESTING expression and
-  RESTING stance unchanged; the VARIES axes below (hair, facial hair, head tone, outfit, build, age/reaction
+  RESTING stance unchanged; the VARIES axes below (hair, facial hair, head tone, catalog costume, build, age/reaction
   linework) are the only things a canonical may differ in. Two-sided by construction — a baked emotion and a re-invented neutral are
-  the SAME defect, because this resting face is the shape every later delta re-reads as "unchanged", so one
+  the SAME defect, because this resting face is the shape any later delta re-reads as "unchanged", so one
   cast member resting differently from another is drift in the channel's most-seeded frame. A machine-tier or
   non-humanoid canonical holds the law in SPIRIT: symmetric, static, neutral, nothing held.
 - **The shared RIG — LOCKED, identical on every character**, which is what lets ONE reaction map onto ANY
   character: the round near-circle head (never an egg or oval), the head-to-body proportion, the facial layout
   (**NO nose**, **NO ears**, fixed feature MAP so reactions are portable), and the flat-cel **four-digit hand**
   — three fingers + a thumb, never five, six, or a mitten. Fail conditions: §3.
-- **VARIES per character:** hair and hairstyle, facial hair, head tone, outfit, body build (proportions stay,
+- **VARIES per character:** hair and hairstyle, facial hair, head tone, approved catalog costume, body build (proportions stay,
   mass changes), age/reaction linework — never enough to break the layout; costume always comes from the
   generation delta.
-- **Figures are SEEDED or CROWD — by IDENTITY, per figure per shot.** SEEDED is named/recurring cast,
-  seeded from its own canonical; §2c auto-appends the form. There is no third tier: an anonymous
-  foreground story-bearer is CAST (an existing cast member, else a new one minted through the standard
-  cast-generation waves) or the beat is staged as mass action. CROWD → the **§2d CROWD RIG** (simplified
-  features — dot eyes + one mouth — because fine features drift into noses on tiny faces), reserved for
-  genuine masses.
+- **Figures are SEEDED or CROWD — by IDENTITY, per figure per shot.** One seeded figure is the default,
+  cheap human beat: named/recurring cast from its own canonical, with §2c holding the form. An anonymous
+  story-bearer is promoted to existing or newly minted cast. CROWD → the **§2d CROWD RIG** (dot eyes +
+  one mouth), reserved for beats where the visible mass itself is the story point.
   Crowd is DECLARED per shot, never described in rig prose (`visual-grammar.md §2`); it is never a locked
   identity, while a recurring identifiable GROUP is cast. Tier routing law: `visual-grammar.md §2`.
 
@@ -45,19 +43,19 @@ every reference frame was generated against it, so `image-generation` proposes c
 > NO nose, NO ears; SAME simple hands — a classic cartoon hand with exactly THREE fingers plus ONE thumb (four digits total, like a Mickey Mouse / Simpsons hand), NEVER four fingers, NEVER five digits; SAME clean FLAT cel cartoon style, even medium-thick line.
 > Reads unmistakably as the same guy. No text, plain soft light-grey studio background.
 
-Names only the SHARED rig — **costume and head tone are NOT invariants** (the delta supplies the costume; head
+Names only the SHARED rig — **costume and head tone are NOT invariants** (the identity delta binds an approved catalog costume; head
 tone follows the character's registry `head_tone`). The delta overrides it on exactly the variables it names.
 
 ## 2b. STYLE-ONLY descriptor (verbatim — for new characters & environments/props)
 
 > Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even
 > MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle
-> soft cel shading, and any grey or neutral clearly TINTED WARM, so the frame
-> never drains to greyscale; a genuinely cold scene cools its LIGHT, never its neutrals —
+> soft cel shading, using the authored locked 2–3-colour scene palette — including cool or desaturated
+> palettes when the story beat calls for them —
 > rounded friendly shapes, no realistic detail. No text, no words, no labels.
 
 For a **new character** the delta supplies only identity-VARYING traits (hair / facial hair, a flat head tone
-(§4), build + outfit) and §2c holds the rig. For an **environment/prop**: describe the scene, palette free.
+(§4), build + catalog costume) and §2c holds the rig. For an **environment/prop**: describe the scene, palette free.
 
 ## 2c. RIG-HOLD descriptor (verbatim — auto-appended to every character-bearing generation)
 
@@ -121,9 +119,9 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
   the drift is a whole frame quietly rendering a register thinner than its own cast. Furniture, foliage and props
   read chunky and simplified; skin/head patches stay one flat uniform fill (airbrushed or gradient skin FAILs).
 - **Count** — exactly the characters the scene declares.
-- **Identity match vs canonical** — a seeded character's head tone AND hair must MATCH its canonical; a
+- **Identity match vs canonical** — a seeded character's head tone, hair, AND pinned costume must MATCH its canonical; a
   base-cream bald head on a haired/toned character is an **identity FAIL even when every form invariant
-  passes**. **Costume** — the pinned canonical costume is identity; a wrong outfit fails unless authored.
+  passes**. A different costume is legal only when an approved catalog entry supplies it.
 - **Proportion — judged EXPLICITLY, every figure:** the **squat base proportion** (large round head, short
   compact body); too tall / lanky / long-bodied FAILS. **Rig by tier** — named/seeded cast judge against the
   **FULL** rig; crowd figures against the **CROWD** rig (§2d); detailed faces or noses on a crowd figure FAIL.
@@ -140,22 +138,24 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
   Transcribed **letter-by-letter**; garbled, misspelled, or partial is **blocking**. Library CHARACTER frames
   stay text-free; a **seeded PROP with its own designed lettering** (a deed, a titled banknote) is whitelisted,
   still transcribed for spelling.
-- **Never checked — these vary:** pose, camera framing, hair/facial hair, outfit, head-tone choice, body build,
-  age linework, action squash/stretch. **Scoped to the NAMED-CAST comparison against its canonical** —
+- **Never identity-checked — these vary within their authored catalog entry:** pose, camera framing,
+  body build, age linework, action squash/stretch. Costume, head tone, and distinctive hair remain pinned.
+  **Scoped to the NAMED-CAST comparison against its canonical** —
   these are the axes an identity check must never fail a frame on. It licenses nothing about a crowd
   GROUP, which carries §2d's own bounded dress, hair-silhouette and head-tone axes, judged above.
 
 ## 4. Palette
 
-Character colors, outline, and semantic red stay locked; scene/background/prop palettes are free per scene within
-the channel color family. Neutral-grey-only is not a palette.
+Character colors, outline, and semantic red stay locked. Every scene authors and locks a 2–3-colour
+palette to its story beat; warm, cool, mixed, and desaturated passages are equally normal. Palette moves
+with the story rather than inheriting a channel-wide temperature.
 
 | Role | Hex | Notes |
 | --- | --- | --- |
 | Head tone (default) | `#f5ead6` | cleaner warm cream — the template's face/head |
 | Named-cast head tones | e.g. `#d9ac82` | warm tan (MacGregor), deeper brown, pale — one per cast member, pinned in the registry |
 | Outline | `#241a12` | dark warm brown-black, even medium-thick, on everything |
-| Base default costume | warm browns | the base template's brown hoodie + trousers (§1); the delta supplies costume for every other character |
+| Base default costume | warm browns | the base template's brown hoodie + trousers (§1); every other costume resolves to an approved catalog entry |
 | Accent (red) | `#d7402b` | **the one locked red** — the single source of truth for BOTH in-image red (a FICTION stamp, a semantic prohibition/alarm/ownership mark) AND the engine's emphasis ink. Pinned to `motion-tokens.json accent`; any red drawn in a gen uses this exact value |
 
 ## 5. The committed visual recipe (LOCKED — this is THE direction)
@@ -167,13 +167,12 @@ the channel color family. Neutral-grey-only is not a palette.
   middle. Emotion reads in a legible mouth + brow, restrained by default; **posture is the acting**.
   **Personified institutions** carry ONE identity tag (a flag necktie, a hat, a uniform).
 - **Environments:** *built* but flat — a real setting per scene, composed **edge-to-edge with a fore/mid/
-  background depth read built from overlap and recession**, a **committed warm scene palette**, and **light/atmosphere**.
+  background depth read built from overlap and recession**, a **committed 2–3-colour beat palette**, and **light/atmosphere**.
   **Rich, not sparse:** name the real furniture of the place; no dead air, no parallaxed realism.
   **Diegetic art / artifacts** (a painting, poster, brochure vista, map) render in OUR flat-cel look with
   the `#241a12` outline.
 - **`refs/env/scene-style-tile.png` seeds every cast-free plate/scene gen** — it contributes **line
-  register, palette saturation AND TEMPERATURE (the strength and warmth its flat colours are laid down
-  at, which the new frame matches in its own hues) ONLY, never content, layout, or the place it
+  register and palette saturation ONLY, never temperature, hues, content, layout, or the place it
   depicts**; a figure-bearing gen carries its own register in the cast seeds and does NOT take the tile.
 - **Charts / diegetic lettering:** a hand-drawn **marker / sketch family**, deliberately crude, never corporate
   infographic; no title cards (a chapter turn is a hard cut / palette turn). **Lettering is LOCKED: relaxed
