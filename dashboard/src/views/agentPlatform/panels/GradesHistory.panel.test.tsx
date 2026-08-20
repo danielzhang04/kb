@@ -35,6 +35,7 @@ describe('Grades History panel', () => {
   it('registers by file drop, marks eval-suite rows as evidence, and filters source', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
       const url = String(input);
+      if (url === '/api/auth/context') return { ok: true, json: async () => ({ mode: 'win32-desktop' }) };
       if (url === '/api/agents') return { ok: true, json: async () => ROSTER };
       return { ok: true, json: async () => HISTORY };
     }));
@@ -58,11 +59,17 @@ describe('Grades History panel', () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: unknown, init?: RequestInit) => {
       calls.push({ url: String(input), init });
-      return { ok: true, json: async () => String(input) === '/api/agents' ? ROSTER : HISTORY };
+      const url = String(input);
+      if (url === '/api/auth/context') return { ok: true, json: async () => ({ mode: 'win32-desktop' }) };
+      return { ok: true, json: async () => url === '/api/agents' ? ROSTER : HISTORY };
     }));
     render(unlocked());
     await screen.findByTestId('ap-grades-history-rows');
-    expect(calls.map((call) => call.url)).toEqual(['/api/agents', '/api/panels/grades-history?agent=codex-worker']);
+    expect(calls.map((call) => call.url)).toEqual([
+      '/api/auth/context',
+      '/api/agents',
+      '/api/panels/grades-history?agent=codex-worker',
+    ]);
     for (const call of calls) {
       expect((call.init?.method ?? 'GET').toUpperCase()).toBe('GET');
       expect(call.init?.body).toBeUndefined();

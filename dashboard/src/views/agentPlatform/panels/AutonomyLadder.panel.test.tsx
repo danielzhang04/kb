@@ -75,6 +75,9 @@ function stubFetch(payload: AutonomyLadderPanel | 'fail' = PAYLOAD): void {
     'fetch',
     vi.fn(async (input: unknown, init?: RequestInit) => {
       calls.push({ url: String(input), init });
+      if (String(input) === '/api/auth/context') {
+        return { ok: true, status: 200, json: async () => ({ mode: 'win32-desktop' }) };
+      }
       if (payload === 'fail') throw new Error('daemon unreachable');
       return { ok: true, status: 200, json: async () => payload };
     }),
@@ -229,11 +232,12 @@ describe('AutonomyLadder panel', () => {
     render(unlocked());
     await screen.findByTestId('ap-ladder-declared-codex-a');
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe('/api/panels/autonomy-ladder');
+    expect(calls.map((call) => call.url)).toEqual(['/api/auth/context', '/api/panels/autonomy-ladder']);
     // No init at all (⇒ GET), or an explicitly GET init — never a mutating method or a body.
-    const method = calls[0].init?.method ?? 'GET';
-    expect(method.toUpperCase()).toBe('GET');
-    expect(calls[0].init?.body).toBeUndefined();
+    for (const call of calls) {
+      const method = call.init?.method ?? 'GET';
+      expect(method.toUpperCase()).toBe('GET');
+      expect(call.init?.body).toBeUndefined();
+    }
   });
 });
