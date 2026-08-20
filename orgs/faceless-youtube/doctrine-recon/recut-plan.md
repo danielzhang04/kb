@@ -37,10 +37,10 @@ the count includes any blank/separator lines inside the cited range.
 - **RESTORE-VERBATIM:** `L189-L246` (58 lines), from `## Step 0 — Identify channel + video` through the
   final house-style fallback instruction; and `L361-L565` (205 lines), from `## Step 3 — Long-form shot
   list (expand the cues, then densify)` through the output contract.
-- **DELETE:** current SCOPED-REPAIR, archive-quarantine, pure-prose/act-partition and parallel-authoring
-  overlays. They have no minimal-fix/keep-list authority. The parallel/default partition layer belongs to
-  `33676421`, whose warm/three-plane/chain-default recipe cluster is indicted; restoration removes the
-  rest of that post-poyais procedure rather than preserving an uncited fragment.
+- **DELETE:** current SCOPED-REPAIR, archive-quarantine and pure-prose overlays, plus only duplicated
+  causal/taste prose that says parallelism causes recovery. Retain disjoint contiguous act partitions,
+  whole-chain ownership and independent review as process machinery; `33676421` indicts its
+  parallel-default causal/taste layer, not that retained control.
 - **MOVE:** no depiction, staging, palette, chain, style, review-criterion or prompt-order rule remains in
   this procedure after the topic moves below. The skill points to each canonical home.
 
@@ -55,13 +55,26 @@ the count includes any blank/separator lines inside the cited range.
 
 #### Figure law / story bearer
 
-- **MOVE:** move the poyais size/recurrence tier text verbatim from `57010f68:L79-L89` (11 lines), first
-  “Anonymous figures route by SIZE,” last “The downstream scene gate checks the image against these claims
-  — richness included”; and the Step-2.5 casting block `L288-L317` (30 lines), first “4. **Cast it.**,” last
-  “surface it … as `kind: interaction`, no special path,” to `visual-grammar.md` §2.
-- **DELETE:** “One seeded figure is the default,” “Crowd is the exception,” “no anonymous-foreground
-  tier,” and the current one-figure/crowd-only enforcement prose. Those are the unvalidated E5 policy and
-  the tail of the indicted figure-tier churn (`2ede5f20`, `27bc7e25`, `52b17ab2`).
+- **MOVE:** move `57010f68:L79-L89` and the Step-2.5 casting block `L288-L317` to
+  `visual-grammar.md` §2, subject only to the NON-VERBATIM EDIT below; every retained word is moved
+  verbatim.
+- **NON-VERBATIM EDIT (deletion; no replacement wording):** drop these exact source sentences: (1)
+  “Anonymous figures route by SIZE (`style-bible.md`'s three-tier rig model): a **small/many/background**
+  crowd is stated **on the CROWD RIG** — write the `style-bible.md §2d` crowd-rig clause verbatim into the
+  `still_prompt` (round heads, dot eyes, one simple mouth, no noses/ears/teeth, same proportions, varied
+  era clothing) so they hold uniformly at scale; a **LARGE/foreground anonymous** figure (a lone settler
+  who IS the shot, a clerk) instead gets the `style-bible.md §2e` base-rig clause authored into its
+  `still_prompt` (the FULL rig, a generic fitting outfit/hair, no seed). A *named* figure in the same shot
+  is cast (full rig, seeded), never folded into either anonymous clause.” (2) “**Anonymous** figures
+  (different nonrecurring people) stay prose in the `still_prompt`, never cast, and route by SIZE per the
+  three-tier rig model: a **small/many/background** crowd gets the **`style-bible.md §2d` crowd-rig clause**
+  written verbatim (round heads, dot eyes, one simple mouth, no noses/ears/teeth) → simplified rig; a
+  **LARGE/foreground** anonymous figure gets the **`style-bible.md §2e` base-rig clause** written into its
+  `still_prompt` (the FULL rig, a generic fitting outfit/hair, no seed). VPW authors both clauses (as it
+  authors §2d). If a group member later acts alone in a hero shot, cast that member as an individual.”
+- **KEEP-MODERN:** retain the named story-bearer versus genuine rearward crowd decision: a story-bearing
+  individual is a seeded named performer; a genuine mass beat uses the simplified rearward crowd rig with
+  no foreground individuation. Do not restore or move any anonymous LARGE/foreground/full-base-rig path.
 
 #### Closed-world poses / interaction
 
@@ -105,10 +118,9 @@ the count includes any blank/separator lines inside the cited range.
 
 #### Act partition / anti-convergence
 
-- **DELETE:** delete this current-only section in full. It has no poyais base, minimal-fix item or
-  keep-list commit. It is part of the post-poyais parallel/default layer represented by indicted
-  `33676421`. Do not retain the prior plan’s causal claim that partitioning caused a later phrase
-  reduction; the adversarial verdict expressly found that unsupported.
+- **KEEP-MODERN:** retain disjoint contiguous partitions, whole-chain ownership and independent review as
+  process machinery (`goal-state.md` §2 KEEP 6). **DELETE** only the duplicated causal/taste claim that
+  partitioning or parallel authoring caused recovery or phrase reduction.
 
 #### Critic gate and scoped repair
 
@@ -117,7 +129,7 @@ the count includes any blank/separator lines inside the cited range.
 - **DELETE:** current shot-scoped repair law and taste questions from this file. Review procedure stays in
   `critics.md`; review criteria move to `style-bible.md` under the contradiction-map review condensation.
 
-**Estimated net:** 300 current lines → about 210; **−90**.
+**Estimated net:** 300 current lines → about 214; **−86**.
 
 ### 2. `.claude/skills/visual-prompt-writer/references/critics.md`
 
@@ -182,9 +194,9 @@ the count includes any blank/separator lines inside the cited range.
   `pose_ref`/`expression_ref`**,” last “Interactions are just `kind: interaction`.”
 - **KEEP-MODERN:** retain only generic parsing/validation needed for closed-world tokens. Authority:
   keep-list `703b5dc8`, `abd3ed95`.
-- **DELETE:** current normative `figures.crowd`, “base is never cast,” one-seeded-figure, anonymous-tier
-  ban and crowd-look prose. The contradiction-map figure/crowd/pose condensation puts that law in
-  `visual-grammar.md`; transport syntax does not legislate channel taste.
+- **DELETE:** duplicate transport-level “base is never cast,” one-seeded-figure, anonymous-tier and
+  crowd-look prose. Keep neutral `figures.crowd` transport syntax only; the named story-bearer versus
+  genuine rearward crowd decision remains in `visual-grammar.md`, not Schema.
 
 #### Stage / place / plate fields
 
@@ -224,9 +236,18 @@ current CLI/schema compatibility while restoring the older validation behavior n
 
 #### VO / text / coverage lint
 
-- **BEHAVIOR-RESTORE:** retain the poyais single imported render matcher, narration-order matching,
-  derived `vo_text`, write-back, duration coverage, supplied-text checker and L-1–L-4 lettering checks
-  (`57010f68:L42-L270` and `L293-L733`).
+- **BEHAVIOR-RESTORE (exact functions/tests):** retain `build_vo_stream` + `lint_piece` using imported
+  `match_shots_to_tokens` for matcher/narration order (`test_the_hard_floor_still_fails_a_paraphrased_anchor`
+  and new `test_out_of_order_anchor_fails`); `tile`, `strip_derived` and `write_back` for derived `vo_text`
+  / write-back (`test_a_clean_v2_file_lints_green_and_writes_vo_text`); `_dur` + `lint_piece` duration
+  coverage (`test_coverage_floor_still_fails_short_durations`); `strip_suffix`, `_value_spans`,
+  `_supplies_literal`, `unsupplied_text_requests` and `text_supply_check` for supplied text
+  (`test_unsupplied_value_is_flagged`); and `quoted_literals`, `word_cap_check`, `numeral_form_check`,
+  `control_leak_check` and `carried_literal_check` for L-1–L-4 lettering
+  (`test_lowercased_carried_literal_is_flagged`). Delete `literal_count_check`,
+  `long_literal_word_check`, `negation_list_check`, `real_cadence_check`, `CADENCE_FLOOR_S`,
+  `CADENCE_BAND_S`, `CADENCE_CEILING_S`, `LETTERING_COUNT_CAP` and `LETTERING_CHAR_CAP`; do not retain
+  adjacent legacy behavior by implication.
 - **KEEP-MODERN:** header WPM/runtime parsing, short-anchor and three calibrated false-positive fixes from
   keep-list `4edc243e`; UTF-8-safe reporting is retained as interface safety, not doctrine.
 - **KEEP-MODERN:** P1’s 2–5s starting band, runtime÷5 floor and >~6s `hold_reason` behavior from minimal fix
@@ -346,12 +367,12 @@ current CLI/schema compatibility while restoring the older validation behavior n
 
 #### Parallel wave process
 
-- **DELETE:** current concurrent disjoint-partition doctrine. It is post-poyais text with no minimal-fix or
-  keep-list authority and belongs to the indicted `33676421` parallel/default layer. Restore poyais
-  “generate all of Pass 2 first; one review round” without claiming that serial or parallel execution
-  caused a taste result.
+- **KEEP-MODERN:** retain concurrent disjoint contiguous partitions, whole-chain ownership and independent
+  review as process machinery. **DELETE** only duplicated causal/taste prose claiming parallel execution
+  causes recovery; restore poyais “generate all of Pass 2 first; one review round” without making a serial
+  or parallel taste claim.
 
-**Estimated net:** 503 → about 300; **−203**.
+**Estimated net:** 503 → about 303; **−200**.
 
 ### 6. `.claude/skills/image-generation/scripts/forge.py`
 
@@ -360,8 +381,10 @@ manifest interfaces remain usable; only behavior/prose outside the allowed survi
 
 #### Render size / style constants
 
-- **BEHAVIOR-RESTORE:** poyais provider default behavior, exposed through current supported size options;
-  keep 1K as the neutral default without a Poyais/taste rationale.
+- **BEHAVIOR-RESTORE:** `nano` always sends an explicit `generationConfig.imageConfig.imageSize: "1K"`
+  for the default request; do not omit `imageSize`. `IMAGE_SIZE_DEFAULT` remains `"1K"`, while 2K/4K are
+  explicit supported options. Pin this request shape with new
+  `test_nano_sends_explicit_1k_image_size`.
 - **DELETE:** resolution-as-style claims and every hard-coded TST style rationale. Resolution had no causal
   taste evidence (`era-map.md` §6); the contradiction-map style condensation removes channel prose from
   the org engine.
@@ -523,9 +546,9 @@ Open Question 6 records that source conflict. Code restoration is by behavior.
 - **RESTORE-VERBATIM + MOVE-IN:** restore the poyais introduction `ff36f637:L1-L25` (25 lines), then move
   in the exact poyais depiction decision paragraph from `57010f68:VPW L52-L60`. The universal table
   pointer stays; no modern class menu is appended.
-- **DELETE:** current E5 class table, “first-class moves,” subject/occupancy overlay and example-shots law.
-  Depiction has one home under the contradiction-map depiction condensation, while `f1c3b1aa` and
-  `example-shots.md` lack survivor authority.
+- **DELETE:** current E5 class table, “first-class moves” and example-shots law. Retain the named
+  story-bearer versus genuine rearward crowd decision only in the Figure / crowd staging home below;
+  `f1c3b1aa` and `example-shots.md` supply no separate survivor authority.
 
 #### Stage / chain law
 
@@ -538,18 +561,27 @@ Open Question 6 records that source conflict. Code restoration is by behavior.
 
 #### Figure / crowd staging
 
-- **RESTORE-VERBATIM:** `ff36f637:L26-L84` (59 lines), from `## 1. Staging conventions` through the
-  anonymous size-routing paragraph, with any chain sentence moved out as above.
-- **MOVE-IN:** bring the exact poyais VPW casting/tier block here so this is the single home.
+- **RESTORE-VERBATIM:** `ff36f637:L26-L84` (59 lines), with the chain sentence moved out as above, except
+  for the declared NON-VERBATIM EDIT below.
+- **NON-VERBATIM EDIT (deletion; no replacement wording):** drop this exact sentence: “**Anonymous**
+  figures (different nonrecurring people) stay prose in the `still_prompt`, never seeded, and route by SIZE
+  (`style-bible.md`'s three-tier rig model): a **small/many/background** crowd (an audience, a mob) is
+  written as the **§2d crowd-rig clause** (the simplified rig — round heads, dot eyes, one simple mouth); a
+  **LARGE/foreground** anonymous figure (a lone settler who IS the shot, a clerk) is written as the
+  **§2e base-rig clause** (the FULL rig, a generic fitting outfit/hair).”
+- **MOVE-IN:** bring the poyais VPW casting block here, excluding the two exact anonymous-tier sentences
+  listed above; this remains the single home.
 - **KEEP-MODERN:** append only the catalog-resolution clause moved from current VPW: pose/expression/
   interaction/costume tokens must resolve; an unresolved token blocks. Authority: keep-list
   `703b5dc8`, `abd3ed95`.
 - **KEEP-MODERN:** where the crowd rule compares proportions, retain the exact modern comparator “the
   crowd exemplar seed” and explicit every-figure detection; remove 2–3 tone/hair-silhouette bounds.
   Authority: keep-list `c4ab957b`, `46076bff`; deletion authority: indicted `3d2aea26`.
-- **DELETE:** one seeded figure default, no anonymous tier, crowd-only-mass rule, current figure caps and
-  primitive composition recipe. Cite indicted `2ede5f20`, `27bc7e25`, `52b17ab2`, `e088c455` and the
-  contradiction-map figure/crowd condensation.
+- **KEEP-MODERN:** retain the named story-bearer versus genuine rearward crowd decision stated above; no
+  anonymous LARGE/foreground/full-base-rig authoring route may be restored or moved.
+- **DELETE:** duplicated one-seeded-figure default, current figure caps and primitive composition recipe.
+  Cite indicted `2ede5f20`, `27bc7e25`, `52b17ab2`, `e088c455` and the contradiction-map figure/crowd
+  condensation.
 
 #### Composition / camera / scale
 
@@ -572,7 +604,7 @@ Open Question 6 records that source conflict. Code restoration is by behavior.
 - **RESTORE-VERBATIM:** poyais policy/camera/output portions `ff36f637:L143-L197` (55 lines), first
   `## 4. Motion direction`, last the unproven-dogfood status line, except chain/lettering/style fragments
   moved to their canonical homes.
-**Estimated net:** 291 → about 260; **−31**.
+**Estimated net:** 291 → about 241; **−50**.
 
 ### 12. `channels/the-second-take/visual-kit/style-bible.md`
 
@@ -832,24 +864,24 @@ targets. Tests/fixtures are budgeted separately because they are outside the sta
 
 | File | Current | Estimated target | Net |
 | --- | ---: | ---: | ---: |
-| VPW `SKILL.md` | 300 | 210 | −90 |
+| VPW `SKILL.md` | 300 | 214 | −86 |
 | `references/critics.md` | 160 | 70 | −90 |
 | `references/shots-schema.md` | 291 | 350 | +59 |
 | `scripts/lint_shots.py` | 2,754 | 1,550 | −1,204 |
-| image-generation `SKILL.md` | 503 | 300 | −203 |
+| image-generation `SKILL.md` | 503 | 303 | −200 |
 | `scripts/forge.py` | 3,208 | 1,750 | −1,458 |
 | `scripts/stamp_review.py` | 334 | 250 | −84 |
 | `scripts/build_review_artifact.py` | 724 | 420 | −304 |
 | `scripts/crop_battery.py` | 108 | 95 | −13 |
 | `scripts/finalize_thumbnail.py` | 97 | 97 | 0 |
-| `visual-kit/visual-grammar.md` | 291 | 260 | −31 |
+| `visual-kit/visual-grammar.md` | 291 | 241 | −50 |
 | `visual-kit/style-bible.md` | 200 | 300 | +100 |
 | `visual-kit/registry/registry.json` | 670 | 545 | −125 |
 | `example-shots.md` | 88 | 0 | −88 |
-| **14-file stack** | **9,728** | **6,197** | **−3,531** |
+| **14-file stack** | **9,728** | **6,185** | **−3,543** |
 
 Expected fixture/test additions: roughly +120 lines, leaving the repository-wide implementation about
-**−3,411 lines**. The edit worker records actual `git diff --numstat`; a non-negative stack diff stops the
+**−3,423 lines**. The edit worker records actual `git diff --numstat`; a non-negative stack diff stops the
 work for owner review, but line pressure never authorizes removing a survivor.
 
 ## Validation battery — zero network, zero generation spend
