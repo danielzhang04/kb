@@ -839,9 +839,11 @@ def test_manifested_five_card_fleet_fixture_exercises_the_blessed_behavior(tmp_p
     assert all(card.hermetic for card in report.cards)
 
 
-def test_real_fleet_suite_refuses_the_deliberately_unblessed_new_cards():
+def test_real_fleet_suite_is_green_and_manifested_after_gate2_blessing():
+    # State pin: Daniel blessed the fleet floor (incl. lesson-appended + ledgers-cost-row v2)
+    # on 2026-08-19 (gate 2). The pre-bless refusal behavior stays covered by the hermetic
+    # unblessed-card refusal test; this pins that the REAL suite now runs and passes.
     report = run_suite(REPO_ROOT, "fyt-runner", fleet=True)
-    assert report.tampered is True
-    assert report.cards == []
-    assert "lesson-appended.md" in report.reason
-    assert "ledgers-cost-row.md" in report.reason
+    assert report.tampered is False, report.reason
+    assert report.passed, [(card.id, card.reason) for card in report.cards]
+    assert {card.id for card in report.cards} >= {"lesson-appended", "ledgers-cost-row"}
