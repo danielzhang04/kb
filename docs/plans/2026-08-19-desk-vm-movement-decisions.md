@@ -64,6 +64,15 @@ Atlas features themselves are a later build.
   tailnet-identity authed. Atlas itself (voice, desktop control, own-domain hosting)
   is future work and deliberately unconstrained by this arc.
 
+## Review rulings (Daniel, 2026-08-20)
+- **Deploy vs manual interactive work: bounded wait.** Transient blockers (in-flight
+  git writes, unclassified service children) get a short automatic wait, not a
+  refusal. Live PTY / mid-stream Composer sessions still refuse the deploy — killing
+  an interactive terminal is worse than asking. Governed runs pause/resume as decided.
+- **T3 exception to "no browser-only flows":** passkey (WebAuthn) approvals keep their
+  browser ceremony — the assertion re-check IS the T3 boundary. Inbox items declare
+  `ceremony: webauthn`; every other action stays a clean API endpoint.
+
 ## Facts the design rests on (codex survey, card 6a867b1f-608a2099)
 - All run/stage/attempt/session state persists in `DASHBOARD_STATE_ROOT/control/
   control-plane.json` (`dashboard/server/control/store.ts:267-282,4367-4397`); startup
