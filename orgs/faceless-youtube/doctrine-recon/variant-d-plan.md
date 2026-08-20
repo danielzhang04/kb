@@ -1,6 +1,25 @@
 # Variant D Implementation Plan
 > For agentic workers: execute task-by-task; each task ends with tests + a review gate. Steps use `- [ ]`.
-**Goal:** Implement and trial Variant D so its four criterion changes alter the L01–L12 image payloads and can be judged blind beside va/vb/vc without quotas or hidden targets. **Architecture:** Change each rule at its existing canonical home, keep every speaker and test synchronized, validate an officially scoped A1 fragment, generate parent-first, and extend the existing comparison board. **Spec:** `orgs/faceless-youtube/doctrine-recon/variant-d-spec.md`, rev 3.
+**Goal:** Implement and trial Variant D so its four criterion changes can be judged blind beside va/vb/vc without quotas or hidden targets. **Architecture:** Change each rule at its existing canonical home, keep every speaker and test synchronized, validate an officially scoped A1 fragment, generate parent-first, and extend the existing comparison board. **Spec:** `orgs/faceless-youtube/doctrine-recon/variant-d-spec.md`, rev 4.
+
+## Verdict trace
+
+| Verdict | Resolving step(s) |
+| --- | --- |
+| F1 | Task 1 steps 1–2, 20, 25 |
+| F2 | Task 1 steps 13–15 |
+| F3 | Task 1 steps 8 and 19; Task 2 steps 2–6 |
+| F4 | Task 2 step 14 |
+| F5 | Task 3 steps 9–11; Task 4 steps 2 and 6 |
+| F6 | Task 1 steps 3 and 5; Task 2 steps 2–6 |
+| F7 | Task 1 steps 12 and 25 |
+| F8 | Task 1 steps 21–23 |
+| F9 | Task 1 steps 16–17 |
+| F10 | Task 1 steps 1–25 (replacement protocol and byte-exact OLD → NEW blocks) |
+| F11 | Task 2 step 15 |
+| F12 | Task 1 steps 21–23 |
+| Forgotten speakers | Task 1 steps 1, 3, 8, 12, 19, and 25 |
+| Metadata-only safeguards | Task 2 steps 5–15; Task 3 steps 9–11; Task 4 steps 2 and 6 |
 
 ## Global Constraints
 
@@ -16,6 +35,7 @@
 - Treat metrics and distributions as reviewer evidence only; the blind reviewer applies §3.1–3.4 per shot before reporting them.
 - Run scripts for their output only; do not load L3 scripts as text.
 - Make no Git mutation while executing this plan-writing task; implementation commits remain task-local and never target `main`.
+- For every textual replacement below, copy the fenced `OLD` block exactly (including backticks, indentation, and line wraps) into standard input and run `py -3 -c "from pathlib import Path; import sys; old=sys.stdin.read(); assert old in Path(sys.argv[1]).read_text(encoding='utf-8')"` with the step's literal file path as the sole argument. Expected pre-edit output is empty with exit 0; a failed assertion stops the step. After patching, assert the OLD bytes are absent and NEW bytes present. New-file steps assert the literal destination does not exist. Named verification commands are additional gates, never substitutes for byte assertions.
 - In this plan, `V` means `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh`.
 - Coverage index: §3.1 → Task 1 steps 6–20; §3.2 → Task 1 steps 5–6, 10, 21–24; §3.3 → Task 1 steps 3–4, 8, 16–17; §3.4 → Task 1 steps 1–4, 19–20; §3.5 → Task 2 steps 14–15; §4 items 1–5 → Task 1 steps 1–27, Task 1 steps 13–15 plus Task 2 steps 9–13, Task 2 steps 1–16, Task 3 steps 1–13, and Task 4 steps 1–10 respectively.
 
@@ -35,8 +55,9 @@
 - Modify `orgs/faceless-youtube/.claude/skills/motion-planner/SKILL.md:20-24`; read and preserve the compatible critic rule in `references/critics.md:27-29`.
 - Modify `orgs/faceless-youtube/.claude/skills/render-builder/references/shots-motion-schema.md:7-11,27-33`.
 - Modify `orgs/faceless-youtube/.claude/skills/image-generation/SKILL.md:181-183,196-200,223-251`.
+- Create `orgs/faceless-youtube/.claude/skills/image-generation/scripts/palette_metrics.py` as the single owned HSV implementation.
 - Modify `orgs/faceless-youtube/.claude/skills/image-generation/scripts/build_review_artifact.py:1-10,214-271,296-411`.
-- Modify `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/scratchpad/taste-audit/vd_palette_metrics.py:20-99` only to expose the agreed 165°–240° cool-pair metric to the importer without duplicating its HSV implementation.
+- Modify `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/scratchpad/taste-audit/vd_palette_metrics.py:9-99` to delete its HSV implementation and normally import the owned `image-generation/scripts/palette_metrics.py` implementation.
 - Test `orgs/faceless-youtube/.claude/skills/image-generation/scripts/test_forge_figures.py`, `test_forge_place_and_gates.py:511-516`, `test_forge_style_tile.py:239-245`, `test_build_review_artifact.py`, and `test_pass1_gate_doc_consistency.py`.
 - Do not modify `orgs/faceless-youtube/.claude/skills/image-generation/scripts/forge.py`; its live loader and `figures_expansion` path already work once the blockquote is moved.
 
@@ -59,7 +80,47 @@
    > do not give them individual detailed faces.
    ```
 
-   In the preceding RIG-HOLD block, replace `crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it` with `crowd figures instead follow the §2d CROWD-RIG clause that Forge appends when figures.crowd is true`. Rename old `## 2d. Canonical dispatch suffix` to `## 2e. Canonical dispatch suffix`; retain the empty `global_prompt_suffix` text byte-for-byte. `forge.py::blockquote_after` matches any `## ` line containing the supplied header substring, seeks the first following blockquote, joins its `>` lines, and stops at the first blank after capture, so the new heading makes `Kit.desc_crowdrig` non-empty. The distinct lookup substrings `LOCKED STYLE descriptor`, `STYLE-ONLY descriptor`, and `RIG-HOLD descriptor` remain byte-identical and cannot collide with `CROWD-RIG clause`. KEEP `forge.py:188` comment `# §2d, expanded from figures` and its loader call because the section number and ownership remain correct. Test: `test_forge_figures.py::test_live_kit_expands_the_bible_crowd_clause`; suffix-heading assertion: `test_forge_style_tile.py::test_style_descriptor_and_empty_suffix_lock_are_loaded_from_the_bible`.
+   Replace the RIG-HOLD/suffix block exactly; this also closes the forgotten `style-bible.md:96-97` speaker by pointing to §2d instead of restating crowd-face details.
+
+   OLD:
+
+   ```md
+   > Every FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as
+   > the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME
+   > eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE
+   > thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even
+   > medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background /
+   > crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it (simplified: dot eyes,
+   > one simple mouth) — do NOT force this full rig onto them. Hold ONLY this form — costume, pose,
+   > expression, head tone, build, and framing are set by the generation delta, not here.
+
+   ## 2d. Canonical dispatch suffix
+   ```
+
+   NEW:
+
+   ```md
+   > Every FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as
+   > the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME
+   > eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE
+   > thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even
+   > medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background /
+   > crowd figures instead follow the §2d CROWD-RIG clause that Forge appends when `figures.crowd` is true —
+   > do NOT force this full rig onto them. Hold ONLY this form — costume, pose, expression, head tone, build,
+   > and framing are set by the generation delta, not here.
+
+   ## 2d. CROWD-RIG clause
+
+   > The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple
+   > consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **same squat
+   > head-to-body proportion as the crowd exemplar seed** — a large round head on a short compact body, NOT
+   > taller/lanky — in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig —
+   > do not give them individual detailed faces.
+
+   ## 2e. Canonical dispatch suffix
+   ```
+
+   The pre-edit assertion targets the whole OLD block above. Delete the original grammar heading plus blockquote in the same patch. `forge.py::blockquote_after` then makes `Kit.desc_crowdrig` non-empty; keep `forge.py:188` unchanged. Command: run `py -3 -m pytest test_forge_figures.py test_forge_style_tile.py -q` from the image-generation scripts directory. Expected: both moved-byte and suffix-heading tests pass.
 
 2. - [ ] **Replace the stale crowd-authorship explanation in `visual-grammar.md` in place.** Delete lines 120–145 beginning `The crowd rig differs from the full rig ONLY in the FACE` and ending `Every depicted crowd figure must satisfy both conditions`, including `§2d is authored by VPW`, `it is not auto-appended`, `The §2d words above stay in the still_prompt`, `supersedes`, and `prompt-authored (§2d) AND exemplar-seeded`. Replace them with this compact text before the occupancy paragraph:
 
@@ -71,15 +132,15 @@
    full §2c rig. Review every depicted crowd figure against that exemplar.
    ```
 
-   Test: change `test_lettering_fidelity.py::test_rig_vocabulary_attached_to_figures_is_clean` into `test_crowd_rig_boilerplate_is_forge_owned`, pass a `still_prompt` containing `CROWD RIG:` to `control_leak_check`, and assert one HARD; `test_live_kit_expands_the_bible_crowd_clause` proves the bytes return at assembly rather than authoring.
+   Do not change `_CONTROL_LEAK` or make `CROWD RIG:` a HARD. Replace the old test with an authored-input absence test that loads every `still_prompt`/`gen_prompt` in the test fixtures and asserts that the moved blockquote and `CROWD RIG:` occur nowhere; this is fixture coverage, not production lexical lint. The Forge assembly-byte test in step 20 proves the same bytes return only at assembly. Command: run `py -3 -m pytest test_lettering_fidelity.py test_forge_figures.py -q`. Expected: the authored-fixture absence test and live assembly-byte test both pass, with no new `control_leak_check` pattern.
 
 3. - [ ] **Replace the single story-bearer sentence with the positive occupancy and crowd criterion.** Replace exact old text `**Story bearer.** Every story-bearing individual is seeded named cast. Only a genuine rearward mass beat uses the simplified crowd rig.` with:
 
    ```md
-   **Occupancy follows the acting subject.** Decide occupancy from who is acting in this beat: no human
-   when mechanism, quantity, place, object, or absence is the subject; one seeded performer for one
-   person's decision, action, or reaction; a seeded pair when an exchange, relationship, or shared labour
-   makes the sentence true; the simplified crowd rig only when the subject is the mass. Three ordinary
+   **Occupancy follows who acts in the sentence.** The performer whose decision, action or reaction makes
+   it true is seeded cast; a pair is seeded when an exchange, relationship or shared labour is what the
+   sentence shows; a beat whose subject is a thing, a quantity, a place or an absence carries no performer;
+   a beat whose subject is the mass uses the simplified crowd rig. Three ordinary
    pair tableaux are a clerk and customer exchanging a box, two workers at one bench, and a manager with
    an auditor over one ledger. Figures stay small, mid/rear, in a structured world. a crowd is written in
    the primary scene clause as a bounded group held beyond something the scene already has — a pane, rails,
@@ -124,15 +185,50 @@
 
    ```md
    **Character colours are locked; every stage's world palette is committed.** Each stage commits a
-   dominant field derived from its light source and dominant material, plus at most two supporting
-   colours; complements are valid when those facts create them; a palette turn changes the dominant
+   dominant field derived from its light source and dominant material; its supporting colours come from
+   the same facts; complements are valid when those facts create them; a palette turn changes the dominant
    field, not the names of the same pair. Colour with no physical or story cause is not written. Only
    the character's own colours are fixed:
    ```
 
    No hue family is banned and no recurrence/count target is added. Test: the bible assertions in `test_doctrine_reset_guards.py::test_variant_d_doctrine_owners_are_consistent`, `test_build_review_artifact.py::test_palette_card_uses_165_to_240_cool_pair_without_gating`, and the doctrine echo sweep in step 25.
 
-6. - [ ] **Rewrite the VPW decision order and stage timing at the existing Step 3 home.** Replace ``run **Step 2.5** on its VO line (classify → cast → stage the tableau → state the facts), then write the `still_prompt` `` with ``decide the subject → acting participants → occupancy → shot class → cast → tableau → drawable facts, then write the `still_prompt` ``. In the Shorts paragraph, replace `(classify → cast → tableau → facts → intent note)` with `(decide subject → acting participants → occupancy → shot class → cast → tableau → drawable facts → intent note)`. Replace `Keep every planned stage and its whole chain inside one partition` with:
+6. - [ ] **Rewrite the VPW decision order and stage timing at the existing Step 3 home.** Make three exact, byte-asserted multiline replacements.
+
+   OLD:
+
+   ```md
+   - **Expand each `[B-ROLL]` cue** into a full shot: run **Step 2.5** on its VO line (classify → cast →
+     stage the tableau → state the facts), then write the `still_prompt`. Set
+   ```
+
+   NEW:
+
+   ```md
+   - **Expand each `[B-ROLL]` cue** into a full shot: decide subject → acting participants → occupancy →
+     shot class → cast tokens → tableau → drawable facts, then write the `still_prompt`. Set
+   ```
+
+   OLD:
+
+   ```md
+   short shot too** (classify → cast → tableau → facts → intent note) — shorts are the densest,
+   ```
+
+   NEW:
+
+   ```md
+   short shot too** (subject → acting participants → occupancy → shot class → cast tokens → tableau →
+   drawable facts → intent note) — shorts are the densest,
+   ```
+
+   Replace this complete physical line:
+
+   ```md
+   **Partitioning machinery.** Author disjoint contiguous act partitions. Keep every planned stage and its whole chain inside one partition, never split across two; a coordinator merges partitions in narration order, then runs one whole-file lint and one independent critic pass.
+   ```
+
+   with:
 
    ```md
    **Partitioning and stage decision.** Lock only contiguous act partitions plus cast and place
@@ -145,7 +241,7 @@
    official lint and one independent critic pass.
    ```
 
-   Replace both Step 3 and Step 7 copies of `confirm a progressive in-shot reveal` with `confirm a story-needed held state change or a non-empty hold_reason`. Test: the VPW assertions in `test_doctrine_reset_guards.py::test_variant_d_doctrine_owners_are_consistent`.
+   Replace the exact line-wrapped Step 3 and Step 7 sentences containing `confirm a progressive in-shot reveal` with the same sentences containing `confirm a story-needed held state change or a non-empty hold_reason`; assert each full physical block first. Command: run the VPW doctrine-owner test. Expected: decision order, post-authoring stages, provider-visible palette facts, and both held-state speakers pass.
 
 7. - [ ] **Replace the canonical chain paragraph in `shots-schema.md:370-395`.** Preserve line 366 exactly. Replace the old paragraph beginning `Stage the run — held evolving stages` with:
 
@@ -167,11 +263,122 @@
 
    Test: update `test_stage_check.py` comments to say `camera/set/primary subject can hold`, retain the existing base + 3 pass/base + 4 fail assertions, and put the schema assertions in `test_doctrine_reset_guards.py::test_variant_d_doctrine_owners_are_consistent`.
 
-8. - [ ] **Align the earlier schema speaker and execution fields.** In `shots-schema.md:131-149`, replace `This is the still-era realization of §13a-i's progressive reveal` with `Authoring chooses a stage only by the canonical hold-camera criterion below`; replace the paired author-facing sentences `DELTA-CHAIN when the change is INTEGRATIVE` and `LAYER when the change is DISCRETE and seedable` with `Author stage intent once; image-generation realizes an integrative change as parent-seeded regeneration and motion-planner realizes a discrete seedable change as a layer.` Preserve same-location re-base, intent-only, ≤3, timing, and per-member `vo_ref`. At line 170 append `An ordinary non-contact pair is two cast records on a fresh base.` At line 179 replace `Interactions are just kind: interaction` with `Physical-contact pairs use an existing kind: interaction route; if none fits, emit needed_assets and stop at the existing human approval/veto gate. Do not promise a three-person seed path.` Test: existing interaction HARD tests plus the doctrine equality test in step 21.
+8. - [ ] **Align every pair/cast speaker to Forge's prompt-token transport.** Keep the chain paragraph replacement, then make these four byte-asserted OLD → NEW replacements in one consistency patch.
 
-9. - [ ] **Remove the remaining schema claims that VPW should carry generated rig prose, without adding fragment metadata.** Replace lines 300–302 ending `figures on the CROWD RIG (round cream heads, DOT EYES, NO noses/ears/teeth) is legal and common` with `Concrete depicted-body facts are legal, but canonical rig blocks are Forge-owned and never copied into still_prompt.` Replace line 350's `real progressive reveal` with `story-needed held state change`. Leave the top-level JSON example and field-list prose unchanged: rev 3 declares fragment scope only through the lint CLI, so `fragment_scope`, `start_anchor`, and `end_anchor_exclusive` must not appear in the schema, an example, or a generated `shots.json`. Test: step 15 asserts the vb input remains byte-semantically free of fragment metadata before and after `--fragment --write`.
+   `shots-schema.md:170` OLD is the complete single physical line beginning:
 
-10. - [ ] **Make the critic symmetric and point it at calibration evidence.** Replace exact line `> Apply the canonical six shot questions in the channel style-bible.md review-criteria section and the canonical plan-level chain/disclosure contract in references/shots-schema.md.` with the following block, whose first sentence preserves that pointer and six-question ownership:
+   ```md
+   - **`cast` + `pose_ref`/`expression_ref` — the figure's pose/expression come from SEEDED library assets, not the `still_prompt`.** VPW records each prominent figure's registry pose/expression (INTENT); `image-generation` seeds them **directly into the one scene generation** — the character canonical + expression frame + pose frame (+ any interaction template) all seed a single run (no separate pre-merge pass; Pass 1b retired). **The `still_prompt` therefore describes the scene + the figure's placement/action ONLY — never its hand/finger mechanics, body-pose mechanics, or facial expression** (those are the `pose_ref`/`expression_ref` assets' job; authoring them in prose too is the double-authoring trap). `pose_ref`/`expression_ref` are each optional (pose-only / expr-only / both / neither). `cast` is how image-gen enumerates a shot's figures — it replaces prose figure-parsing. Seed doctrine: `style-bible.md §5`. A `cast` entry may name an individual character OR a **recurring identifiable group** (a band/troupe whose canonical is a group frame — typically no `pose_ref`/`expression_ref`); image-gen locks it once and seeds it into each appearance. An anonymous crowd stays prose in the `still_prompt`, never cast.
+   ```
+
+   NEW:
+
+   ```md
+   - **Backticked prompt tokens are executable cast transport; `cast` is descriptive metadata.** Forge
+     derives seeded characters from character tokens in `still_prompt`, in token order. An ordinary pair
+     names two approved backticked character tokens in that prompt. A contact pair names the left character,
+     then the right character, then one registered backticked interaction token (`handoff`, `handshake`, or
+     `fistbump`); `shot_cast` binds the primitive in that order. The optional legacy `cast` array may describe
+     the same intent for review, but Forge never reads it and it cannot make an un-tokened figure render.
+     Unresolved character or interaction tokens emit `needed_assets` and stop at the existing human gate.
+   ```
+
+   `shots-schema.md:179` OLD:
+
+   ```md
+   - **`needed_assets` — surface-then-gate.** When a shot needs a pose/expression/interaction the registry lacks, VPW adds an entry (`kind` + `slug` + **`wants`** = what to draw + `why`) and **HARD-STOPS** (does not proceed to generation). The human approves+generates on the base, or vetoes → VPW restages that beat onto EXISTING assets only. **Interactions are just `kind: interaction`** — same path, no special-casing; the `wants` description is what makes the request actionable.
+   ```
+
+   NEW:
+
+   ```md
+   - **`needed_assets` — surface-then-gate.** When a shot needs a character or interaction token the
+     registry lacks, VPW records `kind` + `slug` + `wants` + `why` and **HARD-STOPS**. The human approves
+     and registers it, or vetoes and VPW restages onto existing assets. A contact pair must name two
+     approved backticked characters followed by one approved backticked `handoff`, `handshake`, or
+     `fistbump` token in `still_prompt`; descriptive `cast` metadata cannot satisfy this transport.
+   ```
+
+   `visual-grammar.md:100-110` OLD:
+
+   ```md
+   5. **Stage the tableau + act it — by SELECTING library assets, not describing them.** Mirror step 4's
+      casting: for each prominent figure, choose its **`pose_ref`** (the held body pose/gesture that carries the
+      action's meaning) and/or **`expression_ref`** (the face for this beat/register) **from the registry
+      vocabulary**, and record them on the shot's `cast` entry. These are SEEDED by `image-generation` (style-bible §5
+      one-run multi-seed) — so the pose/hands and the expression are the assets' job, **not** the `still_prompt`'s.
+      Scene-first ordering: the shot's meaning/scene drives which pose/expression fits, never the reverse.
+      `pose_ref`/`expression_ref` are each optional (a plain standing figure needs neither). A two-figure
+      interaction (a clasp) uses an **interaction** asset — the same kind of `pose_ref`, just one that shows two
+      figures — referenced by BOTH figures' `cast` entries. **The shot's `cast` ORDER binds the slots: the first
+      entry is the left figure, the second is the right** (image-gen seeds two identities into the template by
+      that order). If the registry lacks the interaction, surface it (below) as `kind: interaction`, no special path.
+   ```
+
+   NEW:
+
+   ```md
+   5. **Stage the tableau + act it through executable prompt tokens.** Forge derives seeded cast from
+      backticked character tokens in `still_prompt`; the optional `cast` array is descriptive review metadata
+      and is never engine-read. Name an ordinary pair left-to-right as two approved character tokens. For
+      physical contact, name the left character, then the right character, then one approved interaction token
+      (`handoff`, `handshake`, or `fistbump`); that is the binding order consumed by `shot_cast`. If any token
+      is unavailable, emit `needed_assets` and stop at the existing human gate.
+   ```
+
+   In `test_shots_v2.py`, replace this exact OLD docstring block:
+
+   ```py
+   v2 drops the v1 authoring/review metadata (`from_cue`, `beat`, `narration_type`,
+   `cast`, `props`, `needed_assets`, `house_style`, `shot_counts`,
+   `timing_status`). None of it was ever engine-read, so the rule that matters is:
+   ```
+
+   with:
+
+   ```py
+   v2 drops the v1 authoring/review metadata (`from_cue`, `beat`, `narration_type`,
+   `cast`, `props`, `needed_assets`, `house_style`, `shot_counts`,
+   `timing_status`). Forge derives seeded cast from backticked `still_prompt` tokens;
+   the legacy `cast` array is descriptive metadata only. The compatibility rule is:
+   ```
+
+   In `image-generation/SKILL.md:215-221`, replace:
+
+   OLD:
+
+   ```md
+   **Figure index — the shot's `cast` names its figures.** Before generating shot `S`, read its `cast`: for
+   each figure, **seed its frames** — canonical + `pose_ref`/`expression_ref` (a `cast` entry with neither ref
+   → the plain canonical). Seed via technique (a) only if an on-disk frame already IS that shot full-frame,
+   else as a placed figure via (b)/(d); never fresh-draw a figure that has a canonical — the seeded canonical
+   is what holds identity + the library hand across shots. (`cast` is authoritative; the library manifest maps
+   each character to its canonical, the registry maps each `pose_ref`/`expression_ref` tag to its frame.
+   Environments/props aren't figures — they're composed per shot from the `still_prompt`.)
+   ```
+
+   NEW:
+
+   ```md
+   **Figure index — Forge derives cast from backticked prompt tokens.** `shot_cast` consumes `still_prompt`
+   tokens left-to-right: each approved character token adds that seeded canonical, and a following registered
+   pose/expression/interaction token attaches to the latest character. An ordinary pair names two character
+   tokens; a contact pair orders left character → right character → `handoff`/`handshake`/`fistbump`. The
+   optional legacy `cast` array is descriptive metadata only and is never engine-read. Never fresh-draw a
+   figure with a canonical; unresolved tokens stop at the existing asset gate.
+   ```
+
+   Pre-edit assertions target each entire OLD block. Command: run `py -3 -m pytest test_shots_v2.py test_new_guards.py test_pass1_gate_doc_consistency.py -q`. Expected: pair-order coverage proves both character canonicals plus the interaction seed; no speaker claims `cast` drives Forge.
+
+9. - [ ] **Remove the remaining schema claims that VPW should carry generated rig prose, without adding fragment metadata.** Replace lines 300–302 ending `figures on the CROWD RIG (round cream heads, DOT EYES, NO noses/ears/teeth) is legal and common` with `Concrete depicted-body facts are legal, but canonical rig blocks are Forge-owned and never copied into still_prompt.` Replace line 350's `real progressive reveal` with `story-needed held state change`. Leave the top-level JSON example and field-list prose unchanged: rev 4 declares fragment scope only through the lint CLI, so `fragment_scope`, `start_anchor`, and `end_anchor_exclusive` must not appear in the schema, an example, or a generated `shots.json`. Test: step 15 asserts the vb input remains byte-semantically free of fragment metadata before and after `--fragment --write`.
+
+10. - [ ] **Make the critic symmetric and point it at calibration evidence.** Assert and replace this exact physical OLD line, including live backticks:
+
+   ```md
+   > Apply the canonical six shot questions in the channel `style-bible.md` review-criteria section and the canonical plan-level chain/disclosure contract in `references/shots-schema.md`.
+   ```
+
+   NEW:
 
    ```md
    > Apply the canonical six shot questions in the channel `style-bible.md` review-criteria section and
@@ -190,7 +397,24 @@
 
 11. - [ ] **Create the critic calibration fixture from the pinned historical source, not current branch data.** Add `references/delta-materiality-calibration.json` with top-level keys `source_commit`, `source_path`, `decision_owner`, and `cases`. Set the first three values exactly to `f1c3b1aa`, `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json`, and `fresh-eyes critic (semantic judgment; lint remains lexical)`. Populate `cases` in this exact id order: `L02,L15,L37,L51,L70,L72,L76,L103,L110,L111,L119,L123,L136,L144,L146,L162,L169,L175,L184,L186,L206,L209,L218,L229,L242,L243`. For each case copy only `id`, `stage`, `stage_role`, `vo_ref`, `changed_elements`, and `still_prompt` verbatim from `git show f1c3b1aa:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json`; do not copy the audit's paraphrase. Use `git show` to print the source, select those ids in memory, assign the exact envelope to a `payload` object, and add deterministic `json.dumps(payload, ensure_ascii=False, indent=2)` output with `apply_patch`. Test: load the fixture, assert the six exact keys per case, 26 unique ids in the order above, source commit/path bytes, and that current `_NON_MATERIAL_DELTA` is not asserted to classify them.
 
-12. - [ ] **Align lint chain wording without expanding lexical authority.** In `lint_piece`, replace `progressive reveal or non-empty hold_reason` with `story-needed held state change or non-empty hold_reason`. In `stage_check` replace `a chain exists only for a progressive reveal` with `stage membership is authored by the schema's hold-camera criterion; lint enforces structure only`. In `delta_feasibility_check`, preserve `_NON_MATERIAL_DELTA` bytes exactly and replace `author a genuine progressive reveal or hard cut` with `author one visually distinct, story-needed state change or hard-cut`. In `interaction_cast_check`, replace `when the contact begins a genuine progressive reveal, stage the fresh two-figure shot as its BASE` with `when contact begins a story-needed held state change, stage the fresh two-figure shot as its BASE`. KEEP the `figures.crowd` type check's `it gates the section 2d CROWD-RIG clause` and the derivation comment `derives the crowd rig from figures.crowd`; both remain accurate. Keep lexical matches HARD only for their existing obvious no-op vocabulary; materiality remains the critic's decision. Test: update `test_new_guards.py` existing material/no-op pair and fixture non-oracle assertion; do not blacklist any of the 26 ids or phrases.
+12. - [ ] **Align every lint held-state speaker without expanding lexical authority.** For each live multiline Python/f-string block, use its exact physical wraps as OLD and assert it before replacement. Replace: `progressive reveal or non-empty hold_reason` → `story-needed held state change or non-empty hold_reason`; `a chain exists only for a progressive reveal` → `stage membership is authored by the schema's hold-camera criterion; lint enforces structure only`; `author a genuine progressive reveal or hard cut` → `author one visually distinct, story-needed state change or hard-cut`; the split lines `when the contact begins a genuine progressive reveal, stage the` / `fresh two-figure shot as its BASE.` → `when contact begins a story-needed held state change, stage the` / `fresh two-figure shot as its BASE.`; and the forgotten SOFT block:
+
+   OLD:
+
+   ```py
+   soft.append(f"[{label}] {sh['id']}: covers ~{wc} words on one anchor "
+               f"(>~8s VO) — ensure a progressive within-shot reveal, or densify (add a cut).")
+   ```
+
+   NEW:
+
+   ```py
+   soft.append(f"[{label}] {sh['id']}: covers ~{wc} words on one anchor "
+               f"(>~8s VO) — ensure a story-needed held state change or non-empty "
+               f"hold_reason, or densify (add a cut).")
+   ```
+
+   Preserve `_NON_MATERIAL_DELTA` and the accurate §2d metadata comments. Command: run material/no-op, long-span, interaction, and fixture non-oracle tests. Expected: all pass and none of the 26 calibration ids/phrases becomes a lint oracle.
 
 13. - [ ] **Add `--fragment` to `main` and pass it only to long-form lint.** In the module docstring replace `python lint_shots.py <path-to/shots.json> [--write]` with `python lint_shots.py <path-to/shots.json> [--write] [--fragment]` and add `--fragment sizes long-form against the covered script prefix; it never writes scope metadata.` Replace the current help/argv block at `lint_shots.py:1228-1233` with:
 
@@ -209,30 +433,104 @@
    data = json.loads(Path(path).read_text(encoding="utf-8"))
    ```
 
-   After `hard, soft = [], []`, add `if fragment and not lf_shots: hard.append("[long-form] --fragment requires at least one long_form.shots record.")`. Change only the long-form call to `lint_piece(..., new_plan=strict_schema, fragment=fragment)`; leave every Shorts call on its existing signature/default and leave thumbnail checks untouched. No field is read from or written to JSON. Test: step 15's empty-list and short/thumbnail-isolation cases.
+   Add `fragment=fragment` after `new_plan=strict_schema` in the exact two-line long-form call; leave Shorts on the signature's `fragment=False` default and thumbnails untouched. Do not append the empty-list HARD in `main`: `lint_piece` owns every fragment precondition before its current no-stream SOFT return. No field is read from or written to JSON. Pre-edit assertion: assert the exact help/argv OLD block and exact long-form call before patching. Command: `py -3 -m pytest test_shots_v2.py -k fragment -q`. Expected: all eight fragment cases in step 15 pass.
 
-14. - [ ] **Size and tile the long-form covered span inside `lint_piece`, leaving every other rule unchanged.** Change the signature to `def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=True, fragment=False):`. Before the sizing block, compute `md_matches = match_shots_to_tokens(shots, md_toks) if md_toks else []`, initialize `covered_vo = vo` and `covered_words = None`, and under `fragment` require both a parseable script and a matched last anchor. Find that match's token index by its returned character offset, set `covered_end_i = last_i + len(md_matches[-1]["needle"])`, set `covered_end = md_toks[covered_end_i][1] if covered_end_i < len(md_toks) else len(vo)`, and use this exact branch:
+14. - [ ] **Validate fragment scope before the no-stream return, then size/tile only valid scope.** Replace the exact `lint_piece` prefix from its signature through the current no-stream return with the block below. This is one byte-asserted multiline replacement; it distinguishes empty long form, absent script, empty/unparseable script, and later unmatched anchors before any sizing/tiling work.
+
+   OLD:
 
    ```py
-   if fragment and not md_toks:
-       hard.append(f"[{label}] --fragment requires a parseable script.md to compute covered words.")
-   elif fragment and shots:
+   def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=True):
+       """Validate one piece against the REAL VO stream. S3: the HARD check runs against the
+       voiceover.manifest word_timings when present (the exact stream + matcher render times
+       against); script.md is a soft cross-check AND the source of the derived vo_text spans.
+       Returns id2text (for --write) or None."""
+       md_exists = Path(md_path).exists()
+       vo, md_toks = (None, None)
+       if md_exists:
+           vo, md_toks = build_vo_stream(md_path)
+
+       if word_timings:
+           vtoks = [(_NORM(w), k) for k, (w, _t) in enumerate(word_timings)]
+           vtoks = [(w, k) for w, k in vtoks if w]
+           hard_matches = match_shots_to_tokens(shots, vtoks)
+           hard_stream = "the voiceover word-stream"
+           vo_words = len(vtoks)
+       elif md_toks:
+           hard_matches = match_shots_to_tokens(shots, md_toks)
+           hard_stream = "script.md"
+           vo_words = len(md_toks)
+       else:
+           soft.append(f"[{label}] no VO stream (no manifest timings, no parseable {md_path}) — skipped.")
+           return None
+   ```
+
+   NEW:
+
+   ```py
+   def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=True,
+                  fragment=False):
+       """Validate one piece against the REAL VO stream. S3: the HARD check runs against the
+       voiceover.manifest word_timings when present (the exact stream + matcher render times
+       against); script.md is a soft cross-check AND the source of the derived vo_text spans.
+       Returns id2text (for --write) or None."""
+       md_exists = Path(md_path).exists()
+       vo, md_toks = (None, None)
+       if md_exists:
+           vo, md_toks = build_vo_stream(md_path)
+
+       if fragment and not shots:
+           hard.append(f"[{label}] --fragment requires at least one long_form.shots record.")
+           return None
+       if fragment and not md_exists:
+           hard.append(f"[{label}] --fragment requires script.md; file is absent: {md_path}.")
+           return None
+       if fragment and not md_toks:
+           hard.append(f"[{label}] --fragment requires a non-empty parseable script.md.")
+           return None
+
+       if word_timings:
+           vtoks = [(_NORM(w), k) for k, (w, _t) in enumerate(word_timings)]
+           vtoks = [(w, k) for w, k in vtoks if w]
+           hard_matches = match_shots_to_tokens(shots, vtoks)
+           hard_stream = "the voiceover word-stream"
+           vo_words = len(vtoks)
+       elif md_toks:
+           hard_matches = match_shots_to_tokens(shots, md_toks)
+           hard_stream = "script.md"
+           vo_words = len(md_toks)
+       else:
+           soft.append(f"[{label}] no VO stream (no manifest timings, no parseable {md_path}) — skipped.")
+           return None
+   ```
+
+   After the normal anchor loop, replace the sizing/tiling region from `if vo_words:` through the live `id2text = tile(shots, md_matches, len(vo), vo)` line as one exact multiline OLD → NEW block copied from the live file. The NEW block must implement this code shape:
+
+   ```py
+   md_matches = match_shots_to_tokens(shots, md_toks)
+   covered_vo, covered_words = vo, None
+   runtime_s, rate = None, None
+   if fragment:
        last = md_matches[-1]
        if not last["needle"] or last["start"] is None:
            hard.append(f"[{label}] --fragment cannot resolve the last shot anchor in script.md.")
-       else:
-           last_i = next(i for i, tok in enumerate(md_toks) if tok[1] == last["start"])
-           covered_end_i = last_i + len(last["needle"])
-           covered_end = md_toks[covered_end_i][1] if covered_end_i < len(md_toks) else len(vo)
-           covered_vo = vo[:covered_end].rstrip()
-           covered_toks = [tok for tok in md_toks if tok[1] < covered_end]
-           covered_words = len(covered_toks)
-           soft.append(f"fragment scope: covered {covered_words}/{len(md_toks)} script words")
+           return None
+       last_i = next(i for i, tok in enumerate(md_toks) if tok[1] == last["start"])
+       covered_end_i = last_i + len(last["needle"])
+       covered_end = md_toks[covered_end_i][1] if covered_end_i < len(md_toks) else len(vo)
+       covered_vo = vo[:covered_end].rstrip()
+       covered_words = sum(tok[1] < covered_end for tok in md_toks)
+       header_wpm = header_pace(md_path)[0]
+       wpm = header_wpm or DEFAULT_WPM
+       runtime_s = covered_words / wpm * 60.0
+       fallback = "the fallback — the header states no rate" if header_wpm is None else "per the header"
+       rate = f"{covered_words} covered script words / {wpm:.0f}wpm, {fallback}"
+       soft.append(f"fragment scope: covered {covered_words}/{len(md_toks)} script words")
    ```
 
-   In the `if vo_words:` sizing block, when `fragment` is true and `covered_words is not None`, require `wpm` from `header_pace(md_path)` and compute `runtime_s = covered_words / wpm * 60.0` and `rate = f"{covered_words} covered script words / {wpm:.0f}wpm, per the header"`; if the header has no pace, append `[{label}] --fragment requires a positive header WPM.` as a HARD and skip the two sizing comparisons because no valid partial runtime exists. When `fragment` is false, retain the whole-file WPM/stated-runtime/fallback branches byte-for-byte. Run the existing duration and cadence comparisons against the covered `runtime_s` when it exists; do not defer either sizing rule. Reuse the already-computed `md_matches`, and for derivation call `tile(shots, md_matches, len(covered_vo), covered_vo)` under the flag so the last included shot ends at the last anchor rather than EOF; the normal `tile(..., len(vo), vo)` path stays unchanged. `--write` remains the sole writer and still skips on any HARD.
+   The NEW block then executes the existing two sizing comparisons only under `if runtime_s is not None:`; the whole-file `wpm` → stated-runtime → `DEFAULT_WPM` branch remains byte-identical under `if not fragment:`. It calls `tile(shots, md_matches, len(covered_vo), covered_vo)` only after all matches are valid. Thus `covered_words=None` is never divided or formatted, invalid scope cannot size/tile, header-without-WPM uses `DEFAULT_WPM`, and `--write` still skips on any HARD. Command: run the eight tests in step 15. Expected: invalid cases return 1 without traceback or `WROTE`; valid vb prints `covered 293/1628` and returns 0.
 
-15. - [ ] **Add six focused rev-3 fragment tests to `test_shots_v2.py`.** Add imports `subprocess` and `copy`, then add these exact helpers before the cases:
+15. - [ ] **Add eight focused rev-4 fragment tests to `test_shots_v2.py`.** Add imports `subprocess` and `copy`, then add the exact helpers below after the existing imports; pre-assert the live import block before replacement.
 
    ```py
    VB_COMMIT = "17becaaf"
@@ -248,7 +546,8 @@
    def _vb_data():
        return json.loads(_git_text("shots.json"))
 
-   def _run_vb_fragment(tmp_path, monkeypatch, *flags, data=None):
+   def _run_vb_fragment(tmp_path, monkeypatch, *flags, data=None, script_text=None,
+                        omit_script=False):
        tmp_path.mkdir(parents=True, exist_ok=True)
        payload = copy.deepcopy(data if data is not None else _vb_data())
        repo = Path(subprocess.check_output(
@@ -263,13 +562,35 @@
        monkeypatch.setattr(lint_shots, "video_interactions", lambda *_: interactions)
        monkeypatch.setattr(lint_shots, "video_token_catalog", lambda *_: tokens)
        monkeypatch.setattr(lint_shots, "channel_suffix", lambda *_: canonical_suffix)
-       (tmp_path / "script.md").write_text(_git_text("script.md"), encoding="utf-8")
+       if not omit_script:
+           source = _git_text("script.md") if script_text is None else script_text
+           (tmp_path / "script.md").write_text(source, encoding="utf-8")
        path = tmp_path / "shots.json"
        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
        return lint_shots.main([str(path), *flags]), path
    ```
 
-   The six collected cases and exact expectations are:
+   Keep the six cases below, and add these two exact control-flow cases (the absent-script helper deletes `script.md` after `_run_vb_fragment` setup through a helper flag; the no-WPM helper removes only the header WPM text):
+
+   ```py
+   def test_fragment_absent_script_is_hard_and_skips_sizing_tiling_and_write(tmp_path, monkeypatch, capsys):
+       rc, _ = _run_vb_fragment(tmp_path, monkeypatch, "--write", "--fragment", omit_script=True)
+       out = capsys.readouterr().out
+       assert rc == 1
+       assert "--fragment requires script.md; file is absent" in out
+       assert "Sum of duration_s" not in out and "shots for a ~" not in out
+       assert "WROTE derived vo_text" not in out
+
+   def test_fragment_header_without_wpm_uses_default_wpm(tmp_path, monkeypatch, capsys):
+       script = _git_text("script.md").replace("1,632 words ÷ 175 wpm", "1,632 words")
+       rc, _ = _run_vb_fragment(tmp_path, monkeypatch, "--fragment", script_text=script)
+       out = capsys.readouterr().out
+       assert rc == 1
+       assert f"{lint_shots.DEFAULT_WPM:.0f}wpm, the fallback — the header states no rate" in out
+       assert "requires a positive header WPM" not in out
+   ```
+
+   The eight collected cases and exact expectations are:
 
    ```py
    def test_vb_45_without_fragment_has_exactly_two_sizing_hards(tmp_path, monkeypatch, capsys):
@@ -336,9 +657,21 @@
 
    The sparse 20-shot case deliberately retains L45 as the final anchor so it tests fewer authored durations against the same 293-word covered span. These tests also prove every non-sizing rule still runs and that no JSON metadata is created.
 
-16. - [ ] **Add only non-crowd occupancy diagnostics through the existing `soft` list.** Add `occupancy_diagnostics(label, shots, id2text, chars, soft)` and call it after `lf_text` is available. A figure count is the union of legacy `cast[].character` and current inline backticked names resolved by `video_chars`; exclude `figures.crowd: true` records from these diagnostics because crowd subject and geometry belong wholly to canonical critic question 3. Emit only: one row per maximal zero-human/non-crowd run with ids, summed `duration_s`, joined `vo_ref`, and clipped derived `vo_text`; and one row per one- or two-cast shot with cast slugs, `assets=ready` or `assets=missing:comma-separated-slugs`, and `base=standalone|fresh-stage-base|delta`. These are heads-up rows only and contain no run-length, occupancy-share, or pair quota. Add no crowd diagnostic, lexical boundary-noun/spatial-relation detector, prose inspection, size threshold, or HARD: actual bounding/recession/empty-near-zone judgment lives only in question 3.
+16. - [ ] **Add descriptive occupancy diagnostics, including the rev-4 crowd metadata row.** Add `occupancy_diagnostics(label, shots, id2text, chars, soft)` and call it after `lf_text` is available. Executable figure names come from backticked `still_prompt` tokens resolved by `video_chars`; legacy `cast` may be reported separately as descriptive metadata but cannot increase executable count. Emit: (a) each maximal zero-human/non-crowd run with ids, duration, VO refs, and clipped derived VO; (b) each one/two-character shot with executable slugs, asset readiness, and base role; and (c) every structured `figures.crowd: true` shot with its id, derived VO, previous id, and next id. The crowd row reads only metadata and neighbours—never prompt prose—and remains SOFT. Exact added code:
 
-17. - [ ] **Test the two non-crowd diagnostic row shapes without testing a target distribution.** In `test_new_guards.py`, add `test_zero_human_run_reports_ids_duration_and_vo` and `test_one_and_two_cast_rows_report_assets_and_base`; call `occupancy_diagnostics` directly, assert `hard` is not an argument, assert the exact identifying fields occur in `soft`, and pass a `figures.crowd: true` record to prove it emits no crowd row. Do not add `test_crowd_row_reports_vo_class_and_neighbours`, `test_crowd_prompt_has_boundary_words`, minimum cast shares, maximum zero-run lengths, or human-count thresholds.
+   ```py
+   if (sh.get("figures") or {}).get("crowd") is True:
+       prev_id = shots[index - 1].get("id") if index else None
+       next_id = shots[index + 1].get("id") if index + 1 < len(shots) else None
+       soft.append(
+           f"[{label}] occupancy crowd: id={sid}; vo={id2text.get(sid, '')!r}; "
+           f"prev={prev_id or 'START'}; next={next_id or 'END'}"
+       )
+   ```
+
+   Pre-assert the complete live call-site block before inserting the call. Command: call the diagnostic on a three-shot fixture whose middle record has `figures.crowd:true`. Expected: one crowd row with middle VO and both neighbour ids; no HARD, prose inspection, size threshold, or target count.
+
+17. - [ ] **Test all three diagnostic row shapes without a distribution target.** Add `test_zero_human_run_reports_ids_duration_and_vo`, `test_one_and_two_prompt_token_rows_report_assets_and_base`, and `test_crowd_row_reports_vo_and_neighbours_from_metadata`. Call `occupancy_diagnostics` directly, assert `hard` is not an argument, and assert exact identifying fields in `soft`. The crowd case uses a prompt with no spatial words so the test proves metadata-only behavior. Command: `py -3 -m pytest test_new_guards.py -k occupancy -q`. Expected: three tests pass; no test checks minimum cast share, maximum zero-run length, crowd wording, size, or count.
 
 18. - [ ] **Align every downstream delta-cap and realization speaker.** Apply these exact replacements, preserving surrounding mechanics:
 
@@ -352,7 +685,46 @@
    - `shots-motion-schema.md:27-33`: retain `delta-chain` pass-through and Hybrid behavior, but add `This file never decides whether the stage should have been authored.`
    - `test_stage_check.py` and `test_forge_place_and_gates.py:88-90,291-300`: replace the `base + 2 deltas` and `genuine progressive delta` comments with `authoring decides the stage under the hold-camera test; realization decides layer versus regeneration; the canonical cap is base + 3 deltas.` No assertion is weakened.
 
-19. - [ ] **Align image-generation's stage and crowd speakers.** Replace IG lines 181–183 `the §2d words stay in still_prompt` with `Forge appends bible §2d from figures.crowd; the exemplar seed pins proportion and face.` Replace lines 196–200 `Ignore every motion/beat field — stage/stage_role/changed_elements` with `Read stage/stage_role/changed_elements for parent routing and one-change validation, never to re-decide whether VPW may author the stage; ignore beat and retired motion keys.` In technique (e), prepend `VPW has already admitted the stage by the hold-camera criterion`; retain integrative parent regeneration, discrete layer routing, same-location base, and ≤3. In existing `test_figure_staging_doctrine_has_one_channel_home`, replace `assert "story-bearing" in GRAMMAR` with `assert "Occupancy follows the acting subject" in GRAMMAR` and retain `assert "story-bearing" not in IG`; extend existing `test_vpw_points_to_schema_instead_of_repeating_transport_law` with authoring/realization ownership assertions across schema, IG, animation rules, motion-planner SKILL, and motion schema. These are extensions, not new collected tests.
+19. - [ ] **Align image-generation's stage, crowd, and cast speakers.** Assert each exact OLD block before replacement.
+
+   OLD:
+
+   ```md
+   only defective-seed exceptions are an **authored delta-chain parent** (technique (e)) and a **human-ordered
+   framing hold**, and BOTH take a **before/after crop-battery diff on EVERY figure** in the frame, not just
+   the targeted one. **Crowd-bearing gens also seed the crowd exemplar** (`refs/base/crowd-exemplar.png`,
+   bible §2d) as the crowd's proportion/face anchor — the §2d words stay in the `still_prompt`, but the
+   exemplar seed is what pins the crowd rig.
+   ```
+
+   NEW keeps the first three lines byte-identical and replaces the final two with:
+
+   ```md
+   bible §2d) as the crowd's proportion/face anchor. Forge appends bible §2d from `figures.crowd`; the
+   exemplar seed pins the crowd rig's proportion and face.
+   ```
+
+   OLD:
+
+   ```md
+   **Scope of a shot:** generate **stills** only for shots whose `source` is `ai-gen` or the generated half
+   of `hybrid`. `source: chart|screencap|stock|archival` belong to other pipelines — skip them and record
+   `skipped: source=<x>` in the manifest. **Ignore every motion/beat field** — `stage`/
+   `stage_role`/`changed_elements`, and any retired motion keys an old file still carries — motion is the
+   Remotion engine's business; you read only the visual fields. `synthetic` is consumed by metadata, not
+   ```
+
+   NEW:
+
+   ```md
+   **Scope of a shot:** generate **stills** only for shots whose `source` is `ai-gen` or the generated half
+   of `hybrid`. `source: chart|screencap|stock|archival` belong to other pipelines — skip them and record
+   `skipped: source=<x>` in the manifest. Read `stage`/`stage_role`/`changed_elements` for parent routing
+   and one-change validation, never to re-decide whether VPW may author the stage; ignore `beat` and any
+   retired motion keys. `synthetic` is consumed by metadata, not
+   ```
+
+   Replace the figure-index block with step 8's exact OLD → NEW pair. In technique (e), pre-assert its complete physical table row and insert `VPW has already admitted the stage by the hold-camera criterion;` before the realization rule. In the doctrine-owner test, replace exact line `assert "story-bearing" in GRAMMAR` with `assert "Occupancy follows who acts in the sentence" in GRAMMAR`; retain the negative IG assertion and add cross-file prompt-token/descriptive-metadata assertions. Command: run doctrine and pass-1 consistency tests. Expected: all speakers agree on prompt-token cast, Forge-owned crowd bytes, and authoring-versus-realization ownership.
 
 20. - [ ] **Extend the live Forge tests rather than Forge code.** Add to `test_forge_figures.py`:
 
@@ -361,21 +733,55 @@
        bible = (KIT / "style-bible.md").read_text(encoding="utf-8")
        expected = forge.blockquote_after(bible, "CROWD-RIG clause")
        kit = forge.Kit(str(KIT), dry=True)
-       prompt = kit.prompt_for(mode="environment", delta="A bounded queue behind glass.",
+       prompt = kit.prompt_for(mode="environment", delta="",
                                figures={"crowd": True})
        assert expected
        assert kit.desc_crowdrig == expected
        assert expected in prompt
-       assert prompt.endswith("A bounded queue behind glass.")
+       assert prompt.endswith(expected)
    ```
 
    Extend existing `test_the_crowd_exemplar_is_refused_without_a_record` with `assert "figures.crowd" in err` and `assert "crowd-exemplar" in err`; do not create a duplicate refusal test. Update the hard-coded suffix heading in `test_forge_style_tile.py` from `## 2d. Canonical dispatch suffix` to `## 2e. Canonical dispatch suffix`. Add assertions that `desc_identity`, `desc_style`, and `desc_righold` equal their pre-move blockquotes, so heading matching cannot steal another descriptor.
 
-21. - [ ] **Extend the review artifact's cards and keep palette rationale distinct from failure notes.** Add `PALETTE_NOTE_PREFIX = "Palette basis:"`, `stage_key(shot) = shot.stage or shot.id`, and `palette_basis_by_stage(S)` that accepts a basis only from a base/standalone shot's `notes` line beginning exactly with that prefix; map it to every card sharing the effective stage. In `collect`, replace the card payload with the old keys plus exact new keys `still_prompt=s.get("still_prompt") or ""`, `stage=stage_key(s)`, `palette_basis=basis.get(stage_key(s), "")`, and `palette=palette_metrics(path, video)`. Keep `reason=manifest.notes` unchanged and render `palette_basis` in its own labelled row, never concatenated with `reason`.
+21. - [ ] **Extend every review-card shape and render optional fields safely.** Add `PALETTE_NOTE_PREFIX`, `stage_key`, and `palette_basis_by_stage`; scene cards add `still_prompt`, effective `stage`, inherited `palette_basis`, and `palette=palette_metrics(path)`, while `reason` remains manifest notes. Pending-asset cards add explicit defaults for those four keys. In `build`, replace direct indexing of every new field with `.get` plus a concrete default so `--staging --assets` cannot crash even on an older caller fixture. The exact pending-card OLD block is lines 262–270 as printed in the source; NEW appends:
 
-22. - [ ] **Reuse the measured palette implementation for advisory card metrics.** In `vd_palette_metrics.py`, add `COOL_PAIR = (165.0, 240.0)` and return `cool_pair_chroma` plus `complementary_pair_chroma = orange_chroma + cool_pair_chroma` from existing `metrics()` using existing `rgb_to_hsv` and `in_band`; do not alter the current report's other fields. In `build_review_artifact.py`, derive `Path(video) / "scratchpad" / "taste-audit" / "vd_palette_metrics.py"`, import it with `importlib.util.spec_from_file_location`, call its `metrics(Path(path))`, and keep only `warm`, `cool`, `orange_chroma`, `cool_pair_chroma`, and `complementary_pair_chroma` for the card. This import is appropriate for the Variant D video because it reuses the already-calibrated HSV/SAT implementation and avoids a second detector. If the module is absent for another video, render each metric as `unavailable — no palette metrics module` and continue; the D test fixture must contain the module and yield numeric values. Render available values as percentages labelled `advisory — reviewer judges cause, never a gate`.
+   ```py
+   still_prompt="", stage=stem, palette_basis="", palette={},
+   ```
 
-23. - [ ] **Test review-card transport and advisory metrics.** Add four collected tests to `test_build_review_artifact.py`: `test_stage_members_inherit_only_prefixed_base_palette_basis`, `test_standalone_uses_its_own_stage_and_basis`, `test_collect_keeps_manifest_reason_separate_from_prompt_stage_and_basis`, and `test_palette_card_uses_165_to_240_cool_pair_without_gating`. Build tiny 16:9 red/orange/cyan fixtures with Pillow, assert the returned field names and percentages, and assert no `flagged`/`review_status` value changes when the pair share is high. Update `test_board_embeds_images_at_ordinary_scale` card fixture with the four new card keys and assert the HTML contains the prompt, stage, basis, and `advisory` label.
+   The render NEW uses `c.get("still_prompt", "")`, `c.get("stage", c.get("sid", ""))`, `c.get("palette_basis", "")`, and `c.get("palette") or {}`. Pre-assert the full scene-card, pending-card, and render-format OLD blocks before patching. Command: the test invokes `main()` with its temporary video, output, staging directory, and PNG through `--staging --assets`. Expected: exit 0, an HTML card with defaults, and no `KeyError`.
+
+22. - [ ] **Move the HSV metric into the image-generation-owned module and import it normally from both callers.** Create `scripts/palette_metrics.py` by moving the exact live constants and functions `SAT_MIN`, `HUE_BIN_DEGREES`, `ORANGE`, `rgb_to_hsv`, `in_band`, `grid_coverage`, and `metrics` out of `vd_palette_metrics.py`; add `COOL_PAIR = (165.0, 240.0)` and return `cool_pair_chroma` plus `complementary_pair_chroma = orange_chroma + cool_pair_chroma`. The shared function always returns numeric metrics; there is no dynamic import and no `unavailable` fallback.
+
+   In `build_review_artifact.py` import OLD:
+
+   ```py
+   sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+   import forge          # same skill, same dir: the C-6 reuse gate is imported, never re-implemented
+   ```
+
+   NEW:
+
+   ```py
+   sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+   import forge          # same skill, same dir: the C-6 reuse gate is imported, never re-implemented
+   from palette_metrics import metrics as palette_metrics
+   ```
+
+   In `vd_palette_metrics.py`, byte-assert and replace the imports/constants/functions block from `import numpy as np` through the closing `metrics` return with:
+
+   ```py
+   import sys
+   import numpy as np
+
+   SKILL_SCRIPTS = VIDEO.parents[3] / ".claude" / "skills" / "image-generation" / "scripts"
+   sys.path.insert(0, str(SKILL_SCRIPTS))
+   from palette_metrics import metrics
+   ```
+
+   Place this block after `VIDEO` is assigned (move the `VIDEO` assignment above it); retain the report-only aggregation functions. Creation precondition: assert `palette_metrics.py` does not exist. Command: run its unit test plus `py -3 V/scratchpad/taste-audit/vd_palette_metrics.py`. Expected: numeric warm/cool/orange/cool-pair/complementary fields from both callers; no `importlib`, video-specific lookup, or `unavailable` string in the shared skill.
+
+23. - [ ] **Test both metric callers and both card shapes.** Add the existing four scene-card tests plus `test_palette_metrics_owned_module_is_used_by_report_and_board` and `test_staging_assets_card_uses_safe_defaults`. Build tiny 16:9 red/orange/cyan fixtures; assert numeric fields and that high pair share changes no flag/status. Invoke the scratch report and the board collector so both normal imports execute. Update the ordinary card fixture and render it. Command: `py -3 -m pytest test_palette_metrics.py test_build_review_artifact.py -q`. Expected: all six new cases pass; HTML contains prompt/stage/basis/advisory rows for scenes and renders a pending asset with defaults.
 
 24. - [ ] **Wire the scene board into the canonical IG review gate.** After IG line 251, add this exact sentence:
 
@@ -388,7 +794,7 @@
 25. - [ ] **Run the exact §2d/authorship, echo, and encoding sweeps before the test gate.** The sweep explicitly includes `orgs/faceless-youtube/.claude/skills/image-generation/SKILL.md:182` (delete `the §2d words stay in the still_prompt`) and `orgs/faceless-youtube/.claude/skills/image-generation/scripts/test_forge_style_tile.py:243` (replace the hard-coded `## 2d. Canonical dispatch suffix` with `## 2e. Canonical dispatch suffix`). Then require zero matches for every deleted phrase in the brief's grep list with:
 
    ```powershell
-   rg -n -i -e 'a chain exists only for a progressive reveal' -e 'progressive reveal or non-empty hold_reason' -e 'author a genuine progressive reveal or hard cut' -e 'genuine progressive delta' -e 'confirm a progressive in-shot reveal' -e 'give any long shot a progressive reveal' -e 'a shot exceeds ~8s ONLY with a progressive' -e 'Stage the run — held evolving stages' -e 'This is the still-era realization' -e 'DELTA-CHAIN when the change is INTEGRATIVE' -e 'Interactions are just.*kind: interaction' -e 'figures on the CROWD RIG' -e '≤2[- ]delta' -e 'base \+ ≤2' -e 'base \+ 2 deltas' -e 'Continuity, cheapest first' -e 'Precondition — the two-test boundary' -e 'bounded by the two-test boundary' -e 'ARROWS, routes, and PROGRESSIVE REVEALS are MOTION' -e 'The boundary this spec serves' -e 'Classify each shot.*two-test boundary' -e 'write INTO a crowd scene.s prompt' -e 'crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it' -e '§2d is authored by VPW' -e 'it is not auto-appended' -e 'prompt-authored \(§2d\)' -e '§2d words.*stay in.*still_prompt' -e '^\*\*Story bearer\.\*\*' -e 'Only a genuine rearward mass beat' -e 'Locked to the character; NOT locked globally' -e 'palettes move freely per video' -e 'classify → cast → stage the tableau → state the facts' -e 'classify → cast → tableau → facts → intent note' -e 'Keep every planned stage and its whole chain inside one partition' -e 'Ignore every motion/beat field' -e 'assert "story-bearing" in GRAMMAR' -e '## 2d\. Canonical dispatch suffix' orgs/faceless-youtube/.claude/skills orgs/faceless-youtube/knowledge/research/niche-playbooks/universal.md orgs/faceless-youtube/channels/the-second-take/visual-kit
+   rg -n -i -e 'ensure a progressive within-shot reveal' -e 'a chain exists only for a progressive reveal' -e 'progressive reveal or non-empty hold_reason' -e 'author a genuine progressive reveal or hard cut' -e 'genuine progressive delta' -e 'confirm a progressive in-shot reveal' -e 'give any long shot a progressive reveal' -e 'a shot exceeds ~8s ONLY with a progressive' -e 'Stage the run — held evolving stages' -e 'This is the still-era realization' -e 'DELTA-CHAIN when the change is INTEGRATIVE' -e 'Interactions are just.*kind: interaction' -e 'figures on the CROWD RIG' -e '≤2[- ]delta' -e 'base \+ ≤2' -e 'base \+ 2 deltas' -e 'Continuity, cheapest first' -e 'Precondition — the two-test boundary' -e 'bounded by the two-test boundary' -e 'ARROWS, routes, and PROGRESSIVE REVEALS are MOTION' -e 'The boundary this spec serves' -e 'Classify each shot.*two-test boundary' -e 'write INTO a crowd scene.s prompt' -e 'crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it' -e 'simplified: dot eyes' -e 'one simple mouth\) — do NOT force' -e '§2d is authored by VPW' -e 'it is not auto-appended' -e 'prompt-authored \(§2d\)' -e '§2d words.*stay in.*still_prompt' -e '^\*\*Story bearer\.\*\*' -e 'Only a genuine rearward mass beat' -e 'Locked to the character; NOT locked globally' -e 'palettes move freely per video' -e 'at most two supporting' -e 'no human when mechanism' -e 'classify → cast → stage the tableau → state the facts' -e 'classify → cast → tableau → facts → intent note' -e 'Keep every planned stage and its whole chain inside one partition' -e 'Ignore every motion/beat field' -e 'cast is authoritative' -e 'cast ORDER binds' -e 'assert "story-bearing" in GRAMMAR' -e '## 2d\. Canonical dispatch suffix' orgs/faceless-youtube/.claude/skills orgs/faceless-youtube/knowledge/research/niche-playbooks/universal.md orgs/faceless-youtube/channels/the-second-take/visual-kit
    rg -n 'CROWD-RIG clause|CROWD RIG:|DOT EYES|§2d|integrative' orgs/faceless-youtube/.claude/skills orgs/faceless-youtube/channels/the-second-take/visual-kit
    $VdEncodingRoots = @('orgs/faceless-youtube/.claude/skills/visual-prompt-writer','orgs/faceless-youtube/.claude/skills/image-generation','orgs/faceless-youtube/.claude/skills/motion-planner','orgs/faceless-youtube/.claude/skills/render-builder','orgs/faceless-youtube/channels/the-second-take/visual-kit','orgs/faceless-youtube/knowledge/research/niche-playbooks/universal.md')
    $VdBadCodepoints = @([char]0x00C2,[char]0x00C3,[char]0x00E2,[char]0xFFFD)
@@ -397,24 +803,24 @@
 
    The second command is an ownership audit, not a zero-match assertion: the CROWD-RIG bytes may occur only in bible §2d and tests; `§2d` may point only to the crowd clause; `integrative` may remain only in downstream realization language. The mojibake command must return no rows in touched files.
 
-26. - [ ] **Run both test suites and repository checks.** From `orgs/faceless-youtube/.claude/skills/visual-prompt-writer/scripts`, run `py -3 -m pytest`; baseline is 101 and ten new collected tests make the expected result `111 passed`: one combined doctrine-owner test, one fixture test, six fragment tests, and two non-crowd diagnostic tests. From `orgs/faceless-youtube/.claude/skills/image-generation/scripts`, run `py -3 -m pytest`; baseline is 166, one new Forge test plus four review-artifact tests make `171 passed` (the seedless refusal is an extension, not a new case). Total expected is 282. Then run `git diff --check`; set `$VdTouchedPaths = git diff --name-only -- orgs/faceless-youtube`, read each existing path with `[IO.File]::ReadAllText((Resolve-Path $VdTouchedPath), [Text.Encoding]::UTF8)`, and throw if any contains U+FFFD. The explicit path list comes from the diff and no filename is inferred.
+26. - [ ] **Run both test suites and repository checks.** From the VPW scripts directory run `py -3 -m pytest`; baseline 101 plus one doctrine-owner, one fixture, eight fragment, and three occupancy-diagnostic cases yields expected `114 passed`. From image-generation scripts run `py -3 -m pytest`; baseline 166 plus one Forge assembly, four scene-card, one shared-metric/two-caller, and one staging-default case yields expected `173 passed`. Total expected is 287. Then run `git diff --check`; read every touched existing path explicitly as UTF-8 and reject U+FFFD. Expected: both suites green, `287 passed` total, clean diff check, no bad codepoint.
 
 27. - [ ] **Review and commit the doctrine phase only after the gate passes.** Inspect `git diff --stat` and `git diff --` for every Task 1 file; confirm no new doctrine heading except bible §2d, no deleted test, no fixture outside the pinned 26 cases, and no unrelated dirty file staged. Stage explicit Task 1 paths and commit with `feat(fyt): implement variant D doctrine and fragment lint`. Never use `git add -A`, `git commit -a`, or push to `main`.
 
 **Acceptance:**
 
 - Every old→new row above is applied at the named owner; all stale copies are deleted in the same patch.
-- `Kit.prompt_for(mode="environment", delta="A bounded queue behind glass.", figures={"crowd": True})` contains the exact moved bible blockquote, while the existing seedless-crowd request still refuses.
+- `Kit.prompt_for(mode="environment", delta="", figures={"crowd": True})` ends with the exact moved bible blockquote, authored fixtures contain none of those bytes, and the existing seedless-crowd request still refuses.
 - The vb 45-shot file produces its existing two sizing HARDs without `--fragment`, but produces zero sizing HARDs with the flag, prints `fragment scope: covered 293/1628 script words`, writes 45 clipped `vo_text` spans on a clean `--write`, and writes no fragment metadata; a sparse 20-shot version retaining L45 still trips duration coverage against the same covered span.
 - The canonical chain cap is ≤3 everywhere; lint remains structural/lexical and the critic owns semantic materiality.
 - Canonical question 3 includes occupancy/crowd judgment while preserving registry, role, and outfit checks; question 5 and the six-question count remain intact.
-- Crowd geometry is the spec's single positive sentence and canonical question-3 judgment; lint emits no crowd diagnostic, lexical rule, ban, size threshold, or count gate.
+- Crowd geometry is the spec's single positive sentence and canonical question-3 judgment; lint emits the metadata-only crowd VO+neighbours row but no prose detector, ban, size threshold, or count gate.
 - Palette light/material facts reach base `still_prompt`; prefixed base `notes` reach every same-stage review card separately from manifest failure reasons; metrics remain advisory.
-- Test totals are exactly 111 VPW + 171 IG = 282, both green; echo sweep, mojibake sweep, and `git diff --check` are clean.
+- Test totals are exactly 114 VPW + 173 IG = 287, both green; echo sweep, mojibake sweep, and `git diff --check` are clean.
 
 **Review gate:**
 
-The adversarial reviewer checks rev-1 F1–F12 plus rev-2 N1–N4 and rev-3 F2: exact `--fragment` argv parsing, covered-span sizing/clipping, no JSON metadata or deferred sizing rows, unchanged Shorts/thumbnail/non-sizing rules, six-question preservation, no crowd ban or lexical geometry detector, palette facts reaching provider-visible prose, prefixed basis propagation, shot-level no-growth enforcement downstream, one ≤3 authority, exact moved bytes, non-oracle calibration, and zero stale author-authorship/suffix-heading copies.
+The adversarial reviewer checks F1–F12 against rev 4: exact fragment control flow, covered-span sizing/clipping, no JSON metadata or deferred sizing, unchanged Shorts/thumbnail/non-sizing rules, six-question preservation, metadata-only crowd diagnostics, no crowd ban or lexical geometry detector, provider-visible palette facts, owned metrics, safe pending cards, prompt-token pairs, shot-level no-growth, honest missing D provenance, one ≤3 authority, exact moved bytes, non-oracle calibration, and zero stale speakers.
 
 ### Task 2 — Author VPW A1 under Variant D, lint the fragment, and run the critic
 
@@ -428,69 +834,21 @@ The adversarial reviewer checks rev-1 F1–F12 plus rev-2 N1–N4 and rev-3 F2: 
 
 **Interfaces:**
 
-- Task 3 consumes `V/shots.json`, not the fragment scratch copy; its L01–L12 records, `vo_text`, stages, `Palette basis:` base notes, cast/interaction routes, and crowd declarations are authoritative.
+- Task 3 consumes `V/shots.json`, not the fragment scratch copy; its L01–L12 records, `vo_text`, stages, `Palette basis:` base notes, backticked character/interaction token routes, and crowd declarations are authoritative; `cast` remains descriptive metadata.
 - Task 3 may proceed only after `--fragment` reports `fragment scope: covered 293/1628 script words` and zero HARD, the independent critic has completed one covered-span findings cycle, the author has disposed every finding, and the final covered-span lint is again zero HARD.
 - Task 4 compares D by the L01–L12 order and reads D's prompt/stage metadata from branch `claude/bricks-variant-vd`.
 
 1. - [ ] **Create `plan-vd.md` with the inherited partition and boundary lock before authoring.** Copy the seven vb partition rows exactly: A1 opening through `Terry Johnson was out the door.` with 45 shots/~98s and cast `pc-boxy,rival-pc,drive-maker,miniscribe-rep,ibm-suit,terry-johnson,line-worker`; A2 Wiles arrival through invented-count setup/~50; A3 blank numbers through clean audit/~48; A4 inventory fraud through audit pass/~58; A5 layoffs through restatement/~42; A6 lawsuit through settlement/~35; A7 conviction through HR payoff/~32. Preserve these exact boundaries: A1 does not reveal MiniScribe before its company-name line, bricks before the title-giveaway line, or collapse before `Now rewind`; no stage/place chain crosses an act; Wiles/banker start fresh bases in A2; courtroom remains inside A6; HR personification enters only on its narrated reveal. Record that vb declares no A1 `place` ids or `place_anchor`, so D carries the same no-cross-act place boundary rather than inventing a place catalog.
 
-2. - [ ] **Record the actor-first and palette input table in `plan-vd.md` before writing prompts.** Use these entries as judgments to make, not occupancy or stage targets; `none` means the mechanism/object/place/absence is the acting subject, and palette rows are per-shot candidates that are consolidated only after stages are decided:
+2. - [ ] **Load evidence, then record shot judgments only after applying the criteria.** Give the executor `vd-occupancy-forensics.md` §2, `vd-palette-forensics.md` §§1–2, `vd-chain-forensics.md`, `vd-chain-forensics-adv.md`, `vd-crowd-density.md`, vb's L01–L45 records, `script.md`, and the rev-4 §3.1–3.4 criteria. Do not copy any proposed occupancy, pair, crowd, field, or stage outcome into `plan-vd.md` before judgment. After reading each VO beat and its evidence, append one row `id | causal subject | acting participant(s) | occupancy ruling + reason | candidate field + depicted basis`; after all shots exist, append the separate stage decision rows required by step 8. Pre-edit command asserts step 1's file exists and contains the inherited partition lock but none of the four old preselected row phrases. Expected: 45 post-application rows and no copied `L02 | one`, `L07 | seeded`, `L08 | same clerk`, or `L09 | crowd` outcome.
 
-   | ID | Acting participant/subject | Candidate dominant field + physical/story basis |
-   | --- | --- | --- |
-   | L01 | none; era room + mystery carton | indigo field; night-window and TV light over walnut den |
-   | L02 | one seeded arcade player; onlooker optional only if critic finds the exchange load-bearing | cobalt field; mall skylight on terrazzo with peach arcade spill |
-   | L03 | none; trophy carton | teal field; office-window light across brass plinth and filing bays |
-   | L04 | `pc-boxy`; reaction to carton | cool teal field; aisle skylight on pale shelving and cable |
-   | L05 | none; calendar/computer time fact | cream-teal field; shop daylight on oak counter and green wall panels |
-   | L06 | none; new-machine scale | cream-teal field; roof-truss daylight over teal exhibition bench |
-   | L07 | seeded `shop-clerk` + `shop-customer`; craze as an exchange | cobalt field; high skylight over walnut shelving and brass rail |
-   | L08 | same clerk/customer pair; purchase handoff | cobalt field; held skylight and walnut shelf with newly exposed backing |
-   | L09 | crowd; aggregate demand is the mass | cobalt field; held retail skylight over walnut shelves and brass boundary |
-   | L10 | none; product analogy | blue field; open-door daylight over display ramp and shelves |
-   | L11 | none; hard-drive hero object | green field; high workshop windows on brass tools and walnut bench |
-   | L12 | none; computer–drive relationship | green-cream field; workshop window light across cutaway table and copper conduit |
-   | L13 | none; stored memory | indigo field; unlit computer and closed envelope on walnut desk |
-   | L14 | none; three stored categories | sage field; diffuse shelf light across open casing and physical drawers |
-   | L15 | none; universal dependency mechanism | pale green field; showroom daylight across PC row and central drive |
-   | L16 | `pc-boxy` + `rival-pc`; rivalry | blue field; retail daylight on opposing shelf rows and brass rail |
-   | L17 | same personified pair; market pressure object | blue field; held retail daylight with one new brass bell |
-   | L18 | same personified pair; hidden beneficiary | blue field; held aisle light with one modest drive below bell |
-   | L19 | `drive-maker`; supplier earning | ochre field; supply-hall sunlight on timber counter and brass pan |
-   | L20 | `drive-maker`; gold-rush comparison | ochre field; held horizon light on timber stalls and pick-shaped holder |
-   | L21 | none; product as prospector's find | ochre field; open-land light across brass pan and ordinary pebbles |
-   | L22 | none; suspicious scale of cartons | kraft field; warehouse skylight on clay seams and charcoal racks |
-   | L23 | `pc-boxy`; suspense reaction | cool charcoal field; aisle-end light around carton and pallet slats |
-   | L24 | none; closed carton packing tableau | kraft field; high-rack skylight on clay seams and steel-blue wall |
-   | L25 | none; first brick reveal | kraft field; held skylight on open carton and clay brick |
-   | L26 | none; repeated brick proof | kraft field; held skylight across opened pallet face and clay bricks |
-   | L27 | none; aftermath corridor invitation | cool blue field; distant assembly glow beyond kraft carton flap |
-   | L28 | `miniscribe-rep`; company introduction | teal field; high factory windows on conveyor steel and cream floor |
-   | L29 | none; Colorado origin plan | pale green field; drafting-table light on wood relief and brass tool |
-   | L30 | `terry-johnson`; founder action | teal field; factory-window light across assembly bench and casing |
-   | L31 | none; boom as contained heat | teal-amber field; furnace glow inside tall steel frame and empty floor |
-   | L32 | `ibm-suit` + `miniscribe-rep`; supply agreement | teal field; cool factory windows on shared conveyor and crate edge |
-   | L33 | same pair; production rise | teal field; held window light with one new tower of boxed drives |
-   | L34 | `miniscribe-rep`; scale reaction | cream-teal field; atrium light on brass balance and drive boxes |
-   | L35 | `miniscribe-rep`; peak pressure | teal field; bright factory light under oversized drive-box canopy |
-   | L36 | none; giant-customer scale | pale blue field; loading-yard daylight on pallet, docks, and tower silhouette |
-   | L37 | `miniscribe-rep`; boast under weight | teal-brass field; factory light on money weight, drive, and cartons |
-   | L38 | none; inflation comparison | cream-blue field; high windows on balance beam and brass stacks |
-   | L39 | `miniscribe-rep`; qualifier reaction | cool blue field; rear-bay light around hollow money weight and open floor |
-   | L40 | none; full outbound operation | slate field; paper-white loading doors under blue roof trusses |
-   | L41 | none; operational collapse/absence | slate field; held door light exposing the emptied rack positions |
-   | L42 | none; company cliff metaphor | slate field; pale sky over charcoal drop and paper-cut factory block |
-   | L43 | `line-worker`; layoff consequence | winter blue field; exit light through cold locker corridor and pink notice |
-   | L44 | `terry-johnson`; departure | slate field; open-door light across silent benches and abandoned casing |
-   | L45 | none; founder absence | paper-white/slate field; cold high-window light on empty bench and open exit |
+3. - [ ] **Resolve only identities selected by the completed shot judgments.** After step 2, search `registry.json` and the video library for each selected acting participant. If a selected participant lacks a seeded character token, add one exact `needed_assets` record with `kind:"character"`, a descriptive slug/wants, and the judged shot/causal-subject reason, then stop at the existing human gate. If vetoed, reapply the occupancy criterion and restage the beat; do not substitute an unrelated identity. OLD → NEW is the affected shot's complete JSON object, byte-asserted immediately before patching. Command: parse `plan-vd.md` and `needed_assets`; expected output lists only evidence-derived unresolved selections, with no automatic `arcade-player`, `shop-clerk`, or `shop-customer` request.
 
-3. - [ ] **Resolve the three missing human identities before authoring any dependent shot.** Search `registry.json` and the video library first; current evidence has no `arcade-player`, `shop-clerk`, or `shop-customer`. Add these entries to the existing top-level `needed_assets` array: `{kind:"character", slug:"arcade-player", wants:"small 1980s arcade player in period casual clothing", why:"L02 causal era action"}`, `{kind:"character", slug:"shop-clerk", wants:"small 1983 computer-shop clerk in plain period retail clothing", why:"L07-L08 purchase exchange"}`, and `{kind:"character", slug:"shop-customer", wants:"small 1983 customer in plain period clothing", why:"L07-L08 purchase exchange"}`; then stop at the existing human gate. If approved, materialize/register through the existing asset path and remove the resolved entries; if vetoed, restage those beats, remove the obsolete requests, and repeat the actor-first judgment. Do not substitute an unrelated named identity or promise a third independently seeded human.
+4. - [ ] **Encode every judged pair through Forge's exact token route.** For each shot ruled a pair, write two approved backticked character tokens in left-to-right order in `still_prompt`. If physical contact makes the beat true, immediately follow them with one registered backticked interaction token chosen from `handoff`, `handshake`, or `fistbump`; if none fits, emit `needed_assets` and stop. A non-contact pair names only the two character tokens. The optional `cast` array may mirror the ruling for review but never counts as execution proof. OLD → NEW is each affected shot's full JSON object. Command: call `forge.shot_cast(registry, still_prompt)` for each selected pair. Expected: exactly two cast canonicals in order and, for contact, the selected interaction appears in `_interaction_primitives`; no three-person promise.
 
-4. - [ ] **Name the exact pair execution routes.** L07 is a fresh base with two cast records ordered left=`shop-clerk`, right=`shop-customer` and the existing `handoff` interaction asset on both records; L08 may continue only if the final stage decision and seed-cap plan remain renderable, otherwise re-base it with the same two identities and `handoff`. L02 uses one `arcade-player` cast record by default; a non-contact onlooker may be added only as a second approved cast record on a fresh base, with no interaction template. Existing personified pairs L16–L18 and L32–L33 use their existing canonicals; no contact interaction is invented.
+5. - [ ] **Author all 45 A1 shots from the recorded post-criterion judgments.** Run the decision order independently on each VO beat. Reuse load-bearing vb facts, but only rewrite a composition when its recorded subject, participant, occupancy, stage, field/basis, or crowd-geometry ruling requires it. Every base/standalone `still_prompt` contains the drawable light/material facts for its chosen field; the `Palette basis:` note alone is metadata-only and cannot satisfy this step. Every selected pair uses step 4's backticked tokens. OLD → NEW is each changed shot's full JSON object; unchanged shots are copied byte-for-byte and later ruled in step 15. Preserve suffix, style tile, exemplar, ids/order, verbatim anchors, and the one-change floor. Command: JSON-parse both artifacts and run the pair/crowd token audit; expected: 45 ordered records and no selected participant represented only by `cast` metadata.
 
-5. - [ ] **Author all 45 A1 shots from the actor/palette table, preserving vb's partition, disclosure, cast, and source boundaries.** Run the new decision order independently on each VO beat. Reuse facts that remain load-bearing, but do not mechanically edit vb prompts: rewrite every affected composition from its subject, acting participants, occupancy, tableau, and drawable facts. Every base/standalone `still_prompt` must contain the light/material facts that realize its chosen field; put no palette rationale only in metadata. Preserve `global_prompt_suffix: ""`, cast promotion/seeding, style tile, crowd exemplar, shot ids/order, verbatim `vo_ref`, and the one-change floor.
-
-6. - [ ] **Apply crowd geometry only where the mass is the narrated subject.** For L09, author the crowd in the primary clause inside a named physical container such as `behind the brass queue rail, beneath the high skylight, with the full foreground aisle empty`; set `figures: {"crowd": true}` and omit all CROWD-RIG descriptor prose. Re-judge L02 and L15 rather than carrying vb's crowd declarations: L02 is an era action and L15 is a dependency mechanism under the table above. Do not force a crowd count, figure-height percentage, or number of crowd shots.
+6. - [ ] **Apply crowd geometry only to shots judged mass-subject after evidence review.** For every such shot, author the crowd in the primary scene clause as a bounded group held beyond something the scene already has, with the near zone empty; set `figures: {"crowd": true}` and omit CROWD-RIG boilerplate. Re-judge every vb crowd declaration rather than inheriting or reversing it by id. OLD → NEW is each affected shot's full JSON object. Command: print every `figures.crowd` id with its VO and neighbouring ids; expected: each row has a recorded mass-subject reason and critic-readable geometry, with no count, height, boundary-word, or crowd-total gate.
 
 7. - [ ] **Decide stages only after the 45 individual shots exist.** Walk adjacent shots and apply the two questions: can camera/set/primary subject hold, and does the next beat make exactly one visually distinct, story-needed state change? Treat vb L05→L06 and L08→L09 plus vc's L09→L10 class as candidates the critic must pass, not required chains. Re-evaluate vb's existing `retail-shelf`, `pc-rivalry`, `drive-seller`, `brick-carton`, `miniscribe-rise`, and `order-collapse` runs on the same criterion; split any forced hold and add any missed hold. Preserve the explicit L11 hero-object → L12 relational diagram hard cut.
 
@@ -504,7 +862,7 @@ The adversarial reviewer checks rev-1 F1–F12 plus rev-2 N1–N4 and rev-3 F2: 
    py -3 orgs/faceless-youtube/.claude/skills/visual-prompt-writer/scripts/lint_shots.py orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json --write --fragment
    ```
 
-   Expected: exit 0; `fragment scope: covered 293/1628 script words`; `HARD violations: none`; no `DEFERRED fragment_scope` row; `WROTE derived vo_text (45 shots). JSON valid.`; plus descriptive zero-human and one/two-cast rows with no promotion effect and no crowd diagnostic. Both sizing checks run against ~100s (`293 covered script words / 175wpm, per the header`), and every other HARD keeps its existing meaning. Any HARD is a real defect and must be repaired before critic dispatch.
+   Expected: exit 0; `fragment scope: covered 293/1628 script words`; `HARD violations: none`; no `DEFERRED fragment_scope` row; `WROTE derived vo_text (45 shots). JSON valid.`; plus descriptive zero-human, one/two-character, and every-`figures.crowd` VO+neighbours row with no promotion effect. Both sizing checks run against ~100s (`293 covered script words / 175wpm, per the header`), and every other HARD keeps its existing meaning. Any HARD is a real defect and must be repaired before critic dispatch.
 
 11. - [ ] **Dispatch one genuinely independent critic with this exact brief and no authoring context.** Give it only `V/shots.json`, `V/script.md`, `visual-grammar.md`, `registry.json`, `style-bible.md`, `shots-schema.md`, `critics.md`, and `references/delta-materiality-calibration.json`:
 
@@ -531,21 +889,21 @@ The adversarial reviewer checks rev-1 F1–F12 plus rev-2 N1–N4 and rev-3 F2: 
 
 13. - [ ] **Re-run the official lint after repair.** Use the exact `--write --fragment` command from step 10. Require the same zero-HARD/`covered 293/1628`/45-written result with no deferred row; re-open L45 and confirm its derived `vo_text` is exactly `out the door.` and does not absorb `By 1985 the company was in real trouble`. Re-run `py -3 -m json.tool`, assert no stale hand-authored `vo_text` remains in `fragment-A1-vd.json`, and assert the production JSON still contains no fragment metadata.
 
-14. - [ ] **Build the dispositive per-shot payload diff against vb in `plan-vd.md`.** Read vb with `git show claude/bricks-variant-vb:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json`; for every id L01–L45 add one row with columns `id | vb authored words | vd authored words | delta | exact lower-value text removed | exact field/basis/participant/geometry fact replacing it | assembled-provider delta | verdict`. Count authored words with `len(still_prompt.split())`; compute provider words by calling dry `Kit.prompt_for` for each branch-equivalent payload so moved crowd rig bytes are reported separately. The verdict is `PASS` only when the authored delta is non-positive, or when a positive delta names in that same row both the exact lower-value words removed and the necessary replacement fact. Any other positive row is `REJECT—reauthor`: re-author that shot and rebuild its row before generation. Report assembled-provider deltas in their own column and never use them to excuse authored growth; crowd shots are expected to gain Forge-appended §2d bytes there. Do not calculate or gate on an aggregate or median.
+14. - [ ] **Build the dispositive per-shot no-growth diff against vb.** Read vb with `git show claude/bricks-variant-vb:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json`; for every L01–L45 row record `id | vb authored words | vd authored words | authored delta | exact lower-value text removed | exact replacement fact | assembled-provider delta | verdict`. Count authored words with `len(still_prompt.split())`. `PASS` requires `vd authored words <= vb authored words` for the same id, without exception; every positive authored delta is `REJECT—reauthor` and the shot must be shortened before any generation. Compute assembled-provider words separately through dry `Kit.prompt_for`; Forge-appended §2d growth never excuses authored growth. Command: run the table builder and `py -3 -c` assert all 45 authored deltas are `<= 0`. Expected: 45 PASS rows, zero positive authored deltas, assembled deltas in a separate column, and no aggregate/median gate.
 
-15. - [ ] **Prove the four pixel levers are materially present before generation.** In `plan-vd.md`, record: final candidate-seam decisions with critic reasons; the exact prompt substring carrying each stage base's drawable light/material basis; every selected one/two/crowd occupancy and its asset route; and every crowd's primary bounding geometry plus empty near zone. Compare L01–L12 payload bytes to vb and fail the gate if they are identical after whitespace normalization.
+15. - [ ] **Rule every L01–L12 provider payload before generation.** In `plan-vd.md`, record final seam decisions, each base's exact drawable light/material substring, each selected occupancy plus executable asset route, and each crowd's primary bounding geometry. Then add one ruling per id in one of two literal forms: `changed — by which lever: changed provider-visible bytes` or `intentionally unchanged — criterion-based reason`. Delete the all-set byte gate; an unchanged row is never counted as evidence that a lever moved pixels. Command: compare normalized dry-assembled payloads shot by shot against vb and assert all 12 ids have exactly one ruling. Expected: 12 complete rulings; each changed row names stage routing, light/material prose, backticked pair/interaction, crowd geometry, or Forge-appended §2d, and each unchanged row explains why no criterion required payload change.
 
-16. - [ ] **Commit the authored fragment only after review.** Run `git diff --check`, the Task 1 VPW suite (`111 passed`), and the official lint once more. Stage only `plan-vd.md`, `fragment-A1-vd.json`, `critic-vd-A1.md`, and `V/shots.json`; commit `feat(fyt): author variant D A1 visual plan`. Do not stage generated frames, unrelated untracked files, or coordination paths.
+16. - [ ] **Commit the authored fragment only after review.** Run `git diff --check`, the Task 1 VPW suite (`114 passed`), and the official lint once more. Stage only `plan-vd.md`, `fragment-A1-vd.json`, `critic-vd-A1.md`, and `V/shots.json`; commit `feat(fyt): author variant D A1 visual plan`. Do not stage generated frames, unrelated untracked files, or coordination paths.
 
 **Acceptance:**
 
 - `V/shots.json` contains L01–L45 and no fragment metadata; the `--fragment` invocation prints `covered 293/1628`, runs both sizing checks against that span, produces zero HARD, and writes fresh clipped `vo_text`.
 - The independent critic completes one normal cycle; every finding is accepted and repaired or rejected with a concrete reason; every final chain passes both missed-hold and forced-hold judgment.
 - Every resulting base/standalone carries one prefixed `Palette basis:` note and provider-visible light/material facts; same-stage cards can inherit the basis unambiguously.
-- Every pair uses approved identities and a fresh-base route; contact uses registered `handoff` or stops at `needed_assets`; no trio is promised.
+- Every pair uses two approved backticked character tokens; contact follows them with registered `handoff`, `handshake`, or `fistbump`, or stops at `needed_assets`; `cast` metadata alone never passes and no trio is promised.
 - Every crowd is selected because the mass acts and is judged from actual bounded/rearward/empty-near-zone geometry, not a lexical match.
-- The 45-row vb diff is complete; unexplained positive authored growth is rejected shot by shot, and assembled-provider crowd-rig growth is reported separately.
-- L01–L12 payloads differ materially from vb through one or more validated stage, palette, occupancy, or crowd-geometry levers before any image call.
+- The 45-row vb diff is complete; every authored word delta is non-positive, and assembled-provider crowd-rig growth is reported separately.
+- Every L01–L12 payload has a changed-by-lever or intentionally-unchanged-with-reason ruling; unchanged rows are not evidence of a pixel lever.
 
 **Review gate:**
 
@@ -634,7 +992,7 @@ The adversarial reviewer receives only the final files and checks spec §4.3/§5
 
    Fresh-eyes review, stamp, and promote that result before repeating this step for the next delta; record the resolved parent digest and `changed_elements` in each genlog row.
 
-8. - [ ] **Apply exactly one re-authored retry to each failing shot.** Diagnose the defect's causal prompt/composition mechanism; replace that mechanism in `shots.json` rather than appending `NO/never/not` patches or removing load-bearing facts. Set `$VdRetryId` to the failing L01–L12 id, author its one-shot versioned overlay at `$VdVideo/scratchpad/vpw-var/retry-vd-$VdRetryId.json`, then run:
+8. - [ ] **Apply exactly one re-authored retry to each failing shot.** Diagnose the defect's causal prompt/composition mechanism; replace that mechanism in `shots.json` rather than appending `NO/never/not` patches or removing load-bearing facts. Before the live retry, recompute the same-id authored word comparison and require the retried `still_prompt` still has no more words than vb; any positive delta is re-authored again without spending a call. Set `$VdRetryId` to the failing L01–L12 id, author its one-shot versioned overlay at `$VdVideo/scratchpad/vpw-var/retry-vd-$VdRetryId.json`, then run:
 
    ```powershell
    $VdRetryOverlay = "$VdVideo/scratchpad/vpw-var/retry-vd-$VdRetryId.json"
@@ -646,11 +1004,20 @@ The adversarial reviewer receives only the final files and checks spec §4.3/§5
 
    A parent re-generation consumes that shot's single retry and every descendant waits for its new verified digest. Count every live call against the 24-call ceiling.
 
-9. - [ ] **Park honestly after the retry.** If the re-authored retry still has any fidelity/style/rig defect, keep the better attempt, set its merged ruling to the observed defect, run the stamp writer, and require `review_status: parked` plus concrete `parked_reasons`; do not switch techniques, take a third call, or stamp it verified. If a parked shot is a required parent, park each blocked descendant with `parent LNN not verified`, replacing `LNN` with that manifest's exact parent id, without spending its base call; report it as attempted only if an actual generation call occurred.
+9. - [ ] **Park failed and uncalled descendants honestly.** After one failed retry, store the observed defect as `review_status: parked` plus concrete `parked_reasons`. If that shot is a required parent, create a D trial-manifest row for each blocked descendant with `review_status:"parked"`, `parked_reasons:["parent LNN not verified"]`, `file:null`, and no call provenance; do not copy or count it as called. OLD → NEW is the full affected manifest row, asserted before patching. Command: reconcile the twelve ids against genlog call rows. Expected: every id is either called or parked with a reason, and every uncalled child has no output file/digest/provenance.
 
 10. - [ ] **Close the review and manifest record.** Run `py -3 orgs/faceless-youtube/.claude/skills/image-generation/scripts/build_review_artifact.py --video $VdVideo --out "$VdVideo/assets/_review/scene-board.html" --shots L01 L02 L03 L04 L05 L06 L07 L08 L09 L10 L11 L12`, have the fresh reviewer rule every applicable row and advisory palette card, merge final rulings, and run `py -3 orgs/faceless-youtube/.claude/skills/image-generation/scripts/stamp_review.py $VdVideo`. Expected summary reflects reality, not a target; only clean frames are `verified`. Append to genlog: calls by base/retry/parent-regen, verified ids, parked ids/reasons, unused allowance, actual conservative total `calls × 0.134`, actual provider comparator `calls × 0.039`, and whether the $5 wave cap remained intact.
 
-11. - [ ] **Copy reviewed bytes into the dedicated D comparison folder.** Resolve `$VdFrameRoot = (Resolve-Path "$VdVideo/scratchpad/variant-frames").Path`, set `$VdFrameDir = Join-Path $VdFrameRoot 'vd'`, require `[IO.Path]::GetFullPath($VdFrameDir).StartsWith($VdFrameRoot + [IO.Path]::DirectorySeparatorChar)`, and create it with `New-Item -ItemType Directory -Force -Path $VdFrameDir`. For each `$VdFrameId` in `L01` through `L12`, copy an existing reviewed source with `Copy-Item -LiteralPath "$VdVideo/assets/scenes/$VdFrameId.png" -Destination "$VdFrameDir/$VdFrameId.png" -Force`. Create `vd/manifest.json` containing only L01–L12 entries and top-level `variant:"D"`, `branch:"claude/bricks-variant-vd"`, `requested_model`, `responding_model`, `calls`, `rate_conservative:0.134`, `rate_provider_table:0.039`, `cost_usd` at the conservative rate, and `provider_table_cost_usd`; preserve every honest parked state. Verify each copied SHA-256 equals its source with `Get-FileHash -Algorithm SHA256`.
+11. - [ ] **Copy only D-called bytes whose manifest provenance matches.** Resolve and validate `variant-frames/vd` as before. For each L01–L12 id, locate its D trial-manifest row and its genlog call row. Use the same canonical scene-manifest `notes` field vb populated from actual batch specs (`genlog.md:101-103`): for D it must record the D staging output path and SHA-256; `retry_cause` records retry provenance but is not by itself proof of a call. Copy only when (a) a D call row exists, (b) `notes` records that D staging path/digest, (c) the chosen reviewed source hashes to that digest, and (d) review status is `verified` or honestly `parked` after a call. Never copy merely because `assets/scenes/LNN.png` exists. An uncalled/blocked id stays absent from `variant-frames/vd` with `file:null` and its reason in `vd/manifest.json`.
+
+   ```powershell
+   if ($null -eq $VdEntry.file) { continue }
+   $VdActual = (Get-FileHash -Algorithm SHA256 -LiteralPath $VdReviewedSource).Hash.ToLowerInvariant()
+   if ($VdActual -ne $VdEntry.sha256) { throw "$VdFrameId D provenance digest mismatch" }
+   Copy-Item -LiteralPath $VdReviewedSource -Destination "$VdFrameDir/$VdFrameId.png" -Force
+   ```
+
+   Create the D manifest with the existing top-level accounting fields plus per-shot `file`, `sha256`, `notes`, `retry_cause`, status, and reasons. Command: run a reconciliation script over manifest/genlog/files. Expected: every copied PNG has a D call and matching recorded digest; every uncalled id is missing with a reason; no stale prior-variant scene can pass.
 
 12. - [ ] **Send the exact cost row to the ops writer.** The existing 08-20 ledger has five tab-separated fields with no header: narrative description; requested model; responding model; short task label; USD. Derive `$VdCalls` from actual genlog call rows, `$VdVerified` and `$VdParked` from the twelve manifest states, and `$VdLedgerDescription = 'Variant D doctrine trial: {0} calls, {1}/12 verified, {2}/12 parked; 12 base allowance + at most one retry each; conservative $0.134/call, provider-table $0.039/call; genlog scratchpad/vpw-var/genlog-vd.md on claude/bricks-variant-vd.' -f $VdCalls,$VdVerified,$VdParked`. Supply that description, `gemini-3-pro-image`, the observed responding id, `bricks variant D trial 12 shots`, and `[decimal]$VdCalls * 0.134` as the five fields (examples: 12→1.608; 24→3.216). The boss/ops writer must `git pull --rebase origin ops` immediately before the write, append on `ops`, commit/push immediately, and report the pushed row; the work branch never edits `ledgers/`.
 
@@ -658,15 +1025,15 @@ The adversarial reviewer receives only the final files and checks spec §4.3/§5
 
 **Acceptance:**
 
-- Every L01–L12 shot has either one actual base call or an honest parent-block park; no shot exceeds one re-authored retry and total live calls do not exceed 24/$3.216 conservative or the $5 wave cap.
+- Every L01–L12 shot is called or parked with a reason; uncalled parent-blocked children remain missing, no called shot exceeds one re-authored retry, and total live calls stay within 24/$3.216 conservative and the $5 wave cap.
 - All generated scenes are 16:9, 1K, forced fresh, logged with requested/responding model and both rates; no ambiguous call is double-issued.
 - Every delta was built only after its parent passed and was promoted; changed parent digests propagate before descendants run.
-- Final manifest states are honest `verified|parked`; parked reasons are visible, and only reviewed source bytes are copied to `variant-frames/vd` with matching SHA-256.
+- Final manifest states are honest `verified|parked`; only D-called reviewed bytes with matching `notes` provenance and SHA-256 are copied, while uncalled parks have `file:null`.
 - `genlog-vd.md` contains the complete call/retry/park/cost record and the exact cost row is pushed through the ops convention.
 
 **Review gate:**
 
-The adversarial reviewer checks spec §4.4/§6: human spend approval, exact Forge batch→gen call shape, parent-before-delta proof, fresh reviewer independence, one re-authored retry, no prompt accretion, honest parks, 24-call and $5 ceilings, dual-rate accounting, ledger field order, manifest isolation, and byte-identical copy into `variant-frames/vd`.
+The adversarial reviewer checks spec §4.4/§6: human spend approval, exact Forge batch→gen call shape, parent-before-delta proof, fresh reviewer independence, one re-authored retry, no prompt accretion, honest called-or-parked closure, 24-call and $5 ceilings, dual-rate accounting, ledger field order, manifest isolation, byte-identical copies only for D-called rows, and absent files for uncalled parks.
 
 ### Task 4 — Build the four-variant board and conduct the blind review
 
@@ -692,14 +1059,46 @@ The adversarial reviewer checks spec §4.4/§6: human spend approval, exact Forg
 
    Keep A/B/C entries byte-identical. Change the module docstring from `A/B/C` to `A/B/C/D` and change `REVIEW` to `ROOT / "scratchpad" / "taste-audit" / "variant-d-blind-review.md"`.
 
-2. - [ ] **Make the existing board layout accurately describe four variants.** Change `repeat(3,minmax(0,1fr))` to `repeat(4,minmax(0,1fr))` for `.variant-summary` and `.decision-cards`; increase the comparison table minimum width from `1050px` to `1360px` and the narrow-screen width from `900px` to `1160px`. Replace `tested three doctrine variants` with `tested four doctrine variants`, `all 36 frames` with `all 48 frames`, and append `<th>D &mdash; judgment-restoration trial</th>` to the grid header. Do not change row order, image compression, manifest-state badges, or missing-frame behavior.
+2. - [ ] **Make the four-column layout preserve honest missing-D cards.** Apply the exact CSS/header OLD → NEW replacements for four columns, but do not claim 48 images. For the missing branch, assert and replace:
+
+   OLD:
+
+   ```py
+   if path.is_file():
+       uri = image_uri(path, quality, max_dimension)
+       image = f'<img src="{uri}" alt="Variant {name}, {html.escape(shot_id)}" data-lightbox-index="{lightbox_index}">'
+       lightbox_index += 1
+       image_counts[name] += 1
+   else:
+       missing.append(f"{name}/{shot_id} image")
+       image = '<div class="image-missing">frame missing</div>'
+   parked = f'<p class="parked-reason">{html.escape(reason(entry))}</p>' if entry.get("review_status") == "parked" else ""
+   ```
+
+   NEW:
+
+   ```py
+   if path.is_file():
+       uri = image_uri(path, quality, max_dimension)
+       image = f'<img src="{uri}" alt="Variant {name}, {html.escape(shot_id)}" data-lightbox-index="{lightbox_index}">'
+       lightbox_index += 1
+       image_counts[name] += 1
+   else:
+       missing_reason = reason(entry) or "no called frame recorded"
+       missing.append(f"{name}/{shot_id} image — {missing_reason}")
+       image = f'<div class="image-missing">frame missing — {html.escape(missing_reason)}</div>'
+   parked = f'<p class="parked-reason">{html.escape(reason(entry))}</p>' if entry.get("review_status") == "parked" else ""
+   ```
+
+   The builder already returns after writing and does not fail on `missing`; preserve that behavior. Command: run it with D/L08 parked, `file:null`, and no PNG. Expected: exit 0, D/L08 visibly says `frame missing — parent L07 not verified`, and A/B/C plus called D images still render.
 
 3. - [ ] **Extend the decision section without preselecting D.** Add a fourth card with exact copy `Pick D` / `Use the hold-camera, grounded-palette, actor-first, bounded-crowd criterion set tested here; retain the existing engine, style tile, suffix, seeds, and render register.` Change the procedure to `reply with A, B, C, D, or an iteration note`. Replace the old first two restoration-only questions with `Which criterion set reads best shot by shot, and which individual D changes should survive even if D does not win overall?` and `Does any preferred D frame depend on a changed subject/composition rather than the criterion it is meant to test?`; preserve the remaining render-register, repair-source, symbolic-vocabulary, and reuse questions.
 
-4. - [ ] **Give a fresh reviewer this exact blind brief with no Task 2 authoring conversation, no target counts, and no desired winner.** Inputs are the 48 local PNGs, each branch's L01–L12 `shots.json` records via `git show`, four manifests, spec §3.1–3.4, and the calibration fixture:
+4. - [ ] **Give a fresh reviewer this exact blind brief with no Task 2 authoring conversation, no target counts, and no desired winner.** Inputs are every available local PNG (up to 48), all twelve manifest rows per variant including D's missing reasons, each branch's L01–L12 `shots.json` records via `git show`, spec §3.1–3.4, and the calibration fixture:
 
    ```text
-   Review the A/B/C/D L01–L12 comparison fresh. Do not infer intent from branch history, genlogs, or
+   Review the A/B/C/D L01–L12 comparison fresh. Treat a missing D frame as missing evidence and report
+   its manifest reason; never infer or substitute prior pixels. Do not infer intent from branch history, genlogs, or
    author commentary, and do not rewrite files or prompts. Apply Variant D's four criteria to every
    applicable D shot/seam: (1) camera/set/primary-subject hold plus one story-needed state change,
    judging both missed and forced holds; (2) one stage field grounded in visible light/material/story
@@ -723,7 +1122,7 @@ The adversarial reviewer checks spec §4.4/§6: human spend approval, exact Forg
    py -3 orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/scratchpad/boards/build_variant_board.py
    ```
 
-   Expected JSON: `output` ends in `scratchpad/boards/variant-board.html`; `image_counts` is exactly `{"A":12,"B":12,"C":12,"D":12}`; `missing` is `[]`; encoded board remains below 14 MiB. Open the HTML and inspect at desktop and narrow width: four headers align with every row, all 48 images open in the lightbox, arrow count/navigation reaches 48, parked badges/reasons remain visible, sections 1–4 render, and A/B/C/D decision cards fit without overlap.
+   Expected JSON: `output` ends in `scratchpad/boards/variant-board.html`; A/B/C each count 12; D's image count equals the number of D manifest rows with non-null `file` and matching PNG; `missing` lists only intentionally absent D ids with reasons; encoded board remains below 14 MiB. Inspect desktop/narrow views: four headers align, every present image opens in the lightbox, missing D cards remain visible with reasons, sections 1–4 render, and decision cards do not overlap.
 
 7. - [ ] **Check review neutrality and criterion coverage before publishing.** Search the review for numeric imperatives (`at least`, `no more than`, `must equal`, `% target`, `minimum`, `maximum`) and remove any distribution target while retaining observed figures. Confirm all twelve D ids have a ruling, every authored D chain seam appears, every stage basis is checked against visible pixels, every crowd shot has a geometry ruling, and the review says `NA` rather than inventing a crowd finding on non-crowd frames.
 
@@ -735,11 +1134,11 @@ The adversarial reviewer checks spec §4.4/§6: human spend approval, exact Forg
 
 **Acceptance:**
 
-- `VARIANTS` contains the exact D entry; the local board renders 12×4 frames, all manifests, four decision cards, and the complete new blind review with no missing assets or layout break.
+- `VARIANTS` contains D; the board renders twelve rows across four columns, preserves visible missing-D cards/reasons for uncalled parks, renders every called D frame with matching provenance, and has no layout break.
 - A fresh reviewer applies §3.1–3.4 and the six canonical image questions shot by shot before reporting chain, palette, occupancy, and crowd distributions; no distribution becomes a target or gate.
 - The same Artifact handle/URL is republished in place; if that handle is unavailable, the task stops rather than publishing a duplicate.
 - The handoff makes Daniel's decision resumable, memory captures only reusable process lessons, STATE is updated only if materially stale, and coordination writes land on `ops`.
 
 **Review gate:**
 
-The adversarial reviewer checks spec §4.5/§5: exact D registry data, 48-frame board integrity, reviewer freshness, per-shot criterion evidence before distributions, no target language or automatic winner, transparent parks/costs, unchanged Artifact URL, complete Load list, least-general lesson routing, and strict work-branch/ops separation.
+The adversarial reviewer checks spec §4.5/§5: exact D registry data, twelve-row/four-column integrity with honest missing-D reasons, reviewer freshness, per-shot criterion evidence before distributions, no target language or automatic winner, transparent parks/costs, unchanged Artifact URL, complete Load list, least-general lesson routing, and strict work-branch/ops separation.
