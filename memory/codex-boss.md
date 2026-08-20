@@ -29,3 +29,18 @@
 
 ### Related
 - See the same session's local-file lesson in `handoffs/2026-08-20-atlas-omni-remediation-review.md`: revalidation is not confinement when namespace identity can change between check and use.
+
+
+## 2026-08-20 — Reconcile + merge + deploy of two overnight arcs (boss session)
+
+- WORKED: measure overlap before planning (`comm` of the two `--name-only` diffs + a throwaway trial merge) — 4 files / 1 import conflict settled the "merge vs one integration branch" question in two commands. Merge the reviewed PR as-is, rebase the other linearly on top; content-equivalence check = `git diff <orig-branch> HEAD -- <its files>` must show only the overlap files.
+- WORKED: a whole-PR dedup pass on a 39k-line, per-unit-reviewed branch found real merges (10) but little true dead code — most "dead" was unused `export`s. Worth ~2h once; not worth re-running per wave.
+- FAILED→FIXED: "CI green" claims were Windows-only; main went red on ubuntu the moment #139 merged (scandir order, `py -3` literals, test needing `node_modules` before `npm ci`). Rule: before declaring a Linux gate green, run the CI command in a **native WSL clone** (`git clone /mnt/c/... ~/kb-ci`) — never over `/mnt/c` worktrees (Windows `.git` pointer, CRLF, no exec bits → 8 false failures) and never `--single-branch` (the fleet card `no-worker-commits-on-main` needs `origin/main`).
+- HAZARD: running the full pytest in WSL over a Windows worktree DELETED the `node_modules` junction; the worker sandbox can't run `wsl` at all (`E_ACCESSDENIED`) — boss runs Linux checks.
+- HAZARD: `pytest --basetemp` must have an existing parent dir (1166 setup errors otherwise) and must sit outside any repo (`test_branch_hygiene` walks up into the parent repo). Use `kb-worktrees/_pt`.
+- HAZARD: the harness kills long background shells (~25–60 min); the AP gate job died mid-vitest. Run vitest alone as its own background job; don't chain it after a 20-minute pytest.
+- LEARNED: `core.autocrlf=true` breaks every byte-for-byte generated-file check on this box; the house fix is a `.gitattributes eol=lf` pin (skills, canaries, systemd, now generated schema modules).
+- LEARNED: Daniel merges fast — push cleanup commits to the PR *before* telling him a PR is merge-ready, or they ride the next PR (which is what happened).
+- WORKED (VM): the activator refuses unless `/readyz quiescent:true`; `POST /api/control/execution/lock` from the desk gets there in <10 s. VM python is 3.14: `spec_from_file_location` probes must register the module in `sys.modules` before `exec_module` or `@dataclass` dies. `kb-dashboard` has no home dir — one-time HF downloads need `HF_HOME` under the state root. Debian's `click` blocks pip upgrades (`--ignore-installed click`).
+- LEARNED: the hard-ceiling hook blocks any command string mentioning `~/.ssh` — fingerprint the VM's trusted public key and let Daniel match it locally; never ask for or guess the key path in a command you run.
+- REMAINS: VM `/var/lib/kb/ops` only moves through the signed promotion ceremony; `export_tier0` "restart locked" expectation is stale under tailnet arm-at-boot; Phase-2 plan next.
