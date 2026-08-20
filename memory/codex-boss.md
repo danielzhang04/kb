@@ -14,3 +14,18 @@
 - LEARNED: grep-based plan completion checks cannot catch pass-through serialization drift after a type rename — reviewer's type-first enumeration of payload-carrying types is the check that works.
 - LEARNED: review fixes can orphan plan interfaces (deleted "dead" exports that a later task consumes) and plan test inputs go stale against review-hardened contracts. Standing rulings that kept the night moving: adapt INPUTS to contracts (never weaken contracts), recreate plan-mandated interfaces as thin wrappers, record every ruling as a plan-header amendment so gates stay honest.
 - LEARNED: parallel vitest on this box under load = waitFor-timeout flake in src/ UI files; the server suite is exactly clean serially (163 files/2500 tests). Characterize baselines serially before believing any red.
+
+## 2026-08-20 — A green suite does not prove a human-review boundary
+
+### Context
+- Atlas's foundation suite was green, but adversarial review found that a truncated preview could hide T3 fields while Confirm remained enabled, and tests invented a Drive `etag` that the real v3 resource does not provide.
+
+### Root Cause / Core Insight
+- Tests exercised internally consistent mocks, not the external API's actual concurrency/version contract or the operator's complete visible decision surface. A hash can bind hidden parameters perfectly while still failing the human-review requirement.
+
+### The Pattern (transferable)
+- Next time a consequential action depends on preview, version, or identity binding, I will separately prove: every authorization-critical field is visible, oversized previews are un-runnable at the server boundary, the real endpoint supports the asserted atomic precondition, and ambient connection identity cannot change between prepare and execute.
+- Signal to recognize: a test fixture supplies an ETag/version field not sourced from primary API documentation, or production code truncates/redacts a proposal that still renders an enabled confirmation control.
+
+### Related
+- See the same session's local-file lesson in `handoffs/2026-08-20-atlas-omni-remediation-review.md`: revalidation is not confinement when namespace identity can change between check and use.

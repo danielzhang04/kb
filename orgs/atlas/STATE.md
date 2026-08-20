@@ -1,8 +1,17 @@
 # atlas — STATE
 
-_Updated: 2026-08-20 (omni-interface foundation committed locally; remote push awaits approval)_
+_Updated: 2026-08-20 (omni-interface remediation technically ready; >400-line human review gate pending)_
 
 ## Now
+- **CURRENT UPDATE 2026-08-20 — ADVERSARIAL REMEDIATION READY FOR DANIEL REVIEW.** Branch
+  `codex/atlas-enhancements-20260820` still has foundation commit `280a67a9` plus an unstaged,
+  independently re-reviewed remediation diff. It adds durable ACTING state, a compact Now
+  projection, honest retention/accessibility state, complete-or-unconfirmable proposal previews,
+  OAuth-generation-bound Gmail/Calendar proposals, and ETag-bound Calendar PATCH/delete. The
+  raceable local-file adapter and non-atomic Drive share/delete paths now fail closed. Evidence:
+  Atlas `235 passed`; changed dashboard `18 passed`; typecheck/build; fresh code+security re-review
+  `PASS`. The diff exceeds 400 lines, so the project contract requires Daniel review before commit.
+  Active handoff: `handoffs/2026-08-20-atlas-omni-remediation-review.md`.
 - **CURRENT UPDATE 2026-08-20 — OMNI-INTERFACE FOUNDATION COMPLETE LOCALLY.** Dedicated branch
   `codex/atlas-enhancements-20260820`, commit `280a67a9`: standalone Jarvis-style UI, five tabs,
   local files, named desktop apps, paired browser contracts, Google Workspace contracts,
@@ -50,8 +59,9 @@ _Updated: 2026-08-20 (omni-interface foundation committed locally; remote push a
   Run: `cd kb-worktrees\atlas\atlas; .venv\Scripts\python -m worker.app console --input-device 2`.
 
 ## Next
-- Daniel end review: approve or decline pushing commit `280a67a9` to `origin`, then review the
-  activation checklist before any Google OAuth or signed-in browser pairing.
+- Daniel reviews and approves/declines the unstaged >400-line remediation diff before any commit.
+- After an approved commit and repeated gates, separately approve or decline pushing the feature
+  branch to `origin`, then review activation before any Google OAuth or signed-in browser pairing.
 - If approved, pair a trusted browser bridge with atomic origin/document enforcement, enable Google
   only in a disposable account, desk-test fixed desktop profiles, and visually approve the UI.
 - Deferred (named): TTFT input diet, spoken voice-switch, hot-follow BT routing, SSE panel
