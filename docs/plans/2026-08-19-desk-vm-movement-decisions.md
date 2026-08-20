@@ -32,6 +32,21 @@ Atlas features themselves are a later build.
   single-writer, and mid-run deploys are usually fixes for the run in flight.
   Guardrails: versioned run-state + migrate-on-load; a release declaring a breaking
   state migration pauses the deploy and asks instead of silently applying.
+- **One-click mechanics:** the click must run on the desktop (signing key lives there;
+  VM never signs). v1 = single desktop command/shortcut (fetch green artifact → verify
+  → sign → ship). v2 = inbox Deploy button waking a small desktop helper over the
+  tailnet. v1 ships first.
+
+## Inbox + code-flow decisions (2026-08-20)
+- **Inbox shape: hybrid.** One list of everything that wants Daniel: governed cards,
+  waiting-human runs/stages, deploy confirmations (inline one-click actions — no new
+  credentials needed), plus GitHub PRs via read-only token with merge deep-linking to
+  GitHub. No merge-capable GitHub token on the VM, ever this arc.
+- **Code flow:** VM agents push PR-ready branches + open PRs (scope-limited GitHub
+  credential: branch push + PR create, main/ops protected; work must pass review
+  guardrails first) → inbox notifies → Daniel merges on GitHub → Daniel one-click
+  deploys. Merge ≠ deploy stays a rule: bad local-dev merges sit harmlessly until
+  a deliberate deploy.
 
 ## Facts the design rests on (codex survey, card 6a867b1f-608a2099)
 - All run/stage/attempt/session state persists in `DASHBOARD_STATE_ROOT/control/
