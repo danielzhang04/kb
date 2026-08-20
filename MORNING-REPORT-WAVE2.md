@@ -107,7 +107,16 @@ D `ff70ee7`, C `8c834af`, B `0055b9a`, E `6e8b94a`, G2 `1365c5a`, reconciliation
 - `tests/test_sync_daemon_dirs::test_sync_commit_excludes_unrelated_staged_files` is
   order-dependent-flaky in full sweeps (passes alone AND in the final full sweep).
 
-## YOUR morning gates (in order — nothing new was invented overnight)
+## YOUR morning gates — STATUS after the 2026-08-19 review session
+Gate 1 DONE (`172dba2` — V-human rule 8 + card-schema incl. agent_version). Gate 2 DONE
+(`0506e24` + `08639ba` — maintainer suite + fleet floor blessed, ledgers-cost-row v2 vacuous
+floor, 7/7 both agents). Gate 3 DEFERRED to post-merge by Daniel (first fire + cadence commit).
+Gate 4 DONE except the elevated ACL delete (pause markers cleared, HEARTBEAT test edit
+discarded, audit rows left to die with sweeps). Gate 5 unchanged (merge after clean cutover).
+Also this session: Schedules UI rebuilt through 4 live-review rounds (gcal dropdown+selectors,
+neutral gray theme, ink-inversion states, native-control theming) — `814aa43..ffc856f`.
+
+## Original gate list (for reference)
 
 1. **Rule-8 pick + apply**: choose V-human or V-review in
    `docs/proposals/rule8-governed-eval-authoring.md`, paste into `governance/agent-rules.md` §8.
