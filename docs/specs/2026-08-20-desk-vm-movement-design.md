@@ -210,6 +210,13 @@ Bootstrap order:
 | GitHub integration | Immutable card blobs and normalized PR data | `kb.github-inbox/v1` | Separate uid, `/var/lib/kb-github` mirror/cache |
 | Desktop helper | Deploy, asset intent, and result notification closed verbs | `deploy`, `pull-assets`, `deployment-result` | `gh`, git, signer only for deploy |
 
+**Snapshot contract addendum (build note, 2026-08-20):** the store's accepted-size
+sidecar `control/control-plane.accepted-size.json` (introduced in Phase 1 as the
+durable basis for migration-grown documents) moves in lockstep with
+`control-plane.json`: every §2.5 snapshot, restore, and rollback step that touches
+the control document MUST include the sidecar. A missing sidecar is fail-safe
+(base limit applies); a stale one is not, so restore both or neither.
+
 ## 3. One-click deploy
 
 ### v1 desktop command
