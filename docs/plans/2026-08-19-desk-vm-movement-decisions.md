@@ -48,6 +48,22 @@ Atlas features themselves are a later build.
   deploys. Merge ≠ deploy stays a rule: bad local-dev merges sit harmlessly until
   a deliberate deploy.
 
+## Floor + Atlas decisions (2026-08-20)
+- **Memory parity: promote into repo**, never sync `~/.claude`. Curated project
+  knowledge (arcs, doctrines, resume points) moves to `memory/*.md` / org STATE
+  files, which already sync; personal auto-memory stays personal.
+- **Assets home: manifest + pull step.** Final pipeline stage emits an asset manifest
+  (paths+hashes); `pull-assets` rsyncs exactly those files home over the existing
+  tailnet SSH. Binaries never in git. Inbox item "run finished — pull home" triggers it.
+- **Credentials: registry + smallest-first grants.** Governance doc listing per
+  integration: kind, scope, VM location, human-gated actions. This arc provisions only
+  GitHub read (inbox PR list) + verify VM git identity can push branches/open PRs.
+  FYT creds (image/voiceover/YouTube) row-by-row when the stretch build needs them.
+- **Atlas contract:** stable versioned API = launch / observe / act; EVERY inbox UI
+  action must exist as a clean API endpoint (no browser-only flows); caller-agnostic,
+  tailnet-identity authed. Atlas itself (voice, desktop control, own-domain hosting)
+  is future work and deliberately unconstrained by this arc.
+
 ## Facts the design rests on (codex survey, card 6a867b1f-608a2099)
 - All run/stage/attempt/session state persists in `DASHBOARD_STATE_ROOT/control/
   control-plane.json` (`dashboard/server/control/store.ts:267-282,4367-4397`); startup
