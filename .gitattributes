@@ -26,3 +26,8 @@
 /tests/fixtures/signed-approval/web-flow.gpg -text
 /tests/fixtures/signed-approval/other-key.gpg -text
 /tests/fixtures/signed-approval/meta.json -text
+
+# Generated control-plane schema modules are compared byte-for-byte by the
+# generator check; pin them to LF so autocrlf cannot create false drift.
+/dashboard/server/control/generated/** text=auto eol=lf
+/deploy/control_plane_schema.py text=auto eol=lf
