@@ -9,6 +9,12 @@
 > the resident-VM v2 probe remains the standing merge-precondition. Value agreement
 > for the three registry-derived fields is recomputed post-extraction in Phase 3
 > (spec §2.4), not pinned at parse time.
+>
+> **Merge-precondition (updated):** the VM probe requires TWO artifacts installed to
+> `/usr/local/lib/kb` first — the updated `activate_release.py` AND
+> `control_plane_schema.py` (only `install_root_validators()` places the latter; the
+> resident VM does not have it today). A `ModuleNotFoundError` from the probe means
+> "install the module pair," never "revert the import."
 > **For agentic workers:** execute task-by-task; steps use checkbox syntax.
 
 **Goal:** Build only the durable state foundation required by Phase 1: schema-v2 migration, exhaustive run lifecycle, deployment/journal records, one-writer capability, durable critical saves, and shared TypeScript/Python schema validation.
