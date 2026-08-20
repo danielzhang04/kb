@@ -62,7 +62,9 @@ Atlas features themselves are a later build.
 - **Atlas contract:** stable versioned API = launch / observe / act; EVERY inbox UI
   action must exist as a clean API endpoint (no browser-only flows); caller-agnostic,
   tailnet-identity authed. Atlas itself (voice, desktop control, own-domain hosting)
-  is future work and deliberately unconstrained by this arc.
+  is future work and deliberately unconstrained by this arc. Division of labor
+  (2026-08-20): Daniel builds Atlas separately in parallel; this arc's boss stays on
+  the VM work; `/api/v1` is the integration seam.
 
 ## Review rulings (Daniel, 2026-08-20)
 - **Deploy vs manual interactive work: bounded wait.** Transient blockers (in-flight
