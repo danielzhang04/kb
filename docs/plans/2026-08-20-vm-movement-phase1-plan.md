@@ -1,4 +1,14 @@
 # Desk⇄VM Movement — Phase 1 (State Foundation) Implementation Plan
+
+> **Boss amendment (2026-08-20, in force):** a parser-only edit to
+> `deploy/activate_release.py` (structural attestation v2 validation) was ruled INTO
+> Task-7 scope during the build. The plan's original "never edits activate_release.py"
+> gates (`git diff --exit-code origin/main -- deploy/activate_release.py` and the
+> final `$forbidden` diff-guard entry for that path) are superseded for exactly this
+> parser change; activation/swap/rollback behavior remains out of Phase-1 scope, and
+> the resident-VM v2 probe remains the standing merge-precondition. Value agreement
+> for the three registry-derived fields is recomputed post-extraction in Phase 3
+> (spec §2.4), not pinned at parse time.
 > **For agentic workers:** execute task-by-task; steps use checkbox syntax.
 
 **Goal:** Build only the durable state foundation required by Phase 1: schema-v2 migration, exhaustive run lifecycle, deployment/journal records, one-writer capability, durable critical saves, and shared TypeScript/Python schema validation.
