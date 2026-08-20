@@ -19,4 +19,14 @@
    ruleset; gate-5.9 decision) opened/merged by a human or the cloud leg. All its task
    types start queues-for-me until the grade ledger promotes them. Gemini: deferred
    (see security-rules.md note).
- 8. Canaries (`evals/`): golden canary cards are HUMAN-PROMOTED-ONLY. Agents never add, edit,delete, or re-bless canaries or `evals/MANIFEST.sha256`; regenerating the manifest (`py -3 scripts/canary.py --update-manifest`) is a human act performed only after a reviewed, deliberate `evals/` change. Any agent diff touching `evals/` is a violation — `scripts/canary.py --diff-guard` flags it and the suite fails loud on manifest mismatch.
+ 8. Evals (`evals/`): agents MAY author evals only in draft state;
+    no agent authors or edits an eval that judges itself. New-agent suites are created through
+    `scripts.agent_factory`; all other new eval content is added as ordinary files on a work
+    branch with manifests untouched.
+    Edits to existing eval content land as work-branch diffs with the author recorded by the
+    commit author and dispatch card; manifests remain untouched, so fail-loud manifest mismatch
+    is the enforced draft state. A human reviews the diff, then invokes the relevant eval runner's
+    `--update-manifest`, which must run every affected suite green before blessing it. Until that
+    human blessing, new or edited eval content does not count. `evals/agents/_fleet/**` and
+    `evals/canaries/**` are ALWAYS human-blessed; shared judges have no eligible agent blesser.
+    Agents never edit or re-bless a `MANIFEST.sha256`. Agents never delete eval content.
