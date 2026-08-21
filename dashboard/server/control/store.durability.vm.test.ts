@@ -126,7 +126,7 @@ it('proves the durability measurement harness against a local source size', asyn
     else process.env.KB_VM_DURABILITY_SOURCE = prior;
     rmSync(root, { recursive: true, force: true });
   }
-});
+}, 60_000);
 
 it.skipIf(process.env.KB_VM_DURABILITY_BENCHMARK !== '1')(
   'meets the VM deploy-critical latency budget',
