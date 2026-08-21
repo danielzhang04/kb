@@ -1,0 +1,9 @@
+# Build brief — Variant D, Task 3 (gen L01–L12 + fresh-eyes review)
+
+You are executing ONE task of a written plan, exactly as written. No sub-agents, no synthesis skill. Budget 55 minutes. Do NOT commit or touch git state. Spend cap: 24 image calls (12 base + ≤12 retries), $0.134/call ledger convention (record $0.039 provider table too); stop and report if you would exceed it.
+
+Repo clone: `C:/Users/danie/kb-clones/bricks-arc`, branch `claude/bricks-variant-vd`. Plan: `orgs/faceless-youtube/doctrine-recon/variant-d-plan.md` — execute **Task 3** (all steps). Spec intent: `variant-d-spec.md` §4.4, §5, §6. `V` = `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh`; `V/shots.json` is the critic-passed D fragment (authoritative).
+
+Binding rules: generate exactly as vb did (`V/scratchpad/vpw-var/genlog.md` recipe: `forge.py batch` → `gen --image-size 1K --force`, kit `the-second-take`, 16:9; a delta only after its parent is reviewed + promoted); fresh-eyes review per the image-generation skill's review gate (run the scene-board command the skill now names and read the advisory palette rows — they never gate); ONE re-authored retry per failing shot, honest parks with a mechanism note; **provenance**: `V/assets/scenes/` holds prior-variant bytes — copy a frame to `V/scratchpad/variant-frames/vd/LNN.png` only when the manifest records a D call for it; an uncalled shot (parked parent → blocked child) stays missing with its reason in the genlog; never copy a stale file. Genlog at `V/scratchpad/vpw-var/genlog-vd.md` (model, per-call cost, retries, parks, assembled prompt word counts incl. the forge-appended §2d on crowd shots). Write a `V/scratchpad/variant-frames/vd/manifest.json` in the same shape as `variant-frames/vb/manifest.json`.
+
+Final message ≤10 lines: calls made and cost, verified/parked per shot with reasons, frames copied, anything blocked.
