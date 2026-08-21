@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ComposerSession } from '../composer/workspaceClient';
 import { ProposalReviewPanel } from './ProposalReviewPanel';
-import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 
 /** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
-function unlocked(ui: React.ReactElement, token = 'token'): React.ReactElement {
+async function renderUnlocked(ui: React.ReactElement, token = 'token') {
   persistSession({ token, expiresAt: Date.now() + 60_000 });
-  return <SessionProvider>{ui}</SessionProvider>;
+  return renderWithTestSession(ui);
 }
 
 afterEach(() => {
@@ -63,7 +63,7 @@ describe('ProposalReviewPanel', () => {
     });
     vi.stubGlobal('fetch', fetchImpl);
 
-    render(unlocked(<ProposalReviewPanel composerSession={session} />));
+    await renderUnlocked(<ProposalReviewPanel composerSession={session} />);
     expect(screen.getByTestId('composer-proposal-review')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Compile latest completed turn' }));
     expect(await screen.findByRole('heading', { name: 'Control run' })).toBeTruthy();
@@ -79,12 +79,12 @@ describe('ProposalReviewPanel', () => {
     expect(JSON.parse(launch.init?.body as string).idempotencyKey).toBe(`launch:${hash}`);
   });
 
-  it('stays absent while the conversation has no completed response', () => {
-    render(unlocked(<ProposalReviewPanel composerSession={{ ...session, turns: [{ ...session.turns[0], state: 'running' }] }} />));
+  it('stays absent while the conversation has no completed response', async () => {
+    await renderUnlocked(<ProposalReviewPanel composerSession={{ ...session, turns: [{ ...session.turns[0], state: 'running' }] }} />);
     expect(screen.queryByTestId('composer-proposal-review')).toBeNull();
   });
 
-  it('surfaces the proposal-ready banner only when the latest completed turn emitted a fence', () => {
+  it('surfaces the proposal-ready banner only when the latest completed turn emitted a fence', async () => {
     const fenced = {
       ...session,
       turns: [{
@@ -97,10 +97,10 @@ describe('ProposalReviewPanel', () => {
         },
       }],
     };
-    render(unlocked(<ProposalReviewPanel composerSession={fenced} />));
+    await renderUnlocked(<ProposalReviewPanel composerSession={fenced} />);
     expect(screen.getByTestId('composer-proposal-banner')).toBeTruthy();
     cleanup();
-    render(unlocked(<ProposalReviewPanel composerSession={session} />));
+    await renderUnlocked(<ProposalReviewPanel composerSession={session} />);
     expect(screen.queryByTestId('composer-proposal-banner')).toBeNull();
   });
 });

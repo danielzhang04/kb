@@ -9,13 +9,16 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { App } from '../App';
 import { resetFleetData } from '../flyout/useFleetData';
 import { ALL_COMMANDS } from './paletteModel';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+import { installTestAuthContext, type InstalledTestAuthContext } from '../test/session';
 
 /** URL fragments of the governed (state-changing / auth) endpoints the palette must never call. */
 const GOVERNED = /\/api\/(write|approvals\/verify|auth)/;
 
-function fetchCalls(): unknown[][] {
-  return (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
-}
+let fetchStub: ReturnType<typeof vi.fn>;
+let authContext: InstalledTestAuthContext;
+
+function fetchCalls(): unknown[][] { return fetchStub.mock.calls; }
 
 function openPalette(): void {
   fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
@@ -29,16 +32,26 @@ function paletteInput(): HTMLElement {
 beforeEach(() => {
   resetFleetData();
   // Every view/self-fetch stubbed to never resolve → empty-safe scaffolds; call log still recorded.
-  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+  fetchStub = vi.fn(() => new Promise(() => {}));
+  vi.stubGlobal('fetch', fetchStub);
+  authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
+  persistSession({ token: 'palette-session', expiresAt: Date.now() + 60_000 });
 });
 afterEach(() => {
   cleanup();
+  clearStoredSession();
+  authContext.restore();
   vi.unstubAllGlobals();
 });
 
+async function renderApp(): Promise<void> {
+  render(<App />);
+  await authContext.ready;
+}
+
 describe('command palette — open/close', () => {
-  it('opens on Ctrl+K and closes on Esc', () => {
-    render(<App />);
+  it('opens on Ctrl+K and closes on Esc', async () => {
+    await renderApp();
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
 
     openPalette();
@@ -48,16 +61,16 @@ describe('command palette — open/close', () => {
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
   });
 
-  it('opens on Cmd+K (metaKey) too', () => {
-    render(<App />);
+  it('opens on Cmd+K (metaKey) too', async () => {
+    await renderApp();
     fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy();
   });
 });
 
 describe('command palette — navigate', () => {
-  it('filters destinations as you type', () => {
-    render(<App />);
+  it('filters destinations as you type', async () => {
+    await renderApp();
     openPalette();
     fireEvent.change(paletteInput(), { target: { value: 'workflows' } });
 
@@ -66,8 +79,8 @@ describe('command palette — navigate', () => {
     expect(screen.queryByTestId('palette-cmd-nav:home')).toBeNull();
   });
 
-  it('navigates on Enter (view changes, palette closes)', () => {
-    render(<App />);
+  it('navigates on Enter (view changes, palette closes)', async () => {
+    await renderApp();
     openPalette();
     fireEvent.change(paletteInput(), { target: { value: 'workflows' } });
     fireEvent.keyDown(paletteInput(), { key: 'Enter' });
@@ -76,8 +89,8 @@ describe('command palette — navigate', () => {
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
   });
 
-  it('navigates to a promoted destination (Atlas went live in Atlas V1)', () => {
-    render(<App />);
+  it('navigates to a promoted destination (Atlas went live in Atlas V1)', async () => {
+    await renderApp();
     openPalette();
     // Atlas was the last greyed "soon" stub; Atlas V1 promoted it to a live top-level view, so its
     // palette command is now actionable (not aria-disabled) and Enter navigates to it.
@@ -101,8 +114,8 @@ describe('command palette — act is a shortcut, never a bypass', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
   };
 
-  it('Launch opens the Workflows surface — which owns the one Launch button — with no governed call', () => {
-    render(<App />);
+  it('Launch opens the Workflows surface — which owns the one Launch button — with no governed call', async () => {
+    await renderApp();
     runByQuery('dispatch'); // unique keyword of the Launch shortcut
     // Home's launch form is gone (spec §5); the shortcut lands where the button actually is.
     expect(screen.getByLabelText('Workflows view')).toBeTruthy();
@@ -110,8 +123,8 @@ describe('command palette — act is a shortcut, never a bypass', () => {
     expect(fetchCalls().filter((c) => GOVERNED.test(String(c[0])))).toHaveLength(0);
   });
 
-  it('Approve opens the Inbox; Stop opens Sentinel — neither hits a governed endpoint', () => {
-    render(<App />);
+  it('Approve opens the Inbox; Stop opens Sentinel — neither hits a governed endpoint', async () => {
+    await renderApp();
 
     runByQuery('corroborate'); // unique keyword of the Approve shortcut
     expect(screen.getByLabelText('Human Inbox')).toBeTruthy();

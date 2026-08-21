@@ -1307,6 +1307,7 @@ describe('surface — shared PTY host fleet gate', () => {
       repoRoot: REPO_A,
       sessionConfig,
       allowedOrigins: [GOOD_ORIGIN],
+      runtimeCapabilities: runtimeCapabilities('win32'),
       ptyHost: underlying.host,
       runPreamble,
     });
@@ -1334,6 +1335,7 @@ describe('surface — shared PTY host fleet gate', () => {
       repoRoot: REPO_A,
       sessionConfig,
       allowedOrigins: [GOOD_ORIGIN],
+      runtimeCapabilities: runtimeCapabilities('win32'),
       ptyHost: underlying.host,
       runPreamble,
     });

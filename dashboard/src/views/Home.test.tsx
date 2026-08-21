@@ -16,17 +16,12 @@ import type { CardProjection } from '../../server/planeA/cards';
 import type { ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import type { ExecutionPostureDto } from '../control/controlClient';
 import { SessionProvider } from '../lib/sessionContext';
-import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 
 /** Render a locked Home (no stored bearer) — the default for every read-only rollup assertion. */
 function render0(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<SessionProvider>{ui}</SessionProvider>);
-}
-
-/** The app's ONE unlock, driven from a test: a stored bearer (already unlocked) and an injected ceremony. */
-function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}): React.ReactElement {
-  if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
-  return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
 }
 
 const LOCKED_EXECUTION: ExecutionPostureDto = {
@@ -288,10 +283,10 @@ describe('Home view — navigation', () => {
 
 describe('Home view — execution status stays', () => {
   it('keeps the execution panel and has no launch form beside it', async () => {
-    render(withSession(
+    persistSession({ token: 'fake-session-token', expiresAt: Date.now() + 60_000 });
+    await renderWithTestSession(
       <Home snapshot={SNAPSHOT} executionClient={executionClient(LOCKED_EXECUTION)} />,
-      { stored: 'fake-session-token' },
-    ));
+    );
 
     // The panel survives the sweep, but as a STATUS readout. Execution arms with the sign-in, so
     // there is no unlock button left here for the operator to press a second time.

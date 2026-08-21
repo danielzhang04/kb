@@ -12,8 +12,8 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 
 import { sessionMatchesSpec, spawnForSpec, useAttachableSession } from './useAttachableSession';
 import type { PtySessionSummary, TerminalSessionsClient } from '../lib/terminalClient';
-import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import { TestSessionProvider } from '../test/session';
 
 function client(live: PtySessionSummary[] = []): TerminalSessionsClient & { list: ReturnType<typeof vi.fn> } {
   return { list: vi.fn(async () => live), remove: vi.fn(async () => {}) };
@@ -27,7 +27,7 @@ function summary(over: Partial<PtySessionSummary> & { sessionId: string }): PtyS
 function unlockedWrapper(token = 'tok-abc') {
   persistSession({ token, expiresAt: Date.now() + 60_000 });
   return ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-    <SessionProvider>{children}</SessionProvider>
+    <TestSessionProvider>{children}</TestSessionProvider>
   );
 }
 
@@ -66,17 +66,24 @@ describe('spawnForSpec', () => {
 
 describe('useAttachableSession', () => {
   it('returns the live session already bound to this spec', async () => {
-    const sessions = client([
+    const live = [
       summary({ sessionId: 'pty-shell' }),
       summary({ sessionId: 'pty-other', kind: 'agent', targetRef: 'someone-else' }),
       summary({ sessionId: 'pty-mine', kind: 'agent', targetRef: 'fyt-runner' }),
-    ]);
+    ];
+    let resolveList!: (rows: PtySessionSummary[]) => void;
+    const sessions = {
+      list: vi.fn(() => new Promise<PtySessionSummary[]>((resolve) => { resolveList = resolve; })),
+      remove: vi.fn(async () => {}),
+    };
     const { result } = renderHook(
       () => useAttachableSession({ kind: 'agent', ref: 'fyt-runner' }, { sessionsClient: sessions }),
       { wrapper: unlockedWrapper() },
     );
 
+    await waitFor(() => expect(result.current.unlocked).toBe(true));
     expect(result.current.status).toBe('loading'); // never decide before the list settles
+    await act(async () => { resolveList(live); });
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.attach).toEqual({ mode: 'attach', sessionId: 'pty-mine' });
     expect(sessions.list).toHaveBeenCalledWith('tok-abc');
@@ -87,6 +94,7 @@ describe('useAttachableSession', () => {
       () => useAttachableSession({ kind: 'agent', ref: 'fyt-runner' }, { sessionsClient: client([]) }),
       { wrapper: unlockedWrapper() },
     );
+    await waitFor(() => expect(result.current.unlocked).toBe(true));
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.attach).toBeNull();
     expect(result.current.spawn).toEqual({ mode: 'spawn', spawn: { mode: 'agent', agentId: 'fyt-runner' } });
@@ -110,7 +118,7 @@ describe('useAttachableSession', () => {
     const sessions = client([summary({ sessionId: 'pty-mine', kind: 'agent', targetRef: 'fyt-runner' })]);
     const { result } = renderHook(
       () => useAttachableSession({ kind: 'agent', ref: 'fyt-runner' }, { sessionsClient: sessions }),
-      { wrapper: ({ children }) => <SessionProvider>{children}</SessionProvider> },
+      { wrapper: ({ children }) => <TestSessionProvider>{children}</TestSessionProvider> },
     );
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.unlocked).toBe(false);

@@ -6,10 +6,16 @@ import type { ComposerSession, ComposerStreamFn } from './workspaceClient';
 import type { TimelineModel } from '../lib/timelineModel';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 /** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
 function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
   persistSession({ token, expiresAt: Date.now() + 60_000 });
   return <SessionProvider>{ui}</SessionProvider>;
+}
+
+async function renderUnlocked(ui: React.ReactElement, token = 'tok') {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return renderWithTestSession(ui);
 }
 
 afterEach(() => {
@@ -82,7 +88,7 @@ describe('ComposerChat workspace', () => {
       onDelta(MODEL);
       finish = () => resolve({ ok: true });
     });
-    render(unlocked(<ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />));
+    await renderUnlocked(<ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />);
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Plan Atlas' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByRole('button', { name: 'Stop' });
@@ -99,11 +105,11 @@ describe('ComposerChat workspace', () => {
     const stream: ComposerStreamFn = () => new Promise((resolve) => {
       finish = () => resolve({ ok: true });
     });
-    render(unlocked(<ComposerChat
+    await renderUnlocked(<ComposerChat
       composerSession={{ ...SESSION, turns: [] }}
       stream={stream}
       onRunningChange={onRunningChange}
-    />));
+    />);
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Long plan' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(onRunningChange).toHaveBeenCalledWith(true));
@@ -118,7 +124,7 @@ describe('ComposerChat workspace', () => {
       signal = activeSignal;
       return new Promise(() => {});
     };
-    render(unlocked(<ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />));
+    await renderUnlocked(<ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />);
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Long task' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
@@ -129,10 +135,9 @@ describe('ComposerChat workspace', () => {
   it('unlocks at send time and preserves the drafted prompt', async () => {
     const signIn = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
     const stream: ComposerStreamFn = vi.fn(async () => ({ ok: true }));
-    render(
-      <SessionProvider deps={{ signIn }}>
-        <ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />
-      </SessionProvider>,
+    await renderWithTestSession(
+      <ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />,
+      { signIn },
     );
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Keep me' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));

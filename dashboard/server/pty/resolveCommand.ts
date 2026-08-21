@@ -36,7 +36,7 @@
  * "File not found".
  */
 import { statSync } from 'node:fs';
-import { delimiter, isAbsolute, join } from 'node:path';
+import path from 'node:path';
 
 /** Thrown when a command name matches nothing on the child's PATH. Carries what was searched, so the
  *  audit row and the operator-facing error can both be specific instead of guessing. */
@@ -129,11 +129,12 @@ export function resolveCommandPath(
   const fileExists = deps.fileExists ?? defaultFileExists;
   const now = deps.now ?? Date.now;
   const isWindows = (deps.platform ?? process.platform) === 'win32';
+  const platformPath = isWindows ? path.win32 : path.posix;
 
-  const dirs = isAbsolute(command) ? [] : pathEntries(env, isWindows);
+  const dirs = platformPath.isAbsolute(command) ? [] : pathEntries(env, isWindows);
   const exts = extensions(env, isWindows);
 
-  const key = `${isWindows ? 'win' : 'posix'}\u0000${command}\u0000${dirs.join(delimiter)}\u0000${exts.join(';')}`;
+  const key = `${isWindows ? 'win' : 'posix'}\u0000${command}\u0000${dirs.join(platformPath.delimiter)}\u0000${exts.join(';')}`;
   const hit = cache.get(key);
   if (hit && now() - hit.at < RESOLVE_CACHE_TTL_MS) return hit.path;
 
@@ -142,7 +143,7 @@ export function resolveCommandPath(
     return path;
   };
 
-  if (isAbsolute(command)) {
+  if (platformPath.isAbsolute(command)) {
     for (const ext of exts) {
       const candidate = `${command}${ext}`;
       if (fileExists(candidate)) return remember(candidate);
@@ -152,7 +153,7 @@ export function resolveCommandPath(
 
   for (const dir of dirs) {
     for (const ext of exts) {
-      const candidate = join(dir, `${command}${ext}`);
+      const candidate = platformPath.join(dir, `${command}${ext}`);
       if (fileExists(candidate)) return remember(candidate);
     }
   }

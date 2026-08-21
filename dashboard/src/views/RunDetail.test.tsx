@@ -28,6 +28,7 @@ import type { OperationalEventDto, RunDetailDto } from '../control/controlClient
 import * as controlClient from '../control/controlClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 import type { UseSseResult } from '../lib/sseClient';
 
 const sseState = vi.hoisted((): { current: UseSseResult } => ({ current: { last: null, count: 0 } }));
@@ -69,6 +70,11 @@ vi.mock('reactflow', async () => {
 function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
   persistSession({ token, expiresAt: Date.now() + 60_000 });
   return <SessionProvider>{ui}</SessionProvider>;
+}
+
+async function renderUnlockedReady(ui: React.ReactElement, token = 'tok') {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return renderWithTestSession(ui);
 }
 
 beforeAll(() => {
@@ -204,7 +210,7 @@ describe('AgentTile', () => {
 
   it('posts an operator message and says when delivery is queued', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ delivery: 'queued' }), { status: 202 }));
-    render(unlocked(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />));
+    await renderUnlockedReady(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
     fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-tile-fyt-story-delivery').textContent).toMatch(/queued for its next turn/i));
@@ -215,7 +221,7 @@ describe('AgentTile', () => {
 
   it('states the offline refusal instead of silently dropping a message', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'agent-message-delivery-unavailable' }), { status: 409 }));
-    render(unlocked(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />));
+    await renderUnlockedReady(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
     fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-tile-fyt-story-delivery').textContent).toMatch(/offline/i));
@@ -314,7 +320,7 @@ describe('the run surface', () => {
       if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
       return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
     });
-    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    await renderUnlockedReady(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />);
 
     const exhausted = within(screen.getByTestId('run-gate-request-exhausted'));
     expect(exhausted.getAllByRole('button').map((button) => button.textContent)).toEqual(['Approve', 'Decline']);
@@ -364,7 +370,7 @@ describe('the run surface', () => {
       if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
       return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
     });
-    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    await renderUnlockedReady(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />);
     const completion = within(screen.getByTestId('run-gate-request-completion'));
     expect(completion.getAllByRole('button').map((button) => button.textContent)).toEqual(['Approved', 'Rejected', 'Request changes']);
     fireEvent.click(completion.getByRole('button', { name: 'Approved' }));
@@ -405,7 +411,7 @@ describe('the run surface', () => {
       if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
       return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
     });
-    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    await renderUnlockedReady(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />);
 
     fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-story').querySelector('header')!);
     expect(screen.getByTestId('agent-work-panel-fyt-story')).toBeTruthy();
@@ -726,9 +732,9 @@ describe('the archive action', () => {
   it('archives a parked run with the typed reason and an identity-bound idempotency key', async () => {
     const detail = makeDetail({ run: { state: 'waiting-human', version: 4 } as RunDetailDto['run'] });
     const fetchImpl = archiveFetch(detail);
-    render(unlocked(
+    await renderUnlockedReady(
       <RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as unknown as typeof fetch} />,
-    ));
+    );
 
     fireEvent.change(screen.getByTestId('run-archive-reason'), { target: { value: '  obsolete validation run  ' } });
     fireEvent.click(screen.getByTestId('run-archive'));
@@ -746,9 +752,9 @@ describe('the archive action', () => {
   it('archives with no reason at all — one click, nothing to fill in first', async () => {
     const detail = makeDetail({ run: { state: 'failed', version: 9 } as RunDetailDto['run'] });
     const fetchImpl = archiveFetch(detail);
-    render(unlocked(
+    await renderUnlockedReady(
       <RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as unknown as typeof fetch} />,
-    ));
+    );
 
     fireEvent.click(screen.getByTestId('run-archive'));
     await waitFor(() => {

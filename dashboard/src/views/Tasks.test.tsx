@@ -11,6 +11,7 @@ import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
 import type { CardProjection } from '../../server/planeA/cards';
 import type { RoutingSnapshot } from '../lib/routingClient';
+import { renderWithTestSession } from '../test/session';
 
 afterEach(cleanup);
 
@@ -201,6 +202,10 @@ describe('Tasks view — the card gate', () => {
     persistSession({ token: 'sess-tok', expiresAt: Date.now() + 60_000 });
     return <SessionProvider>{ui}</SessionProvider>;
   };
+  const renderUnlocked = async (ui: React.ReactElement) => {
+    persistSession({ token: 'sess-tok', expiresAt: Date.now() + 60_000 });
+    return renderWithTestSession(ui);
+  };
 
   function jsonResponse(body: unknown, ok = true, status = 200): Response {
     const res = { ok, status, json: async () => body, clone: () => res } as unknown as Response;
@@ -235,7 +240,7 @@ describe('Tasks view — the card gate', () => {
 
   it('POSTs an explicit verify with the session bearer and reports the outcome by name', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true, reason: 'verified' }));
-    render(unlocked(<Tasks data={{ approvals: [decisionCard] }} initialSelectedId="card-300" fetchImpl={fetchImpl as unknown as typeof fetch} />));
+    await renderUnlocked(<Tasks data={{ approvals: [decisionCard] }} initialSelectedId="card-300" fetchImpl={fetchImpl as unknown as typeof fetch} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
     await waitFor(() => {
@@ -252,7 +257,7 @@ describe('Tasks view — the card gate', () => {
       ok: true, state: 'inbox',
       liveness: { consumer: 'none', online: false, detail: 'no runner is registered for worker-desktop' },
     }));
-    render(unlocked(<Tasks data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />));
+    await renderUnlocked(<Tasks data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />);
 
     const send = screen.getByTestId('respond-submit') as HTMLButtonElement;
     expect(send.disabled).toBe(true);
@@ -279,10 +284,9 @@ describe('Tasks view — the card gate', () => {
     });
     const signIn = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
     persistSession({ token: 'stale', expiresAt: Date.now() + 60_000 });
-    render(
-      <SessionProvider deps={{ signIn }}>
-        <Tasks data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />
-      </SessionProvider>,
+    await renderWithTestSession(
+      <Tasks data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />,
+      { signIn },
     );
 
     fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'retry me' } });

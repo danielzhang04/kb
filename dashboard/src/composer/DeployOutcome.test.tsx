@@ -8,17 +8,17 @@
  * saves that fire one governed deploy each, only on click.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
+import { screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import { DeployOutcome } from './DeployOutcome';
 import type { DeployResult } from './deploy';
 import type { DeployPlan } from './artifactTypes';
-import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 
 /** The app's ONE unlock, driven from a test: a stored bearer and/or an injected ceremony. */
-function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}): React.ReactElement {
+async function renderWithSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}) {
   if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
-  return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
+  return renderWithTestSession(ui, { signIn: opts.signIn });
 }
 
 /** The deploy() seam signature, used to type the fakes so `.mock.calls[n][0]` is a DeployPlan. */
@@ -62,7 +62,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     const deployImpl = vi.fn<DeployFn>(
       async () => ({ ok: true, kind: 'task', cardId: '01J9CARD', cardPath: 'queue/01J9CARD.md' }),
     );
-    render(withSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
 
     fillTask();
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -82,7 +82,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
           resolveDeploy = resolve;
         }),
     );
-    render(withSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
     fillTask();
 
     const deploy = screen.getByRole('button', { name: 'Run task' }) as HTMLButtonElement;
@@ -102,7 +102,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     const deployImpl = vi.fn<DeployFn>(async () => {
       throw new Error('network vanished');
     });
-    render(withSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
     fillTask();
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
 
@@ -115,10 +115,10 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     const deployImpl = vi.fn<DeployFn>(
       async () => ({ ok: true, kind: 'task', cardId: 'AUTH-CARD', cardPath: 'queue/AUTH-CARD.md' }),
     );
-    render(withSession(
+    await renderWithSession(
       <DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />,
       { signIn },
-    ));
+    );
 
     fillTask();
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -129,10 +129,10 @@ describe('DeployOutcome — governed deploy + results strip', () => {
 
   it('surfaces a passkey refusal and makes no deploy request', async () => {
     const deployImpl = vi.fn<DeployFn>();
-    render(withSession(
+    await renderWithSession(
       <DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />,
       { signIn: async () => { throw new Error('assert/verify refused: 401'); } },
-    ));
+    );
 
     fillTask();
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -144,7 +144,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     const deployImpl = vi.fn<DeployFn>(
       async () => ({ ok: true, kind: 'workflow', target: 'claude/composer-wf → PR #42' }),
     );
-    render(withSession(<DeployOutcome initialKind="workflow" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="workflow" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
 
     await fillWorkflow();
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -155,7 +155,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
   });
 
   it('does not expose the legacy direct workflow-run control', async () => {
-    render(withSession(<DeployOutcome initialKind="workflow" onBack={() => {}} deployImpl={vi.fn<DeployFn>()} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="workflow" onBack={() => {}} deployImpl={vi.fn<DeployFn>()} />, { stored: 'tok' });
 
     await fillWorkflow();
     expect(screen.queryByRole('button', { name: 'Run now' })).toBeNull();
@@ -170,7 +170,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
         reason: 'this card is awaiting approval',
       }),
     );
-    render(withSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
 
     fillTask();
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -196,7 +196,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
       })
       .mockResolvedValue({ ok: true, kind: 'project', target: 'claude/composer-proj → PR #8' });
 
-    render(withSession(<DeployOutcome initialKind="project" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="project" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
 
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -231,7 +231,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
         followUps: [{ relpath: 'orgs/demo/STATE.md', content: '# STATE' }],
       })
       .mockRejectedValueOnce(new Error('follow-up transport failed'));
-    render(withSession(<DeployOutcome initialKind="project" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="project" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
 
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -253,10 +253,10 @@ describe('DeployOutcome — governed deploy + results strip', () => {
         followUps: [{ relpath: 'orgs/demo/STATE.md', content: '# STATE' }],
       })
       .mockResolvedValueOnce({ ok: true, kind: 'project', target: 'claude/project-demo' });
-    render(withSession(
+    await renderWithSession(
       <DeployOutcome initialKind="project" onBack={() => {}} deployImpl={deployImpl} />,
       { signIn },
-    ));
+    );
 
     fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'demo' } });
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -272,7 +272,7 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     const deployImpl = vi.fn<DeployFn>(
       async () => ({ ok: true, kind: 'agent', target: 'claude/agent-research-worker → PR #9' }),
     );
-    render(withSession(<DeployOutcome initialKind="agent" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' }));
+    await renderWithSession(<DeployOutcome initialKind="agent" onBack={() => {}} deployImpl={deployImpl} />, { stored: 'tok' });
     fireEvent.change(screen.getByLabelText('Agent id'), { target: { value: 'research-worker' } });
     fireEvent.change(screen.getByLabelText('Agent description'), { target: { value: 'Volume worker.' } });
     fireEvent.click(screen.getByRole('button', { name: /Deploy|Run task|Save definition/ }));
@@ -290,8 +290,8 @@ describe('DeployOutcome — governed deploy + results strip', () => {
     expect((deployImpl.mock.calls[0][0] as DeployPlan).content).toContain('runner-bound: false');
   });
 
-  it('no outcome strip until a deploy has happened', () => {
-    render(withSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={vi.fn()} />, { stored: 'tok' }));
+  it('no outcome strip until a deploy has happened', async () => {
+    await renderWithSession(<DeployOutcome initialKind="task" onBack={() => {}} deployImpl={vi.fn()} />, { stored: 'tok' });
     expect(screen.queryByTestId('composer-outcome')).toBeNull();
   });
 });

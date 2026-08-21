@@ -15,10 +15,11 @@ import type { ComposerStreamFn } from './chatClient';
 import type { TimelineModel } from '../lib/timelineModel';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 /** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
-function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
+async function renderUnlocked(ui: React.ReactElement, token = 'tok') {
   persistSession({ token, expiresAt: Date.now() + 60_000 });
-  return <SessionProvider>{ui}</SessionProvider>;
+  return renderWithTestSession(ui);
 }
 
 afterEach(() => {
@@ -106,7 +107,7 @@ function fillWorkflowDraft(): void {
 describe('Composer', () => {
   it('starts_in_idea_mode_with_disambiguation_seed', async () => {
     const { calls, stream } = recordingStream();
-    render(unlocked(<Composer onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />));
+    await renderUnlocked(<Composer onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />);
 
     expect(screen.getByTestId('composer-type').textContent).toContain('idea');
 
@@ -120,7 +121,7 @@ describe('Composer', () => {
 
   it('setting_type_swaps_the_seed_on_next_turn', async () => {
     const { calls, stream } = recordingStream();
-    render(unlocked(<Composer onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />));
+    await renderUnlocked(<Composer onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />);
 
     // Turn 1 in idea mode — establishes a resume session (sess-1).
     sendTurn('some idea');
@@ -139,9 +140,7 @@ describe('Composer', () => {
 
   it('initialKind_preseeds_the_type', async () => {
     const { calls, stream } = recordingStream();
-    render(
-      unlocked(<Composer initialKind="skill" onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />),
-    );
+    await renderUnlocked(<Composer initialKind="skill" onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />);
 
     expect(screen.getByTestId('composer-type').textContent).toContain('skill');
     expect((screen.getByRole('button', { name: 'Skill' }) as HTMLButtonElement).getAttribute('aria-pressed')).toBe(
@@ -250,7 +249,7 @@ describe('Composer', () => {
 
   it('seeds the first turn of a persisted empty workspace', async () => {
     const { calls, stream } = recordingStream();
-    render(unlocked(<Composer
+    await renderUnlocked(<Composer
       composerSession={{
         composerRef: 'cw-persisted', title: 'New idea', state: 'open', sourceComposerRef: null, agent: null,
         createdAt: '2026-07-18T00:00:00.000Z', updatedAt: '2026-07-18T00:00:00.000Z', turns: [],
@@ -258,7 +257,7 @@ describe('Composer', () => {
       onDeploy={vi.fn()}
       onBack={vi.fn()}
       stream={stream}
-    />));
+    />);
 
     sendTurn('research a governed workflow');
     await waitFor(() => expect(calls).toHaveLength(1));

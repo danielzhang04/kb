@@ -59,6 +59,18 @@ function makeSurfaceContext(
   return makeProductionSurfaceContext({ controlStore: createInMemoryControlPlaneStore(), ...overrides }, activation);
 }
 const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
+const ptyMatrixApp = () => buildApp({
+  validateData: false,
+  allowedOrigins: [TEST_ORIGIN],
+  sessionConfig: TEST_SESSION,
+  runtimeCapabilities: runtimeCapabilities('win32'),
+  createPtyHost: () => ({
+    open: () => { throw new Error('unauthenticated PTY matrix must not open a session'); },
+    stop: () => false,
+    stopAll: () => undefined,
+    sessions: () => [],
+  }),
+});
 
 beforeEach(() => {
   testStateRoot = mkdtempSync(join(tmpdir(), 'kb-index-test-state-'));
@@ -217,10 +229,17 @@ describe('server', () => {
     '/api/human-inbox', '/api/approvals', '/api/composer/sessions', '/api/composer/sessions/example',
     '/api/control/proposals', '/api/control/execution', '/api/control/runs', '/api/control/runs/example',
     '/api/control/proposals/example/revisions/example', '/api/control/runs/example/attempts/example/io',
-    '/api/control/runs/example/events', '/api/control/retention/inventory',
-    '/api/pty/sessions', '/api/pty/session-runs', '/api/pty/session-runs/example', '/events',
+    '/api/control/runs/example/events', '/api/control/retention/inventory', '/events',
   ])('rejects unauthenticated read %s', async (url) => {
     app = matrixApp();
+    const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it.each([
+    '/api/pty/sessions', '/api/pty/session-runs', '/api/pty/session-runs/example',
+  ])('rejects unauthenticated read %s', async (url) => {
+    app = ptyMatrixApp();
     const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
     expect(response.statusCode).toBe(401);
   });

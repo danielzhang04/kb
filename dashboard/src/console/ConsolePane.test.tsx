@@ -77,6 +77,7 @@ import type { ConsoleControl, ConsoleTarget } from './ConsolePane';
 import type { PtySpawnTarget, TerminalSessionsClient } from '../lib/terminalClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 
 function unlocked(ui: React.ReactElement, token = 'tok-abc'): React.ReactElement {
   persistSession({ token, expiresAt: Date.now() + 60_000 });
@@ -300,19 +301,18 @@ describe('ConsolePane — connection', () => {
     const client = makeSessionsClient();
     let control: ConsoleControl | null = null;
     const onExit = vi.fn();
-    render(
-      unlocked(
-        <ConsolePane
-          target={{ mode: 'attach', sessionId: 'pty-dead' }}
-          visible
-          socketFactory={factory}
-          sessionsClient={client}
-          onExit={onExit}
-          registerControl={(c) => {
-            control = c;
-          }}
-        />,
-      ),
+    persistSession({ token: 'tok-abc', expiresAt: Date.now() + 60_000 });
+    await renderWithTestSession(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: 'pty-dead' }}
+        visible
+        socketFactory={factory}
+        sessionsClient={client}
+        onExit={onExit}
+        registerControl={(c) => {
+          control = c;
+        }}
+      />,
     );
     await waitFor(() => expect(control).not.toBeNull());
     sockets[0].readyState = 3; // socket died without a close frame

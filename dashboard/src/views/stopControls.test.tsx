@@ -8,15 +8,15 @@
  * the same component works from the surface that actually mounts it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { StopControls } from './stopControls';
-import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
+import { renderWithTestSession } from '../test/session';
 
 /** The one unlock: a stored fresh bearer (already unlocked) or an injected ceremony for the locked path. */
-function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}): React.ReactElement {
+async function renderWithSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}) {
   if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
-  return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
+  return renderWithTestSession(ui, { signIn: opts.signIn });
 }
 
 beforeEach(() => {
@@ -35,8 +35,8 @@ afterEach(() => {
 // (spec §6). It is exported from ./Control and exercised directly here; `panels/Sentinel.test.tsx`
 // proves it works from the surface that mounts it now.
 describe('Emergency-stop controls (D2.8; mounted on Sentinel since spec §6)', () => {
-  it('the nuclear STOP button stays disabled until the confirm checkbox is checked, even with a session', () => {
-    render(withSession(<StopControls />, { stored: 'fake-session-token' }));
+  it('the nuclear STOP button stays disabled until the confirm checkbox is checked, even with a session', async () => {
+    await renderWithSession(<StopControls />, { stored: 'fake-session-token' });
 
     const nukeButton = screen.getByRole('button', { name: 'STOP everything' }) as HTMLButtonElement;
     expect(nukeButton.disabled).toBe(true);
@@ -58,7 +58,7 @@ describe('Emergency-stop controls (D2.8; mounted on Sentinel since spec §6)', (
       }),
     );
 
-    render(withSession(<StopControls />, { stored: 'fake-session-token' }));
+    await renderWithSession(<StopControls />, { stored: 'fake-session-token' });
     fireEvent.change(screen.getByLabelText('Card id to stop'), { target: { value: 'card-1' } });
     fireEvent.submit(screen.getByLabelText('Request card stop'));
 
@@ -80,7 +80,7 @@ describe('Emergency-stop controls (D2.8; mounted on Sentinel since spec §6)', (
       }),
     );
 
-    render(withSession(<StopControls />, { stored: 'fake-session-token' }));
+    await renderWithSession(<StopControls />, { stored: 'fake-session-token' });
     fireEvent.click(screen.getByLabelText('Confirm nuclear STOP'));
     fireEvent.submit(screen.getByLabelText('Nuclear STOP'));
 
@@ -106,7 +106,7 @@ describe('point-of-action session mint', () => {
     );
     const signIn = vi.fn(async () => ({ token: 'minted-tok', expiresAt: Date.now() + 60_000 }));
 
-    render(withSession(<StopControls />, { signIn }));
+    await renderWithSession(<StopControls />, { signIn });
 
     // Locked, but every governed control is actionable — the ceremony runs at point of action.
     expect((screen.getByRole('button', { name: 'Request stop' }) as HTMLButtonElement).disabled).toBe(false);

@@ -8,11 +8,11 @@
  * controls are present here and that they still POST to /api/stop's routes with a bearer.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
+import { screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { Sentinel } from './Sentinel';
-import { SessionProvider } from '../../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../../lib/authClient';
 import type { HealthPanel } from '../../../server/panels/health';
+import { renderWithTestSession } from '../../test/session';
 
 afterEach(() => {
   cleanup();
@@ -21,13 +21,9 @@ afterEach(() => {
 });
 
 /** The panel now hosts a session-gated control, so every render needs the app's session boundary. */
-function renderSentinel(panel: HealthPanel, stored?: string): void {
+async function renderSentinel(panel: HealthPanel, stored?: string) {
   if (stored) persistSession({ token: stored, expiresAt: Date.now() + 60_000 });
-  render(
-    <SessionProvider>
-      <Sentinel panel={panel} />
-    </SessionProvider>,
-  );
+  return renderWithTestSession(<Sentinel panel={panel} />);
 }
 
 const PANEL: HealthPanel = {
@@ -46,8 +42,8 @@ const PANEL: HealthPanel = {
 };
 
 describe('Sentinel panel', () => {
-  it('renders agent liveness with a semantic status dot per agent', () => {
-    renderSentinel(PANEL);
+  it('renders agent liveness with a semantic status dot per agent', async () => {
+    await renderSentinel(PANEL);
     expect(screen.getByLabelText('Sentinel panel')).toBeTruthy();
 
     const active = screen.getByTestId('sentinel-agent-worker-desktop');
@@ -58,15 +54,15 @@ describe('Sentinel panel', () => {
     expect(stale.querySelector('.mc-status-dot--blocked')).toBeTruthy();
   });
 
-  it('surfaces per-org heartbeats and the blocked flag from STATE', () => {
-    renderSentinel(PANEL);
+  it('surfaces per-org heartbeats and the blocked flag from STATE', async () => {
+    await renderSentinel(PANEL);
     const org = screen.getByTestId('sentinel-org-demo');
     expect(within(org).getByText('org-nightly')).toBeTruthy();
     expect(within(org).getByText('blocked')).toBeTruthy();
   });
 
-  it('is empty-safe with no data', () => {
-    renderSentinel({ ...PANEL, agents: [], orgs: [], liveCount: 0 });
+  it('is empty-safe with no data', async () => {
+    await renderSentinel({ ...PANEL, agents: [], orgs: [], liveCount: 0 });
     expect(screen.getByText(/no agents observed/i)).toBeTruthy();
   });
 });
@@ -77,8 +73,8 @@ describe('Sentinel panel', () => {
  * itself in plain language, and the governed POSTs still work unchanged from their new home.
  */
 describe('Sentinel panel — the relocated emergency stop', () => {
-  it('carries a clearly-marked, visually separated Emergency stop section with plain-language context', () => {
-    renderSentinel(PANEL);
+  it('carries a clearly-marked, visually separated Emergency stop section with plain-language context', async () => {
+    await renderSentinel(PANEL);
 
     const stop = screen.getByLabelText('Emergency stop');
     expect(within(stop).getByRole('heading', { name: 'Emergency stop' })).toBeTruthy();
@@ -106,7 +102,7 @@ describe('Sentinel panel — the relocated emergency stop', () => {
       return new Promise(() => {});
     }));
 
-    renderSentinel(PANEL, 'sentinel-session-token');
+    await renderSentinel(PANEL, 'sentinel-session-token');
     fireEvent.change(screen.getByLabelText('Card id to stop'), { target: { value: 'card-3' } });
     fireEvent.submit(screen.getByLabelText('Request card stop'));
 
@@ -115,8 +111,8 @@ describe('Sentinel panel — the relocated emergency stop', () => {
     expect((call?.init?.headers as Record<string, string>)?.authorization).toBe('Bearer sentinel-session-token');
   });
 
-  it('keeps the nuclear STOP armed-only: disabled until the confirm box is checked', () => {
-    renderSentinel(PANEL, 'sentinel-session-token');
+  it('keeps the nuclear STOP armed-only: disabled until the confirm box is checked', async () => {
+    await renderSentinel(PANEL, 'sentinel-session-token');
     const nuke = screen.getByRole('button', { name: 'STOP everything' }) as HTMLButtonElement;
     expect(nuke.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('Confirm nuclear STOP'));

@@ -5,11 +5,17 @@ import { Workflows, isLiveRun, launchBlockReason } from './Workflows';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
 import type { RunMetadataDto } from '../control/controlClient';
+import { renderWithTestSession } from '../test/session';
 
 /** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
 function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
   persistSession({ token, expiresAt: Date.now() + 60_000 });
   return <SessionProvider>{ui}</SessionProvider>;
+}
+
+async function renderUnlocked(ui: React.ReactElement, token = 'tok') {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return renderWithTestSession(ui);
 }
 
 beforeEach(() => {
@@ -161,7 +167,7 @@ describe('launching from the workflow detail', () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(unlocked(<Workflows definitions={{ items: [definition()] }} focusWorkflowId="research-brief" onOpenWorkflow={vi.fn()} runs={[]} />));
+    await renderUnlocked(<Workflows definitions={{ items: [definition()] }} focusWorkflowId="research-brief" onOpenWorkflow={vi.fn()} runs={[]} />);
 
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     fireEvent.click(launch);
@@ -189,7 +195,7 @@ describe('launching from the workflow detail', () => {
       ? { ok: true, status: 202, json: async () => ({ runRef: 'video-1' }) }
       : { ok: true, status: 200, json: async () => ({}) }) as Response);
     vi.stubGlobal('fetch', fetchMock);
-    render(unlocked(<Workflows definitions={{ items: [definition({ ref: 'video-run', title: 'Video run', parameters: ['channel', 'slug'] })] }} runs={[]} />));
+    await renderUnlocked(<Workflows definitions={{ items: [definition({ ref: 'video-run', title: 'Video run', parameters: ['channel', 'slug'] })] }} runs={[]} />);
     fireEvent.click(screen.getByRole('button', { name: /open video run/i }));
 
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
@@ -215,7 +221,7 @@ describe('launching from the workflow detail', () => {
       ? responses.shift()!
       : { ok: true, status: 200, json: async () => ({}) } as Response));
     vi.stubGlobal('fetch', fetchMock);
-    render(unlocked(<Workflows definitions={{ items: [definition()] }} focusWorkflowId="research-brief" onOpenWorkflow={vi.fn()} runs={[]} />));
+    await renderUnlocked(<Workflows definitions={{ items: [definition()] }} focusWorkflowId="research-brief" onOpenWorkflow={vi.fn()} runs={[]} />);
 
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     fireEvent.click(launch);
