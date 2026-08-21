@@ -7,6 +7,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lint_shots as L
 
+FYT = Path(__file__).resolve().parents[4]
+GRAMMAR = (FYT / "channels" / "the-second-take" / "visual-kit" /
+           "visual-grammar.md").read_text(encoding="utf-8")
+BIBLE = (FYT / "channels" / "the-second-take" / "visual-kit" /
+         "style-bible.md").read_text(encoding="utf-8")
+VPW = (FYT / ".claude" / "skills" / "visual-prompt-writer" /
+       "SKILL.md").read_text(encoding="utf-8")
+SCHEMA = (FYT / ".claude" / "skills" / "visual-prompt-writer" / "references" /
+          "shots-schema.md").read_text(encoding="utf-8")
+CRITICS = (FYT / ".claude" / "skills" / "visual-prompt-writer" / "references" /
+           "critics.md").read_text(encoding="utf-8")
+IG = (FYT / ".claude" / "skills" / "image-generation" /
+      "SKILL.md").read_text(encoding="utf-8")
+
 def _kit():
     td = tempfile.TemporaryDirectory()
     root = Path(td.name)
@@ -82,3 +96,48 @@ def test_place_owner_is_an_exact_forced_choice():
     hard = []
     L.place_owner_check("lf", shots, "", hard)
     assert hard and "exactly one" in hard[0].lower()
+
+
+def test_variant_d_doctrine_owners_are_consistent():
+    assert "Occupancy follows who acts in the sentence" in GRAMMAR
+    assert "a clerk and customer exchanging a box" in GRAMMAR
+    assert "a bounded group held beyond something" in GRAMMAR
+    assert "Story bearer." not in GRAMMAR
+    assert "an expression change is a legitimate delta" in GRAMMAR
+    assert all(f"> {n}." in BIBLE for n in range(1, 7))
+    assert "> 7." not in BIBLE
+    assert "Who acts in this sentence" in BIBLE
+    assert "story-named or story-referenced figure cast from the registry" in BIBLE
+    assert "every role read at a glance" in BIBLE
+    assert "wrong canonical\n>    outfit" in BIBLE
+    assert "genuinely the mass" in BIBLE and "near zone empty" in BIBLE
+    assert "> 5. **Staging interest.** Is this the most interesting *legitimate* staging" in BIBLE
+    assert "every stage's world palette is committed" in BIBLE
+    assert "dominant field derived from its light source and dominant material" in BIBLE
+    assert "complements are valid when those facts create them" in BIBLE
+    assert "palettes move freely " "per video" not in BIBLE
+    assert "subject → acting participants → occupancy → shot class → cast tokens" in VPW
+    assert "do not predeclare a closed stage list" in VPW
+    assert "Author the shots first" in VPW and "schema's hold-camera criterion" in VPW
+    assert "Palette basis:" in VPW and "drawable light/material facts" in VPW
+    assert VPW.count("story-needed held state change") == 2
+    assert VPW.count("non-empty hold_reason") == 2
+    assert "confirm a progressive " "in-shot reveal" not in VPW
+    assert "camera/set and primary subject can hold" in SCHEMA
+    assert "exactly ONE visually\n  distinct, story-needed state change" in SCHEMA
+    assert "Cap a chain at ≤3 deltas" in SCHEMA
+    assert "newly unpacked PC" in SCHEMA and "computer–drive diagram" in SCHEMA
+    assert "Semantic delta floor (HARD)" in SCHEMA
+    assert "ask both directions" in CRITICS
+    assert "a missed hold" in CRITICS and "a forced hold or\n> no-op" in CRITICS
+    assert "Report findings, not\n> hold totals" in CRITICS
+    assert "delta-materiality-calibration.json" in CRITICS
+    assert "dominant palette axis repeated across distinct stages" in CRITICS
+    assert "palette codes are not policed" in CRITICS
+    for text in (SCHEMA, GRAMMAR, IG):
+        assert "backticked" in text.lower()
+        assert "descriptive" in text.lower() and "metadata" in text.lower()
+    assert "Forge appends bible §2d from `figures.crowd`" in IG
+    assert "never to re-decide whether VPW may author the stage" in IG
+    assert "VPW has already admitted the stage by the hold-camera criterion" in IG
+    assert "cast is " "authoritative" not in IG.lower()

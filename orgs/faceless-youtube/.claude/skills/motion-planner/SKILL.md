@@ -18,10 +18,11 @@ animations). Rules: `references/animation-rules.md`. Critic: `references/critics
 ## Procedure
 
 1. **Read** the video's `shots.json`, plus `animation-rules.md` and `shots-motion-schema.md`.
-2. **Classify each shot** by the **two-test boundary** (`animation-rules.md`; full law in
-   `knowledge/research/niche-playbooks/universal.md` §13a-ii): a change that is **DISCRETE AND SEEDABLE**
-   becomes a cutout LAYER on a kept plate; an **INTEGRATIVE** change becomes a **DELTA-CHAIN**
-   regenerated seeded off the prior frame; everything else stays **passthrough**. The planner's menu is
+2. **Read the stage intent already authored under shots-schema, then classify its realization only**
+   (`animation-rules.md`; full law in `knowledge/research/niche-playbooks/universal.md` §13a-ii): a
+   **DISCRETE AND SEEDABLE** change becomes a cutout LAYER on a kept plate; an **INTEGRATIVE** change
+   becomes a **DELTA-CHAIN** regenerated seeded off the prior frame; everything else stays
+   **passthrough**. The planner does not admit, reject, split, or join stages. The planner's menu is
    **cutout-only**: `slide` · `path` (+ `draw_line`) · `appear` · `bob`. There are no device cards and no
    engine text — all in-video text is diegetic (baked into the still); the engine draws only the route line.
 

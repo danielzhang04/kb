@@ -33,7 +33,8 @@ file's exact formatting:
 It also STRIPS the retired `shot_counts` block from any v1 file it rewrites.
 
 Usage:
-  python lint_shots.py <path-to/shots.json> [--write]
+  python lint_shots.py <path-to/shots.json> [--write] [--fragment]
+  --fragment sizes long-form against the covered script prefix; it never writes scope metadata.
 Exit 0 = clean (safe to render); 1 = HARD violations (fix before handoff).
 """
 import difflib
@@ -128,7 +129,8 @@ def tile(shots, matches, vo_len, vo):
         id2text[sh["id"]] = vo[s:e].strip()
     return id2text
 
-def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=True):
+def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=True,
+               fragment=False):
     """Validate one piece against the REAL VO stream. S3: the HARD check runs against the
     voiceover.manifest word_timings when present (the exact stream + matcher render times
     against); script.md is a soft cross-check AND the source of the derived vo_text spans.
@@ -137,6 +139,16 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=Tr
     vo, md_toks = (None, None)
     if md_exists:
         vo, md_toks = build_vo_stream(md_path)
+
+    if fragment and not shots:
+        hard.append(f"[{label}] --fragment requires at least one long_form.shots record.")
+        return None
+    if fragment and not md_exists:
+        hard.append(f"[{label}] --fragment requires script.md; file is absent: {md_path}.")
+        return None
+    if fragment and not md_toks:
+        hard.append(f"[{label}] --fragment requires a non-empty parseable script.md.")
+        return None
 
     if word_timings:
         vtoks = [(_NORM(w), k) for k, (w, _t) in enumerate(word_timings)]
@@ -161,7 +173,26 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=Tr
                 f"anchor (needle {' '.join(m['needle'])!r}) -> paraphrased OR out of narration order. "
                 f"Copy the opening words VERBATIM and keep shots in narration order.")
 
-    if vo_words:
+    md_matches = match_shots_to_tokens(shots, md_toks) if md_toks else []
+    covered_vo, covered_words = vo, None
+    runtime_s, rate = None, None
+    if fragment:
+        last = md_matches[-1]
+        if not last["needle"] or last["start"] is None:
+            hard.append(f"[{label}] --fragment cannot resolve the last shot anchor in script.md.")
+            return None
+        last_i = next(i for i, tok in enumerate(md_toks) if tok[1] == last["start"])
+        covered_end_i = last_i + len(last["needle"])
+        covered_end = md_toks[covered_end_i][1] if covered_end_i < len(md_toks) else len(vo)
+        covered_vo = vo[:covered_end].rstrip()
+        covered_words = sum(tok[1] < covered_end for tok in md_toks)
+        header_wpm = header_pace(md_path)[0]
+        wpm = header_wpm or DEFAULT_WPM
+        runtime_s = covered_words / wpm * 60.0
+        fallback = "the fallback — the header states no rate" if header_wpm is None else "per the header"
+        rate = f"{covered_words} covered script words / {wpm:.0f}wpm, {fallback}"
+        soft.append(f"fragment scope: covered {covered_words}/{len(md_toks)} script words")
+    elif vo_words:
         wpm, stated_runtime_s = header_pace(md_path) if md_exists else (None, None)
         if wpm:
             runtime_s, rate = vo_words / wpm * 60.0, f"{vo_words} words / {wpm:.0f}wpm, per the header"
@@ -170,6 +201,8 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=Tr
         else:
             runtime_s = vo_words / DEFAULT_WPM * 60.0
             rate = f"{vo_words} words / {DEFAULT_WPM:.0f}wpm, the fallback — the header states no rate"
+
+    if runtime_s is not None:
         sum_dur = sum(_dur(sh) or 0.0 for sh in shots)
         if sum_dur < 0.85 * runtime_s:
             hard.append(f"[{label}] Sum of duration_s {sum_dur:.0f}s < 85% of the ~{runtime_s:.0f}s "
@@ -187,7 +220,7 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=Tr
             if (new_plan and dur is not None and dur > 6.0 and not progressive
                     and not str(sh.get("hold_reason") or "").strip()):
                 hard.append(f"[{label}] {sh.get('id','?')}: {dur:g}s hold exceeds ~6s without a "
-                            "progressive reveal or non-empty hold_reason.")
+                            "story-needed held state change or non-empty hold_reason.")
 
     if any(m["start"] is None for m in hard_matches):
         return None
@@ -200,18 +233,18 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None, new_plan=Tr
 
     if not md_toks:
         return None
-    md_matches = match_shots_to_tokens(shots, md_toks)
     if any(m["start"] is None for m in md_matches):
         return None
     if md_matches and md_matches[0]["start"] not in (0, None) and md_matches[0]["start"] > 40:
         soft.append(f"[{label}] first shot's anchor isn't at the script start "
                     f"(offset {md_matches[0]['start']}) — opening narration may be uncovered.")
-    id2text = tile(shots, md_matches, len(vo), vo)
+    id2text = tile(shots, md_matches, len(covered_vo), covered_vo)
     for sh in shots:
         wc = len(id2text[sh["id"]].split())
         if wc > LONG_SPAN_WORDS:
             soft.append(f"[{label}] {sh['id']}: covers ~{wc} words on one anchor "
-                        f"(>~8s VO) — ensure a progressive within-shot reveal, or densify (add a cut).")
+                        f"(>~8s VO) — ensure a story-needed held state change or non-empty "
+                        f"hold_reason, or densify (add a cut).")
     return id2text
 
 def strip_derived(txt):
@@ -250,7 +283,8 @@ def stage_check(label, shots, hard, soft):
     """Held-stage field checks. Q4: the structural caps of the delta-chain contract — exactly
     one base FIRST and at most 3 deltas — are HARD (they bound drift; lint owns the mechanical
     caps). Timing and contiguity remain SOFT heads-ups. Never touches the vo_ref matcher — stage
-    fields are optional and zero chains is valid; a chain exists only for a progressive reveal."""
+    fields are optional and zero chains is valid; stage membership is authored by the schema's
+    hold-camera criterion; lint enforces structure only."""
     runs = []  # contiguous runs of (stage_id, [shots])
     for sh in shots:
         sid = sh.get("stage")
@@ -743,7 +777,7 @@ def delta_feasibility_check(label, objs, hard):
         if _NON_MATERIAL_DELTA.search(changes[0]):
             hard.append(
                 f"[{label}] {pid}: delta change {changes[0]!r} is a cosmetic/detail/label/"
-                "reposition no-op; author a genuine progressive reveal or hard cut.")
+                "reposition no-op; author one visually distinct, story-needed state change or hard-cut.")
 
 def channel_suffix(vdir):
     """Return the style-bible's canonical suffix, including empty; None means no visual kit."""
@@ -1100,7 +1134,7 @@ def interaction_cast_check(label, objs, chars, interactions, hard):
                 f"[{label}] {pid}: authors the interaction template "
                 f"{', '.join('`' + s + '`' for s in slugs)} on a stage `delta`. A two-figure "
                 f"delta seeds parent + both canonicals + one proved primitive, with no slot "
-                f"for the template; when the contact begins a genuine progressive reveal, stage the "
+                f"for the template; when contact begins a story-needed held state change, stage the "
                 f"fresh two-figure shot as its BASE. Author the "
                 f"contact geometry on the base.")
 
@@ -1220,16 +1254,69 @@ def video_token_catalog(data, vdir):
 def _shot_prompts(shots):
     return [(sh.get("id", "?"), "still_prompt", sh.get("still_prompt") or "") for sh in shots]
 
+
+def occupancy_diagnostics(label, shots, id2text, chars, soft):
+    """Report occupancy evidence from structured fields and executable cast tokens only."""
+    id2text = id2text or {}
+    zero_run = []
+
+    def executable(sh):
+        return [slug for slug in _BACKTICK.findall(sh.get("still_prompt") or "")
+                if slug in chars]
+
+    def flush_zero_run():
+        if not zero_run:
+            return
+        ids = [sh.get("id", "?") for sh in zero_run]
+        duration = sum(_dur(sh) or 0.0 for sh in zero_run)
+        refs = [str(sh.get("vo_ref") or "") for sh in zero_run]
+        vo = " | ".join(id2text.get(sid, "") for sid in ids)
+        clipped = vo if len(vo) <= 180 else vo[:177] + "..."
+        soft.append(
+            f"[{label}] occupancy zero-human run: ids={','.join(ids)}; duration={duration:g}s; "
+            f"vo_refs={refs!r}; vo={clipped!r}"
+        )
+        zero_run.clear()
+
+    for index, sh in enumerate(shots):
+        sid = sh.get("id", "?")
+        slugs = executable(sh)
+        crowd = (sh.get("figures") or {}).get("crowd") is True
+        if not slugs and not crowd:
+            zero_run.append(sh)
+        else:
+            flush_zero_run()
+        if 1 <= len(slugs) <= 2:
+            soft.append(
+                f"[{label}] occupancy cast: id={sid}; executable={','.join(slugs)}; "
+                f"assets=ready; base_role={sh.get('stage_role') == 'base'}"
+            )
+        if (sh.get("figures") or {}).get("crowd") is True:
+            prev_id = shots[index - 1].get("id") if index else None
+            next_id = shots[index + 1].get("id") if index + 1 < len(shots) else None
+            soft.append(
+                f"[{label}] occupancy crowd: id={sid}; vo={id2text.get(sid, '')!r}; "
+                f"prev={prev_id or 'START'}; next={next_id or 'END'}"
+            )
+    flush_zero_run()
+
+
 def main(argv):
     try:
         sys.stdout.reconfigure(errors="replace")
     except (AttributeError, ValueError):
         pass                                     # captured/wrapped stdout — nothing to do
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: python lint_shots.py <path-to/shots.json> [--write]")
+        print("usage: python lint_shots.py <path-to/shots.json> [--write] [--fragment]")
         return 2
     path = argv[0]
-    do_write = "--write" in argv[1:]
+    flags = set(argv[1:])
+    unknown = flags - {"--write", "--fragment"}
+    if unknown:
+        print(f"HARD: unknown option(s): {', '.join(sorted(unknown))}")
+        return 2
+    do_write = "--write" in flags
+    fragment = "--fragment" in flags
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     vdir = Path(path).parent
     script_md = vdir / "script.md"
@@ -1271,7 +1358,9 @@ def main(argv):
 
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"),
-                         new_plan=strict_schema)
+                         new_plan=strict_schema, fragment=fragment)
+    if lf_text is not None:
+        occupancy_diagnostics("long-form", lf_shots, lf_text, chars, soft)
     stage_check("long-form", lf_shots, hard, soft)
     casting_check("long-form", lf_shots, chars, soft)
     suffix = data.get("global_prompt_suffix") or ""

@@ -47,7 +47,16 @@ One subagent, fresh context (nothing from the authoring run). Give it:
 > `shots.json` shot by shot against `script.md`. Answer SIX questions per shot — and only these:
 >
 >
-> Apply the canonical six shot questions in the channel `style-bible.md` review-criteria section and the canonical plan-level chain/disclosure contract in `references/shots-schema.md`.
+> Apply the canonical six shot questions in the channel `style-bible.md` review-criteria section and
+> the canonical plan-level chain/disclosure contract in `references/shots-schema.md`. For every
+> adjacent beat, ask both directions: could camera, set, and primary subject honestly hold
+> (a missed hold), and does every authored delta visibly advance a story-needed state (a forced hold or
+> no-op)? Hard-cut when vantage, setting, primary subject, or register must change. Report findings, not
+> hold totals. Calibrate forced-hold/no-op judgment against
+> `references/delta-materiality-calibration.json`: 26 human-labelled fresh cases used to learn the
+> distinction, never as a lexical checklist, lint oracle, or target count.
+> At plan level, flag a dominant palette axis repeated across distinct stages when the bases give no
+> physical/story basis; holds are exempt, complements remain legal, and palette codes are not policed.
 >
 > **NEVER flag these — over-triggering is the failure mode:**
 > - A prompt that states *few* facts because few are load-bearing. Terse is correct; you flag

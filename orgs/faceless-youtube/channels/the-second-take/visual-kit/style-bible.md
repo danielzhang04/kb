@@ -93,11 +93,19 @@ delta. For an **environment/prop**, describe the scene; palette is free.
 > eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE
 > thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even
 > medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background /
-> crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it (simplified: dot eyes,
-> one simple mouth) — do NOT force this full rig onto them. Hold ONLY this form — costume, pose,
-> expression, head tone, build, and framing are set by the generation delta, not here.
+> crowd figures instead follow the §2d CROWD-RIG clause that Forge appends when `figures.crowd` is true —
+> do NOT force this full rig onto them. Hold ONLY this form — costume, pose, expression, head tone, build,
+> and framing are set by the generation delta, not here.
 
-## 2d. Canonical dispatch suffix
+## 2d. CROWD-RIG clause
+
+> The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple
+> consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **same squat
+> head-to-body proportion as the crowd exemplar seed** — a large round head on a short compact body, NOT
+> taller/lanky — in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig —
+> do not give them individual detailed faces.
+
+## 2e. Canonical dispatch suffix
 
 **`global_prompt_suffix`** — empty. `shots.json` may omit it or store `""`; Forge dispatches neither.
 The authored scene payload owns the provider-weighted tail.
@@ -187,10 +195,12 @@ that procedure lives in the `image-generation` skill.)
 >    `duration_s`? A freeze of continuous motion (mid-stride, mid-shuffle, mid-sweep, mid-fall) is a
 >    finding. A held pose that carries the action's meaning (a salute, a planted stance, presenting,
 >    a held point) is correct.
-> 3. **Casting.** Is every story-named or story-referenced figure cast from the registry — including
+> 3. **Casting.** Who acts in this sentence — would removing every visible person hide that causal
+>    subject? Is every story-named or story-referenced figure cast from the registry — including
 >    inside diegetic media (a brochure figure, a portrait, a poster who IS a named character)? Does
->    every role read at a glance (a king reads as a king)? Is any named figure in the wrong
->    canonical outfit without the shot authoring the change?
+>    every role read at a glance (a king reads as a king)? Is any named figure in the wrong canonical
+>    outfit without the shot authoring the change? Where a crowd is depicted, is its narrated subject
+>    genuinely the mass, and does the scene geometry hold it beyond something with the near zone empty?
 > 4. **Acting.** Does expression/pose track the beat and the channel's register map — or is one
 >    default face riding every beat? (A character identical across a swagger beat and a ruin beat is
 >    a finding.)
@@ -216,8 +226,11 @@ that procedure lives in the `image-generation` skill.)
 
 ## 4. Palette
 
-**Locked to the character; NOT locked globally.** Scene/background/prop palettes move freely per video
-(a warzone is grey, a bank is teal, a park is green). Only the character's own colours are fixed:
+**Character colours are locked; every stage's world palette is committed.** Each stage commits a
+dominant field derived from its light source and dominant material; its supporting colours come from
+the same facts; complements are valid when those facts create them; a palette turn changes the dominant
+field, not the names of the same pair. Colour with no physical or story cause is not written. Only
+the character's own colours are fixed:
 
 | Role | Hex | Notes |
 | --- | --- | --- |

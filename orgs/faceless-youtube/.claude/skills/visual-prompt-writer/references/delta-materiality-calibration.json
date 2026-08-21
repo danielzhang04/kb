@@ -1,0 +1,267 @@
+{
+  "source_commit": "f1c3b1aa",
+  "source_path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json",
+  "decision_owner": "fresh-eyes critic (semantic judgment; lint remains lexical)",
+  "cases": [
+    {
+      "id": "L02",
+      "stage": "eighties-mall",
+      "stage_role": "delta",
+      "vo_ref": "big hair, Pac-Man, and",
+      "changed_elements": [
+        "~ crowd attitude and repeating big-hair silhouettes"
+      ],
+      "still_prompt": "The skylit mall, curved concourse, planter court, and tiered balconies hold their geometry. Across those levels the shopper mass now shares a buoyant pose, with a handful of high-volume 1980s hairstyles repeating from the kiosk line to the upper rail; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L15",
+      "stage": "memory-inside",
+      "stage_role": "delta",
+      "vo_ref": "applications, and your private",
+      "changed_elements": [
+        "+ discreet locked private-collection token beside the retained files"
+      ],
+      "still_prompt": "The same alcove keeps its clear device silhouette, open wall, and storage-rack depth, with the blank file cards already inside. One closed rust portfolio bearing a small brass heart-shaped lock now rests beside those files; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L37",
+      "stage": "ibm-contract",
+      "stage_role": "delta",
+      "vo_ref": "And at their peak",
+      "changed_elements": [
+        "+ brass year marker marked '1988' beside the revenue block"
+      ],
+      "still_prompt": "`miniscribe-rep` and `ibm-suit` remain on one table plane, at one eye-line and matching head scale, separated by the low folder and the warm-gold block marked '125 MILLION'. The diagonal oak table, four closed binders, teal chairs, and winter window bay hold. A small brass year marker now stands beside the revenue block bearing the supplied literal '1988'; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L51",
+      "stage": "hq-bailout",
+      "stage_role": "delta",
+      "vo_ref": "sent their own turnaround",
+      "changed_elements": [
+        "~ empty executive chair moves to the banker's side"
+      ],
+      "still_prompt": "The panelled chamber and two figures remain fixed around the folder and the block marked '20 MILLION'. The empty executive chair now slides from the far end to the banker's side of the table; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L70",
+      "stage": "missed-target",
+      "stage_role": "delta",
+      "vo_ref": "block. And when you",
+      "changed_elements": [
+        "+ inert chopping-block pedestal beneath the missed marker"
+      ],
+      "still_prompt": "`qt-wiles`, `action-armscrossed`, `expr-deadpan`, continues to judge from the side gallery above the tribunal room. The brass rail still runs from the gallery stair to the red notch beside the opposite doorway, and the cream employee marker remains stopped several ceiling-lamp pools short. A round wooden chopping block now supports the marker as an inert office-display pedestal; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L72",
+      "stage": "raised-target-loop",
+      "stage_role": "delta",
+      "vo_ref": "was even harder. He",
+      "changed_elements": [
+        "+ one higher red quota tooth"
+      ],
+      "still_prompt": "`qt-wiles`, `point-at-thing`, `expr-smug`, remains beneath the first handrail at the foot of the three-storey stair tower. The steel flights, two higher landings, skylight, vertical ratchet, and cream achievement bar hold their low-angle geometry. One additional red tooth now locks into the next landing above the achieved bar; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L76",
+      "stage": "control-firing",
+      "stage_role": "delta",
+      "vo_ref": "in control. What a",
+      "changed_elements": [
+        "qt-wiles expression changes from deadpan to smug"
+      ],
+      "still_prompt": "`qt-wiles`, `action-accuse`, `expr-deadpan`, remains inside the hard square of light on the oval floor while the manager mass holds in two darkened arcs beneath the ceiling gallery. The curved seating, concentric fixtures, lowest seating rail, and blank plaster pier retain the intimidation chamber. `qt-wiles` now carries `expr-smug`; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L103",
+      "stage": "clean-audit",
+      "stage_role": "delta",
+      "vo_ref": "level, but pretty close.",
+      "changed_elements": [
+        "+ one tiny bent paper clip on the broad corridor floor"
+      ],
+      "still_prompt": "`auditor-rep`, `action-present`, `expr-deadpan`, remains beneath the high transom of the administrative arch, presenting the pristine blank report below his chin. The loading-dock view, stacked file cabinets, bright stockroom opening, and hard amber pool keep their formal geometry. A tiny bent paper clip now sits alone on the broad concrete apron between the camera and the auditor; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L110",
+      "stage": "need-product",
+      "stage_role": "delta",
+      "vo_ref": "could walk up to,",
+      "changed_elements": [
+        "+ hinged safety gate fixed open between the roller door and carton"
+      ],
+      "still_prompt": "`auditor-rep`, `hold-both-hands`, `expr-skeptical`, remains beside the waist-high cream carton on the receiving-dock lift gate, with the personnel-door panel separating his head from the pallet stacks. The roller door, clerestory panels, steel mezzanine, and both-hand contact with the carton hold their exact geometry. A hinged safety gate now stands fixed open between the roller door and the carton; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L111",
+      "stage": "need-product",
+      "stage_role": "delta",
+      "vo_ref": "on, and tick off",
+      "changed_elements": [
+        "+ elbow-height sideboard of blank check squares"
+      ],
+      "still_prompt": "`auditor-rep`, `hold-both-hands`, `expr-skeptical`, stays beside the waist-high carton on the receiving-dock lift gate, with the personnel door, roller door, clerestory panels, mezzanine, pallet stacks, and open safety gate unchanged. A compact sideboard of empty check squares now stands beside the carton at elbow height, every glyph field blank and unlettered; only this changes; everything else exactly as established."
+    },
+    {
+      "id": "L119",
+      "stage": "serial-boxing",
+      "stage_role": "delta",
+      "vo_ref": "gave each one a serial number, because",
+      "changed_elements": [
+        "+ one blank cream paper tab attaches to the carton"
+      ],
+      "still_prompt": "The trussed packing bay, task-lit bench, open carton containing its seated brick, wall cubbies, and `brick-foreman`, `action-present`, `expr-worried`, remain fixed. A cream paper tab, its entire surface blank and unlettered, now attaches to the carton's side; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L123",
+      "stage": "pallet-booking",
+      "stage_role": "delta",
+      "vo_ref": "as inventory. Perfectly indistinguishable. My Peloton bike",
+      "changed_elements": [
+        "+ brass inventory bay closes around the ledger platform"
+      ],
+      "still_prompt": "Timber posts, the work lamp, wrapped kraft load, and blank ledger platform remain fixed in the loading shed. A brass warehouse bay now closes neatly around the platform and pallet as an inventory slot; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L136",
+      "stage": "charisma-or-cash",
+      "stage_role": "delta",
+      "vo_ref": "or there was money changing hands under",
+      "changed_elements": [
+        "+ ambiguous dark shadow divides the open table gap"
+      ],
+      "still_prompt": "The open glass door, cream blinds, narrow table, loading gallery, and matched `qt-wiles`, `action-present`, `expr-smug`, with `return-customer`, `action-armscrossed`, `expr-skeptical`, hold one office plane, matching eye-line, and equal head scale against their separate window panels. An ambiguous dark shadow now divides the otherwise empty space beneath the table; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L144",
+      "stage": "unopened-majority",
+      "stage_role": "delta",
+      "vo_ref": "is opening all those boxes. What they",
+      "changed_elements": [
+        "+ intact paper bands seal every visible carton lid"
+      ],
+      "still_prompt": "Carton walls, overhead bridges, roof trusses, sample table, and `auditor-rep`, `action-armscrossed`, `expr-deadpan`, retain their proportions, with his profile held against the pale counting surface. Intact cream paper bands now seal every visible carton lid across the warehouse canyon; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L146",
+      "stage": "test-count-pull",
+      "stage_role": "delta",
+      "vo_ref": "They pull a sample, count it, and",
+      "changed_elements": [
+        "~ one sample carton moves onto the counting table"
+      ],
+      "still_prompt": "The gridded wall bays, sealed carton mass, open gallery floor, and `auditor-rep`, `action-present`, `expr-skeptical`, remain fixed around the central table. One sample carton now sits entirely on the counting surface beneath his held presentation; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L162",
+      "stage": "family-night-pack",
+      "stage_role": "delta",
+      "vo_ref": "The original bring your kid to work.",
+      "changed_elements": [
+        "+ low wooden step appears at the family helper's station"
+      ],
+      "still_prompt": "Steel trusses, lamp pools, compact carton stack, dark factory floor, and the matched `packing-executive`, `action-present`, `expr-worried`, with `family-packer`, `hold-both-hands`, `expr-deadpan`, remain on one work-island plane at a matching eye-line and equal head scale. A low wooden step now appears beneath the family helper's side of the bench, turning the domestic help into the kid-at-work counterpoint; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L169",
+      "stage": "wrong-watchdogs",
+      "stage_role": "delta",
+      "vo_ref": "and it wasn't a regulator. It was",
+      "changed_elements": [
+        "+ second closed inspection gate appears at the exterior checkpoint"
+      ],
+      "still_prompt": "The audit bridge, sealed-pallet floor, open loading door, exterior checkpoint, and `auditor-rep`, `action-armscrossed`, `expr-deadpan`, retain their scale, his profile still isolated by the pale clerestory. A second closed brass inspection gate now spans the exterior checkpoint beyond the door, its indicator windows dark; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L175",
+      "stage": "whistleblower-call",
+      "stage_role": "delta",
+      "vo_ref": "and called the Denver newspapers. Best exit",
+      "changed_elements": [
+        "+ two blank newsprint bundles fill the call-target tray"
+      ],
+      "still_prompt": "The modest room, dark kitchen doorway, pale wall, pink slip, and `line-worker`, `hold-one-hand`, `expr-worried`, holding the receiver retain their scale and three-quarter orientation. Two cream newsprint bundles with blank mastheads now fill the call-target tray beneath the phone line; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L184",
+      "stage": "books-rewound",
+      "stage_role": "delta",
+      "vo_ref": "the way to 1986.",
+      "changed_elements": [
+        "+ chronology rail ends at 1986"
+      ],
+      "still_prompt": "The circular ledger vault, balcony view, drafting desk, rolling ladder, and central brass date arm hold their exact positions. The arm now sweeps across the floor and locks against one cream stop bearing the exact charcoal year \"1986\"; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L186",
+      "stage": "fourteen-versus-forty",
+      "stage_role": "delta",
+      "vo_ref": "a loss of 14 million",
+      "changed_elements": [
+        "+ reported block receives 14 MILLION DOLLARS"
+      ],
+      "still_prompt": "The stepped accounting chamber, ledger shelves, brass beam, vacant correction bay, and modest left-pan loss block remain fixed. The reported block now bears the exact charcoal value \"14 MILLION DOLLARS\"; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L206",
+      "stage": "bank-installation-irony",
+      "stage_role": "delta",
+      "vo_ref": "since they sent Wiles in",
+      "changed_elements": [
+        "+ evidence bracket encloses the appointment folder"
+      ],
+      "still_prompt": "`hq-banker`, `action-offering`, `expr-worried`, and `qt-wiles`, `action-present`, `expr-smug`, retain the appointment-folder transfer on one plane, one eye-line, and matching head scale inside the deep stone bank hall; the liability cord still runs from the court doors to the banker. One red evidence bracket now encloses the folder between them; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L209",
+      "stage": "judge-reversal",
+      "stage_role": "delta",
+      "vo_ref": "to support it, he said,",
+      "changed_elements": [
+        "+ empty evidence tray appears beside the face-down verdict"
+      ],
+      "still_prompt": "`trial-judge`, `sit`, `expr-deadpan`, remains fully supported against the high-backed oak chair, with the verdict entirely face-down, the pilastered apse, winter windows, bare bench, and unobstructed head held in place. One shallow evidence tray now appears beside the verdict and sits visibly empty; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L218",
+      "stage": "federal-conviction",
+      "stage_role": "delta",
+      "vo_ref": "securities fraud and insider trading,",
+      "changed_elements": [
+        "+ charge docket joins the verdict"
+      ],
+      "still_prompt": "`qt-wiles`, `action-recoil`, `expr-surprised`, remains beside the red-sealed verdict in the federal counsel well, his expression still isolated by the stone pier and the jury box, raised bench, and custody door unchanged. A second cream docket now joins the stand and bears the exact charcoal charge \"INSIDER TRADING\"; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L229",
+      "stage": "immunity-testimony",
+      "stage_role": "delta",
+      "vo_ref": "testified in exchange for immunity.",
+      "changed_elements": [
+        "+ immunity papers occupy the legal table"
+      ],
+      "still_prompt": "The gallery-corner view, planted executive witness mass, stepped boxes, oak rails, short stairs, brass balustrade, and empty legal table remain fixed. A compact fan of cream papers now occupies the table and bears the exact charcoal word \"IMMUNITY\"; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L242",
+      "stage": "hr-peak",
+      "stage_role": "delta",
+      "vo_ref": "MiniScribe had just kept a",
+      "changed_elements": [
+        "+ short payroll-card row fills the bridge rail"
+      ],
+      "still_prompt": "`hr-officer`, `action-powerstance`, `expr-deadpan`, remains at the payroll window, with the blank cabinet end behind her head, filing walls, time clock, winter skylight, open warehouse doorway, and loading floor unchanged. A compact set of identical blank cream payroll cards now fills one section of the mezzanine rail; only this changes, everything else exactly as established."
+    },
+    {
+      "id": "L243",
+      "stage": "hr-peak",
+      "stage_role": "delta",
+      "vo_ref": "the payroll through Christmas, who",
+      "changed_elements": [
+        "+ Christmas payroll ribbon spans the card row"
+      ],
+      "still_prompt": "`hr-officer`, `action-powerstance`, `expr-deadpan`, remains at the payroll window beside the compact set of blank payroll cards, with the filing walls, time clock, winter skylight, open warehouse doorway, and pallet stacks held around the blank cabinet backing her head. One restrained evergreen-and-cream ribbon now spans the entire set of cards; only this changes, everything else exactly as established."
+    }
+  ]
+}

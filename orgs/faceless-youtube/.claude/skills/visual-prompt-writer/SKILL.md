@@ -137,8 +137,8 @@ Tag each shot with `beat` = narrative **position** (`hook` · `second-gate` · `
 `mid-arm` · `climax` · `withheld-peak` · `close` — §9 skeleton; authoring/review metadata, don't invent
 names). It's review metadata only — the engine doesn't read it.
 
-- **Expand each `[B-ROLL]` cue** into a full shot: run **Step 2.5** on its VO line (classify → cast →
-  stage the tableau → state the facts), then write the `still_prompt`. Set
+- **Expand each `[B-ROLL]` cue** into a full shot: decide subject → acting participants → occupancy →
+  shot class → cast tokens → tableau → drawable facts, then write the `still_prompt`. Set
   `from_cue: true`. Anchor it with a `vo_ref` — the **opening words of that VO line,
   copied VERBATIM from `script.md`** (≥4 words, exact wording and order; never reword, summarize, or
   swap a pronoun for a name). `render-builder` times the cut by matching the **first 4 normalized
@@ -154,14 +154,21 @@ names). It's review metadata only — the engine doesn't read it.
   anchor to the next shot's), purely so you and the human can *see* coverage. **Never make a shot's
   image try to "represent" its whole span** — the image is anchored to its one moment (Step 2.5). A
   `vo_text` that comes out long (>~8s of VO on one anchor) is a signal to **densify** (add a cut) or
-  confirm a progressive in-shot reveal — never to cram more meaning into one prompt (§10).
+  confirm a story-needed held state change or a non-empty hold_reason — never to cram more meaning into one prompt (§10).
 - **Densify to the cadence.** The script's cues are the *floor*, not the ceiling. Insert additional
   shots (`from_cue: false`) so there is a **new cut every 3–8s and a new stimulus every 30–45s**
   (§10), and weight density **highest in the first 60s** (the 55% cliff zone). A 20-second VO passage
   with one cue needs 3–5 shots, not one. Never leave static ambient B-roll under the first 3–5s
   (anti-pattern 8).
 
-**Partitioning machinery.** Author disjoint contiguous act partitions. Keep every planned stage and its whole chain inside one partition, never split across two; a coordinator merges partitions in narration order, then runs one whole-file lint and one independent critic pass.
+**Partitioning and stage decision.** Lock only contiguous act partitions plus cast and place
+boundaries before authoring; do not predeclare a closed stage list. Author the shots first, then apply
+the schema's hold-camera criterion to consecutive beats. Keep each resulting stage wholly inside one
+partition. For every resulting stage, record `field + basis` in the plan lock, put a `Palette basis:`
+sentence in the base shot's existing `notes`, and replace lower-value base-prompt words with the
+drawable light/material facts that realize that field. A standalone shot is its own stage; a same-place
+re-base starts a distinct stage. The coordinator merges partitions in narration order, then runs one
+official lint and one independent critic pass.
 
 - **Tag a source for every shot** (`ai-gen` / `stock` / `hybrid` / `chart` / `screencap` / `archival`
   — taxonomy in the schema). Doctrine: pure-AI B-roll reads uncanny (§13 / tools.md) — **blend real
@@ -190,7 +197,8 @@ into a full `gen_prompt`, honoring **§8**:
 
 ## Step 5 — Shorts visuals
 For every short, write a `first_frame` block **and** an ordered shot list. **Run Step 2.5 on every
-short shot too** (classify → cast → tableau → facts → intent note) — shorts are the densest,
+short shot too** (subject → acting participants → occupancy → shot class → cast tokens → tableau →
+drawable facts → intent note) — shorts are the densest,
 most-cloned surface, so the non-literal grammar + anti-slop guardrail matter most here:
 - **First frame IS the thumbnail** (§8/§11) — a pattern-interrupt tableau *already carrying the
   beat's tension* (a held pose loaded with the story's wrongness — not a freeze of motion), with the
@@ -227,8 +235,8 @@ It validates every `vo_ref` against `script.md` (verbatim + narration order, mir
 matcher) and, on a clean pass, injects the **derived** `vo_text` coverage + `shot_counts`. **Any HARD
 failure means render sync will degrade — fix it before handoff** (re-copy the exact opening words from
 `script.md`; move the out-of-order shot to its true script position). Heads-up warnings (a shot covering
->~8s of VO on one anchor) mean **densify** there or confirm a progressive in-shot reveal — do not fix
-them by widening the image's scope.
+>~8s of VO on one anchor) mean **densify** there or confirm a story-needed held state change or a
+non-empty hold_reason — do not fix them by widening the image's scope.
 
 ## Step 8 — Shot critic (mandatory; before any generation token is spent)
 Dispatch the **fresh-eyes shot critic** per `references/critics.md`: one subagent with no share in

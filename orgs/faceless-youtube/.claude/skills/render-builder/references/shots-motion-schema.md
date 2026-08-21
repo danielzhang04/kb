@@ -4,10 +4,10 @@ A derived file (`videos/<slug>/shots.motion.json`) the `motion-planner` emits fr
 `shots.json` stays VPW's pristine visual truth; this is the machine-planned layer spec that
 image-generation and build_motion consume. Validated by `scripts/motion_plan.py::validate_plan`.
 
-**The boundary this spec serves:** DELTA-CHAIN an INTEGRATIVE change (the element becomes part of the
+**Realization boundary after VPW has authored stage intent:** DELTA-CHAIN an INTEGRATIVE change (the element becomes part of the
 scene's architecture) — regenerate seeded off the prior frame; LAYER a DISCRETE change (the element
 sits on the scene without fusing into it) — keep the plate, composite a seeded animated cutout. Full
-law, including the ≤2-delta cap and the same-location re-base:
+law, including the ≤3-delta cap and the same-location re-base:
 `knowledge/research/niche-playbooks/universal.md` §13a-ii.
 
 ## Animation vocabulary
@@ -31,6 +31,7 @@ prevents authoring a motion the engine cannot render.
   - **Hybrid** — a `delta-chain` shot MAY also carry a cutout `layers[]` (a DISCRETE overlay on the held
     set, e.g. a FICTION stamp). Then `background.plate` = `scenes/<prior-in-stage-id>.png` (the prior
     frame, **reused** — image-gen generates no new plate); only the overlay's `cutout_prompt` is authored.
+  - This file never decides whether the stage should have been authored.
 - `layers` (array, required; `[]` for a simple/passthrough shot):
   - `id` (str), `source`: **`"cutout"` only** — `motion_plan.py::validate_plan` rejects any other value.
   - cutout: `cutout_prompt` (str) + `animation`. The `cutout_prompt` describes **the OBJECT ONLY** — no

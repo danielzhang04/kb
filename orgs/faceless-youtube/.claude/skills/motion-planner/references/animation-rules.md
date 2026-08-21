@@ -9,7 +9,7 @@ habit. This posture is about ELEMENT LAYERS first — the camera stays restraine
 
 ## When to add a cutout layer
 
-**Precondition — the two-test boundary.** DELTA-CHAIN an INTEGRATIVE change (the element fuses into the
+**Realization boundary — authoring has already decided the stage under shots-schema.** DELTA-CHAIN an INTEGRATIVE change (the element fuses into the
 scene's architecture: a city grows a bank, gold threads the streets) — regenerate seeded off the prior
 frame; it stays baked, costs fewer gens than a plate + N cutouts, and trades away the pop-on (the element
 arrives on a hard cut). LAYER a DISCRETE change (the element sits on the scene without fusing: a character
@@ -19,7 +19,7 @@ canonical, or from the plate it lands on, for CONTINUITY: the plate carries plac
 it is not a style anchor, and no cross-video `refs/env/` style-anchor plate exists (fix 2). Style comes
 from the hardened bible descriptor (`style-bible.md` §2b), never from a seed, on every gen alike — since
 an unseeded cutout invents its own register and lands off-style against a flat-cel plate (forge
-hard-errors an unseeded environment/style gen). Full law, incl. the ≤2-delta cap and the same-location
+hard-errors an unseeded environment/style gen). Full law, incl. the ≤3-delta cap and the same-location
 re-base:
 `knowledge/research/niche-playbooks/universal.md` §13a-ii.
 
@@ -32,14 +32,9 @@ re-base:
   route.** Do not bake a map that has a mover in it: the map is the plate, the mover is the layer. This is
   a strong signal — the reference-channel map idiom. Author the `path` `anchor` on the VO words that name
   the journey.
-- **ARROWS, routes, and PROGRESSIVE REVEALS are MOTION — NEVER baked into the still.** An arrow pointing
-  to / travelling to a place is a `path` cutout with `draw_line` (the engine draws its line), never a
-  static arrow painted into the plate. A **progressive reveal** — elements appearing ONE AT A TIME as the
-  VO names them (borders drawing on in spoken order, a crown breaking and STAYING broken, regions tinting
-  in sequence) — is authored as **sequenced layers**: each revealed element its own cutout
-  `appear`/`draw_line`/`path` with its own `anchor` on the triggering VO word, so they land in order
-  rather than all at once. A reveal whose END STATE must persist uses `static: true` so the cutout
-  arrives and holds. The plate carries the BEFORE state; the reveals are the layers.
+- **Arrows and routes are motion layers.** A progressive reveal is not automatically a layer: an
+  integrative state change remains a parent-seeded baked delta; a discrete seedable reveal becomes a
+  sequenced layer anchored to its VO word.
 - **A single foreground prop has a live "vibe"** (a book/hands on a desk) → `bob` (in place). Sparing.
 - **A discrete overlay is added to a held scene** → layer it as a **hybrid** (reuse the prior scene as
   the plate). A "discrete overlay" is any cleanly-mattable addition — a **stamp / seal / "SOLD" mark /
@@ -113,7 +108,7 @@ Artifact review is the human gate before image-gen.
 ## Deferred — actively scan for a SHARED base (raise the reuse rate)
 NOT YET ACTIVE; the rules above govern. The pinned next iteration: reuse a shared base and
 spawn/stamp/reveal elements onto it rather than cutting to a brand-new independent gen each beat — it
-reads as continuous and costs far less generation. It is **bounded by the two-test boundary**: a
+reads as continuous and costs far less generation. It is **bounded by the authored-stage realization boundary**: a
 DISCRETE addition onto the base reuses it as a cutout layer; an INTEGRATIVE change must reuse it as a
 held delta-chain and stays baked. So the lean raises the reuse rate against *independent gens*, not
 against delta-chains, and independent scenes stay correct for a genuinely NEW setting. Not yet plannable.

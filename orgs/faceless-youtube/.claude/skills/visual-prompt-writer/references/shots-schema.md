@@ -131,7 +131,7 @@ Notes:
 - **`stage` / `stage_role` / `changed_elements` — held evolving stages (INTENT ONLY).** Consecutive shots
   that share a `stage` id sit on ONE persistent set: the `base` frame establishes it; each `delta` frame
   adds/moves ONE element, named in `changed_elements` as a **world-change** (`"+ cathedral rises"`,
-  `"- ship"`, `"MacGregor slumps"`). This is the still-era realization of §13a-i's progressive reveal.
+  `"- ship"`, `"MacGregor slumps"`).
   **The delta-vs-layer boundary (enforced law).** A held scene evolves one of two ways. **DELTA-CHAIN**
   when the change is **INTEGRATIVE** — the new element becomes part of the scene's architecture (a city
   grows a bank; gold threads the streets). **LAYER** when the change is **DISCRETE** — the added element
@@ -167,8 +167,14 @@ Notes:
   by hand, and ignored by every downstream tool. `vo_text` lets a human see each shot's VO coverage; it
   is **not** a depiction brief (a long span means *densify*, not *cram*). `shot_counts` is a convenience
   tally.
-- **`cast` + `pose_ref`/`expression_ref` — the figure's pose/expression come from SEEDED library assets, not the `still_prompt`.** VPW records each prominent figure's registry pose/expression (INTENT); `image-generation` seeds them **directly into the one scene generation** — the character canonical + expression frame + pose frame (+ any interaction template) all seed a single run (no separate pre-merge pass; Pass 1b retired). **The `still_prompt` therefore describes the scene + the figure's placement/action ONLY — never its hand/finger mechanics, body-pose mechanics, or facial expression** (those are the `pose_ref`/`expression_ref` assets' job; authoring them in prose too is the double-authoring trap). `pose_ref`/`expression_ref` are each optional (pose-only / expr-only / both / neither). `cast` is how image-gen enumerates a shot's figures — it replaces prose figure-parsing. Seed doctrine: `style-bible.md §5`. A `cast` entry may name an individual character OR a **recurring identifiable group** (a band/troupe whose canonical is a group frame — typically no `pose_ref`/`expression_ref`); image-gen locks it once and seeds it into each appearance. An anonymous crowd stays prose in the `still_prompt`, never cast.
-- **`props` — recurring-prop lock (parallel to `cast`).** A **recurring identifiable prop** (a specific
+- **Backticked prompt tokens are executable cast transport; `cast` is descriptive metadata.** Forge
+  derives seeded characters from character tokens in `still_prompt`, in token order. An ordinary pair
+  names two approved backticked character tokens in that prompt. A contact pair names the left character,
+  then the right character, then one registered backticked interaction token (`handoff`, `handshake`, or
+  `fistbump`); `shot_cast` binds the primitive in that order. The optional legacy `cast` array may describe
+  the same intent for review, but Forge never reads it and it cannot make an un-tokened figure render.
+  Unresolved character or interaction tokens emit `needed_assets` and stop at the existing human gate.
+- **`props` — recurring-prop lock.** A **recurring identifiable prop** (a specific
   object whose look must MATCH across shots — the guidebook, a named banknote) is declared in a shot's
   optional `props` array by its library name. `image-generation` Pass 1 gives each such prop ONE canonical
   (`assets/library/prop-<name>.png`, `prop-` prefix required) and seeds/reuses it into every appearance —
@@ -176,7 +182,11 @@ Notes:
   `props` when nothing recurs; a one-off prop stays composed per-scene from the `still_prompt` (no slot). A
   recurring prop named in the `still_prompt` prose but absent from `props` is an authoring gap (image-gen
   flags it back, like an uncast figure). `render-builder` ignores `props` (upstream-authoring only).
-- **`needed_assets` — surface-then-gate.** When a shot needs a pose/expression/interaction the registry lacks, VPW adds an entry (`kind` + `slug` + **`wants`** = what to draw + `why`) and **HARD-STOPS** (does not proceed to generation). The human approves+generates on the base, or vetoes → VPW restages that beat onto EXISTING assets only. **Interactions are just `kind: interaction`** — same path, no special-casing; the `wants` description is what makes the request actionable.
+- **`needed_assets` — surface-then-gate.** When a shot needs a character or interaction token the
+  registry lacks, VPW records `kind` + `slug` + `wants` + `why` and **HARD-STOPS**. The human approves
+  and registers it, or vetoes and VPW restages onto existing assets. A contact pair must name two
+  approved backticked characters followed by one approved backticked `handoff`, `handshake`, or
+  `fistbump` token in `still_prompt`; descriptive `cast` metadata cannot satisfy this transport.
 
 ---
 
@@ -200,7 +210,7 @@ ai-gen/hybrid shot is a render-time hard error. What the engine consumes from ea
 | `vo_text`, `shot_counts` | *(derived, human-review only; written by `lint_shots.py`)* |
 | `synthetic: true` (any shot/thumb) | feeds the AI-disclosure flag in `metadata.json` |
 | `thumbnail.primary.gen_prompt` | generated by image-generation + set via `thumbnails.set` at publish |
-| `cast` (`pose_ref`/`expression_ref`) | *(upstream authoring — seeded by image-generation into the one-run multi-seed scene gen; render-builder ignores)* |
+| `cast` | *(optional descriptive/review metadata; never engine-read)* |
 | `props` | *(upstream authoring — consumed by image-generation for the per-video prop lock; render-builder ignores)* |
 | `needed_assets` (top-level) | *(upstream authoring/human-gate — not consumed by render-builder)* |
 
@@ -297,9 +307,8 @@ L69   "...gravity register, comedy off..."  -> a register labelled  `COMEDY OFF`
 L42   the prompt's own editorial gloss      -> a caption reading
                                                `THE QUIET DAMAGE OF A CARD NOBODY WANTED`
 ```
-What leaks is the **bare noun phrase naming a production rule**. The same constraint stated as a
-property of a depicted body never leaked — "figures on the CROWD RIG: round heads, dot eyes, NO
-noses, NO ears" is legal and common. State constraints as facts about the thing in frame.
+What leaks is the **bare noun phrase naming a production rule**. Concrete depicted-body facts are
+legal, but canonical rig blocks are Forge-owned and never copied into `still_prompt`.
 
 *Corollary (advisory, not lint-checked):* the one-sentence editorial gloss this channel likes
 ("The machine that got absorbed into the bigger bank.", "The person who actually carries the
@@ -347,7 +356,7 @@ that its process catches more.
 
 - **Long-form density:** New long-form plans start at **2–5 seconds per shot**, with density heaviest in the first 60 seconds.
 - **Duration coverage:** derive runtime from the script header's stated WPM/runtime, require at least `runtime ÷ 5s` shots, and keep Σ `duration_s` approximately equal to runtime. Densify; never stretch holds to fill.
-- **Earned long holds:** a hold over roughly six seconds needs a real progressive reveal or a short `hold_reason` for legibility or gravity.
+- **Earned long holds:** a hold over roughly six seconds needs a story-needed held state change or a short `hold_reason` for legibility or gravity.
 - **Shorts density:** a cut every 2–4s (§11c); `first_frame` mid-action.
 - `duration_s` is an estimate; `timing_status` flags re-timing after render.
 - `synthetic` drives AI disclosure — set `true` on any photoreal AI shot/thumbnail so the flag in
@@ -367,32 +376,19 @@ that its process catches more.
 
 ## Canonical chain and disclosure contract
 
-- **Stage the run — held evolving stages (the anti-choppiness lever).** After inventing the
-  shots, group **consecutive shots that share ONE setting/subject** into a `stage`: give them a common
-  `stage` id, mark the first `stage_role: "base"` and the rest `"delta"`, and on each delta author
-  `changed_elements` — **exactly ONE** world-change vs the prior frame (`"+ cathedral rises"`, `"- ship"`,
-  `"MacGregor gains epaulettes"`, `"MacGregor's smugness drops to alarm"`), **anchored to its own word**:
-  if the VO introduces a bank on "bank" and a coin on "its own money", that is TWO deltas (each its own shot
-  + verbatim `vo_ref` on the word its element lands on), never one delta that adds both — bundling two at
-  one cut blurs the reveal and mis-times the second against its word. A beat that adds several things at
-  once is several fast deltas or a hard cut to a new base. A delta is the still-era
-  progressive reveal: the set persists, one thing changes — that continuity (not a new scene each cut)
-  is what reads like the reference channels. **An ADDITIVE beat is a shared-`stage` delta — author the
-  addition, not the whole scene:** when a beat adds a discrete element to a scene already established (a
-  character entering the held swamp; a 5-STAR stamp landing on the guidebook), keep the SAME `stage`, mark
-  the shot `stage_role: "delta"`, and name ONLY the added element in `changed_elements` (`"+ MacGregor
-  enters, stage-left"`, `"+ red 5-STAR stamp on the guidebook"`) — do NOT re-describe the established set in
-  the delta's `still_prompt`; it persists from the base frame, you are adding one layerable thing.
-  (Downstream, the motion-planner may realize this as plate-reuse + a matted cutout rather than a full
-  re-gen, from the same `stage` + `changed_elements` — you author only the intent.) **Deltas are DECISIVE:** if the beat is a world-flip, the
-  frame flips (a full palette turn, the paradise fully gone) — never a timid partial coexistence that
-  makes the reveal mushy. **Hard-cut to a NEW stage only when the setting/subject/register genuinely
-  changes.** Cap a chain at **≤3 deltas**, then a fresh base or a hard cut. **Timing:** delta frames
-  run fast (1.5–3s); the base/hold frame holds longer (4–12s). **Author INTENT only** — name *what
-  changes*, never *how it's produced* (no "seed off the previous frame", no `chain_from`;
-  `image-generation` owns the mechanism, and the same metadata later drives a Remotion layer-move
-  unchanged). Each frame stays a full shot with its own verbatim `vo_ref`; a shot with no shared
-  `stage` is a standalone hard cut, as before.
+- **Stage the run after the shots exist — hold only what can honestly hold.** Chain consecutive beats
+  when the camera/set and primary subject can hold and the next beat makes exactly ONE visually
+  distinct, story-needed state change. Give the run one `stage` id, mark the first shot
+  `stage_role: "base"`, mark later members `"delta"`, and put that one change in the delta's
+  `changed_elements`. Hard-cut when vantage, setting, primary subject, or register must change. A shop
+  counter may hold while one newly unpacked PC appears on the next narrated beat; a hero-object hard
+  drive followed by a relational computer–drive diagram changes the visual argument and is a hard cut.
+  Reveal and enumeration are examples, not eligibility rules. Each change anchors to its own verbatim
+  `vo_ref`; two narrated changes require two shots, never one bundled delta. Cap a chain at ≤3 deltas,
+  then re-base or hard-cut. Deltas run 1.5–3s; bases/holds run 4–12s. Author only the stage and change
+  intent: downstream realization decides whether an integrative change regenerates from the parent or
+  a discrete, seedable change becomes a layer. Every member remains a full shot with its own `vo_ref`;
+  a shot without a shared stage is a standalone hard cut.
 - **Disclosure order — an image never reveals ahead of the narration (plan-level law).** A shot may
   contain only what the VO has already introduced by that shot's `vo_ref` position. When the script
   **deliberately withholds** a payload for a later beat (a character's identity, a fate, a twist

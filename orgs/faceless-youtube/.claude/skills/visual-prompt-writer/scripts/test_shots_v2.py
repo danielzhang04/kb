@@ -2,7 +2,8 @@
 
 v2 drops the v1 authoring/review metadata (`from_cue`, `beat`, `narration_type`,
 `cast`, `props`, `needed_assets`, `house_style`, `shot_counts`,
-`timing_status`). None of it was ever engine-read, so the rule that matters is:
+`timing_status`). Forge derives seeded cast from backticked `still_prompt` tokens;
+the legacy `cast` array is descriptive metadata only. The compatibility rule is:
 
   * a v2 file is the norm and lints silently;
   * a v1 file STILL LINTS AND STILL RENDERS — its leftovers are a **heads-up**,
@@ -14,13 +15,54 @@ order, supplied-text, lettering L1-L4, delta caps, runtime/5 + coverage) is pinn
 by the sibling suites; this file pins the v2-specific behaviour plus the
 end-to-end `--write` contract.
 """
+import copy
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import lint_shots
+
+VB_COMMIT = "17becaaf"
+VB_ROOT = "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh"
+
+
+def _git_text(path):
+    return subprocess.check_output(
+        ["git", "show", f"{VB_COMMIT}:{VB_ROOT}/{path}"],
+        text=True,
+        encoding="utf-8",
+    )
+
+
+def _vb_data():
+    return json.loads(_git_text("shots.json"))
+
+
+def _run_vb_fragment(tmp_path, monkeypatch, *flags, data=None, script_text=None,
+                     omit_script=False):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    payload = copy.deepcopy(data if data is not None else _vb_data())
+    repo = Path(subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], text=True, encoding="utf-8"
+    ).strip())
+    real_vdir = repo / VB_ROOT
+    chars = lint_shots.video_chars(payload, real_vdir)
+    interactions = lint_shots.video_interactions(payload, real_vdir)
+    tokens = lint_shots.video_token_catalog(payload, real_vdir)
+    canonical_suffix = lint_shots.channel_suffix(real_vdir)
+    monkeypatch.setattr(lint_shots, "video_chars", lambda *_: chars)
+    monkeypatch.setattr(lint_shots, "video_interactions", lambda *_: interactions)
+    monkeypatch.setattr(lint_shots, "video_token_catalog", lambda *_: tokens)
+    monkeypatch.setattr(lint_shots, "channel_suffix", lambda *_: canonical_suffix)
+    if not omit_script:
+        source = _git_text("script.md") if script_text is None else script_text
+        (tmp_path / "script.md").write_text(source, encoding="utf-8")
+    path = tmp_path / "shots.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return lint_shots.main([str(path), *flags]), path
 
 SCRIPT = (
     "The founder walked into the room and promised everyone a fortune by spring. "
@@ -223,3 +265,90 @@ def test_the_hard_floor_still_fails_a_paraphrased_anchor():
     data["long_form"]["shots"][1]["vo_ref"] = "he emptied their savings"
     rc, _ = _run(data)
     assert rc == 1
+
+
+def test_vb_45_without_fragment_has_exactly_two_sizing_hards(tmp_path, monkeypatch, capsys):
+    rc, _ = _run_vb_fragment(tmp_path, monkeypatch)
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "HARD violations (2)" in out
+    assert "Sum of duration_s 97s < 85%" in out
+    assert "45 shots for a ~558s runtime" in out
+
+
+def test_vb_45_fragment_sizes_to_covered_span_and_writes(tmp_path, monkeypatch, capsys):
+    rc, path = _run_vb_fragment(tmp_path, monkeypatch, "--write", "--fragment")
+    out = capsys.readouterr().out
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert rc == 0
+    assert "fragment scope: covered 293/1628 script words" in out
+    assert "HARD violations: none" in out
+    assert "DEFERRED fragment_scope" not in out
+    assert written["long_form"]["shots"][-1]["vo_text"] == "out the door."
+    assert "fragment_scope" not in written
+
+
+def test_20_shot_fragment_still_fails_duration_for_same_covered_span(tmp_path, monkeypatch, capsys):
+    baseline = _vb_data()
+    sparse = baseline["long_form"]["shots"][:19] + baseline["long_form"]["shots"][-1:]
+    data = copy.deepcopy(baseline)
+    data["long_form"]["shots"] = sparse
+    rc, _ = _run_vb_fragment(tmp_path, monkeypatch, "--fragment", data=data)
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "fragment scope: covered 293/1628 script words" in out
+    assert "Sum of duration_s" in out and "85%" in out
+
+
+def test_fragment_requires_long_form_shots(tmp_path, monkeypatch, capsys):
+    data = _vb_data()
+    data["long_form"]["shots"] = []
+    rc, _ = _run_vb_fragment(tmp_path, monkeypatch, "--fragment", data=data)
+    assert rc == 1
+    assert "--fragment requires at least one long_form.shots record" in capsys.readouterr().out
+
+
+def test_fragment_unmatched_last_anchor_is_hard_and_blocks_write(tmp_path, monkeypatch, capsys):
+    baseline = _vb_data()
+    baseline["long_form"]["shots"][-1]["vo_ref"] = "not present in the script"
+    rc, path = _run_vb_fragment(tmp_path, monkeypatch, "--write", "--fragment", data=baseline)
+    assert rc == 1
+    assert "--fragment cannot resolve the last shot anchor" in capsys.readouterr().out
+    assert "vo_text" not in path.read_text(encoding="utf-8")
+
+
+def test_fragment_flag_does_not_change_short_or_thumbnail_checks(tmp_path, monkeypatch, capsys):
+    data = _vb_data()
+    bad_literal = "a sign reading 'one two three four five'"
+    short_shot = copy.deepcopy(data["long_form"]["shots"][0])
+    short_shot.update(id="S01", still_prompt=bad_literal)
+    data["shorts"] = [{"file": "shorts/short-01.md", "shots": [short_shot]}]
+    data["thumbnail"]["primary"]["gen_prompt"] = bad_literal
+    _run_vb_fragment(tmp_path / "plain", monkeypatch, data=data)
+    plain = capsys.readouterr().out
+    _run_vb_fragment(tmp_path / "fragment", monkeypatch, "--fragment", data=data)
+    scoped = capsys.readouterr().out
+    relevant = lambda out: [line.strip() for line in out.splitlines()
+                            if "[short:" in line or "[thumbnail]" in line]
+    plain_rows = [line.replace(str(tmp_path / "plain"), "<TMP>") for line in relevant(plain)]
+    scoped_rows = [line.replace(str(tmp_path / "fragment"), "<TMP>") for line in relevant(scoped)]
+    assert plain_rows
+    assert scoped_rows == plain_rows
+
+
+def test_fragment_absent_script_is_hard_and_skips_sizing_tiling_and_write(tmp_path, monkeypatch, capsys):
+    rc, _ = _run_vb_fragment(tmp_path, monkeypatch, "--write", "--fragment", omit_script=True)
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "--fragment requires script.md; file is absent" in out
+    assert "Sum of duration_s" not in out and "shots for a ~" not in out
+    assert "WROTE derived vo_text" not in out
+
+
+def test_fragment_header_without_wpm_uses_default_wpm(tmp_path, monkeypatch, capsys):
+    script = _git_text("script.md").replace("1,632 words ÷ 175 wpm", "1,632 words")
+    rc, _ = _run_vb_fragment(tmp_path, monkeypatch, "--fragment", script_text=script)
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert f"{lint_shots.DEFAULT_WPM:.0f}wpm, the fallback — the header states no rate" in out
+    assert "requires a positive header WPM" not in out

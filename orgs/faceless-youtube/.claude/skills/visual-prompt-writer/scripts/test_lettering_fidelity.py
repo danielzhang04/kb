@@ -13,6 +13,8 @@ the engine's actual rendered output is recorded on each FLAG case. The CLEAN
 cases carry equal weight — these guards run over a 119-shot file, and one that
 fires on correct prompts gets switched off.
 """
+from pathlib import Path
+
 import pytest
 
 from lint_shots import (
@@ -22,6 +24,7 @@ from lint_shots import (
     quoted_literals,
     word_cap_check,
 )
+from test_shots_v2 import _v2
 
 SUFFIX = (
     "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick #241a12 "
@@ -180,14 +183,25 @@ def test_comedy_off_is_flagged():
     assert {"comedy off", "gravity register"} == {h.split("phrase '")[1].split("'")[0] for h in hits}
 
 
-def test_rig_vocabulary_attached_to_figures_is_clean():
-    """'on the CROWD RIG' and 'base-rig figures' never leaked and must stay legal —
-    they are properties of a depicted body, not noun phrases naming a production
-    rule. Banning the word `rig` outright would flag most of the file."""
-    p = ("The background figures are on the CROWD RIG: round heads in 2-3 flat tones, DOT EYES, "
-         "one simple mouth, NO noses, NO ears. A base-rig anonymous teller in a teal uniform. "
-         + SUFFIX)
-    assert _hard(control_leak_check, [("x", "still_prompt", p)], SUFFIX) == []
+def test_authored_fixture_prompts_do_not_carry_the_forge_owned_crowd_clause():
+    def prompts(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in {"still_prompt", "gen_prompt"} and isinstance(value, str):
+                    yield value
+                else:
+                    yield from prompts(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from prompts(value)
+
+    bible = (Path(__file__).resolve().parents[4] / "channels" / "the-second-take" /
+             "visual-kit" / "style-bible.md").read_text(encoding="utf-8")
+    section = bible.split("## 2d. CROWD-RIG clause", 1)[1].split("\n## ", 1)[0]
+    moved = "\n".join(line[2:] for line in section.splitlines() if line.startswith("> "))
+    authored = list(prompts(_v2()))
+    assert authored and moved
+    assert all(moved not in prompt and "CROWD RIG:" not in prompt for prompt in authored)
 
 
 def test_house_style_suffix_alone_is_clean():

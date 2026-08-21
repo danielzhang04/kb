@@ -1,8 +1,9 @@
 """Plain-assert test for lint_shots.stage_check — the delta-chain structural caps (HARD).
 Run: py -3 .claude/skills/visual-prompt-writer/scripts/test_stage_check.py
 
-The ≤3-delta cap, ONE-base-first rule, and material-change floor are the mechanical shadow of
-the progressive-reveal contract. Zero chains is valid; shared scenery never creates a quota."""
+Authoring decides the stage under the camera/set/primary-subject hold criterion; realization decides
+layer versus regeneration; the canonical cap is base + 3 deltas. Zero chains is valid; shared scenery
+never creates a quota."""
 import lint_shots
 
 

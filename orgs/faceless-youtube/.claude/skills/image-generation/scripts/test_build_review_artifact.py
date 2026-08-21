@@ -76,3 +76,79 @@ def test_board_embeds_images_at_ordinary_scale(tmp_path):
     page, _bytes = review.build([card], "Review", "", 1600, 82)
     assert "data:image/" in page and "L01" in page
     assert "crop_battery" not in page
+
+
+def _scene_video(tmp_path):
+    video = tmp_path / "channels" / "x" / "videos" / "v"
+    scenes = video / "assets" / "scenes"
+    scenes.mkdir(parents=True)
+    shots = {
+        "long_form": {"shots": [
+            {"id": "L01", "source": "ai-gen", "stage": "counter", "stage_role": "base",
+             "still_prompt": "Cobalt daylight crosses walnut shelves.",
+             "notes": "Palette basis: cobalt field — high-skylight daylight crosses walnut shelves."},
+            {"id": "L02", "source": "ai-gen", "stage": "counter", "stage_role": "delta",
+             "still_prompt": "The held counter gains a brass rail.", "notes": ""},
+        ]}
+    }
+    (video / "shots.json").write_text(__import__("json").dumps(shots), encoding="utf-8")
+    manifest = {"scenes": [{"shot_id": "L02", "flagged": False,
+                             "notes": "manifest reason", "review_status": "unreviewed"}]}
+    (scenes / "manifest.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
+    frame = scenes / "L02.png"
+    image = Image.new("RGB", (160, 90), (230, 120, 25))
+    image.paste((20, 190, 200), (80, 0, 160, 90))
+    image.save(frame)
+    return video
+
+
+def test_palette_basis_inherits_from_stage_base():
+    shots = {
+        "L01": {"stage": "s", "stage_role": "base", "notes": "Palette basis: umber — window light."},
+        "L02": {"stage": "s", "stage_role": "delta", "notes": ""},
+    }
+    assert review.palette_basis_by_stage(shots) == {"s": "Palette basis: umber — window light."}
+
+
+def test_scene_card_exposes_prompt_stage_basis_and_manifest_reason(tmp_path):
+    cards = review.collect(str(_scene_video(tmp_path)), None)
+    assert len(cards) == 1
+    card = cards[0]
+    assert card["still_prompt"] == "The held counter gains a brass rail."
+    assert card["stage"] == "counter"
+    assert card["palette_basis"].startswith("Palette basis: cobalt field")
+    assert card["reason"] == "manifest reason"
+
+
+def test_palette_card_uses_165_to_240_cool_pair_without_gating(tmp_path):
+    card = review.collect(str(_scene_video(tmp_path)), None)[0]
+    assert card["palette"]["cool_pair_chroma"] > 0
+    assert card["palette"]["complementary_pair_chroma"] > 0
+    assert card["flagged"] is False
+    assert card["review_status"] == "unreviewed"
+
+
+def test_scene_card_html_renders_prompt_stage_basis_and_advisories(tmp_path):
+    card = review.collect(str(_scene_video(tmp_path)), None)[0]
+    page, _ = review.build([card], "Review", "", 1600, 82)
+    for text in ("still_prompt:", "counter", "Palette basis: cobalt field",
+                 "warm:", "cool:", "complementary pair:"):
+        assert text in page
+
+
+def test_staging_assets_card_uses_safe_defaults(tmp_path, monkeypatch):
+    video = tmp_path / "channels" / "x" / "videos" / "v"
+    video.mkdir(parents=True)
+    (video / "shots.json").write_text('{"long_form":{"shots":[]}}', encoding="utf-8")
+    staging = tmp_path / "kit" / "_staging"
+    staging.mkdir(parents=True)
+    frame = staging / "fig-cast--pose.png"
+    Image.new("RGB", (64, 96), "red").save(frame)
+    out = tmp_path / "review.html"
+    monkeypatch.setattr(sys, "argv", ["build_review_artifact.py", "--video", str(video),
+                                      "--out", str(out), "--staging", str(staging),
+                                      "--assets", str(frame)])
+    review.main()
+    page = out.read_text(encoding="utf-8")
+    assert "fig-cast--pose" in page and "still_prompt: —" in page
+    assert "palette basis: —" in page and "complementary pair: —" in page

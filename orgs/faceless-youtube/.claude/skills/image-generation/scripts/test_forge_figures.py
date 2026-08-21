@@ -38,3 +38,15 @@ def test_step1_prompt_ends_on_its_authored_delta():
     delta = "A new named cast member in a plain studio card."
     prompt = kit.prompt_for("new_character", delta)
     assert prompt.endswith(delta)
+
+
+def test_live_kit_expands_the_bible_crowd_clause():
+    bible = (KIT / "style-bible.md").read_text(encoding="utf-8")
+    expected = forge.blockquote_after(bible, "CROWD-RIG clause")
+    kit = forge.Kit(str(KIT), dry=True)
+    prompt = kit.prompt_for(mode="environment", delta="",
+                            figures={"crowd": True})
+    assert expected
+    assert kit.desc_crowdrig == expected
+    assert expected in prompt
+    assert prompt.endswith(expected)

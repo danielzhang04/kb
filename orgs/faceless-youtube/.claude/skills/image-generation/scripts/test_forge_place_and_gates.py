@@ -86,8 +86,8 @@ def _by_name(spec, name):
 # --- C-4: the place model ----------------------------------------------------------------------
 
 def test_a_place_holds_across_its_stage_chains_and_only_its_first_frame_is_a_plate():
-    """L89-L91's mechanism: shots on one set ran as independent seedless roots because `stage` —
-    a chain capped at 1 base + 2 deltas — was the only place forge knew."""
+    """L89-L91's mechanism: authoring decides the stage under the hold-camera test; realization
+    decides layer versus regeneration; the canonical cap is base + 3 deltas."""
     spec, err, _ = _run(_doc(
         {"id": "P1", "place": "records-room", "stage": "records-a", "stage_role": "base",
          "still_prompt": "A warm records room with a bare central table."},
@@ -289,8 +289,9 @@ def test_a_delta_that_changes_an_expression_must_carry_that_expressions_pixels()
     assert seeding_law_violations(k, _delta_request(), [CANON, PARENT, held]) == []
 
 def test_a_delta_restating_the_expression_its_chain_holds_stays_parent_plus_canonical():
-    """A genuine progressive delta may re-state the held recipe while only a prop changes; the
-    builder derives that no expression CHANGED, so no primitive is demanded (and no cap slot)."""
+    """Authoring decides the stage under the hold-camera test; realization decides layer versus
+    regeneration. A held delta may re-state its recipe while only a prop changes, so no expression
+    primitive is demanded (and no cap slot)."""
     spec, err, _ = _run(_doc(
         {"id": "E1", "place": "office", "stage": "office", "stage_role": "base",
          "still_prompt": f"{CAST} standing at the office desk."},
@@ -509,11 +510,15 @@ def test_a_pose_or_expression_primitive_is_refused_without_a_record():
     assert "pose `action-powerstance`" in err, err
 
 def test_the_crowd_exemplar_is_refused_without_a_record():
-    spec, err, _ = _unstamped(_doc(
-        {"id": "C9", "place": "records-room", "figures": {"crowd": True},
-         "still_prompt": "The records room seen from the door, clerks working along the back."}))
+    k, v = _kit(), _video()
+    _stamp_except(k, v, "crowd-exemplar")
+    plain = {"id": "C9", "place": "records-room",
+             "still_prompt": "The records room seen from the door, clerks working along the back."}
+    spec, err, _ = _run(_doc(dict(plain, figures={"crowd": True})), video=v, kit=k, stamp=False)
     assert spec is None, spec
     assert "crowd `crowd-exemplar`" in err, err
+    spec, err, _ = _run(_doc(plain), video=v, kit=k, stamp=False)
+    assert err is None, err
 
 def test_a_named_cast_members_own_canonical_is_never_gated():
     """The G2 modification, in code: "P2 seeds don't need their own human gates." A canonical with

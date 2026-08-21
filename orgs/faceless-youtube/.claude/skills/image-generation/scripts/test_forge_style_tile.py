@@ -240,7 +240,11 @@ def test_style_descriptor_and_empty_suffix_lock_are_loaded_from_the_bible():
     bible = (KIT_DIR / "style-bible.md").read_text(encoding="utf-8")
     style_only = forge_module.blockquote_after(bible, "STYLE-ONLY descriptor")
     assert style_only == ERA_STYLE_ONLY, style_only
-    suffix_section = bible.split("## 2d. Canonical dispatch suffix", 1)[1].split("\n## ", 1)[0]
+    kit = forge_module.Kit(str(KIT_DIR), dry=True)
+    assert kit.desc_identity == forge_module.blockquote_after(bible, "LOCKED STYLE descriptor")
+    assert kit.desc_style == style_only
+    assert kit.desc_righold == forge_module.blockquote_after(bible, "RIG-HOLD descriptor")
+    suffix_section = bible.split("## 2e. Canonical dispatch suffix", 1)[1].split("\n## ", 1)[0]
     assert "global_prompt_suffix`** — empty" in suffix_section
     assert not any(line.lstrip().startswith(">") for line in suffix_section.splitlines())
     assert not hasattr(forge_module, "HARDENED_SCENE_STYLE"), \

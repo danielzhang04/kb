@@ -67,7 +67,7 @@ stage "on-style" here.
 - **Co-stars share eye-line and height.** Two interacting characters face each other on one eye-line
   unless the size difference or the disconnection IS the beat's argument (a deliberate size gag or a
   cold shoulder) — never an accidental mismatch.
-- **Roles read at a glance.** Named cast wear their **pinned canonical outfits** (`registry.json`)
+- **Roles read at a glance.** Named characters wear their **pinned canonical outfits** (`registry.json`)
   unless the shot deliberately authors a change; an unnamed role carries 1–2 unmistakable signifiers
   (a king: crown + robe; a general: epaulettes) — a role the viewer must *deduce* is a staging failure.
 - **A character reveal is staged on the naming moment.** The first time a named character appears, the
@@ -79,72 +79,43 @@ stage "on-style" here.
 - **Name recurring entities consistently across shots** ("MacGregor" in every prompt, not "the con-man"
   in some) — downstream, `image-generation` derives the video's asset library by spotting recurrence in
   these prompts.
-- Recurring cast/props/plates that already exist are in `registry/registry.json` — write shots that
+- Recurring characters, props, and plates that already exist are in `registry/registry.json` — write shots that
   reuse them where they fit; invent new entities freely where the story needs them (they'll be
   materialized once at the image-gen pass).
-- **A recurring identifiable GROUP is a character, not a crowd.** A specific named band/duo/troupe that
-  reappears — its members must stay consistent shot to shot — is **cast** (a `cast` entry naming the
-  group, no `pose_ref`/`expression_ref`), so image-gen locks it once (canonical = the members together)
+- **A recurring identifiable GROUP is a character, not a crowd.** A specific named band, duo, or troupe
+  that reappears is one approved backticked character token in `still_prompt`; Forge seeds its group
+  canonical so the members stay consistent.
 4. **Cast it.** Every story-named or story-referenced figure — **including inside diegetic media** (a
-   brochure's prince who IS the story's con-man, a portrait, a poster) — routes through the channel
-   registry: name the registry asset in the prompt so `image-generation` seeds it. A role must read at
-   a glance (a king reads as a king via 1–2 signifiers); named cast wear their pinned canonical
-   outfits unless the shot deliberately authors a change. **A recurring identifiable GROUP** (a specific
-   named band/duo/troupe that reappears — its members must stay consistent) is cast too: ONE `cast` entry
-   naming the group, with no `pose_ref`/`expression_ref` (a group is not single-figure-posed; image-gen
-   **Recurring props are declared like cast.** A specific identifiable object that recurs across shots and
+   brochure's prince who IS the story's con-man, a portrait, a poster) — must be an approved backticked
+   registry character token in `still_prompt`, so `image-generation` seeds it. A role must read at a
+   glance (a king reads as a king via 1–2 signifiers); named characters wear their pinned canonical
+   outfits unless the shot deliberately authors a change.
+   **Recurring props are declared in `props`.** A specific identifiable object that recurs across shots and
    must look the SAME each time (the guidebook, a named banknote, a signed deed) is named in the shot's
    **`props` array** (its library name). A recurring prop named in the prose but omitted from `props` is an
-   authoring gap, exactly like an uncast named figure. A one-off object (used in a single shot, no match
+   authoring gap, exactly like an un-tokened named figure. A one-off object (used in a single shot, no match
    requirement) stays in the `still_prompt` prose only — no `props` entry, no slot.
-5. **Stage the tableau + act it — by SELECTING library assets, not describing them.** Mirror step 4's
-   casting: for each prominent figure, choose its **`pose_ref`** (the held body pose/gesture that carries the
-   action's meaning) and/or **`expression_ref`** (the face for this beat/register) **from the registry
-   vocabulary**, and record them on the shot's `cast` entry. These are SEEDED by `image-generation` (style-bible §5
-   one-run multi-seed) — so the pose/hands and the expression are the assets' job, **not** the `still_prompt`'s.
-   Scene-first ordering: the shot's meaning/scene drives which pose/expression fits, never the reverse.
-   `pose_ref`/`expression_ref` are each optional (a plain standing figure needs neither). A two-figure
-   interaction (a clasp) uses an **interaction** asset — the same kind of `pose_ref`, just one that shows two
-   figures — referenced by BOTH figures' `cast` entries. **The shot's `cast` ORDER binds the slots: the first
-   entry is the left figure, the second is the right** (image-gen seeds two identities into the template by
-   that order). If the registry lacks the interaction, surface it (below) as `kind: interaction`, no special path.
+5. **Stage the tableau + act it through executable prompt tokens.** Forge derives seeded figures from
+   backticked character tokens in `still_prompt`; the optional `cast` array is descriptive review metadata
+   and is never engine-read. Name an ordinary pair left-to-right as two approved character tokens. For
+   physical contact, name the left character, then the right character, then one approved interaction token
+   (`handoff`, `handshake`, or `fistbump`); that is the binding order consumed by `shot_cast`. If any token
+   is unavailable, emit `needed_assets` and stop at the existing human gate.
 
-## 2d. CROWD-RIG clause (verbatim — write INTO a crowd scene's prompt)
+**Anonymous crowd execution.** The crowd rig differs from the full rig only in the face; its squat
+head-to-body proportion matches the approved crowd exemplar. VPW declares `figures.crowd: true` and
+authors only the crowd's scene geometry, action, and era-specific dress. Forge appends the canonical
+style-bible §2d block and seeds `refs/base/crowd-exemplar.png`; named foreground characters still receive the
+full §2c rig. Review every depicted crowd figure against that exemplar.
 
-> The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple
-> consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **same squat
-> head-to-body proportion as the crowd exemplar seed** — a large round head on a short compact body, NOT
-> taller/lanky — in varied era-appropriate clothing. Keep every crowd figure on this same simplified rig —
-> do not give them individual detailed faces.
-
-**The crowd rig differs from the full rig ONLY in the FACE** (dot eyes + one simple mouth vs the full
-detailed features) — **head-to-body proportion matches the crowd exemplar seed** (human-confirmed 2026-07-16:
-"the crowd rig should be the exact same proportions as our base rig — the face is different, of course").
-So proportion is a stated FACT in every crowd/base-rig delta (the words above carry it), and anonymous
-figures rendering **taller/lankier than the crowd exemplar seed** are the proven drift (they carry no seed to pin
-proportion) — a first-class review axis, §3.
-
-This clause governs the **anonymous** figures only. Unlike §2c (which `forge.py` auto-appends to every
-character-bearing gen), **§2d is authored by VPW into the `still_prompt`** of any shot with an anonymous
-crowd (the prompt the engine sees must carry these words) — it is not auto-appended, because most shots
-have no crowd. A foreground named character in the same shot still holds its FULL rig via its seed + the
-auto-appended §2c; §2d simplifies only the anonymous background.
-
-**Crowd exemplar — the crowd's rig ANCHOR (human-gated 2026-07-16).** `refs/base/crowd-exemplar.png` —
-a human-approved crowd sample frame (5–6 anonymous figures on the EXACT squat base-rig proportion, dot
-eyes, one simple mouth, no noses/ears/teeth, varied era-appropriate dress) — is **SEEDED into EVERY
-crowd-bearing generation** as the crowd's proportion/face anchor. The §2d words above stay in the
-`still_prompt` (they carry the rig FACTS), but the **exemplar seed is what actually pins** proportion +
-face: a crowd carries no per-figure canonical, and prompt words alone let anonymous figures drift
-taller/lankier (the proven failure). This **supersedes** the earlier "author the §2d words, no seed"
-handling — a crowd is now prompt-authored (§2d) AND exemplar-seeded. It mechanizes Daniel's directive:
-don't generate figures that aren't based on the asset base rig, for the one tier that can't seed
-per-figure.
-
-
-Every depicted crowd figure must satisfy the crowd-exemplar comparator; latent figure-class content cannot silently pass.
-
-**Story bearer.** Every story-bearing individual is seeded named cast. Only a genuine rearward mass beat uses the simplified crowd rig.
+**Occupancy follows who acts in the sentence.** The performer whose decision, action or reaction makes
+it true is a seeded character; a pair is seeded when an exchange, relationship or shared labour is what the
+sentence shows; a beat whose subject is a thing, a quantity, a place or an absence carries no performer;
+a beat whose subject is the mass uses the simplified crowd rig. Three ordinary
+pair tableaux are a clerk and customer exchanging a box, two workers at one bench, and a manager with
+an auditor over one ledger. Figures stay small, mid/rear, in a structured world. a crowd is written in
+the primary scene clause as a bounded group held beyond something the scene already has — a pane, rails,
+a doorway, a pavement, a far bank — with the near zone empty, so the geometry sets its count and scale.
 
   `image-generation` surfaces there for approval. **Pose, interaction, expression, and costume are
   CLOSED-WORLD:** the primitive must ALREADY exist in `registry.json` or the video's approved library,

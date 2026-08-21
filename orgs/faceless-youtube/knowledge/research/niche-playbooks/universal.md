@@ -1348,16 +1348,16 @@ at a stage start.
 - **~4–8s per frame-swap**, one visual idea per sentence/clause. Vary by role: fast (1.5–3s) for
   jokes/enumerations, slow (5–12s) for dialogue/mechanism/emotional-turn beats; a longer,
   quieter breath-beat at emotional turns.
-- **HARD RULE: a shot exceeds ~8s ONLY with a progressive within-shot reveal** (a delta-chain
-  enumeration, an accreting build, a multiplying crowd) — otherwise, cut.
+- **HARD RULE: a shot exceeds ~8s only with a story-needed held state change or explicit
+  legibility/gravity reason** — otherwise, cut.
 - **Stretch-to-fill fix:** produce enough shots (roughly `runtime ÷ 8s` minimum) and give any long
-  shot a progressive reveal — an under-produced list gets stretched by re-timing, leaving one
+  shot a story-needed held state change or explicit legibility/gravity reason — an under-produced list gets stretched by re-timing, leaving one
   visual on screen too long.
 - **Structural breaths** every ~30–90s: a hard cut to a new stage, a palette turn, or a VO gap
   with a music dip.
-- **Continuity, cheapest first:** move a layer (zero drift) > a seeded delta-chain (a held STAGE:
-  `base` + ≤2 `delta` frames, each moving ONE element) > a hard cut to a new stage. No fades,
-  ever.
+- **Stage ownership and realization:** After shots exist, author a stage only when camera/set/primary
+  subject hold and each next beat has one story-needed state change; realization uses a seeded
+  delta-chain for integrative change and a seeded layer for discrete change. No fades, ever.
 - **Layer-vs-delta boundary:** a LAYER is discrete and non-integrated on a persistent plate (a
   seeded cutout that slides/pops over an unchanged background); a DELTA-CHAIN is integrative
   growth of the scene's own architecture, regenerated seeded off the prior frame. A re-base in

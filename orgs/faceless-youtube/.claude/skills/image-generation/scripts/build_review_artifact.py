@@ -2,6 +2,9 @@ import argparse, base64, hashlib, io, json, os, re, sys, html
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import forge          # same skill, same dir: the C-6 reuse gate is imported, never re-implemented
+from palette_metrics import metrics as palette_metrics
+
+PALETTE_NOTE_PREFIX = "Palette basis:"
 
 try:
     from PIL import Image
@@ -211,6 +214,21 @@ def asset_verdict_skeleton(assets, reviewer="fresh-eyes", date=None, staging=Non
                               "reviewer": reviewer, "date": stamp}
     return {"figures": out}
 
+
+def stage_key(sid, shot):
+    return shot.get("stage") or sid
+
+
+def palette_basis_by_stage(shots):
+    bases = {}
+    for sid, shot in shots.items():
+        stage = stage_key(sid, shot)
+        match = re.search(r"(?:^|\n)(Palette basis:[^\n]+)", shot.get("notes") or "")
+        if match and (stage not in bases or shot.get("stage_role") == "base"):
+            bases[stage] = match.group(1).strip()
+    return bases
+
+
 def collect(video, only, staging=None, assets=()):
     S, M, MAN = shot_index(video), motion_index(video), manifest_index(video)
     LIB = library_assets(video)
@@ -219,6 +237,7 @@ def collect(video, only, staging=None, assets=()):
     canon_file = canonical_files(LIB)
     owner_of = owner_literal_by_place(S.values())
     questions = review_questions(video)
+    palette_bases = palette_basis_by_stage(S)
     cards = []
     for sid, s in S.items():
         if only and sid not in only:
@@ -244,6 +263,10 @@ def collect(video, only, staging=None, assets=()):
                 sid=sid, label=label, path=path,
                 cls=s.get("shot_class") or "",
                 vo=s.get("vo_text") or "",
+                still_prompt=s.get("still_prompt") or "",
+                stage=stage_key(sid, s),
+                palette_basis=palette_bases.get(stage_key(sid, s), ""),
+                palette=palette_metrics(path),
                 anim=describe_animation(m),
                 flagged=bool(man.get("flagged")),
                 reason=man.get("notes") or "",
@@ -267,6 +290,7 @@ def collect(video, only, staging=None, assets=()):
             review_status="unreviewed",
             invariants=[(slug, questions.get(slug, "")) for slug in invariants_for(asset_key)],
             canon=[(char, canon)] if canon and os.path.exists(canon) else [],
+            still_prompt="", stage=stem, palette_basis="", palette={},
         ))
     return cards
 
@@ -369,6 +393,19 @@ def build(cards, title, subtitle, max_w, quality):
         flag = " flag" if c["flagged"] else ""
         badge = '<span class="badge">FLAGGED</span>' if c["flagged"] else ""
         rsn = ('<p class="rsn">%s</p>' % html.escape(c["reason"])) if (c["flagged"] and c["reason"]) else ""
+        palette = c.get("palette") or {}
+        stage = c.get("stage", c.get("sid", ""))
+        prompt = c.get("still_prompt", "")
+        basis = c.get("palette_basis", "")
+        advisory = (
+            '<p class="anim">stage: %s</p><p class="anim">still_prompt: %s</p>'
+            '<p class="anim">palette basis: %s</p>'
+            '<p class="anim">palette advisory — warm: %s · cool: %s · complementary pair: %s</p>'
+            % (html.escape(str(stage)), html.escape(prompt or "—"), html.escape(basis or "—"),
+               html.escape(str(palette.get("warm", "—"))),
+               html.escape(str(palette.get("cool", "—"))),
+               html.escape(str(palette.get("complementary_pair_chroma", "—"))))
+        )
         checks = ""
         if c.get("invariants"):
             rows = "".join(
@@ -390,10 +427,10 @@ def build(cards, title, subtitle, max_w, quality):
             '<figure class="card%s"><img loading="lazy" src="%s" alt="%s">'
             '<div class="meta"><div class="hd"><span class="id">%s</span>'
             '<span class="tag">%s</span><span class="tag">%s</span>%s</div>'
-            '<p class="vo">%s</p><p class="anim">%s</p>%s%s%s</div></figure>'
+            '<p class="vo">%s</p><p class="anim">%s</p>%s%s%s%s</div></figure>'
             % (flag, uri, html.escape(c["sid"]), html.escape(c["sid"]),
                html.escape(c["label"]), html.escape(c["cls"] or "—"), badge,
-               html.escape(c["vo"] or "—"), html.escape(c["anim"]), rsn, checks, canon))
+               html.escape(c["vo"] or "—"), html.escape(c["anim"]), advisory, rsn, checks, canon))
     nflag = sum(1 for c in cards if c["flagged"])
     page = (
         "<title>%s</title><style>%s</style><div class=wrap><h1>%s</h1>"
