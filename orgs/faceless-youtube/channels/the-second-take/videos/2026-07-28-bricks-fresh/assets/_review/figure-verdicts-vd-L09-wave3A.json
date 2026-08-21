@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L09.png": {
+   "canonical_sha256": "df32969c668948fc092a4fe1f2baf16961c0e162dee1992613b00567c9e37ea3",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: L08 camera, carton-holding compact crowd, brass rail, broad empty near aisle, lighting and approved crowd rig hold while the once-full rear shelf wall becomes mostly bare as the sole state change.",
+   "date": "2026-08-21"
+  }
+ }
+}

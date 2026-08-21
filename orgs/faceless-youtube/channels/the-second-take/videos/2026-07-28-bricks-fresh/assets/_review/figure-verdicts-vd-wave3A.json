@@ -1,0 +1,64 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-present--expr-deadpan--de7f3591.png": {
+   "canonical_sha256": "04622fd8924511827bbc4d0aa0db635f5976bf01293702eceed5149a2f7dcfdb",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "fail",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: wrong Miniscribe identity and costume, elongated body, visible nose and ear, and a five-digit presenting hand; card cannot seed L28.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-terry-johnson--expr-thinking--1bd7931d.png": {
+   "canonical_sha256": "19ef0c4a7560d045420d2bbc2e204b51808c5d38386fe3192749355e83734e13",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Terry Johnson identity, white shirt and tie, thinking eye-line, squat proportion, four-digit hands, outline and flat-cel register match the canonicals.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--a7f76f3b.png": {
+   "canonical_sha256": "ccbbdad92ff1c2bc03a85fd71608894dd24e28b1f070df76bed375e1ead2fa76",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Miniscribe identity and pinned tan jacket match; power stance and delighted expression are legible, with clean fists, proportion, outline and flat-cel register.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-ibm-suit--5ca0c6c1.png": {
+   "canonical_sha256": "6fb25092fc95e84e4a940814fab472708e10acccfeea294e2dbf1c3f367b1ddd",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: IBM identity card changes the pinned navy pinstripe three-piece suit into a teal work jacket and khaki trousers; card cannot seed L32.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-miniscribe-rep--5ca0c6c1.png": {
+   "canonical_sha256": "542ca8b572e2ad6ba6a4413d03cbe7d6a4b7183c080d3445e78e9e17164c2a00",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Miniscribe identity, tan jacket, neutral face, squat proportion, four-digit hands, outline and flat-cel register match the canonical.",
+   "date": "2026-08-21"
+  }
+ }
+}

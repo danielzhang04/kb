@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L06",
+      "name": "L06-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "The established oak counter, '1983' calendar, tall-window daylight, green panels, and cream computer hold; an inventor's drafting board now shows the same computer as a rough exploded blueprint.",
+        "to": "The established oak counter, cream computer, '1983' calendar, tall-window daylight, green panels, and shelving hold in their places; a narrow upright drafting board appears against the back wall left of the computer, showing its rough exploded blueprint."
+      }
+    }
+  ]
+}

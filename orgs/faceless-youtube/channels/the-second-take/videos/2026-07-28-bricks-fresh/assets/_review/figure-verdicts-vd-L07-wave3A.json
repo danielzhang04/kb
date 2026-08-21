@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L07.png": {
+   "canonical_sha256": "499b082a0a461acf945dadbeb641ff289836f249d60cbacf38ba8e3be372f278",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "fail"
+   },
+   "reviewer": "fresh-eyes pixels: the center aisle is clear and the crowd is rail-bounded, but foreground-edge bodies are tall and human-proportioned with visible profile noses/ears instead of the approved squat crowd rig.",
+   "date": "2026-08-21"
+  }
+ }
+}

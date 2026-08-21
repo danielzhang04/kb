@@ -3,8 +3,8 @@
     "name": "L08",
     "mode": "environment",
     "aspect": "16:9",
-    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nThe established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, a bounded shopper group now faces the computers beneath the rear mezzanine.",
-    "payload": "The established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, a bounded shopper group now faces the computers beneath the rear mezzanine.",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nThe established skylit shop, stocked wall, bounded shoppers beyond the brass rail, and clear near lane hold; the same shoppers now cradle newly purchased beige computer cartons.",
+    "payload": "The established skylit shop, stocked wall, bounded shoppers beyond the brass rail, and clear near lane hold; the same shoppers now cradle newly purchased beige computer cartons.",
     "seed": [
       "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L07.png",
       "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
@@ -28,7 +28,7 @@
     "assets_omitted": null,
     "plate": false,
     "delta_primitives": null,
-    "plate_parent": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L07.png",
+    "plate_parent": null,
     "expression_change": null,
     "parent_depth": 1,
     "lineage": 1,

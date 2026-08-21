@@ -136,3 +136,72 @@ Retry prompts also retained authored no-growth against vb: L03 `37≤39`, L04 `4
 
 - Independent Claude vision check (claude-sonnet-5, read-only, pixels only) concurred with 13/13 `verified` rulings: L13→L14 holds with the opened shell as the only change; L18→L19→L20 holds with one change per step (cashbox, pick-holder) and a consistent `drive-maker` identity; L16/L17 show only the two personified computers, small and non-dominant; L15 three isolated pairs; L25 bakes exactly `HARD DRIVE`. No gibberish, no unrequested humans, no blue/orange-dominant field.
 - Occupancy note: L18–L20 carry ~4 blurred background figures beyond the glass — authored ("competition blurs beyond glass"), so the drive-seller stage sits in the 4–6 bucket; the near counter zone stays a single figure.
+
+## Wave 3A (regens L01/L03/L04/L06–L10/L17/L22/L25 + L26–L32)
+
+- Date: `2026-08-21`
+- Branch: `claude/bricks-variant-vd`
+- Video: `2026-07-28-bricks-fresh`
+- Requested model: `gemini-3-pro-image`
+- Responding model: recorded per call
+- Image size: `1K`
+- Aspect: `16:9`
+- Conservative rate: `$0.134/call`
+- Provider-table comparator: `$0.039/call`
+- Base allowance: `18`
+- Retry allowance: `18` (one re-authored retry per failing shot)
+- STEP-1 figure-card allowance: up to `5`
+- Maximum calls: `41`
+- Conservative ceiling: `$5.494`
+- Provider comparator ceiling: `$1.599`
+- Spend gate: PASSED — Daniel commissioned this wave on `2026-08-21`.
+- Upstream authority: `shots.json` at HEAD is the lint-passed, critic-passed D fragment L01–L50; this window is 18 shots.
+- Superseded regen bytes: L01, L03, L04, L06, L07, L08, L09, L10, L17, L22, L25.
+- Holds: L05→L06; L07→L08→L09; L16→L17. Each delta waits for its verified parent.
+- Pre-D archive rows: L26, L28, L29, L30, L31, L35, L36, L37, L40, L41, L42, L43, L50, L27, L32, L33, L44, L46, L47, L48, L49, L34, L38, L39, L45, L169, L84, L114, L198, L65, L112, L86.
+- Pre-D archived PNGs: L26, L27, L28, L29, L30, L31, L32, L33, L35, L36, L37, L38, L40, L41, L42, L43, L44, L45, L46, L47, L48, L49, L50, L65, L84, L86, L112, L114, L169, L198. No matching non-D rows existed in `assets/_review/merged.json`.
+
+### Wave 3A calls
+
+| call | shot | base/retry/parent-regen | spec | seed roles | requested model | responding model | $0.134 cost | $0.039 comparator | output | fresh-eyes verdict | retry cause/park reason |
+| ---: | --- | --- | --- | --- | --- | --- | ---: | ---: | --- | --- | --- |
+| 38 | L01 | base | `spec-vd-wave3A.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L01.png` | defect — calendar rendered `1980S` instead of authored `1980s` | — |
+| 39 | L03 | base | `spec-vd-wave3A.json` | style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L03.png` | clean — trophy/ledger corporate-office mechanism foregrounds the joke | — |
+| 40 | L04 | base | `spec-vd-wave3A.json` | style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L04.png` | clean — seal, contract and revealed cash compartment foreground the scam | — |
+| 41 | L07 | base | `spec-vd-wave3A.json` | crowd-exemplar; Forge §2d appended | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L07.png` | defect — tall detailed shoppers occupy the foreground edge | — |
+| 42 | L10 | base | `spec-vd-wave3A.json` | crowd-exemplar; Forge §2d appended | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L10.png` | defect — crowd is foreground-dominant and breaks the bounded rear geometry | — |
+| 43 | L22 | base | `spec-vd-wave3A.json` | crowd-exemplar; lettering=`lettering-marker-italic`; Forge §2d appended | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L22.png` | clean — exact `26,000`, rear worker line and packing subject | — |
+| 44 | L25 | base | `spec-vd-wave3A.json` | canonical=`pc-boxy`; expression=`expr-delighted`; lettering=`lettering-marker-italic` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L25.png` | clean — pc-boxy identity/delight and exact `HARD DRIVE` | — |
+| 45 | L26 | base | `spec-vd-wave3A.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L26.png` | clean — world routes and three exact `HARD DRIVE` cartons | — |
+| 46 | L27 | base | `spec-vd-wave3A.json` | style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L27.png` | clean — unnamed dark factory corridor and open carton | — |
+| 47 | L28 figure card | base | `spec-vd-wave3A.json` | canonical=`miniscribe-rep`; pose=`action-present`; expression=`expr-deadpan`; STEP-1=`fig-miniscribe-rep--action-present--expr-deadpan--de7f3591` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-miniscribe-rep--action-present--expr-deadpan--de7f3591.png` | defect — identity/costume drift, elongated body and five-digit hand | L28 scene uncalled and parked; five-card allowance exhausted |
+| 48 | L29 | base | `spec-vd-wave3A.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L29.png` | clean — Colorado relief, workshop pin and exact `1980` | — |
+| 49 | L30 figure card | base | `spec-vd-wave3A.json` | canonical=`terry-johnson`; expression=`expr-thinking`; STEP-1=`fig-terry-johnson--expr-thinking--1bd7931d` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-terry-johnson--expr-thinking--1bd7931d.png` | clean STEP-1 card — Terry identity/costume/thinking register | card promoted; L30 scene generated at call 53 |
+| 50 | L31 figure card | base | `spec-vd-wave3A.json` | canonical=`miniscribe-rep`; pose=`action-powerstance`; expression=`expr-delighted`; STEP-1=`fig-miniscribe-rep--action-powerstance--expr-delighted--a7f76f3b` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--a7f76f3b.png` | clean STEP-1 card — miniscribe identity, power stance and delight | card promoted; L31 scene generated at call 54 |
+| 51 | L32 ibm-suit figure card | base | `spec-vd-wave3A.json` | canonical=`ibm-suit`; STEP-1=`fig-ibm-suit--5ca0c6c1` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-ibm-suit--5ca0c6c1.png` | defect — IBM pinstripe suit replaced by teal work jacket and khakis | L32 scene uncalled and parked; five-card allowance exhausted |
+| 52 | L32 miniscribe-rep figure card | base | `spec-vd-wave3A.json` | canonical=`miniscribe-rep`; STEP-1=`fig-miniscribe-rep--5ca0c6c1` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-miniscribe-rep--5ca0c6c1.png` | clean STEP-1 card — miniscribe identity and costume | card clean, but L32 remained blocked by the failed IBM card |
+| 53 | L30 | base | `spec-vd-wave3A-resume.json` | STEP-1=`fig-terry-johnson--expr-thinking--1bd7931d` (reviewed canonical-derived figure) | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L30.png` | clean — Terry leads the repeating drive-assembly bays | — |
+| 54 | L31 | base | `spec-vd-wave3A-resume.json` | STEP-1=`fig-miniscribe-rep--action-powerstance--expr-delighted--a7f76f3b` (reviewed canonical-derived figure) | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L31.png` | clean — delighted power stance carries the contained furnace-hot beat | — |
+| 55 | L07 | retry | `spec-vd-retry-L07.json` | crowd-exemplar; Forge §2d appended | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L07-vd-retry1.png` | clean retry — compact far-rail crowd, approved rig and empty near aisle | foreground-edge tall human crowd replaced by a compact far-rail queue with an empty broad foreground aisle |
+| 56 | L06 | parent-regen | `spec-vd-L06.json` | parent=`assets/scenes/L05.png` sha256=`dca7190c…061b`; lettering; style-anchor | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L06.png` | defect — drafting board displaced the held `1983` calendar | changed: inventor drafting board now shows the same computer as a rough exploded blueprint |
+| 57 | L06 | retry | `spec-vd-retry-L06.json` | parent=`assets/scenes/L05.png` sha256=`dca7190c…061b`; lettering; style-anchor | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L06-vd-retry1.png` | clean retry — L05 holds and narrow back-wall exploded board is the sole delta | drafting board that displaced the `1983` calendar replaced by a narrow back-wall board with the held calendar explicit |
+| 58 | L08 | parent-regen | `spec-vd-L08.json` | parent=`assets/scenes/L07.png` sha256=`5564d9ea…8d47`; crowd-exemplar; Forge §2d appended | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L08.png` | clean — L07 holds and the rear shoppers alone gain cartons | changed: the same rear shoppers now cradle newly purchased beige computer cartons |
+| 59 | L09 | parent-regen | `spec-vd-L09.json` | parent=`assets/scenes/L08.png` sha256=`f3930737…b00e`; crowd-exemplar; Forge §2d appended | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L09.png` | clean — L08 holds and the shelf wall alone becomes mostly bare | changed: the once-full shelf wall is now mostly bare |
+| 60 | L17 | parent-regen | `spec-vd-L17.json` | parent=`assets/scenes/L16.png` sha256=`28151c30…7c4a`; canonical=`pc-boxy`; canonical=`rival-pc` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L17.png` | clean — L16 holds and both face panels alone become annoyed | critic regen; changed: both computers' face panels now carry annoyance |
+| 61 | L01 | retry | `spec-vd-retry-L01.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L01-vd-wave3A-retry1.png` | clean retry — text-free period-object mechanism foregrounds early eighties | case-mismatched decade lettering replaced by a text-free early-eighties object cluster |
+| 62 | L10 | retry | `spec-vd-retry-L10.json` | crowd-exemplar; Forge §2d appended | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L10-vd-wave3A-retry1.png` | defect/park — Victorian dress breaks iPhone analogy; crowd bodies remain too tall | foreground-dominant launch crowd replaced by a compact queue beyond a deep doorway and empty oak floor |
+
+### Wave 3A close
+
+- Calls: 25 total — 16 base/parent-regens, 4 one-shot retries, 5 STEP-1 figure cards; 16/18 scene ids called and 2 scenes remained uncalled after card failures.
+- Verified (15): L01, L03, L04, L06, L07, L08, L09, L17, L22, L25, L26, L27, L29, L30, L31.
+- Parked (3): L10 — one retry fixed depth but rendered a Victorian queue and retained tall crowd bodies; L28 — uncalled because its only STEP-1 card lost miniscribe identity/costume and broke the hand/body rig; L32 — uncalled because the IBM card replaced the pinned navy pinstripe suit.
+- Retry causes: L01 case-mismatched decade lettering; L06 held `1983` calendar displaced; L07 foreground-edge tall crowd; L10 foreground-dominant crowd, then retry defect above. Each used exactly one retry.
+- Figure cards minted (5/5): L28 miniscribe-present-deadpan (defect); L30 Terry-thinking (clean); L31 miniscribe-powerstance-delighted (clean); L32 IBM neutral (defect); L32 miniscribe neutral (clean). No card retries remained.
+- Frames: 15 verified D-called SHA-matched frames copied to `variant-frames/vd`; all 11 old regen bytes preserved in `_superseded` with their prior SHA-256, including parked L10; L28/L32 remain absent.
+- Accounting: 25 × $0.134 = $3.350 conservative; 25 × $0.039 = $0.975 provider-table comparator. Cap intact: 16/41 calls unused (2 scene-base, 14 retry, 0 card allowance).
+- Cumulative D manifest: 62 calls; $8.308 conservative; $2.418 provider-table; 29 verified / 3 parked across L01–L32.
+
+### Ops cost row (five tab-separated fields; boss writes ledger)
+
+Variant D doctrine wave 3A: 25 calls, 15/18 verified, 3/18 parked; 16 base/parent-regen calls, 4 retries, 5 STEP-1 cards; conservative $0.134/call, provider-table $0.039/call; genlog scratchpad/vpw-var/genlog-vd.md on claude/bricks-variant-vd.	gemini-3-pro-image	gemini-3-pro-image	bricks variant D wave 3A 17 shots	3.350

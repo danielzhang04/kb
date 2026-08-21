@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L06-vd-retry1.png": {
+   "canonical_sha256": "ec4b3fc849f856ed1fe4a6eef01705070296f0cfc1f014070f368ee7a2d6d6a2",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes targeted pixels: L05 counter, computer, `1983` calendar, daylight, green panels and shelving hold; only a narrow back-wall exploded-component drafting board is added, foregrounding the recent invention beat.",
+   "date": "2026-08-21"
+  }
+ }
+}

@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L08.png": {
+   "canonical_sha256": "f393073784d6a0714f273c94a754982f4b88b239a44506d6eeb09d266ab6b00e",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: L07 camera, stocked walls, far-rail compact crowd, broad empty near aisle, lighting and crowd rig hold; the same rear shoppers now cradle plain beige computer cartons as the sole state change.",
+   "date": "2026-08-21"
+  }
+ }
+}

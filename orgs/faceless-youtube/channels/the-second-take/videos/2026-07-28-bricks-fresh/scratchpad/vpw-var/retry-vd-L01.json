@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L01",
+      "name": "L01-vd-wave3A-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "A beige CRT computer, corded telephone, and cassette deck form a crisp period desk beneath a wall calendar marked '1980s'; tungsten lamplight crosses walnut while cool night enters the window.",
+        "to": "A beige CRT computer, corded telephone, cassette deck, and stack of new-wave cassettes form a crisp early-eighties desk; tungsten lamplight crosses walnut while cool night enters through venetian blinds."
+      }
+    }
+  ]
+}

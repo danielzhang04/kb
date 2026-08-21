@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L07-vd-retry1.png": {
+   "canonical_sha256": "5564d9eaa1f2b5e8691b00103fefa3b38f6f63ff19948dca3aad3dbceeb08d47",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes targeted pixels: compact dot-eye crowd holds the approved squat rig behind the far brass rail; the broad terrazzo near aisle is empty and the stocked computer walls remain the dominant world geometry.",
+   "date": "2026-08-21"
+  }
+ }
+}

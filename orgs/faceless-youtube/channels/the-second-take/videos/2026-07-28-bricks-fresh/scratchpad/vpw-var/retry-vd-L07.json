@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L07",
+      "name": "L07-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "A fully stocked computer wall rises beneath a milky skylight; beyond the brass rail, bounded 1980s shoppers pack the rear queue facing beige PCs while the clear terrazzo near lane leads into demand.",
+        "to": "A fully stocked computer wall frames a distant rear queue beneath a milky skylight; compact 1980s shoppers gather behind the far brass rail, their small round heads above bright knit tops, while a broad terrazzo foreground aisle remains clear."
+      }
+    }
+  ]
+}

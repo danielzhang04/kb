@@ -1,0 +1,56 @@
+[
+  {
+    "name": "L30",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\nAt the head of a drive-assembly bench, `terry-johnson` `expr-thinking` faces repeating machinery bays; tall-window daylight crosses cream casings, teal floor paint, and steel tools.",
+    "payload": "At the head of a drive-assembly bench, `terry-johnson` `expr-thinking` faces repeating machinery bays; tall-window daylight crosses cream casings, teal floor paint, and steel tools.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--expr-thinking--1bd7931d.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--expr-thinking--1bd7931d.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`terry-johnson` STEP-1 fig-terry-johnson--expr-thinking--1bd7931d REUSED"
+  },
+  {
+    "name": "L31",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\nUnder contained furnace light, `miniscribe-rep` `action-powerstance` `expr-delighted` occupies a low factory platform; amber light crosses teal steel frames, bare concrete, and deep machine aisles.",
+    "payload": "Under contained furnace light, `miniscribe-rep` `action-powerstance` `expr-delighted` occupies a low factory platform; amber light crosses teal steel frames, bare concrete, and deep machine aisles.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--a7f76f3b.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--a7f76f3b.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-delighted--a7f76f3b REUSED"
+  }
+]

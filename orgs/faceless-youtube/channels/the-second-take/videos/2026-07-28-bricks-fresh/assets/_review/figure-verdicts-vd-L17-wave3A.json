@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L17.png": {
+   "canonical_sha256": "d6796db9234ad2527dd299243038a5e2f9e5b202bb190b586277a5c40c2ec8c9",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: L16 camera, opposite shelf landings, cream rows, brass center rail, high skylight, identities, scale and poses hold; both face panels alone change to restrained annoyed frowns at matching eye-line.",
+   "date": "2026-08-21"
+  }
+ }
+}

@@ -1,0 +1,11 @@
+{
+ "figures": {
+  "_staging/L01-vd-wave3A-retry1.png": {
+   "canonical_sha256": "bc712f7e74d12ce3aa66b6ddce8acd48ea70aea1779ec7d6b793853b50f91480",
+   "expression_sha256": null,
+   "verdicts": {"fidelity": "pass", "style": "pass", "rig": "pass"},
+   "reviewer": "fresh-eyes targeted pixels: period computer, twin corded telephones, cassette deck and cassette stack make the early-eighties line immediate without load-bearing text; lighting and register are clean.",
+   "date": "2026-08-21"
+  }
+ }
+}

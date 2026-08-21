@@ -1,202 +1,258 @@
 [
- {
-  "id": "L01",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes: oversized beige hard-drive carton dominates the walnut desk, with a clay-red rectangular corner at the seam and the tiny unlit computer held far back; fidelity and style clean, no unrequested text."
- },
- {
-  "id": "L02",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes: distant arcade cabinet glows below extravagant 1980s wigs in a long mall corridor, with amber light, brass trim, empty terrazzo foreground, and receding shop fronts; fidelity and style clean."
- },
- {
-  "id": "L03",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes after one retry: trophy-like hard-drive carton on a walnut corporate plinth now has one rigid clay-red rectangular corner forcing a straight-edged seam opening; fidelity and style clean."
- },
- {
-  "id": "L04",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes after one retry: pc-boxy holds the requested middle-distance occupancy while facing the suspicious carton in the long electronics aisle; canonical silhouette, skeptical expression, fidelity, and style clean."
- },
- {
-  "id": "L05",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes: broad oak counter, beige home computer, and desk calendar read '1983' verbatim; tall-window daylight crosses cream plastic, green panels, and wood grain. Fidelity, style, lettering, and applicable rig rows clean; valid parent for pc-arrival."
- },
- {
-  "id": "L06",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes: established L05 counter, 1983 calendar, daylight, panels, and computer hold while the computer is now half-unpacked in a straw-lined shipping crate; single delta, fidelity, style, and lettering clean."
- },
- {
-  "id": "L07",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes: fully stocked beige PC shelf wall under a milky skylight, empty brass queue lane across pale terrazzo, and long plaster bays; fidelity/style clean and the unoccupied near zone makes this a valid retail-shelf parent."
- },
- {
-  "id": "L09",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes: L08 shop, bounded rear crowd, brass rail, empty near lane, camera, and simplified 1980s crowd rig hold while the shelf wall becomes mostly bare; single delta, fidelity, and style clean."
- },
- {
-  "id": "L10",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes after one retry: lone beige computer carton tilts toward a distant plain open shop door with unmarked glass; the retry removed gibberish storefront text and fidelity/style are clean."
- },
- {
-  "id": "L11",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes after one retry: exposed hard-disk chassis, platter, and connector read clearly on the broad repair bench instead of a safe/toaster silhouette; fidelity and style clean, no unrequested text."
- },
- {
-  "id": "L12",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes: beige computer and separate hard-drive unit sit on the cutaway worktable joined by one thick copper conduit, with the tall workshop receding behind; fidelity and style clean."
- },
- {
-  "id": "L13",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: switched-off computer and one sealed hard drive hold on a walnut desk under cool window light; sparse indigo built-in shelf and bare rear workbench remove the first call's invented product lettering; drive-memory parent is holdable; palette basis is physically visible; no figures or requested lettering."
- },
- {
-  "id": "L14",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: L13's camera, switched-off computer, walnut desk, cool light, indigo shelf, and hard drive hold; the shell alone opens to three compartments containing folded paper, one small tool, and a keepsake box; no invented labels; palette basis holds."
- },
- {
-  "id": "L15",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: three beige computers occupy three separate pale-green bays, each directly above its own hard drive and isolated short copper loop with visible wall gaps between circuits; daylight, cream shells, brass mounts, and metal support the palette basis; no text."
- },
- {
-  "id": "L16",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: small full-body `pc-boxy` and `rival-pc` face across opposite mid-aisle shelf landings at matching eye-line; both identities and no-hand rigs match their canonicals while the deep store and brass center rail dominate the frame; skylight and cream rows support the basis; no text."
- },
- {
-  "id": "L17",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: small `pc-boxy` and `rival-pc` hold opposing brass plinths beneath towering wedge-shaped shelf rows; both screens visibly carry restrained annoyed frowns toward the empty center bay; identities, no-hand rigs, hard skylight, cream laminate, and dark rails read clean; no text."
- },
- {
-  "id": "L18",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: reviewed `drive-maker` smug-expression card holds identity, costume, rig, and face behind the overlooked hard drive; competition is blurred beyond glass; steel tools, ochre timber, brass pan, and window light support the stated field; no unrequested text; valid drive-seller parent."
- },
- {
-  "id": "L19",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: L18's camera, window, blurred competition, drive-maker identity and smug face, hard drive, tools, ochre counter, and brass pan hold; one open brass cashbox with coins is the sole visible state change; no unrequested text; valid parent for L20."
- },
- {
-  "id": "L20",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: L19's camera, window, blurred competition, drive-maker identity and smug face, cashbox, counter, tools, timber, and brass pan hold; the hard drive alone gains a miner's-pick-shaped brass holder; no text or extra story change."
- },
- {
-  "id": "L21",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: one hard drive rests inside a brass prospector pan among ordinary pebbles while a distant gold glint sits beyond the broad ochre ridge; hard sunlight, metal, stone, and dry earth visibly support the stage field; no figures or text."
- },
- {
-  "id": "L22",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: one oversized sealed foreground carton begins a long procession of matching boxes receding between tall charcoal warehouse racks; pale skylight, kraft board, and clay-red seams support the stated field; company identity remains unrevealed and no text appears."
- },
- {
-  "id": "L23",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: canonical no-hand `pc-boxy` with restrained skeptical face stands beside one sealed carton and studies its cracked suspicious seam in a deep warehouse aisle; rear-door light, steel racks, pallets, and the small device scale read clean; no unrequested text."
- },
- {
-  "id": "L24",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: one red clay brick is visibly contained by the open kraft carton before a pallet face of sealed boxes; pale roof light crosses clay, corrugated board, and charcoal racks as stated; no figures or text."
- },
- {
-  "id": "L08",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Variant D fresh-eyes after one retry: held skylit shop and stocked wall persist; a bounded rear group in visibly 1980s knit tops, jeans, and jackets appears beyond the brass rail while the near lane remains empty. Crowd scale, simplified rig, fidelity, and style clean."
- },
- {
-  "id": "L25",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "fresh-eyes D pixels: one sealed kraft carton dominates the packing bench with exact `HARD DRIVE` marker-capital lettering; pale roof light, corrugated board, pallet slats, and charcoal racks support the field; no brick is visible and no extra text appears."
- }
+    {
+        "id":  "L01",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Variant D fresh-eyes: oversized beige hard-drive carton dominates the walnut desk, with a clay-red rectangular corner at the seam and the tiny unlit computer held far back; fidelity and style clean, no unrequested text."
+    },
+    {
+        "id":  "L02",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Variant D fresh-eyes: distant arcade cabinet glows below extravagant 1980s wigs in a long mall corridor, with amber light, brass trim, empty terrazzo foreground, and receding shop fronts; fidelity and style clean."
+    },
+    {
+        "id":  "L03",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Variant D fresh-eyes after one retry: trophy-like hard-drive carton on a walnut corporate plinth now has one rigid clay-red rectangular corner forcing a straight-edged seam opening; fidelity and style clean."
+    },
+    {
+        "id":  "L04",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Variant D fresh-eyes after one retry: pc-boxy holds the requested middle-distance occupancy while facing the suspicious carton in the long electronics aisle; canonical silhouette, skeptical expression, fidelity, and style clean."
+    },
+    {
+        "id":  "L05",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Variant D fresh-eyes: broad oak counter, beige home computer, and desk calendar read \u00271983\u0027 verbatim; tall-window daylight crosses cream plastic, green panels, and wood grain. Fidelity, style, lettering, and applicable rig rows clean; valid parent for pc-arrival."
+    },
+    {
+        "id":  "L06",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes after one retry: L05 counter, computer, `1983` calendar, daylight, green panels and shelving hold while one narrow back-wall drafting board shows the computer\u0027s exploded components; single delta, fidelity, style and lettering clean."
+    },
+    {
+        "id":  "L07",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes after one retry: compact dot-eye shoppers hold the approved squat crowd rig behind the far brass rail; the broad terrazzo near aisle is empty, the stocked computer walls dominate, and this is a valid retail-shelf parent."
+    },
+    {
+        "id":  "L09",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: L08 camera, carton-holding compact crowd, brass rail, broad empty near aisle, lighting and approved crowd rig hold while the once-full rear shelf wall becomes mostly bare as the sole state change."
+    },
+    {
+        "id":  "L10",
+        "f":  "defect",
+        "s":  "clean",
+        "r":  "defect",
+        "worst":  "HIGH",
+        "why":  "Wave 3A parked after one retry: depth and empty floor improved, but Victorian dress breaks the iPhone-launch analogy and several queue figures remain too tall for the approved crowd rig."
+    },
+    {
+        "id":  "L11",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Variant D fresh-eyes after one retry: exposed hard-disk chassis, platter, and connector read clearly on the broad repair bench instead of a safe/toaster silhouette; fidelity and style clean, no unrequested text."
+    },
+    {
+        "id":  "L12",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Variant D fresh-eyes: beige computer and separate hard-drive unit sit on the cutaway worktable joined by one thick copper conduit, with the tall workshop receding behind; fidelity and style clean."
+    },
+    {
+        "id":  "L13",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: switched-off computer and one sealed hard drive hold on a walnut desk under cool window light; sparse indigo built-in shelf and bare rear workbench remove the first call\u0027s invented product lettering; drive-memory parent is holdable; palette basis is physically visible; no figures or requested lettering."
+    },
+    {
+        "id":  "L14",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: L13\u0027s camera, switched-off computer, walnut desk, cool light, indigo shelf, and hard drive hold; the shell alone opens to three compartments containing folded paper, one small tool, and a keepsake box; no invented labels; palette basis holds."
+    },
+    {
+        "id":  "L15",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: three beige computers occupy three separate pale-green bays, each directly above its own hard drive and isolated short copper loop with visible wall gaps between circuits; daylight, cream shells, brass mounts, and metal support the palette basis; no text."
+    },
+    {
+        "id":  "L16",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: small full-body `pc-boxy` and `rival-pc` face across opposite mid-aisle shelf landings at matching eye-line; both identities and no-hand rigs match their canonicals while the deep store and brass center rail dominate the frame; skylight and cream rows support the basis; no text."
+    },
+    {
+        "id":  "L17",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: L16 camera, opposite shelf landings, cream rows, brass center rail, high skylight, identities, scale and poses hold; both face panels alone change to restrained annoyed frowns at matching eye-line."
+    },
+    {
+        "id":  "L18",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: reviewed `drive-maker` smug-expression card holds identity, costume, rig, and face behind the overlooked hard drive; competition is blurred beyond glass; steel tools, ochre timber, brass pan, and window light support the stated field; no unrequested text; valid drive-seller parent."
+    },
+    {
+        "id":  "L19",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: L18\u0027s camera, window, blurred competition, drive-maker identity and smug face, hard drive, tools, ochre counter, and brass pan hold; one open brass cashbox with coins is the sole visible state change; no unrequested text; valid parent for L20."
+    },
+    {
+        "id":  "L20",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: L19\u0027s camera, window, blurred competition, drive-maker identity and smug face, cashbox, counter, tools, timber, and brass pan hold; the hard drive alone gains a miner\u0027s-pick-shaped brass holder; no text or extra story change."
+    },
+    {
+        "id":  "L21",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: one hard drive rests inside a brass prospector pan among ordinary pebbles while a distant gold glint sits beyond the broad ochre ridge; hard sunlight, metal, stone, and dry earth visibly support the stage field; no figures or text."
+    },
+    {
+        "id":  "L22",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: one oversized sealed foreground carton begins a long procession of matching boxes receding between tall charcoal warehouse racks; pale skylight, kraft board, and clay-red seams support the stated field; company identity remains unrevealed and no text appears."
+    },
+    {
+        "id":  "L23",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: canonical no-hand `pc-boxy` with restrained skeptical face stands beside one sealed carton and studies its cracked suspicious seam in a deep warehouse aisle; rear-door light, steel racks, pallets, and the small device scale read clean; no unrequested text."
+    },
+    {
+        "id":  "L24",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: one red clay brick is visibly contained by the open kraft carton before a pallet face of sealed boxes; pale roof light crosses clay, corrugated board, and charcoal racks as stated; no figures or text."
+    },
+    {
+        "id":  "L08",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: L07 camera, stocked walls, far-rail compact crowd, broad empty near aisle, lighting and approved squat crowd rig hold; the same rear shoppers now cradle plain beige computer cartons as the sole state change."
+    },
+    {
+        "id":  "L25",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "fresh-eyes D pixels: one sealed kraft carton dominates the packing bench with exact `HARD DRIVE` marker-capital lettering; pale roof light, corrugated board, pallet slats, and charcoal racks support the field; no brick is visible and no extra text appears."
+    },
+    {
+        "id":  "L26",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: three exact `HARD DRIVE` cartons at separated port nodes and copper route arcs foreground worldwide distribution; lettering and style clean."
+    },
+    {
+        "id":  "L27",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: an open carton leads into the unnamed dark factory corridor and distant assembly glow; fidelity and style clean."
+    },
+    {
+        "id":  "L28",
+        "f":  "defect",
+        "s":  "clean",
+        "r":  "defect",
+        "worst":  "HIGH",
+        "why":  "Wave 3A parked uncalled: the only STEP-1 card lost miniscribe-rep identity and costume, elongated the body, and rendered a five-digit presenting hand; the fixed card allowance was exhausted."
+    },
+    {
+        "id":  "L29",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: Colorado relief, a pinned hard-drive workshop and exact `1980` plate foreground both line facts; lettering and style clean."
+    },
+    {
+        "id":  "L30",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: reviewed Terry Johnson identity and thinking expression lead the repeating drive-assembly bays; rig, identity and style clean."
+    },
+    {
+        "id":  "L31",
+        "f":  "clean",
+        "s":  "clean",
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3A fresh-eyes: reviewed delighted power stance dominates a contained furnace-hot factory field; rig, identity, pose, expression and style clean."
+    },
+    {
+        "id":  "L32",
+        "f":  "defect",
+        "s":  "clean",
+        "r":  "defect",
+        "worst":  "HIGH",
+        "why":  "Wave 3A parked uncalled: the ibm-suit STEP-1 card replaced the pinned navy pinstripe suit with a teal work jacket and khakis; the fixed card allowance was exhausted."
+    }
 ]

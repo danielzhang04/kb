@@ -1,0 +1,11 @@
+{
+ "figures": {
+  "_staging/L10-vd-wave3A-retry1.png": {
+   "canonical_sha256": "fdc65a253e9d4af782a3f498ebfc154e07adb89057b4f5907085ab36c3457c2b",
+   "expression_sha256": null,
+   "verdicts": {"fidelity": "fail", "style": "pass", "rig": "fail"},
+   "reviewer": "fresh-eyes targeted pixels: doorway depth and empty floor pass, but Victorian dress breaks the iPhone-launch analogy and several queue bodies remain too tall for the approved crowd rig.",
+   "date": "2026-08-21"
+  }
+ }
+}

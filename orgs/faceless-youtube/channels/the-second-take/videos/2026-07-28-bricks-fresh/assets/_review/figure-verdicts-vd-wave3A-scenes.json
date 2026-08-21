@@ -1,0 +1,125 @@
+{
+ "figures": {
+  "_staging/L01.png": {
+   "canonical_sha256": "6591c7b05704ade43993f2f67f425b087206432e0949f56a76716ea2e6f0dcc2",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: decade calendar rendered `1980S`, not the authored `1980s`; period desk otherwise clean.",
+   "date": "2026-08-21"
+  },
+  "_staging/L03.png": {
+   "canonical_sha256": "698ab7f8dccb0a9b3275d51c7af6d9cdb4d581acef559a79b5e50cefe7995fa1",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: oversized executive trophy balances on the tiny closed ledger in the authored corporate office.",
+   "date": "2026-08-21"
+  },
+  "_staging/L04.png": {
+   "canonical_sha256": "689b1840b9bab18fb07eb8331cb67d69afcca8d7cb024b510b78fba9eef7f109",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: seal and blank contract sit directly above the revealed cash compartment, foregrounding the scam.",
+   "date": "2026-08-21"
+  },
+  "_staging/L10.png": {
+   "canonical_sha256": "cb99b0d903534db34f5365ae12437f3c8005a1ee8a5e7ee03c38a29307e5866a",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "fail"
+   },
+   "reviewer": "fresh-eyes pixels: launch shoppers crowd the right foreground and use tall detailed bodies, defeating rearward non-dominant crowd geometry.",
+   "date": "2026-08-21"
+  },
+  "_staging/L22.png": {
+   "canonical_sha256": "3327e24264c1232f2c97d62cd02c98914489197a70317a8bce3def5f423c5996",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: exact `26,000` tally crowns a rear packing line while cartons and bench remain the dominant subject.",
+   "date": "2026-08-21"
+  },
+  "_staging/L25.png": {
+   "canonical_sha256": "f6baa69a195f7f971529bafdad75ecaeb302b122eb0bace5ab62cb4b6d123b1e",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: delighted pc-boxy presents one exact `HARD DRIVE` carton beside the open cashbox.",
+   "date": "2026-08-21"
+  },
+  "_staging/L26.png": {
+   "canonical_sha256": "4360deb592a1616ac58d8b7d44deb6e6c26ff32f8aa40b0a70fa96f67eca0cfa",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: three exact `HARD DRIVE` cartons and copper routes foreground worldwide distribution.",
+   "date": "2026-08-21"
+  },
+  "_staging/L27.png": {
+   "canonical_sha256": "ea2864508b69fb1b6068d8cfb5b042e812e63634827dfa3fe8ab6981fd7cdfe8",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: the open carton leads into an unnamed dark factory corridor and distant assembly glow.",
+   "date": "2026-08-21"
+  },
+  "_staging/L29.png": {
+   "canonical_sha256": "374ff62a39f20299431fb961558866196334b80859233e2a89285a469fadf0bf",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Colorado relief, hard-drive workshop, and exact `1980` plate carry both line facts.",
+   "date": "2026-08-21"
+  },
+  "_staging/L30.png": {
+   "canonical_sha256": "6871a144954aed9f464bfe39ab8f1e3294e86cee58cd98598136872549566db7",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: reviewed Terry Johnson identity and thinking expression lead the drive-assembly bench.",
+   "date": "2026-08-21"
+  },
+  "_staging/L31.png": {
+   "canonical_sha256": "b40aa4d61496fba7c793e4558a895999f05b582acfd3ec1b5e87f6c249bae8a1",
+   "expression_sha256": null,
+"verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: reviewed delighted power stance dominates a contained furnace-hot factory field.",
+   "date": "2026-08-21"
+  }
+ }
+}

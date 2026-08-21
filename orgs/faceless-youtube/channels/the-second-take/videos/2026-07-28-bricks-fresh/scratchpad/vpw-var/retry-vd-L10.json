@@ -5,11 +5,11 @@
     {
       "kind": "scene",
       "shot": "L10",
-      "name": "L10-vd-retry1",
+      "name": "L10-vd-wave3A-retry1",
       "defect": "content",
       "replace": {
-        "from": "On a tilted oak display ramp, one beige computer carton points toward an open shop door; clear daylight crosses the cream box and timber shelves while a long empty aisle makes the release analogy read without a logo.",
-        "to": "One beige computer carton rests nose-down on a tilted oak display ramp aimed at a plain open shop door; clear daylight crosses cream board and bare timber, while an unmarked glass frontage opens into one long empty aisle."
+        "from": "A black-glass smartphone stands on a lit pedestal beside a beige computer carton; beyond a serpentine brass rail, bounded shoppers pack the rear launch queue while the clear oak floor leads to the display under open-door daylight.",
+        "to": "A black-glass smartphone and beige computer carton share a lit pedestal in the near left; through a deep open doorway, a compact launch queue waits behind a distant brass zigzag rail, with the broad oak floor empty between."
       }
     }
   ]
