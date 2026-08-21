@@ -56,9 +56,7 @@ def word_count(shot: dict) -> int:
     return len(re.findall(r"\S+", str(shot.get("still_prompt") or "")))
 
 
-def frame(label: str, shot_id: str, path: Path, *, allowed: bool, quality: int, max_dimension: int, missing: list[str], entry: dict | None = None) -> tuple[str, int]:
-    if not allowed:
-        return '<div class="frame missing"><span>not a taste-reference row</span></div>', 0
+def frame(label: str, shot_id: str, path: Path, *, quality: int, max_dimension: int, missing: list[str], entry: dict | None = None) -> tuple[str, int]:
     if entry is not None and (entry.get("review_status") == "parked" or not entry.get("file")):
         reason = missing_reason(entry)
         missing.append(f"D/{shot_id} — {reason}")
@@ -119,16 +117,17 @@ def render_board(quality: int, max_dimension: int, manifest_path: Path = MANIFES
     shots = {shot["id"]: shot for shot in load_json(ROOT / "shots.json")["long_form"]["shots"]}
     manifest_data = load_json(manifest_path)
     manifest = {entry["shot_id"]: entry for entry in manifest_data.get("shots", [])}
-    counts = {"D": 0, "LIKED": 0}
+    counts = {"D": 0, "LIKED": 0, "LIKED_REFERENCE": 0}
     missing: list[str] = []
     rows: list[str] = []
     for shot_id in SHOT_IDS:
         shot = shots.get(shot_id, {})
         entry = manifest.get(shot_id)
-        d_frame, d_count = frame("D", shot_id, ROOT / "scratchpad" / "variant-frames" / "vd" / f"{shot_id}.png", allowed=True, quality=quality, max_dimension=max_dimension, missing=missing, entry=entry)
-        liked_frame, liked_count = frame("LIKED", shot_id, ROOT / "assets" / "_archive-pre-reset" / "scenes" / f"{shot_id}.png", allowed=shot_id in LIKED_SHOT_IDS, quality=quality, max_dimension=max_dimension, missing=missing)
+        d_frame, d_count = frame("D", shot_id, ROOT / "scratchpad" / "variant-frames" / "vd" / f"{shot_id}.png", quality=quality, max_dimension=max_dimension, missing=missing, entry=entry)
+        liked_frame, liked_count = frame("LIKED", shot_id, ROOT / "assets" / "_archive-pre-reset" / "scenes" / f"{shot_id}.png", quality=quality, max_dimension=max_dimension, missing=missing)
         counts["D"] += d_count
         counts["LIKED"] += liked_count
+        counts["LIKED_REFERENCE"] += int(shot_id in LIKED_SHOT_IDS)
         retry = str((entry or {}).get("retry_cause") or "")
         retry_note = f'<p class="retry">retry: {html.escape(retry)}</p>' if retry else ""
         liked_badge = '<span class="badge liked">liked</span>' if shot_id in LIKED_SHOT_IDS else ""
@@ -162,7 +161,7 @@ def main() -> None:
         last_size = len(page.encode("utf-8"))
         if last_size < MAX_BYTES:
             OUTPUT.write_text(page, encoding="utf-8")
-            print(json.dumps({"output": str(OUTPUT), "bytes": last_size, "D_count": counts["D"], "liked_count": counts["LIKED"], "missing": missing}, ensure_ascii=False))
+            print(json.dumps({"output": str(OUTPUT), "bytes": last_size, "D_count": counts["D"], "liked_count": counts["LIKED"], "liked_reference_count": counts["LIKED_REFERENCE"], "missing": missing}, ensure_ascii=False))
             return
     raise RuntimeError(f"board remains over 14 MiB after final compression: {last_size} bytes")
 
