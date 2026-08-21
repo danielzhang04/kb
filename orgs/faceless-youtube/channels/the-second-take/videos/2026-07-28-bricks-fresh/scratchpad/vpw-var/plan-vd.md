@@ -170,6 +170,8 @@ Only L08–L09 uses `figures.crowd: true`. The mass is the generalized buying de
 
 Rows L03, L04, L08, L10, L11 reflect the Task-3 single re-authored retries (see genlog-vd.md); all remain ≤ vb.
 
+Rows L13, L15, L16, L17, L18 reflect the wave-2 single re-authored retries (see genlog-vd.md); all remain ≤ vb.
+
 Authored words use `len(still_prompt.split())`. Assembled-provider deltas are computed separately with dry `Kit.prompt_for("style", ..., hold=bool(shot_cast), figures=...)`; positive assembled changes reflect changed cast/crowd routing and do not excuse authored growth.
 
 | id | vb authored | vd authored | authored delta | exact lower-value text removed | exact replacement fact | assembled-provider delta | verdict |
@@ -186,12 +188,12 @@ Authored words use `len(still_prompt.split())`. Assembled-provider deltas are co
 | L10 | 46 | 38 | -8 | `blue daylight arcade` | `clear daylight crosses cream board and bare timber` | -8 | PASS |
 | L11 | 36 | 33 | -3 | `inside a deep working world` | `high green-glass windows cast cool light across coiled cables` | -9 | PASS |
 | L12 | 42 | 36 | -6 | `mechanism reads as a scene rather than a card` | `hard drive nested inside its chassis` | -11 | PASS |
-| L13 | 38 | 27 | -11 | `stored memory feel quiet and durable` | `cool window light crosses its sealed shell, indigo shelving` | -9 | PASS |
+| L13 | 38 | 33 | -5 | `stored memory feel quiet and durable` | `cool window light isolates the sealed shell between an indigo built-in shelf` | -9 | PASS |
 | L14 | 41 | 32 | -9 | `give each object ample room` | `overhead light crosses sage shelving, steel runners, and the cream desk` | -9 | PASS |
-| L15 | 44 | 32 | -12 | `small rear-zone crowd of computer buyers` | `high window light crosses cream cases and polished metal` | -87 | PASS |
-| L16 | 42 | 31 | -11 | `little rivalry sit inside a much larger market world` | `high skylight washes cream shelf rows and a brass center rail` | -11 | PASS |
-| L17 | 32 | 28 | -4 | `blue daylight hold` | opposing brass plinths with converging shelf rows | +119 | PASS |
-| L18 | 28 | 28 | 0 | `rival computers, market bell` | `drive-maker` at an ochre timber supply counter | +124 | PASS |
+| L15 | 44 | 39 | -5 | `small rear-zone crowd of computer buyers` | `three circuits` each with `its own hard drive` | -87 | PASS |
+| L16 | 42 | 37 | -5 | `little rivalry sit inside a much larger market world` | `opposite shelf landings` in the larger empty store | -11 | PASS |
+| L17 | 32 | 30 | -2 | `blue daylight hold` | `tall wedge-shaped shelf rows converge` | +119 | PASS |
+| L18 | 28 | 28 | 0 | `rival computers, market bell` | `drive-maker` `expr-smug` behind an overlooked hard drive | +124 | PASS |
 | L19 | 38 | 29 | -9 | `give the overlooked seller more world than spotlight` | `one open brass cashbox` | -9 | PASS |
 | L20 | 29 | 28 | -1 | `ochre horizon hold` | retained maker/cashbox plus pick-shaped holder | +123 | PASS |
 | L21 | 38 | 33 | -5 | `clear middle-ground winner in an open, structured frame` | `hard sunlight makes metal, stone, and dry earth the field` | -5 | PASS |

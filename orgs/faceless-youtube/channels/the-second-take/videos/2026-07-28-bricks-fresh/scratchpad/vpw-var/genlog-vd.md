@@ -131,3 +131,8 @@ Retry prompts also retained authored no-growth against vb: L03 `37≤39`, L04 `4
 - Final review: `assets/_review/scene-board.html` rebuilt for L13-L25; scene rows were ruled from pixels and palette rows were advisory only; `stamp_review.py` reported 25 verified / 0 parked overall.
 - Ops cost row to send: `Variant D doctrine trial wave 2: 20 calls, 13/13 verified, 0/13 parked; 13 base allowance + at most one retry each + up to 2 STEP-1 figure cards; conservative $0.134/call, provider-table $0.039/call; genlog scratchpad/vpw-var/genlog-vd.md on claude/bricks-variant-vd.`
 - Exact five-field TSV payload: `Variant D doctrine trial wave 2: 20 calls, 13/13 verified, 0/13 parked; 13 base allowance + at most one retry each + up to 2 STEP-1 figure cards; conservative $0.134/call, provider-table $0.039/call; genlog scratchpad/vpw-var/genlog-vd.md on claude/bricks-variant-vd.	gemini-3-pro-image	gemini-3-pro-image	bricks variant D trial wave 2 13 shots	2.680`
+
+## Boss grading note — wave 2 (2026-08-21)
+
+- Independent Claude vision check (claude-sonnet-5, read-only, pixels only) concurred with 13/13 `verified` rulings: L13→L14 holds with the opened shell as the only change; L18→L19→L20 holds with one change per step (cashbox, pick-holder) and a consistent `drive-maker` identity; L16/L17 show only the two personified computers, small and non-dominant; L15 three isolated pairs; L25 bakes exactly `HARD DRIVE`. No gibberish, no unrequested humans, no blue/orange-dominant field.
+- Occupancy note: L18–L20 carry ~4 blurred background figures beyond the glass — authored ("competition blurs beyond glass"), so the drive-seller stage sits in the 4–6 bucket; the near counter zone stays a single figure.
