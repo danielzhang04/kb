@@ -1,0 +1,60 @@
+import { describe, expect, it, vi } from 'vitest';
+import { composeHealth } from './service.ts';
+
+const now = () => '2026-08-21T12:00:00.000Z';
+
+function readers() {
+  return {
+    fleet: vi.fn(() => ({ agents: [{ id: 'worker-a', role: 'builder', status: 'working' as const, working: true, lastActive: '2026-08-21' }] })),
+    stop: vi.fn(() => false),
+    platform: vi.fn(() => 'win32' as const),
+    connections: vi.fn(() => ({ items: [{ project: 'demo', server: 'files', tools: ['read'] }] })),
+    usage: vi.fn(() => ({ stepCount: 4, dispatchCount: 2, cards: 1, models: [{ model: 'gpt-5', steps: 4, mix: 1 }] })),
+    now,
+  };
+}
+
+describe('composeHealth', () => {
+  it('composes the exact HealthResponse envelope and isolates reader failure with a closed unavailable row', () => {
+    const source = readers();
+    source.connections.mockImplementation(() => { throw new Error('unavailable'); });
+    const response = composeHealth('repo', source);
+
+    expect(response.sections.map((section) => section.id)).toEqual(['fleet', 'stop', 'daemon-machine', 'mcp', 'usage']);
+    expect(response.sections[3]).toEqual({
+      id: 'mcp', label: 'MCP',
+      rows: [{ kind: 'unavailable', key: 'error:mcp', label: 'Unavailable', value: { status: 'unavailable', reason: 'Reader unavailable' }, observedAt: now(), source: 'error' }],
+    });
+    expect(response.sections[0].rows).toHaveLength(1);
+  });
+
+  it('calls indexConnections and ledger readers directly and emits no spend', () => {
+    const source = readers();
+    const response = composeHealth('repo', source);
+
+    expect(source.connections).toHaveBeenCalledWith('repo');
+    expect(source.usage).toHaveBeenCalledWith('repo');
+    expect(response.sections[4].rows).toEqual([
+      { kind: 'usage', key: 'steps', label: 'Steps', value: 4, observedAt: now(), source: 'usage' },
+      { kind: 'usage', key: 'dispatches', label: 'Dispatches', value: 2, observedAt: now(), source: 'usage' },
+      { kind: 'usage', key: 'cards', label: 'Cards', value: 1, observedAt: now(), source: 'usage' },
+      { kind: 'usage', key: 'model:gpt-5', label: 'gpt-5', value: { steps: 4, mix: 1 }, observedAt: now(), source: 'usage' },
+    ]);
+  });
+
+  it('renders one Release row in daemon and machine and VM then Desktop beside every MCP configuration', () => {
+    const source = readers();
+    source.connections.mockReturnValue({ items: [
+      { project: 'demo', server: 'files', tools: ['read'] },
+      { project: 'demo', server: 'search', tools: ['query'] },
+    ] });
+    const response = composeHealth('repo', source);
+
+    expect(response.sections[2].rows.filter((row) => row.key === 'release')).toHaveLength(1);
+    expect(response.sections[2].rows.find((row) => row.key === 'release')?.value).toBe('unavailable in P1');
+    expect(response.sections[3].rows.map((row) => row.key)).toEqual([
+      'mcp:demo:files', 'mcp:demo:files:vm', 'mcp:demo:files:desktop',
+      'mcp:demo:search', 'mcp:demo:search:vm', 'mcp:demo:search:desktop',
+    ]);
+  });
+});

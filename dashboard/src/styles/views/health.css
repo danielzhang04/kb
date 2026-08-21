@@ -1,0 +1,50 @@
+.v-health {
+  min-width: 0;
+}
+
+.v-health__section {
+  margin-top: 24px;
+}
+
+.v-health__section h2 {
+  margin: 0 0 8px;
+}
+
+.v-health__rows {
+  border-top: 1px solid var(--hairline);
+}
+
+.v-health__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) minmax(110px, 1fr) auto;
+  align-items: center;
+  min-height: 40px;
+  gap: 12px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.v-health__value,
+.v-health__source,
+.v-health__observed {
+  color: var(--muted);
+}
+
+.v-health__source,
+.v-health__observed {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.v-health__stop-slot {
+  min-height: 0;
+}
+
+@media (max-width: 720px) {
+  .v-health__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 8px 0;
+  }
+}
