@@ -1,4 +1,4 @@
-import type { RunOutcome, RunRow, ScheduleOccurrence } from '../control/p2Contracts.ts';
+import type { RunnableRef, RunOutcome, RunRow, ScheduleOccurrence } from '../control/p2Contracts.ts';
 
 export type HomeUnavailableReason = 'attention-unavailable' | 'inbox-unavailable' | 'schedules-unavailable' | 'release-unavailable' | 'outcomes-unavailable';
 export type HomeSectionResult<T> = { state: 'ready'; data: T } | { state: 'unavailable'; reason: HomeUnavailableReason };
@@ -31,9 +31,10 @@ export interface HomeResponse {
   sections: HomeSections;
 }
 
-export interface ScheduleOwnerIntegrityRow {
-  scheduleId: string;
-  owner: string;
-  status: 'resolved' | 'missing' | 'duplicate';
-  detail: string | null;
-}
+export type ScheduleOwnerIntegrityRow = {
+  kind: "integrity";
+  key: `schedule-owner:${string}`;
+  value: { status: "error"; code: "schedule-owner-unresolvable"; owner: RunnableRef };
+  observedAt: string;
+  source: "schedule-store";
+};
