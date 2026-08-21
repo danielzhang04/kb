@@ -5,6 +5,7 @@ import { SessionProvider } from '../../../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../../../lib/authClient';
 import type { ScheduleRow, SchedulesPanel } from '../../../../server/panels/schedules';
 import { panel, replaceCadenceSchedule } from './Schedules.panel';
+import { SchedulesBody as MovedSchedulesBody, replaceCadenceSchedule as movedReplaceCadenceSchedule } from '../../Schedules';
 
 function cadence(over: Partial<ScheduleRow> & { name: string }): ScheduleRow {
   return { project: 'system', schedule: '3 7 * * mon', tier: 'T1', riskTier: 'low', paused: false, file: 'HEARTBEAT.md', lastRun: null, runCount: 0, scheduleHint: 'cron: 3 7 * * mon', ...over };
@@ -26,6 +27,10 @@ function stubFetch(options: { unavailable?: boolean; data?: SchedulesPanel; edit
 afterEach(() => { cleanup(); clearStoredSession(); vi.unstubAllGlobals(); });
 
 describe('Schedules panel', () => {
+  it('re-exports the moved body with the unchanged panel contract', () => {
+    expect(panel.render().type).toBe(MovedSchedulesBody);
+    expect(replaceCadenceSchedule).toBe(movedReplaceCadenceSchedule);
+  });
   it('renders each cadence as a card with concise recurrence, next window, quiet paused state, and needs-you chip', async () => {
     stubFetch(); render(unlocked());
     expect(await screen.findAllByTestId(/^ap-schedules-row-/)).toHaveLength(8);

@@ -73,14 +73,14 @@ import { canResumePublishedRun } from '../control/humanBoundaries';
 import { postAgentMessage } from '../control/agentMessages';
 import {
   changeEvents,
-  checkpointInfo,
   eventClock,
-  eventLabel,
   isDiffTruncated,
   runStateLabel,
   runTone,
   timestampLabel,
 } from '../control/runEvents';
+import { replayRunLifecycle } from '../control/runStreamAdapter';
+import { RunTimeline } from '../control/RunTimeline';
 import { loadRunEventWindow, type RunEventWindow } from '../control/runEventWindow';
 import { entryFromRun, iterationEdgesFromRun, overlaysFromRun } from '../control/runGraph';
 import { agentIdsForRun, cardOwnerIndex, agentLink, cardLink, workflowLink } from '../control/entityLinks';
@@ -662,40 +662,6 @@ export function StepsSection({
  *
  * NOT a terminal, and never labelled as one: the broker yields normalized, redacted events only.
  */
-export function ActivityStream({ events }: { events: OperationalEventDto[] }): React.JSX.Element {
-  if (!events.length) return <p className="control-help">No activity recorded yet.</p>;
-  return (
-    <ol className="run-activity" data-testid="run-activity">
-      {events.map((event) => {
-        const checkpoint = checkpointInfo(event);
-        return (
-          <li key={event.cursor} className={`run-activity__row run-activity__row--${event.kind}`} data-testid={`run-event-${event.cursor}`}>
-            <span className="mc-mono run-activity__time" title={timestampLabel(event.createdAt)}>{eventClock(event.createdAt)}</span>
-            <span className="mc-mono run-activity__kind">{event.kind}</span>
-            <span className="run-activity__text">
-              {checkpoint ? (
-                <>
-                  {/* Name and state are DISTINCT; the old flattening rendered the state and dropped the name. */}
-                  <span className="mc-mono" data-testid={`run-event-${event.cursor}-checkpoint-name`}>{checkpoint.name}</span>
-                  {checkpoint.state ? (
-                    <span className={`run-activity__checkpoint run-activity__checkpoint--${checkpoint.state}`}
-                      data-testid={`run-event-${event.cursor}-checkpoint-state`}>{checkpoint.state}</span>
-                  ) : null}
-                  {checkpoint.detail ? <span className="run-activity__detail">{checkpoint.detail}</span> : null}
-                </>
-              ) : eventLabel(event)}
-            </span>
-            <span className="mc-mono run-activity__attribution">
-              {event.stageRef ?? '—'}{event.attemptRef ? ` · ${event.attemptRef}` : ''}
-            </span>
-            <span className="run-activity__status">{event.status ?? event.source}</span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 /** File changes. `event.diff` is on the wire on every load and was, before the cockpit, never rendered. */
 export function ChangesSection({ events }: { events: OperationalEventDto[] }): React.JSX.Element {
   const changes = changeEvents(events);
@@ -1294,9 +1260,9 @@ export function RunDetail({
             onNavigate={onNavigate}
           />
 
-          <h4 className="entity-block__title">Activity</h4>
-          {windowNote ? <p className="control-help" data-testid="run-activity-window-note">{windowNote}</p> : null}
-          <ActivityStream events={events} />
+          <h4 className="entity-block__title">Run stream</h4>
+          {windowNote ? <p className="control-help" data-testid="run-stream-window-note">{windowNote}</p> : null}
+          <RunTimeline rows={replayRunLifecycle(events)} />
 
           <h4 className="entity-block__title">File changes</h4>
           <ChangesSection events={events} />

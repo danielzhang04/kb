@@ -2,14 +2,14 @@
 .recurrence-picker legend { padding: 0 var(--space-1); color: var(--fg-faint); font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; }
 .recurrence-picker__preset, .recurrence-picker__weekly { display: grid; gap: var(--space-1); color: var(--fg-primary); font-size: var(--text-xs); }
 .recurrence-picker select { width: fit-content; max-width: 100%; border-color: var(--border-strong); }
-.recurrence-picker select:focus-visible { border-color: var(--ink); }
-.recurrence-picker select option:checked { background: var(--ink); color: var(--paper); }
+.recurrence-picker select:focus-visible { border-color: var(--focus); }
+.recurrence-picker select option:checked { background: var(--selection); color: var(--fg-primary); }
 .recurrence-picker__custom { display: grid; gap: var(--space-3); }
 .recurrence-picker__days { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .recurrence-picker__day input { position: absolute; opacity: 0; pointer-events: none; }
 .recurrence-picker__day span { display: inline-block; padding: var(--space-1) var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-control); color: var(--fg-primary); cursor: pointer; font-size: var(--text-xs); }
-.recurrence-picker__day input:checked + span { border-color: var(--ink); color: var(--paper); background: var(--ink); font-weight: 600; }
-.recurrence-picker__day input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 2px; }
+.recurrence-picker__day input:checked + span { border-color: var(--focus); color: var(--fg-primary); background: var(--selection); font-weight: 600; }
+.recurrence-picker__day input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
 .recurrence-picker__custom[aria-disabled='true'] .recurrence-picker__day span { background: var(--bg-panel); cursor: default; opacity: 0.82; }
 .recurrence-picker__custom[aria-disabled='true'] button, .recurrence-picker__custom[aria-disabled='true'] input { cursor: default; }
 .recurrence-picker__times { display: grid; gap: var(--space-2); }

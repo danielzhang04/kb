@@ -580,7 +580,7 @@ describe('the run surface', () => {
       dag={{ nodes: [], edges: [] }}
     />));
     // An interior slice presented as "most recent" would be a lie; it is stated instead.
-    expect(screen.getByTestId('run-activity-window-note').textContent).toMatch(/from the middle/i);
+    expect(screen.getByTestId('run-stream-window-note').textContent).toMatch(/from the middle/i);
   });
 
   it('states a standing retry refusal in the row rather than hiding the action', () => {
