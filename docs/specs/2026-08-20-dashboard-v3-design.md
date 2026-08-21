@@ -344,7 +344,7 @@ Learnings Implementer is a System agent. It reads only `status: proposed`, batch
 
 ### Seeded System schedules
 
-P2 creates or normalizes the System declarations and declares these seed entries in root `HEARTBEAT.md` on `codex/dashboard-v3`. The source entries state `armed:true`, but a branch boot imports them disarmed; only a byte-identical entry in the attested protected-main release imports armed. Existing human-authored protected-main rows retain their standing authorization. New P4 implementations receive manual supervised Run now tests and recorded grades on the branch before Daniel reviews the final merge; after that human merge, the fresh production seed import may arm them. Implementer and schedule-mirror effects are limited to producing a reviewed PR: that PR is the human gate for their repository writes, and neither can merge or write main.
+P2 creates or normalizes the System declarations and declares these seed entries in root `HEARTBEAT.md` on `claude/dashboard-v3`. The source entries state `armed:true`, but a branch boot imports them disarmed; only a byte-identical entry in the attested protected-main release imports armed. Existing human-authored protected-main rows retain their standing authorization. New P4 implementations receive manual supervised Run now tests and recorded grades on the branch before Daniel reviews the final merge; after that human merge, the fresh production seed import may arm them. Implementer and schedule-mirror effects are limited to producing a reviewed PR: that PR is the human gate for their repository writes, and neither can merge or write main.
 
 | Schedule id | Owner | Seed cadence |
 |---|---|---|
@@ -538,7 +538,7 @@ Each phase's browser checklist below is executed in dark and light themes at des
 
 The requested order is retained. Two code-forced P1 moves prevent dead code: extract Schedules before deleting Agent Platform, and connect `TimelineModel` to `RunDetail` before deleting Activity. P5 consumes the already-specified movement helper/state prerequisites; it does not rebuild them.
 
-All seven phases stay on `codex/dashboard-v3`. Each phase completes in the fixed order plan → build → command/browser test → adversarial review → Daniel's test before the next begins. Workers do not commit; the boss owns reviewed feature-branch commits/PR preparation and stops at that PR. Daniel alone merges and deploys.
+All seven phases stay on `claude/dashboard-v3`. Each phase completes in the fixed order plan → build → command/browser test → adversarial review → Daniel's test before the next begins. Workers do not commit; the boss owns reviewed feature-branch commits/PR preparation and stops at that PR. Daniel alone merges and deploys.
 
 ### P1 — Shell, IA, tokens, humanization, structural surfaces
 
