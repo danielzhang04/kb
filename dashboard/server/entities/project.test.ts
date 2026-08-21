@@ -50,5 +50,5 @@ describe('entity projectors', () => {
 });
 
 function run(lifecycle: 'running' | 'succeeded', suffix = ''): RunRow {
-  return { runRef: `run-${suffix}`, title: 'Run', owner: workflow, lifecycle, outcome: lifecycle === 'succeeded' ? 'ok' : null, createdAt: '2026-08-21T10:00:00.000Z', completedAt: lifecycle === 'succeeded' ? '2026-08-21T10:02:00.000Z' : null };
+  return { runRef: `run-${suffix}`, title: 'Run', owner: workflow, lifecycle, streamKind: 'transcript', outcome: lifecycle === 'succeeded' ? 'ok' : null, createdAt: '2026-08-21T10:00:00.000Z', completedAt: lifecycle === 'succeeded' ? '2026-08-21T10:02:00.000Z' : null };
 }

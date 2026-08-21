@@ -1,4 +1,6 @@
 import type { ArchivedFrom, AttentionEnvelope, EntityStatus, RunOutcome, RunRow, RunnableRef, ScheduleOccurrence } from './p2Contracts.ts';
+import { projectRunAttention } from './attention.ts';
+import type { RunStreamSource } from './runEventService.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
 
 export interface ProjectableRunEvent {
@@ -19,6 +21,7 @@ export interface ProjectableRun {
   archivedFrom: ArchivedFrom | null;
   openHumanRequestCount: number;
   events: readonly ProjectableRunEvent[];
+  source?: RunStreamSource;
 }
 
 export interface RunActivityProjection {
@@ -52,8 +55,11 @@ function categoryFor(lifecycle: RunLifecycleKind): RunActivityProjection['catego
 export function projectRunActivity(run: ProjectableRun, now: string): RunActivityProjection {
   const latest = [...run.events].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
   const endedAt = run.completedAt ?? (categoryFor(run.lifecycle) === 'active' || categoryFor(run.lifecycle) === 'attention' ? now : run.updatedAt);
+  const row = run.source?.kind === 'pty'
+    ? { runRef: run.runRef, title: run.title, owner: run.owner, lifecycle: run.lifecycle, outcome: run.terminalOutcome, createdAt: run.createdAt, completedAt: run.completedAt, streamKind: 'pty' as const, sessionId: run.source.sessionId }
+    : { runRef: run.runRef, title: run.title, owner: run.owner, lifecycle: run.lifecycle, outcome: run.terminalOutcome, createdAt: run.createdAt, completedAt: run.completedAt, streamKind: 'transcript' as const };
   return {
-    row: { runRef: run.runRef, title: run.title, owner: run.owner, lifecycle: run.lifecycle, outcome: run.terminalOutcome, createdAt: run.createdAt, completedAt: run.completedAt },
+    row,
     category: categoryFor(run.lifecycle),
     elapsedMs: Math.max(0, Date.parse(endedAt) - Date.parse(run.createdAt)),
     toolsCalled: run.events.filter((event) => event.kind === 'tool').length,
@@ -81,17 +87,13 @@ export function projectRunStatus(runs: readonly ProjectableRun[], nextSchedule: 
 }
 
 export function projectGateCounts(revision: string, runs: readonly ProjectableRun[]): AttentionEnvelope {
-  const pairs = new Map<string, { runRef: string; owner: RunnableRef }>();
-  for (const run of runs) {
-    if (!isAttention(run) && run.openHumanRequestCount === 0) continue;
-    pairs.set(`${run.runRef}\u0000${run.owner.type}\u0000${run.owner.id}`, { runRef: run.runRef, owner: run.owner });
-  }
-  const items = [...pairs.values()].sort((left, right) => left.runRef.localeCompare(right.runRef) || left.owner.id.localeCompare(right.owner.id));
-  const agents: Record<string, number> = {};
-  const workflows: Record<string, number> = {};
-  for (const item of items) {
-    const destination = item.owner.type === 'agent' ? agents : workflows;
-    destination[item.owner.id] = (destination[item.owner.id] ?? 0) + 1;
-  }
-  return { revision, items, agents, workflows };
+  return {
+    ...projectRunAttention({
+      runs: runs.map(({ runRef, owner, lifecycle }) => ({ runRef, owner, lifecycle })),
+      humanRequests: runs.flatMap((run) => run.openHumanRequestCount > 0
+        ? [{ requestRef: `${run.runRef}:open`, runRef: run.runRef, state: 'open' as const }]
+        : []),
+    }),
+    revision,
+  };
 }

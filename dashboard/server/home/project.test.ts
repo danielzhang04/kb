@@ -4,7 +4,7 @@ import { projectHome } from './project.ts';
 
 const agent = { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' } as const;
 const run: RunRow = {
-  runRef: 'run-1', title: 'Hygiene', owner: agent, lifecycle: 'running', outcome: null,
+  runRef: 'run-1', title: 'Hygiene', owner: agent, lifecycle: 'running', streamKind: 'transcript', outcome: null,
   createdAt: '2026-08-21T10:00:00.000Z', completedAt: null,
 };
 const occurrence: ScheduleOccurrence = {

@@ -23,6 +23,15 @@ describe('run projections', () => {
     });
   });
 
+  it('projects PTY and transcript stream identity from the run source', () => {
+    expect(projectRunActivity(run({ source: { kind: 'pty', sessionId: 'pty-123' } }), iso()).row).toMatchObject({
+      streamKind: 'pty', sessionId: 'pty-123',
+    });
+    const transcript = projectRunActivity(run(), iso()).row;
+    expect(transcript.streamKind).toBe('transcript');
+    expect('sessionId' in transcript).toBe(false);
+  });
+
   it('uses needs-you, running, failed, scheduled, idle precedence without mutating concurrent runs', () => {
     const source = Object.freeze([
       run({ runRef: 'run-failed', lifecycle: 'failed', terminalOutcome: 'failed', completedAt: '2026-08-20T09:20:00.000Z' }),
@@ -44,7 +53,7 @@ describe('run projections', () => {
       run({ runRef: 'run-2', lifecycle: 'running', openHumanRequestCount: 1 }),
       run({ runRef: 'run-3', lifecycle: 'waiting-human', openHumanRequestCount: 0 }),
     ]);
-    expect(counts).toEqual({ revision: 'revision-1', items: [
+    expect(counts).toEqual({ revision: 'revision-1', pairs: [
       { runRef: 'run-1', owner }, { runRef: 'run-2', owner }, { runRef: 'run-3', owner },
     ], agents: { 'fyt-runner': 3 }, workflows: {} });
   });
@@ -62,7 +71,7 @@ describe('run projections', () => {
       run({ runRef: 'run-a', lifecycle: 'waiting-human', createdAt: '2026-08-20T09:00:00.000Z' }),
     ];
     const gatedClone = JSON.parse(JSON.stringify(gatedRuns));
-    expect(projectGateCounts('revision-2', gatedRuns).items.map((item) => item.runRef)).toEqual(['run-a', 'run-b']);
+    expect(projectGateCounts('revision-2', gatedRuns).pairs.map((item) => item.runRef)).toEqual(['run-a', 'run-b']);
     expect(runs).toEqual(clone);
     expect(gatedRuns).toEqual(gatedClone);
   });
