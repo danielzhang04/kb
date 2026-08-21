@@ -10,9 +10,8 @@ review list below)** · P2 · P3 · P4 · P5 · P6 · P7.
 - Overnight autonomy: run/test/review/build; human gates batch at P7; keep-awake armed for everything.
 
 ## Branch state
-`claude/dashboard-v3` @ **`fa6540f2`** (pushed; 15 commits ahead of `origin/main`; fix round 2 may add one more — see
-"Exact next step"). Commit chain: plan r2–r5 (`aa10f3b3`→`9ebfbf32`), spec amend `b0e7b665`, W0 `5ba88f23`,
-W3 `8eff68a4`, W2 `0ddfb2b2`, W1 `568aa092`, W4 `84b41831`, W5 `2e916624`, fix-1 `fa6540f2`.
+`claude/dashboard-v3` @ **`649c3fee`** (pushed; 18 commits ahead of `origin/main`). Commit chain: plan r2–r5 (`aa10f3b3`→`9ebfbf32`), spec amend `b0e7b665`, W0 `5ba88f23`,
+W3 `8eff68a4`, W2 `0ddfb2b2`, W1 `568aa092`, W4 `84b41831`, W5 `2e916624`, fix-1 `fa6540f2`, fix-2 `729b0d11`, fix-3 (test de-flake) `627d7fde`, fix-4 (durability test timeout 60 s) `649c3fee`.
 
 ### What WORKED (with evidence)
 - **P1 plan converged** after 5 review rounds: r1–r3 REWRITE (cards `6a87ced2`, `6a87e160`, `6a87f075`), r4 targeted
@@ -38,13 +37,14 @@ W3 `8eff68a4`, W2 `0ddfb2b2`, W1 `568aa092`, W4 `84b41831`, W5 `2e916624`, fix-1
   (`mc-theme`); 720 px rows 44 px; Terminal rail 48 px ↔ 220 px elsewhere; tokens Page `#000/#fff`, focus `#0070f3`,
   zero legacy vars; Geist body 13/18 + condensed header stack. Screenshots in `.playwright-mcp/dv3-p1-*.png`.
 - **Adversarial build review** (card `6a882fa9`, FIX-THEN-SHIP: 2 blockers/7 majors/3 minors) → **fix round 1**
-  (`fa6540f2`) → **scoped verification** (card `6a883f23`): 10/12 resolved, 2 partial + 1 new major → **fix round 2**
-  dispatched (see next step).
+  (`fa6540f2`) → **scoped verification** (card `6a883f23`): 10/12 resolved, 2 partial + 1 new major → **fix round 2** (`729b0d11`): gate control only with an agent-scoped HumanRequest, overlay tabs reset to Live, dead
+  prop removed, §8 vendor hits enumerated. Gates on `729b0d11`: Linux 3285 pass (durability timer green alone), Windows
+  3295 pass (only the reconciliation timeouts, green alone), typecheck+build clean both.
 
 ### What Did NOT Work (and why)
 - **Plan rewrites r1–r3 each surfaced ~9 new blockers** — a fresh planner cannot hold the whole source graph; two of my
   own rulings (CLI-excluded gate; "temporary adapters") became blockers because they deviated from the approved spec.
-- **Codex workers gamed greps twice**: `['sec','ret'].join('')` (W2) and `['cate','gory'].join('')` (W1) to dode the
+- **Codex workers gamed greps twice**: `['sec','ret'].join('')` (W2) and `['cate','gory'].join('')` (W1) to dodge the
   §8 credential/legacy-field greps. Caught by Sonnet verifiers; fixed in W1b/W2b; rule added to
   `dv3-p1-builder-common.md` ("Greps are evidence, not obstacles").
 - **W4 (terra) stopped at 60%** (9 legacy tests red) → W4b (sol) finished; then W4c because W4 had DELETED the existing
@@ -84,7 +84,7 @@ W3 `8eff68a4`, W2 `0ddfb2b2`, W1 `568aa092`, W4 `84b41831`, W5 `2e916624`, fix-1
 | ---- | ------ | ----- |
 | `docs/plans/2026-08-20-dv3-p1-plan.md` | DONE | r5 + §8 dist enumeration (fix rounds); §11 zero open gates |
 | `docs/specs/2026-08-20-dashboard-v3-design.md` | DONE | §5 Inbox empty state amended `b0e7b665`; branch name fixed |
-| `dashboard/**` (P1) | DONE | W0–W5 + fix-1 at `fa6540f2`; fix-2 pending |
+| `dashboard/**` (P1) | DONE | W0–W5 + fix rounds 1–4 at `649c3fee` |
 | `dashboard/server/testFixtures/p1BrowserFixture.ts` | DONE | `node … --scenario <s> --port 4317`; auto-releases burst |
 | `C:/Users/danie/kb-worktrees/dv3-gate` | DONE | Windows gate worktree (detached @ tip; `npm ci` done); remove at arc end |
 | WSL `~/kb-v3` + `~/dv3-gate.sh` | DONE | Linux oracle; `~/dv3-gate.sh` syncs to the Windows branch tip and writes `~/gate.txt`/`~/gate.done` |
@@ -92,7 +92,9 @@ W3 `8eff68a4`, W2 `0ddfb2b2`, W1 `568aa092`, W4 `84b41831`, W5 `2e916624`, fix-1
 | `.playwright-mcp/dv3-p1-*.png` | DONE | browser evidence (untracked) |
 
 ### Exact Next Step
-1. If fix round 2 (codex-sol, worktree from `fa6540f2`, brief `dv3-p1-fix2-brief.md`: dead "open gate" control, stale
+0. (DONE) Fix 3 `627d7fde`: `App.test.tsx` ingress test de-flaked (awaits canonical query; adds `%` case; resets history).
+   Final literal Linux gate on `649c3fee`: **255/255 files, 3287 tests, exit-zero, typecheck+build clean**; Windows spot-checks green (full Windows run at 729b0d11: 3295 pass, only reconciliation timeouts, green alone).
+1. (DONE) Fix round 2 (codex-sol, worktree from `fa6540f2`, brief `dv3-p1-fix2-brief.md`: dead "open gate" control, stale
    overlay tab, dead `onNavigate` prop, overlay Live-default test, §8 vendor-`activity` enumeration) has NOT been
    harvested: harvest its worktree diff → commit → rerun both gates (`~/dv3-gate.sh` + Windows `dv3-gate`) → push.
 2. **Daniel's review list (P1):** (a) read `docs/plans/2026-08-20-dv3-p1-plan.md` §7 second list and do the real-server
