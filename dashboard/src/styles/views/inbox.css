@@ -1,0 +1,39 @@
+.inbox {
+  color: var(--text);
+}
+
+.inbox__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.inbox__title,
+.inbox__reason,
+.inbox__empty,
+.inbox__loading,
+.inbox__error {
+  margin: 0;
+}
+
+.inbox__title {
+  font-weight: 600;
+}
+
+.inbox__reason,
+.inbox__loading {
+  color: var(--muted);
+}
+
+.inbox__error {
+  color: var(--failure);
+}
