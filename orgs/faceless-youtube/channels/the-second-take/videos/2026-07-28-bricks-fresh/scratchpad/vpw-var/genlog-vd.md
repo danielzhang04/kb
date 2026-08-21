@@ -340,3 +340,8 @@ Variant D doctrine wave 3C park repairs: 21 calls, 10/13 verified, 3/13 parked; 
 
 - Independent Claude vision check (claude-sonnet-5, read-only, pixels only) concurred with 9/10 `verified` rulings: `125 MILLION` / `600 MILLION` exact, no invented lettering (L47's contract body is illegible scribble, not text), `ibm-suit` navy pinstripe correct, `qt-wiles` grey suit + gold tie clip + power stance, L47→L48→L49 holds set+camera with exactly one change per step (weight, then track).
 - Dissent: **L49** reads as a bridge frame — an empty track, no person — under "sent their own turnaround guy". This is the authored disclosure choice (Wiles withheld until L50's line); accepted as design, no regen.
+
+## Boss grading note — wave 3C (2026-08-21)
+
+- Independent Claude vision check (claude-sonnet-5, read-only, pixels only) concurred with 9/10 `verified` rulings: L28 floor is machines only, L32 `ibm-suit` navy pinstripe + clean handshake, L35/L36 literals exact (`1988`, `COMPAQ`), L43 group bounded behind the rail with empty near concrete, L44 doors unlettered, L44→L45 hold with the founder's absence as the single change.
+- Dissent: **L22** — the packer row still spans the frame to the camera edge (no empty near lane). Both of L22's retries are spent (wave 3A base, wave 3C retry); stays `verified` with this dissent recorded for the board.
