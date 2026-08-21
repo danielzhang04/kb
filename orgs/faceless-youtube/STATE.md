@@ -13,7 +13,7 @@ claude/faceless-live-import — reconcile to this one at merge, this is newer)_
 - Poyais published; wells-fargo parked (see git history).
 
 ## Now (bricks-fresh, 2026-08-21)
-- channels/the-second-take/videos/2026-07-28-bricks-fresh: Variant D doctrine trial COMPLETE on clone branch `claude/bricks-variant-vd` @ 37f1b881 — L01-L12 gen 12/12 verified (17 calls, $2.28), blind A/B/C/D review written, board republished in place (artifact 53c84a37). Daniel gate = board verdict A/B/C/D + which D changes survive. Handoff: handoffs/2026-08-21-fyt-bricks-variant-d-board.md.
+- channels/the-second-take/videos/2026-07-28-bricks-fresh: Variant D trial extended to L01-L25 on clone branch `claude/bricks-variant-vd` @ da651c6c — 25/25 verified (37 calls, $4.96 cumulative), 16 dropped canonicals restored to the kit registry, blind D-vs-LIKED analysis (LIKED 18 / D 7 row preferences, 4 valid holds, 2 missed seams), 25-row board artifact 12e75c13 (L01-L12 A/B/C/D board stays 53c84a37). Daniel gate = keep D / keep D with edits / iterate / revert. Handoff: handoffs/2026-08-21-fyt-bricks-variant-d-L25.md.
 
 ## Next
 - After Aug 1 9pm ET: run the pinned `051de9e` harness and require 7/7; then rewrite PR #109 and bring

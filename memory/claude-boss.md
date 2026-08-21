@@ -682,3 +682,10 @@
 - LEARNED: positive geometry (bounded crowd, empty near zone) belongs to critic/pixel judgment, not lexical lint; palette rationale must reach provider-visible facts, with the review-only `Palette basis:` kept in separately labelled review metadata; fragment validators clip the source span and size against covered words, never the full file.
 - LEARNED: the Artifact tool refuses a cross-session republish until this session WebFetches the URL once — do the fetch before the publish call, not after the error.
 - HAZARD: another terminal switched the shared main checkout to `claude/dashboard-v3` mid-session; coordination writes via a detached temp worktree off `origin/ops` (`git push origin HEAD:ops`) were unaffected — keep using that path, never `checkout`.
+
+## 2026-08-21 — Bricks Variant D extended to L01–L25 (boss session, Fable 5)
+- ROOT CAUSE worth remembering: the variant branches fork from a doctrine restoration that rolled `visual-kit/registry/registry.json` back to 9 characters; 16 later-minted, human-approved canonicals vanished while their ref PNGs stayed. Forge does NOT fail on an unregistered slug — it silently leaves it unseeded (engine invents the figure). Probe `forge gen --dry-run` for "unregistered slug" before any wave that names identities; restoring dropped approved entries from the minting commit is a fix, not a new asset gate.
+- WORKED: when a worker's "verified" includes a middle-occupancy count, check the prompt before calling it a defect — L18–L20's ~4 background figures were authored ("competition blurs beyond glass").
+- LEARNED: "adapt builder X" briefs must name X's rules that must NOT carry over (the vpw3 board's 13-id LIKED render gate leaked into the D|LIKED board and hid 12 comparator frames).
+- LEARNED: forge resolves `--out` relative to the org root — absolute paths only, or a stray `orgs/faceless-youtube/orgs/...` tree appears.
+- PROCESS: a foreground `codex_dispatch.py` call is fine for ≤5-min terra fix-ups; anything longer stays detached (`Start-Process` + Monitor).
