@@ -659,3 +659,10 @@
 - WORKED: 'no notification/monitor exists, do not create one' phrasing + explicit pixel-hygiene warnings cut sonnet gen-worker idle-stops from every-run to one.
 - LESSON: gitignored pixels vanish from working tree on branch switch when archived copies get COMMITTED per-branch — restore cross-branch sets via git restore --source before any cross-variant consumer runs.
 - REMAINS: Daniel's variant pick (artifact 53c84a37) → merge winner, canonicals, acts 2-4, full gen; render-register experiment is the next frontier (all 36 frames miss it identically — engine-side, not doctrine).
+
+## 2026-08-20/21 — Bricks Variant D (boss session)
+- WORKED: research → adversarial review → spec → adversarial rounds (3× REJECT, each narrowing) → plan → review → build with byte-exact OLD→NEW + pre-edit assertions. The rejections were the value: quotas-in-disguise, a "never", a lexical lint, metadata-only palette transport, and a `cast`-is-engine-read assumption all got caught before code. Budget one extra review round per artifact.
+- WORKED: cheap boss probes before/alongside research — contact sheets, `git show` field tallies, a 5-gen engine probe — settled "why 50 people" and "did prompts get longer" in minutes; workers then confirmed with evidence.
+- FAILED: harness killed idle background shells (and the codex trees under them) twice; dispatch timeouts are not enforced (a reviewer ran 2h23m). Fix: detached `Start-Process` + `Monitor` on pending markers; `taskkill /T` runaways; salvage timed-out sessions with a text-only `--follow-up`. sol/xhigh + synthesis skill + sub-agents = timeout; say "no sub-agents, write incrementally, N-min budget".
+- LEARNED: forge's crowd-rig expansion path existed but was dead (bible lacked the heading it looked up) — the fix was moving a blockquote, not code. Check for dead paths before adding mechanism. Forge derives cast from backticked prompt tokens; `cast` arrays are metadata — docs lied in both directions.
+- REMAINS: handoffs/2026-08-21-fyt-bricks-variant-d.md (repair worker in flight → gen → 4-column board on artifact 53c84a37).
