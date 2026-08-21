@@ -53,10 +53,14 @@ describe('App P1 shell', () => {
   });
 
   it('falls malformed or removed URL ingress back to clean Home', async () => {
-    window.history.replaceState(null, '', '/?view=atlas&entity=agent%3Aold');
-    await renderApp();
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
-    expect(window.location.search).toBe('?view=home');
+    for (const ingress of ['/?view=atlas&entity=agent%3Aold', '/?view=%']) {
+      window.history.replaceState(null, '', ingress);
+      await renderApp();
+      await waitFor(() => expect(window.location.search).toBe('?view=home'));
+      expect(screen.getByLabelText('Home view')).toBeTruthy();
+      cleanup();
+      window.history.replaceState(null, '', '/?view=home');
+    }
   });
 
   it('keeps Terminal mounted across destinations and enforces the Terminal rail policy', async () => {
