@@ -304,6 +304,7 @@ describe('editing who runs a step', () => {
       runs={[]}
     />));
 
+    fireEvent.click(screen.getByTestId('entity-tab-brief'));
     // The eligible choices are a separate governed-adjacent read; the picker exists before they land.
     fireEvent.click(screen.getByText('Change who runs these'));
     const picker = await screen.findByLabelText('Who runs research:web-brief');

@@ -17,4 +17,9 @@ export const RUN_LIFECYCLE_FIXTURE: OperationalEventDto[] = [
     sessionRef: null, status: 'waiting', summary: 'Awaiting review', command: null, toolName: null,
     path: null, diff: null, checkpoint: null, createdAt: '2026-08-21T12:00:02.000Z',
   },
+  {
+    cursor: 4, runRef: 'run-1', kind: 'future-signal', source: 'system', stageRef: null, attemptRef: null,
+    sessionRef: null, status: null, summary: null, command: null, toolName: null,
+    path: null, diff: null, checkpoint: null, createdAt: '2026-08-21T12:00:03.000Z',
+  } as unknown as OperationalEventDto,
 ];

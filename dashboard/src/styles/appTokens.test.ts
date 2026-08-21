@@ -59,4 +59,13 @@ describe('P1 application tokens', () => {
   it('rejects every legacy color variable declaration or use', () => {
     expect(css).not.toMatch(/--(?:ink|mc-accent|accent-strong)\b/);
   });
+
+  it('reserves focus for selection and rejects it on attention or waiting state selectors', () => {
+    for (const selector of ['.mc-badge--attention', '.mc-status-dot--waiting']) {
+      const rules = blocks(selector);
+      expect(rules, selector).toHaveLength(1);
+      expect(rules[0], selector).not.toMatch(/var\(--focus\)/);
+      expect(rules[0], selector).toMatch(/var\(--warning\)/);
+    }
+  });
 });

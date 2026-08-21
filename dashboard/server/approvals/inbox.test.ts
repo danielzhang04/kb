@@ -6,15 +6,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   driveVerify,
-  listPending,
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,
 } from './inbox.ts';
 import type { DriveVerifyDeps, VerifiedCardView } from './inbox.ts';
 import type { PyRunner, PyRunResult } from '../write/launch.ts';
-import type { PlaneAIndex } from '../planeA/indexer.ts';
-import type { CardProjection } from '../planeA/cards.ts';
 
 /** Records every invocation so tests can assert exactly what would have been shelled (or wasn't). */
 function recordingPyRunner(
@@ -26,22 +23,6 @@ function recordingPyRunner(
     return result;
   };
   return { runner, calls };
-}
-
-const EMPTY_LEDGERS: PlaneAIndex['ledgers'] = {
-  dispatch: { count: 0, cards: 0, byProject: {} },
-  cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
-  grades: { count: 0, rows: [] },
-  activity: { count: 0, rows: [] },
-};
-
-function card(id: string, riskTier: string): CardProjection {
-  return {
-    meta: { id, project: 'kb', action: 'demo', target: '.', 'risk-tier': riskTier, owner: null, state: 'approvals' },
-    body: '',
-    displayName: 'demo',
-    shortRef: 1,
-  };
 }
 
 describe('driveVerify — fleet signed/possession channels (module interface, never a CLI subcommand)', () => {
@@ -152,21 +133,5 @@ describe('driveVerify — WebAuthn channel (D2.3 verifier + pinned-content execu
 
     expect(outcome.ok).toBe(true);
     expect(execute).not.toHaveBeenCalled();
-  });
-});
-
-describe('listPending', () => {
-  it('ranks T3 before T2 before T1, ties broken by id', () => {
-    const index: PlaneAIndex = {
-      cards: { approvals: [card('b', 'T1'), card('a', 'T3'), card('c', 'T2'), card('a2', 'T3')] },
-      ledgers: EMPTY_LEDGERS,
-      orgStates: [],
-    };
-    expect(listPending(index).map((c) => c.meta.id)).toEqual(['a', 'a2', 'c', 'b']);
-  });
-
-  it('returns an empty list when there is no approvals bucket', () => {
-    const index: PlaneAIndex = { cards: {}, ledgers: EMPTY_LEDGERS, orgStates: [] };
-    expect(listPending(index)).toEqual([]);
   });
 });

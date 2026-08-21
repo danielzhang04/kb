@@ -31,6 +31,8 @@ describe('nav stack', () => {
       '?view=atlas', '?view=unknown', '?view=agents&entity=workflow%3Avideo-run',
       '?view=health&entity=agent%3Afyt-checker', '?view=agents&entity=agent%3A',
       '?view=agents&view=tasks', '?view=agents&extra=1', '?entity=agent%3Afyt-checker',
+      '?view=agents&entity=agent%3Afyt%', '?view=agents&entity=agent%3Afyt%ZZ',
+      '?view=agents&entity=agent%3Afyt%E2%82',
     ]) {
       expect(parseNavigationSearch(search), search).toEqual([{ view: 'home' }]);
     }

@@ -492,110 +492,6 @@ select option {
   background: transparent;
 }
 
-/* ---- [+ New] menu (pinned above the first divider) ---- */
-.mc-new {
-  position: relative;
-  padding: 0 var(--space-1);
-}
-
-.mc-new__trigger {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  background: transparent;
-  color: var(--fg-dim);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-3);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mc-new__trigger:hover {
-  background: var(--bg-elevated);
-  color: var(--fg-primary);
-}
-
-.mc-new__plus {
-  flex: 0 0 auto;
-  width: 1.1em;
-  text-align: center;
-  color: var(--fg-dim);
-}
-
-.mc-new__label {
-  flex: 1 1 auto;
-}
-
-.mc-new__caret {
-  flex: 0 0 auto;
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-}
-
-.mc-new__menu {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  left: var(--space-1);
-  right: var(--space-1);
-  z-index: 20;
-  list-style: none;
-  margin: 0;
-  padding: var(--space-1);
-  background: var(--bg-elevated);
-  /* OVERLAYS GET A STRONG EDGE (field-guide restyle 2026-08-18). A hairline is how a surface that sits
-   * IN the page is defined; a surface floating OVER it gets a definite near-foreground line instead, so
-   * the menu reads as a separate object rather than a lighter patch of the panel underneath. This is a
-   * value swap only — --border-strong keeps its meaning (the interactive/hovered edge) everywhere else.
-   * The same rule is applied to the command palette in palette.css. */
-  /* Overlay edge uses --fg-faint (not --border-strong) per the field-guide direction: overlays get a strong near-fg edge; resting surfaces get hairlines. */
-  border: 1px solid var(--fg-faint);
-  /* --radius-lg, not --radius-md: this menu is a SHADOWED overlay, and --radius-lg is the rung that
-   * keeps a 2px nick exactly for those (see the Radius note above). Same rung as the palette. */
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-overlay);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0);
-}
-
-.mc-new__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  width: 100%;
-  background: transparent;
-  color: var(--fg-dim);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-2);
-  font: inherit;
-  font-size: var(--text-sm);
-  text-align: left;
-  cursor: pointer;
-}
-
-.mc-new__item:hover:not(.mc-new__item--disabled) {
-  background: var(--bg-panel);
-  color: var(--fg-primary);
-}
-
-.mc-new__item--disabled {
-  color: var(--fg-faint);
-  cursor: not-allowed;
-}
-
-.mc-new__item-hint {
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-  font-style: italic;
-}
-
 /* ---- Nav sections (unlabelled groups, hairline dividers only — Linear pattern; dense) ---- */
 .mc-nav__divider {
   height: 0;
@@ -704,16 +600,9 @@ select option {
 /* ---- Rail mode: icon-only 48px sidebar, labels/section chrome collapse away (icons keep a
  * native title-attr tooltip on hover — VS Code activity-bar / Linear pattern) ---- */
 .app-shell--rail .mc-sidebar__brand-text,
-.app-shell--rail .mc-new__label,
-.app-shell--rail .mc-new__caret,
 .app-shell--rail .mc-nav-item__label,
 .app-shell--rail .mc-nav-item__hint {
   display: none;
-}
-
-.app-shell--rail .mc-new__trigger {
-  justify-content: center;
-  padding: var(--space-2);
 }
 
 .app-shell--rail .mc-nav-item {
@@ -1019,8 +908,8 @@ select option {
 }
 
 .mc-badge--attention {
-  background: var(--focus);
-  border-color: var(--focus);
+  background: var(--warning);
+  border-color: var(--warning);
   color: var(--paper);
   font-weight: 650;
 }
@@ -1049,8 +938,8 @@ select option {
 
 /* Waiting on a person — the one amber state; it must not read as a failure. */
 .mc-status-dot--waiting {
-  background: var(--focus);
-  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--focus);
+  background: var(--warning);
+  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--warning);
 }
 
 .mc-status-dot--blocked,

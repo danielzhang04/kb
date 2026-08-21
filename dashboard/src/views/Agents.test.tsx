@@ -295,7 +295,6 @@ describe('Agents view', () => {
       .toEqual({ agents: 'list', workflows: 'list' });
     const overlay = screen.getByRole('dialog');
     expect(within(overlay).getByTestId('agent-run')).toBeTruthy();
-    fireEvent.click(within(overlay).getByTestId('entity-tab-runs'));
     expect(within(overlay).getByLabelText('Live session for this agent')).toBeTruthy();
     expect(within(overlay).getByLabelText('Runs this agent is working')).toBeTruthy();
 

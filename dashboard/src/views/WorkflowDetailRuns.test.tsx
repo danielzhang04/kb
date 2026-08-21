@@ -40,7 +40,7 @@ vi.mock('@xterm/addon-fit', () => {
 });
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
-import { WorkflowDetail, mergeRunRows, type WorkflowDefEntry } from './WorkflowDetail';
+import { WorkflowDetailBody as WorkflowDetail, mergeRunRows, type WorkflowDefEntry } from './WorkflowDetail';
 import type { RunMetadataDto } from '../control/controlClient';
 import type { PtySessionSummary, PtySpawnTarget, SessionRunDto, SessionRunsClient, TerminalSessionsClient } from '../lib/terminalClient';
 import { SessionProvider } from '../lib/sessionContext';
@@ -175,7 +175,6 @@ describe('the Runs tab merges governed runs and chat sessions', () => {
         sessionRunsClient={client}
       />,
     ));
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     await waitFor(() => expect(screen.getByTestId('session-run-srun-a')).toBeTruthy());
 
     expect(screen.getByTestId('workflow-run-kind-run-7').textContent).toBe('governed run');
@@ -194,7 +193,6 @@ describe('the Runs tab merges governed runs and chat sessions', () => {
         sessionRunsClient={client}
       />,
     ));
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     await waitFor(() => expect(screen.getByTestId('session-run-srun-a')).toBeTruthy());
 
     // Governed: navigates to the run detail, which deliberately contains no terminal.
@@ -217,7 +215,6 @@ describe('the Runs tab merges governed runs and chat sessions', () => {
     render(unlocked(
       <WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[]} sessionRunsClient={client} />,
     ));
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     await waitFor(() => expect(screen.getByTestId('session-run-srun-mine')).toBeTruthy());
     expect(screen.queryByTestId('session-run-srun-other')).toBeNull();
     expect(screen.queryByTestId('session-run-srun-agent')).toBeNull();
@@ -228,7 +225,6 @@ describe('the Runs tab merges governed runs and chat sessions', () => {
     render(unlocked(
       <WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[]} sessionRunsClient={client} />,
     ));
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     await waitFor(() => expect(screen.getByTestId('session-run-srun-a')).toBeTruthy());
     fireEvent.click(screen.getByTestId('session-run-toggle-srun-a'));
     await act(async () => { fireEvent.click(screen.getByTestId('session-run-archive-srun-a')); });
@@ -246,13 +242,11 @@ describe('the Runs tab merges governed runs and chat sessions', () => {
         <WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} sessionRunsClient={client} />
       </SessionProvider>,
     );
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-runs-unloaded')).toBeTruthy();
 
     rerender(unlocked(
       <WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[]} sessionRunsClient={client} />,
     ));
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     await waitFor(() => expect(screen.getByTestId('workflow-runs-empty').textContent).toMatch(/has not run yet/i));
   });
 });
@@ -278,7 +272,7 @@ describe('"Run workflow" opens a session in the page, not in the Terminal destin
 
     await act(async () => { fireEvent.click(screen.getByTestId('workflow-run')); });
     await waitFor(() => expect(screen.getByTestId('console-panel-workflow')).toBeTruthy());
-    expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('Live session for this workflow')).toBeTruthy();
     expect(daemon.socketFactory).toHaveBeenCalledWith('tok-abc', undefined, {
       mode: 'workflow',
       workflowRef: 'kb~video.md',
@@ -299,8 +293,6 @@ describe('"Run workflow" opens a session in the page, not in the Terminal destin
         sessionsClient={daemon.sessionsClient}
       />,
     ));
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
-
     await waitFor(() => expect(screen.getByTestId('workflow-console-mode').textContent).toBe('attached'));
     expect(daemon.socketFactory).toHaveBeenCalledWith('tok-abc', 'pty-live', undefined);
     // The live row does NOT open a second pane: two sinks on one shell evict each other.
@@ -319,7 +311,6 @@ describe('"Run workflow" opens a session in the page, not in the Terminal destin
         sessionRunsClient={client}
       />,
     ));
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-console-unrunnable')).toBeTruthy();
   });
 });

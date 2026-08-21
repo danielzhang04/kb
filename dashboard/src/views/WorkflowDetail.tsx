@@ -37,7 +37,6 @@ import { ConsolePane } from '../console/ConsolePane';
 import type { ConsoleControl } from '../console/ConsolePane';
 import { useAttachableSession } from '../console/useAttachableSession';
 import { SessionRunRow, useSessionRuns } from '../console/sessionRuns';
-import { EntityDetail, type DetailSection } from '../entity/EntityDetail';
 import { useOptionalSession } from '../lib/sessionContext';
 import type { PtySocketFactory, SessionRunDto, SessionRunsClient, TerminalSessionsClient } from '../lib/terminalClient';
 import type { NavTarget } from '../nav/stack';
@@ -107,7 +106,9 @@ export interface WorkflowCompiled {
   detail?: string;
 }
 
-export interface WorkflowDetailProps {
+export type WorkflowDetailSurface = 'live' | 'brief' | 'details' | 'all';
+
+export interface WorkflowDetailBodyProps {
   entry: WorkflowDefEntry;
   /** Injected by tests; otherwise self-fetched from the per-definition route. */
   compiled?: WorkflowCompiled | null;
@@ -120,17 +121,12 @@ export interface WorkflowDetailProps {
   now?: number;
   onOpenRun?: (runRef: string) => void;
   onNavigate?: (target: NavTarget) => void;
-  onBack?: () => void;
-  backLabel?: string;
   /** Injected in tests so no component test opens a real WebSocket. Defaults to the real `/api/pty`. */
   socketFactory?: PtySocketFactory;
   /** Injected in tests so no component test hits the network. Defaults to the real session REST client. */
   sessionsClient?: TerminalSessionsClient;
   /** Injected in tests; defaults to the real `/api/pty/session-runs` client. */
   sessionRunsClient?: SessionRunsClient;
-  /** Controlled by the nav stack so back-navigation restores the operator's tab. */
-  activeSectionId?: string;
-  onSectionChange?: (id: string) => void;
   /** Inputs the definition declares. Values live in the owner view so opening detail never changes intent. */
   parameterValues?: Record<string, string>;
   onParameterChange?: (name: string, value: string) => void;
@@ -145,6 +141,10 @@ export interface WorkflowDetailProps {
   onAssign?: (target: AssignTarget, assignment: Assignment | null) => void;
   assignBusy?: boolean;
   assignStatus?: React.ReactNode;
+  surface?: WorkflowDetailSurface;
+  consoleStarted?: boolean;
+  onConsoleStartedChange?: (started: boolean) => void;
+  includeGovernedLaunch?: boolean;
 }
 
 /**
@@ -373,20 +373,16 @@ export function WorkflowConsole({
   );
 }
 
-export function WorkflowDetail({
+export function WorkflowDetailBody({
   entry,
   compiled: injectedCompiled,
   runs,
   now,
   onOpenRun,
   onNavigate,
-  onBack,
-  backLabel,
   socketFactory,
   sessionsClient,
   sessionRunsClient,
-  activeSectionId,
-  onSectionChange,
   parameterValues = {},
   onParameterChange,
   onLaunch,
@@ -397,21 +393,22 @@ export function WorkflowDetail({
   onAssign,
   assignBusy = false,
   assignStatus,
-}: WorkflowDetailProps): React.JSX.Element {
+  surface = 'all',
+  consoleStarted: controlledConsoleStarted,
+  onConsoleStartedChange,
+  includeGovernedLaunch = true,
+}: WorkflowDetailBodyProps): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowCompiled | null>(injectedCompiled ?? null);
   // Whether the operator has asked for a session on THIS workflow. It lives here, not in the section
   // body, because the body unmounts on every tab switch — and the request must survive that, exactly as
   // the shell it started does.
-  const [consoleStarted, setConsoleStarted] = useState(false);
-  const [expandedSessionRef, setExpandedSessionRef] = useState<string | null>(null);
-  // Mirrors leg 1's AgentDetail: a controlled `activeSectionId` from the nav stack still wins, and the
-  // local copy only carries the uncontrolled case so "Run workflow" can SHOW the tab it just started on.
-  const [localSection, setLocalSection] = useState<string | undefined>(undefined);
-  const selectedSection = activeSectionId ?? localSection;
-  const selectSection = (id: string): void => {
-    setLocalSection(id);
-    onSectionChange?.(id);
+  const [localConsoleStarted, setLocalConsoleStarted] = useState(false);
+  const consoleStarted = controlledConsoleStarted ?? localConsoleStarted;
+  const setConsoleStarted = (started: boolean): void => {
+    if (controlledConsoleStarted === undefined) setLocalConsoleStarted(started);
+    onConsoleStartedChange?.(started);
   };
+  const [expandedSessionRef, setExpandedSessionRef] = useState<string | null>(null);
 
   /**
    * The compiled preview is DECORATION over the list entry: the detail is fully readable without it, so
@@ -438,7 +435,7 @@ export function WorkflowDetail({
   const runnable = entry.valid && entry.launchable !== false;
 
   const sessionRuns = useSessionRuns(
-    { kind: 'workflow', ref: entry.ref },
+    surface === 'live' || surface === 'all' ? { kind: 'workflow', ref: entry.ref } : null,
     { ...(sessionRunsClient ? { client: sessionRunsClient } : {}) },
   );
   const merged = mergeRunRows(runs, sessionRuns.runs);
@@ -484,10 +481,11 @@ export function WorkflowDetail({
           <p className="entity-note" role="status" data-testid="workflow-assign-status">{assignStatus}</p>
         ) : null}
       </section>
+    </>
+  );
 
-      <details className="entity-fold" data-testid="workflow-technical">
-        <summary>Technical details</summary>
-        <div className="entity-fold__body">
+  const technicalBody = (
+    <div className="entity-fold__body" data-testid="workflow-technical">
           <dl className="entity-kv" data-testid="workflow-facts">
             <div className="entity-kv__row"><dt>File</dt><dd className="mc-mono">{entry.path}</dd></div>
             <div className="entity-kv__row">
@@ -577,7 +575,7 @@ export function WorkflowDetail({
             * inputs it declares. It stays fully wired — it is how the governing agent and power use
             * start a run — but it is no longer what an operator meets first. "Run workflow" above is.
             */}
-          <h4 className="entity-block__title">Start a governed run directly</h4>
+          {includeGovernedLaunch ? <><h4 className="entity-block__title">Start a governed run directly</h4>
           <div className="v-workflows__direct-launch" data-testid="workflow-direct-launch">
             {parameters.map((name) => (
               <label key={name} className="entity-detail__param">
@@ -601,10 +599,8 @@ export function WorkflowDetail({
             {launchStatus ? (
               <span className="v-workflows__run-status" data-testid={`workflow-def-status-${entry.ref}`}>{launchStatus}</span>
             ) : null}
-          </div>
+          </div></> : null}
         </div>
-      </details>
-    </>
   );
 
   /**
@@ -671,53 +667,22 @@ export function WorkflowDetail({
     </>
   );
 
-  /**
-   * ONE button. It opens a terminal session primed as the agent that runs this workflow — no channel to
-   * type, no slug to fill in, no assignment to make first — and it lands the operator IN THIS PAGE, on
-   * the Runs tab, instead of throwing them at the Terminal destination and leaving the workflow they
-   * were reading. The direct governed launch (with its declared inputs) lives behind the technical fold.
-   */
-  const actions = (
+  const action = (
     <div>
       <button
         type="button"
         className="mc-btn mc-btn--primary"
         data-testid="workflow-run"
-        onClick={() => {
-          setConsoleStarted(true);
-          selectSection('runs');
-        }}
+        onClick={() => setConsoleStarted(true)}
       >
         Run workflow
       </button>
-      <p className="entity-note">Opens a session you can type into, as the agent that runs this workflow, under Runs.</p>
+      <p className="entity-note">Opens a session you can type into, as the agent that runs this workflow, under Live.</p>
     </div>
   );
 
-  const sections: DetailSection[] = [
-    { id: 'flow', label: 'Flow', render: () => body },
-    { id: 'runs', label: 'Runs', count: merged.length, render: () => runsBody },
-  ];
-
-  return (
-    <EntityDetail
-      entity={{ kind: 'workflow', id: entry.ref }}
-      eyebrow={<>Workflow · <EntityName kind="workflow" id={entry.ref} displayName={entry.displayName} shortRef={entry.shortRef} muted /></>}
-      title={entry.displayName}
-      status={{ label: entry.valid ? 'ready' : 'needs a fix', tone: entry.valid ? 'ok' : 'error' }}
-      facts={[
-        { label: 'Project', value: entry.project, mono: true },
-        { label: 'Steps', value: entry.stageCount, mono: true },
-        { label: 'Highest tier', value: entry.riskTier ?? '—', mono: true },
-        { label: 'Runs', value: runs === undefined ? '—' : runs.length, mono: true },
-      ]}
-      sections={sections}
-      activeSectionId={selectedSection}
-      onSectionChange={selectSection}
-      onNavigate={onNavigate}
-      onBack={onBack}
-      backLabel={backLabel}
-      actions={actions}
-    />
-  );
+  if (surface === 'live') return runsBody;
+  if (surface === 'brief') return body;
+  if (surface === 'details') return technicalBody;
+  return <>{action}{body}{runsBody}<details className="entity-fold" open><summary>Technical details</summary>{technicalBody}</details></>;
 }

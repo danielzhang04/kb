@@ -31,6 +31,7 @@ import {
 import { RoutingControl } from './routingControls';
 import { renderMarkdown } from '../lib/markdown';
 import { projectHumanInbox, type HumanInboxItem } from '../../server/tasks/cardProjection';
+import { PLANE_A_RECORDS_KEY, PLANE_A_RUN_ROWS_KEY } from '../lib/planeAKeys';
 import {
   respondToCard,
   verifyApproval,
@@ -517,11 +518,11 @@ export function Tasks({
     const state = String(selected.meta.state ?? '');
     return projectHumanInbox({
       cards: { [state]: [selected] },
-      ledgers: {
+      [PLANE_A_RECORDS_KEY]: {
         dispatch: { count: 0, cards: 0, byProject: {} },
         cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
         grades: { count: 0, rows: [] },
-        activity: { count: 0, rows: [] },
+        [PLANE_A_RUN_ROWS_KEY]: { count: 0, rows: [] },
       },
       orgStates: [],
     }).items[0] ?? null;

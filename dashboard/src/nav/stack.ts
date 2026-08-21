@@ -110,7 +110,9 @@ const URL_ENTITY_VIEW: Partial<Record<Focus['kind'], DestinationId>> = {
 /** Parse the closed P1 query grammar; every invalid ingress falls back to a clean Home root. */
 export function parseNavigationSearch(search: string): NavEntry[] {
   const fallback = rootStack('home');
+  if (/%(?![0-9a-f]{2})/i.test(search)) return fallback;
   const params = new URLSearchParams(search);
+  if ([...params].some(([key, value]) => key.includes('\uFFFD') || value.includes('\uFFFD'))) return fallback;
   const keys = [...params.keys()];
   if (keys.some((key) => key !== 'view' && key !== 'entity')) return fallback;
   if (params.getAll('view').length !== 1 || params.getAll('entity').length > 1) return fallback;

@@ -12,6 +12,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -55,7 +56,7 @@ vi.mock('@xterm/addon-fit', () => {
 });
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
-import { AgentDetail, type AgentDetailRow } from './AgentDetail';
+import { AgentDetailBody as AgentDetail, type AgentDetailRow } from './AgentDetail';
 import type {
   PtySessionSummary,
   PtySpawnTarget,
@@ -188,7 +189,7 @@ describe('AgentDetail — the embedded console', () => {
 
     // The click moved the operator to Runs and opened the console there; it did NOT navigate anywhere.
     await waitFor(() => expect(screen.getByTestId('console-panel-agent')).toBeTruthy());
-    expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('Live session for this agent')).toBeTruthy();
     expect(daemon.socketFactory).toHaveBeenCalledWith('tok-abc', undefined, {
       mode: 'agent',
       agentId: 'fyt-runner',
@@ -202,14 +203,25 @@ describe('AgentDetail — the embedded console', () => {
    */
   it('remount reattaches, never respawns: exactly ONE spawn across a tab-switch round trip', async () => {
     const daemon = fakeDaemon();
-    render(
-      unlocked(
+    function OverlayHarness() {
+      const [surface, setSurface] = useState<'live' | 'brief'>('live');
+      const [consoleStarted, setConsoleStarted] = useState(false);
+      return <>
+        <button type="button" data-testid="agent-run" onClick={() => setConsoleStarted(true)}>Run agent</button>
+        <button type="button" data-testid="entity-tab-overview" onClick={() => setSurface('brief')}>Brief</button>
+        <button type="button" data-testid="entity-tab-runs" onClick={() => setSurface('live')}>Live</button>
         <AgentDetail
           agent={agent({ id: 'fyt-runner', declared: true })}
           socketFactory={daemon.socketFactory}
           sessionsClient={daemon.sessionsClient}
-        />,
-      ),
+          surface={surface}
+          consoleStarted={consoleStarted}
+          onConsoleStartedChange={setConsoleStarted}
+        />
+      </>;
+    }
+    render(
+      unlocked(<OverlayHarness />),
     );
 
     await act(async () => {
@@ -260,10 +272,6 @@ describe('AgentDetail — the embedded console', () => {
         />,
       ),
     );
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('entity-tab-runs'));
-    });
-
     await waitFor(() => expect(screen.getByTestId('agent-console-mode').textContent).toBe('attached'));
     expect(daemon.spawnCalls()).toHaveLength(0);
     expect(daemon.attachCalls()[0]).toEqual(['tok-abc', 'pty-existing', undefined]);
@@ -287,9 +295,6 @@ describe('AgentDetail — the embedded console', () => {
         />,
       ),
     );
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('entity-tab-runs'));
-    });
     await waitFor(() => expect(screen.getByTestId('agent-console-idle')).toBeTruthy());
     expect(daemon.socketFactory).not.toHaveBeenCalled();
   });
@@ -352,7 +357,7 @@ describe('AgentDetail — the embedded console', () => {
     expect(screen.getByTestId('agent-console-notice').textContent).toMatch(/maximum number of terminals/i);
     // ...and the raw reason inside the pane itself. The operator stays on the agent either way.
     expect(screen.getByTestId('console-panel-error-agent').textContent).toContain('too-many-terminals');
-    expect(screen.getByTestId('entity-detail-agent')).toBeTruthy();
+    expect(screen.getByLabelText('Live session for this agent')).toBeTruthy();
   });
 
   it('ending the session returns the console to its idle state', async () => {
@@ -397,9 +402,6 @@ describe('AgentDetail — the embedded console', () => {
       ),
     );
     expect(screen.queryByTestId('agent-run')).toBeNull();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('entity-tab-runs'));
-    });
     expect(screen.getByTestId('agent-console-undeclared')).toBeTruthy();
     expect(daemon.socketFactory).not.toHaveBeenCalled();
   });
@@ -425,9 +427,6 @@ describe('AgentDetail — the embedded console', () => {
   it('renders standalone, with no session provider above it, without throwing', async () => {
     // The agent detail is a presentational surface and is legitimately rendered from a literal fixture.
     render(<AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} />);
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('entity-tab-runs'));
-    });
     expect(screen.getByTestId('agent-console-locked')).toBeTruthy();
   });
 });
@@ -476,7 +475,7 @@ describe('AgentDetail — past chat sessions', () => {
       unlocked(
         <AgentDetail
           agent={agent({ id: 'fyt-runner', declared: true })}
-          activeSectionId="runs"
+          surface="live"
           socketFactory={daemon.socketFactory}
           sessionsClient={daemon.sessionsClient}
           sessionRunsClient={sessionRuns}
@@ -499,7 +498,7 @@ describe('AgentDetail — past chat sessions', () => {
       unlocked(
         <AgentDetail
           agent={agent({ id: 'fyt-runner', declared: true })}
-          activeSectionId="runs"
+          surface="live"
           socketFactory={daemon.socketFactory}
           sessionsClient={daemon.sessionsClient}
           sessionRunsClient={sessionRuns}
@@ -521,7 +520,7 @@ describe('AgentDetail — past chat sessions', () => {
       <SessionProvider>
         <AgentDetail
           agent={agent({ id: 'fyt-runner', declared: true })}
-          activeSectionId="runs"
+          surface="live"
           sessionRunsClient={sessionRuns}
         />
       </SessionProvider>,

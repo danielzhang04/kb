@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Agents } from './Agents';
 import { SessionProvider } from '../lib/sessionContext';
-import { AgentDetail, type AgentDetailRow } from './AgentDetail';
+import { AgentDetailBody as AgentDetail, type AgentDetailRow } from './AgentDetail';
 import type { AgentRosterEntry } from '../../server/agents/roster';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { RunMetadataDto } from '../control/controlClient';
@@ -127,12 +127,11 @@ describe('reaching an agent detail and coming back', () => {
 
     // ...and stays mounted behind an overlay whose Live tab hosts the existing AgentDetail.
     const overlay = screen.getByRole('dialog');
-    expect(within(overlay).getAllByTestId('entity-detail-agent')).toHaveLength(2);
-    expect(within(overlay).getAllByTestId('entity-detail-title').map((node) => node.textContent))
-      .toContain('claude-worker');
+    expect(within(overlay).getAllByTestId('entity-detail-agent')).toHaveLength(1);
+    expect(within(overlay).getByTestId('entity-detail-title').textContent).toBe('Claude Worker');
     expect(screen.getByTestId('agent-row-codex-worker')).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId('entity-detail-back'));
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByTestId('entity-detail-agent')).toBeNull();
@@ -287,19 +286,15 @@ describe('the not-declared empty state', () => {
    * (spawn/attach/cap) is covered in `AgentDetailConsole.test.tsx`; this pins the action and the gate.
    */
   it('offers "Run agent" only for a declared agent, and lands it on this page', () => {
-    const onSectionChange = vi.fn();
     const { rerender } = render(
-      <AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} onSectionChange={onSectionChange} />,
+      <AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} />,
     );
 
     fireEvent.click(screen.getByTestId('agent-run'));
-    // It shows the Runs tab (where the session lives) and tells any controlling nav stack to follow.
-    expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
-    expect(onSectionChange).toHaveBeenCalledWith('runs');
     expect(screen.getByLabelText('Live session for this agent')).toBeTruthy();
 
     // No declaration = nothing to prime a session with, so the action is not offered at all.
-    rerender(<AgentDetail agent={agent({ id: 'observed-only', declared: false })} onSectionChange={onSectionChange} />);
+    rerender(<AgentDetail agent={agent({ id: 'observed-only', declared: false })} />);
     expect(screen.queryByTestId('agent-run')).toBeNull();
   });
 
@@ -366,6 +361,9 @@ describe('fields the roster fetched and never rendered', () => {
 
     // Ledger rollups are machinery: they live inside the one technical fold, not in primary UI.
     const ledger = within(screen.getByTestId('agent-technical')).getByTestId('agent-ledger');
+    expect(screen.getByLabelText('Ledger rows')).toBeTruthy();
+    expect(screen.queryByText('Ledger activity')).toBeNull();
+    expect(screen.getByTestId('agent-technical').textContent).not.toContain('ledgers/');
     expect(ledger.textContent).toContain('12');
     expect(ledger.textContent).toContain('340');
     expect(ledger.textContent).toContain('5');
@@ -401,7 +399,6 @@ describe('agent work and runs', () => {
     render(
       <AgentDetail agent={agent({ id: 'claude-worker' })} runs={[run({ runRef: 'run-7' })]} onNavigate={onNavigate} />,
     );
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     fireEvent.click(screen.getByTestId('agent-run-run-7'));
 
     expect(onNavigate).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'run', id: 'run-7' } });
@@ -413,7 +410,6 @@ describe('agent work and runs', () => {
    */
   it('distinguishes runs-not-loaded from runs-none', () => {
     const { rerender } = render(<AgentDetail agent={agent({ id: 'claude-worker' })} />);
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('agent-runs-unloaded').textContent).toMatch(/needs an unlocked session/i);
 
     rerender(<AgentDetail agent={agent({ id: 'claude-worker' })} runs={[]} />);
@@ -423,7 +419,6 @@ describe('agent work and runs', () => {
 
   it('labels the run join as derived, because it goes through queue cards', () => {
     render(<AgentDetail agent={agent({ id: 'claude-worker' })} runs={[]} />);
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     const section = screen.getByLabelText('Runs this agent is working');
     expect(within(section).getByText(/Derived via queue cards/i)).toBeTruthy();
   });
@@ -431,14 +426,12 @@ describe('agent work and runs', () => {
   /** A silently truncated join is worse than a stated partial one, so the bound is disclosed. */
   it('discloses the scan bound when the join was capped', () => {
     render(<AgentDetail agent={agent({ id: 'claude-worker' })} runs={[]} runScanLimit={20} />);
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     const section = screen.getByLabelText('Runs this agent is working');
     expect(section.textContent).toContain('20 most recent runs');
   });
 
   it('claims no scan bound when nothing was scanned', () => {
     render(<AgentDetail agent={agent({ id: 'claude-worker' })} runScanLimit={20} />);
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     const section = screen.getByLabelText('Runs this agent is working');
     expect(section.textContent).not.toContain('20 most recent runs');
   });

@@ -38,7 +38,8 @@ export function Health({ response }: { response?: HealthResponse } = {}): React.
           <h2>{section.label}</h2>
           <div className="v-health__rows">
             {section.rows.map((row) => (
-              <div className="v-health__row" data-testid={`health-row-${row.key}`} key={row.key}>
+              <div className="v-health__row" data-testid={`health-row-${row.key}`} key={row.key}
+                {...(row.kind === 'fleet' ? { 'data-raw-id': row.key.slice('agent:'.length) } : {})}>
                 <span className="v-health__label">{row.label}</span>
                 <span className="v-health__value">{valueFor(row)}</span>
                 <span className="v-health__source">Source: {row.source}</span>

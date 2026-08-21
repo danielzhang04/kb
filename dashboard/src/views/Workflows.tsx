@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSse } from '../lib/sseClient';
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import { useSession } from '../lib/sessionContext';
-import { WorkflowDetail, RunRow, type WorkflowDefEntry } from './WorkflowDetail';
+import { WorkflowDetailBody, RunRow, type WorkflowDefEntry } from './WorkflowDetail';
 import { RunDetail } from './RunDetail';
 import { EntityName } from '../components/EntityName';
 import { EntityDetail } from '../entity/EntityDetail';
@@ -117,6 +117,8 @@ export function Workflows({
   const [assignStatus, setAssignStatus] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('workflows'));
+  const [localDetailSection, setLocalDetailSection] = useState<string | undefined>(undefined);
+  const [consoleWorkflowRef, setConsoleWorkflowRef] = useState<string | null>(null);
   // State rendering is asynchronous; this ref is the synchronous double-click guard and retains the
   // same idempotency key for the full lifetime of one launch intent.
   const pendingLaunches = useRef(new Map<string, string>());
@@ -334,40 +336,37 @@ export function Workflows({
     .filter((run) => run.workflowRef === null || !knownRefs.has(run.workflowRef))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const visibleDefs = defs.items.filter((entry) => humanizeEntityId(entry.ref).toLowerCase().includes(filter.trim().toLowerCase()));
+  const selectedDetailSection = activeSectionId ?? localDetailSection;
+  const selectDetailSection = (id: string): void => {
+    setLocalDetailSection(id);
+    onSectionChange?.(id);
+  };
   const detailOverlay = openDef ? (
     <EntityDetail
       entity={{ kind: 'workflow', id: openDef.ref }}
-      eyebrow="Workflow"
-      title={humanizeEntityId(openDef.ref)}
-      facts={[]}
+      eyebrow={<span title={openDef.ref}>Workflow · {humanizeEntityId(openDef.ref)}</span>}
+      title={openDef.displayName}
+      status={{ label: openDef.valid ? 'ready' : 'needs a fix', tone: openDef.valid ? 'ok' : 'error' }}
+      facts={[
+        { label: 'Project', value: openDef.project, mono: true },
+        { label: 'Steps', value: openDef.stageCount, mono: true },
+        { label: 'Highest tier', value: openDef.riskTier ?? '—', mono: true },
+        { label: 'Runs', value: runs === undefined ? '—' : runsForWorkflow(openDef.ref, runs).length, mono: true },
+      ]}
       sections={[
         {
           id: 'live',
           label: 'Live',
           render: () => (
-            <WorkflowDetail
+            <WorkflowDetailBody
               entry={openDef}
               runs={runs === undefined ? undefined : runsForWorkflow(openDef.ref, runs)}
               now={now}
               onOpenRun={openRun}
               onNavigate={onNavigate}
-              onBack={back}
-              backLabel="All workflows"
-              activeSectionId={activeSectionId}
-              onSectionChange={onSectionChange}
-              parameterValues={parameterValues[openDef.ref] ?? {}}
-              onParameterChange={(name, value) => setParameterValues((current) => ({
-                ...current,
-                [openDef.ref]: { ...current[openDef.ref], [name]: value },
-              }))}
-              onLaunch={() => void launchDefinition(openDef.ref)}
-              launching={launchingRefs.has(openDef.ref)}
-              launchStatus={launchStatus[openDef.ref] ?? null}
-              blockedReason={launchBlockReason(openDef)}
-              assignmentOptions={assignmentOptions[openDef.ref] ?? null}
-              onAssign={(target, assignment) => void assign(openDef.ref, target, assignment)}
-              assignBusy={assigningRef === openDef.ref}
-              assignStatus={assignStatus[openDef.ref] ?? null}
+              surface="live"
+              consoleStarted={consoleWorkflowRef === openDef.ref}
+              onConsoleStartedChange={(started) => setConsoleWorkflowRef(started ? openDef.ref : null)}
             />
           ),
         },
@@ -375,18 +374,24 @@ export function Workflows({
           id: 'brief',
           label: 'Brief',
           render: () => (
-            <dl className="entity-kv">
-              <div className="entity-kv__row"><dt>Description</dt><dd>{openDef.title ?? 'No loaded description.'}</dd></div>
-              <div className="entity-kv__row"><dt>Project</dt><dd>{openDef.project}</dd></div>
-              <div className="entity-kv__row"><dt>Definition</dt><dd>{openDef.path}</dd></div>
-            </dl>
+            <WorkflowDetailBody entry={openDef} runs={runs === undefined ? undefined : runsForWorkflow(openDef.ref, runs)}
+              now={now} onOpenRun={openRun} onNavigate={onNavigate} surface="brief"
+              blockedReason={launchBlockReason(openDef)} assignmentOptions={assignmentOptions[openDef.ref] ?? null}
+              onAssign={(target, assignment) => void assign(openDef.ref, target, assignment)}
+              assignBusy={assigningRef === openDef.ref} assignStatus={assignStatus[openDef.ref] ?? null} />
           ),
         },
       ]}
+      activeSectionId={selectedDetailSection}
+      onSectionChange={selectDetailSection}
       overlay
-      onClose={back}
+      onClose={() => { setConsoleWorkflowRef(null); back(); }}
       actions={(
         <div className="v-workflows__direct-launch" data-testid="workflow-overlay-launch">
+          <button type="button" className="mc-btn mc-btn--primary" data-testid="workflow-run" onClick={() => {
+            setConsoleWorkflowRef(openDef.ref);
+            selectDetailSection('live');
+          }}>Run workflow</button>
           {(openDef.parameters ?? []).map((name) => (
             <label key={name} className="entity-detail__param">
               <span>{name}</span>
@@ -420,11 +425,8 @@ export function Workflows({
         </div>
       )}
       detailsContent={(
-        <dl className="entity-kv">
-          <div className="entity-kv__row"><dt>Workflow id</dt><dd className="mc-mono">{openDef.ref}</dd></div>
-          <div className="entity-kv__row"><dt>Definition ref</dt><dd className="mc-mono">{openDef.path}</dd></div>
-          <div className="entity-kv__row"><dt>Source revision</dt><dd className="mc-mono">{openDef.sourceHash ?? '—'}</dd></div>
-        </dl>
+        <WorkflowDetailBody entry={openDef} runs={runs === undefined ? undefined : runsForWorkflow(openDef.ref, runs)}
+          now={now} onOpenRun={openRun} onNavigate={onNavigate} surface="details" includeGovernedLaunch={false} />
       )}
     />
   ) : null;

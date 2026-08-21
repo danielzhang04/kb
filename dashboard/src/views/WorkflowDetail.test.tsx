@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Workflows } from './Workflows';
 import { SessionProvider } from '../lib/sessionContext';
-import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
+import { WorkflowDetailBody as WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
 import type { RunMetadataDto } from '../control/controlClient';
 
 afterEach(cleanup);
@@ -78,12 +78,11 @@ describe('reaching a workflow detail and coming back', () => {
     fireEvent.click(screen.getByTestId('workflow-open-kb~video.md'));
 
     const overlay = screen.getByRole('dialog');
-    expect(within(overlay).getAllByTestId('entity-detail-workflow')).toHaveLength(2);
-    expect(within(overlay).getAllByTestId('entity-detail-title').map((node) => node.textContent))
-      .toContain('Video pipeline');
+    expect(within(overlay).getAllByTestId('entity-detail-workflow')).toHaveLength(1);
+    expect(within(overlay).getByTestId('entity-detail-title').textContent).toBe('Video pipeline');
     expect(screen.getByTestId('workflow-def-kb~audio.md')).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId('entity-detail-back'));
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByTestId('entity-detail-workflow')).toBeNull();
@@ -136,13 +135,10 @@ describe('one Run workflow button', () => {
       onLaunch={vi.fn()}
     />);
 
-    const actions = screen.getByTestId('entity-detail-workflow').querySelector('.entity-detail__actions');
-    const buttons = actions?.querySelectorAll('button') ?? [];
-    expect([...buttons].map((button) => button.textContent)).toEqual(['Run workflow']);
+    expect(screen.getAllByTestId('workflow-run')).toHaveLength(1);
 
     // Leg 2: no navigation away. The click selects this detail's own Runs tab, where the session opens.
     fireEvent.click(screen.getByRole('button', { name: 'Run workflow' }));
-    expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByLabelText('Live session for this workflow')).toBeTruthy();
   });
 
@@ -169,8 +165,8 @@ describe('one Run workflow button', () => {
   });
 
   it('keeps the Flow tab as the landing section, so a visit never auto-opens a console', () => {
-    render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} />);
-    expect(screen.getByTestId('entity-tab-flow').getAttribute('aria-selected')).toBe('true');
+    render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} surface="brief" />);
+    expect(screen.getByTestId('workflow-agent-network')).toBeTruthy();
     // The console section only exists once the operator asks for the Runs tab.
     expect(screen.queryByLabelText('Live session for this workflow')).toBeNull();
   });
@@ -255,7 +251,6 @@ describe('workflow -> its runs', () => {
     );
 
     const overlay = screen.getByRole('dialog');
-    fireEvent.click(within(overlay).getByTestId('entity-tab-runs'));
     expect(within(overlay).getByTestId('workflow-run-run-7')).toBeTruthy();
     expect(within(overlay).queryByTestId('workflow-run-run-8')).toBeNull();
 
@@ -277,14 +272,12 @@ describe('workflow -> its runs', () => {
         ]}
       />,
     );
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-run-run-7-owner').textContent).toBe('operator');
     expect(screen.getByTestId('workflow-run-run-9-owner').textContent).toBe('dashboard-engine');
   });
 
   it('renders the full run title without truncating it', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[run({ runRef: 'run-7' })]} />);
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-run-run-7').textContent).toContain(
       'Rebuild the faceless video pipeline and republish the audio stage',
     );
@@ -292,14 +285,12 @@ describe('workflow -> its runs', () => {
 
   it('says "not loaded" rather than "never run" when the tab is locked', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} />);
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-runs-unloaded').textContent).toMatch(/unlock the dashboard/i);
     expect(screen.queryByTestId('workflow-runs-empty')).toBeNull();
   });
 
   it('says "has not run yet" when there genuinely are none', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[]} />);
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-runs-empty').textContent).toMatch(/has not run yet/i);
   });
 });
@@ -315,7 +306,7 @@ describe('the graph is the surface, and the engine detail is behind one fold', (
     />);
     // Leg 2 adds exactly ONE more section (the merged run/session history) — not the five engine tabs
     // this surface used to have, and the graph is still what an operator lands on.
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Flow', 'Runs0']);
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
     expect(screen.getByTestId('workflow-agent-network')).toBeTruthy();
   });
 
@@ -353,7 +344,7 @@ describe('the graph is the surface, and the engine detail is behind one fold', (
     expect(screen.getByTestId('workflow-invalid-detail').textContent).toContain(
       'stage "render" depends on unknown stage "mix"',
     );
-    expect(screen.getByTestId('entity-detail-status').textContent).toContain('needs a fix');
+    expect(screen.getByTestId('workflow-invalid-detail').textContent).toContain('depends on unknown stage');
   });
 
   it('surfaces checked-in governance diagnostics without calling the workflow broken', () => {
@@ -367,7 +358,7 @@ describe('the graph is the surface, and the engine detail is behind one fold', (
     const warning = screen.getByTestId('workflow-governance-problems');
     expect(warning.textContent).toContain('missing-governor');
     expect(warning.textContent).toContain('other-agent');
-    expect(screen.getByTestId('entity-detail-status').textContent).toContain('ready');
+    expect(screen.queryByTestId('workflow-invalid-detail')).toBeNull();
   });
 
   it('says a compile failure out loud instead of leaving an empty panel', () => {

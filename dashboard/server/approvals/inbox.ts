@@ -19,29 +19,10 @@
  * tests stay hermetic (no real `py` binary, no real `queue/` tree) and the DI seam is consistent
  * dashboard-wide.
  */
-import type { PlaneAIndex } from '../planeA/indexer.ts';
-import type { CardProjection } from '../planeA/cards.ts';
 import { defaultPyRunner } from '../write/launch.ts';
 import type { PyRunner, PyRunResult } from '../write/launch.ts';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
-
-const TIER_RANK: Record<string, number> = { T3: 0, T2: 1, T1: 2 };
-
-/**
- * Ranked pending cards from an already-built Plane-A snapshot's `approvals` bucket — T3 first, then
- * T2, then T1/unrecognized, ties broken by card id. A pure read of the index; never a fresh `queue/`
- * scan (the indexer already owns that).
- */
-export function listPending(index: PlaneAIndex): CardProjection[] {
-  const pending = index.cards.approvals ?? [];
-  return [...pending].sort((a, b) => {
-    const ra = TIER_RANK[String(a.meta['risk-tier'])] ?? 99;
-    const rb = TIER_RANK[String(b.meta['risk-tier'])] ?? 99;
-    if (ra !== rb) return ra - rb;
-    return String(a.meta.id).localeCompare(String(b.meta.id));
-  });
-}
 
 /**
  * The pinned, verified view of a card a verifier returned — the executor acts on THESE fields, never a

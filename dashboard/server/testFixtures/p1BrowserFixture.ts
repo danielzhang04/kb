@@ -124,6 +124,11 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     timers.add(timer);
   };
 
+  const releasePendingInbox = (): void => {
+    for (const release of pendingInbox) release();
+    pendingInbox.clear();
+  };
+
   const server = createServer((request, reply) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
     if (request.method !== 'GET') return json(reply, 404, { error: 'not found' });
@@ -181,6 +186,7 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
             reply.write(`event: planeA\ndata: ${frame}\n\n`);
           }, 5 * (index + 1));
         }
+        later(releasePendingInbox, (5 * inboxData.eventFrames.length) + 750);
         later(() => {
           if (reply.destroyed) return;
           state.unknownEventFrames += 1;
@@ -225,16 +231,14 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     origin: `http://127.0.0.1:${address.port}`,
     state,
     releaseInbox(): void {
-      for (const release of pendingInbox) release();
-      pendingInbox.clear();
+      releasePendingInbox();
     },
     async close(): Promise<void> {
       if (closed) return;
       closed = true;
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
-      for (const release of pendingInbox) release();
-      pendingInbox.clear();
+      releasePendingInbox();
       for (const stream of streams) stream.destroy();
       streams.clear();
       await new Promise<void>((resolveClose, rejectClose) => server.close((error) => error ? rejectClose(error) : resolveClose()));

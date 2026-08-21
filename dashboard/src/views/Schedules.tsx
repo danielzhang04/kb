@@ -9,6 +9,7 @@ import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import { describeSchedule, nextScheduleWindow, relativeScheduleWindow } from '../lib/scheduleWords';
 import { useSession } from '../lib/sessionContext';
 import { useReadPanel } from '../lib/useReadPanel';
+import { humanizeEntityId } from '../entity/humanizeEntityId';
 import '../styles/views/schedules.css';
 
 interface EditResponse { ok: boolean; target?: string; pr?: { url?: string; number?: number } | null; reason?: string; error?: string; }
@@ -36,7 +37,6 @@ export function replaceCadenceSchedule(content: string, cadenceName: string, sch
   lines.splice(start + 1, 0, `${childIndent}schedule: ${schedule}${newline}`);
   return lines.join('');
 }
-
 function unboundedCron(schedule: string | null): boolean {
   const fields = (schedule ?? '').trim().split(/\s+/);
   return fields.length === 5 && (!/^\d+$/.test(fields[0]) || fields[1] === '*');
@@ -171,9 +171,9 @@ export function SchedulesBody(): React.JSX.Element {
         const historyKey = `${row.project}:${row.name}`;
         const historyOpen = expandedHistory.has(historyKey);
         const attention = needsYou(row.lastRun?.narration ?? null);
-        return <li className="schedules__card" data-testid={`schedules-row-${row.name}`} key={`${row.file}:${row.name}`}>
+        return <li className="schedules__card" data-testid={`schedules-row-${row.name}`} data-raw-id={`${row.project}:${row.name}`} key={`${row.file}:${row.name}`}>
           <div className="schedules__card-main">
-            <div className="schedules__title"><span className="schedules__project">{row.project}</span><strong>{row.name}</strong>{paused ? <span className="mc-badge schedules__paused" data-testid={`schedules-state-${row.name}`}>paused</span> : null}</div>
+            <div className="schedules__title"><span className="schedules__project" title={row.project}>{humanizeEntityId(row.project)}</span><strong title={row.name}>{humanizeEntityId(row.name)}</strong>{paused ? <span className="mc-badge schedules__paused" data-testid={`schedules-state-${row.name}`}>paused</span> : null}</div>
             <p className="schedules__recurrence">{describeSchedule(row.schedule).label}</p>
           </div>
           <div className="schedules__card-status"><span className="schedules__next"><small>next window</small>{relativeScheduleWindow(nextScheduleWindow(row.schedule))}</span><LastOutcome row={row} />{attention ? <span className="mc-badge schedules__needs-you">needs you</span> : null}</div>
@@ -198,4 +198,3 @@ export function SchedulesBody(): React.JSX.Element {
     <p className="schedules__quiet">Read-only timing display. The dashboard never starts, resumes, or reschedules a run.</p>
   </div>;
 }
-

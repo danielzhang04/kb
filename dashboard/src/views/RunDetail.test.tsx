@@ -201,17 +201,21 @@ describe('AgentTile', () => {
     expect(screen.queryByText('Visual-only public event')).toBeNull();
   });
 
-  it('links a stuck tile to the Inbox', () => {
+  it('focuses the active run gate for a stuck tile without navigating to Inbox', () => {
     const onNavigate = vi.fn();
-    render(unlocked(<AgentTile agentId="fyt-story" runRef="run-1" events={[event({ status: 'failure', summary: 'G1 refused' })]} onNavigate={onNavigate} />));
-    fireEvent.click(screen.getByTestId('run-tile-fyt-story-inbox-link'));
-    expect(onNavigate).toHaveBeenCalledWith({ view: 'inbox' });
+    render(unlocked(<>
+      <section data-testid="run-gates" tabIndex={-1}>Active gate</section>
+      <AgentTile agentId="fyt-story" runRef="run-1" events={[event({ status: 'failure', summary: 'G1 refused' })]} onNavigate={onNavigate} />
+    </>));
+    fireEvent.click(screen.getByTestId('run-tile-fyt-story-gate-link'));
+    expect(document.activeElement).toBe(screen.getByTestId('run-gates'));
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it('posts an operator message and says when delivery is queued', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ delivery: 'queued' }), { status: 202 }));
     await renderUnlockedReady(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
-    fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
+    fireEvent.change(screen.getByLabelText('Message FYT Story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-tile-fyt-story-delivery').textContent).toMatch(/queued for its next turn/i));
     expect(fetchImpl).toHaveBeenCalledWith('/api/control/runs/run-1/agents/fyt-story/messages', expect.objectContaining({
@@ -222,7 +226,7 @@ describe('AgentTile', () => {
   it('states the offline refusal instead of silently dropping a message', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'agent-message-delivery-unavailable' }), { status: 409 }));
     await renderUnlockedReady(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
-    fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
+    fireEvent.change(screen.getByLabelText('Message FYT Story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-tile-fyt-story-delivery').textContent).toMatch(/offline/i));
   });

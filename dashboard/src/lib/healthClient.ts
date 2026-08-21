@@ -43,6 +43,24 @@ function validRow(value: unknown, section: HealthSectionId): value is HealthRow 
       || (row.key.startsWith('model:') && body !== null && exactKeys(body, ['steps', 'mix']) && number(body.steps) && number(body.mix)));
 }
 
+function validDaemonSequence(rows: unknown[]): boolean {
+  return rows.filter((value) => record(value)?.key === 'release').length === 1;
+}
+
+function validMcpSequence(rows: unknown[]): boolean {
+  if (rows.length === 1 && unavailable(record(rows[0]) ?? {}, 'mcp')) return true;
+  if (rows.length % 3 !== 0) return false;
+  for (let index = 0; index < rows.length; index += 3) {
+    const configured = record(rows[index]);
+    const vm = record(rows[index + 1]);
+    const desktop = record(rows[index + 2]);
+    if (!configured || configured.kind !== 'mcp' || !string(configured.key) || !vm || !desktop) return false;
+    if (vm.kind !== 'deferred' || vm.key !== `${configured.key}:vm` || vm.label !== 'VM availability') return false;
+    if (desktop.kind !== 'deferred' || desktop.key !== `${configured.key}:desktop` || desktop.label !== 'Desktop availability') return false;
+  }
+  return true;
+}
+
 export function decodeHealthResponse(value: unknown): HealthResponse {
   const body = record(value);
   const expected: Array<[HealthSectionId, string]> = [
@@ -51,7 +69,10 @@ export function decodeHealthResponse(value: unknown): HealthResponse {
   if (!body || !exactKeys(body, ['sections']) || !Array.isArray(body.sections) || body.sections.length !== expected.length) throw new Error('Invalid Health response');
   for (const [index, [id, label]] of expected.entries()) {
     const section = record(body.sections[index]);
-    if (!section || !exactKeys(section, ['id', 'label', 'rows']) || section.id !== id || section.label !== label || !Array.isArray(section.rows) || !section.rows.every((row) => validRow(row, id))) {
+    if (!section || !exactKeys(section, ['id', 'label', 'rows']) || section.id !== id || section.label !== label || !Array.isArray(section.rows)
+      || !section.rows.every((row) => validRow(row, id))
+      || (id === 'daemon-machine' && !validDaemonSequence(section.rows))
+      || (id === 'mcp' && !validMcpSequence(section.rows))) {
       throw new Error('Invalid Health response');
     }
   }

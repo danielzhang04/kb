@@ -1,5 +1,5 @@
 /**
- * The agent detail, on the shared {@link EntityDetail} shell.
+ * The reusable agent detail body hosted by the Agents view's single shared detail shell.
  *
  * ── Shape (UX overhaul §4): identity, then what it is DOING, then ONE technical fold ──
  *
@@ -31,7 +31,6 @@ import { ConsolePane } from '../console/ConsolePane';
 import type { ConsoleControl } from '../console/ConsolePane';
 import { useAttachableSession } from '../console/useAttachableSession';
 import { SessionRunRow, useSessionRuns } from '../console/sessionRuns';
-import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { AgentDetailDto } from '../lib/agentClient';
 import { renderMarkdown } from '../lib/markdown';
 import { useOptionalSession } from '../lib/sessionContext';
@@ -66,7 +65,9 @@ export interface AgentDetailRow {
   sources: Array<'queue' | 'ledger'>;
 }
 
-export interface AgentDetailProps {
+export type AgentDetailSurface = 'live' | 'brief' | 'details' | 'all';
+
+export interface AgentDetailBodyProps {
   agent: AgentDetailRow;
   /** The Plane-A snapshot, for the agent's owned queue cards. */
   index?: PlaneAIndex;
@@ -92,11 +93,10 @@ export interface AgentDetailProps {
   sessionsClient?: TerminalSessionsClient;
   /** Injected in tests; defaults to the real `/api/pty/session-runs` client. */
   sessionRunsClient?: SessionRunsClient;
-  activeSectionId?: string;
-  onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
-  onBack?: () => void;
-  backLabel?: string;
+  surface?: AgentDetailSurface;
+  consoleStarted?: boolean;
+  onConsoleStartedChange?: (started: boolean) => void;
 }
 
 /** A value that exists, or an explicit dash — never an empty cell that reads as a load failure. */
@@ -152,7 +152,7 @@ export function NotDeclaredPanel({ agent }: { agent: AgentDetailRow }): React.JS
       <p className="entity-undeclared__body">
         Writing that file would add a one-line description of what this agent exists to do, its default
         runtime and model, and the human-set <code className="mc-mono">runner-bound</code> flag that lets a
-        runner claim its cards. Until then this is an honest record of activity, not a definition.
+        runner claim its cards. Until then this is an honest record of work, not a definition.
       </p>
     </section>
   );
@@ -307,7 +307,7 @@ export function AgentConsole({
   );
 }
 
-export function AgentDetail({
+export function AgentDetailBody({
   agent,
   index,
   runs,
@@ -318,33 +318,24 @@ export function AgentDetail({
   socketFactory,
   sessionsClient,
   sessionRunsClient,
-  activeSectionId,
-  onSectionChange,
   onNavigate,
-  onBack,
-  backLabel,
-}: AgentDetailProps): React.JSX.Element {
-  // Whether the operator has asked for a session on THIS agent. It lives here, not in the section body,
-  // because the body unmounts on every tab switch — and the request must survive that, exactly as the
-  // shell it started does.
-  const [consoleStarted, setConsoleStarted] = useState(false);
+  surface = 'all',
+  consoleStarted: controlledConsoleStarted,
+  onConsoleStartedChange,
+}: AgentDetailBodyProps): React.JSX.Element {
+  const [localConsoleStarted, setLocalConsoleStarted] = useState(false);
+  const consoleStarted = controlledConsoleStarted ?? localConsoleStarted;
+  const setConsoleStarted = (started: boolean): void => {
+    if (controlledConsoleStarted === undefined) setLocalConsoleStarted(started);
+    onConsoleStartedChange?.(started);
+  };
   const [expandedSessionRef, setExpandedSessionRef] = useState<string | null>(null);
   // This agent's own session runs — the record of every terminal session primed as it. A DIFFERENT kind
   // of record from the governed runs below, and labelled as one on every row.
   const sessionRuns = useSessionRuns(
-    { kind: 'agent', ref: agent.id },
+    surface === 'live' || surface === 'all' ? { kind: 'agent', ref: agent.id } : null,
     { ...(sessionRunsClient ? { client: sessionRunsClient } : {}) },
   );
-  // The section is mirrored here so "Run agent" can SHOW the tab it just started a session on. When the
-  // nav stack supplies `activeSectionId` it still wins (back-navigation must restore the operator's tab);
-  // the local copy only carries the uncontrolled case, which is otherwise a button that does nothing
-  // visible.
-  const [localSection, setLocalSection] = useState<string | undefined>(undefined);
-  const selectedSection = activeSectionId ?? localSection;
-  const selectSection = (id: string): void => {
-    setLocalSection(id);
-    onSectionChange?.(id);
-  };
   const cards = index ? cardsForAgent(agent.id, index) : [];
   // The compact roster provides these facts before the declaration read completes. When the detail
   // projection arrives, prefer its exact declaration-backed values without changing legacy nulls.
@@ -531,9 +522,9 @@ export function AgentDetail({
     </>
   );
 
-  const activity = (
-    <section className="entity-block" aria-label="Ledger activity">
-      <h3 className="entity-block__title">Ledger activity</h3>
+  const ledgerRows = (
+    <section className="entity-block" aria-label="Ledger rows">
+      <h3 className="entity-block__title">Ledger rows</h3>
       <dl className="entity-kv" data-testid="agent-ledger">
         <div className="entity-kv__row">
           <dt>Dispatches</dt>
@@ -554,7 +545,7 @@ export function AgentDetail({
         </div>
       </dl>
       <p className="entity-note">
-        Counted from <code className="mc-mono">ledgers/&lt;kind&gt;/{agent.id}-&lt;date&gt;.tsv</code> rows.
+        Counted from this agent&rsquo;s dispatch, step, and active-day rows.
       </p>
     </section>
   );
@@ -639,26 +630,23 @@ export function AgentDetail({
         )}
       </section>
 
-      {/* THE fold. One disclosure holds every technical fact about this agent — definition file,
-          declared defaults, roster provenance, governed workflows, runner facts, ledger rollups and the
-          governed routing control. Primary UI above it stays plain-language. */}
-      <details className="entity-fold" data-testid="agent-technical">
-        <summary>Technical details</summary>
-        <div className="entity-fold__body">
-          {technical}
-          {activity}
-          {routing ? (
-            <section className="entity-block" aria-label="Model routing">
-              <h3 className="entity-block__title">Effective routing</h3>
-              {routing}
-              <p className="entity-note">
-                Changing the model is a governed, audited server write and needs a passkey session.
-              </p>
-            </section>
-          ) : null}
-        </div>
-      </details>
     </>
+  );
+
+  const detailsBody = (
+    <div className="entity-fold__body" data-testid="agent-technical">
+      {technical}
+      {ledgerRows}
+      {routing ? (
+        <section className="entity-block" aria-label="Model routing">
+          <h3 className="entity-block__title">Effective routing</h3>
+          {routing}
+          <p className="entity-note">
+            Changing the model is a governed, audited server write and needs a passkey session.
+          </p>
+        </section>
+      ) : null}
+    </div>
   );
 
   /**
@@ -758,62 +746,18 @@ export function AgentDetail({
     </>
   );
 
-  const sections: DetailSection[] = [
-    { id: 'overview', label: 'Overview', count: cards.length, render: () => overview },
-    { id: 'runs', label: 'Runs', count: runs?.length, render: () => runsSection },
-  ];
+  const action = agent.declared ? (
+    <div>
+      <button type="button" className="mc-btn mc-btn--primary" data-testid="agent-run"
+        onClick={() => setConsoleStarted(true)}>
+        Run agent
+      </button>
+      <p className="entity-note">Opens a session you can type into, set up as this agent, under Live.</p>
+    </div>
+  ) : null;
 
-  const links: EntityLink[] = agent.current
-    ? [{
-        label: 'Current card',
-        target: { view: 'tasks', focus: { kind: 'card', id: agent.current.id } },
-        ref: agent.current.id,
-      }]
-    : [];
-
-  return (
-    <EntityDetail
-      entity={{ kind: 'agent', id: agent.id }}
-      eyebrow={agent.display
-        ? <>Fleet agent · <EntityName kind="agent" id={agent.id} displayName={agent.display.displayName} shortRef={agent.display.shortRef} muted /></>
-        : `Fleet agent · ${agent.id}`}
-      title={agent.role ? `${agent.id} · ${agent.role}` : agent.id}
-      status={{
-        label: agent.working ? 'working' : 'idle',
-        tone: agent.working ? 'running' : 'idle',
-      }}
-      // Identity only. Declaration/runner status is machinery and lives in the fold, not the header.
-      facts={[
-        { label: 'Role', value: orDash(agent.role), mono: true },
-        { label: 'Model', value: orDash(agent.declaredModel), mono: true },
-        { label: 'Tasks', value: agent.cardCount, mono: true },
-        { label: 'Last active', value: lastActiveLabel(agent.lastActive), mono: true },
-      ]}
-      links={links}
-      sections={sections}
-      activeSectionId={selectedSection}
-      onSectionChange={selectSection}
-      onNavigate={onNavigate}
-      onBack={onBack}
-      backLabel={backLabel}
-      // "Run agent" now lands IN THIS PAGE: it asks the Runs tab for a session and shows the tab, instead
-      // of navigating the operator to the Terminal destination and leaving the agent they were reading.
-      actions={agent.declared ? (
-        <div>
-          <button
-            type="button"
-            className="mc-btn mc-btn--primary"
-            data-testid="agent-run"
-            onClick={() => {
-              setConsoleStarted(true);
-              selectSection('runs');
-            }}
-          >
-            Run agent
-          </button>
-          <p className="entity-note">Opens a session you can type into, set up as this agent, under Runs.</p>
-        </div>
-      ) : undefined}
-    />
-  );
+  if (surface === 'live') return runsSection;
+  if (surface === 'brief') return overview;
+  if (surface === 'details') return detailsBody;
+  return <>{action}{overview}{runsSection}<details className="entity-fold" open><summary>Technical details</summary>{detailsBody}</details></>;
 }

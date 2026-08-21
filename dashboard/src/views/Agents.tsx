@@ -37,10 +37,11 @@ import {
   type EffectiveView,
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
-import { AgentDetail } from './AgentDetail';
+import { AgentDetailBody, lastActiveLabel } from './AgentDetail';
 import { EntityName } from '../components/EntityName';
 import { EntityDetail } from '../entity/EntityDetail';
 import { humanizeEntityId } from '../entity/humanizeEntityId';
+import { PLANE_A_RECORDS_KEY, PLANE_A_RUN_ROWS_KEY } from '../lib/planeAKeys';
 import { persistEntityLayout, readEntityLayout, type EntityLayout } from '../entity/entityLayout';
 import { entityRowProps } from '../components/entityRow';
 import { fetchAgentDetail, fetchSystemWorkers, type AgentDetailDto, type SystemWorkerDto } from '../lib/agentClient';
@@ -59,11 +60,11 @@ const AGENT_RUN_SCAN_LIMIT = 20;
 
 const EMPTY_INDEX: PlaneAIndex = {
   cards: {},
-  ledgers: {
+  [PLANE_A_RECORDS_KEY]: {
     dispatch: { count: 0, cards: 0, byProject: {} },
     cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
     grades: { count: 0, rows: [] },
-    activity: { count: 0, rows: [] },
+    [PLANE_A_RUN_ROWS_KEY]: { count: 0, rows: [] },
   },
   orgStates: [],
 };
@@ -392,6 +393,8 @@ export function Agents({
   const [detailState, setDetailState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [filter, setFilter] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('agents'));
+  const [localDetailSection, setLocalDetailSection] = useState<string | undefined>(undefined);
+  const [consoleAgentId, setConsoleAgentId] = useState<string | null>(null);
   const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
 
   useEffect(() => {
@@ -629,19 +632,33 @@ export function Agents({
   const joinedRuns = openAgentRow
     ? agentRuns ?? (scannedRuns ? runsForAgent(openAgentRow.id, scannedRuns, cardOwnerIndex(index)) : undefined)
     : undefined;
+  const selectedDetailSection = activeSectionId ?? localDetailSection;
+  const selectDetailSection = (id: string): void => {
+    setLocalDetailSection(id);
+    onSectionChange?.(id);
+  };
 
   const detailOverlay = openAgentRow ? (
     <EntityDetail
       entity={{ kind: 'agent', id: openAgentRow.id }}
-      eyebrow="Agent"
+      eyebrow={<span title={openAgentRow.id}>Agent · {humanizeEntityId(openAgentRow.id)}</span>}
       title={humanizeEntityId(openAgentRow.id)}
-      facts={[]}
+      status={{ label: openAgentRow.working ? 'working' : 'idle', tone: openAgentRow.working ? 'running' : 'idle' }}
+      facts={[
+        { label: 'Role', value: openAgentRow.role ?? '—' },
+        { label: 'Model', value: openAgentRow.declaredModel ?? '—', mono: true },
+        { label: 'Tasks', value: openAgentRow.cardCount, mono: true },
+        { label: 'Last active', value: lastActiveLabel(openAgentRow.lastActive, now), mono: true },
+      ]}
+      links={openAgentRow.current ? [{
+        label: 'Current card', target: { view: 'tasks', focus: { kind: 'card', id: openAgentRow.current.id } }, ref: openAgentRow.current.id,
+      }] : []}
       sections={[
         {
           id: 'live',
           label: 'Live',
           render: () => (
-            <AgentDetail
+            <AgentDetailBody
               agent={openAgentRow}
               index={index}
               runs={joinedRuns}
@@ -649,11 +666,10 @@ export function Agents({
               routing={routingControlFor(openAgentRow)}
               detail={detail}
               detailState={detailState === 'idle' ? undefined : detailState}
-              activeSectionId={activeSectionId}
-              onSectionChange={onSectionChange}
               onNavigate={onNavigate}
-              onBack={backToRoster}
-              backLabel="All agents"
+              surface="live"
+              consoleStarted={consoleAgentId === openAgentRow.id}
+              onConsoleStartedChange={(started) => setConsoleAgentId(started ? openAgentRow.id : null)}
             />
           ),
         },
@@ -661,22 +677,26 @@ export function Agents({
           id: 'brief',
           label: 'Brief',
           render: () => (
-            <dl className="entity-kv">
-              <div className="entity-kv__row"><dt>Description</dt><dd>{openAgentRow.description ?? 'No loaded description.'}</dd></div>
-              <div className="entity-kv__row"><dt>Role</dt><dd>{openAgentRow.role ?? '—'}</dd></div>
-              <div className="entity-kv__row"><dt>Definition</dt><dd>{detail?.declaration?.path ?? 'Unavailable'}</dd></div>
-            </dl>
+            <AgentDetailBody agent={openAgentRow} index={index} runs={joinedRuns}
+              runScanLimit={AGENT_RUN_SCAN_LIMIT} routing={routingControlFor(openAgentRow)} detail={detail}
+              detailState={detailState === 'idle' ? undefined : detailState} onNavigate={onNavigate} surface="brief" />
           ),
         },
       ]}
+      activeSectionId={selectedDetailSection}
+      onSectionChange={selectDetailSection}
       overlay
-      onClose={backToRoster}
+      onClose={() => { setConsoleAgentId(null); backToRoster(); }}
+      actions={openAgentRow.declared ? (
+        <button type="button" className="mc-btn mc-btn--primary" data-testid="agent-run" onClick={() => {
+          setConsoleAgentId(openAgentRow.id);
+          selectDetailSection('live');
+        }}>Run agent</button>
+      ) : undefined}
       detailsContent={(
-        <dl className="entity-kv">
-          <div className="entity-kv__row"><dt>Agent id</dt><dd className="mc-mono">{openAgentRow.id}</dd></div>
-          <div className="entity-kv__row"><dt>Project refs</dt><dd className="mc-mono">{openAgentRow.projects.join(', ') || '—'}</dd></div>
-          <div className="entity-kv__row"><dt>Definition ref</dt><dd className="mc-mono">{detail?.declaration?.path ?? '—'}</dd></div>
-        </dl>
+        <AgentDetailBody agent={openAgentRow} index={index} runs={joinedRuns}
+          runScanLimit={AGENT_RUN_SCAN_LIMIT} routing={routingControlFor(openAgentRow)} detail={detail}
+          detailState={detailState === 'idle' ? undefined : detailState} onNavigate={onNavigate} surface="details" />
       )}
     />
   ) : null;

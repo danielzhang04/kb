@@ -204,6 +204,9 @@ describe('Home view — running / resume hero', () => {
     render0(<Home snapshot={{ ...SNAPSHOT, cards: {} }} inboxSnapshot={{ items: [] }} />);
     const resume = screen.getByTestId('home-resume');
     expect(resume.textContent).toMatch(/Nothing running/i);
+    expect(resume.textContent).toContain('Recent runs');
+    expect(resume.textContent).toContain('No runs recorded yet.');
+    expect(resume.textContent).not.toContain('Recent activity');
     // Legitimately empty: `cards: {}` means there is genuinely nothing for the operator anywhere.
     expect(resume.textContent).toMatch(/Nothing is waiting on you/i);
   });

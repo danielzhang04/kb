@@ -51,10 +51,20 @@ describe('composeHealth', () => {
     const response = composeHealth('repo', source);
 
     expect(response.sections[2].rows.filter((row) => row.key === 'release')).toHaveLength(1);
+    expect(response.sections[2].rows.map((row) => row.key)).toEqual(['daemon-platform', 'release']);
     expect(response.sections[2].rows.find((row) => row.key === 'release')?.value).toBe('unavailable in P1');
     expect(response.sections[3].rows.map((row) => row.key)).toEqual([
       'mcp:demo:files', 'mcp:demo:files:vm', 'mcp:demo:files:desktop',
       'mcp:demo:search', 'mcp:demo:search:vm', 'mcp:demo:search:desktop',
     ]);
+  });
+
+  it('humanizes fleet labels while retaining raw ids in keys', () => {
+    const source = readers();
+    source.fleet.mockReturnValue({ agents: [{
+      id: 'fyt_api-worker', role: 'builder', status: 'working', working: true, lastActive: '2026-08-21',
+    }] });
+    const row = composeHealth('repo', source).sections[0].rows[0];
+    expect(row).toMatchObject({ key: 'agent:fyt_api-worker', label: 'FYT API Worker' });
   });
 });

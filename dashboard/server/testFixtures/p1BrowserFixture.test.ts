@@ -97,7 +97,6 @@ describe('P1 browser fixture', () => {
     expect(stream.headers.get('content-type')).toContain('text/event-stream');
     await until(() => events.state.eventFrames === 5);
     expect(events.state).toMatchObject({ inboxRequests: 1, inboxInFlight: 1, maxInboxInFlight: 1, eventFrames: 5 });
-    events.releaseInbox();
     expect((await mount).status).toBe(200);
     expect((await fetch(`${events.origin}/api/inbox`)).status).toBe(200);
     expect(events.state).toMatchObject({ inboxRequests: 2, inboxInFlight: 0, maxInboxInFlight: 1, eventFrames: 5 });

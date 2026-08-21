@@ -6,6 +6,7 @@ import { buildHealthPanel } from './fleet.ts';
 import { buildUsagePanel } from './usage.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import type { LivenessStatus } from './fleet.ts';
+import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
 
 export type FleetRow = { kind: 'fleet'; key: `agent:${string}`; label: string; value: { status: 'working' | 'active' | 'stale' | 'idle'; role: string | null; working: boolean; lastActive: string | null }; observedAt: string; source: 'fleet' };
 export type StopRow = { kind: 'stop'; key: 'stop-file'; label: 'STOP'; value: 'present' | 'clear'; observedAt: string; source: 'stop' };
@@ -63,7 +64,7 @@ function isMachinePlatform(platform: NodeJS.Platform): platform is MachineRow['v
 function fleetRows(repoRoot: string, observedAt: string, reader: FleetReader): Array<FleetRow | UnavailableRow<'fleet'>> {
   try {
     return reader(repoRoot).agents.map((agent) => ({
-      kind: 'fleet', key: `agent:${agent.id}`, label: agent.id,
+      kind: 'fleet', key: `agent:${agent.id}`, label: humanizeEntityId(agent.id),
       value: { status: agent.status, role: agent.role, working: agent.working, lastActive: agent.lastActive },
       observedAt, source: 'fleet',
     }));

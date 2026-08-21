@@ -30,6 +30,7 @@ import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import { fetchInbox, type InboxResponse } from '../lib/inboxClient';
 import { ExecutionUnlock, type ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import { EntityName } from '../components/EntityName';
+import { PLANE_A_RECORDS_KEY, PLANE_A_RUN_ROWS_KEY } from '../lib/planeAKeys';
 import { entityRowProps } from '../components/entityRow';
 import { cardLink } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
@@ -37,11 +38,11 @@ import '../styles/views/home.css';
 
 const EMPTY_INDEX: PlaneAIndex = {
   cards: {},
-  ledgers: {
+  [PLANE_A_RECORDS_KEY]: {
     dispatch: { count: 0, cards: 0, byProject: {} },
     cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
     grades: { count: 0, rows: [] },
-    activity: { count: 0, rows: [] },
+    [PLANE_A_RUN_ROWS_KEY]: { count: 0, rows: [] },
   },
   orgStates: [],
 };
@@ -250,7 +251,7 @@ function RunningResume({
     .map((item) => ({ item, card: cardsById.get(item.subject.cardId) }))
     .filter((entry): entry is { item: typeof entry.item; card: CardProjection } => entry.card !== undefined);
   const blocked = index.cards.blocked ?? [];
-  const activity = index.ledgers.activity.rows;
+  const recentRuns = index[PLANE_A_RECORDS_KEY][PLANE_A_RUN_ROWS_KEY].rows;
 
   return (
     <section className="v-home__resume mc-panel" aria-label="Running and to resume" data-testid="home-resume">
@@ -351,13 +352,13 @@ function RunningResume({
       </div>
 
       <ResumeGroup
-        title="Recent activity"
-        count={activity.length}
-        emptyLabel="No activity recorded yet — the ledger is empty."
+        title="Recent runs"
+        count={recentRuns.length}
+        emptyLabel="No runs recorded yet."
       >
-        {activity.slice(-6).reverse().map((row, i) => (
+        {recentRuns.slice(-6).reverse().map((row, i) => (
           <ResumeRow
-            key={`activity-${i}`}
+            key={`recent-run-${i}`}
             id={String(row.card ?? row.date ?? `#${i}`)}
             main={Object.values(row).filter(Boolean).join(' · ') || '—'}
             to="home"
@@ -374,7 +375,7 @@ function RunningResume({
  * dense mono table, not decorative bars — matches the Registry table language and stays calm.
  */
 function UsagePanel({ index }: { index: PlaneAIndex }): React.JSX.Element {
-  const cost = index.ledgers.cost;
+  const cost = index[PLANE_A_RECORDS_KEY].cost;
   const rows = Object.entries(cost.perModelSteps).sort((a, b) => b[1] - a[1]);
   return (
     <section className="v-home__usage mc-panel" aria-label="Usage" data-testid="home-usage">
@@ -449,8 +450,9 @@ export function Home({
       })
       .then((d) => {
         // HTTP/JSON is untrusted at this boundary. A refusal body is not a Plane-A projection.
-        if (!cancelled && d?.cards && d.ledgers && Array.isArray(d.ledgers.activity?.rows)
-          && d.ledgers.cost && Array.isArray(d.orgStates)) setFetched(d);
+        if (!cancelled && d?.cards && d[PLANE_A_RECORDS_KEY]
+          && Array.isArray(d[PLANE_A_RECORDS_KEY][PLANE_A_RUN_ROWS_KEY]?.rows)
+          && d[PLANE_A_RECORDS_KEY].cost && Array.isArray(d.orgStates)) setFetched(d);
       })
       .catch(() => {
         /* read-only board: on failure keep the empty-safe scaffold, never crash the shell */

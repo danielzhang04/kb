@@ -85,6 +85,7 @@ import { loadRunEventWindow, type RunEventWindow } from '../control/runEventWind
 import { entryFromRun, iterationEdgesFromRun, overlaysFromRun } from '../control/runGraph';
 import { agentIdsForRun, cardOwnerIndex, agentLink, cardLink, workflowLink } from '../control/entityLinks';
 import { EntityName } from '../components/EntityName';
+import { humanizeEntityId } from '../entity/humanizeEntityId';
 import { AgentWorkPanel } from '../components/AgentWorkPanel';
 import { HumanRequestCard } from '../components/HumanRequestCard';
 import { entityRowProps } from '../components/entityRow';
@@ -366,9 +367,10 @@ export interface AgentTileProps {
 }
 
 /** One agent's live stream, plus the box that talks back to it. */
-export function AgentTile({ agentId, runRef, events, fetchImpl, onNavigate }: AgentTileProps): React.JSX.Element {
+export function AgentTile({ agentId, runRef, events, fetchImpl }: AgentTileProps): React.JSX.Element {
   const { requireSession } = useSession();
   const badge = tileBadge(events);
+  const agentName = humanizeEntityId(agentId);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [deliveryNotice, setDeliveryNotice] = useState<string | null>(null);
@@ -400,17 +402,24 @@ export function AgentTile({ agentId, runRef, events, fetchImpl, onNavigate }: Ag
     }
   };
 
+  const focusActiveGate = (): void => {
+    const gate = typeof document === 'undefined' ? null : document.querySelector<HTMLElement>('[data-testid="run-gates"]');
+    if (!gate) return;
+    gate.focus();
+    if (typeof gate.scrollIntoView === 'function') gate.scrollIntoView({ block: 'nearest' });
+  };
+
   return (
     <article className={`run-stream-tile run-stream-tile--${badge.kind}`} data-testid={`run-tile-${agentId}`}>
       <header className="run-stream-tile__head">
-        <span className="mc-mono run-stream-tile__agent">{agentId}</span>
+        <span className="run-stream-tile__agent" title={agentId} data-raw-id={agentId}>{agentName}</span>
         <span className={`mc-status-dot mc-status-dot--${BADGE_DOT[badge.kind]}`} aria-hidden="true" data-testid={`run-tile-${agentId}-dot`} />
       </header>
       <p className="run-stream-tile__status" data-testid={`run-tile-${agentId}-badge`}>
-        {badge.kind === 'blocked' && onNavigate ? <>{badge.text} — <button type="button" className="run-stream-tile__inbox-link"
-          data-testid={`run-tile-${agentId}-inbox-link`} onClick={() => onNavigate({ view: 'inbox' })}>open Inbox</button></> : badge.text}
+        {badge.kind === 'blocked' ? <>{badge.text} — <button type="button" className="run-stream-tile__gate-link"
+          data-testid={`run-tile-${agentId}-gate-link`} onClick={focusActiveGate}>open gate</button></> : badge.text}
       </p>
-      <ol className="run-stream-tile__transcript" data-testid={`run-tile-${agentId}-transcript`} aria-label={`${agentId} live stream`}>
+      <ol className="run-stream-tile__transcript" data-testid={`run-tile-${agentId}-transcript`} aria-label={`${agentName} live stream`}>
         {events.length ? events.map((item) => (
           <li key={item.cursor} className="run-stream-tile__event">
             <span className="run-stream-tile__event-kind mc-mono">{item.kind}</span>
@@ -419,7 +428,7 @@ export function AgentTile({ agentId, runRef, events, fetchImpl, onNavigate }: Ag
         )) : <li className="run-stream-tile__event-empty">Nothing from this agent yet.</li>}
       </ol>
       <form className="run-stream-tile__message" onSubmit={(event) => void send(event)}>
-        <label className="sr-only" htmlFor={`run-message-${agentId}`}>Message {agentId}</label>
+        <label className="sr-only" htmlFor={`run-message-${agentId}`}>Message {agentName}</label>
         <textarea id={`run-message-${agentId}`} value={message} onChange={(event) => setMessage(event.target.value)}
           placeholder="Message this agent" rows={2} disabled={sending} />
         <button type="submit" className="mc-btn" disabled={sending || message.trim() === ''}>{sending ? 'Sending…' : 'Send'}</button>
@@ -1170,7 +1179,7 @@ export function RunDetail({
       </section>
 
       {openRequests.length ? (
-        <section className="entity-block" aria-label="Waiting on you" data-testid="run-gates">
+        <section className="entity-block" aria-label="Waiting on you" data-testid="run-gates" tabIndex={-1}>
           <h3 className="entity-block__title">Waiting on you</h3>
           {openRequests.map((request) => request.gateKind === 'iteration-park' ? (
             <IterationParkRequestCard key={request.requestRef} request={request}

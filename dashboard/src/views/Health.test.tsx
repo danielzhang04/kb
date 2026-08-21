@@ -22,5 +22,7 @@ describe('Health', () => {
       .toEqual(['Fleet', 'STOP', 'Daemon and machine', 'MCP', 'Usage']);
     expect(screen.getAllByText('unavailable in P1')).toHaveLength(3);
     expect(screen.getAllByText(/Source:/).map((source) => source.textContent)).toContain('Source: mcp-config');
+    expect(screen.getByText('Worker A')).toBeTruthy();
+    expect(screen.getByTestId('health-row-agent:worker-a').getAttribute('data-raw-id')).toBe('worker-a');
   });
 });

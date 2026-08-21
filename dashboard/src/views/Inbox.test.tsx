@@ -70,11 +70,11 @@ describe('Inbox', () => {
     await act(async () => { for (let i = 0; i < 5; i += 1) events.emit(); });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     await act(async () => { first.resolve(new Response(JSON.stringify({ items: [item] }), { status: 200 })); });
-    expect(await screen.findByText(item.title)).toBeTruthy();
+    expect(await screen.findByText('Wake Me:runner Failed')).toBeTruthy();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     await act(async () => { second.resolve(new Response('no', { status: 500 })); });
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByText(item.title)).toBeTruthy();
+    expect(screen.getByText('Wake Me:runner Failed')).toBeTruthy();
     expect(screen.queryByText('untrusted event item')).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ExecutionArmingProvider } from './control/ExecutionUnlock';
 import { fetchInbox } from './lib/inboxClient';
+import { createInboxRefresher } from './lib/inboxRefresher';
 import { type ClientRuntimeCapabilities, RuntimeCapabilitiesProvider } from './lib/runtimeCapabilities';
 import { SessionProvider, useSession } from './lib/sessionContext';
 import { useSse, type SseFactory } from './lib/sseClient';
@@ -38,14 +39,19 @@ const DISABLED_SSE_FACTORY: SseFactory = () => ({
 function useInboxCount(enabled: boolean): number {
   const [count, setCount] = useState(0);
   const { count: tick } = useSse('/events', enabled ? undefined : DISABLED_SSE_FACTORY);
+  const refresher = useMemo(() => createInboxRefresher({
+    load: () => fetchInbox(),
+    onSuccess: (response) => setCount(response.items.length),
+    onFailure: () => undefined,
+  }), [enabled]);
+  useEffect(() => () => refresher.dispose(), [refresher]);
   useEffect(() => {
-    if (!enabled) return;
-    let alive = true;
-    fetchInbox().then((response) => {
-      if (alive) setCount(response.items.length);
-    }).catch(() => undefined);
-    return () => { alive = false; };
-  }, [enabled, tick]);
+    if (!enabled) {
+      setCount(0);
+      return;
+    }
+    refresher.trigger();
+  }, [enabled, refresher, tick]);
   return count;
 }
 
