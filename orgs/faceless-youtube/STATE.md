@@ -12,8 +12,8 @@ claude/faceless-live-import — reconcile to this one at merge, this is newer)_
   Resume via `handoffs/2026-08-06-fyt-bricks-p6b-gate.md`.
 - Poyais published; wells-fargo parked (see git history).
 
-## Now (bricks-fresh, 2026-08-18 overnight)
-- channels/the-second-take/videos/2026-07-28-bricks-fresh: forge fixed (P8/clean_card/ground-line), Wave-2 char seeds 97 verified / 11 parked / 26 deferred, scene tenth L01-L25 17 verified / 8 parked; Daniel morning gate = overnight board artifact 5482e438; branch claude/bricks-taste-forensics. Handoff: handoffs/2026-08-18-fyt-bricks-overnight-run.md.
+## Now (bricks-fresh, 2026-08-21)
+- channels/the-second-take/videos/2026-07-28-bricks-fresh: Variant D doctrine trial COMPLETE on clone branch `claude/bricks-variant-vd` @ 37f1b881 — L01-L12 gen 12/12 verified (17 calls, $2.28), blind A/B/C/D review written, board republished in place (artifact 53c84a37). Daniel gate = board verdict A/B/C/D + which D changes survive. Handoff: handoffs/2026-08-21-fyt-bricks-variant-d-board.md.
 
 ## Next
 - After Aug 1 9pm ET: run the pinned `051de9e` harness and require 7/7; then rewrite PR #109 and bring
