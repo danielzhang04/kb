@@ -87,7 +87,11 @@ def billing_guard(env: dict, login_check: bool = True) -> list[str]:
                 for k in ("OPENAI_API_KEY", "CODEX_API_KEY") if env.get(k)]
     if login_check and not problems:
         try:
-            rc = subprocess.run([codex_bin(), "login", "status"],
+            # Same approval override as spawn(): `login status` loads config.toml
+            # too, so an approval_policy enum the installed CLI rejects would
+            # otherwise read as "auth stale" here.
+            rc = subprocess.run([codex_bin(), "login", "status",
+                                 "-c", "approval_policy=never"],
                                 capture_output=True, timeout=15).returncode
         except subprocess.TimeoutExpired:
             return ["codex login status timed out after 15s — auth check wedged"]

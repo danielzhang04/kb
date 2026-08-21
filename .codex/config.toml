@@ -43,10 +43,10 @@ cli_auth_credentials_store = "keyring"
 
 # FLAG: exact enum values unverified. Intent: the most conservative approval
 # posture the CLI offers — ask before running anything that isn't a small
-# known-safe read-only set. If the installed CLI uses different enum spelling
-# (e.g. "on-request" as the default-safe tier), correct this to whichever
-# value is documented as MOST conservative, not merely "not never".
-approval_policy = "untrusted"
+# known-safe read-only set. codex >= 0.149 rejects "untrusted" at config load
+# (every command fails, including `login status`); "on-request" is its most
+# conservative surviving tier.
+approval_policy = "on-request"
 
 # FLAG: key name unverified. Intent: confine writes to the repo working tree
 # only — never a full-disk / "danger" sandbox mode.
