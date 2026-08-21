@@ -1,0 +1,11 @@
+{
+  "figures": {
+    "_staging/fig-terry-johnson--action-armscrossed--expr-thinking--3c358bc5.png": {
+      "canonical_sha256": "a9097c511430cb917822e668a74d4f72d2fcd040e1da32f95bd0ab28d9092d76",
+      "expression_sha256": null,
+      "verdicts": {"fidelity":"pass","style":"pass","rig":"pass","identity":"pass","costume":"pass","pose":"pass","expression":"pass","texture-strip":"pass"},
+      "reviewer": "fresh-eyes pixel reuse: these are the byte-identical reviewed Terry action-armscrossed/expr-thinking card pixels (source card suffix 5ccd2153); crossed arms supply the visible thinking pose cue and the face, identity, costume and rig remain clean.",
+      "date": "2026-08-21"
+    }
+  }
+}

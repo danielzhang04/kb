@@ -1,0 +1,30 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L28",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-present--expr-deadpan--de7f3591",
+      "defect": "clean_card",
+      "instruction": "Use the canonical seed as the complete figure scaffold: preserve its short dark-brown side-parted hair, warm tan head, stocky squat proportions, boxy tan blazer over the brown open-collar shirt, dark trousers, and dark shoes. Map the pose seed as one presenting arm rising from one shoulder while the other arm hangs from the opposite shoulder, and map the expression seed onto the canonical face."
+    },
+    {
+      "kind": "step1",
+      "shot": "L32",
+      "character": "ibm-suit",
+      "name": "fig-ibm-suit--5ca0c6c1",
+      "defect": "clean_card",
+      "instruction": "Trace the canonical seed as the complete standing figure: broad squat body, close-cropped grey hair, crisp navy pinstripe jacket, matching waistcoat and trousers, white shirt, dark tie, one folded white pocket square, and polished dark shoes."
+    },
+    {
+      "kind": "step1",
+      "shot": "L36",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-present--expr-delighted--0c18ff22",
+      "defect": "clean_card",
+      "instruction": "Use the canonical seed as the complete figure scaffold. Map the pose seed as one presenting arm rising from one shoulder while the other arm hangs from the opposite shoulder; map the expression seed's delighted eye, brow, and mouth shapes onto the canonical face."
+    }
+  ]
+}

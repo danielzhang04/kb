@@ -1,0 +1,20 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-shrug--expr-worried--307850b2.png": {
+   "canonical_sha256": "2ada0133964808ab1a5e3bf381862a2e7d1c5b973aac0e36f4e03d84d069e531",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "identity": "pass",
+    "costume": "pass",
+    "pose": "pass",
+    "expression": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: the high-shouldered two-hand shrug plus worried eyes, brows and mouth makes the trouble beat legible; Miniscribe identity and pinned costume hold, both open hands have four digits, and the hair fills both ear gaps.",
+   "date": "2026-08-21"
+  }
+ }
+}

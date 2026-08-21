@@ -69,7 +69,7 @@
         "s":  "clean",
         "r":  "defect",
         "worst":  "HIGH",
-        "why":  "Wave 3A parked after one retry: depth and empty floor improved, but Victorian dress breaks the iPhone-launch analogy and several queue figures remain too tall for the approved crowd rig."
+        "why":  "Wave 3C boss-granted second retry: the launch is modern and bounded, but the product-only mechanism still invented a large photographer crowd; those undeclared actors fill both sides and are not carried by the approved crowd rig."
     },
     {
         "id":  "L11",
@@ -165,7 +165,7 @@
         "s":  "clean",
         "r":  "clean",
         "worst":  "clean",
-        "why":  "fresh-eyes D pixels: one oversized sealed foreground carton begins a long procession of matching boxes receding between tall charcoal warehouse racks; pale skylight, kraft board, and clay-red seams support the stated field; company identity remains unrevealed and no text appears."
+        "why":  "Wave 3C fresh-eyes: exact `26,000` and the compact packing line remain behind the bench; every carton stack is behind that line and the lower half is a visibly open floor lane, improving the prior frame."
     },
     {
         "id":  "L23",
@@ -217,11 +217,11 @@
     },
     {
         "id":  "L28",
-        "f":  "defect",
+        "f":  "clean",
         "s":  "clean",
-        "r":  "defect",
-        "worst":  "HIGH",
-        "why":  "Wave 3A parked uncalled: the only STEP-1 card lost miniscribe-rep identity and costume, elongated the body, and rendered a five-digit presenting hand; the fixed card allowance was exhausted."
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3C fresh-eyes: the repaired canonical miniscribe-rep presents from the mezzanine above deep automated assembly lines; deadpan acting, tan costume, compact rig and visible hand are clean."
     },
     {
         "id":  "L29",
@@ -237,7 +237,7 @@
         "s":  "clean",
         "r":  "clean",
         "worst":  "clean",
-        "why":  "Wave 3A fresh-eyes: reviewed Terry Johnson identity and thinking expression lead the repeating drive-assembly bays; rig, identity and style clean."
+        "why":  "Wave 3C fresh-eyes: Terry is unobscured at the long assembly bench; the reviewed crossed-arm pose plus sideward eyes supplies an unmistakable thinking cue and improves the earlier neutral/startled read."
     },
     {
         "id":  "L31",
@@ -249,26 +249,26 @@
     },
     {
         "id":  "L32",
-        "f":  "defect",
+        "f":  "clean",
         "s":  "clean",
-        "r":  "defect",
-        "worst":  "HIGH",
-        "why":  "Wave 3A parked uncalled: the ibm-suit STEP-1 card replaced the pinned navy pinstripe suit with a teal work jacket and khakis; the fixed card allowance was exhausted."
+        "r":  "clean",
+        "worst":  "clean",
+        "why":  "Wave 3C fresh-eyes: IBM's broad figure retains the navy pinstripe three-piece while shaking hands with the canonical miniscribe representative across the conveyor; eye-line, scale, clasp and drive are clean."
     },
     {"id":"L33","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: miniscribe-rep stands before towering sealed drive-carton stacks; the scale claim dominates, identity and rig hold, and no unrequested text appears."},
     {"id":"L34","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: the balance foregrounds the exact `125 MILLION` claim with clean cast-free causality, lettering and style."},
-    {"id":"L35","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3B parked after one scene call: detailed undeclared workers occupy the production lanes; the positive conveyor-row retry required a new STEP-1 card after the nine-card cap was exhausted."},
-    {"id":"L36","f":"defect","s":"clean","r":"defect","worst":"HIGH","why":"Wave 3B parked uncalled: the demanded presenting/delighted miniscribe-rep STEP-1 card rendered three arms; the nine-card allowance was exhausted."},
+    {"id":"L35","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3C fresh-eyes: the delighted miniscribe representative stands in a clean power stance atop the exact `1988` carton summit while four automated belts carry cartons; no undeclared workers remain."},
+    {"id":"L36","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3C fresh-eyes: the repaired two-arm offering pose presents one drive beside the oversized exact `COMPAQ` purchase order; identity, delighted face, rig and loading-counter causality are clean."},
     {"id":"L37","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: exact `600 MILLION` brass weight sits on the collapsed bellows in the left pan, the right pan is empty, and the slate-brass factory field is a valid clean parent."},
-    {"id":"L38","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3B parked after one retry: the L37 camera and lettering hold, but the brass bellows still reads collapsed rather than tall with visibly stretched accordion ribs."},
-    {"id":"L39","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3B parked uncalled: immediate parent L38 was not verified after its one retry, so the Reddit-weight doubt delta could not run."},
+    {"id":"L38","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3C boss-granted second retry: the replacement tower is unmistakably tall, but it displaced the held weight's exact `600 MILLION` lettering; the load-bearing claim no longer survives the delta."},
+    {"id":"L39","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3C parked uncalled: immediate parent L38 remained unverified after its boss-granted second retry, so the Reddit-weight delta could not legally run."},
     {"id":"L40","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B verified after one retry: exact `1984`, brass timeline reel, solid kraft cartons and outbound steel racks foreground the backward history; invented MiniScribe carton text is gone."},
     {"id":"L41","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: ibm-suit reads arms-crossed and deadpan against visibly empty racks; identity, acting, rig and causality are clean."},
     {"id":"L42","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: the cast-free factory conveyor visibly runs toward a cliff edge, foregrounding the line's industrial causality with clean style."},
-    {"id":"L43","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3B parked after one scene call: pixels show one foreground line-worker rather than a bounded rear worker group with an empty near corridor; the positive geometry retry required a new STEP-1 card after the cap."},
-    {"id":"L44","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3B parked after one scene call: Terry Johnson's slump and crestfallen acting read, but the frame invents an EXIT sign; the positive doorway retry required a new STEP-1 card after the cap."},
-    {"id":"L45","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3B parked uncalled: immediate parent L44 was not verified, so its founder-exit delta could not run."},
-    {"id":"L46","f":"defect","s":"clean","r":"clean","worst":"HIGH","why":"Wave 3B parked uncalled after the ACT BOUNDARY hard cut: the demanded slump/worried miniscribe-rep STEP-1 card remained upright; the nine-card allowance was exhausted."},
+    {"id":"L43","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3C fresh-eyes: the crestfallen named worker and three-person winter group are bounded by the far-wall rail and locker bays while the lower half remains open concrete; the failed near-corridor geometry is repaired."},
+    {"id":"L44","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3C fresh-eyes: Terry's canonical crestfallen slump stands beside the abandoned casing; the doorway is expressed only by white slabs and a tall corridor-light rectangle, with no invented sign or lettering."},
+    {"id":"L45","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3C fresh-eyes: the L44 corridor-light rectangle, white slabs, benches, cold field and broken casing hold exactly; Terry alone disappears, making founder absence the sole visible delta."},
+    {"id":"L46","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3C fresh-eyes: after the hard cut, the canonical miniscribe representative's high-shouldered shrug and worried face read clearly over sparse order trays; identity, hands, rig and idle-office causality are clean."},
     {"id":"L47","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: HQ banker presents exact `HAMBRECHT & QUIST` toward the factory model; the vacant chair, walnut-brass field, identity, present gesture and deadpan register are clean for chaining."},
     {"id":"L48","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: the L47 set, camera, banker acting, contract, vacant chair, factory model and light hold; one exact `20 MILLION` brass weight is the sole visible change."},
     {"id":"L49","f":"clean","s":"clean","r":"clean","worst":"clean","why":"Wave 3B fresh-eyes: the L48 composition and exact lettering hold while one broad brass track newly joins the vacant chair to the factory model; no other visible state changes."},

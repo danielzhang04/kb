@@ -1,0 +1,20 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-offering--expr-delighted--0c18ff22.png": {
+   "canonical_sha256": "bd6590e3402e15b0e95cebde6a6f53de5dfb8c3de674a59eec9a63382cea3fdc",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "identity": "pass",
+    "costume": "pass",
+    "pose": "pass",
+    "expression": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Miniscribe identity and pinned tan-blazer costume hold; exactly two arms form the registered two-hand offering, both hands read as four-digit cartoon hands, and the closed crescent eyes with broad toothy grin match the delighted primitive.",
+   "date": "2026-08-21"
+  }
+ }
+}

@@ -1,0 +1,52 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-present--expr-deadpan--de7f3591.png": {
+   "canonical_sha256": "e2c02dbbbeccea843f456c2f2a2f71e771a539d7bbfe0052430701d6f2d7fc2d",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "identity": "pass",
+    "costume": "pass",
+    "pose": "pass",
+    "expression": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Miniscribe hair, head tone, stocky proportion, tan blazer, brown shirt and dark trousers match the canonical; one arm presents and one hangs from the opposite shoulder; deadpan face and both four-digit hands are clean.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-ibm-suit--5ca0c6c1.png": {
+   "canonical_sha256": "d55ee404bf2662b60b8d29163e177c4e65dcd98164a3a27f526c0b93eb3b1d1e",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "identity": "pass",
+    "costume": "pass",
+    "pose": "pass",
+    "expression": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: IBM's broad squat mass, grey hair, dark head tone, navy pinstripe jacket, matching waistcoat and trousers, white shirt, tie, pocket square and clean four-digit hands match the canonical exactly.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-miniscribe-rep--action-present--expr-delighted--0c18ff22.png": {
+   "canonical_sha256": "b5ec47de29dde688ccf6f8658d096a33b150813f3990ab05cd5a6e6222c24d6d",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "pass",
+    "identity": "pass",
+    "costume": "pass",
+    "pose": "pass",
+    "expression": "fail",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: the three-arm defect is fixed and identity/costume/rig hold, but the delighted primitive's closed crescent eyes and broad closed-tooth grin drifted to wide round eyes and an open mouth; the expression route is not faithful.",
+   "date": "2026-08-21"
+  }
+ }
+}

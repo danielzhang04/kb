@@ -1,0 +1,14 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L46",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-slump--expr-worried--307850b2",
+      "defect": "clean_card",
+      "instruction": "Use the canonical seed for identity, costume, and compact proportions. Build the torso and limbs from the slump seed's silhouette: head bowed forward, neck lowered, both shoulders dropped on a steep downward line, upper back curved, and both arms hanging with their weight below the elbows. Map the worried seed's eye, brow, and mouth shapes onto that bowed head."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried--307850b2.png": {
+   "canonical_sha256": "584e372cce7b1b30cf6ae84a9f37a50b7f04092ba052e8a8e3a8fcd44e433885",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "fail",
+    "identity": "pass",
+    "costume": "pass",
+    "pose": "pass",
+    "expression": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: the bowed head, curved upper back, steeply dropped shoulders and hanging arms finally read as a slump, and the worried face holds; however a distinct skin-toned ear appears beneath the screen-right hair edge, violating the family rig.",
+   "date": "2026-08-21"
+  }
+ }
+}

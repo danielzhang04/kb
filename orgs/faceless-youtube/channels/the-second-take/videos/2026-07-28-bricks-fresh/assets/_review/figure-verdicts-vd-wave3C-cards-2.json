@@ -1,0 +1,25 @@
+{
+  "figures": {
+    "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--162d517d.png": {
+      "canonical_sha256": "8832bf464f10db356cfcaeb0c81f4b117bce226f14144bbb88192edf74027230",
+      "expression_sha256": null,
+      "verdicts": {"fidelity":"pass","style":"pass","rig":"pass","identity":"pass","costume":"pass","pose":"pass","expression":"pass","texture-strip":"pass"},
+      "reviewer": "fresh-eyes pixels: Miniscribe identity and tan factory costume hold; the hands-on-hips power stance, delighted smile, compact body and four-digit hands read cleanly.",
+      "date": "2026-08-21"
+    },
+    "_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--38ae328e.png": {
+      "canonical_sha256": "e623eb8ea6adb0bb34cf91df855377b27c7f433bbfe9b8b548fe27ea111e84c8",
+      "expression_sha256": null,
+      "verdicts": {"fidelity":"pass","style":"pass","rig":"pass","identity":"pass","costume":"pass","pose":"pass","expression":"pass","texture-strip":"pass"},
+      "reviewer": "fresh-eyes pixels: the line worker holds the blank paper by both sides; crestfallen brows, eyes and mouth, factory coat, two arms and four-digit hands are clean.",
+      "date": "2026-08-21"
+    },
+    "_staging/fig-terry-johnson--action-slump--expr-crestfallen--7581ade5.png": {
+      "canonical_sha256": "a73e85fe58f543f896ad8be4d0b373246e1969624e82e4247f37171aace0e510",
+      "expression_sha256": null,
+      "verdicts": {"fidelity":"pass","style":"pass","rig":"pass","identity":"pass","costume":"pass","pose":"pass","expression":"pass","texture-strip":"pass"},
+      "reviewer": "fresh-eyes pixels: Terry's blond comb-over, moustache, white shirt and black tie remain canonical; lowered shoulders and downturned face read as a clean crestfallen slump.",
+      "date": "2026-08-21"
+    }
+  }
+}

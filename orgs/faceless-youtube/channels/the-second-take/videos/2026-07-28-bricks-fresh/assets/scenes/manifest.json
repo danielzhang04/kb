@@ -137,22 +137,22 @@
   {
    "shot_id": "L10",
    "file": null,
-   "technique": "(c) Character-free scene -- crowd composition",
+   "technique": "(c) Character-free scene -- product-launch object composition",
    "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
    "flagged": true,
    "review_status": "parked",
    "parked_reasons": [
     "fidelity: defect",
     "rig: defect",
-    "Wave 3A parked after one retry: depth and empty floor improved, but Victorian dress breaks the iPhone-launch analogy and several queue figures remain too tall for the approved crowd rig."
+    "Wave 3C boss-granted second retry: the launch is modern and bounded, but the product-only mechanism still invented a large photographer crowd; those undeclared actors fill both sides and are not carried by the approved crowd rig."
    ],
-   "retry_cause": "First efficacy-regen call made the crowd foreground-dominant; the one retry fixed depth but changed the launch queue into Victorian dress and retained tall crowd bodies.",
+   "retry_cause": "The first retry produced a Victorian/tall queue; the boss-granted second retry removed declared crowd occupancy and made the product pedestal carry the launch analogy, but camera-flash semantics still induced undeclared people.",
    "parent_depth": 0,
    "lineage": 0,
-   "superseded_sha256": "9fa47ef041b3e3dee6abf2cc9b9e074e8b649aa18dfd3d0a525a4d6c032718b2",
-   "notes": "D call output `visual-kit/_staging/L10-vd-wave3A-retry1.png`; SHA-256 `fdc65a253e9d4af782a3f498ebfc154e07adb89057b4f5907085ab36c3457c2b`; `spec-vd-retry-L10.json`; efficacy regen; parked after one retry; no active scene file"
+   "superseded_sha256": "fdc65a253e9d4af782a3f498ebfc154e07adb89057b4f5907085ab36c3457c2b",
+   "notes": "D call output `visual-kit/_staging/L10.png`; SHA-256 `28978d5e6b54c88b185b252c4af1b70ed1557ac63aa4013dce3b66b6dc71b7f4`; `spec-vd-wave3C-scenes-1.json`; boss-granted second retry; called and parked; no active scene file"
   },
   {
    "shot_id": "L11",
@@ -306,11 +306,11 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "Boss pixel check found foreground carton stacks boxing in the near zone; the normal re-authored retry moved all carton mass behind the bench and devoted the lower half to bare floor.",
    "parent_depth": 0,
    "lineage": 0,
-   "superseded_sha256": "a34c24afd8d058ec8bc5b28f01ad58442b11a709b325d33c32022ecabc0dac54",
-   "notes": "D call output `visual-kit/_staging/L22.png`; SHA-256 `3327e24264c1232f2c97d62cd02c98914489197a70317a8bce3def5f423c5996`; `spec-vd-wave3A.json`; efficacy regen; exact `26,000`; clean on first wave-3A generation"
+   "superseded_sha256": "3327e24264c1232f2c97d62cd02c98914489197a70317a8bce3def5f423c5996",
+   "notes": "D call output `visual-kit/_staging/L22.png`; SHA-256 `54d4e0da9650733fcafa49cacd1e950e058502c75f17cfe58f4d44e29cb49cb9`; `spec-vd-wave3C-scenes-1.json`; exact `26,000`; normal re-authored retry; clear near aisle verified"
   },
   {
    "shot_id": "L23",
@@ -442,20 +442,18 @@
   },
   {
    "shot_id": "L28",
-   "file": null,
-   "technique": "(d) One-shot single-character -- miniscribe-rep presenting, scene uncalled",
-   "seeds": [],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "rig: defect",
-    "Wave 3A parked uncalled: the only STEP-1 card lost miniscribe-rep identity and costume, elongated the body, and rendered a five-digit presenting hand; the fixed card allowance was exhausted."
+   "file": "assets/scenes/L28.png",
+   "technique": "(d) One-shot single-character -- repaired reviewed miniscribe-rep STEP-1 figure",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-present--expr-deadpan--de7f3591.png"
    ],
-   "retry_cause": null,
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "The parked card lost canonical identity/costume and broke the hand/body rig; card retry 1 used the canonical as the positive body/costume scaffold and passed before the base scene call.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Scene uncalled; failed STEP-1 card `fig-miniscribe-rep--action-present--expr-deadpan--de7f3591`; no scene digest or provenance"
+   "notes": "D call output `visual-kit/_staging/L28.png`; SHA-256 `be8b2ac5ba706aa24942c0794662722c9acd7944f361808778653da5c56bf735`; `spec-vd-wave3C-scenes-1.json`; repaired reviewed card; clean first scene call"
   },
   {
    "shot_id": "L29",
@@ -478,15 +476,16 @@
    "file": "assets/scenes/L30.png",
    "technique": "(d) One-shot single-character -- reviewed Terry Johnson STEP-1 figure",
    "seeds": [
-    "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--expr-thinking--1bd7931d.png"
+    "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--action-armscrossed--expr-thinking--3c358bc5.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "Boss pixel check found the prior thinking face neutral/startled with no pose cue; the normal retry reused byte-identical reviewed crossed-arm/thinking card pixels under the current dispatch name.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "D call output `visual-kit/_staging/L30.png`; SHA-256 `6871a144954aed9f464bfe39ab8f1e3294e86cee58cd98598136872549566db7`; `spec-vd-wave3A-resume.json`; clean after reviewed STEP-1 card"
+   "superseded_sha256": "6871a144954aed9f464bfe39ab8f1e3294e86cee58cd98598136872549566db7",
+   "notes": "D call output `visual-kit/_staging/L30.png`; SHA-256 `3b00e83d0f00a767b6c6f51caaef6dac061657fffeb5a95584183461cbc8f7e8`; `spec-vd-wave3C-scenes-1.json`; normal re-authored retry; crossed-arm thinking read verified"
   },
   {
    "shot_id": "L31",
@@ -505,20 +504,20 @@
   },
   {
    "shot_id": "L32",
-   "file": null,
-   "technique": "(f) Multi-character interaction -- scene uncalled",
-   "seeds": [],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "rig: defect",
-    "Wave 3A parked uncalled: the ibm-suit STEP-1 card replaced the pinned navy pinstripe suit with a teal work jacket and khakis; the fixed card allowance was exhausted."
+   "file": "assets/scenes/L32.png",
+   "technique": "(f) Multi-character interaction -- repaired reviewed IBM/miniscribe cards plus handshake",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--5ca0c6c1.png",
+    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--5ca0c6c1.png",
+    "channels/the-second-take/visual-kit/refs/base/handshake.png"
    ],
-   "retry_cause": null,
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "The parked IBM card replaced the navy pinstripe suit with teal workwear; card retry 1 traced the canonical navy pinstripe three-piece as the positive costume scaffold and passed before the base scene call.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Scene uncalled; failed STEP-1 card `fig-ibm-suit--5ca0c6c1`; no scene digest or provenance"
+   "notes": "D call output `visual-kit/_staging/L32.png`; SHA-256 `d8d54e8cc9d3ff6d70454b358ff5a6361be5a32516e983a31b7476168c9d08a2`; `spec-vd-wave3C-scenes-1.json`; repaired reviewed IBM card; clean first scene call"
   },
   {
    "shot_id": "L33",
@@ -553,39 +552,35 @@
   },
   {
    "shot_id": "L35",
-   "file": null,
+   "file": "assets/scenes/L35.png",
    "technique": "(d) One-shot single-character -- reviewed miniscribe-rep STEP-1 figure",
    "seeds": [
-    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364.png",
+    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--162d517d.png",
     "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
    ],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "Wave 3B parked after one scene call: detailed undeclared workers occupy the production lanes; the positive conveyor-row retry required a new STEP-1 card after the nine-card cap was exhausted."
-   ],
-   "retry_cause": "Initial scene invented detailed production-lane workers; the positive conveyor-row replacement could not pass Forge without reminting its STEP-1 card.",
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "Initial scene invented detailed production-lane workers; the boss-granted retry replaced their labor with four automated carton belts after reviewing the newly demanded card.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "D call output `visual-kit/_staging/L35.png`; SHA-256 `8a3bb5f5ec6dd54787b3ddd624b172074c08b3fc46caab2c5cb5d8e60c0f5d9e`; `spec-vd-wave3B-resume.json`; called once and honestly parked"
+   "notes": "D call output `visual-kit/_staging/L35.png`; SHA-256 `0b7eac0a1945093ee34ef28f3201880fed33eb3abb72a5dea56dbb1cbadf7846`; `spec-vd-wave3C-scenes-1.json`; boss-granted retry; automated-belt mechanism verified"
   },
   {
    "shot_id": "L36",
-   "file": null,
-   "technique": "(d) One-shot single-character -- scene uncalled",
-   "seeds": [],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "rig: defect",
-    "Wave 3B parked uncalled: the demanded presenting/delighted miniscribe-rep STEP-1 card rendered three arms; the nine-card allowance was exhausted."
+   "file": "assets/scenes/L36.png",
+   "technique": "(d) One-shot single-character -- repaired reviewed offering/delighted card with lettering exemplar",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-offering--expr-delighted--0c18ff22.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
    ],
-   "retry_cause": null,
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "The parked presenting card rendered three arms; card retry 2 changed to the registered two-hand offering route and passed before the base scene call.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Scene uncalled after failed STEP-1 card `fig-miniscribe-rep--action-present--expr-delighted--0c18ff22`; no scene digest or provenance"
+   "notes": "D call output `visual-kit/_staging/L36.png`; SHA-256 `c830078b70d520a25cc4a9b11544b9e2789b1ef8fce64f183f851d621ba319d9`; `spec-vd-wave3C-scenes-1.json`; repaired reviewed offering card; exact `COMPAQ`; clean first scene call"
   },
   {
    "shot_id": "L37",
@@ -616,12 +611,13 @@
    "review_status": "parked",
    "parked_reasons": [
     "fidelity: defect",
-    "Wave 3B parked after one retry: the L37 camera and lettering hold, but the brass bellows still reads collapsed rather than tall with visibly stretched accordion ribs."
+    "Wave 3C boss-granted second retry: the replacement tower is unmistakably tall, but it displaced the held weight's exact `600 MILLION` lettering; the load-bearing claim no longer survives the delta."
    ],
-   "retry_cause": "Initial inflation delta was too subtle; retry replaced it with a tall, fully stretched accordion-rib mechanism, which still failed in pixels.",
+   "retry_cause": "Bellows inflation remained collapsed through the first retry; the boss-granted second retry replaced state language with a tall brass-block tower, which became visible but displaced held lettering.",
    "parent_depth": 1,
    "lineage": 1,
-   "notes": "D call output `visual-kit/_staging/L38-vd-retry1.png`; SHA-256 `4210edc5712925f467b4b2ecec3b73868eab7f52d91da4c1d0f0444e848251f3`; `spec-vd-retry-L38.json`; called twice and honestly parked"
+   "superseded_sha256": "4210edc5712925f467b4b2ecec3b73868eab7f52d91da4c1d0f0444e848251f3",
+   "notes": "D call output `visual-kit/_staging/L38.png`; SHA-256 `fe4527796f555c8dd8162fe33c4a6a0b53068b38435628f00ac19ccdfcabec8c`; `spec-vd-wave3C-scenes-1.json`; boss-granted second retry; called and parked because exact held lettering disappeared"
   },
   {
    "shot_id": "L39",
@@ -632,12 +628,12 @@
    "review_status": "parked",
    "parked_reasons": [
     "fidelity: defect",
-    "Wave 3B parked uncalled: immediate parent L38 was not verified after its one retry, so the Reddit-weight doubt delta could not run."
+    "Wave 3C parked uncalled: immediate parent L38 remained unverified after its boss-granted second retry, so the Reddit-weight delta could not legally run."
    ],
    "retry_cause": null,
    "parent_depth": 2,
    "lineage": 1,
-   "notes": "Scene uncalled because immediate parent L38 remained parked after its one retry; no scene digest or provenance"
+   "notes": "Scene uncalled because immediate parent L38 remained parked after its boss-granted second retry; no Wave 3C scene digest or call provenance"
   },
   {
    "shot_id": "L40",
@@ -687,71 +683,65 @@
   },
   {
    "shot_id": "L43",
-   "file": null,
+   "file": "assets/scenes/L43.png",
    "technique": "(d) One-shot single-character -- reviewed line-worker STEP-1 figure with bounded rear worker-group intent",
    "seeds": [
-    "channels/the-second-take/visual-kit/_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf.png"
+    "channels/the-second-take/visual-kit/_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--38ae328e.png",
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
    ],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "Wave 3B parked after one scene call: pixels show one foreground line-worker rather than a bounded rear worker group with an empty near corridor; the positive geometry retry required a new STEP-1 card after the cap."
-   ],
-   "retry_cause": "Initial scene lost the authored rear-group and clear-corridor geometry; the positive locker-bay replacement could not pass Forge without reminting its STEP-1 card.",
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "Initial scene lost the rear-group and clear-corridor geometry; the boss-granted retry bounded the group behind a far-wall rail and reserved the lower half as bare floor after reviewing the newly demanded card.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "D call output `visual-kit/_staging/L43.png`; SHA-256 `dd2e70672d9d49abacc187641d1123c46cefe041269162106e69ea2afd85e1d9`; `spec-vd-wave3B-resume.json`; called once and honestly parked"
+   "notes": "D call output `visual-kit/_staging/L43.png`; SHA-256 `1d9fe1746d537a13d452cd49a469cfcc03d55c6be09f11e9a9aa4303a2ceb726`; `spec-vd-wave3C-scenes-1.json`; boss-granted retry; far-wall rail and open-floor geometry verified"
   },
   {
    "shot_id": "L44",
-   "file": null,
+   "file": "assets/scenes/L44.png",
    "technique": "(d) One-shot single-character -- reviewed Terry Johnson STEP-1 stage base",
    "seeds": [
-    "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--action-slump--expr-crestfallen--c692247f.png"
+    "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--action-slump--expr-crestfallen--7581ade5.png"
    ],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "Wave 3B parked after one scene call: Terry Johnson's slump and crestfallen acting read, but the frame invents an EXIT sign; the positive doorway retry required a new STEP-1 card after the cap."
-   ],
-   "retry_cause": "Initial scene invented EXIT lettering; the positive open loading-doorway replacement could not pass Forge without reminting its STEP-1 card.",
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "Initial scene invented EXIT lettering; the boss-granted second retry replaced the prose-named exit with paper-white door slabs and a corridor-daylight rectangle.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "D call output `visual-kit/_staging/L44.png`; SHA-256 `3061f2491415b390ecbc2aebc11e979718174579d051d885f60229bc5d319eac`; `spec-vd-wave3B-resume.json`; called once and honestly parked"
+   "notes": "D call output `visual-kit/_staging/L44.png`; SHA-256 `d3bde4683d24baa2401d88540b21033f93114f4c07d6895de2b2283408989ba7`; `spec-vd-wave3C-scenes-1.json`; boss-granted second retry; material/light doorway mechanism; clean stage parent"
   },
   {
    "shot_id": "L45",
-   "file": null,
-   "technique": "(e) Seeded delta-chain -- scene uncalled",
-   "seeds": [],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "Wave 3B parked uncalled: immediate parent L44 was not verified, so its founder-exit delta could not run."
+   "file": "assets/scenes/L45.png",
+   "technique": "(e) Seeded delta-chain -- verified L44 parent plus style tile",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L44.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
    "retry_cause": null,
    "parent_depth": 1,
    "lineage": 1,
-   "notes": "Scene uncalled because immediate parent L44 was parked; no scene digest or provenance"
+   "notes": "D call output `visual-kit/_staging/L45.png`; SHA-256 `54f568d784f22861fa08257c761a527aa765951698836a9b3d8179fdf08c36af`; `spec-vd-L45-wave3C.json`; verified L44 parent SHA-256 `d3bde4683d24baa2401d88540b21033f93114f4c07d6895de2b2283408989ba7`; sole delta: Terry absent"
   },
   {
    "shot_id": "L46",
-   "file": null,
-   "technique": "(d) One-shot single-character -- scene uncalled after ACT BOUNDARY hard cut",
-   "seeds": [],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "Wave 3B parked uncalled after the ACT BOUNDARY hard cut: the demanded slump/worried miniscribe-rep STEP-1 card remained upright; the nine-card allowance was exhausted."
+   "file": "assets/scenes/L46.png",
+   "technique": "(d) One-shot single-character -- repaired reviewed shrug/worried card after ACT BOUNDARY hard cut",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-shrug--expr-worried--307850b2.png"
    ],
-   "retry_cause": null,
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "The parked slump card remained upright; card retry 1 made slump legible but broke the ear rig, and card retry 2 changed to the reviewed shrug route before the base scene call.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Scene uncalled after failed STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--307850b2`; hard cut preserved; no scene digest or provenance"
+   "notes": "D call output `visual-kit/_staging/L46.png`; SHA-256 `a6497fe3b1e7993836f50e509789c61c1231de005ee2e1b807a85561c8c49c8b`; `spec-vd-wave3C-scenes-1.json`; hard cut preserved; repaired reviewed shrug/worried card; clean first scene call"
   },
   {
    "shot_id": "L47",
