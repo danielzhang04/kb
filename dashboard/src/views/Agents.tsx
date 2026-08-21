@@ -393,7 +393,7 @@ export function Agents({
   const [detailState, setDetailState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [filter, setFilter] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('agents'));
-  const [localDetailSection, setLocalDetailSection] = useState<string | undefined>(undefined);
+  const [localDetailSection, setLocalDetailSection] = useState<{ agentId: string; sectionId: string } | null>(null);
   const [consoleAgentId, setConsoleAgentId] = useState<string | null>(null);
   const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
 
@@ -579,11 +579,13 @@ export function Agents({
   }
 
   const openAgent = (id: string): void => {
+    setLocalDetailSection(null);
     if (onOpenAgent) onOpenAgent(id);
     else setLocalOpenId(id);
   };
 
   const backToRoster = (): void => {
+    setLocalDetailSection(null);
     if (onBack) onBack();
     else setLocalOpenId(null);
   };
@@ -632,9 +634,10 @@ export function Agents({
   const joinedRuns = openAgentRow
     ? agentRuns ?? (scannedRuns ? runsForAgent(openAgentRow.id, scannedRuns, cardOwnerIndex(index)) : undefined)
     : undefined;
-  const selectedDetailSection = activeSectionId ?? localDetailSection;
+  const selectedDetailSection = activeSectionId
+    ?? (localDetailSection?.agentId === openAgentId ? localDetailSection.sectionId : undefined);
   const selectDetailSection = (id: string): void => {
-    setLocalDetailSection(id);
+    if (openAgentId) setLocalDetailSection({ agentId: openAgentId, sectionId: id });
     onSectionChange?.(id);
   };
 

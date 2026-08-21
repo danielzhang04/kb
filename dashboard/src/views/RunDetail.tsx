@@ -363,11 +363,11 @@ export interface AgentTileProps {
   runRef: string;
   events: OperationalEventDto[];
   fetchImpl?: FetchLike;
-  onNavigate?: (target: NavTarget) => void;
+  onOpenGate?: () => void;
 }
 
 /** One agent's live stream, plus the box that talks back to it. */
-export function AgentTile({ agentId, runRef, events, fetchImpl }: AgentTileProps): React.JSX.Element {
+export function AgentTile({ agentId, runRef, events, fetchImpl, onOpenGate }: AgentTileProps): React.JSX.Element {
   const { requireSession } = useSession();
   const badge = tileBadge(events);
   const agentName = humanizeEntityId(agentId);
@@ -402,13 +402,6 @@ export function AgentTile({ agentId, runRef, events, fetchImpl }: AgentTileProps
     }
   };
 
-  const focusActiveGate = (): void => {
-    const gate = typeof document === 'undefined' ? null : document.querySelector<HTMLElement>('[data-testid="run-gates"]');
-    if (!gate) return;
-    gate.focus();
-    if (typeof gate.scrollIntoView === 'function') gate.scrollIntoView({ block: 'nearest' });
-  };
-
   return (
     <article className={`run-stream-tile run-stream-tile--${badge.kind}`} data-testid={`run-tile-${agentId}`}>
       <header className="run-stream-tile__head">
@@ -416,8 +409,8 @@ export function AgentTile({ agentId, runRef, events, fetchImpl }: AgentTileProps
         <span className={`mc-status-dot mc-status-dot--${BADGE_DOT[badge.kind]}`} aria-hidden="true" data-testid={`run-tile-${agentId}-dot`} />
       </header>
       <p className="run-stream-tile__status" data-testid={`run-tile-${agentId}-badge`}>
-        {badge.kind === 'blocked' ? <>{badge.text} — <button type="button" className="run-stream-tile__gate-link"
-          data-testid={`run-tile-${agentId}-gate-link`} onClick={focusActiveGate}>open gate</button></> : badge.text}
+        {badge.kind === 'blocked' && onOpenGate ? <>{badge.text} — <button type="button" className="run-stream-tile__gate-link"
+          data-testid={`run-tile-${agentId}-gate-link`} onClick={onOpenGate}>open gate</button></> : badge.text}
       </p>
       <ol className="run-stream-tile__transcript" data-testid={`run-tile-${agentId}-transcript`} aria-label={`${agentName} live stream`}>
         {events.length ? events.map((item) => (
@@ -438,14 +431,25 @@ export function AgentTile({ agentId, runRef, events, fetchImpl }: AgentTileProps
   );
 }
 
-export function AgentStreams({ detail, events, fetchImpl, onNavigate }: {
+export function AgentStreams({ detail, events, fetchImpl, onOpenGate }: {
   detail: RunDetailDto;
   events: OperationalEventDto[];
   fetchImpl?: FetchLike;
-  onNavigate?: (target: NavTarget) => void;
+  onOpenGate?: () => void;
 }): React.JSX.Element {
   const { agentIds, edges } = useMemo(() => deriveAgentGraph(detail), [detail]);
   const lanes = useMemo(() => deriveAgentLanes(agentIds, edges), [agentIds, edges]);
+  const gatedAgentIds = useMemo(() => {
+    const agentByStageRef = new Map(detail.stages.flatMap((stage) => stage.assignment
+      ? [[stage.stageRef, stage.assignment.agentId] as const]
+      : []));
+    return new Set(detail.humanRequests.flatMap((request) => {
+      const agentId = request.state === 'open' && request.stageRef !== null
+        ? agentByStageRef.get(request.stageRef)
+        : undefined;
+      return agentId ? [agentId] : [];
+    }));
+  }, [detail]);
   if (agentIds.length === 0) {
     return <p className="control-help" data-testid="run-streams-empty">No agent is assigned to this run yet.</p>;
   }
@@ -460,7 +464,7 @@ export function AgentStreams({ detail, events, fetchImpl, onNavigate }: {
               runRef={detail.run.runRef}
               events={events.filter((event) => eventBelongsToAgent(event, detail, agentId))}
               fetchImpl={fetchImpl}
-              onNavigate={onNavigate}
+              onOpenGate={gatedAgentIds.has(agentId) ? onOpenGate : undefined}
             />
           ))}
         </div>
@@ -976,6 +980,12 @@ export function RunDetail({
     : archivable ? undefined : 'Stop this run before archiving it.';
   const cardOwners = index ? cardOwnerIndex(index) : undefined;
   const scopedDag = scopeDagToRun(dag ?? { nodes: [], edges: [] }, runCardIds(detail));
+  const focusActiveGate = (): void => {
+    const gate = typeof document === 'undefined' ? null : document.querySelector<HTMLElement>('[data-testid="run-gates"]');
+    if (!gate) return;
+    gate.focus();
+    if (typeof gate.scrollIntoView === 'function') gate.scrollIntoView({ block: 'nearest' });
+  };
 
   /**
    * What the operator is actually looking at in the activity trace, said plainly. The third case is the
@@ -1199,7 +1209,7 @@ export function RunDetail({
           Each agent&rsquo;s visible work, and a box to talk back to it. Private reasoning and raw tool
           payloads are not part of this feed.
         </p>
-        <AgentStreams detail={detail} events={events} fetchImpl={fetchImpl} onNavigate={onNavigate} />
+        <AgentStreams detail={detail} events={events} fetchImpl={fetchImpl} onOpenGate={focusActiveGate} />
       </section>
 
       <section className="entity-block" aria-label="Cards">

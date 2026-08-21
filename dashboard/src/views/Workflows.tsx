@@ -117,7 +117,7 @@ export function Workflows({
   const [assignStatus, setAssignStatus] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('workflows'));
-  const [localDetailSection, setLocalDetailSection] = useState<string | undefined>(undefined);
+  const [localDetailSection, setLocalDetailSection] = useState<{ workflowRef: string; sectionId: string } | null>(null);
   const [consoleWorkflowRef, setConsoleWorkflowRef] = useState<string | null>(null);
   // State rendering is asynchronous; this ref is the synchronous double-click guard and retains the
   // same idempotency key for the full lifetime of one launch intent.
@@ -274,6 +274,7 @@ export function Workflows({
   }
 
   const openWorkflow = (ref: string): void => {
+    setLocalDetailSection(null);
     if (onOpenWorkflow) onOpenWorkflow(ref);
     else setLocalOpenWorkflow(ref);
   };
@@ -282,6 +283,7 @@ export function Workflows({
     else setLocalOpenRun(ref);
   };
   const back = (): void => {
+    setLocalDetailSection(null);
     if (onBack) onBack();
     else if (localOpenRun) setLocalOpenRun(null);
     else setLocalOpenWorkflow(null);
@@ -336,9 +338,10 @@ export function Workflows({
     .filter((run) => run.workflowRef === null || !knownRefs.has(run.workflowRef))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const visibleDefs = defs.items.filter((entry) => humanizeEntityId(entry.ref).toLowerCase().includes(filter.trim().toLowerCase()));
-  const selectedDetailSection = activeSectionId ?? localDetailSection;
+  const selectedDetailSection = activeSectionId
+    ?? (localDetailSection?.workflowRef === openDefRef ? localDetailSection.sectionId : undefined);
   const selectDetailSection = (id: string): void => {
-    setLocalDetailSection(id);
+    if (openDefRef) setLocalDetailSection({ workflowRef: openDefRef, sectionId: id });
     onSectionChange?.(id);
   };
   const detailOverlay = openDef ? (

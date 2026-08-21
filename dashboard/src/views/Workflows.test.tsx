@@ -185,6 +185,25 @@ describe('the workflows roster', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
+
+  it('defaults every newly opened or reopened workflow overlay to Live', () => {
+    render(<SessionProvider><Workflows
+      definitions={{ items: [definition(), definition({ ref: 'video-run', title: 'Video run' })] }}
+      runs={[]}
+    /></SessionProvider>);
+
+    fireEvent.click(screen.getByTestId('workflow-open-research-brief'));
+    fireEvent.click(screen.getByTestId('entity-tab-brief'));
+    expect(screen.getByTestId('entity-tab-brief').getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
+
+    fireEvent.click(screen.getByTestId('workflow-open-video-run'));
+    expect(screen.getByTestId('entity-tab-live').getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
+
+    fireEvent.click(screen.getByTestId('workflow-open-research-brief'));
+    expect(screen.getByTestId('entity-tab-live').getAttribute('aria-selected')).toBe('true');
+  });
 });
 
 describe('launching from the workflow detail', () => {

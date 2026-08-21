@@ -202,14 +202,13 @@ describe('AgentTile', () => {
   });
 
   it('focuses the active run gate for a stuck tile without navigating to Inbox', () => {
-    const onNavigate = vi.fn();
+    const onOpenGate = vi.fn();
     render(unlocked(<>
       <section data-testid="run-gates" tabIndex={-1}>Active gate</section>
-      <AgentTile agentId="fyt-story" runRef="run-1" events={[event({ status: 'failure', summary: 'G1 refused' })]} onNavigate={onNavigate} />
+      <AgentTile agentId="fyt-story" runRef="run-1" events={[event({ status: 'failure', summary: 'G1 refused' })]} onOpenGate={onOpenGate} />
     </>));
     fireEvent.click(screen.getByTestId('run-tile-fyt-story-gate-link'));
-    expect(document.activeElement).toBe(screen.getByTestId('run-gates'));
-    expect(onNavigate).not.toHaveBeenCalled();
+    expect(onOpenGate).toHaveBeenCalledOnce();
   });
 
   it('posts an operator message and says when delivery is queued', async () => {
@@ -286,6 +285,30 @@ describe('the run own card graph', () => {
 });
 
 describe('the run surface', () => {
+  it('offers open gate only on a blocked agent tile that owns an open HumanRequest', () => {
+    const detail = makeDetail({
+      stages: [
+        makeStage('idea', 'fyt-story'),
+        makeStage('visual-plan', 'fyt-visuals'),
+      ],
+      humanRequests: [{
+        requestRef: 'request-story', runRef: 'run-1', displayName: 'headless run', shortRef: 1,
+        stageRef: 'ref-idea', kind: 'approval', revision: 1, state: 'open', title: 'Review the story',
+        prompt: 'Approve the story.', ask: 'The story needs your review.', technicalDetail: null,
+        response: null, createdAt: '', updatedAt: '',
+      }],
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[
+      event({ cursor: 1, stageRef: 'ref-idea', status: 'failure', summary: 'Story stopped' }),
+      event({ cursor: 2, stageRef: 'ref-visual-plan', status: 'failure', summary: 'Visuals stopped' }),
+    ]} dag={{ nodes: [], edges: [] }} />));
+
+    expect(screen.getByTestId('run-tile-fyt-story-gate-link')).toBeTruthy();
+    expect(screen.queryByTestId('run-tile-fyt-visuals-gate-link')).toBeNull();
+    fireEvent.click(screen.getByTestId('run-tile-fyt-story-gate-link'));
+    expect(document.activeElement).toBe(screen.getByTestId('run-gates'));
+  });
+
   it('heads the run with its frozen agent graph and running state', () => {
     const detail = makeDetail({
       stages: [makeStage('idea', 'fyt-story', { state: 'running', currentAttemptRef: null })],

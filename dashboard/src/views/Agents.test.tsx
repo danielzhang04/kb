@@ -302,4 +302,20 @@ describe('Agents view', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
+
+  it('defaults every newly opened or reopened agent overlay to Live', () => {
+    render(unlocked(<Agents roster={PRIMARY_ROSTER} routing={ROUTING as never} />));
+
+    fireEvent.click(screen.getByTestId('agent-open-claude-m1'));
+    fireEvent.click(screen.getByTestId('entity-tab-brief'));
+    expect(screen.getByTestId('entity-tab-brief').getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
+
+    fireEvent.click(screen.getByTestId('agent-open-codex-a'));
+    expect(screen.getByTestId('entity-tab-live').getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
+
+    fireEvent.click(screen.getByTestId('agent-open-claude-m1'));
+    expect(screen.getByTestId('entity-tab-live').getAttribute('aria-selected')).toBe('true');
+  });
 });
