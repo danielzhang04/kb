@@ -13,7 +13,7 @@ const occurrence: ScheduleOccurrence = {
 
 function ports(overrides: Partial<Parameters<typeof projectHome>[0]> = {}) {
   const attention: AttentionEnvelope = {
-    revision: 'attention-1', items: [], agents: { hygiene: 2 }, workflows: { 'video-run': 1 },
+    revision: 'attention-1', pairs: [], agents: { hygiene: 2 }, workflows: { 'video-run': 1 },
   };
   return {
     runningNow: { read: async () => ({ revision: 'runs-1', data: [run] }) },

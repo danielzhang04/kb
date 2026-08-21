@@ -11,7 +11,7 @@ describe('Home routes module', () => {
   registerHomeRoutes(app, {
     sessionConfig,
     runningNow: { read: async () => ({ revision: 'runs', data: [] }) },
-    attention: { read: async () => ({ revision: 'attention', data: { revision: 'attention', items: [], agents: {}, workflows: {} } }) },
+    attention: { read: async () => ({ revision: 'attention', data: { revision: 'attention', pairs: [], agents: {}, workflows: {} } }) },
     inboxCount: { read: async () => ({ revision: 'inbox', data: 0 }) },
     nextSchedules: { read: async () => ({ revision: 'schedules', data: [] }) },
     activation: { readActivation: async () => ({ revision: 'release', label: 'VM', sha: '64fb3d02', activatedAt: '2026-08-21T10:00:00.000Z' }) },
