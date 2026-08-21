@@ -17,7 +17,7 @@
         "vo_text": "We're in the 1980s.",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "Inside a warm lamp-lit suburban den, one beige hard-drive carton sits ajar on a walnut desk, its clay-red seam beside an unlit computer; cool night shows through the large window while shelves and arcade glow make the carton a small visual question.",
+        "still_prompt": "One oversized beige hard-drive carton dominates a walnut desk, its seam bulging around one clay-red rectangular corner; a tiny unlit computer sits far back under one tungsten lamp, with cool night beyond and nothing else competing.",
         "notes": "Palette basis: walnut-amber field — tungsten lamplight crosses the walnut desk while cool night enters the window."
       },
       {
@@ -50,7 +50,13 @@
         "vo_text": "corporate scams that you've never heard of.",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "Far down a fluorescent electronics aisle, `pc-boxy` faces the suspicious carton on a cream display table; a cable coil, repeated steel shelf bays, and a bright rear door make the alarmed pause legible.",
+        "cast": [
+          {
+            "character": "pc-boxy",
+            "expression_ref": "expr-skeptical"
+          }
+        ],
+        "still_prompt": "Far down a fluorescent electronics aisle, `pc-boxy` `expr-skeptical` faces the suspicious carton on a cream display table; a cable coil, steel shelf bays, and a bright rear door hold the restrained reaction.",
         "notes": "Palette basis: neutral-retail field — fluorescent light falls across cream laminate and steel shelving."
       },
       {
@@ -163,7 +169,7 @@
         "vo_text": "A hard drive is the part of your computer",
         "shot_class": "register-shift-infographic",
         "source": "ai-gen",
-        "still_prompt": "A beige computer and separate hard drive sit across a cutaway worktable, connected by one thick copper conduit; warm task light follows the copper through a cream-and-sage workshop with receding benches.",
+        "still_prompt": "A beige computer sits opened on a cutaway workbench, one compact hard drive nested inside its chassis and linked to the board by a short copper connector; warm task light crosses cream laminate and sage benches.",
         "notes": "Palette basis: copper-workshop field — task light follows the copper conduit across cream laminate and sage benches."
       },
       {
@@ -174,7 +180,9 @@
         "vo_text": "that remembers things after you switch it off:",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "Beneath a switched-off computer, a closed hard drive rests beside a sealed envelope, keyring, and folded paper on a walnut desk; cool window light leaves the indigo shelves quiet.",
+        "stage": "drive-memory",
+        "stage_role": "base",
+        "still_prompt": "Beneath a switched-off computer, one closed hard drive rests on a walnut desk; cool window light crosses its sealed shell, indigo shelving, and an empty rear workbench.",
         "notes": "Palette basis: indigo-storage field — cool window light crosses indigo shelving and a walnut desk after power-off."
       },
       {
@@ -185,8 +193,13 @@
         "vo_text": "your files, your applications, and your private collections.",
         "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "Three unlabeled drawers extend from an open hard-drive casing: folded paper, a small tool, and a keepsake box occupy separate slots; overhead light crosses sage shelving, steel runners, and the cream desk.",
-        "notes": "Palette basis: sage-drawer field — overhead workshop light crosses sage shelving, steel runners, and cream laminate."
+        "stage": "drive-memory",
+        "stage_role": "delta",
+        "changed_elements": [
+          "the closed hard-drive shell is now open, revealing three stored-content compartments"
+        ],
+        "still_prompt": "The switched-off computer, walnut desk, cool window light, indigo shelves, and hard drive hold; its shell is now open, revealing three compartments with folded paper, a small tool, and a keepsake box.",
+        "notes": "Held camera, desk, computer, and drive; the stored-content reveal is the sole state change."
       },
       {
         "id": "L15",
@@ -196,8 +209,8 @@
         "vo_text": "Every computer needs one.",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "A row of beige computers along a pale-green showroom wall connects by copper paths to one hard drive on a central brass plinth; high window light crosses cream cases and polished metal.",
-        "notes": "Palette basis: pale-green mechanism field — high-window daylight crosses cream computer shells, copper paths, and a brass plinth."
+        "still_prompt": "Three beige computers line a pale-green showroom wall, each paired one-to-one with its own hard drive by a separate short copper path; high-window daylight crosses cream shells, brass mounts, and polished metal.",
+        "notes": "Palette basis: pale-green mechanism field — high-window daylight crosses cream computer shells, separate copper paths, and brass mounts."
       },
       {
         "id": "L16",
@@ -207,8 +220,14 @@
         "vo_text": "So while the computer companies were out front",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "stage": "pc-rivalry",
-        "stage_role": "base",
+        "cast": [
+          {
+            "character": "pc-boxy"
+          },
+          {
+            "character": "rival-pc"
+          }
+        ],
         "still_prompt": "Across an empty electronics aisle, `pc-boxy` and `rival-pc` face each other at matching height and eye-line; high skylight washes cream shelf rows and a brass center rail around their shared plane.",
         "notes": "Palette basis: brass-retail field — high skylight crosses cream shelving and the central brass rail."
       },
@@ -220,13 +239,18 @@
         "vo_text": "fighting like Samsung and Apple fight over",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "stage": "pc-rivalry",
-        "stage_role": "delta",
-        "changed_elements": [
-          "one oversized brass market bell now hangs between the rivals"
+        "cast": [
+          {
+            "character": "pc-boxy",
+            "expression_ref": "expr-annoyed"
+          },
+          {
+            "character": "rival-pc",
+            "expression_ref": "expr-annoyed"
+          }
         ],
-        "still_prompt": "The established `pc-boxy`, `rival-pc`, shared eye-line, empty aisle, cream shelves, and skylight hold; one oversized brass market bell now hangs between them as the sole rivalry change.",
-        "notes": "Pair and held retail camera remain; one pressure object appears."
+        "still_prompt": "`pc-boxy` `expr-annoyed` and `rival-pc` `expr-annoyed` occupy opposing brass plinths; their wedge-shaped shelf rows converge on one empty center bay under hard skylight across cream laminate and dark rails.",
+        "notes": "Palette basis: hard-brass rivalry field — hard skylight crosses brass plinths, cream laminate, and dark shelf rails."
       },
       {
         "id": "L18",
@@ -238,6 +262,11 @@
         "source": "ai-gen",
         "stage": "drive-seller",
         "stage_role": "base",
+        "cast": [
+          {
+            "character": "drive-maker"
+          }
+        ],
         "still_prompt": "At a supply counter, `drive-maker` stands behind one overlooked hard drive while retail competition blurs beyond glass; window light crosses steel tools, ochre timber, and a brass pan.",
         "notes": "Palette basis: ochre-supply field — high-window daylight crosses ochre timber, steel tools, and a brass pan."
       },
@@ -254,6 +283,11 @@
         "changed_elements": [
           "one open brass cashbox now sits beside the hard drive"
         ],
+        "cast": [
+          {
+            "character": "drive-maker"
+          }
+        ],
         "still_prompt": "The established `drive-maker`, hard drive, ochre counter, steel tools, window light, and brass pan hold; one open brass cashbox now sits beside the drive as the sole quiet-profit change.",
         "notes": "One visible profit state; no invented amount."
       },
@@ -269,6 +303,11 @@
         "stage_role": "delta",
         "changed_elements": [
           "the hard drive is now displayed in a miner's pick-shaped holder"
+        ],
+        "cast": [
+          {
+            "character": "drive-maker"
+          }
         ],
         "still_prompt": "The established `drive-maker`, cashbox, ochre counter, steel tools, and brass pan hold; the hard drive is now displayed in a miner's pick-shaped holder as the one comparison change.",
         "notes": "Product state changes; the seller and counter hold."
@@ -303,7 +342,13 @@
         "vo_text": "well, the title gives it away...",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "At the end of a deep warehouse aisle, `pc-boxy` peers over one sealed carton toward its suspicious seam; cool rear-door light crosses high steel racks and pallet slats, leaving a large void around the box.",
+        "cast": [
+          {
+            "character": "pc-boxy",
+            "expression_ref": "expr-skeptical"
+          }
+        ],
+        "still_prompt": "At the end of a deep warehouse aisle, `pc-boxy` `expr-skeptical` faces one sealed carton and its suspicious seam; cool rear-door light crosses high steel racks and pallet slats around the small device.",
         "notes": "Palette basis: cool-warehouse field — rear-door daylight crosses steel racks, pale pallet wood, and the sealed carton."
       },
       {
@@ -314,8 +359,6 @@
         "vo_text": "red clay bricks into little boxes",
         "shot_class": "literal",
         "source": "ai-gen",
-        "stage": "brick-carton",
-        "stage_role": "base",
         "still_prompt": "One red clay brick rests inside an open kraft carton before a pallet face of sealed boxes; pale roof light crosses the clay, corrugated board, and charcoal warehouse racks.",
         "notes": "Palette basis: clay-kraft field — pale roof light crosses red clay, kraft board, and charcoal steel racks."
       },
@@ -327,13 +370,8 @@
         "vo_text": "labelled hard drive, and sold them",
         "shot_class": "literal",
         "source": "ai-gen",
-        "stage": "brick-carton",
-        "stage_role": "delta",
-        "changed_elements": [
-        "the open carton is now sealed around the brick"
-        ],
-      "still_prompt": "The kraft carton, red brick, pallet face, roof light, and charcoal racks hold; the carton is now sealed around the brick, its outer face marked 'HARD DRIVE', as the packaged state.",
-      "notes": "Script-supplied label accompanies one story-needed sealed-carton state."
+        "still_prompt": "One sealed kraft carton dominates a warehouse packing bench, its outer face marked 'HARD DRIVE'; pale roof light crosses corrugated board, pallet slats, and charcoal racks, while no brick remains visible.",
+        "notes": "Palette basis: kraft-packing field — pale roof light crosses corrugated board, pallet slats, and charcoal racks."
       },
       {
         "id": "L26",
@@ -341,15 +379,10 @@
         "synthetic": false,
         "vo_ref": "to customers around the world.",
         "vo_text": "to customers around the world.",
-        "shot_class": "literal",
+        "shot_class": "map-plan-view",
         "source": "ai-gen",
-        "stage": "brick-carton",
-        "stage_role": "delta",
-        "changed_elements": [
-          "the near pallet face is now opened into a repeated field of red bricks"
-        ],
-      "still_prompt": "The established carton marked 'HARD DRIVE', roof light, and charcoal racks hold; the near pallet face is now opened into a repeated field of red bricks as the one scale change.",
-        "notes": "Held proof expands without adding shipping geography."
+        "still_prompt": "A top-down world map spans a freight table, with sealed cartons marked 'HARD DRIVE' at separated port nodes joined by copper route arcs; cool daylight crosses pale timber continents, blue water, and brass fittings.",
+        "notes": "Palette basis: cool-freight-map field — daylight crosses pale timber continents, blue resin water, copper routes, and brass port fittings."
       },
       {
         "id": "L27",
@@ -370,7 +403,14 @@
         "vo_text": "The company was MiniScribe, a hard drive manufacturer",
         "shot_class": "personified-character",
         "source": "ai-gen",
-        "still_prompt": "High on a factory mezzanine, `miniscribe-rep` holds a proud presenting pose above deep assembly lines; cool clerestory light crosses teal steel, cream drive casings, and the long concrete floor.",
+        "cast": [
+          {
+            "character": "miniscribe-rep",
+            "pose_ref": "action-present",
+            "expression_ref": "expr-deadpan"
+          }
+        ],
+        "still_prompt": "High on a factory mezzanine, `miniscribe-rep` `action-present` `expr-deadpan` faces deep assembly lines; cool clerestory light crosses teal steel, cream drive casings, and the long concrete floor.",
         "notes": "Palette basis: teal-factory field — clerestory daylight crosses teal steel frames, cream drive casings, and concrete."
       },
       {
@@ -392,7 +432,13 @@
         "vo_text": "by a guy named Terry Johnson.",
         "shot_class": "personified-character",
         "source": "ai-gen",
-        "still_prompt": "At the head of a drive-assembly bench, `terry-johnson` holds a thoughtful planted pose against repeating machinery bays; tall windows cast pale light across cream casings, teal floor paint, and steel tools.",
+        "cast": [
+          {
+            "character": "terry-johnson",
+            "expression_ref": "expr-thinking"
+          }
+        ],
+        "still_prompt": "At the head of a drive-assembly bench, `terry-johnson` `expr-thinking` faces repeating machinery bays; tall-window daylight crosses cream casings, teal floor paint, and steel tools.",
         "notes": "Palette basis: pale-factory field — tall-window daylight crosses cream drive casings, teal floor paint, and steel tools."
       },
       {
@@ -403,7 +449,14 @@
         "vo_text": "And they were HOT.",
         "shot_class": "personified-character",
         "source": "ai-gen",
-        "still_prompt": "Under contained amber furnace light, `miniscribe-rep` holds a proud planted pose on a low factory platform; teal steel frames, empty concrete foreground, and deep machine aisles turn the boom into industrial heat.",
+        "cast": [
+          {
+            "character": "miniscribe-rep",
+            "pose_ref": "action-powerstance",
+            "expression_ref": "expr-delighted"
+          }
+        ],
+        "still_prompt": "Under contained furnace light, `miniscribe-rep` `action-powerstance` `expr-delighted` occupies a low factory platform; amber light crosses teal steel frames, bare concrete, and deep machine aisles.",
         "notes": "Palette basis: furnace-amber field — contained furnace light warms the platform against teal steel and bare concrete."
       },
       {
@@ -414,6 +467,14 @@
         "vo_text": "IBM picked MiniScribe to supply hard drives for their PCs,",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
+        "cast": [
+          {
+            "character": "ibm-suit"
+          },
+          {
+            "character": "miniscribe-rep"
+          }
+        ],
         "still_prompt": "`ibm-suit`, `miniscribe-rep`, then `handshake` across a factory conveyor at matching eye-line and scale, with one hard drive between them; clerestory light crosses cool teal steel, cream casings, and a kraft crate edge.",
         "notes": "Palette basis: cool-deal field — clerestory daylight crosses teal conveyor steel, cream drive casings, and kraft board."
       },
@@ -436,7 +497,7 @@
         "vo_text": "125 million dollars a year.",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "An enormous brass balance beam fills a tall factory atrium, its drive-box side outweighing the empty side; cream roof light crosses polished metal, kraft cartons, and teal trusses without rendering an amount.",
+        "still_prompt": "A brass money weight marked '125 MILLION' outweighs a drive-box pallet on a factory balance; cream roof light crosses polished metal, kraft cartons, and teal trusses, leaving the annual revenue as the sole scale object.",
         "notes": "Palette basis: brass-atrium field — cream roof light crosses polished brass, kraft cartons, and teal steel trusses."
       },
       {
@@ -447,7 +508,13 @@
         "vo_text": "And at their peak in 1988,",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "At the center of a bright factory floor, `miniscribe-rep` looks up at a drive-box canopy nearly too large for the room; diffuse roof light spreads across cream cartons, pale concrete, and distant steel bays.",
+        "cast": [
+          {
+            "character": "miniscribe-rep",
+            "expression_ref": "expr-surprised"
+          }
+        ],
+        "still_prompt": "At the center of a bright factory floor, `miniscribe-rep` `expr-surprised` stands beneath a drive-box canopy nearly too large for the room; diffuse roof light crosses cream cartons, pale concrete, and distant steel bays.",
         "notes": "Palette basis: bright-cream field — diffuse roof light spreads across cream cartons, pale concrete, and steel bays."
       },
       {
@@ -456,9 +523,16 @@
         "synthetic": false,
         "vo_ref": "they were selling to giants",
         "vo_text": "they were selling to giants like Compaq",
-        "shot_class": "physicalized-imbalance",
+        "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "A modest pallet of drive cartons sits in a wide loading yard opposite one giant anonymous office-tower silhouette; pale sky light crosses concrete docks, steel bollards, and cream boxes without brand signage.",
+        "cast": [
+          {
+            "character": "miniscribe-rep",
+            "pose_ref": "action-thumbsup",
+            "expression_ref": "expr-delighted"
+          }
+        ],
+        "still_prompt": "`miniscribe-rep` `action-thumbsup` `expr-delighted` passes one boxed drive across a loading counter to an unnamed acquiring-company figure; pale sky light crosses concrete docks, steel bollards, and cream cartons, making the company sale legible.",
         "notes": "Palette basis: pale-yard field — open-sky daylight crosses concrete docks, steel bollards, and cream cartons."
       },
       {
@@ -467,9 +541,16 @@
         "synthetic": false,
         "vo_ref": "and making over 600 million",
         "vo_text": "and making over 600 million dollars a year.",
-        "shot_class": "ironic-counterpoint",
+        "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-        "still_prompt": "Under a trophy-sized brass money weight, `miniscribe-rep` holds a smug pose while a tiny hard drive props its base; warm factory light crosses brass, kraft cartons, and dark teal bays.",
+        "cast": [
+          {
+            "character": "miniscribe-rep",
+            "pose_ref": "action-powerstance",
+            "expression_ref": "expr-smug"
+          }
+        ],
+        "still_prompt": "A trophy-sized brass money weight marked '600 MILLION' towers above `miniscribe-rep` `action-powerstance` `expr-smug` and one tiny hard drive; warm factory light crosses brass, kraft cartons, and teal bays.",
         "notes": "Palette basis: brass-boast field — warm factory light crosses the trophy-sized brass weight, kraft cartons, and teal steel."
       },
       {
@@ -480,8 +561,8 @@
         "vo_text": "Accounting for inflation, that's almost as much",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "Two broad brass money stacks balance across a long beam pivoted on a miniature hard drive; high cream windows light polished metal and a deep slate floor, keeping the comparison physical and amount-free.",
-        "notes": "Palette basis: cream-brass field — high-window light crosses polished brass and a slate factory floor."
+        "still_prompt": "One brass money stack marked '600 MILLION' rises from an expanded bellows on a slate factory floor; high-window light crosses brass ribs and dark steel, leaving the eventual comparison side outside frame.",
+        "notes": "Palette basis: brass-slate inflation field — high-window light crosses brass bellows ribs and dark slate steel."
       },
       {
         "id": "L39",
@@ -491,8 +572,14 @@
         "vo_text": "money as Reddit makes today. Or so they said.",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "Near a towering money weight with one hollow at its base, `miniscribe-rep` holds a wary pose; cool rear-bay light crosses high steel trusses, cream cartons, and broad negative floor space.",
-        "notes": "Palette basis: cool-doubt field — rear-bay daylight crosses steel trusses, cream cartons, and an empty factory floor."
+        "cast": [
+          {
+            "character": "miniscribe-rep",
+            "expression_ref": "expr-worried"
+          }
+        ],
+        "still_prompt": "Two brass money weights marked 'MINISCRIBE' and 'REDDIT' stand nearly equal on a balance; the MiniScribe weight has a hollow base while `miniscribe-rep` `expr-worried` watches beneath cool bay light across slate steel.",
+        "notes": "Palette basis: cool-slate doubt field — cool bay light crosses the brass balance and slate steel; the hollow MiniScribe weight carries the story turn."
       },
       {
         "id": "L40",
@@ -513,7 +600,14 @@
         "vo_text": "IBM slashed its orders, and",
         "shot_class": "aftermath-palette-turn",
         "source": "ai-gen",
-        "still_prompt": "`ibm-suit` stands arms-crossed beside entirely empty outbound rack positions in a paper-white loading bay; cold skylight crosses slate trusses and bare steel while the long corridor exposes the order cut.",
+        "cast": [
+          {
+            "character": "ibm-suit",
+            "pose_ref": "action-armscrossed",
+            "expression_ref": "expr-deadpan"
+          }
+        ],
+        "still_prompt": "`ibm-suit` `action-armscrossed` `expr-deadpan` stands beside empty outbound racks; cold skylight crosses paper-white doors, slate trusses, and bare steel while the long loading corridor exposes the order cut.",
         "notes": "Palette basis: paper-white cut field — cold skylight crosses paper-white doors, slate trusses, and empty steel racks."
       },
       {
@@ -535,8 +629,18 @@
         "vo_text": "They let a quarter of their people go,",
         "shot_class": "aftermath-palette-turn",
         "source": "ai-gen",
-        "still_prompt": "Near the far end of a cold locker corridor, `line-worker` holds one blank pale-pink notice in a crestfallen pose; winter exit light crosses slate lockers, an empty boot tray, and dark concrete.",
-        "notes": "Palette basis: winter-locker field — winter exit light crosses slate lockers, dark concrete, and one pale-pink notice."
+        "cast": [
+          {
+            "character": "line-worker",
+            "pose_ref": "hold-paper-by-sides",
+            "expression_ref": "expr-crestfallen"
+          }
+        ],
+        "figures": {
+          "crowd": true
+        },
+        "still_prompt": "Beyond an open locker-room doorway, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands within a bounded worker group holding blank pale-pink notices; the near corridor remains empty beneath winter light across slate lockers and dark concrete.",
+        "notes": "Palette basis: winter-locker field — winter light crosses slate lockers, pale-pink notices, and dark concrete. The laid-off mass is bounded beyond the doorway; near corridor empty."
       },
       {
         "id": "L44",
@@ -548,7 +652,14 @@
         "source": "ai-gen",
         "stage": "founder-exit",
         "stage_role": "base",
-        "still_prompt": "Beside an abandoned hard-drive casing, `terry-johnson` holds a slumped pose in an open factory doorway; cold high-window light crosses steel-blue benches and paper-white doors, with the exit beyond.",
+        "cast": [
+          {
+            "character": "terry-johnson",
+            "pose_ref": "action-slump",
+            "expression_ref": "expr-crestfallen"
+          }
+        ],
+        "still_prompt": "Beside an abandoned hard-drive casing, `terry-johnson` `action-slump` `expr-crestfallen` occupies an open factory doorway; cold high-window light crosses steel-blue benches and paper-white doors, with the exit beyond.",
         "notes": "Palette basis: cold-assembly field — high-window light crosses steel-blue benches, paper-white doors, and an abandoned drive casing."
       },
       {
@@ -569,6 +680,44 @@
       }
     ]
   },
+  "needed_assets": [
+    {
+      "kind": "character",
+      "slug": "rival-pc",
+      "wants": "Approved rival 1980s PC identity in the same object-character family as pc-boxy, visually distinct and handless.",
+      "why": "L16-L17 require the vb-carried rival identity for the computer-company rivalry."
+    },
+    {
+      "kind": "character",
+      "slug": "drive-maker",
+      "wants": "Approved personified hard-drive-manufacturer identity in an unmistakable 1980s supplier costume.",
+      "why": "L18-L20 require the manufacturer as the causal seller and profit actor."
+    },
+    {
+      "kind": "character",
+      "slug": "terry-johnson",
+      "wants": "Approved Terry Johnson founder identity with a pinned early-1980s executive-factory costume.",
+      "why": "L30 introduces Terry Johnson by name and L44 carries his departure."
+    },
+    {
+      "kind": "character",
+      "slug": "ibm-suit",
+      "wants": "Approved personified IBM buyer identity with one reusable, unmistakable institution signifier and pinned costume.",
+      "why": "L32 requires IBM in the supply agreement and L41 requires IBM as the order-cut decision-maker."
+    },
+    {
+      "kind": "character",
+      "slug": "line-worker",
+      "wants": "Approved MiniScribe line-worker identity with a pinned 1980s factory-floor costume.",
+      "why": "L43 requires a seeded representative inside the bounded laid-off worker group."
+    },
+    {
+      "kind": "character",
+      "slug": "compaq",
+      "wants": "Approved personified Compaq customer identity with one reusable, unmistakable institution signifier and pinned costume.",
+      "why": "L36 names Compaq as the customer; its token is elevated for the human asset gate, not authored."
+    }
+  ],
   "thumbnail": {
     "primary": {
       "source": "hybrid",

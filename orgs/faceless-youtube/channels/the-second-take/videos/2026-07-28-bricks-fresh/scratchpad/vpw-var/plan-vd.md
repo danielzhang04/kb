@@ -4,6 +4,24 @@ Video: `2026-07-28-bricks-fresh`
 Scope: officially scoped A1 fragment, opening through `Terry Johnson was out the door.`  
 Decision order: causal subject → acting participants → occupancy → class → executable cast route → tableau → drawable facts. The forensic documents were read as evidence, never as target outcomes; the rows below were recorded only after applying the Variant D criteria to each beat.
 
+## Author disposition
+
+| finding | disposition | author ruling |
+| ---: | --- | --- |
+| 1 | accept-and-elevate (`needed_assets`) | `rival-pc`, `drive-maker`, `terry-johnson`, `ibm-suit`, and `line-worker` are absent from this branch's `registry.json`. Keep the canonical-gap tokens carried by vb, add one `kind: character` elevation per identity, and stop at the human asset gate. |
+| 2 | accept-and-fix | Re-author L15 as three explicit computer↔drive pairs; the one-per-computer relation replaces the false many-to-one network. |
+| 3 | accept-and-fix | Re-author L12 with the drive nested inside the opened computer chassis; the internal-part relation requires a hard cut from L11's hero-object view. |
+| 4 | accept-and-fix | Break the brick-carton hold at L24→L25. L25 becomes a standalone sealed carton with the supplied `'HARD DRIVE'` face, so no visible brick survives sealing and no undeclared second delta is bundled. |
+| 5 | accept-and-fix | Hard-cut L26 to a plan-view freight map with separated customer ports and routed cartons; packaging cannot hold when the visual argument becomes worldwide distribution. |
+| 6 | accept-and-fix | L38 becomes the inflation-adjustment object; L39 separately names balanced `MINISCRIBE`/`REDDIT` sides and makes the MiniScribe side hollow while `expr-worried` lands the qualifier. |
+| 7 | accept-and-elevate (`needed_assets`) | Compaq is a story-referenced institution and no approved identity exists. Keep a new `compaq` token, add a `kind: character` elevation, and stage the sale with `miniscribe-rep`, `compaq`, then the registered `handoff`. |
+| 8 | accept-and-fix | L43 retains `line-worker` as the seeded representative inside a bounded rear worker group beyond the locker-room doorway; the near corridor stays empty and `figures.crowd` carries the mass. |
+| 9 | accept-and-fix | Glue the supplied `'125 MILLION'` and `'600 MILLION'` literals directly to the sole brass money objects in L34 and L37. |
+| 10 | accept-and-fix | Replace prose acting with existing closed-world primitives: `expr-skeptical` (L04/L23), `action-present` + `expr-deadpan` (L28), `expr-thinking` (L30), `action-powerstance` + `expr-delighted` (L31), `expr-surprised` (L35), `action-powerstance` + `expr-smug` (L37), `expr-worried` (L39), `action-armscrossed` + `expr-deadpan` (L41), `hold-paper-by-sides` + `expr-crestfallen` (L43), and `action-slump` + `expr-crestfallen` (L44). No acting primitive needs elevation. |
+| 11 | accept-and-fix | Hard-cut L17 from L16 and make the rivalry state itself visible: the two registered computer identities carry `expr-annoyed` on opposing brass plinths whose shelf wedges converge on one empty market bay. |
+| 12 | accept-and-fix | Create one `drive-memory` hold across L13→L14: camera, walnut desk, switched-off computer, and hard drive hold; only the closed shell opens to reveal three stored-content compartments. |
+| 13 | accept-and-fix | Make the buckling carton the single dominant L01 anomaly, reduce the computer to a small rear counterweight, and remove the competing shelves/arcade detail without disclosing the withheld brick. |
+
 ## Inherited partition and boundary lock
 
 | Act | Script turn | Narration span | Planned density | Locked cast / staging boundary |
@@ -59,7 +77,7 @@ Decision order: causal subject → acting participants → occupancy → class �
 | L33 | MiniScribe production growth | `miniscribe-rep` | one seeded company; IBM is no longer causal | skylit-production; roof light on cream cartons, concrete, dark steel |
 | L34 | annual revenue magnitude | none | 0; balance object is the quantity | brass-atrium; cream roof light on brass, kraft cartons, teal trusses |
 | L35 | MiniScribe at its peak | `miniscribe-rep` | one seeded company reaction to its scale | bright-cream; diffuse roof light on cartons, concrete, steel bays |
-| L36 | customer-company scale relation | none | 0; pallet versus tower carries the relationship without an unresolved customer | pale-yard; sky light on concrete, steel, cream boxes |
+| L36 | customer-company sale | `miniscribe-rep` | one seeded seller passes the drive to an unnamed acquiring-company figure in prose; `compaq` is elevated in `needed_assets`, not authored | pale-yard; sky light on concrete, steel, cream boxes |
 | L37 | MiniScribe revenue boast | `miniscribe-rep` | one seeded company; smug reaction makes the claim visible | brass-boast; warm factory light on brass, kraft, teal steel |
 | L38 | inflation comparison | none | 0; balanced quantities are the subject | cream-brass; high-window light on brass and slate floor |
 | L39 | doubtful revenue claim | `miniscribe-rep` | one seeded company reaction; wariness carries “or so they said” | cool-doubt; rear-bay light on trusses, cartons, empty floor |
@@ -154,10 +172,10 @@ Authored words use `len(still_prompt.split())`. Assembled-provider deltas are co
 
 | id | vb authored | vd authored | authored delta | exact lower-value text removed | exact replacement fact | assembled-provider delta | verdict |
 | --- | ---: | ---: | ---: | --- | --- | ---: | --- |
-| L01 | 78 | 42 | -36 | `A television's soft glow, a bookshelf` | `cool night shows through the large window` | -36 | PASS |
+| L01 | 78 | 36 | -42 | `A television's soft glow, a bookshelf` | `cool night beyond` | -36 | PASS |
 | L02 | 71 | 34 | -37 | `Cobalt, peach, and cream convey the era` | `amber cabinet light crosses brass trim and empty terrazzo foreground` | -112 | PASS |
 | L03 | 39 | 34 | -5 | `displayed like a trophy` | `cool fluorescent light crosses teal steel filing bays` | -5 | PASS |
-| L04 | 61 | 33 | -28 | `a beige boxy computer character with only short stubby arms and legs and NO hands or fingers` | `fluorescent electronics aisle` | -28 | PASS |
+| L04 | 61 | 32 | -29 | `a beige boxy computer character with only short stubby arms and legs and NO hands or fingers` | `fluorescent electronics aisle` | -28 | PASS |
 | L05 | 45 | 32 | -13 | `cobalt, cream, and walnut retail scene` | `tall windows cast pale daylight across cream plastic, green wall panels, and the wood grain` | -13 | PASS |
 | L06 | 39 | 29 | -10 | `vast cream-and-teal showroom` | `half-unpacked in a straw-lined shipping crate` | -10 | PASS |
 | L07 | 62 | 33 | -29 | `cool blue, cream, and walnut` | `milky skylight` across `pale terrazzo` and brass | -29 | PASS |
@@ -165,39 +183,39 @@ Authored words use `len(still_prompt.split())`. Assembled-provider deltas are co
 | L09 | 62 | 32 | -30 | `simple round-head crowd rig` recitation | `shopper group beyond the brass rail` plus `near lane empty` | -30 | PASS |
 | L10 | 46 | 38 | -8 | `blue daylight arcade` | `clear daylight crosses the cream box and timber shelves` | -8 | PASS |
 | L11 | 36 | 27 | -9 | `inside a deep working world` | `high green-glass windows cast cool light across coiled cables` | -9 | PASS |
-| L12 | 42 | 31 | -11 | `mechanism reads as a scene rather than a card` | `warm task light follows the copper` | -11 | PASS |
-| L13 | 38 | 29 | -9 | `stored memory feel quiet and durable` | `cool window light leaves the indigo shelves quiet` | -9 | PASS |
+| L12 | 42 | 36 | -6 | `mechanism reads as a scene rather than a card` | `hard drive nested inside its chassis` | -11 | PASS |
+| L13 | 38 | 27 | -11 | `stored memory feel quiet and durable` | `cool window light crosses its sealed shell, indigo shelving` | -9 | PASS |
 | L14 | 41 | 32 | -9 | `give each object ample room` | `overhead light crosses sage shelving, steel runners, and the cream desk` | -9 | PASS |
 | L15 | 44 | 32 | -12 | `small rear-zone crowd of computer buyers` | `high window light crosses cream cases and polished metal` | -87 | PASS |
 | L16 | 42 | 31 | -11 | `little rivalry sit inside a much larger market world` | `high skylight washes cream shelf rows and a brass center rail` | -11 | PASS |
-| L17 | 32 | 27 | -5 | `blue daylight hold` | repeated executable pair tokens plus one brass bell | +119 | PASS |
+| L17 | 32 | 28 | -4 | `blue daylight hold` | opposing brass plinths with converging shelf rows | +119 | PASS |
 | L18 | 28 | 28 | 0 | `rival computers, market bell` | `drive-maker` at an ochre timber supply counter | +124 | PASS |
 | L19 | 38 | 29 | -9 | `give the overlooked seller more world than spotlight` | `one open brass cashbox` | -9 | PASS |
 | L20 | 29 | 28 | -1 | `ochre horizon hold` | retained maker/cashbox plus pick-shaped holder | +123 | PASS |
 | L21 | 38 | 33 | -5 | `clear middle-ground winner in an open, structured frame` | `hard sunlight makes metal, stone, and dry earth the field` | -5 | PASS |
 | L22 | 37 | 31 | -6 | `claimed scale visually plausible but unsettled` | `pale skylight crosses kraft board and clay-red seams` | -6 | PASS |
-| L23 | 44 | 35 | -9 | `large suspenseful void around the small device` | `cool rear-door light crosses high steel racks and pallet slats` | -9 | PASS |
+| L23 | 44 | 32 | -12 | `large suspenseful void around the small device` | `cool rear-door light crosses high steel racks and pallet slats` | -9 | PASS |
 | L24 | 39 | 29 | -10 | `clean held packing tableau` | `red clay brick rests inside an open kraft carton` | -10 | PASS |
 | L25 | 31 | 31 | 0 | `carton is now open, exposing one red clay brick` | carton sealed around brick, marked `'HARD DRIVE'` | 0 | PASS |
-| L26 | 34 | 31 | -3 | `single full-scale proof` | carried exact `'HARD DRIVE'` literal and opened pallet face | -3 | PASS |
+| L26 | 34 | 34 | 0 | `single full-scale proof` | separated port nodes joined by copper route arcs | -3 | PASS |
 | L27 | 39 | 31 | -8 | `impossible object stays small against the waiting industrial world` | `cold high-window light crosses steel-blue machinery` | -8 | PASS |
-| L28 | 42 | 29 | -13 | `make the company actor small within its own machine` | `clerestory light crosses teal steel, cream drive casings, and concrete` | -13 | PASS |
+| L28 | 42 | 26 | -16 | `make the company actor small within its own machine` | `action-present` + `expr-deadpan` on the factory mezzanine | -13 | PASS |
 | L29 | 39 | 33 | -6 | `turn origin into a tactile plan-view` | `window light crosses pale timber, green route grooves, and blue resin water` | -6 | PASS |
-| L30 | 40 | 31 | -9 | `give the founder room to read at a glance` | `tall windows cast pale light across cream casings, teal floor paint, and steel tools` | -9 | PASS |
-| L31 | 39 | 32 | -7 | `compact hard drive sits on a low factory platform` | `miniscribe-rep` under contained furnace light | +117 | PASS |
+| L30 | 40 | 24 | -16 | `give the founder room to read at a glance` | `tall-window daylight crosses cream casings, teal floor paint, and steel tools` | -9 | PASS |
+| L31 | 39 | 24 | -15 | `compact hard drive sits on a low factory platform` | `miniscribe-rep` `action-powerstance` `expr-delighted` | +117 | PASS |
 | L32 | 40 | 32 | -8 | `stage the supply deal without a visible logo` | exact pair token order followed by `handshake` | -8 | PASS |
 | L33 | 32 | 31 | -1 | `established two figures` | `miniscribe-rep` before skylit production scale | +123 | PASS |
-| L34 | 43 | 32 | -11 | `miniscribe-rep holds a small pose` | amount-free brass balance under cream roof light | -135 | PASS |
-| L35 | 43 | 34 | -9 | `keep the claimed peak embedded in a real built space` | `diffuse roof light spreads across cream cartons, pale concrete, and distant steel bays` | -9 | PASS |
-| L36 | 38 | 32 | -6 | `customer scale is clear without depicting a brand` | `pale sky light crosses concrete docks, steel bollards, and cream boxes` | -6 | PASS |
-| L37 | 39 | 30 | -9 | `make the boast visibly too heavy for its support` | `warm factory light crosses brass, kraft cartons, and dark teal bays` | -9 | PASS |
-| L38 | 41 | 33 | -8 | `nearly level loads make the comparison readable` | `high cream windows light polished metal and a deep slate floor` | -8 | PASS |
-| L39 | 41 | 30 | -11 | `leave enough negative space for the qualifier to land` | `cool rear-bay light crosses high steel trusses, cream cartons, and broad negative floor space` | -11 | PASS |
+| L34 | 43 | 35 | -8 | `miniscribe-rep holds a small pose` | brass money weight marked `'125 MILLION'` outweighs a drive-box pallet | -135 | PASS |
+| L35 | 43 | 33 | -10 | `keep the claimed peak embedded in a real built space` | `diffuse roof light crosses cream cartons, pale concrete, and distant steel bays` | -9 | PASS |
+| L36 | 38 | 32 | -6 | `customer scale is clear without depicting a brand` | `unnamed acquiring-company figure` receives the drive in prose; `compaq` elevated, not authored | -6 | PASS |
+| L37 | 39 | 28 | -11 | `make the boast visibly too heavy for its support` | trophy-sized brass money weight marked `'600 MILLION'` | -9 | PASS |
+| L38 | 41 | 32 | -9 | `nearly level loads make the comparison readable` | expanded bellows on a slate factory floor | -8 | PASS |
+| L39 | 41 | 32 | -9 | `leave enough negative space for the qualifier to land` | MiniScribe weight has a hollow base | -11 | PASS |
 | L40 | 34 | 31 | -3 | `dense racks recede through a cold, structured corridor` | `cold winter skylight crosses bare steel` | -3 | PASS |
-| L41 | 30 | 30 | 0 | `established dock bumper` hold | `ibm-suit` beside empty racks under cold skylight | +124 | PASS |
+| L41 | 30 | 27 | -3 | `established dock bumper` hold | `action-armscrossed` + `expr-deadpan` beside empty outbound racks | +124 | PASS |
 | L42 | 43 | 32 | -11 | `economic fall read as a held tableau` | `pale overcast light crosses steel-blue walls and one empty kraft carton` | -11 | PASS |
 | L43 | 42 | 32 | -10 | `worker is small but unmistakably the causal human cost` | `winter exit light crosses slate lockers, an empty boot tray, and dark concrete` | -10 | PASS |
-| L44 | 38 | 28 | -10 | `create a deep, cold exit tableau` | drawable high-window light across benches, doors, and casing | -10 | PASS |
+| L44 | 38 | 26 | -12 | `create a deep, cold exit tableau` | cold high-window light crosses steel-blue benches and paper-white doors | -10 | PASS |
 | L45 | 34 | 28 | -6 | `steel blue, paper white, and charcoal make absence the whole argument` | held founder station with the founder now absent | -6 | PASS |
 
 Result: 45 PASS, zero positive authored deltas, maximum authored delta `0`; assembled-provider deltas remain a separate advisory column.
@@ -224,4 +242,7 @@ All twelve normalized dry-assembled payloads differ from vb. This is a byte ruli
 ## Pre-critic lint record
 
 Official command: `py -3 orgs/faceless-youtube/.claude/skills/visual-prompt-writer/scripts/lint_shots.py V/shots.json --write --fragment`  
-Result: `fragment scope: covered 293/1628 script words`; `HARD violations: none`; `WROTE derived vo_text (45 shots). JSON valid.` Diagnostics remain heads-up only.
+Result: `fragment scope: covered 293/1628 script words`.
+`HARD violations: none — every anchor matches verbatim + in narration order.`
+`Heads-up (35):`
+`WROTE derived vo_text (45 shots). JSON valid.`
