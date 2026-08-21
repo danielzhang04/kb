@@ -195,6 +195,8 @@
                       "vo_ref":  "So while the computer companies",
                       "shot_class":  "staged-interaction",
                       "source":  "ai-gen",
+                      "stage":  "pc-rivalry",
+                      "stage_role":  "base",
                       "cast":  [
                                    {
                                        "character":  "pc-boxy"
@@ -211,8 +213,13 @@
                       "duration_s":  2.0,
                       "synthetic":  false,
                       "vo_ref":  "fighting like Samsung and Apple",
-                      "shot_class":  "physicalized-imbalance",
+                      "shot_class":  "staged-interaction",
                       "source":  "ai-gen",
+                      "stage":  "pc-rivalry",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "both rivals' face panels now carry `expr-annoyed`"
+                                           ],
                       "cast":  [
                                    {
                                        "character":  "pc-boxy",
@@ -223,8 +230,8 @@
                                        "expression_ref":  "expr-annoyed"
                                    }
                                ],
-                      "still_prompt":  "`pc-boxy` `expr-annoyed` and `rival-pc` `expr-annoyed` stand small on opposing brass plinths; tall wedge-shaped shelf rows converge on one empty center bay under hard skylight across cream laminate and dark rails.",
-                      "notes":  "Palette basis: hard-brass rivalry field — hard skylight crosses brass plinths, cream laminate, and dark shelf rails."
+                      "still_prompt":  "The established deep electronics aisle, opposite shelf landings, cream rows, brass center rail, high skylight, `pc-boxy`, and `rival-pc` hold; both face panels now carry `expr-annoyed` at matching eye-line.",
+                      "notes":  "Held rivalry set and pair; both face panels switching to `expr-annoyed` is the one escalation change."
                   },
                   {
                       "id":  "L18",
@@ -303,8 +310,8 @@
                       "figures":  {
                                       "crowd":  true
                                   },
-                      "still_prompt":  "Beyond a clear packing aisle, a bounded worker line fills open cartons beneath a large brass tally marked \u002726,000\u0027; pale skylight crosses kraft board, clay-red seams, and charcoal racks while sealed boxes recede.",
-                      "notes":  "Palette basis: kraft-warehouse field — pale skylight crosses kraft cartons, charcoal steel racks, and clay-red seams. Packing workers remain beyond the benches with the near aisle clear."
+                      "still_prompt":  "Behind a packing bench, a small rear worker line holds open cartons beneath a brass tally marked \u002726,000\u0027; the empty near aisle frames sealed boxes under pale skylight across kraft board, clay-red seams, and charcoal racks.",
+                      "notes":  "Palette basis: kraft-warehouse field — pale skylight crosses kraft cartons, charcoal steel racks, and clay-red seams. Workers hold cartons behind the bench beyond the empty near aisle."
                   },
                   {
                       "id":  "L23",
@@ -507,15 +514,10 @@
                       "vo_ref":  "and making over 600 million",
                       "shot_class":  "number-glued-to-object",
                       "source":  "ai-gen",
-                      "cast":  [
-                                   {
-                                       "character":  "miniscribe-rep",
-                                       "pose_ref":  "action-powerstance",
-                                       "expression_ref":  "expr-smug"
-                                   }
-                               ],
-                      "still_prompt":  "A trophy-sized brass money weight marked \u0027600 MILLION\u0027 towers above `miniscribe-rep` `action-powerstance` `expr-smug` and one tiny hard drive; warm factory light crosses brass, kraft cartons, and teal bays.",
-                      "notes":  "Palette basis: brass-boast field — warm factory light crosses the trophy-sized brass weight, kraft cartons, and teal steel."
+                      "stage":  "revenue-comparison",
+                      "stage_role":  "base",
+                      "still_prompt":  "On a long balance above a slate factory floor, the left pan holds one brass weight marked \u0027600 MILLION\u0027 on a collapsed bellows while the right pan waits empty; high-window light crosses brass ribs, kraft cartons, and teal steel.",
+                      "notes":  "Palette basis: brass-slate comparison field — high-window light crosses brass ribs, kraft cartons, teal steel, and the slate factory floor."
                   },
                   {
                       "id":  "L38",
@@ -524,24 +526,28 @@
                       "vo_ref":  "Accounting for inflation, that\u0027s almost",
                       "shot_class":  "physicalized-imbalance",
                       "source":  "ai-gen",
-                      "still_prompt":  "One brass money stack marked \u0027600 MILLION\u0027 rises from an expanded bellows on a slate factory floor; high-window light crosses brass ribs and dark steel, leaving the eventual comparison side outside frame.",
-                      "notes":  "Palette basis: brass-slate inflation field — high-window light crosses brass bellows ribs and dark slate steel."
+                      "stage":  "revenue-comparison",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "the collapsed brass bellows beneath the left weight now stands fully expanded"
+                                           ],
+                      "still_prompt":  "The established slate factory, long balance, left weight marked \u0027600 MILLION\u0027, empty right pan, high-window light, kraft cartons, and teal steel hold; the collapsed brass bellows beneath the left weight now stands fully expanded.",
+                      "notes":  "Held revenue-comparison set; the collapsed bellows expanding is the one inflation change."
                   },
                   {
                       "id":  "L39",
                       "duration_s":  2.1,
                       "synthetic":  false,
                       "vo_ref":  "money as Reddit makes today.",
-                      "shot_class":  "reaction-shot",
+                      "shot_class":  "physicalized-imbalance",
                       "source":  "ai-gen",
-                      "cast":  [
-                                   {
-                                       "character":  "miniscribe-rep",
-                                       "expression_ref":  "expr-worried"
-                                   }
-                               ],
-                      "still_prompt":  "Two brass money weights marked \u0027MINISCRIBE\u0027 and \u0027REDDIT\u0027 stand nearly equal on a balance; the MiniScribe weight has a hollow base while `miniscribe-rep` `expr-worried` watches beneath cool bay light across slate steel.",
-                      "notes":  "Palette basis: cool-slate doubt field — cool bay light crosses the brass balance and slate steel; the hollow MiniScribe weight carries the story turn."
+                      "stage":  "revenue-comparison",
+                      "stage_role":  "delta",
+                      "changed_elements":  [
+                                               "one brass weight marked \u0027REDDIT\u0027 now fills the empty right pan"
+                                           ],
+                      "still_prompt":  "The established slate factory, long balance, expanded bellows, left weight marked \u0027600 MILLION\u0027, high-window light, kraft cartons, teal steel, and empty right pan hold; one brass weight marked \u0027REDDIT\u0027 now fills the right pan, bringing the beam nearly level.",
+                      "notes":  "Held revenue-comparison set; the Reddit weight is the one comparison change, while the spoken qualifier carries the doubt turn."
                   },
                   {
                       "id":  "L40",
@@ -699,7 +705,7 @@
                       "stage":  "bank-rescue",
                       "stage_role":  "delta",
                       "changed_elements":  [
-                                               "one appointment portfolio marked \u0027TURNAROUND\u0027 now rests on the vacant chair"
+                                               "a broad brass track now runs from the vacant chair into the MiniScribe factory model"
                                            ],
                       "cast":  [
                                    {
@@ -708,8 +714,8 @@
                                        "expression_ref":  "expr-deadpan"
                                    }
                                ],
-                      "still_prompt":  "The established `hq-banker` `action-present` `expr-deadpan`, walnut table, factory model, high-window light, contract marked \u0027HAMBRECHT \u0026 QUIST\u0027, and weight marked \u002720 MILLION\u0027 hold; one portfolio marked \u0027TURNAROUND\u0027 now rests on the vacant chair.",
-                      "notes":  "Held bank set and actor; the appointment portfolio is the one dispatch change, with Wiles withheld."
+                      "still_prompt":  "The established `hq-banker` `action-present` `expr-deadpan`, walnut table, vacant chair, factory model, high-window light, contract marked \u0027HAMBRECHT \u0026 QUIST\u0027, and weight marked \u002720 MILLION\u0027 hold; a broad brass track now runs from the vacant chair into the factory model.",
+                      "notes":  "Held bank set and actor; the chair-to-factory brass track is the one dominant dispatch change while the appointee remains absent."
                   },
                   {
                       "id":  "L50",
