@@ -683,36 +683,6 @@
   "needed_assets": [
     {
       "kind": "character",
-      "slug": "rival-pc",
-      "wants": "Approved rival 1980s PC identity in the same object-character family as pc-boxy, visually distinct and handless.",
-      "why": "L16-L17 require the vb-carried rival identity for the computer-company rivalry."
-    },
-    {
-      "kind": "character",
-      "slug": "drive-maker",
-      "wants": "Approved personified hard-drive-manufacturer identity in an unmistakable 1980s supplier costume.",
-      "why": "L18-L20 require the manufacturer as the causal seller and profit actor."
-    },
-    {
-      "kind": "character",
-      "slug": "terry-johnson",
-      "wants": "Approved Terry Johnson founder identity with a pinned early-1980s executive-factory costume.",
-      "why": "L30 introduces Terry Johnson by name and L44 carries his departure."
-    },
-    {
-      "kind": "character",
-      "slug": "ibm-suit",
-      "wants": "Approved personified IBM buyer identity with one reusable, unmistakable institution signifier and pinned costume.",
-      "why": "L32 requires IBM in the supply agreement and L41 requires IBM as the order-cut decision-maker."
-    },
-    {
-      "kind": "character",
-      "slug": "line-worker",
-      "wants": "Approved MiniScribe line-worker identity with a pinned 1980s factory-floor costume.",
-      "why": "L43 requires a seeded representative inside the bounded laid-off worker group."
-    },
-    {
-      "kind": "character",
       "slug": "compaq",
       "wants": "Approved personified Compaq customer identity with one reusable, unmistakable institution signifier and pinned costume.",
       "why": "L36 names Compaq as the customer; its token is elevated for the human asset gate, not authored."

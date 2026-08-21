@@ -49,12 +49,109 @@
       "costume": "PINNED canonical outfit: boxy tan blazer worn open over a brown open-collar shirt (chest and lapels plain \u2014 no badge, pin, or logo), plain dark trousers and dark shoes; short dark-brown side-parted hair, stocky build. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
     },
+    "ibm-suit": {
+      "role": "IBM personified \u2014 the customer institution as an actor; MiniScribe's PC/XT contract buyer. Appears L30, L39.",
+      "head_tone": "#7a4f33",
+      "costume": "PINNED canonical outfit: crisp navy pinstripe three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a plain dark tie, ONE plain white pocket square folded at the breast pocket (its single identity tag), polished dark shoes; close-cropped grey hair, broad heavy mass on the squat base proportion. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png"
+    },
+    "rifenburgh-ceo": {
+      "role": "Richard Rifenburgh \u2014 the post-collapse MiniScribe CEO who fronts the press arc. Appears L177, L185.",
+      "head_tone": "#caa07a",
+      "costume": "PINNED canonical outfit: plain unpatterned charcoal TWO-piece suit (no waistcoat) over a white shirt with a plain muted-blue tie, dark shoes; short side-parted dark-brown hair (the cast's only dark-haired executive). Carries NO badge, pin, logo, pocket square, tie clip, watch chain or jewellery. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/rifenburgh-ceo/rifenburgh-ceo.png"
+    },
+    "terry-johnson": {
+      "role": "Terry Johnson \u2014 MiniScribe's founder; depicted at work and at his late-1984 departure. Appears L28, L42.",
+      "head_tone": "#f5ead6",
+      "costume": "PINNED canonical outfit: white business shirt in shirtsleeves with both cuffs turned back to the forearm, a thin dark tie, plain dark trousers and dark shoes, no jacket; thinning fair hair combed back with the side hair filling the ear gap, one small trimmed fair moustache, lean build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png"
+    },
     "pc-boxy": {
       "role": "Personified beige boxy 1980s home computer — a FACED machine character (not a human). The cast's cartoon eyes and mouth sit in its front panel; short stubby arms and legs, NO hands. Appears L01-L04, L16.",
       "head_tone": "#e8dcc0",
       "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT — never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
       "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
       "no_hands": true
+    },
+    "rival-pc": {
+      "role": "Personified rival desktop computer \u2014 pc-boxy's opposite number in the market-share bout; a FACED machine character (not a human), same no-hand family as pc-boxy. Appears L16-L17.",
+      "head_tone": "#8b93a0",
+      "costume": "PINNED canonical form: slate-grey desktop computer case, same no-hand boxy build as pc-boxy but narrower and a head taller, a pair of stacked vent slots ribbing its front panel above its own cartoon eyes and mouth, short stubby arms and legs. NOTE: a personified OBJECT \u2014 never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
+      "base": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+      "no_hands": true
+    },
+    "auditor-rep": {
+      "role": "The outside AUDITOR personified \u2014 the accounting firm's man sent to verify MiniScribe's inventory; the figure the brick-filled cartons were staged for. Appears L141-L143, L145, L147, L166, L201, L202, L213, L242.",
+      "head_tone": "#bc8b62",
+      "costume": "PINNED canonical outfit: dark charcoal three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a plain charcoal tie, ONE pair of round spectacles pushed up onto the forehead (its single identity tag), dark shoes; short dark-brown hair, clean-shaven. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png"
+    },
+    "brick-foreman": {
+      "role": "The MiniScribe warehouse/division man \u2014 rank-and-file management: packs the bricks, takes the envelope, carries the fraud's human middle. Currently UNCAST: the 2026-08-06 shots.json re-author dropped his 30 shots (L60-L201 in the prior authoring); the canonical is retained for re-cast.",
+      "head_tone": "#d39566",
+      "costume": "PINNED canonical outfit: cream short-sleeve button shirt with a narrow dark charcoal clip-on tie and tie bar, mid-brown trousers, brown shoes; short mid-brown side-parted hair, clean-shaven, plain build. No jacket, no badge. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+    },
+    "hq-banker": {
+      "role": "The lending BANK personified \u2014 the institution whose money the inflated numbers were raised against. Appears L49-L51, L205, L206, L213.",
+      "head_tone": "#ebc9a3",
+      "costume": "PINNED canonical outfit: brown chalk-stripe three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a brown tie, ONE gold watch chain swagged across the waistcoat (its single identity tag), brown shoes; swept silver-grey hair, clean-shaven, heavy build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png"
+    },
+    "line-worker": {
+      "role": "An anonymous MiniScribe assembly-line worker \u2014 the human cost of the fraud, not a lead. Minted 2026-08-12 in the G4 slice for L46's human-cost beat. Appears L46.",
+      "head_tone": "#c8936b",
+      "costume": "PINNED canonical outfit: knee-length grey cotton work coat worn open over an olive button shirt and dark charcoal trousers, sleeves pushed to the forearm, plain dark work shoes; short black side-parted hair, clean-shaven, plain build. No badge, no tie. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png"
+    },
+    "qt-wiles": {
+      "role": "Q.T. Wiles \u2014 MiniScribe's chairman, the pressure at the top of the fraud. A BUSINESSMAN, never a physician: 'Dr. Fix-It' is a nickname only (Daniel's ruling, 2026-07-30), so no stethoscope, white coat, scrubs or medical prop in any shot, ever. Appears in 29 shots, L54-L236.",
+      "head_tone": "#f4d5b9",
+      "costume": "PINNED canonical outfit: steel-grey three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a grey tie, ONE gold tie clip (its single identity tag), brown shoes; swept silver-grey hair, clean-shaven, lean build. No spectacles, no pocket square. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
+    },
+    "drive-maker": {
+      "role": "The hard-drive TRADE personified \u2014 the industry as an actor, carrying the picks-and-shovels beats before MiniScribe is disclosed (L18-L21), and, on a boss-accepted ruling, doubling as the rival buyer Maxtor at L233/L234 ~200 shots later. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L18-L21, L233, L234.",
+      "head_tone": "#dba97d",
+      "costume": "PINNED canonical outfit: brown knee-length warehouse coat worn open over a plain collarless shirt, a flat cap, mid-brown trousers and work boots; short sandy hair, wiry build. The breast pocket is left plain and the collar open. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png"
+    },
+    "bond-investor": {
+      "role": "The MiniScribe BONDHOLDER personified \u2014 the retail investor who bought on the fake numbers, sues, wins the headline verdict, watches it evaporate and collects a quarter. Carries the final act's human cost. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L194, L195, L197, L199, L209, L210, L212, L237.",
+      "head_tone": "#f0d3b4",
+      "costume": "PINNED canonical outfit: fawn knitted cardigan over an open-collar shirt, brown corduroy trousers, tartan slippers; thin grey hair combed over, wire-rimmed spectacles, slight build. The slippers are load-bearing \u2014 later beats play on him never having changed out of them. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/bond-investor/bond-investor.png"
+    },
+    "return-customer": {
+      "role": "The COMPLICIT CUSTOMER personified \u2014 the distributor who agreed in advance to leave the pallets shrink-wrapped and mail them back, so the same bricks counted twice. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L132, L133, L134, L136.",
+      "head_tone": "#b07f55",
+      "costume": "PINNED canonical outfit: navy quilted delivery coat with the breast patch left plain and unlettered, dark trousers, heavy boots, a knitted navy beanie pushed back; dark beard, broad build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png"
+    },
+    "brick-co-seller": {
+      "role": "The Colorado Brick Company personified \u2014 sells the 26,000 bricks and is the story's last laugh, the one party that came out ahead. PLANNED at VPW step 3a 2026-08-13, not yet minted (was named-but-unminted in the 2026-08-06 file). Appears L115, L239, L240.",
+      "head_tone": "#c98a5c",
+      "costume": "PINNED canonical outfit: dusty tan work shirt with the sleeves rolled, a heavy canvas apron, a wide-brimmed straw hat worn square, dark work trousers and boots; weathered face, greying moustache. Renders in this unless a shot authors a change (L239 deliberately pushes the hat back).",
+      "base": "channels/the-second-take/visual-kit/refs/brick-co-seller/brick-co-seller.png"
+    },
+    "tv-chef": {
+      "role": "A GENERIC television kitchen-rescue host \u2014 the archetype the script's Gordon Ramsay aside invokes, staged so Wiles can occupy the identical frame one cut later. NEVER a likeness of the real named cook (imagery policy: no depiction of a real named person). PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L55, L56, L60.",
+      "head_tone": "#f4d9c0",
+      "costume": "PINNED canonical outfit: double-breasted white chef's jacket with the sleeves shoved to the elbow, a mid-blue apron tied at the waist, dark checked trousers; cropped fair hair, heavy build, bare-headed. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/tv-chef/tv-chef.png"
+    },
+    "trial-judge": {
+      "role": "The trial JUDGE \u2014 throws the $550M verdict out days after the jury returned it, the video's biggest reversal. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L207, L208.",
+      "head_tone": "#e8c9a8",
+      "costume": "PINNED canonical outfit: black judicial robe over a white wing collar, full-rim reading spectacles low on the nose; close-cropped white hair, jowly build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/trial-judge/trial-judge.png"
+    },
+    "hr-officer": {
+      "role": "HR personified \u2014 the one force that actually beat the fraud, and the withheld peak's punchline. The cast's only woman. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L243.",
+      "head_tone": "#e0b48d",
+      "costume": "PINNED canonical outfit: rust-red knitted cardigan over a cream blouse, a long tweed skirt, flat shoes; dark hair pinned up, reading spectacles on a chain, slight build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/hr-officer/hr-officer.png"
     }
   },
   "assets": [

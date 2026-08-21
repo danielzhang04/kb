@@ -8,7 +8,7 @@ Decision order: causal subject → acting participants → occupancy → class �
 
 | finding | disposition | author ruling |
 | ---: | --- | --- |
-| 1 | accept-and-elevate (`needed_assets`) | `rival-pc`, `drive-maker`, `terry-johnson`, `ibm-suit`, and `line-worker` are absent from this branch's `registry.json`. Keep the canonical-gap tokens carried by vb, add one `kind: character` elevation per identity, and stop at the human asset gate. |
+| 1 | accept-and-elevate (`needed_assets`) | `rival-pc`, `drive-maker`, `terry-johnson`, `ibm-suit`, and `line-worker` are absent from this branch's `registry.json`. Keep the canonical-gap tokens carried by vb, add one `kind: character` elevation per identity, and stop at the human asset gate. The five identities were approved canonicals dropped by the restoration's registry rollback and are restored from `974ca0e6` (this session); only `compaq` remains elevated. |
 | 2 | accept-and-fix | Re-author L15 as three explicit computer↔drive pairs; the one-per-computer relation replaces the false many-to-one network. |
 | 3 | accept-and-fix | Re-author L12 with the drive nested inside the opened computer chassis; the internal-part relation requires a hard cut from L11's hero-object view. |
 | 4 | accept-and-fix | Break the brick-carton hold at L24→L25. L25 becomes a standalone sealed carton with the supplied `'HARD DRIVE'` face, so no visible brick survives sealing and no undeclared second delta is bundled. |
