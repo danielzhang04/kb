@@ -54,12 +54,16 @@ export interface EntityBuilderRequest {
   humanName: string;
   purpose: string;
   model: string;
+  profile: string;
   tools: string[];
   skills: string[];
+  connectors: string[];
+  filesystemRoots: string[];
 }
 
 export interface CreateEntityRequest extends EntityBuilderRequest {
   selector: RunnableSelector;
+  project?: string;
   expectedCollectionRevision: string;
   idempotencyKey: string;
 }

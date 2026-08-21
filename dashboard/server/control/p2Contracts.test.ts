@@ -12,6 +12,7 @@ import type {
   RunOutcome,
   RunnableRef,
 } from './p2Contracts.ts';
+import type { CreateEntityRequest, EntityBuilderRequest } from '../entities/contracts.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dashboardRoot = resolve(here, '..', '..');
@@ -56,6 +57,13 @@ describe('P2 control contracts', () => {
   it('keeps stream and attention envelopes revisioned', () => {
     expectTypeOf<RunEventPage>().toMatchTypeOf<{ revision: string; items: unknown[]; nextCursor: number | null }>();
     expectTypeOf<AttentionEnvelope>().toMatchTypeOf<{ revision: string; items: unknown[]; agents: Record<string, number>; workflows: Record<string, number> }>();
+  });
+
+  it('pins the builder request contract to closed catalog identifiers', () => {
+    expectTypeOf<EntityBuilderRequest>().toEqualTypeOf<{
+      humanName: string; purpose: string; model: string; profile: string; tools: string[]; skills: string[]; connectors: string[]; filesystemRoots: string[];
+    }>();
+    expectTypeOf<CreateEntityRequest>().toMatchTypeOf<{ project?: string }>();
   });
 
   it('has no competing P2 noun declarations outside W0 files', () => {
