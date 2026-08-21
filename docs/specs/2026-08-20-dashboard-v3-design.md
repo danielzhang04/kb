@@ -265,7 +265,7 @@ type InboxItem = InboxBase & (
 
 **Lifecycle.** A PR item vanishes when merged or closed. A deployment item changes action with its canonical Deployment state and vanishes only after terminal Acknowledge. A successful asset pull vanishes on the helper receipt; offline/failure stays visible and retryable. An escalation vanishes when its subject card is done. Source events invalidate immediately. System Sweeper reconciles all subjects and repairs missed invalidations without inventing Inbox state.
 
-**Empty/error.** Empty is `Nothing needs you` followed by the next scheduled fire. If one source fails, retain verified items and show a source-specific retry row; never report an empty Inbox from a partial read.
+**Empty/error.** Empty is `Nothing needs you`; the next scheduled fire belongs to Schedules and never appears in Inbox (Daniel, 2026-08-21). If one source fails, retain verified items and show a source-specific retry row; never report an empty Inbox from a partial read.
 
 **Replaces.** Deletes `ApprovalsLive`, the run-detail join in `#asksForRun`, generic approval categories, read/snooze/resolve controls, and the current overpopulated projection.
 
