@@ -125,13 +125,16 @@ describe('reaching an agent detail and coming back', () => {
 
     fireEvent.click(screen.getByTestId('agent-open-claude-worker'));
 
-    // ...and is REPLACED by the one agent's detail, not appended to.
-    expect(screen.getByTestId('entity-detail-agent')).toBeTruthy();
-    expect(screen.getByTestId('entity-detail-title').textContent).toContain('claude-worker');
-    expect(screen.queryByTestId('agent-row-codex-worker')).toBeNull();
+    // ...and stays mounted behind an overlay whose Live tab hosts the existing AgentDetail.
+    const overlay = screen.getByRole('dialog');
+    expect(within(overlay).getAllByTestId('entity-detail-agent')).toHaveLength(2);
+    expect(within(overlay).getAllByTestId('entity-detail-title').map((node) => node.textContent))
+      .toContain('claude-worker');
+    expect(screen.getByTestId('agent-row-codex-worker')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('entity-detail-back'));
 
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByTestId('entity-detail-agent')).toBeNull();
     expect(screen.getByTestId('agent-row-claude-worker')).toBeTruthy();
     expect(screen.getByTestId('agent-row-codex-worker')).toBeTruthy();

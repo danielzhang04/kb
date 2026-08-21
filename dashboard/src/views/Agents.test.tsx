@@ -87,6 +87,7 @@ const PRIMARY_ROSTER: AgentRosterEntry[] = [
 ];
 
 beforeEach(() => {
+  localStorage.clear();
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
 });
 afterEach(() => {
@@ -118,7 +119,9 @@ describe('Agents view', () => {
 
     expect(screen.getByLabelText('Agents view')).toBeTruthy();
     const row = screen.getByTestId('agent-row-claude-m1');
-    expect(within(row).getByText('claude-m1')).toBeTruthy();
+    expect(within(row).getByText('Claude M1')).toBeTruthy();
+    expect(within(row).getAllByTestId('entity-name').map((node) => node.getAttribute('title')))
+      .toContain('claude-m1');
     // The current card is NAMED (its action) and its raw id sits behind EntityName's tooltip.
     expect(within(row).getAllByText('ship-dashboard').length).toBeGreaterThan(0);
     expect(within(row).queryByText('card-77')).toBeNull();
@@ -191,7 +194,8 @@ describe('Agents view', () => {
     it('surfaces an agent with a definition even when it owns nothing and wrote no ledger', () => {
       render(unlocked(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} />));
       const row = screen.getByTestId('agent-row-composer-scribe');
-      expect(within(row).getByText('composer-scribe')).toBeTruthy();
+      expect(within(row).getByText('Composer Scribe')).toBeTruthy();
+      expect(within(row).getByTestId('entity-name').getAttribute('title')).toBe('composer-scribe');
       expect(within(row).getByText('writer')).toBeTruthy(); // its role
       expect(within(row).getAllByText('idle').length).toBeGreaterThan(0);
     });
@@ -268,5 +272,35 @@ describe('Agents view', () => {
     render(<SessionProvider><Agents snapshot={{ cards: {}, ledgers: EMPTY_LEDGERS, orgStates: [] }} /></SessionProvider>);
     expect(screen.getByText('No user-created agents are registered.')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('keeps roster DOM, scroll, filter, and layout while detail opens, then restores focus', () => {
+    localStorage.setItem('kb.dashboard.entity-layout.v1', JSON.stringify({ agents: 'grid', workflows: 'list' }));
+    render(unlocked(<Agents roster={PRIMARY_ROSTER} routing={ROUTING as never} />));
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    const filter = screen.getByLabelText('Filter agents') as HTMLInputElement;
+    fireEvent.change(filter, { target: { value: 'claude' } });
+    const region = screen.getByRole('region', { name: /Your agents/ });
+    const roster = within(region).getByRole('table');
+    roster.scrollTop = 37;
+    const trigger = screen.getByTestId('agent-open-claude-m1');
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    expect(within(region).getByRole('table')).toBe(roster);
+    expect(roster.scrollTop).toBe(37);
+    expect(filter.value).toBe('claude');
+    expect(screen.getByLabelText('Agents view').getAttribute('data-layout')).toBe('list');
+    expect(JSON.parse(localStorage.getItem('kb.dashboard.entity-layout.v1') ?? '{}'))
+      .toEqual({ agents: 'list', workflows: 'list' });
+    const overlay = screen.getByRole('dialog');
+    expect(within(overlay).getByTestId('agent-run')).toBeTruthy();
+    fireEvent.click(within(overlay).getByTestId('entity-tab-runs'));
+    expect(within(overlay).getByLabelText('Live session for this agent')).toBeTruthy();
+    expect(within(overlay).getByLabelText('Runs this agent is working')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 });

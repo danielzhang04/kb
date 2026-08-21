@@ -12,6 +12,7 @@
  * against that contract now so every call site converges on one look before the wiring lands.
  */
 import { useEffect, useRef, useState } from 'react';
+import { humanizeEntityId } from '../entity/humanizeEntityId';
 
 export type EntityKind = 'card' | 'run' | 'workflow' | 'agent' | 'task';
 
@@ -44,6 +45,11 @@ const COPIED_RESET_MS = 1500;
 export function EntityName({ kind, id, displayName, shortRef, muted }: EntityNameProps): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const label = kind === 'agent' || kind === 'workflow'
+    ? humanizeEntityId(id)
+    : displayName.trim() && displayName !== id
+      ? displayName
+      : humanizeEntityId(id);
 
   useEffect(() => {
     return () => {
@@ -69,7 +75,7 @@ export function EntityName({ kind, id, displayName, shortRef, muted }: EntityNam
 
   return (
     <span className={`entity-name${muted ? ' entity-name--muted' : ''}`} title={id} data-testid="entity-name">
-      <span className="entity-name__label">{displayName}</span>
+      <span className="entity-name__label">{label}</span>
       <span className="mc-badge mc-mono entity-name__ref" data-testid="entity-name-ref">
         #{shortRef}
       </span>

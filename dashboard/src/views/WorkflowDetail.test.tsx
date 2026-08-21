@@ -9,7 +9,7 @@
  * itself — is behind the technical fold or gone.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Workflows } from './Workflows';
 import { SessionProvider } from '../lib/sessionContext';
 import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
@@ -77,12 +77,15 @@ describe('reaching a workflow detail and coming back', () => {
 
     fireEvent.click(screen.getByTestId('workflow-open-kb~video.md'));
 
-    expect(screen.getByTestId('entity-detail-workflow')).toBeTruthy();
-    expect(screen.getByTestId('entity-detail-title').textContent).toBe('Video pipeline');
-    expect(screen.queryByTestId('workflow-def-kb~audio.md')).toBeNull();
+    const overlay = screen.getByRole('dialog');
+    expect(within(overlay).getAllByTestId('entity-detail-workflow')).toHaveLength(2);
+    expect(within(overlay).getAllByTestId('entity-detail-title').map((node) => node.textContent))
+      .toContain('Video pipeline');
+    expect(screen.getByTestId('workflow-def-kb~audio.md')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('entity-detail-back'));
 
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByTestId('entity-detail-workflow')).toBeNull();
     expect(screen.getByTestId('workflow-def-kb~audio.md')).toBeTruthy();
   });
@@ -251,11 +254,12 @@ describe('workflow -> its runs', () => {
       </SessionProvider>,
     );
 
-    fireEvent.click(screen.getByTestId('entity-tab-runs'));
-    expect(screen.getByTestId('workflow-run-run-7')).toBeTruthy();
-    expect(screen.queryByTestId('workflow-run-run-8')).toBeNull();
+    const overlay = screen.getByRole('dialog');
+    fireEvent.click(within(overlay).getByTestId('entity-tab-runs'));
+    expect(within(overlay).getByTestId('workflow-run-run-7')).toBeTruthy();
+    expect(within(overlay).queryByTestId('workflow-run-run-8')).toBeNull();
 
-    fireEvent.click(screen.getByTestId('workflow-run-run-7'));
+    fireEvent.click(within(overlay).getByTestId('workflow-run-run-7'));
     expect(onOpenRun).toHaveBeenCalledWith('run-7');
   });
 

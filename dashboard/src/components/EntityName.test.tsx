@@ -15,10 +15,32 @@ afterEach(() => {
 });
 
 describe('EntityName', () => {
-  it('renders the display name and the #ref chip', () => {
+  it('renders a server-owned display name for non-agent/workflow entities and the #ref chip', () => {
     render(<EntityName kind="run" id={RAW_ID} displayName="Nightly ingest" shortRef={42} />);
     expect(screen.getByText('Nightly ingest')).toBeTruthy();
     expect(screen.getByTestId('entity-name-ref').textContent).toBe('#42');
+  });
+
+  it('humanizes agent and workflow ids without changing raw identity', () => {
+    const { rerender } = render(
+      <EntityName kind="agent" id="fyt_checker-api" displayName="Ignored agent title" shortRef={42} />,
+    );
+    expect(screen.getByText('FYT Checker API')).toBeTruthy();
+    expect(screen.getByTestId('entity-name').getAttribute('title')).toBe('fyt_checker-api');
+
+    rerender(
+      <EntityName kind="workflow" id="kb_pr-review" displayName="Ignored workflow title" shortRef={43} />,
+    );
+    expect(screen.getByText('KB PR Review')).toBeTruthy();
+    expect(screen.getByTestId('entity-name').getAttribute('title')).toBe('kb_pr-review');
+  });
+
+  it('falls back to a humanized id when a non-agent/workflow display name is empty or the raw id', () => {
+    const { rerender } = render(<EntityName kind="card" id="card-review" displayName="" shortRef={8} />);
+    expect(screen.getByText('Card Review')).toBeTruthy();
+
+    rerender(<EntityName kind="task" id="task_review" displayName="task_review" shortRef={9} />);
+    expect(screen.getByText('Task Review')).toBeTruthy();
   });
 
   it('never renders the raw id as visible text, under any prop combination', () => {

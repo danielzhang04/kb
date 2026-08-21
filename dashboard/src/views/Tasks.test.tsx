@@ -78,8 +78,9 @@ describe('Tasks view', () => {
     // Frontmatter block: key + value pairs.
     expect(within(detail).getByText('risk-tier')).toBeTruthy();
     expect(within(detail).getByText('T3')).toBeTruthy();
-    // `push-remote` appears twice now: the EntityName heading and the frontmatter `action` value.
-    expect(within(detail).getAllByText('push-remote').length).toBe(2);
+    // Cards keep their server-owned display identity; the raw id stays behind the identity affordance.
+    expect(within(detail).queryByText('Card 300')).toBeNull();
+    expect(within(detail).getAllByText('push-remote')).toHaveLength(2);
     // Body rendered through the safe markdown renderer (heading + list item become real elements).
     expect(within(detail).getByRole('heading', { name: 'Work order' })).toBeTruthy();
     expect(within(detail).getByText('step one')).toBeTruthy();

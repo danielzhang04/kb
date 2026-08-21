@@ -19,6 +19,7 @@ async function renderUnlocked(ui: React.ReactElement, token = 'tok') {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 });
 afterEach(() => { cleanup(); clearStoredSession(); vi.unstubAllGlobals(); });
@@ -90,7 +91,8 @@ describe('the workflows roster', () => {
     /></SessionProvider>);
 
     const row = screen.getByTestId('workflow-def-research-brief');
-    expect(within(row).getByText('Research brief (cited)')).toBeTruthy();
+    expect(within(row).getByText('Research Brief')).toBeTruthy();
+    expect(within(row).getByTestId('entity-name').getAttribute('title')).toBe('research-brief');
     expect(within(row).getByText('kb-ops')).toBeTruthy();
     // Latest run: state in plain words plus a relative time, keyed off `updatedAt`.
     const latest = screen.getByTestId('workflow-latest-research-brief');
@@ -144,6 +146,8 @@ describe('the workflows roster', () => {
     const adhoc = screen.getByTestId('workflows-adhoc');
     expect(within(adhoc).getByText('Composer plan run')).toBeTruthy();
     expect(within(adhoc).getByText('Orphaned run')).toBeTruthy();
+    expect([...adhoc.querySelectorAll('[data-testid="entity-name"]')].map((node) => node.getAttribute('title')))
+      .toEqual(['adhoc-1', 'orphan-1']);
     expect(within(adhoc).queryByTestId('workflow-run-run-1')).toBeNull();
 
     fireEvent.click(screen.getByTestId('workflow-run-adhoc-1'));
@@ -157,6 +161,30 @@ describe('the workflows roster', () => {
     // Waiting on a human is not "live work" — it is the operator's queue, counted separately.
     expect(isLiveRun(run({ runRef: 'r', state: 'waiting-human' }))).toBe(false);
   });
+
+  it('keeps roster DOM, scroll, filter, and layout while detail opens, then restores focus', () => {
+    localStorage.setItem('kb.dashboard.entity-layout.v1', JSON.stringify({ agents: 'list', workflows: 'grid' }));
+    render(<SessionProvider><Workflows definitions={{ items: [definition(), definition({ ref: 'video-run', title: 'Video run' })] }} runs={[]} /></SessionProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    const filter = screen.getByLabelText('Filter workflows') as HTMLInputElement;
+    fireEvent.change(filter, { target: { value: 'research' } });
+    const roster = screen.getByTestId('workflow-defs');
+    roster.scrollTop = 29;
+    const trigger = screen.getByTestId('workflow-open-research-brief');
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    expect(screen.getByTestId('workflow-defs')).toBe(roster);
+    expect(roster.scrollTop).toBe(29);
+    expect(filter.value).toBe('research');
+    expect(screen.getByLabelText('Workflows view').getAttribute('data-layout')).toBe('list');
+    expect(JSON.parse(localStorage.getItem('kb.dashboard.entity-layout.v1') ?? '{}'))
+      .toEqual({ agents: 'list', workflows: 'list' });
+
+    fireEvent.click(screen.getByTestId('entity-detail-close'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
 });
 
 describe('launching from the workflow detail', () => {
@@ -167,9 +195,11 @@ describe('launching from the workflow detail', () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) } as Response);
     });
     vi.stubGlobal('fetch', fetchMock);
-    await renderUnlocked(<Workflows definitions={{ items: [definition()] }} focusWorkflowId="research-brief" onOpenWorkflow={vi.fn()} runs={[]} />);
+    await renderUnlocked(<Workflows definitions={{ items: [definition()] }} runs={[]} />);
+    fireEvent.click(screen.getByTestId('workflow-open-research-brief'));
 
-    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    const launch = within(screen.getByTestId('workflow-overlay-launch'))
+      .getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     fireEvent.click(launch);
     fireEvent.click(launch);
     // The bearer is resolved through the shared session context, so the POST lands a microtask later.
@@ -179,7 +209,8 @@ describe('launching from the workflow detail', () => {
       ok: true, status: 202,
       json: async () => ({ ok: true, runRef: 'run-ref-9', activationGated: true }),
     } as Response);
-    expect(await screen.findByText(/Run created run-ref-9; it starts once execution is unlocked/)).toBeTruthy();
+    expect(await within(screen.getByTestId('workflow-overlay-launch'))
+      .findByText(/Run created run-ref-9; it starts once execution is unlocked/)).toBeTruthy();
 
     const launchInit = (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>)
       .find(([url]) => String(url).endsWith('/launch'))?.[1];
@@ -198,14 +229,17 @@ describe('launching from the workflow detail', () => {
     await renderUnlocked(<Workflows definitions={{ items: [definition({ ref: 'video-run', title: 'Video run', parameters: ['channel', 'slug'] })] }} runs={[]} />);
     fireEvent.click(screen.getByRole('button', { name: /open video run/i }));
 
-    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    const launch = within(screen.getByTestId('workflow-overlay-launch'))
+      .getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     expect(launch.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText('Workflow parameter channel'), { target: { value: 'the-second-take' } });
-    fireEvent.change(screen.getByLabelText('Workflow parameter slug'), { target: { value: '2026-07-19-wells-fargo' } });
-    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+    const overlayLaunch = within(screen.getByTestId('workflow-overlay-launch'));
+    fireEvent.change(overlayLaunch.getByLabelText('Workflow parameter channel'), { target: { value: 'the-second-take' } });
+    fireEvent.change(overlayLaunch.getByLabelText('Workflow parameter slug'), { target: { value: '2026-07-19-wells-fargo' } });
+    expect((within(screen.getByTestId('workflow-overlay-launch'))
+      .getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(within(screen.getByTestId('workflow-overlay-launch')).getByRole('button', { name: 'Launch' }));
 
-    await screen.findByText(/Run created video-1/);
+    await within(screen.getByTestId('workflow-overlay-launch')).findByText(/Run created video-1/);
     const launchCall = (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>).find(([url]) => String(url).endsWith('/launch'));
     expect(JSON.parse(launchCall![1].body as string)).toMatchObject({
       expectedSourceHash: 'a'.repeat(64), parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo' },
@@ -221,15 +255,18 @@ describe('launching from the workflow detail', () => {
       ? responses.shift()!
       : { ok: true, status: 200, json: async () => ({}) } as Response));
     vi.stubGlobal('fetch', fetchMock);
-    await renderUnlocked(<Workflows definitions={{ items: [definition()] }} focusWorkflowId="research-brief" onOpenWorkflow={vi.fn()} runs={[]} />);
+    await renderUnlocked(<Workflows definitions={{ items: [definition()] }} runs={[]} />);
+    fireEvent.click(screen.getByTestId('workflow-open-research-brief'));
 
-    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    const launch = within(screen.getByTestId('workflow-overlay-launch'))
+      .getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     fireEvent.click(launch);
-    expect(await screen.findByText('Refused: definition changed')).toBeTruthy();
+    expect(await within(screen.getByTestId('workflow-overlay-launch'))
+      .findByText('Refused: definition changed')).toBeTruthy();
     await waitFor(() => expect(launch.disabled).toBe(false));
 
     fireEvent.click(launch);
-    expect(await screen.findByText(/Run created run-ref-10/)).toBeTruthy();
+    expect(await within(screen.getByTestId('workflow-overlay-launch')).findByText(/Run created run-ref-10/)).toBeTruthy();
 
     const keys = (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>)
       .filter(([url]) => String(url).endsWith('/launch'))
@@ -268,6 +305,7 @@ describe('editing who runs a step', () => {
     />));
 
     // The eligible choices are a separate governed-adjacent read; the picker exists before they land.
+    fireEvent.click(screen.getByText('Change who runs these'));
     const picker = await screen.findByLabelText('Who runs research:web-brief');
     await waitFor(() => expect((picker as HTMLSelectElement).disabled).toBe(false));
     fireEvent.change(picker, { target: { value: JSON.stringify(['writer', 'worker:claude:test']) } });

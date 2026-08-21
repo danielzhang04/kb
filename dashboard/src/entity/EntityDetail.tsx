@@ -16,7 +16,7 @@
  * colours in here are data-encoding: the status dot and the amber attention dot. Ids/hashes/counts/timestamps are
  * mono + tabular-nums via `.mc-mono`.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
 
@@ -72,6 +72,10 @@ export interface EntityDetailProps {
   backLabel?: string;
   /** Governed mutations live in the header, never inside a section, so they stay in one place. */
   actions?: React.ReactNode;
+  /** W4 entity rosters stay mounted while this raised right-hand panel is open. */
+  overlay?: boolean;
+  onClose?: () => void;
+  detailsContent?: React.ReactNode;
 }
 
 /** Map a status tone onto the existing `mc-status-dot--*` vocabulary. No new hues. */
@@ -97,6 +101,9 @@ export function EntityDetail({
   onBack,
   backLabel,
   actions,
+  overlay = false,
+  onClose,
+  detailsContent,
 }: EntityDetailProps): React.JSX.Element {
   // Controlled/uncontrolled, the standard way round: when the nav stack drives `activeSectionId` it
   // wins, so back-navigation can restore a tab. With no controller the component still has to be
@@ -104,6 +111,11 @@ export function EntityDetail({
   // standalone would be a defect, not a simplification. Either way a stale id (after the section set
   // changes) falls back to the first section rather than rendering an empty body.
   const [internalSectionId, setInternalSectionId] = useState<string | undefined>(undefined);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const selectedId = activeSectionId ?? internalSectionId;
   const active = sections.find((section) => section.id === selectedId) ?? sections[0];
 
@@ -112,7 +124,39 @@ export function EntityDetail({
     onSectionChange?.(id);
   };
 
-  return (
+  useEffect(() => {
+    if (!overlay || typeof document === 'undefined') return;
+    restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    const trapFocus = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = closeRef.current?.closest<HTMLElement>('.entity-detail__overlay');
+      const focusable = panel ? Array.from(panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((node) => !node.hidden) : [];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      document.removeEventListener('keydown', trapFocus);
+      restoreFocus.current?.focus();
+    };
+  }, [overlay]);
+
+  const detail = (
     <section
       className="entity-detail"
       aria-label={`${entity.kind} ${entity.id}`}
@@ -216,5 +260,20 @@ export function EntityDetail({
         {active?.render()}
       </div>
     </section>
+  );
+
+  if (!overlay) return detail;
+  return (
+    <div className="entity-detail__layer" role="presentation">
+      <button type="button" className="entity-detail__backdrop" aria-label="Close detail" data-testid="entity-detail-backdrop" onClick={onClose} />
+      <aside className="entity-detail__overlay" role="dialog" aria-modal="true" aria-label={`${title} detail`}>
+        <button ref={closeRef} type="button" className="entity-detail__close" data-testid="entity-detail-close" onClick={onClose}>Close</button>
+        {detail}
+        <button type="button" className="entity-detail__details" data-testid="entity-detail-details" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((open) => !open)}>
+          Details
+        </button>
+        {detailsOpen ? <div className="entity-detail__details-body">{detailsContent ?? 'No additional loaded details.'}</div> : null}
+      </aside>
+    </div>
   );
 }

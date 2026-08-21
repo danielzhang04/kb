@@ -38,7 +38,6 @@ import {
   type RespondAction,
 } from '../lib/approvalsClient';
 import '../styles/views/tasks.css';
-import '../styles/views/approvals.css';
 
 /** Cards grouped by state — the shape of `PlaneAIndex.cards`. */
 export type CardsByState = Record<string, CardProjection[]>;
@@ -133,6 +132,7 @@ function CardRow({
   const cls = tierClass(tier);
   return (
     <tr
+      role="button"
       className={`v-tasks__row${selected ? ' v-tasks__row--selected' : ''}`}
       aria-selected={selected}
       tabIndex={0}
@@ -286,19 +286,19 @@ function CardGate({
 }): React.JSX.Element {
   return (
     <section className="v-tasks__gate" aria-label="Waiting on you" data-testid="card-gate">
-      <p className={`v-approvals__eyebrow v-approvals__eyebrow--${item.category}`}>{item.categoryLabel}</p>
+      <p className={`v-tasks__eyebrow v-tasks__eyebrow--${item.category}`}>{item.categoryLabel}</p>
       <h3 className="v-tasks__gate-head">{item.status}</h3>
       <p className="v-tasks__gate-reason">{item.reason}</p>
       <p className="v-tasks__gate-next"><strong>Next action</strong> {item.nextAction}</p>
 
       {item.respond ? (
-        <div className="v-approvals__respond" data-testid="respond-form">
-          <label className="v-approvals__field-label" htmlFor="respond-message">
+        <div className="v-tasks__respond" data-testid="respond-form">
+          <label className="v-tasks__field-label" htmlFor="respond-message">
             {item.respond === 'reply' ? 'Reply to the owning agent' : 'Resolution note'}
           </label>
           <textarea
             id="respond-message"
-            className="v-approvals__respond-input"
+            className="v-tasks__respond-input"
             data-testid="respond-message"
             rows={4}
             maxLength={16000}
@@ -308,7 +308,7 @@ function CardGate({
               ? 'Your note is appended to the card and it stays queued for pickup.'
               : 'Recorded on the card as an operator resolution.'}
           />
-          <div className="v-approvals__buttons">
+          <div className="v-tasks__buttons">
             <button
               type="button"
               className="mc-btn mc-btn--primary"
@@ -324,10 +324,10 @@ function CardGate({
 
       {item.category === 'decision' && item.buttons ? (
         <>
-          <p className="v-approvals__truth-note" role="note">
+          <p className="v-tasks__truth-note" role="note">
             Evidence verification records/checks an approval. It does not itself start, resume, or complete this workflow.
           </p>
-          <div className="v-approvals__buttons">
+          <div className="v-tasks__buttons">
             {item.buttons.signed ? (
               <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => onVerify('signed')}>
                 Verify evidence (signed)
@@ -605,7 +605,7 @@ export function Tasks({
             <>
               {gateOutcome ? (
                 <p
-                  className={`v-approvals__outcome v-approvals__outcome--${gateOutcome.kind}`}
+                  className={`v-tasks__outcome v-tasks__outcome--${gateOutcome.kind}`}
                   role={gateOutcome.kind === 'error' ? 'alert' : 'status'}
                 >
                   {gateOutcome.message}

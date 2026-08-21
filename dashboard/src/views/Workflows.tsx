@@ -20,6 +20,9 @@ import { useSession } from '../lib/sessionContext';
 import { WorkflowDetail, RunRow, type WorkflowDefEntry } from './WorkflowDetail';
 import { RunDetail } from './RunDetail';
 import { EntityName } from '../components/EntityName';
+import { EntityDetail } from '../entity/EntityDetail';
+import { humanizeEntityId } from '../entity/humanizeEntityId';
+import { persistEntityLayout, readEntityLayout, type EntityLayout } from '../entity/entityLayout';
 import { entityRowProps } from '../components/entityRow';
 import { listRuns, type RunMetadataDto } from '../control/controlClient';
 import { relativeAge, runDot, runStateLabel } from '../control/runEvents';
@@ -112,6 +115,8 @@ export function Workflows({
   const [assignmentOptions, setAssignmentOptions] = useState<Record<string, WorkflowAssignmentOptions>>({});
   const [assigningRef, setAssigningRef] = useState<string | null>(null);
   const [assignStatus, setAssignStatus] = useState<Record<string, string>>({});
+  const [filter, setFilter] = useState('');
+  const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('workflows'));
   // State rendering is asynchronous; this ref is the synchronous double-click guard and retains the
   // same idempotency key for the full lifetime of one launch intent.
   const pendingLaunches = useRef(new Map<string, string>());
@@ -323,47 +328,117 @@ export function Workflows({
     );
   }
 
-  if (openDef) {
-    return (
-      <section className="v-workflows" aria-label="Workflows view">
-        <WorkflowDetail
-          entry={openDef}
-          runs={runs === undefined ? undefined : runsForWorkflow(openDef.ref, runs)}
-          now={now}
-          onOpenRun={openRun}
-          onNavigate={onNavigate}
-          onBack={back}
-          backLabel="All workflows"
-          activeSectionId={activeSectionId}
-          onSectionChange={onSectionChange}
-          parameterValues={parameterValues[openDef.ref] ?? {}}
-          onParameterChange={(name, value) => setParameterValues((current) => ({
-            ...current, [openDef.ref]: { ...current[openDef.ref], [name]: value },
-          }))}
-          onLaunch={() => void launchDefinition(openDef.ref)}
-          launching={launchingRefs.has(openDef.ref)}
-          launchStatus={launchStatus[openDef.ref] ?? null}
-          blockedReason={launchBlockReason(openDef)}
-          assignmentOptions={assignmentOptions[openDef.ref] ?? null}
-          onAssign={(target, assignment) => void assign(openDef.ref, target, assignment)}
-          assignBusy={assigningRef === openDef.ref}
-          assignStatus={assignStatus[openDef.ref] ?? null}
-        />
-      </section>
-    );
-  }
-
   const runsByWorkflow = (ref: string): RunMetadataDto[] => runs === undefined ? [] : runsForWorkflow(ref, runs);
   const knownRefs = new Set(defs.items.map((entry) => entry.ref));
   const adHocRuns = (runs ?? [])
     .filter((run) => run.workflowRef === null || !knownRefs.has(run.workflowRef))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const visibleDefs = defs.items.filter((entry) => humanizeEntityId(entry.ref).toLowerCase().includes(filter.trim().toLowerCase()));
+  const detailOverlay = openDef ? (
+    <EntityDetail
+      entity={{ kind: 'workflow', id: openDef.ref }}
+      eyebrow="Workflow"
+      title={humanizeEntityId(openDef.ref)}
+      facts={[]}
+      sections={[
+        {
+          id: 'live',
+          label: 'Live',
+          render: () => (
+            <WorkflowDetail
+              entry={openDef}
+              runs={runs === undefined ? undefined : runsForWorkflow(openDef.ref, runs)}
+              now={now}
+              onOpenRun={openRun}
+              onNavigate={onNavigate}
+              onBack={back}
+              backLabel="All workflows"
+              activeSectionId={activeSectionId}
+              onSectionChange={onSectionChange}
+              parameterValues={parameterValues[openDef.ref] ?? {}}
+              onParameterChange={(name, value) => setParameterValues((current) => ({
+                ...current,
+                [openDef.ref]: { ...current[openDef.ref], [name]: value },
+              }))}
+              onLaunch={() => void launchDefinition(openDef.ref)}
+              launching={launchingRefs.has(openDef.ref)}
+              launchStatus={launchStatus[openDef.ref] ?? null}
+              blockedReason={launchBlockReason(openDef)}
+              assignmentOptions={assignmentOptions[openDef.ref] ?? null}
+              onAssign={(target, assignment) => void assign(openDef.ref, target, assignment)}
+              assignBusy={assigningRef === openDef.ref}
+              assignStatus={assignStatus[openDef.ref] ?? null}
+            />
+          ),
+        },
+        {
+          id: 'brief',
+          label: 'Brief',
+          render: () => (
+            <dl className="entity-kv">
+              <div className="entity-kv__row"><dt>Description</dt><dd>{openDef.title ?? 'No loaded description.'}</dd></div>
+              <div className="entity-kv__row"><dt>Project</dt><dd>{openDef.project}</dd></div>
+              <div className="entity-kv__row"><dt>Definition</dt><dd>{openDef.path}</dd></div>
+            </dl>
+          ),
+        },
+      ]}
+      overlay
+      onClose={back}
+      actions={(
+        <div className="v-workflows__direct-launch" data-testid="workflow-overlay-launch">
+          {(openDef.parameters ?? []).map((name) => (
+            <label key={name} className="entity-detail__param">
+              <span>{name}</span>
+              <input
+                aria-label={`Workflow parameter ${name}`}
+                value={parameterValues[openDef.ref]?.[name] ?? ''}
+                onChange={(event) => setParameterValues((current) => ({
+                  ...current,
+                  [openDef.ref]: { ...current[openDef.ref], [name]: event.target.value },
+                }))}
+              />
+            </label>
+          ))}
+          <button
+            type="button"
+            className="mc-btn"
+            disabled={
+              launchingRefs.has(openDef.ref)
+              || Boolean(launchBlockReason(openDef))
+              || (openDef.parameters ?? []).some((name) => !(parameterValues[openDef.ref]?.[name] ?? '').trim())
+            }
+            onClick={() => void launchDefinition(openDef.ref)}
+          >
+            {launchingRefs.has(openDef.ref) ? 'Launching…' : 'Launch'}
+          </button>
+          {launchStatus[openDef.ref] ? (
+            <span className="v-workflows__run-status" data-testid={`workflow-def-status-${openDef.ref}`}>
+              {launchStatus[openDef.ref]}
+            </span>
+          ) : null}
+        </div>
+      )}
+      detailsContent={(
+        <dl className="entity-kv">
+          <div className="entity-kv__row"><dt>Workflow id</dt><dd className="mc-mono">{openDef.ref}</dd></div>
+          <div className="entity-kv__row"><dt>Definition ref</dt><dd className="mc-mono">{openDef.path}</dd></div>
+          <div className="entity-kv__row"><dt>Source revision</dt><dd className="mc-mono">{openDef.sourceHash ?? '—'}</dd></div>
+        </dl>
+      )}
+    />
+  ) : null;
 
   return (
-    <section className="v-workflows" aria-label="Workflows view">
+    <section className={`v-workflows v-workflows--${layout}`} aria-label="Workflows view" data-layout={layout}>
       <header className="v-workflows__head">
         <h2 className="v-workflows__title">Workflows</h2>
       </header>
+      <div className="entity-roster-controls">
+        <input aria-label="Filter workflows" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter loaded workflows" />
+        <button type="button" aria-pressed={layout === 'grid'} onClick={() => { setLayout('grid'); persistEntityLayout('workflows', 'grid'); }}>Grid</button>
+        <button type="button" aria-pressed={layout === 'list'} onClick={() => { setLayout('list'); persistEntityLayout('workflows', 'list'); }}>List</button>
+      </div>
 
       {defs.items.length === 0 ? (
         <div className="v-workflows__empty" data-testid="workflows-empty">
@@ -384,7 +459,7 @@ export function Workflows({
             </tr>
           </thead>
           <tbody>
-            {defs.items.map((d) => {
+            {visibleDefs.map((d) => {
               const workflowRuns = runsByWorkflow(d.ref);
               const latest = workflowRuns[0];
               const liveCount = workflowRuns.filter(isLiveRun).length;
@@ -454,6 +529,7 @@ export function Workflows({
           </ol>
         </section>
       ) : null}
+      {detailOverlay}
     </section>
   );
 }

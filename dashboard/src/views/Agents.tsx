@@ -39,6 +39,9 @@ import {
 import { RoutingControl } from './routingControls';
 import { AgentDetail } from './AgentDetail';
 import { EntityName } from '../components/EntityName';
+import { EntityDetail } from '../entity/EntityDetail';
+import { humanizeEntityId } from '../entity/humanizeEntityId';
+import { persistEntityLayout, readEntityLayout, type EntityLayout } from '../entity/entityLayout';
 import { entityRowProps } from '../components/entityRow';
 import { fetchAgentDetail, fetchSystemWorkers, type AgentDetailDto, type SystemWorkerDto } from '../lib/agentClient';
 import { getRun, listRuns, type RunMetadataDto } from '../control/controlClient';
@@ -272,7 +275,7 @@ function AgentRosterTable({
                   <span className={`mc-status-dot ${agent.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`} aria-hidden="true" />
                   {agent.display
                     ? <EntityName kind="agent" id={agent.id} displayName={agent.display.displayName} shortRef={agent.display.shortRef} />
-                    : <span className="mc-mono">{agent.id}</span>}
+                    : <span>{humanizeEntityId(agent.id)}</span>}
                   <span className="v-agents__state">{agent.working ? 'working' : 'idle'}</span>
                 </div>
               </td>
@@ -387,6 +390,8 @@ export function Agents({
   const [detail, setDetail] = useState<AgentDetailDto | null>(null);
   const [systemWorkerState, setSystemWorkerState] = useState<SystemWorkerDto[] | null>(null);
   const [detailState, setDetailState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [filter, setFilter] = useState('');
+  const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('agents'));
   const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
 
   useEffect(() => {
@@ -617,49 +622,87 @@ export function Agents({
       </section>
     );
   }
-  if (openAgentRow) {
-    // `undefined` (not scanned) and `[]` (scanned, none) stay distinct all the way to the render.
-    const joinedRuns = agentRuns
-      ?? (scannedRuns ? runsForAgent(openAgentRow.id, scannedRuns, cardOwnerIndex(index)) : undefined);
-    return (
-      <section className="v-agents" aria-label="Agents view">
-        <AgentDetail
-          agent={openAgentRow}
-          index={index}
-          runs={joinedRuns}
-          runScanLimit={AGENT_RUN_SCAN_LIMIT}
-          routing={routingControlFor(openAgentRow)}
-          detail={detail}
-          detailState={detailState === 'idle' ? undefined : detailState}
-          // No `onRunAgent` here: the detail runs its agent in its OWN embedded console now, so this
-          // surface never routes that click to the Terminal destination. The ROSTER row action below
-          // still does — a row has no console of its own to land in.
-          activeSectionId={activeSectionId}
-          onSectionChange={onSectionChange}
-          onNavigate={onNavigate}
-          onBack={backToRoster}
-          backLabel="All agents"
-        />
-      </section>
-    );
-  }
+  const visibleDeclaredRows = declaredRows.filter((agent) =>
+    humanizeEntityId(agent.id).toLowerCase().includes(filter.trim().toLowerCase()),
+  );
+
+  const joinedRuns = openAgentRow
+    ? agentRuns ?? (scannedRuns ? runsForAgent(openAgentRow.id, scannedRuns, cardOwnerIndex(index)) : undefined)
+    : undefined;
+
+  const detailOverlay = openAgentRow ? (
+    <EntityDetail
+      entity={{ kind: 'agent', id: openAgentRow.id }}
+      eyebrow="Agent"
+      title={humanizeEntityId(openAgentRow.id)}
+      facts={[]}
+      sections={[
+        {
+          id: 'live',
+          label: 'Live',
+          render: () => (
+            <AgentDetail
+              agent={openAgentRow}
+              index={index}
+              runs={joinedRuns}
+              runScanLimit={AGENT_RUN_SCAN_LIMIT}
+              routing={routingControlFor(openAgentRow)}
+              detail={detail}
+              detailState={detailState === 'idle' ? undefined : detailState}
+              activeSectionId={activeSectionId}
+              onSectionChange={onSectionChange}
+              onNavigate={onNavigate}
+              onBack={backToRoster}
+              backLabel="All agents"
+            />
+          ),
+        },
+        {
+          id: 'brief',
+          label: 'Brief',
+          render: () => (
+            <dl className="entity-kv">
+              <div className="entity-kv__row"><dt>Description</dt><dd>{openAgentRow.description ?? 'No loaded description.'}</dd></div>
+              <div className="entity-kv__row"><dt>Role</dt><dd>{openAgentRow.role ?? '—'}</dd></div>
+              <div className="entity-kv__row"><dt>Definition</dt><dd>{detail?.declaration?.path ?? 'Unavailable'}</dd></div>
+            </dl>
+          ),
+        },
+      ]}
+      overlay
+      onClose={backToRoster}
+      detailsContent={(
+        <dl className="entity-kv">
+          <div className="entity-kv__row"><dt>Agent id</dt><dd className="mc-mono">{openAgentRow.id}</dd></div>
+          <div className="entity-kv__row"><dt>Project refs</dt><dd className="mc-mono">{openAgentRow.projects.join(', ') || '—'}</dd></div>
+          <div className="entity-kv__row"><dt>Definition ref</dt><dd className="mc-mono">{detail?.declaration?.path ?? '—'}</dd></div>
+        </dl>
+      )}
+    />
+  ) : null;
 
   return (
-    <section className="v-agents" aria-label="Agents view">
+    <section className={`v-agents v-agents--${layout}`} aria-label="Agents view" data-layout={layout}>
       <h2 className="v-agents__title">
         Agents <span className="v-agents__count mc-num">({declaredRows.length})</span>
       </h2>
+
+      <div className="entity-roster-controls">
+        <input aria-label="Filter agents" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter loaded agents" />
+        <button type="button" aria-pressed={layout === 'grid'} onClick={() => { setLayout('grid'); persistEntityLayout('agents', 'grid'); }}>Grid</button>
+        <button type="button" aria-pressed={layout === 'list'} onClick={() => { setLayout('list'); persistEntityLayout('agents', 'list'); }}>List</button>
+      </div>
 
       {declaredRows.length === 0 ? (
         <p className="mc-empty">No user-created agents are registered.</p>
       ) : (
         <>
           <section className="v-agents__group" aria-labelledby="declared-agents-title">
-            <h3 id="declared-agents-title" className="v-agents__group-title">Your agents <span className="mc-num">({declaredRows.length})</span></h3>
+            <h3 id="declared-agents-title" className="v-agents__group-title">Your agents <span className="mc-num">({visibleDeclaredRows.length})</span></h3>
             <p className="v-agents__group-note">Agents you created. Open one to see what it does, or run it to talk to it directly.</p>
-            {declaredRows.length ? (
+            {visibleDeclaredRows.length ? (
               <AgentRosterTable
-                rows={declaredRows}
+                rows={visibleDeclaredRows}
                 onOpenAgent={openAgent}
                 onNavigate={onNavigate}
                 onRunAgent={onRunAgent}
@@ -687,6 +730,7 @@ export function Agents({
       </p>
 
       <RoutingAuditStrip audit={routingSnap.audit} />
+      {detailOverlay}
     </section>
   );
 }

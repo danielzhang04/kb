@@ -39,7 +39,7 @@
 }
 
 .entity-detail__back:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -266,12 +266,12 @@
 }
 
 .entity-detail__tab:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
 
 .entity-detail__tab--active {
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--accent);
   background: var(--accent-quiet);
   color: var(--fg-primary);
   font-weight: 500;
@@ -420,7 +420,7 @@
 }
 
 .entity-row--link:hover:not(:disabled) {
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--accent);
   color: var(--fg-primary);
 }
 
@@ -429,9 +429,32 @@
 }
 
 .entity-row--link:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
+
+/* W4: the roster remains in document flow; detail is a raised viewport-side layer. */
+.entity-detail__layer { position: fixed; inset: 0; z-index: 20; }
+.entity-detail__backdrop { position: absolute; inset: 0; border: 0; background: rgb(0 0 0 / 0.18); }
+.entity-detail__overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(100vw, 720px);
+  max-width: 720px;
+  height: 100vh;
+  overflow: auto;
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-raised);
+}
+.entity-detail__close, .entity-detail__details { font: inherit; color: var(--fg-primary); background: transparent; border: 1px solid var(--border); padding: var(--space-1) var(--space-2); cursor: pointer; }
+.entity-detail__details { margin-top: var(--space-4); }
+.entity-detail__details-body { margin-top: var(--space-2); color: var(--fg-dim); }
+.entity-roster-controls { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.entity-roster-controls input { min-height: 36px; flex: 1; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
+.entity-roster-controls button { min-height: 36px; font: inherit; color: var(--fg-primary); background: transparent; border: 1px solid var(--border); cursor: pointer; }
 
 .entity-row__main {
   flex: 1 1 220px;

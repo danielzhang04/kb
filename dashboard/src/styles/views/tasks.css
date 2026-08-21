@@ -67,6 +67,8 @@
  * .mc-table / .mc-table--boxed geometry in app.css. Only the selection rail and the task-specific
  * cells live here, so this table cannot drift from the Agents/Workflows/Home ones. ---- */
 .v-tasks__row {
+  height: 40px;
+  border-bottom: 1px solid var(--border);
   /* 2px transparent left rail keeps geometry stable; only selection paints it. */
   border-left: 2px solid transparent;
   cursor: pointer;
@@ -74,14 +76,14 @@
 }
 
 .v-tasks__row:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
 /* Selected = the single left-border-accent language, reused. */
 .v-tasks__row--selected {
   background: var(--accent-quiet);
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--accent);
 }
 
 .v-tasks__cell-id {
@@ -248,7 +250,7 @@
 }
 
 .v-tasks__body a {
-  color: var(--mc-accent);
+  color: var(--accent);
 }
 
 /* ---- Card gate (spec §5) ----
@@ -263,10 +265,16 @@
   margin-bottom: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border-strong);
-  border-left: 2px solid var(--mc-accent);
+  border-left: 2px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--bg-panel);
 }
+
+.v-tasks__eyebrow, .v-tasks__field-label, .v-tasks__truth-note { color: var(--fg-dim); font-size: var(--type-meta-size); }
+.v-tasks__respond { display: grid; gap: var(--space-2); margin-block: var(--space-3); }
+.v-tasks__respond-input { min-height: 36px; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
+.v-tasks__buttons { display: flex; gap: var(--space-2); }
+.v-tasks__outcome { margin: var(--space-2) 0; color: var(--fg-dim); }
 
 .v-tasks__gate-head {
   margin: 0;

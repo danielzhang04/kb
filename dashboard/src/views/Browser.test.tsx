@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { Browser } from './Browser';
+import { fileUrl, historyUrl, treeUrl } from './folderView';
 
 function jsonOk(body: unknown): Promise<Response> {
   return Promise.resolve({
@@ -52,6 +53,16 @@ afterEach(() => {
 });
 
 describe('Files (Browser)', () => {
+  it('encodes every path exactly once and round-trips hostile-looking names', () => {
+    for (const path of ['two words', 'hash#mark', 'question?mark', 'percent%mark', 'embedded/slash', '../x']) {
+      for (const url of [treeUrl(path), fileUrl(path), historyUrl(path)]) {
+        const rawQuery = url.split('=')[1];
+        expect(rawQuery).toBe(encodeURIComponent(path));
+        expect(new URL(url, 'http://x').searchParams.get('path')).toBe(path);
+      }
+    }
+  });
+
   it('lists the KB root tree (behavior preserved)', async () => {
     render(<Browser />);
     expect(await screen.findByRole('button', { name: /README\.md/ })).toBeTruthy();
