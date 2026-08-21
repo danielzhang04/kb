@@ -1,0 +1,34 @@
+[
+  {
+    "name": "fig-drive-maker--expr-smug--84b1254d",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "drive-maker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: At a supply counter, stands behind an overlooked hard drive while competition blurs beyond glass; window light crosses steel tools, ochre timber, and a brass pan. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `drive-maker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `drive-maker` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: At a supply counter, stands behind an overlooked hard drive while competition blurs beyond glass; window light crosses steel tools, ochre timber, and a brass pan. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "retry_authority": {
+      "kind": "step1-remint",
+      "changed_spans": 1,
+      "defect": "expression",
+      "character": "drive-maker"
+    },
+    "why": "STEP-1-only retry for `drive-maker` from `L18`"
+  }
+]

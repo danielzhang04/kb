@@ -1,0 +1,47 @@
+[
+  {
+    "name": "L17-vd-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is `rival-pc`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The THIRD image is the `expr-annoyed` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's.\n\n`pc-boxy` `expr-annoyed` and `rival-pc` `expr-annoyed` stand small on opposing brass plinths; tall wedge-shaped shelf rows converge on one empty center bay under hard skylight across cream laminate and dark rails.",
+    "payload": "`pc-boxy` `expr-annoyed` and `rival-pc` `expr-annoyed` stand small on opposing brass plinths; tall wedge-shaped shelf rows converge on one empty center bay under hard skylight across cream laminate and dark rails.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+        "role": "canonical",
+        "character": "rival-pc"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical; RETRY overlay from `L17`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "occupy opposing brass plinths; their wedge-shaped shelf rows converge",
+      "to": "stand small on opposing brass plinths; tall wedge-shaped shelf rows converge"
+    }
+  }
+]

@@ -1,0 +1,29 @@
+[
+  {
+    "name": "L18",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\nAt a supply counter, `drive-maker` `expr-smug` stands behind an overlooked hard drive while competition blurs beyond glass; window light crosses steel tools, ochre timber, and a brass pan.",
+    "payload": "At a supply counter, `drive-maker` `expr-smug` stands behind an overlooked hard drive while competition blurs beyond glass; window light crosses steel tools, ochre timber, and a brass pan.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-drive-maker--expr-smug--84b1254d.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--expr-smug--84b1254d.png",
+        "role": "figure",
+        "character": "drive-maker"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--expr-smug--84b1254d REUSED"
+  }
+]

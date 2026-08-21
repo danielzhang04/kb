@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L17",
+      "name": "L17-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "occupy opposing brass plinths; their wedge-shaped shelf rows converge",
+        "to": "stand small on opposing brass plinths; tall wedge-shaped shelf rows converge"
+      }
+    }
+  ]
+}

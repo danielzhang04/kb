@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L13",
+      "name": "L13-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "Beneath a switched-off computer, one closed hard drive rests on a walnut desk; cool window light crosses its sealed shell, indigo shelving, and an empty rear workbench.",
+        "to": "A switched-off computer shadows one closed hard drive at the front edge of a walnut desk; cool window light isolates the sealed shell between an indigo built-in shelf and a bare rear workbench."
+      }
+    }
+  ]
+}

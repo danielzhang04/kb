@@ -1,0 +1,35 @@
+[
+  {
+    "name": "L20",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change. Never the pose, and never the face: the parent image owns it outright.\n\nThe established `drive-maker`, cashbox, ochre counter, steel tools, and brass pan hold; the hard drive is now displayed in a miner's pick-shaped holder as the one comparison change.",
+    "payload": "The established `drive-maker`, cashbox, ochre counter, steel tools, and brass pan hold; the hard drive is now displayed in a miner's pick-shaped holder as the one comparison change.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L19.png",
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L19.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 1,
+    "why": "`drive-maker` delta -> parent + canonical"
+  }
+]

@@ -182,7 +182,7 @@
         "source": "ai-gen",
         "stage": "drive-memory",
         "stage_role": "base",
-        "still_prompt": "Beneath a switched-off computer, one closed hard drive rests on a walnut desk; cool window light crosses its sealed shell, indigo shelving, and an empty rear workbench.",
+        "still_prompt": "A switched-off computer shadows one closed hard drive at the front edge of a walnut desk; cool window light isolates the sealed shell between an indigo built-in shelf and a bare rear workbench.",
         "notes": "Palette basis: indigo-storage field — cool window light crosses indigo shelving and a walnut desk after power-off."
       },
       {
@@ -209,7 +209,7 @@
         "vo_text": "Every computer needs one.",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "Three beige computers line a pale-green showroom wall, each paired one-to-one with its own hard drive by a separate short copper path; high-window daylight crosses cream shells, brass mounts, and polished metal.",
+        "still_prompt": "Three beige computers occupy separate pale-green display bays; beneath each, its own hard drive sits inside an isolated short copper loop, with clear wall gaps separating the three circuits; high-window daylight crosses cream shells, brass mounts, and polished metal.",
         "notes": "Palette basis: pale-green mechanism field — high-window daylight crosses cream computer shells, separate copper paths, and brass mounts."
       },
       {
@@ -228,7 +228,7 @@
             "character": "rival-pc"
           }
         ],
-        "still_prompt": "Across an empty electronics aisle, `pc-boxy` and `rival-pc` face each other at matching height and eye-line; high skylight washes cream shelf rows and a brass center rail around their shared plane.",
+        "still_prompt": "Far down a deep electronics aisle, small `pc-boxy` and `rival-pc` face each other at matching height and eye-line on opposite shelf landings; high skylight washes cream rows and a brass center rail across the larger empty store.",
         "notes": "Palette basis: brass-retail field — high skylight crosses cream shelving and the central brass rail."
       },
       {
@@ -249,7 +249,7 @@
             "expression_ref": "expr-annoyed"
           }
         ],
-        "still_prompt": "`pc-boxy` `expr-annoyed` and `rival-pc` `expr-annoyed` occupy opposing brass plinths; their wedge-shaped shelf rows converge on one empty center bay under hard skylight across cream laminate and dark rails.",
+        "still_prompt": "`pc-boxy` `expr-annoyed` and `rival-pc` `expr-annoyed` stand small on opposing brass plinths; tall wedge-shaped shelf rows converge on one empty center bay under hard skylight across cream laminate and dark rails.",
         "notes": "Palette basis: hard-brass rivalry field — hard skylight crosses brass plinths, cream laminate, and dark shelf rails."
       },
       {
@@ -267,7 +267,7 @@
             "character": "drive-maker"
           }
         ],
-        "still_prompt": "At a supply counter, `drive-maker` stands behind one overlooked hard drive while retail competition blurs beyond glass; window light crosses steel tools, ochre timber, and a brass pan.",
+        "still_prompt": "At a supply counter, `drive-maker` `expr-smug` stands behind an overlooked hard drive while competition blurs beyond glass; window light crosses steel tools, ochre timber, and a brass pan.",
         "notes": "Palette basis: ochre-supply field — high-window daylight crosses ochre timber, steel tools, and a brass pan."
       },
       {

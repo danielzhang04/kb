@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L15",
+      "name": "L15-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "Three beige computers line a pale-green showroom wall, each paired one-to-one with its own hard drive by a separate short copper path; high-window daylight crosses cream shells, brass mounts, and polished metal.",
+        "to": "Three beige computers occupy separate pale-green display bays; beneath each, its own hard drive sits inside an isolated short copper loop, with clear wall gaps separating the three circuits; high-window daylight crosses cream shells, brass mounts, and polished metal."
+      }
+    }
+  ]
+}

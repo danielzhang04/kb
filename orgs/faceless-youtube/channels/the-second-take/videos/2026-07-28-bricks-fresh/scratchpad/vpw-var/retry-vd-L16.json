@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L16",
+      "name": "L16-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "Across an empty electronics aisle, `pc-boxy` and `rival-pc` face each other at matching height and eye-line; high skylight washes cream shelf rows and a brass center rail around their shared plane.",
+        "to": "Far down a deep electronics aisle, small `pc-boxy` and `rival-pc` face each other at matching height and eye-line on opposite shelf landings; high skylight washes cream rows and a brass center rail across the larger empty store."
+      }
+    }
+  ]
+}

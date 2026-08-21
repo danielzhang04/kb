@@ -1,0 +1,13 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L18",
+      "name": "fig-drive-maker--expr-smug--84b1254d",
+      "defect": "expression",
+      "character": "drive-maker"
+    }
+  ]
+}

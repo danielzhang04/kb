@@ -1,0 +1,41 @@
+[
+  {
+    "name": "L16-vd-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is `rival-pc`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose.\n\nFar down a deep electronics aisle, small `pc-boxy` and `rival-pc` face each other at matching height and eye-line on opposite shelf landings; high skylight washes cream rows and a brass center rail across the larger empty store.",
+    "payload": "Far down a deep electronics aisle, small `pc-boxy` and `rival-pc` face each other at matching height and eye-line on opposite shelf landings; high skylight washes cream rows and a brass center rail across the larger empty store.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+        "role": "canonical",
+        "character": "rival-pc"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical; RETRY overlay from `L16`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "Across an empty electronics aisle, `pc-boxy` and `rival-pc` face each other at matching height and eye-line; high skylight washes cream shelf rows and a brass center rail around their shared plane.",
+      "to": "Far down a deep electronics aisle, small `pc-boxy` and `rival-pc` face each other at matching height and eye-line on opposite shelf landings; high skylight washes cream rows and a brass center rail across the larger empty store."
+    }
+  }
+]

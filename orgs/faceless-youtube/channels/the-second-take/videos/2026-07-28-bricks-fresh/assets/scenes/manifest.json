@@ -913,25 +913,26 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call invented product lettering on filled retail shelves; one retry replaced that mechanism with sparse built-in shelving and a bare rear workbench.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "D call `visual-kit/_staging/L13-vd-retry1.png`; SHA-256 `69f9795d9454ea4c19bf7ab1cd37d5015e67211f7e77bf1b7a9e11709cd10ae7`; selected from `spec-vd-retry-L13.json`; verified targeted repair."
   },
   {
    "shot_id": "L14",
    "file": "assets/scenes/L14.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(e) Seeded delta-chain -- one changed element off the held parent",
    "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L13.png",
     "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "D call `visual-kit/_staging/L14.png`; SHA-256 `60fdd843975df5289bef6f77b906f434c9b17434f86df808fa0972ce6ffd1ce1`; selected from `spec-vd-L14.json`; parent L13 digest `69f9795d9454ea4c19bf7ab1cd37d5015e67211f7e77bf1b7a9e11709cd10ae7`; one open-shell reveal."
   },
   {
    "shot_id": "L15",
@@ -943,10 +944,10 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call merged the three copper paths into one common trunk; one retry used three isolated display bays and short copper loops.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "D call `visual-kit/_staging/L15-vd-retry1.png`; SHA-256 `802ab06bcc2c2f3244ec2f4429b0f5274e4798df8ff100340360f6deb409cfd0`; selected from `spec-vd-retry-L15.json`; verified targeted repair."
   },
   {
    "shot_id": "L16",
@@ -954,46 +955,48 @@
    "technique": "(b) Seeded composition -- named cast pc-boxy, rival-pc in composed environment",
    "seeds": [
     "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-    "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
-    "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+    "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call made both computers foreground-dominant; one retry placed them small on opposite shelf landings inside a larger store.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "`pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical"
+   "notes": "D call `visual-kit/_staging/L16-vd-retry1.png`; SHA-256 `28151c30c4acc43049aed76ebfaf14ed0ca5be470425ed0323351a7a8121c703`; selected from `spec-vd-retry-L16.json`; `pc-boxy` and `rival-pc` canonicals."
   },
   {
    "shot_id": "L17",
    "file": "assets/scenes/L17.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(b) Seeded composition -- named cast pc-boxy and rival-pc in composed environment",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call left rival-pc smiling and both figures foreground-dominant; one retry held the registered expression route and made both figures small under taller shelf rows.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "D call `visual-kit/_staging/L17-vd-retry1.png`; SHA-256 `64b4127550f26174d6c390e0c3baf7b21cecdd9608b19397b28ee22bf59d18c0`; selected from `spec-vd-retry-L17.json`; both identities and annoyed acting read clean."
   },
   {
    "shot_id": "L19",
    "file": "assets/scenes/L19.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(e) Seeded delta-chain -- one changed element off the held parent",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L18.png",
+    "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "D call `visual-kit/_staging/L19.png`; SHA-256 `b8549e07d75775ea0f819507219480ad01cfcc740252ad233606bcc1f66e08c4`; selected from `spec-vd-L19.json`; parent L18 digest `47f287263d8e32efe5e61be20f65f36b6b87aa7bb4929f58dbef39965c77df91`; one open cashbox added."
   },
   {
    "shot_id": "L21",
@@ -1008,7 +1011,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "D call `visual-kit/_staging/L21.png`; SHA-256 `5c3bf23a8b0a063961ce2598843fce70e4ba69bdb8f1404d1ca9339fe891ee93`; selected from `spec-vd-wave2.json`; clean on first generation."
   },
   {
    "shot_id": "L22",
@@ -1023,7 +1026,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "D call `visual-kit/_staging/L22.png`; SHA-256 `a34c24afd8d058ec8bc5b28f01ad58442b11a709b325d33c32022ecabc0dac54`; selected from `spec-vd-wave2.json`; clean on first generation."
   },
   {
    "shot_id": "L23",
@@ -1031,7 +1034,7 @@
    "technique": "(b) Seeded composition -- named cast pc-boxy in composed environment",
    "seeds": [
     "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-    "channels/the-second-take/visual-kit/refs/base/expr-surprised.png"
+    "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
    ],
    "flagged": false,
    "review_status": "verified",
@@ -1039,7 +1042,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "`pc-boxy` no_hands -> canonical"
+   "notes": "D call `visual-kit/_staging/L23.png`; SHA-256 `169cbdfb8e9fe5ee069904875b656a794e289ab918a54138f8961bbd4aa928dc`; selected from `spec-vd-wave2.json`; `pc-boxy` canonical plus `expr-skeptical`; clean on first generation."
   },
   {
    "shot_id": "L24",
@@ -1054,37 +1057,38 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE — place-first frame, bible descriptor + style suffix, no content anchor"
+   "notes": "D call `visual-kit/_staging/L24.png`; SHA-256 `37e255845a3c101dd7ba08b0a92cf141bcd42de05738dca8629b7af7c49a9a21`; selected from `spec-vd-wave2.json`; clean on first generation."
   },
   {
    "shot_id": "L18",
    "file": "assets/scenes/L18.png",
    "technique": "(b) Seeded composition -- named cast drive-maker via STEP-1 figure card, in composed environment",
    "seeds": [
-    "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-powerstance--expr-smug--72fa85ba.png"
+    "channels/the-second-take/visual-kit/_staging/fig-drive-maker--expr-smug--84b1254d.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D scene call changed the reviewed figure card's half-smile into a downcast face; one retry used a reviewed explicit `expr-smug` STEP-1 card.",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "`drive-maker` STEP-1 fig-drive-maker--action-powerstance--expr-smug--72fa85ba REUSED"
+   "notes": "D call `visual-kit/_staging/L18.png`; SHA-256 `47f287263d8e32efe5e61be20f65f36b6b87aa7bb4929f58dbef39965c77df91`; selected from `spec-vd-retry-L18-scene.json`; reviewed STEP-1 `fig-drive-maker--expr-smug--84b1254d`."
   },
   {
    "shot_id": "L20",
    "file": "assets/scenes/L20.png",
-   "technique": "(b) Seeded composition -- named cast drive-maker via STEP-1 figure card, in composed environment",
+   "technique": "(e) Seeded delta-chain -- one changed element off the held parent",
    "seeds": [
-    "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-offering--expr-smug--fd44746a.png"
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L19.png",
+    "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "`drive-maker` STEP-1 fig-drive-maker--action-offering--expr-smug--fd44746a REUSED"
+   "parent_depth": 2,
+   "lineage": 1,
+   "notes": "D call `visual-kit/_staging/L20.png`; SHA-256 `9ce04b4145deacddb91ada7a8679e90f50fce91abf9c486c5bc353ebbcc29cc7`; selected from `spec-vd-L20.json`; parent L19 digest `b8549e07d75775ea0f819507219480ad01cfcc740252ad233606bcc1f66e08c4`; pick-shaped holder added."
   },
   {
    "shot_id": "L08",
@@ -1105,18 +1109,18 @@
   {
    "shot_id": "L25",
    "file": "assets/scenes/L25.png",
-   "technique": "(e) Seeded delta-chain -- one changed element off the stage's held base/parent",
+   "technique": "(c) Character-free scene -- cast-free composition with lettering exemplar",
    "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L24.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
     "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "parent_depth": 1,
-   "lineage": 1,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call `visual-kit/_staging/L25.png`; SHA-256 `f7c0d536205ac02d4c1dffa838aa3ef6830d26fad02153ca3d75bfa2be04006d`; selected from `spec-vd-wave2.json`; lettering exemplar plus style tile; `HARD DRIVE` verified exact."
   }
  ]
 }
