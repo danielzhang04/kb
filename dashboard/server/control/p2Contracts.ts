@@ -29,6 +29,8 @@ export interface RunRow {
   outcome: RunOutcome | null;
   createdAt: string;
   completedAt: string | null;
+  streamKind: 'pty' | 'transcript';
+  sessionId?: string;
 }
 
 /** A schedule fire projected for cards and Home. */
@@ -52,14 +54,14 @@ export interface RunEventPage {
 }
 
 /** One distinct Run/owner pair contributing to a noun's attention count. */
-export interface AttentionItem {
+export interface AttentionPair {
   runRef: string;
   owner: RunnableRef;
 }
 
 export interface AttentionEnvelope {
   revision: string;
-  items: AttentionItem[];
+  pairs: AttentionPair[];
   agents: Record<string, number>;
   workflows: Record<string, number>;
 }

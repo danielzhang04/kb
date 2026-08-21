@@ -9,6 +9,7 @@ import type {
   HostKind,
   RunIdentityFields,
   RunEventPage,
+  RunRow,
   RunOutcome,
   RunnableRef,
 } from './p2Contracts.ts';
@@ -56,7 +57,18 @@ describe('P2 control contracts', () => {
 
   it('keeps stream and attention envelopes revisioned', () => {
     expectTypeOf<RunEventPage>().toMatchTypeOf<{ revision: string; items: unknown[]; nextCursor: number | null }>();
-    expectTypeOf<AttentionEnvelope>().toMatchTypeOf<{ revision: string; items: unknown[]; agents: Record<string, number>; workflows: Record<string, number> }>();
+    expectTypeOf<AttentionEnvelope>().toMatchTypeOf<{ revision: string; pairs: unknown[]; agents: Record<string, number>; workflows: Record<string, number> }>();
+    expectTypeOf<RunRow>().toEqualTypeOf<{
+      runRef: string;
+      title: string;
+      owner: RunnableRef;
+      lifecycle: import('./runLifecycle.ts').RunLifecycleKind;
+      outcome: RunOutcome | null;
+      createdAt: string;
+      completedAt: string | null;
+      streamKind: 'pty' | 'transcript';
+      sessionId?: string;
+    }>();
   });
 
   it('pins the builder request contract to closed catalog identifiers', () => {
