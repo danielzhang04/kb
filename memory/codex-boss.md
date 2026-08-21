@@ -44,3 +44,14 @@
 - WORKED (VM): the activator refuses unless `/readyz quiescent:true`; `POST /api/control/execution/lock` from the desk gets there in <10 s. VM python is 3.14: `spec_from_file_location` probes must register the module in `sys.modules` before `exec_module` or `@dataclass` dies. `kb-dashboard` has no home dir — one-time HF downloads need `HF_HOME` under the state root. Debian's `click` blocks pip upgrades (`--ignore-installed click`).
 - LEARNED: the hard-ceiling hook blocks any command string mentioning `~/.ssh` — fingerprint the VM's trusted public key and let Daniel match it locally; never ask for or guess the key path in a command you run.
 - REMAINS: VM `/var/lib/kb/ops` only moves through the signed promotion ceremony; `export_tier0` "restart locked" expectation is stale under tailnet arm-at-boot; Phase-2 plan next.
+
+
+## 2026-08-20 — Dashboard v3 brainstorm → spec (boss session, evening)
+
+- WORKED: interview in single questions with context-first prose, then ONE widget; Daniel answered every one substantively. What ended the loop was not more questions but his "come up with a final spec, this one should be good" — at that point stop asking and rule.
+- FAILED: I created the task list and cut the branch after a widget answer that contained redlines. Redlines are a revision request, not approval. Re-present, get a plain yes, then scaffold.
+- WORKED: a dense DECISION brief (every product call made, numbered D1–D16, with the operator's verbatim complaints) → codex-deep xhigh wrote a 600-line spec grounded in real modules in 34 min; a second codex-deep adversarial pass found 4 real blockers (T3 over tailnet, boss-merges, PTY root, seeded-armed cadences) and 13 majors/minors with file:line evidence. Spec → attack → fix is the right P0 shape; ~1.5 h total.
+- FAILED→FIXED: `--sandbox read-only` blocks the scratchpad too; the reviewer ran 12 min and wrote nothing. Read-only workers deliver in their FINAL MESSAGE; a `--follow-up` recovered it at no extra analysis cost.
+- HAZARD: `cd <scratchpad> && py -3 "$(git rev-parse --show-toplevel)/scripts/codex_dispatch.py"` resolves to `C:\Program Files\Git\scripts\...` — always the absolute script path, as the skill says.
+- RULING (Daniel agreed): schedules are store-first, repo-mirrored — control store is the live authority, `HEARTBEAT.md` seeds import once, a sweeper-cadence agent mirrors store → repo by PR (bookkeeping, not a gate); a cadence arms only once its entry is on protected `main`.
+- REMAINS: Daniel has not yet read the final spec (P0 gate); P1 plan next; P3 needs a `kb-shell` uid on the VM before Daniel's CLI logins; P5 blocked on the movement helper install.
