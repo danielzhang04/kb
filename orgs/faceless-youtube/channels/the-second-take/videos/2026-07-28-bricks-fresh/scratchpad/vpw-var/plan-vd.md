@@ -8,19 +8,73 @@ Decision order: causal subject → acting participants → occupancy → class �
 
 | finding | disposition | author ruling |
 | ---: | --- | --- |
-| 1 | accept-and-elevate (`needed_assets`) | `rival-pc`, `drive-maker`, `terry-johnson`, `ibm-suit`, and `line-worker` are absent from this branch's `registry.json`. Keep the canonical-gap tokens carried by vb, add one `kind: character` elevation per identity, and stop at the human asset gate. The five identities were approved canonicals dropped by the restoration's registry rollback and are restored from `974ca0e6` (this session); only `compaq` remains elevated. |
+| 1 | accept-and-fix | `rival-pc`, `drive-maker`, `terry-johnson`, `ibm-suit`, and `line-worker` resolve through restored approved canonicals. L36 now carries Compaq through a supplied-literal purchase-order object, so `needed_assets` is empty. |
 | 2 | accept-and-fix | Re-author L15 as three explicit computer↔drive pairs; the one-per-computer relation replaces the false many-to-one network. |
 | 3 | accept-and-fix | Re-author L12 with the drive nested inside the opened computer chassis; the internal-part relation requires a hard cut from L11's hero-object view. |
-| 4 | accept-and-fix | Break the brick-carton hold at L24→L25. L25 becomes a standalone sealed carton with the supplied `'HARD DRIVE'` face, so no visible brick survives sealing and no undeclared second delta is bundled. |
+| 4 | accept-and-fix | Break the brick-carton hold at L24→L25. L25 becomes a buyer-facing sales counter where `pc-boxy` faces the sealed carton marked `'HARD DRIVE'` beside an open cashbox. |
 | 5 | accept-and-fix | Hard-cut L26 to a plan-view freight map with separated customer ports and routed cartons; packaging cannot hold when the visual argument becomes worldwide distribution. |
 | 6 | accept-and-fix | L38 becomes the inflation-adjustment object; L39 separately names balanced `MINISCRIBE`/`REDDIT` sides and makes the MiniScribe side hollow while `expr-worried` lands the qualifier. |
-| 7 | accept-and-elevate (`needed_assets`) | Compaq is a story-referenced institution and no approved identity exists. Keep a new `compaq` token, add a `kind: character` elevation, and stage the sale with `miniscribe-rep`, `compaq`, then the registered `handoff`. |
-| 8 | accept-and-fix | L43 retains `line-worker` as the seeded representative inside a bounded rear worker group beyond the locker-room doorway; the near corridor stays empty and `figures.crowd` carries the mass. |
+| 7 | accept-and-restage | Compaq has no approved identity. Carry the customer institution with an oversized purchase order marked `'COMPAQ'`, staged by `miniscribe-rep` through registered `action-present` and `expr-delighted`; no contact pair or new canonical is required. |
+| 8 | accept-and-fix | L43 retains `line-worker` as the seeded representative at the single vacated bay among four locker bays; the one-quarter relationship replaces the undifferentiated worker crowd. |
 | 9 | accept-and-fix | Glue the supplied `'125 MILLION'` and `'600 MILLION'` literals directly to the sole brass money objects in L34 and L37. |
 | 10 | accept-and-fix | Replace prose acting with existing closed-world primitives: `expr-skeptical` (L04/L23), `action-present` + `expr-deadpan` (L28), `expr-thinking` (L30), `action-powerstance` + `expr-delighted` (L31), `expr-surprised` (L35), `action-powerstance` + `expr-smug` (L37), `expr-worried` (L39), `action-armscrossed` + `expr-deadpan` (L41), `hold-paper-by-sides` + `expr-crestfallen` (L43), and `action-slump` + `expr-crestfallen` (L44). No acting primitive needs elevation. |
 | 11 | accept-and-fix | Hard-cut L17 from L16 and make the rivalry state itself visible: the two registered computer identities carry `expr-annoyed` on opposing brass plinths whose shelf wedges converge on one empty market bay. |
 | 12 | accept-and-fix | Create one `drive-memory` hold across L13→L14: camera, walnut desk, switched-off computer, and hard drive hold; only the closed shell opens to reveal three stored-content compartments. |
-| 13 | accept-and-fix | Make the buckling carton the single dominant L01 anomaly, reduce the computer to a small rear counterweight, and remove the competing shelves/arcade detail without disclosing the withheld brick. |
+| 13 | accept-and-fix | The efficacy audit showed that any buckling carton still disclosed the withheld brick. L01 now uses a beige CRT, corded telephone, cassette deck, and supplied `'1980s'` calendar as the causal period tableau. |
+
+## Efficacy disposition
+
+Systematic criterion applied to L01/L03: the withheld brick is absent from every image before L24; early beats carry period and corporate-comedy subjects through independent objects. Systematic criterion applied to L07/L22/L25/L43: when demand, packing, sale, or a fraction is the causal subject, the frame foregrounds that action or relationship rather than an ambient product display. Concrete analogy/date beats carry a recognizable depicted anchor instead of an unlabeled symbol.
+
+| id | verdict | disposition |
+| --- | --- | --- |
+| L01 | MISMATCH | accepted + change (subject): replace the brick-bearing carton with an unmistakable 1980s desk tableau and supplied `'1980s'` calendar. |
+| L02 | MATCH | accepted + frozen: the arcade cabinet and wig display already carry both period cues. |
+| L03 | MISMATCH | accepted + change (subject): replace the hybrid brick/disk trophy with an absurd executive trophy balanced on an expense ledger. |
+| L04 | LOOSE | accepted + change (subject): remove the mascot reaction and foreground a corporate seal concealing a false-bottom ledger drawer. |
+| L05 | MATCH | accepted + frozen: the `'1983'` calendar and period computer already carry date and subject. |
+| L06 | LOOSE | accepted + change (staging): keep the held computer and add one inventor's exploded-blueprint board as prototype-era context. |
+| L07 | LOOSE | accepted + change (staging): the craze is now a bounded rear shopper mass filling the queue; the repaired base re-derives L08–L09. |
+| L08 | MATCH | accepted + forced neighbour change: the held crowd now gains purchased computer cartons because L07 already establishes demand. |
+| L09 | MATCH | accepted + forced neighbour change: purchased cartons hold while the stocked wall becomes bare. |
+| L10 | LOOSE | accepted + change (subject): a black-glass phone pedestal and bounded launch queue make the named release-craze comparison recognizable. |
+| L11 | MATCH | accepted + frozen: the exposed platter already makes the hard drive dominant. |
+| L12 | MATCH | accepted + frozen: the nested drive already shows the part-whole mechanism. |
+| L13 | MATCH | accepted + frozen: powered-off computer and sealed drive establish persistent memory. |
+| L14 | MATCH | accepted + frozen: three compartments already carry the stored-content list. |
+| L15 | MATCH | accepted + frozen: three one-to-one computer/drive pairs already show universality. |
+| L16 | MATCH | accepted + frozen: the two computer identities already stage the market rivalry. |
+| L17 | MATCH | accepted + frozen: opposing annoyed rivals already make the fight legible. |
+| L18 | MATCH | accepted + frozen: the drive-maker already takes causal focus. |
+| L19 | MATCH | accepted + frozen: the added cashbox already carries quiet profit. |
+| L20 | MATCH | accepted + frozen: the pick-shaped holder already carries the seller analogy. |
+| L21 | MATCH | accepted + frozen: the drive in a prospector pan already lands the gold-rush line. |
+| L22 | LOOSE | accepted + change (staging): a bounded worker line packs open cartons beneath the supplied `'26,000'` tally. |
+| L23 | MATCH | accepted + frozen: the skeptical glance already lands the knowing aside. |
+| L24 | MATCH | accepted + frozen: the brick inside the open carton is the intended reveal. |
+| L25 | LOOSE | accepted + change (staging): `pc-boxy` faces the sealed `'HARD DRIVE'` carton in a sales pass-through beside an open cashbox. |
+| L26 | MATCH | accepted + frozen: port nodes and route arcs already show worldwide distribution. |
+| L27 | MATCH | accepted + frozen: the carton opening toward the factory corridor already turns toward the company. |
+| L28 | MATCH | accepted + frozen: `miniscribe-rep` and assembly lines already identify company and business. |
+| L29 | LOOSE | accepted + change (staging): the Colorado relief now carries a workshop and supplied `'1980'` date plate. |
+| L30 | MATCH | accepted + frozen: `terry-johnson` already enters at his named factory role. |
+| L31 | MATCH | accepted + frozen: powerstance and furnace field already carry the hot-success beat. |
+| L32 | MATCH | accepted + frozen: the executable handshake pair already makes the IBM supply deal. |
+| L33 | MATCH | accepted + frozen: the carton stack already makes production growth dominant. |
+| L34 | MATCH | accepted + frozen: the `'125 MILLION'` weight already glues revenue to product. |
+| L35 | LOOSE | accepted + change (acting): `action-powerstance` and `expr-delighted` command a carton summit marked `'1988'`. |
+| L36 | LOOSE | accepted + change (subject): restage Compaq as a supplied-literal purchase-order object with `miniscribe-rep`; completed in the dedicated L36 step below. |
+| L37 | MATCH | accepted + frozen: the `'600 MILLION'` weight already carries revenue scale. |
+| L38 | MATCH | accepted + frozen: the expanded bellows already enlarges the inflation-adjusted amount. |
+| L39 | MATCH | accepted + frozen: equal named weights and the hollow base already carry comparison and doubt. |
+| L40 | LOOSE | accepted + change (seam): a backward-curling timeline reel lands on a supplied `'1984'` calendar above the full-order baseline. |
+| L41 | MATCH | accepted + frozen: IBM beside emptied racks already makes the order cut causal. |
+| L42 | MATCH | accepted + frozen: the factory on a paper-cut cliff already lands the idiom. |
+| L43 | LOOSE | accepted + change (staging): one seeded worker stands at the single vacated bay among four locker bays. |
+| L44 | MATCH | accepted + frozen: Terry at the exit already prepares the sentence completion. |
+| L45 | MATCH | accepted + frozen: Terry's absence is already the decisive held-set change. |
+
+Rejected audit rows: none.
 
 ## Inherited partition and boundary lock
 
@@ -42,16 +96,16 @@ Decision order: causal subject → acting participants → occupancy → class �
 
 | id | causal subject | acting participant(s) | occupancy ruling + reason | candidate field + depicted basis |
 | --- | --- | --- | --- | --- |
-| L01 | era-room mystery object | none | 0; place and carton make the beat true | walnut-amber; tungsten light on walnut, cool night through glass |
+| L01 | 1980s period markers | none | 0; the decade objects and supplied calendar make the beat true | walnut-amber; tungsten light on walnut, cool night through glass |
 | L02 | 1980s cultural objects | none | 0; wigs and arcade cabinet carry a place-list, not an acting mass | arcade-amber; cabinet phosphor on brass and terrazzo under olive skylight |
-| L03 | concealed corporate wrongness | none | 0; trophy-carton is the causal stand-in | office-teal; fluorescent light on steel bays and walnut plinth |
-| L04 | unheard scam reaction | `pc-boxy` | one seeded personification; its reaction makes obscurity legible | neutral-retail; fluorescent light on cream laminate and steel shelving |
+| L03 | corporate comedy | none | 0; absurd trophy/ledger imbalance carries the joke without revealing payload | office-teal; fluorescent light on steel bays and walnut plinth |
+| L04 | concealed corporate deception | none | 0; the false-bottom ledger mechanism is the causal subject | neutral-retail; fluorescent light on cream laminate and steel shelving |
 | L05 | date and newly arrived PC | none | 0; time/object fact | sunlit-oak; window daylight on oak and cream plastic |
-| L06 | machine newness | none | 0; unpacked state is the subject | inherit `pc-arrival` |
-| L07 | stocked-product craze setup | none | 0; shelf abundance is the subject before demand arrives | skylit-ivory; milky skylight on plaster, terrazzo, brass, cream cartons |
-| L08 | collective buyers | anonymous crowd | crowd; generalized buyers are genuinely the mass and remain bounded behind the rail | inherit `retail-shelf` |
+| L06 | technological newness | none | 0; one inventor's blueprint board supplies prototype-era context | inherit `pc-arrival` |
+| L07 | collective craze | anonymous crowd | crowd; generalized demand is genuinely the mass and remains bounded behind the rail | skylit-ivory; milky skylight on plaster, terrazzo, brass, cream cartons |
+| L08 | collective buyers | anonymous crowd | crowd; the same mass now holds purchased cartons beyond the rail | inherit `retail-shelf` |
 | L09 | collective demand depleting stock | anonymous crowd | crowd; the same mass remains causal while the shelf changes | inherit `retail-shelf` |
-| L10 | product-release analogy | none | 0; carton and ramp make the analogy | daylight-oak; open-door light on timber and cream board |
+| L10 | product-release craze analogy | anonymous crowd | crowd; the mass around a black-glass phone launch makes the comparison legible | daylight-oak; open-door light on timber, cream board, black glass |
 | L11 | hard-drive component | none | 0; hero object is the mechanism | green-workshop; green-glass daylight on steel and cables |
 | L12 | computer-to-drive relationship | none | 0; object relationship, not a performer | copper-workshop; task light follows copper across cream and sage surfaces |
 | L13 | retained memory after power-off | none | 0; stored objects make the mechanism true | indigo-storage; cool window light on indigo shelves and walnut |
@@ -63,34 +117,41 @@ Decision order: causal subject → acting participants → occupancy → class �
 | L19 | manufacturer profit | `drive-maker` | one seeded institution; its gain makes the line true | inherit `drive-seller` |
 | L20 | seller in the gold-rush analogy | `drive-maker` | one seeded seller; product comparison changes, participant holds | inherit `drive-seller` |
 | L21 | product as pick-and-shovel winner | none | 0; hard drive and prospector pan own the idiom | sun-baked ochre; hard sun on earth, pebbles, brass |
-| L22 | withheld company packing at scale | none | 0; carton quantity is the subject and company identity stays withheld | kraft-warehouse; roof light on kraft, charcoal steel, clay seams |
+| L22 | withheld company packing at scale | anonymous crowd | crowd; the bounded packing workforce and `'26,000'` tally make mass action causal while identity stays withheld | kraft-warehouse; roof light on kraft, charcoal steel, clay seams |
 | L23 | title-giveaway reaction | `pc-boxy` | one seeded personification; suspense reaction makes the aside visible | cool-warehouse; rear-door light on steel, pallet wood, carton |
 | L24 | bricks placed in boxes | none | 0; physical objects act as the literal payload | clay-kraft; roof light on clay, corrugated board, charcoal racks |
-| L25 | packaged fake hard drive | none | 0; sealed labelled carton is the state change | inherit `brick-carton` |
+| L25 | sale of packaged fake drive | `pc-boxy` | one seeded buyer; its position at the cashbox/pass-through makes the sale legible | kraft-packing; roof light on corrugated board and pallet slats |
 | L26 | global customer scale | none | 0; repeated product field is the quantity, with no invented shipping geography | inherit `brick-carton` |
 | L27 | bridge to the still-withheld company | none | 0; factory corridor/place is the subject | steel-blue corridor; cold high-window light on machinery and kraft flap |
 | L28 | MiniScribe as company actor | `miniscribe-rep` | one seeded company, entering exactly on its name | teal-factory; clerestory light on teal steel, cream casings, concrete |
-| L29 | Colorado origin and founding | none | 0; place/date fact | pale-map; drafting-window light on timber, route grooves, resin water |
+| L29 | Colorado origin and 1980 founding | none | 0; place/date object fact | pale-map; drafting-window light on timber, route grooves, resin water |
 | L30 | founder Terry Johnson | `terry-johnson` | one seeded named founder, entering on his naming words | pale-factory; window light on cream casings, teal floor, steel tools |
 | L31 | MiniScribe boom | `miniscribe-rep` | one seeded company; its proud state makes “HOT” true | furnace-amber; contained furnace light against teal steel and concrete |
 | L32 | IBM selecting MiniScribe | `ibm-suit`, `miniscribe-rep`, `handshake` | seeded contact pair; the supply relationship is the sentence | cool-deal; clerestory light on teal conveyor, cream casings, kraft edge |
 | L33 | MiniScribe production growth | `miniscribe-rep` | one seeded company; IBM is no longer causal | skylit-production; roof light on cream cartons, concrete, dark steel |
 | L34 | annual revenue magnitude | none | 0; balance object is the quantity | brass-atrium; cream roof light on brass, kraft cartons, teal trusses |
-| L35 | MiniScribe at its peak | `miniscribe-rep` | one seeded company reaction to its scale | bright-cream; diffuse roof light on cartons, concrete, steel bays |
-| L36 | customer-company sale | `miniscribe-rep` | one seeded seller passes the drive to an unnamed acquiring-company figure in prose; `compaq` is elevated in `needed_assets`, not authored | pale-yard; sky light on concrete, steel, cream boxes |
+| L35 | MiniScribe at its 1988 peak | `miniscribe-rep` | one seeded company actor; powerstance and delighted command make peak momentum causal | bright-cream; diffuse roof light on cartons, concrete, steel bays |
+| L36 | named giant-customer order | `miniscribe-rep` | one seeded seller; an oversized purchase order marked `'COMPAQ'` carries the customer institution as the causal object | pale-yard; sky light on concrete, steel, cream boxes |
 | L37 | MiniScribe revenue boast | `miniscribe-rep` | one seeded company; smug reaction makes the claim visible | brass-boast; warm factory light on brass, kraft, teal steel |
 | L38 | inflation comparison | none | 0; balanced quantities are the subject | cream-brass; high-window light on brass and slate floor |
 | L39 | doubtful revenue claim | `miniscribe-rep` | one seeded company reaction; wariness carries “or so they said” | cool-doubt; rear-bay light on trusses, cartons, empty floor |
-| L40 | rewind to full-order state | none | 0; time/state reset and full racks are the subject | cold-slate; winter skylight on slate trusses, white doors, steel racks |
+| L40 | rewind to end-of-1984 full-order state | none | 0; backward timeline reel, supplied date, and full racks carry the reset | cold-slate; winter skylight on slate trusses, white doors, steel racks |
 | L41 | IBM decision to slash orders | `ibm-suit` | one seeded decision-maker; removing it would hide the causal subject | paper-white cut; cold light on white doors, slate trusses, empty racks |
 | L42 | MiniScribe collapse | none | 0; factory-block cliff idiom is the subject | overcast-slate; overcast light on paper terrain, steel-blue walls, charcoal |
-| L43 | human consequence of layoffs | `line-worker` | one seeded representative reaction; the beat is personalized, not rendered as an anonymous mass | winter-locker; exit light on slate lockers, concrete, pale-pink notice |
+| L43 | one-quarter workforce loss | `line-worker` | one seeded representative; one vacated bay among four makes the fraction and human cost visible | winter-locker; exit light on slate lockers, concrete, pale-pink notice |
 | L44 | Terry Johnson's departure | `terry-johnson` | one seeded named founder; his slumped exit makes the line true | cold-assembly; high-window light on blue benches, white doors, casing |
 | L45 | Terry absent beyond the door | none | 0; absence is the causal state and the token is deliberately omitted | inherit `founder-exit` |
+| L46 | MiniScribe's 1985 trouble | `miniscribe-rep` | one seeded company actor; its worried slump at sparse orders makes distress causal | cold-teal trouble; clerestory light on teal steel, cream casings, concrete, walnut |
+| L47 | Hambrecht & Quist intervention | `hq-banker` | one seeded bank institution; presenting the named contract makes the bankers causal | walnut-brass bank; high-window light on brown wool, brass chain, walnut, teal steel |
+| L48 | about 20 million dollars invested | `hq-banker` | one seeded bank actor; the supplied money weight makes its capital injection visible | inherit `bank-rescue` |
+| L49 | bank dispatches its turnaround executive | `hq-banker` | one seeded sender; the appointment portfolio carries the dispatch while Wiles remains absent | inherit `bank-rescue` |
+| L50 | Q.T. Wiles reveal | `qt-wiles` | one seeded named arrival; the powerstance makes the man/myth/legend introduction causal | steel-gold arrival; hard skylight on steel-grey wool, gold tie clip, walnut, teal glass |
 
 ## Identity resolution and executable pair routes
 
 All selected identities resolve either in `registry.json`, the approved video library, or an existing canonical under `visual-kit/refs/`; `needed_assets` is empty. `rival-pc` is an approved existing canonical at `visual-kit/refs/rival-pc/rival-pc.png`, so it is not a new asset request.
+
+L36 restage: `miniscribe-rep` presents a boxed drive beside an oversized purchase order marked `'COMPAQ'`; the supplied literal routes through the registered lettering exemplar, while `action-present` and `expr-delighted` are existing tokens. Re-elevate `compaq` only if the owner prefers a personified Compaq.
 
 | shots | judged pair | executable route | audit |
 | --- | --- | --- | --- |
@@ -103,19 +164,24 @@ No pair relies on `cast` metadata and no trio is promised.
 
 | seam/run | can camera, set, primary subject hold? | exactly one visible story-needed change? | decision |
 | --- | --- | --- | --- |
-| L05→L06 | yes: oak counter and PC hold | yes: PC becomes half-unpacked | accept new `pc-arrival` hold |
-| L07→L08 | yes: shelf camera, rail, and shop hold | yes: bounded buyer mass appears beyond rail | accept `retail-shelf` delta |
-| L08→L09 | yes: shop, mass, and camera hold | yes: stocked wall becomes mostly bare | extend `retail-shelf` through L09 |
+| L05→L06 | yes: oak counter and PC hold | yes: one inventor's exploded-blueprint board appears | retain `pc-arrival` hold |
+| L07→L08 | yes: shelf camera, rail, shop, and bounded buyer mass hold | yes: shoppers gain purchased computer cartons | retain `retail-shelf` delta |
+| L08→L09 | yes: shop, mass, purchased cartons, and camera hold | yes: stocked wall becomes mostly bare | retain `retail-shelf` through L09 |
 | L11→L12 | no: hero drive becomes relational two-object diagram | no: computer plus conduit require recomposition | hard cut, preserving the explicit negative control |
 | L16→L17 | yes: rival pair and aisle hold | yes: market bell appears | retain `pc-rivalry` through L17 |
 | L17→L18 | no: rival pair yields to drive manufacturer | n/a | split the former L16–L18 run |
 | L18→L19 | yes: maker, counter, and hard drive hold | yes: cashbox appears | extend `drive-seller` backward to L18 |
 | L19→L20 | yes: maker and supply counter hold | yes: drive changes to pick-shaped display | retain `drive-seller` delta |
-| L24→L25 | yes: carton/pallet camera holds | yes: open carton becomes sealed around brick | retain `brick-carton` delta |
-| L25→L26 | yes: carton, pallet face, racks hold | yes: pallet face opens into repeated brick proof | retain `brick-carton` delta |
+| L24→L25 | no: brick-reveal carton yields to a buyer-facing sales counter | n/a | hard cut; sale staging changes the visual argument |
+| L25→L26 | no: buyer-facing sales counter yields to a plan-view freight map | n/a | hard cut; worldwide distribution requires a new vantage |
 | L32→L33 | no: supply pair becomes MiniScribe-only growth | n/a | split former `miniscribe-rise` run |
 | L40→L41 | set could hold, but primary subject changes from rack state to IBM decision-maker | no: adding IBM and depleting racks would bundle changes | split former `order-collapse` run |
 | L44→L45 | yes: founder's station, doorway, and camera hold | yes: Terry becomes absent | accept new `founder-exit` hold |
+| L45→L46 | no: A1 founder-exit set yields to A2's MiniScribe trouble desk | n/a | hard cut at the locked act boundary |
+| L46→L47 | no: company-trouble actor and factory desk yield to banker and bank table | n/a | hard cut; banker starts a fresh base |
+| L47→L48 | yes: bank table, banker, factory model, contract, chair, and camera hold | yes: the `'20 MILLION'` money weight appears | accept `bank-rescue` delta |
+| L48→L49 | yes: bank set, banker, model, contract, weight, and camera hold | yes: the `'TURNAROUND'` appointment portfolio appears on the vacant chair | extend `bank-rescue` through L49 |
+| L49→L50 | no: banker-led bank table yields to the named Wiles reveal in a MiniScribe boardroom | n/a | hard cut; Wiles starts a fresh standalone base |
 
 The vc L09→L10-class depletion candidate is represented here by the independently accepted L08→L09 shelf hold; it was not treated as mandatory. Every other adjacent seam hard-cuts because vantage, setting, primary subject, or register changes.
 
@@ -131,7 +197,7 @@ Each sentence below appears only on the base or standalone shot; its drawable ca
 | L04 | L04 | neutral-retail | Palette basis: neutral-retail field — fluorescent light falls across cream laminate and steel shelving. |
 | pc-arrival | L05–L06 | sunlit-oak | Palette basis: sunlit-oak field — shop-window daylight crosses the oak counter and cream computer shell. |
 | retail-shelf | L07–L09 | skylit-ivory | Palette basis: skylit-ivory field — milky skylight spreads across plaster, pale terrazzo, brass rails, and cream cartons. |
-| L10 | L10 | daylight-oak | Palette basis: daylight-oak field — open-door daylight crosses oak shelving and the cream carton. |
+| L10 | L10 | daylight-oak | Palette basis: daylight-oak field — open-door daylight crosses oak shelving, the cream carton, and the black-glass phone. |
 | L11 | L11 | green-workshop | Palette basis: green-workshop field — high green-glass daylight crosses a steel bench and dark cable coils. |
 | L12 | L12 | copper-workshop | Palette basis: copper-workshop field — task light follows the copper conduit across cream laminate and sage benches. |
 | L13 | L13 | indigo-storage | Palette basis: indigo-storage field — cool window light crosses indigo shelving and a walnut desk after power-off. |
@@ -142,7 +208,9 @@ Each sentence below appears only on the base or standalone shot; its drawable ca
 | L21 | L21 | sun-baked ochre | Palette basis: sun-baked-ochre field — hard sunlight crosses dry earth, pebbles, and a brass prospecting pan. |
 | L22 | L22 | kraft-warehouse | Palette basis: kraft-warehouse field — pale skylight crosses kraft cartons, charcoal steel racks, and clay-red seams. |
 | L23 | L23 | cool-warehouse | Palette basis: cool-warehouse field — rear-door daylight crosses steel racks, pale pallet wood, and the sealed carton. |
-| brick-carton | L24–L26 | clay-kraft | Palette basis: clay-kraft field — pale roof light crosses red clay, kraft board, and charcoal steel racks. |
+| L24 | L24 | clay-kraft | Palette basis: clay-kraft field — pale roof light crosses red clay, kraft board, and charcoal steel racks. |
+| L25 | L25 | kraft-packing | Palette basis: kraft-packing field — pale roof light crosses corrugated board, pallet slats, and charcoal racks. |
+| L26 | L26 | cool-freight-map | Palette basis: cool-freight-map field — daylight crosses pale timber continents, blue resin water, copper routes, and brass port fittings. |
 | L27 | L27 | steel-blue corridor | Palette basis: steel-blue corridor field — cold high-window light crosses steel machinery and a kraft carton flap. |
 | L28 | L28 | teal-factory | Palette basis: teal-factory field — clerestory daylight crosses teal steel frames, cream drive casings, and concrete. |
 | L29 | L29 | pale-map | Palette basis: pale-map field — drafting-window light crosses timber relief, green route grooves, and blue resin water. |
@@ -161,10 +229,13 @@ Each sentence below appears only on the base or standalone shot; its drawable ca
 | L42 | L42 | overcast-slate | Palette basis: overcast-slate field — pale overcast light crosses slate paper terrain, steel-blue walls, and charcoal depth. |
 | L43 | L43 | winter-locker | Palette basis: winter-locker field — winter exit light crosses slate lockers, dark concrete, and one pale-pink notice. |
 | founder-exit | L44–L45 | cold-assembly | Palette basis: cold-assembly field — high-window light crosses steel-blue benches, paper-white doors, and an abandoned drive casing. |
+| L46 | L46 | cold-teal trouble | Palette basis: cold-teal trouble field — clerestory light crosses teal steel, cream drive casings, bare concrete, and dark walnut. |
+| bank-rescue | L47–L49 | walnut-brass bank | Palette basis: walnut-brass bank field — high-window light crosses brown chalk-stripe wool, brass chain, walnut, and teal-painted steel. |
+| L50 | L50 | steel-gold arrival | Palette basis: steel-gold arrival field — hard skylight crosses steel-grey wool, the gold tie clip, walnut panels, and teal windows. |
 
 ## Crowd rulings
 
-Only L08–L09 uses `figures.crowd: true`. The mass is the generalized buying demand; it is written as a bounded shopper group beyond the existing brass rail beneath the rear mezzanine, with the near queue lane empty. L09 preserves that rear geometry while the shelf wall depletes. Neither prompt contains count language or CROWD-RIG recitation; Forge appends style-bible §2d.
+L07–L10 and L22 use `figures.crowd: true`. L07–L09 hold generalized buying demand beyond the existing brass rail with the near lane clear; purchased cartons arrive at L08 and shelf depletion arrives at L09. L10 bounds the launch queue beyond a serpentine rail around the black-glass phone display. L22 bounds the packing workforce beyond benches with the near aisle clear. L43 is now one seeded worker against four locker bays, because its causal subject is the one-quarter relationship rather than a mass. Crowd prompts contain scene geometry and omit CROWD-RIG recitation; Forge appends style-bible §2d.
 
 ## Per-shot no-growth review against `claude/bricks-variant-vb`
 
@@ -172,20 +243,22 @@ Rows L03, L04, L08, L10, L11 reflect the Task-3 single re-authored retries (see 
 
 Rows L13, L15, L16, L17, L18 reflect the wave-2 single re-authored retries (see genlog-vd.md); all remain ≤ vb.
 
+Rows L01, L03, L04, L06–L10, L22, L25, L29, L35–L36, L40, and L43 are recomputed after the efficacy audit; L08–L09 are mechanically forced chain-neighbour repairs. L46–L50 use the binding 45-word new-shot cap as their comparator.
+
 Authored words use `len(still_prompt.split())`. Assembled-provider deltas are computed separately with dry `Kit.prompt_for("style", ..., hold=bool(shot_cast), figures=...)`; positive assembled changes reflect changed cast/crowd routing and do not excuse authored growth.
 
 | id | vb authored | vd authored | authored delta | exact lower-value text removed | exact replacement fact | assembled-provider delta | verdict |
 | --- | ---: | ---: | ---: | --- | --- | ---: | --- |
-| L01 | 78 | 36 | -42 | `A television's soft glow, a bookshelf` | `cool night beyond` | -36 | PASS |
+| L01 | 78 | 30 | -48 | brick-bearing hard-drive carton and competing room detail | beige CRT, corded telephone, cassette deck, supplied `'1980s'` calendar | -48 | PASS |
 | L02 | 71 | 34 | -37 | `Cobalt, peach, and cream convey the era` | `amber cabinet light crosses brass trim and empty terrazzo foreground` | -112 | PASS |
-| L03 | 39 | 37 | -2 | `displayed like a trophy` | `cool fluorescent light crosses teal steel filing bays` | -5 | PASS |
-| L04 | 61 | 40 | -21 | `a beige boxy computer character with only short stubby arms and legs and NO hands or fingers` | `fluorescent electronics aisle` | -28 | PASS |
+| L03 | 39 | 30 | -9 | brick/disk carton trophy | absurd executive trophy balanced on a tiny expense ledger | -9 | PASS |
+| L04 | 61 | 28 | -33 | mascot reaction and electronics aisle | corporate seal over a false-bottom ledger drawer | -157 | PASS |
 | L05 | 45 | 32 | -13 | `cobalt, cream, and walnut retail scene` | `tall windows cast pale daylight across cream plastic, green wall panels, and the wood grain` | -13 | PASS |
-| L06 | 39 | 29 | -10 | `vast cream-and-teal showroom` | `half-unpacked in a straw-lined shipping crate` | -10 | PASS |
-| L07 | 62 | 33 | -29 | `cool blue, cream, and walnut` | `milky skylight` across `pale terrazzo` and brass | -29 | PASS |
-| L08 | 30 | 29 | -1 | `once-full shelf wall is now mostly bare` | `bounded 1980s shoppers in bright knit tops and jeans face the computers` | +74 | PASS |
-| L09 | 62 | 32 | -30 | `simple round-head crowd rig` recitation | `shopper group beyond the brass rail` plus `near lane empty` | -30 | PASS |
-| L10 | 46 | 38 | -8 | `blue daylight arcade` | `clear daylight crosses cream board and bare timber` | -8 | PASS |
+| L06 | 39 | 28 | -11 | straw-lined delivery crate | inventor's exploded-blueprint board beside the held 1983 computer | -11 | PASS |
+| L07 | 62 | 33 | -29 | empty queue and generic cool-palette prose | bounded shoppers filling the rear queue beyond the brass rail | +46 | PASS |
+| L08 | 30 | 27 | -3 | crowd arrival after repaired base | held shopper mass gains purchased computer cartons | +72 | PASS |
+| L09 | 62 | 28 | -34 | rig recitation and generic aisle prose | purchased cartons hold while the shelf wall becomes bare | -34 | PASS |
+| L10 | 46 | 37 | -9 | tipped carton and empty launch aisle | black-glass phone pedestal plus bounded rear launch queue | +66 | PASS |
 | L11 | 36 | 33 | -3 | `inside a deep working world` | `high green-glass windows cast cool light across coiled cables` | -9 | PASS |
 | L12 | 42 | 36 | -6 | `mechanism reads as a scene rather than a card` | `hard drive nested inside its chassis` | -11 | PASS |
 | L13 | 38 | 33 | -5 | `stored memory feel quiet and durable` | `cool window light isolates the sealed shell between an indigo built-in shelf` | -9 | PASS |
@@ -197,56 +270,62 @@ Authored words use `len(still_prompt.split())`. Assembled-provider deltas are co
 | L19 | 38 | 29 | -9 | `give the overlooked seller more world than spotlight` | `one open brass cashbox` | -9 | PASS |
 | L20 | 29 | 28 | -1 | `ochre horizon hold` | retained maker/cashbox plus pick-shaped holder | +123 | PASS |
 | L21 | 38 | 33 | -5 | `clear middle-ground winner in an open, structured frame` | `hard sunlight makes metal, stone, and dry earth the field` | -5 | PASS |
-| L22 | 37 | 31 | -6 | `claimed scale visually plausible but unsettled` | `pale skylight crosses kraft board and clay-red seams` | -6 | PASS |
+| L22 | 37 | 33 | -4 | sealed-carton procession | bounded packing line beneath supplied `'26,000'` tally | +71 | PASS |
 | L23 | 44 | 32 | -12 | `large suspenseful void around the small device` | `cool rear-door light crosses high steel racks and pallet slats` | -9 | PASS |
 | L24 | 39 | 29 | -10 | `clean held packing tableau` | `red clay brick rests inside an open kraft carton` | -10 | PASS |
-| L25 | 31 | 31 | 0 | `carton is now open, exposing one red clay brick` | carton sealed around brick, marked `'HARD DRIVE'` | 0 | PASS |
+| L25 | 31 | 31 | 0 | sealed carton isolated on a packing bench | `pc-boxy` at the `'HARD DRIVE'` sales pass-through and cashbox | +124 | PASS |
 | L26 | 34 | 34 | 0 | `single full-scale proof` | separated port nodes joined by copper route arcs | -3 | PASS |
 | L27 | 39 | 31 | -8 | `impossible object stays small against the waiting industrial world` | `cold high-window light crosses steel-blue machinery` | -8 | PASS |
 | L28 | 42 | 26 | -16 | `make the company actor small within its own machine` | `action-present` + `expr-deadpan` on the factory mezzanine | -13 | PASS |
-| L29 | 39 | 33 | -6 | `turn origin into a tactile plan-view` | `window light crosses pale timber, green route grooves, and blue resin water` | -6 | PASS |
+| L29 | 39 | 32 | -7 | unlabeled founding tool and generic token | Colorado workshop pinned beneath supplied `'1980'` date plate | -7 | PASS |
 | L30 | 40 | 24 | -16 | `give the founder room to read at a glance` | `tall-window daylight crosses cream casings, teal floor paint, and steel tools` | -9 | PASS |
 | L31 | 39 | 24 | -15 | `compact hard drive sits on a low factory platform` | `miniscribe-rep` `action-powerstance` `expr-delighted` | +117 | PASS |
 | L32 | 40 | 32 | -8 | `stage the supply deal without a visible logo` | exact pair token order followed by `handshake` | -8 | PASS |
 | L33 | 32 | 31 | -1 | `established two figures` | `miniscribe-rep` before skylit production scale | +123 | PASS |
 | L34 | 43 | 35 | -8 | `miniscribe-rep holds a small pose` | brass money weight marked `'125 MILLION'` outweighs a drive-box pallet | -135 | PASS |
-| L35 | 43 | 33 | -10 | `keep the claimed peak embedded in a real built space` | `diffuse roof light crosses cream cartons, pale concrete, and distant steel bays` | -9 | PASS |
-| L36 | 38 | 32 | -6 | `customer scale is clear without depicting a brand` | `unnamed acquiring-company figure` receives the drive in prose; `compaq` elevated, not authored | -6 | PASS |
+| L35 | 43 | 27 | -16 | surprised reaction beneath an undated canopy | `action-powerstance` + `expr-delighted` on carton summit marked `'1988'` | -16 | PASS |
+| L36 | 38 | 30 | -8 | unnamed acquiring-company figure and unregistered identity route | supplied `'COMPAQ'` purchase order presented by `miniscribe-rep` | +116 | PASS |
 | L37 | 39 | 28 | -11 | `make the boast visibly too heavy for its support` | trophy-sized brass money weight marked `'600 MILLION'` | -9 | PASS |
 | L38 | 41 | 32 | -9 | `nearly level loads make the comparison readable` | expanded bellows on a slate factory floor | -8 | PASS |
 | L39 | 41 | 32 | -9 | `leave enough negative space for the qualifier to land` | MiniScribe weight has a hollow base | -11 | PASS |
-| L40 | 34 | 31 | -3 | `dense racks recede through a cold, structured corridor` | `cold winter skylight crosses bare steel` | -3 | PASS |
+| L40 | 34 | 32 | -2 | undated full-rack corridor | backward timeline reel landing on supplied `'1984'` calendar | -2 | PASS |
 | L41 | 30 | 27 | -3 | `established dock bumper` hold | `action-armscrossed` + `expr-deadpan` beside empty outbound racks | +124 | PASS |
 | L42 | 43 | 32 | -11 | `economic fall read as a held tableau` | `pale overcast light crosses steel-blue walls and one empty kraft carton` | -11 | PASS |
-| L43 | 42 | 32 | -10 | `worker is small but unmistakably the causal human cost` | `winter exit light crosses slate lockers, an empty boot tray, and dark concrete` | -10 | PASS |
+| L43 | 42 | 29 | -13 | undifferentiated laid-off crowd | one seeded worker at the single vacated bay among four lockers | -13 | PASS |
 | L44 | 38 | 26 | -12 | `create a deep, cold exit tableau` | cold high-window light crosses steel-blue benches and paper-white doors | -10 | PASS |
 | L45 | 34 | 28 | -6 | `steel blue, paper white, and charcoal make absence the whole argument` | held founder station with the founder now absent | -6 | PASS |
+| L46 | 45 cap | 30 | -15 | new shot; cap comparator | worried MiniScribe actor at sparse order trays under cold clerestory light | n/a | PASS |
+| L47 | 45 cap | 36 | -9 | new shot; cap comparator | fresh `hq-banker` base with named contract and walnut-brass field | n/a | PASS |
+| L48 | 45 cap | 31 | -14 | new shot; cap comparator | held bank set gains supplied `'20 MILLION'` money weight | n/a | PASS |
+| L49 | 45 cap | 32 | -13 | new shot; cap comparator | held bank set gains supplied `'TURNAROUND'` appointment portfolio | n/a | PASS |
+| L50 | 45 cap | 33 | -12 | new shot; cap comparator | fresh `qt-wiles` reveal under hard skylight on steel-grey wool and walnut | n/a | PASS |
 
-Result: 45 PASS, zero positive authored deltas, maximum authored delta `0`; assembled-provider deltas remain a separate advisory column.
+Result: 50 PASS, zero positive authored deltas; L01–L45 maximum authored delta `0`, and L46–L50 all remain below the 45-word cap. Assembled-provider deltas remain a separate advisory column.
 
 ## L01–L12 provider-payload rulings before generation
 
 | id | final seam / occupancy / executable route | exact drawable base substring where applicable | ruling |
 | --- | --- | --- | --- |
-| L01 | standalone; 0 | `tungsten lamplight crosses the walnut desk while cool night enters the window` | changed — by which lever: field+basis prose changed provider-visible bytes |
+| L01 | standalone; 0 | `tungsten lamplight crosses walnut while cool night enters the window` | changed — by which lever: brick-bearing mystery carton was replaced by unmistakable 1980s objects and supplied calendar bytes |
 | L02 | standalone; 0 | `amber cabinet light crosses brass trim and empty terrazzo foreground` | changed — by which lever: occupancy was re-judged from crowd to no performer and field prose changed provider-visible bytes |
-| L03 | standalone; 0 | `cool fluorescent light crosses teal steel filing bays and tall office windows` | changed — by which lever: field+basis prose changed provider-visible bytes |
-| L04 | standalone; `pc-boxy` | `fluorescent light falls across cream laminate and steel shelving` | changed — by which lever: inline rig prose was replaced by drawable field/material bytes |
+| L03 | standalone; 0 | `cool fluorescent light crosses teal steel filing bays and tall office windows` | changed — by which lever: early payload disclosure was replaced by corporate-comedy trophy/ledger bytes |
+| L04 | standalone; 0 | `fluorescent light reveals the hidden cash compartment against steel shelving` | changed — by which lever: mascot reaction was replaced by a false-bottom corporate-ledger mechanism |
 | L05 | `pc-arrival` base; 0 | `tall windows cast pale daylight across cream plastic, green wall panels, and the wood grain` | changed — by which lever: new hold routing and field+basis prose changed provider-visible bytes |
-| L06 | `pc-arrival` delta; 0 | inherits L05 | changed — by which lever: hold re-staged the PC as half-unpacked in a straw-lined crate |
-| L07 | `retail-shelf` base; 0 | `milky skylight` across `pale terrazzo foreground` and plaster bays | changed — by which lever: stage routing and field+basis prose changed provider-visible bytes |
-| L08 | `retail-shelf` delta; crowd beyond brass rail, near lane empty | inherits L07 | changed — by which lever: hold re-staged a bounded crowd and Forge-appended §2d changes assembled bytes |
-| L09 | `retail-shelf` delta; same crowd geometry | inherits L07 | changed — by which lever: hold re-staged shelf depletion while preserving bounded rear crowd geometry |
-| L10 | standalone; 0 | `clear daylight crosses the cream box and timber shelves` | changed — by which lever: physically grounded field prose changed provider-visible bytes |
+| L06 | `pc-arrival` delta; 0 | inherits L05 | changed — by which lever: held PC gains one inventor's exploded-blueprint board as prototype-era context |
+| L07 | `retail-shelf` base; crowd beyond brass rail, near lane clear | `milky skylight` across plaster, terrazzo, brass, and cream cartons | changed — by which lever: demand now fills the bounded rear queue and Forge appends §2d |
+| L08 | `retail-shelf` delta; same crowd geometry | inherits L07 | changed — by which lever: the repaired hold gives the same shoppers purchased computer cartons |
+| L09 | `retail-shelf` delta; same crowd geometry | inherits L07 | changed — by which lever: purchased cartons hold while the shelf wall depletes |
+| L10 | standalone; crowd beyond serpentine rail, near floor clear | `open-door daylight crosses oak shelving, the cream carton, and the black-glass phone` | changed — by which lever: launch-craze subject and bounded crowd geometry changed provider-visible bytes |
 | L11 | standalone; 0 | `high green-glass windows cast cool light across coiled cables` | changed — by which lever: drawable light/material prose changed provider-visible bytes; seam to L12 remains hard |
 | L12 | standalone; 0 | `warm task light follows the copper through a cream-and-sage workshop` | changed — by which lever: drawable light/material prose changed provider-visible bytes; no forced hold |
 
 All twelve normalized dry-assembled payloads differ from vb. This is a byte ruling, not evidence that any particular variant will look better.
 
-## Pre-critic lint record
+## Final extension lint record
 
 Official command: `py -3 orgs/faceless-youtube/.claude/skills/visual-prompt-writer/scripts/lint_shots.py V/shots.json --write --fragment`  
-Result: `fragment scope: covered 293/1628 script words`.
+Result: `fragment scope: covered 333/1628 script words`.
 `HARD violations: none — every anchor matches verbatim + in narration order.`
-`Heads-up (35):`
-`WROTE derived vo_text (45 shots). JSON valid.`
+`Heads-up (45):`
+`WROTE derived vo_text (50 shots). JSON valid.`
+Boundary check: L45 remains exactly `out the door.`; L50 is exactly `the legend: Q.T. Wiles.` and ends on the sentence boundary.

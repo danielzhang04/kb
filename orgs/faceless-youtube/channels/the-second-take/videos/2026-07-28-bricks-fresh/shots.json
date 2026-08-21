@@ -15,9 +15,9 @@
         "synthetic": false,
         "vo_ref": "We're in the 1980s.",
         "vo_text": "We're in the 1980s.",
-        "shot_class": "symbolic-stand-in-object",
+        "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "One oversized beige hard-drive carton dominates a walnut desk, its seam bulging around one clay-red rectangular corner; a tiny unlit computer sits far back under one tungsten lamp, with cool night beyond and nothing else competing.",
+        "still_prompt": "A beige CRT computer, corded telephone, and cassette deck form a crisp period desk beneath a wall calendar marked '1980s'; tungsten lamplight crosses walnut while cool night enters the window.",
         "notes": "Palette basis: walnut-amber field — tungsten lamplight crosses the walnut desk while cool night enters the window."
       },
       {
@@ -39,7 +39,7 @@
         "vo_text": "and one of the funniest",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "On a walnut corporate plinth, a hard-drive carton stands like a trophy, one rigid clay-red rectangular corner forcing a straight-edged opening through its taut seam; cool fluorescent light crosses teal steel filing bays and tall office windows.",
+        "still_prompt": "An oversized brass executive trophy balances absurdly on a tiny closed expense ledger atop a walnut corporate plinth; cool fluorescent light crosses teal steel filing bays and tall office windows.",
         "notes": "Palette basis: office-teal field — fluorescent window light crosses teal steel filing bays and a walnut plinth."
       },
       {
@@ -48,15 +48,9 @@
         "synthetic": false,
         "vo_ref": "corporate scams that you've never",
         "vo_text": "corporate scams that you've never heard of.",
-        "shot_class": "reaction-shot",
+        "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "cast": [
-          {
-            "character": "pc-boxy",
-            "expression_ref": "expr-skeptical"
-          }
-        ],
-        "still_prompt": "Far down a fluorescent electronics aisle, `pc-boxy` `expr-skeptical` occupies the middle distance facing one suspicious carton on a cream display table; steel shelf bays, a cable coil, and a bright rear door make the quiet reaction secondary to the store.",
+        "still_prompt": "A polished corporate seal clamps a blank contract across a false-bottom ledger drawer on a cream boardroom table; fluorescent light reveals the hidden cash compartment against steel shelving.",
         "notes": "Palette basis: neutral-retail field — fluorescent light falls across cream laminate and steel shelving."
       },
       {
@@ -83,10 +77,10 @@
         "stage": "pc-arrival",
         "stage_role": "delta",
         "changed_elements": [
-          "the same computer is now half-unpacked in a straw-lined shipping crate"
+          "an inventor's drafting board showing the same computer's rough exploded blueprint appears behind it"
         ],
-        "still_prompt": "The established oak counter, '1983' calendar, tall-window daylight, green panels, and cream computer hold; the computer is now half-unpacked in a straw-lined shipping crate as the one new-arrival state.",
-        "notes": "Held camera and subject; one story-needed newly unpacked state."
+        "still_prompt": "The established oak counter, '1983' calendar, tall-window daylight, green panels, and cream computer hold; an inventor's drafting board now shows the same computer as a rough exploded blueprint.",
+        "notes": "Held camera and subject; one prototype-era context board is the story-needed change."
       },
       {
         "id": "L07",
@@ -98,8 +92,11 @@
         "source": "ai-gen",
         "stage": "retail-shelf",
         "stage_role": "base",
-        "still_prompt": "Across a wide computer shop, a fully stocked wall of beige PC boxes rises beneath a milky skylight; an empty brass queue lane crosses pale terrazzo foreground and long plaster bays recede behind.",
-        "notes": "Palette basis: skylit-ivory field — milky skylight spreads across plaster, pale terrazzo, brass rails, and cream cartons."
+        "figures": {
+          "crowd": true
+        },
+        "still_prompt": "A fully stocked computer wall rises beneath a milky skylight; beyond the brass rail, bounded 1980s shoppers pack the rear queue facing beige PCs while the clear terrazzo near lane leads into demand.",
+        "notes": "Palette basis: skylit-ivory field — milky skylight spreads across plaster, pale terrazzo, brass rails, and cream cartons. Craze is the causal mass; shoppers remain beyond the rail with the near lane clear."
       },
       {
         "id": "L08",
@@ -112,13 +109,13 @@
         "stage": "retail-shelf",
         "stage_role": "delta",
         "changed_elements": [
-          "a bounded shopper group now occupies the rear zone beyond the brass rail"
+          "the same shoppers now hold newly purchased beige computer cartons"
         ],
         "figures": {
           "crowd": true
         },
-        "still_prompt": "The established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, bounded 1980s shoppers in bright knit tops and jeans face the computers.",
-        "notes": "Mass purchasing is the causal subject; one rear-zone crowd addition."
+        "still_prompt": "The established skylit shop, stocked wall, bounded shoppers beyond the brass rail, and clear near lane hold; the same shoppers now cradle newly purchased beige computer cartons.",
+        "notes": "Mass purchasing is the causal subject; purchased cartons are the one held-set change."
       },
       {
         "id": "L09",
@@ -136,7 +133,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "The established skylit shop and shopper group beyond the brass rail hold, with the near lane empty; the once-full shelf wall is now mostly bare, exposing pale backing as the one depletion.",
+        "still_prompt": "The established skylit shop, shoppers holding beige computer cartons beyond the brass rail, and clear near lane hold; the once-full shelf wall is mostly bare, exposing pale backing.",
         "notes": "The product depletion changes; crowd geometry and camera hold."
       },
       {
@@ -145,10 +142,13 @@
         "synthetic": false,
         "vo_ref": "It was like when Apple",
         "vo_text": "It was like when Apple released the iPhone.",
-        "shot_class": "idiom-pun",
+        "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "One beige computer carton rests nose-down on a tilted oak display ramp aimed at a plain open shop door; clear daylight crosses cream board and bare timber, while an unmarked glass frontage opens into one long empty aisle.",
-        "notes": "Palette basis: daylight-oak field — open-door daylight crosses oak shelving and the cream carton."
+        "figures": {
+          "crowd": true
+        },
+        "still_prompt": "A black-glass smartphone stands on a lit pedestal beside a beige computer carton; beyond a serpentine brass rail, bounded shoppers pack the rear launch queue while the clear oak floor leads to the display under open-door daylight.",
+        "notes": "Palette basis: daylight-oak field — open-door daylight crosses oak shelving, the cream carton, and the black-glass phone. Launch demand is bounded beyond the rail; the near floor stays clear."
       },
       {
         "id": "L11",
@@ -331,8 +331,11 @@
         "vo_text": "And one of those companies packed 26,000...",
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-        "still_prompt": "A procession of sealed hard-drive cartons begins with one oversized foreground box and disappears between tall charcoal warehouse racks; pale skylight crosses kraft board and clay-red seams without revealing the company.",
-        "notes": "Palette basis: kraft-warehouse field — pale skylight crosses kraft cartons, charcoal steel racks, and clay-red seams."
+        "figures": {
+          "crowd": true
+        },
+        "still_prompt": "Beyond a clear packing aisle, a bounded worker line fills open cartons beneath a large brass tally marked '26,000'; pale skylight crosses kraft board, clay-red seams, and charcoal racks while sealed boxes recede.",
+        "notes": "Palette basis: kraft-warehouse field — pale skylight crosses kraft cartons, charcoal steel racks, and clay-red seams. Packing workers remain beyond the benches with the near aisle clear."
       },
       {
         "id": "L23",
@@ -368,9 +371,15 @@
         "synthetic": false,
         "vo_ref": "labelled hard drive, and sold",
         "vo_text": "labelled hard drive, and sold them",
-        "shot_class": "literal",
+        "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "One sealed kraft carton dominates a warehouse packing bench, its outer face marked 'HARD DRIVE'; pale roof light crosses corrugated board, pallet slats, and charcoal racks, while no brick remains visible.",
+        "cast": [
+          {
+            "character": "pc-boxy",
+            "expression_ref": "expr-delighted"
+          }
+        ],
+        "still_prompt": "At a warehouse sales counter, `pc-boxy` `expr-delighted` faces one sealed kraft carton marked 'HARD DRIVE' resting in a pass-through beside an open cashbox; pale roof light crosses board and pallet slats.",
         "notes": "Palette basis: kraft-packing field — pale roof light crosses corrugated board, pallet slats, and charcoal racks."
       },
       {
@@ -421,7 +430,7 @@
         "vo_text": "out of Colorado, founded in 1980",
         "shot_class": "map-plan-view",
         "source": "ai-gen",
-        "still_prompt": "A Colorado-shaped wooden relief sits on a broad drafting table beside a tiny hard-drive token and brass founding tool; window light crosses pale timber, green route grooves, and blue resin water without labels.",
+        "still_prompt": "A Colorado-shaped wooden relief fills a drafting table, with a tiny hard-drive workshop pinned beneath a brass date plate marked '1980'; window light crosses pale timber, green grooves, and blue resin water.",
         "notes": "Palette basis: pale-map field — drafting-window light crosses timber relief, green route grooves, and blue resin water."
       },
       {
@@ -511,10 +520,11 @@
         "cast": [
           {
             "character": "miniscribe-rep",
-            "expression_ref": "expr-surprised"
+            "pose_ref": "action-powerstance",
+            "expression_ref": "expr-delighted"
           }
         ],
-        "still_prompt": "At the center of a bright factory floor, `miniscribe-rep` `expr-surprised` stands beneath a drive-box canopy nearly too large for the room; diffuse roof light crosses cream cartons, pale concrete, and distant steel bays.",
+        "still_prompt": "Atop a stepped summit of drive cartons marked '1988', `miniscribe-rep` `action-powerstance` `expr-delighted` overlooks full production lanes; diffuse roof light crosses cream boxes, pale concrete, and steel bays.",
         "notes": "Palette basis: bright-cream field — diffuse roof light spreads across cream cartons, pale concrete, and steel bays."
       },
       {
@@ -528,11 +538,11 @@
         "cast": [
           {
             "character": "miniscribe-rep",
-            "pose_ref": "action-thumbsup",
+            "pose_ref": "action-present",
             "expression_ref": "expr-delighted"
           }
         ],
-        "still_prompt": "`miniscribe-rep` `action-thumbsup` `expr-delighted` passes one boxed drive across a loading counter to an unnamed acquiring-company figure; pale sky light crosses concrete docks, steel bollards, and cream cartons, making the company sale legible.",
+        "still_prompt": "At a loading counter, `miniscribe-rep` `action-present` `expr-delighted` presents one boxed drive beside an oversized purchase order marked 'COMPAQ'; open-sky light crosses concrete, steel bollards, cream cartons, and the contract sheet.",
         "notes": "Palette basis: pale-yard field — open-sky daylight crosses concrete docks, steel bollards, and cream cartons."
       },
       {
@@ -587,9 +597,9 @@
         "synthetic": false,
         "vo_ref": "Now rewind four years. At",
         "vo_text": "Now rewind four years. At the end of 1984,",
-        "shot_class": "aftermath-palette-turn",
+        "shot_class": "register-shift-infographic",
         "source": "ai-gen",
-        "still_prompt": "A MiniScribe loading bay is full of outbound racks beneath slate roof trusses and paper-white doors; cold winter skylight crosses bare steel and a cropped dock bumper through the long corridor.",
+        "still_prompt": "A brass timeline reel curls backward to a warehouse calendar marked '1984' above a MiniScribe loading bay full of outbound racks; cold winter skylight crosses slate trusses, paper-white doors, and bare steel.",
         "notes": "Palette basis: cold-slate field — winter skylight crosses slate trusses, paper-white doors, and bare steel racks."
       },
       {
@@ -627,7 +637,7 @@
         "synthetic": false,
         "vo_ref": "They let a quarter of",
         "vo_text": "They let a quarter of their people go,",
-        "shot_class": "aftermath-palette-turn",
+        "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
         "cast": [
           {
@@ -636,11 +646,8 @@
             "expression_ref": "expr-crestfallen"
           }
         ],
-        "figures": {
-          "crowd": true
-        },
-        "still_prompt": "Beyond an open locker-room doorway, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands within a bounded worker group holding blank pale-pink notices; the near corridor remains empty beneath winter light across slate lockers and dark concrete.",
-        "notes": "Palette basis: winter-locker field — winter light crosses slate lockers, pale-pink notices, and dark concrete. The laid-off mass is bounded beyond the doorway; near corridor empty."
+        "still_prompt": "Beside four slate locker bays, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands at the single emptied bay with one pale-pink notice; three occupied coat hooks remain under winter light across dark concrete.",
+        "notes": "Palette basis: winter-locker field — winter light crosses four slate locker bays, dark concrete, and one pale-pink notice. One vacated bay makes the quarter visible."
       },
       {
         "id": "L44",
@@ -677,17 +684,112 @@
         ],
         "still_prompt": "The established abandoned casing, steel-blue benches, paper-white doors, cold high-window light, and open exit hold; the founder is now absent, leaving his station empty as the one change.",
         "notes": "Held camera and set; absence is the sole story state change."
+      },
+      {
+        "id": "L46",
+        "duration_s": 2.2,
+        "synthetic": false,
+        "vo_ref": "By 1985 the company was",
+        "vo_text": "By 1985 the company was in real trouble,",
+        "shot_class": "aftermath-palette-turn",
+        "source": "ai-gen",
+        "cast": [
+          {
+            "character": "miniscribe-rep",
+            "pose_ref": "action-slump",
+            "expression_ref": "expr-worried"
+          }
+        ],
+        "still_prompt": "At a nearly idle MiniScribe order desk, `miniscribe-rep` `action-slump` `expr-worried` faces sparse order trays; cold clerestory light crosses teal steel, cream drive casings, bare concrete, and a dark walnut desk.",
+        "notes": "Palette basis: cold-teal trouble field — clerestory light crosses teal steel, cream drive casings, bare concrete, and dark walnut."
+      },
+      {
+        "id": "L47",
+        "duration_s": 2.1,
+        "synthetic": false,
+        "vo_ref": "so their bankers at Hambrecht",
+        "vo_text": "so their bankers at Hambrecht & Quist",
+        "shot_class": "personified-character",
+        "source": "ai-gen",
+        "stage": "bank-rescue",
+        "stage_role": "base",
+        "cast": [
+          {
+            "character": "hq-banker",
+            "pose_ref": "action-present",
+            "expression_ref": "expr-deadpan"
+          }
+        ],
+        "still_prompt": "At a walnut bank table, `hq-banker` `action-present` `expr-deadpan` presents a cream contract marked 'HAMBRECHT & QUIST' toward a small MiniScribe factory model; high-window light crosses brown wool, brass chain, walnut, teal steel, and one vacant chair.",
+        "notes": "Palette basis: walnut-brass bank field — high-window light crosses brown chalk-stripe wool, brass chain, walnut, and teal-painted steel."
+      },
+      {
+        "id": "L48",
+        "duration_s": 2.0,
+        "synthetic": false,
+        "vo_ref": "put about 20 million dollars",
+        "vo_text": "put about 20 million dollars in",
+        "shot_class": "number-glued-to-object",
+        "source": "ai-gen",
+        "stage": "bank-rescue",
+        "stage_role": "delta",
+        "changed_elements": [
+          "one brass money weight marked '20 MILLION' now stands beside the MiniScribe factory model"
+        ],
+        "cast": [
+          {
+            "character": "hq-banker",
+            "pose_ref": "action-present",
+            "expression_ref": "expr-deadpan"
+          }
+        ],
+        "still_prompt": "The established `hq-banker` `action-present` `expr-deadpan`, walnut table, vacant chair, factory model, high-window light, and contract marked 'HAMBRECHT & QUIST' hold; one brass weight marked '20 MILLION' now stands beside the factory.",
+        "notes": "Held bank set and actor; the supplied money weight is the one capital-injection change."
+      },
+      {
+        "id": "L49",
+        "duration_s": 2.0,
+        "synthetic": false,
+        "vo_ref": "and sent their own turnaround guy",
+        "vo_text": "and sent their own turnaround guy to run it. They brought in the man, the myth,",
+        "shot_class": "symbolic-stand-in-object",
+        "source": "ai-gen",
+        "stage": "bank-rescue",
+        "stage_role": "delta",
+        "changed_elements": [
+          "one appointment portfolio marked 'TURNAROUND' now rests on the vacant chair"
+        ],
+        "cast": [
+          {
+            "character": "hq-banker",
+            "pose_ref": "action-present",
+            "expression_ref": "expr-deadpan"
+          }
+        ],
+        "still_prompt": "The established `hq-banker` `action-present` `expr-deadpan`, walnut table, factory model, high-window light, contract marked 'HAMBRECHT & QUIST', and weight marked '20 MILLION' hold; one portfolio marked 'TURNAROUND' now rests on the vacant chair.",
+        "notes": "Held bank set and actor; the appointment portfolio is the one dispatch change, with Wiles withheld."
+      },
+      {
+        "id": "L50",
+        "duration_s": 2.4,
+        "synthetic": false,
+        "vo_ref": "the legend: Q.T. Wiles.",
+        "vo_text": "the legend: Q.T. Wiles.",
+        "shot_class": "personified-character",
+        "source": "ai-gen",
+        "cast": [
+          {
+            "character": "qt-wiles",
+            "pose_ref": "action-powerstance",
+            "expression_ref": "expr-smug"
+          }
+        ],
+        "still_prompt": "At the head of a MiniScribe boardroom, `qt-wiles` `action-powerstance` `expr-smug` occupies a low brass dais; hard skylight crosses his steel-grey suit, gold tie clip, walnut panels, teal windows, and the empty table below.",
+        "notes": "Palette basis: steel-gold arrival field — hard skylight crosses steel-grey wool, the gold tie clip, walnut panels, and teal windows."
       }
     ]
   },
-  "needed_assets": [
-    {
-      "kind": "character",
-      "slug": "compaq",
-      "wants": "Approved personified Compaq customer identity with one reusable, unmistakable institution signifier and pinned costume.",
-      "why": "L36 names Compaq as the customer; its token is elevated for the human asset gate, not authored."
-    }
-  ],
+  "needed_assets": [],
   "thumbnail": {
     "primary": {
       "source": "hybrid",
