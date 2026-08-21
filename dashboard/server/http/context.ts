@@ -22,7 +22,6 @@ import type { CoordinationPublication } from '../write/outbox.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeSpawner } from '../vibe/session.ts';
-import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
 import type { ComposerWorkspaceStore } from '../composer/store.ts';
 import type { RunnerTrigger } from '../runner/trigger.ts';
 import type {
@@ -124,7 +123,6 @@ export interface SurfaceContext {
   /** review F1 — the process-lifetime issued-CLI-session allowlist that binds Composer's `--resume`.
    *  Created ONCE per process in `makeSurfaceContext` (so ids captured on one turn are visible to the
    *  next); tests inject a fresh instance so nothing leaks across them. */
-  resumeRegistry: ResumeRegistry;
   /** Durable, subject-bound Composer workspace catalog. Provider handles remain private to this store. */
   composerStore: ComposerWorkspaceStore;
   /** App-local durable proposal/run/session/event projection. Canonical queue cards remain fleet truth. */

@@ -17,7 +17,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { defaultPyRunner } from './launch.ts';
 import type { PyRunner } from './launch.ts';
-import { HUMAN_INPUT_ACTION, WAKE_ACTION } from '../approvals/humanInbox.ts';
+import { HUMAN_INPUT_ACTION, WAKE_ACTION } from '../approvals/cardActions.ts';
 
 /** The `state` directories cards.py actually writes to (scripts/cards.py `STATE_DIR`): blocked cards live
  *  under `inbox/`, all three stop-ladder states (incl. terminal `halted`) under `working/`. There is no

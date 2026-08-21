@@ -46,17 +46,17 @@
 }
 
 .v-home__kpi--link:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
 /* The single terracotta accent: only while something is actually waiting on a signature. */
 .v-home__kpi--accent {
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--focus);
 }
 
 .v-home__kpi--accent .v-home__kpi-value {
-  color: var(--mc-accent);
+  color: var(--focus);
 }
 
 .v-home__kpi-value {
@@ -68,7 +68,6 @@
 .v-home__kpi-label {
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
 }
@@ -112,7 +111,6 @@
 .v-home__eyebrow {
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
 }
@@ -159,7 +157,7 @@
 .v-home__project:hover,
 .v-home__project:focus-visible {
   background: var(--bg-elevated);
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--focus);
   outline: none;
 }
 
@@ -275,7 +273,7 @@
 
 .v-home__input:focus-visible {
   outline: none;
-  border-color: var(--mc-accent);
+  border-color: var(--focus);
 }
 
 textarea.v-home__input {

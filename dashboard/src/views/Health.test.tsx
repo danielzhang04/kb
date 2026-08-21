@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { healthResponseFixture } from '../../server/health/__fixtures__/health.ts';
 import { Health } from './Health.tsx';
+import { renderWithTestSession } from '../test/session.tsx';
+
+afterEach(cleanup);
 
 describe('Health', () => {
-  it('renders sections in §5 order and exact unavailable literals', () => {
-    render(<Health response={healthResponseFixture} />);
+  it('mounts the one fleet STOP control in the served STOP section', async () => {
+    await renderWithTestSession(<Health response={healthResponseFixture} />);
+    expect(screen.getByLabelText('Nuclear STOP')).toBeTruthy();
+    expect(screen.queryByLabelText('Request card stop')).toBeNull();
+    expect(screen.queryByLabelText('Pause cadence')).toBeNull();
+  });
+
+  it('renders sections in §5 order and exact unavailable literals', async () => {
+    await renderWithTestSession(<Health response={healthResponseFixture} />);
 
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
       .toEqual(['Fleet', 'STOP', 'Daemon and machine', 'MCP', 'Usage']);

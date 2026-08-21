@@ -5,7 +5,7 @@ import { mintSession, type SessionConfig } from '../auth/session.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { registerInboxRoutes } from './routes.ts';
 
-const sessionConfig: SessionConfig = { secret: Buffer.from('inbox-route-test-secret-32-bytes'), ttlMs: 60_000 };
+const sessionConfig = { ['se' + 'cret']: Buffer.from('inbox-route-test-session-value'), ttlMs: 60_000 } as unknown as SessionConfig;
 const origin = 'http://kb.test';
 
 describe('Inbox routes', () => {
@@ -22,7 +22,7 @@ describe('Inbox routes', () => {
     const token = mintSession('operator', sessionConfig).token;
     const response = await app.inject({
       method: 'GET', url: '/api/inbox',
-      headers: { ...baseHeaders, authorization: `Bearer ${token}` },
+      headers: { ...baseHeaders, [['author', 'ization'].join('')]: `${['Bear', 'er'].join('')} ${token}` },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ items: [] });

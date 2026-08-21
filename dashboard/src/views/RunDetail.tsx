@@ -408,7 +408,7 @@ export function AgentTile({ agentId, runRef, events, fetchImpl, onNavigate }: Ag
       </header>
       <p className="run-stream-tile__status" data-testid={`run-tile-${agentId}-badge`}>
         {badge.kind === 'blocked' && onNavigate ? <>{badge.text} — <button type="button" className="run-stream-tile__inbox-link"
-          data-testid={`run-tile-${agentId}-inbox-link`} onClick={() => onNavigate({ view: 'approvals' })}>open Inbox</button></> : badge.text}
+          data-testid={`run-tile-${agentId}-inbox-link`} onClick={() => onNavigate({ view: 'inbox' })}>open Inbox</button></> : badge.text}
       </p>
       <ol className="run-stream-tile__transcript" data-testid={`run-tile-${agentId}-transcript`} aria-label={`${agentId} live stream`}>
         {events.length ? events.map((item) => (

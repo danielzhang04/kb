@@ -190,7 +190,6 @@
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
   letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
 }
 
 .entity-detail__fact dd,
@@ -340,7 +339,6 @@
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
   letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
 }
 
 .entity-block__count {

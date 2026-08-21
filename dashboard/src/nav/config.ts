@@ -11,20 +11,15 @@
  * ~220px) and every §E/§F visual rule remain authoritative.
  *
  *   ── (divider, below the [+ New] menu) ──
- *   Home · Approvals(n) · Activity · Atlas(live — Atlas V1) · Terminal(live — D3.2)
+ *   Home · Inbox · Schedules · Terminal
  *   ── (divider) ──
- *   Workflows · Agents · Tasks · Projects · Files · Agent Platform(live — Wave-1 U0)
+ *   Agents · Workflows · Tasks · Projects · Files
  *   ── (divider) ──
- *   Connectors · Ledgers · Sentinel
+ *   Health
  *
- * The sidebar ENDS there. Session state is the top-bar lock chip, and the emergency-stop controls live
- * on the Sentinel view next to the fleet-health readout they act on — neither is a pinned shell region.
+ * The sidebar ends there. Session state stays in the top bar and fleet STOP lives in Health.
  *
- * Live day-one views: Home, Approvals, Activity, Workflows, Files, Connectors. Agents/Tasks/Projects/
- * Ledgers are reachable nav items that land on a U3 placeholder (the nav skeleton is real; the view
- * lands next wave). Terminal is LIVE as of D3.2 (the PTY pane); Atlas is LIVE as of Atlas V1 (the voice
- * worker mirror — big orb + live transcript + activity history), amending the locked entity-first IA
- * per Daniel's 2026-07-20 call (the old greyed "soon" stub is promoted, not moved).
+ * Every listed P1 destination is live.
  *
  * The former `pipeline` ("Runs") and `runCanvas` ("Run Canvas") destinations are GONE: a run is an
  * execution of a workflow, not a sibling entity of one, so runs live inside `workflows` as a deep
@@ -38,20 +33,15 @@ export type NavStatus = 'live' | 'soon' | 'future';
 /** Every routable (or planned) destination id. The App body switch is exhaustive over these. */
 export type DestinationId =
   | 'home'
-  | 'approvals'
-  | 'activity'
-  | 'atlas'
-  | 'terminal'
+  | 'inbox'
   | 'schedules'
-  | 'workflows'
+  | 'terminal'
   | 'agents'
+  | 'workflows'
   | 'tasks'
   | 'projects'
   | 'files'
-  | 'agentPlatform'
-  | 'connectors'
-  | 'ledgers'
-  | 'sentinel';
+  | 'health';
 
 export interface NavDestination {
   id: DestinationId;
@@ -83,37 +73,25 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'primary',
     items: [
       { id: 'home', label: 'Home', icon: '⌂', status: 'live' },
-      { id: 'approvals', label: 'Inbox', icon: '✓', status: 'live' },
-      { id: 'activity', label: 'Activity', icon: '≡', status: 'live' },
-      { id: 'atlas', label: 'Atlas', icon: '◈', status: 'live' },
-      { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },
-      // Daniel's Wave-2 ruling: routines/schedules are a sidebar destination, not an Agent Platform tile.
+      { id: 'inbox', label: 'Inbox', icon: '✓', status: 'live' },
       { id: 'schedules', label: 'Schedules', icon: '◷', status: 'live' },
+      { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },
     ],
   },
   {
     id: 'entities',
     items: [
-      // Definitions AND their executions. Runs are reached by drilling into the workflow that produced
-      // them (or the "Ad-hoc" group for runs no definition owns) — never from a nav entry of their own.
-      { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
+      { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
       { id: 'files', label: 'Files', icon: '🗀', status: 'live' },
-      // Wave-1 U0 — the Agent Platform section. Its panels are auto-discovered from
-      // `views/agentPlatform/panels/*.panel.tsx`, so this stays the ONLY nav entry the platform needs.
-      { id: 'agentPlatform', label: 'Agent Platform', icon: '⬡', status: 'live' },
     ],
   },
   {
     id: 'system',
     items: [
-      { id: 'connectors', label: 'Connectors', icon: '⛓', status: 'live' },
-      { id: 'ledgers', label: 'Ledgers', icon: '▦', status: 'live' },
-      // D3.5 — the Sentinel destination hosts the read-only layer panels (Sentinel / Quartermaster /
-      // Flight Recorder / Atlas) behind an underline-tab bar. One nav entry; panels reachable from it.
-      { id: 'sentinel', label: 'Sentinel', icon: '◎', status: 'live' },
+      { id: 'health', label: 'Health', icon: '◎', status: 'live' },
     ],
   },
 ];

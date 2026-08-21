@@ -78,7 +78,7 @@
  *   .mc-main, .mc-panel, .mc-card, .mc-table, .mc-table--boxed, .mc-badge*, .mc-status-dot*, .mc-btn*
  *   .mc-row-link — the ONE clickable-row hover treatment (2px left rail, painted on hover/focus)
  *   .mc-empty    — the ONE empty state: a quiet sentence, never a placeholder box
- *   .mc-stop     — the emergency-stop controls (mounted on the Sentinel view)
+ *   .mc-stop     — the emergency-stop controls mounted in Health
  *   .mc-mono — ids/hashes/tiers/sessions (also tabular figures)
  *   .mc-num  — tabular figures on any non-mono live/columnar number
  *
@@ -93,25 +93,25 @@
   color-scheme: dark;
 
   /* ---- Color: pure-neutral dark scale. All grey tokens have R = G = B. ---- */
-  --bg-sunken: #0f0f0f; /* code gutters / terminal — deepest well */
-  --bg-base: #0f0f0f; /* page */
-  --bg-sidebar: #141414; /* navigation / chrome — intentionally below cards */
-  --bg-panel: #1b1b1b; /* cards / panes */
-  --bg-elevated: #202020; /* controls / sheets / popovers */
+  --bg-sunken: #000000;
+  --bg-base: #000000;
+  --bg-sidebar: #111111;
+  --bg-panel: #111111;
+  --bg-elevated: #1a1a1a;
 
   /* ---- Color: foreground (neutral off-white / neutral gray) ---- */
-  --fg-primary: #ebebeb;
-  --fg-dim: #a6a6a6;
-  --fg-faint: #7c7c7c;
-  --ink: #ebebeb;
-  --paper: #0f0f0f;
+  --fg-primary: #ffffff;
+  --fg-dim: #888888;
+  --fg-faint: #888888;
+  --paper: #000000;
+  --focus: #0070f3;
+  --focus-contrast: #ffffff;
 
   /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
    * selection, KPI tiles, buttons, links, focus, tab underlines, left-borders) so redefining them here
    * neutralises every consumer at once. Semantic status colour lives in the separate tokens below. ---- */
-  --accent-strong: var(--ink); /* buttons / links / focus / active underline+border */
-  --accent: var(--fg-dim); /* active nav icon tint / secondary */
+  --accent: var(--focus);
   --accent-quiet: var(--bg-elevated); /* selected wash */
 
   /* ---- Color: hairlines (the Claude "super thin white outline" — a low-alpha white line is how a
@@ -122,8 +122,8 @@
    * --border / --border-strong are kept as aliases so every existing consumer inherits at once.
    * Field-guide restyle 2026-08-18: both alphas step up (0.10 -> 0.12, 0.16 -> 0.18) because the surface
    * ladder flattened — the edge is now the primary separator, not a secondary one. ---- */
-  --hairline: #2a2a2a;
-  --hairline-strong: #7c7c7c;
+  --hairline: #333333;
+  --hairline-strong: #888888;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -134,13 +134,13 @@
    * where it fell short. Hue families are unchanged; only lightness moved. Untouched values were already
    * over the bar.
    * The rust failure token is the sole non-neutral color. ---- */
-  --error: #c97867; /* rust — the sole hue */
-  --warning: var(--error);
-  --success: var(--fg-dim);
+  --error: #e5484d;
+  --warning: #f5a623;
+  --success: #46a758;
 
   /* ---- Color: status (fleet card state — semantic, kept) ---- */
-  --status-running: var(--fg-dim);
-  --status-done: var(--fg-dim);
+  --status-running: var(--success);
+  --status-done: var(--success);
   --status-blocked: var(--error);
   --status-idle: var(--fg-faint);
 
@@ -176,14 +176,16 @@
   --gap: var(--space-3); /* legacy alias — existing views (fleet-strip/control__grid) use this */
 
   /* ---- Type (system stacks only — self-contained, no external fonts) ---- */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
-  --text-xs: 11px; /* eyebrow / badge / col-headers */
+  --font-header: "Arial Narrow","Aptos Narrow","Roboto Condensed","Helvetica Neue Condensed",sans-serif;
+  --font-body: "Geist","Geist Sans",-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",sans-serif;
+  --font-mono: "Geist Mono",ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  --font-sans: var(--font-body);
+  --text-xs: 12px;
   --text-sm: 12px; /* secondary / timestamps / nav labels */
   --text-base: 13px; /* body / table cell — dense tool */
-  --text-md: 14px; /* inputs / active nav */
+  --text-md: 13px;
   --text-lg: 16px; /* section headers */
-  --text-xl: 20px; /* view titles / KPI numbers */
+  --text-xl: 24px;
 
   /* ---- Typographic ROLES (Phase 6). The raw --text-* scale above is the vocabulary; these five roles
    * are the GRAMMAR — every surface renders each role with exactly ONE size+weight pair, and no view
@@ -195,16 +197,25 @@
    *   meta    — timestamps, counts, help text, secondary cells (always --fg-dim or --fg-faint)
    *   metric  — the big tile numeral (mono + tabular)
    * ---- */
-  --type-title-size: var(--text-lg);
+  --type-title: 600 24px/28px var(--font-header);
+  --type-section: 600 16px/20px var(--font-header);
+  --type-body: 400 13px/18px var(--font-body);
+  --type-meta: 400 12px/16px var(--font-body);
+  --type-mono: 400 12px/18px var(--font-mono);
+  --type-title-size: 24px;
   --type-title-weight: 600;
-  --type-section-size: var(--text-xs);
+  --type-title-line: 28px;
+  --type-section-size: 16px;
   --type-section-weight: 600;
-  --type-body-size: var(--text-base);
+  --type-section-line: 20px;
+  --type-body-size: 13px;
   --type-body-weight: 400;
-  --type-meta-size: var(--text-sm);
+  --type-body-line: 18px;
+  --type-meta-size: 12px;
   --type-meta-weight: 400;
-  --type-metric-size: var(--text-xl);
-  --type-metric-weight: 650;
+  --type-meta-line: 16px;
+  --type-metric-size: 24px;
+  --type-metric-weight: 600;
   /* ONE tracking for every uppercase section heading (was 0.02/0.04/0.05/0.06em scattered). */
   --tracking-eyebrow: 0.05em;
 
@@ -221,9 +232,6 @@
   --transition: 120ms ease-out;
 
   /* ---- Accent slot. Inversion is ink on page in both themes. ---- */
-  --mc-accent: var(--ink);
-  --mc-accent-fg: var(--paper);
-
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
    * neutral black low-opacity, never colored/glow).
    * --shadow-overlay restyled 2026-08-18: the reference floats an overlay on ONE soft, very large,
@@ -240,82 +248,30 @@
   --topbar-h: 44px;
 }
 
-/* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. */
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --bg-sunken: #fafafa;
-    --bg-base: #fafafa;
-    --bg-sidebar: #f1f1f1;
-    --bg-panel: #ffffff;
-    --bg-elevated: #f1f1f1;
-
-    --fg-primary: #161616;
-    --ink: #161616;
-    --paper: #fafafa;
-    --fg-dim: #555555;
-    --fg-faint: #767676;
-
-    --accent-strong: var(--ink);
-    --accent: var(--fg-dim);
-    --accent-quiet: var(--bg-elevated);
-    --mc-accent: var(--ink);
-
-    --hairline: #dcdcdc;
-    --hairline-strong: #767676;
-    --border: var(--hairline);
-    --border-strong: var(--hairline-strong);
-
-    --error: #a1543f; /* rust — the sole hue */
-    --warning: var(--error);
-    --success: var(--fg-dim);
-
-    --status-running: var(--fg-dim);
-    --status-done: var(--fg-dim);
-    --status-blocked: var(--error);
-    --status-idle: var(--fg-faint);
-
-    --tier-t1: var(--fg-faint);
-    --tier-t2: var(--fg-dim);
-    --tier-t3: var(--error);
-
-    --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.08);
-    --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.16);
-    --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.12);
-  }
-}
-
-/* Explicit theme pin — wins over the media query above. */
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg-sunken: #fafafa;
-  --bg-base: #fafafa;
-  --bg-sidebar: #f1f1f1;
-  --bg-panel: #ffffff;
-  --bg-elevated: #f1f1f1;
-
-  --fg-primary: #161616;
-  --ink: #161616;
-  --paper: #fafafa;
-  --fg-dim: #555555;
-  --fg-faint: #767676;
-
-  --accent-strong: var(--ink);
-  --accent: var(--fg-dim);
+  --bg-sunken: #ffffff;
+  --bg-base: #ffffff;
+  --bg-sidebar: #f7f7f7;
+  --bg-panel: #f7f7f7;
+  --bg-elevated: #ededed;
+  --fg-primary: #000000;
+  --paper: #ffffff;
+  --fg-dim: #666666;
+  --fg-faint: #666666;
+  --focus: #0070f3;
+  --focus-contrast: #ffffff;
+  --accent: var(--focus);
   --accent-quiet: var(--bg-elevated);
-  --mc-accent: var(--ink);
-
-  --hairline: #dcdcdc;
-  --hairline-strong: #767676;
+  --hairline: #d4d4d4;
+  --hairline-strong: #666666;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
-
-  --error: #a1543f;
-  --warning: var(--error);
-  --success: var(--fg-dim);
-
-  --status-running: var(--fg-dim);
-  --status-done: var(--fg-dim);
+  --error: #d1242f;
+  --warning: #9a6700;
+  --success: #18794e;
+  --status-running: var(--success);
+  --status-done: var(--success);
   --status-blocked: var(--error);
   --status-idle: var(--fg-faint);
 
@@ -330,34 +286,29 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg-sunken: #0f0f0f;
-  --bg-base: #0f0f0f;
-  --bg-sidebar: #141414;
-  --bg-panel: #1b1b1b;
-  --bg-elevated: #202020;
-
-  --fg-primary: #ebebeb;
-  --ink: #ebebeb;
-  --paper: #0f0f0f;
-  --fg-dim: #a6a6a6;
-  --fg-faint: #7c7c7c;
-
-  --accent-strong: var(--ink);
-  --accent: var(--fg-dim);
+  --bg-sunken: #000000;
+  --bg-base: #000000;
+  --bg-sidebar: #111111;
+  --bg-panel: #111111;
+  --bg-elevated: #1a1a1a;
+  --fg-primary: #ffffff;
+  --paper: #000000;
+  --fg-dim: #888888;
+  --fg-faint: #888888;
+  --focus: #0070f3;
+  --focus-contrast: #ffffff;
+  --accent: var(--focus);
   --accent-quiet: var(--bg-elevated);
-  --mc-accent: var(--ink);
-
-  --hairline: #2a2a2a;
-  --hairline-strong: #7c7c7c;
+  --hairline: #333333;
+  --hairline-strong: #888888;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  --error: #c97867;
-  --warning: var(--error);
-  --success: var(--fg-dim);
-
-  --status-running: var(--fg-dim);
-  --status-done: var(--fg-dim);
+  --error: #e5484d;
+  --warning: #f5a623;
+  --success: #46a758;
+  --status-running: var(--success);
+  --status-done: var(--success);
   --status-blocked: var(--error);
   --status-idle: var(--fg-faint);
 
@@ -376,10 +327,21 @@
 
 body {
   margin: 0;
-  font-family: var(--font-sans);
+  font: var(--type-body);
   background: var(--bg-base);
   color: var(--fg-primary);
-  line-height: 1.45;
+}
+
+h1 {
+  font: var(--type-title);
+}
+
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font: var(--type-section);
 }
 
 /* Browser-native controls otherwise retain a light UA surface in dark mode. Keep every app
@@ -412,10 +374,10 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  border-color: var(--ink);
-  background: var(--ink);
+  border-color: var(--focus);
+  background: var(--focus);
   color: var(--paper);
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -427,7 +389,7 @@ select option {
 /* ---- Numeric utilities ---- */
 /* Mono for ids/hashes/tiers/sessions — always tabular figures so columns of them line up. */
 .mc-mono {
-  font-family: var(--font-mono);
+  font: var(--type-mono);
   font-variant-ligatures: none;
   font-variant-numeric: tabular-nums;
 }
@@ -678,15 +640,15 @@ select option {
 
 .mc-nav-item:hover:not(.mc-nav-item--disabled) {
   background: var(--paper);
-  border-color: var(--ink);
-  border-left-color: var(--ink);
-  color: var(--ink);
+  border-color: var(--focus);
+  border-left-color: var(--focus);
+  color: var(--focus);
 }
 
 .mc-nav-item--active {
-  background: var(--ink);
-  border-color: var(--ink);
-  border-left-color: var(--ink);
+  background: var(--focus);
+  border-color: var(--focus);
+  border-left-color: var(--focus);
   color: var(--paper);
   font-weight: 600;
 }
@@ -823,7 +785,7 @@ select option {
 }
 
 .mc-session-chip:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -831,14 +793,14 @@ select option {
  * restores the chip's compact top-bar metrics over the button's larger defaults. */
 .mc-session-chip--locked {
   padding: var(--space-1) var(--space-3);
-  color: var(--mc-accent-fg);
+  color: var(--focus-contrast);
   font-weight: 600;
 }
 
 .mc-session-chip--locked:hover {
-  color: var(--mc-accent-fg);
-  background: var(--mc-accent);
-  border-color: var(--mc-accent);
+  color: var(--focus-contrast);
+  background: var(--focus);
+  border-color: var(--focus);
   filter: brightness(1.06);
 }
 
@@ -867,7 +829,7 @@ select option {
 }
 
 .mc-theme-toggle:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -947,7 +909,6 @@ select option {
   color: var(--fg-dim);
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
 }
 
@@ -1058,14 +1019,14 @@ select option {
 }
 
 .mc-badge--attention {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--focus);
+  border-color: var(--focus);
   color: var(--paper);
   font-weight: 650;
 }
 
 /* ---- Status dot — the app's ONE state indicator (Phase 6). Same shape, same size, same tone mapping
- * everywhere: Home tiles, agent rows, run states, inbox chips, Sentinel liveness. A new state taxonomy
+ * everywhere: Home rows, agent rows, run states, inbox chips, and Health liveness. A new state taxonomy
  * gets a modifier here and reuses this geometry; it never gets a second dot implementation or a new hue.
  *   idle → grey · running → green · done → green · waiting → amber · blocked/failed/error → red
  * ---- */
@@ -1088,8 +1049,8 @@ select option {
 
 /* Waiting on a person — the one amber state; it must not read as a failure. */
 .mc-status-dot--waiting {
-  background: var(--ink);
-  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--ink);
+  background: var(--focus);
+  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--focus);
 }
 
 .mc-status-dot--blocked,
@@ -1153,7 +1114,7 @@ select option {
 }
 
 .entity-name__copy:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -1185,15 +1146,15 @@ select option {
 /* Primary = neutral near-white fill (dark theme) / near-black fill (light theme) with the shell base
  * colour as its text — a Linear/Claude-dark solid button, no accent hue. */
 .mc-btn--primary {
-  background: var(--mc-accent);
-  border-color: var(--mc-accent);
-  color: var(--mc-accent-fg);
+  background: var(--focus);
+  border-color: var(--focus);
+  color: var(--focus-contrast);
 }
 
 .mc-btn--primary:hover:not(:disabled),
 .mc-btn--primary:focus-visible {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--focus);
+  border-color: var(--focus);
   color: var(--paper);
 }
 
@@ -1229,11 +1190,11 @@ select option {
 
 .mc-row-link:hover {
   color: var(--fg-primary);
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--focus);
 }
 
 .mc-row-link:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: -1px;
 }
 
@@ -1248,7 +1209,7 @@ select option {
 }
 
 /* ---- Emergency stop (the app's ONE stop implementation — `views/Control.tsx#StopControls`, mounted on
- * the Sentinel view). Three stacked controls, narrowest first, each with one plain sentence of context.
+ * the Health view). One fleet control with one plain sentence of context.
  * The nuclear control is set apart by a hairline and carries the semantic --error only: no glow, no
  * gradient, no decorative hue. ---- */
 .mc-stop {
@@ -1314,7 +1275,7 @@ select option {
 }
 
 .mc-stop input:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: -1px;
 }
 
@@ -1360,7 +1321,6 @@ select option {
   border-color: var(--error);
   color: var(--error);
   background: transparent;
-  text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
@@ -1407,7 +1367,6 @@ select option {
 .fleet-strip__label {
   display: block;
   font-size: var(--text-xs);
-  text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-dim);
 }
@@ -1469,7 +1428,7 @@ select option {
 .org-states__item h3 {
   margin: 0 0 0.2rem;
   font-size: var(--text-base);
-  color: var(--accent-strong);
+  color: var(--focus);
   font-family: var(--font-mono);
 }
 

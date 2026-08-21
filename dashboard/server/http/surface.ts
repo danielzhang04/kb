@@ -27,8 +27,6 @@ import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, su
 import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
-import { registerComposerRoutes } from '../composer/routes.ts';
-import { createResumeRegistry } from '../composer/resumeRegistry.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
@@ -270,7 +268,6 @@ export function makeSurfaceContext(
     now: overrides.now,
     // One issued-session allowlist for the whole process (review F1) — resumes only ids captured this
     // lifetime. Tests override with a fresh instance so ids never leak between them.
-    resumeRegistry: overrides.resumeRegistry ?? createResumeRegistry(),
     composerStore:
       overrides.composerStore ??
       createFileComposerStore(stateRoot, {
@@ -420,7 +417,6 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
     scope.register(async (authenticated) => {
       authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
       registerWriteRoutes(authenticated, ctx);
-      registerComposerRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);
       registerApprovalsRoutes(authenticated, ctx);
     });

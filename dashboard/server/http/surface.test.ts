@@ -259,7 +259,6 @@ describe('write surface — composition chain', () => {
       '/api/write/launch',
       '/api/write/rerun',
       '/api/write/stop',
-      '/api/write/stop-card',
       '/api/write/pause-cadence',
       '/api/approvals/verify',
     ]) {
@@ -267,22 +266,14 @@ describe('write surface — composition chain', () => {
       expect(res.statusCode, `${url} should be gated, not missing`).not.toBe(404);
       expect(res.statusCode).toBe(401);
     }
-    // The capability-bearing legacy Composer route is intentionally retired, not session-gated alive.
-    const legacyComposer = await app.inject({
-      method: 'POST', url: '/api/composer/turn', headers: headers(false), payload: {},
-    });
-    expect(legacyComposer.statusCode).toBe(401);
-    const authenticatedLegacyComposer = await app.inject({
-      method: 'POST', url: '/api/composer/turn', headers: headers(true), payload: {},
-    });
-    expect(authenticatedLegacyComposer.statusCode).toBe(410);
-    // Read-only routes remain session-gated, but still exist and work for an authenticated caller.
-    const list = await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(false) });
-    expect(list.statusCode).toBe(401);
-    expect((await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(true) })).statusCode).toBe(200);
-    const inbox = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
-    expect(inbox.statusCode).toBe(401);
-    expect((await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(true) })).statusCode).toBe(200);
+    for (const request of [
+      { method: 'POST' as const, url: '/api/write/stop-card' },
+      { method: 'POST' as const, url: '/api/composer/turn' },
+      { method: 'GET' as const, url: '/api/approvals' },
+      { method: 'GET' as const, url: '/api/human-inbox' },
+    ]) {
+      expect((await app.inject({ method: request.method, url: request.url, headers: headers(true), payload: request.method === 'POST' ? {} : undefined })).statusCode).toBe(404);
+    }
   });
 
   it('rejects invalid pause names before filesystem, git, or audit work and accepts a declared id', async () => {
@@ -1009,7 +1000,7 @@ describe('auth surface — fail-closed WebAuthn reality (no passkey provisioned)
     // Default resolveAllowedOrigins({}) is []: fail-closed, every route 403s regardless of session.
     app = Fastify({ logger: false });
     registerWriteSurface(app, makeSurfaceContext({ repoRoot: REPO_A, sessionConfig, allowedOrigins: [] }));
-    const res = await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(false) });
+    const res = await app.inject({ method: 'POST', url: '/api/approvals/verify', headers: headers(false), payload: {} });
     expect(res.statusCode).toBe(403);
   });
 });
@@ -1054,23 +1045,6 @@ describe('approvals surface — verify wiring', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(py).not.toHaveBeenCalled();
-  });
-});
-
-describe('human inbox surface', () => {
-  it('without a session is refused, and with one aggregates approval and human-attention states', async () => {
-    ({ app } = buildApp());
-    const refused = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
-    expect(refused.statusCode).toBe(401);
-    const res = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(true) });
-    expect(res.statusCode).toBe(200);
-    const payload = res.json() as {
-      counts: { total: number; decision: number; intervention: number };
-      items: Array<{ category: string; nextAction: string; card: { meta: { id: string } } }>;
-    };
-    expect(payload.counts).toMatchObject({ total: 2, decision: 1, intervention: 1 });
-    expect(payload.items.find((item) => item.category === 'decision')?.nextAction).toMatch(/does not run or resume/i);
-    expect(payload.items.map((item) => item.card.meta.id)).toEqual(expect.arrayContaining(['aaaa0002-2222', 'aaaa0006-6666']));
   });
 });
 
@@ -1353,5 +1327,29 @@ describe('surface — shared PTY host fleet gate', () => {
     expect(underlying.stop).toHaveBeenCalledWith('pty-surface-test');
     expect(underlying.stopAll).toHaveBeenCalledOnce();
     expect(underlying.sessions).toHaveBeenCalledOnce();
+  });
+});
+
+describe('P1 route matrix', () => {
+  it('retains verify, fleet STOP, and cadence pause while retired writes and Composer are 404', async () => {
+    ({ app } = buildApp());
+    for (const url of ['/api/approvals/verify', '/api/write/stop', '/api/write/pause-cadence']) {
+      expect((await app.inject({ method: 'POST', url, headers: headers(false), payload: {} })).statusCode, url).toBe(401);
+    }
+    for (const request of [
+      { method: 'POST' as const, url: '/api/write/stop-card' },
+      { method: 'GET' as const, url: '/api/human-inbox' },
+      { method: 'GET' as const, url: '/api/approvals' },
+      { method: 'GET' as const, url: '/api/composer/sessions' },
+      { method: 'POST' as const, url: '/api/composer/sessions' },
+    ]) {
+      const response = await app.inject({
+        method: request.method,
+        url: request.url,
+        headers: headers(true),
+        ...(request.method === 'POST' ? { payload: {} } : {}),
+      });
+      expect(response.statusCode, request.url).toBe(404);
+    }
   });
 });

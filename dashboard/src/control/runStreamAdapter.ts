@@ -42,13 +42,8 @@ export function lifecycleRow(event: OperationalEventDto): RunLifecycleRow {
   };
 }
 
-/** Full replay and reconnect batches fold through this same ordering/deduplication adapter. */
-export function appendRunLifecycle(current: readonly RunLifecycleRow[], incoming: readonly OperationalEventDto[]): RunLifecycleRow[] {
-  const byCursor = new Map(current.map((row) => [row.cursor, row]));
-  for (const event of incoming) byCursor.set(event.cursor, lifecycleRow(event));
-  return [...byCursor.values()].sort((left, right) => left.cursor - right.cursor);
-}
-
 export function replayRunLifecycle(events: readonly OperationalEventDto[]): RunLifecycleRow[] {
-  return appendRunLifecycle([], events);
+  const byCursor = new Map<number, RunLifecycleRow>();
+  for (const event of events) byCursor.set(event.cursor, lifecycleRow(event));
+  return [...byCursor.values()].sort((left, right) => left.cursor - right.cursor);
 }

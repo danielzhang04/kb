@@ -205,7 +205,7 @@ describe('AgentTile', () => {
     const onNavigate = vi.fn();
     render(unlocked(<AgentTile agentId="fyt-story" runRef="run-1" events={[event({ status: 'failure', summary: 'G1 refused' })]} onNavigate={onNavigate} />));
     fireEvent.click(screen.getByTestId('run-tile-fyt-story-inbox-link'));
-    expect(onNavigate).toHaveBeenCalledWith({ view: 'approvals' });
+    expect(onNavigate).toHaveBeenCalledWith({ view: 'inbox' });
   });
 
   it('posts an operator message and says when delivery is queued', async () => {

@@ -30,7 +30,7 @@ import {
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
 import { renderMarkdown } from '../lib/markdown';
-import { projectHumanInbox, type HumanInboxItem } from '../../server/approvals/humanInbox';
+import { projectHumanInbox, type HumanInboxItem } from '../../server/tasks/cardProjection';
 import {
   respondToCard,
   verifyApproval,

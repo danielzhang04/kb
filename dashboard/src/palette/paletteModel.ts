@@ -2,25 +2,18 @@
  * Command-palette model (U4). Pure, dependency-free logic for the Ctrl/Cmd+K palette so the command
  * set and the filter are unit-testable without a DOM.
  *
- * Two command kinds:
- *   - `navigate` — one per destination in the nav config (INCLUDING greyed soon/future ones, which are
- *     `disabled`: visible so the operator learns the map, but Enter is a no-op). Selecting one changes
- *     the active view — nothing more.
- *   - `act` — shortcuts to a governed surface that ALREADY exists in the UI. CRITICAL: an act command
- *     NEVER invokes a governed endpoint. It only NAVIGATES to the surface where the WebAuthn-gated
- *     control lives — "Open Inbox" opens the Inbox, "Launch a workflow" opens Workflows (which owns the
- *     one Launch button), "Emergency stop" opens Sentinel (which owns the stop controls). The palette is
- *     a shortcut, never a bypass: no verify/launch/stop network call originates here.
+ * The command set is one navigation command per destination in the closed P1 nav config. Selecting a
+ * command changes the active view and never invokes a governed endpoint.
  *
  * The filter is a simple case-insensitive substring-or-subsequence match over label + hint + keywords —
  * no new dependency, predictable, and good enough for a fixed, small command set.
  */
 import { NAV_SECTIONS, isLive, type DestinationId, type NavDestination } from '../nav/config';
 
-export type PaletteCommandKind = 'navigate' | 'act';
+export type PaletteCommandKind = 'navigate';
 
 export interface PaletteCommand {
-  /** Stable id / test handle (e.g. `nav:workflows`, `act:approve`). */
+  /** Stable id / test handle (for example `nav:workflows`). */
   id: string;
   kind: PaletteCommandKind;
   /** Human label shown in the row. */
@@ -51,49 +44,8 @@ export const NAVIGATE_COMMANDS: PaletteCommand[] = NAV_SECTIONS.flatMap((s) => s
   }),
 );
 
-/**
- * Act commands — shortcuts to governed surfaces. Each only NAVIGATES/FOCUSES; the governed control stays
- * WebAuthn-gated on its own surface. No command here carries an endpoint.
- */
-export const ACT_COMMANDS: PaletteCommand[] = [
-  {
-    id: 'act:approve',
-    kind: 'act',
-    label: 'Open Inbox',
-    icon: '✓',
-    hint: 'decisions, input, intervention',
-    disabled: false,
-    keywords: 'inbox approve verify sign signature pending review corroborate input intervention wake me',
-    target: 'approvals',
-  },
-  {
-    // Home's launch form is gone (spec §5): work is launched from the workflow it belongs to, by the
-    // ONE Launch button on that surface. The shortcut follows the button rather than a dead form.
-    id: 'act:launch',
-    kind: 'act',
-    label: 'Launch a workflow',
-    icon: '+',
-    hint: 'Workflows',
-    disabled: false,
-    keywords: 'launch task new run rerun start dispatch card workflow',
-    target: 'workflows',
-  },
-  {
-    // The stop controls left the sidebar floor (spec §6): they live on Sentinel, beside the fleet-health
-    // readout an operator is looking at when they reach for them. The shortcut follows the controls.
-    id: 'act:stop',
-    kind: 'act',
-    label: 'Emergency stop',
-    icon: '⏻',
-    hint: 'Sentinel',
-    disabled: false,
-    keywords: 'stop halt kill freeze nuclear pause cadence emergency passkey',
-    target: 'sentinel',
-  },
-];
-
-/** The full command set, navigate destinations first then act shortcuts. */
-export const ALL_COMMANDS: PaletteCommand[] = [...NAVIGATE_COMMANDS, ...ACT_COMMANDS];
+/** The exact full command set. */
+export const ALL_COMMANDS: PaletteCommand[] = NAVIGATE_COMMANDS;
 
 /** True when every char of `needle` appears in `hay` in order (a substring is a trivial subsequence). */
 function isSubsequence(hay: string, needle: string): boolean {

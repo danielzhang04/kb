@@ -9,7 +9,7 @@ import { SchedulesBody } from './Schedules';
 afterEach(() => { cleanup(); clearStoredSession(); vi.unstubAllGlobals(); });
 
 describe('Schedules', () => {
-  it('preserves read edit pause without registry imports', async () => {
+  it('preserves read and pause without registry imports', async () => {
     persistSession({ token: 'schedule-token', expiresAt: Date.now() + 3_600_000 });
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/panels/schedules') return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({
@@ -23,7 +23,7 @@ describe('Schedules', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<SessionProvider><SchedulesBody /></SessionProvider>);
 
-    await screen.findByTestId('ap-schedules-row-daily');
+    await screen.findByTestId('schedules-row-daily');
     fireEvent.click(screen.getByRole('button', { name: 'Pause cadence daily' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/write/pause-cadence', expect.anything()));
     expect(fetchMock).toHaveBeenCalledWith('/api/panels/schedules');

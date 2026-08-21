@@ -2,39 +2,11 @@
  * U2 — approvalsClient: reads the unified Human Inbox feed and drives an explicit verify POST.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { fetchHumanInbox, respondToCard, verifyApproval } from './approvalsClient';
-import type { ParsedCard } from '../../server/planeA/cards';
-
-function card(id: string): ParsedCard {
-  return {
-    meta: { id, project: 'kb', action: 'a', target: 't', 'risk-tier': 'T3', owner: null, state: 'approvals' },
-    body: '## Work order\n\nx\n',
-  };
-}
+import { respondToCard, verifyApproval } from './approvalsClient';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response;
 }
-
-describe('fetchHumanInbox', () => {
-  it('reads the unified attention feed and counts', async () => {
-    const payload = {
-      items: [{ card: card('c1'), category: 'decision', categoryLabel: 'Decision', urgency: 'high', status: 'waiting', reason: 'gate', nextAction: 'verify', context: 'x' }],
-      counts: { total: 1, decision: 1, input: 0, intervention: 0 },
-    };
-    const fake = vi.fn(async () => jsonResponse(payload));
-    const result = await fetchHumanInbox(fake as unknown as typeof fetch);
-    expect(fake).toHaveBeenCalledWith('/api/human-inbox', { headers: { accept: 'application/json' } });
-    expect(result.counts.total).toBe(1);
-    expect(result.items[0].category).toBe('decision');
-  });
-
-  it('defaults every count key (incl. gate and stranded) to 0 when the body omits counts', async () => {
-    const fake = vi.fn(async () => jsonResponse({ items: [] })); // no `counts` field
-    const result = await fetchHumanInbox(fake as unknown as typeof fetch);
-    expect(result.counts).toEqual({ total: 0, decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 });
-  });
-});
 
 describe('verifyApproval', () => {
   it('POSTs cardId+channel with the session bearer', async () => {

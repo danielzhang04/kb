@@ -97,3 +97,43 @@ export function setSectionOnStack(stack: NavEntry[], section: string): NavEntry[
 export function parentEntry(stack: NavEntry[]): NavEntry | undefined {
   return stack.length > 1 ? stack[stack.length - 2] : undefined;
 }
+
+const DESTINATIONS = new Set<DestinationId>([
+  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'tasks', 'projects', 'files', 'health',
+]);
+const URL_ENTITY_VIEW: Partial<Record<Focus['kind'], DestinationId>> = {
+  agent: 'agents',
+  workflow: 'workflows',
+  card: 'tasks',
+};
+
+/** Parse the closed P1 query grammar; every invalid ingress falls back to a clean Home root. */
+export function parseNavigationSearch(search: string): NavEntry[] {
+  const fallback = rootStack('home');
+  const params = new URLSearchParams(search);
+  const keys = [...params.keys()];
+  if (keys.some((key) => key !== 'view' && key !== 'entity')) return fallback;
+  if (params.getAll('view').length !== 1 || params.getAll('entity').length > 1) return fallback;
+  const view = params.get('view');
+  if (!view || !DESTINATIONS.has(view as DestinationId)) return fallback;
+  const destination = view as DestinationId;
+  const encodedEntity = params.get('entity');
+  if (encodedEntity === null) return rootStack(destination);
+  const separator = encodedEntity.indexOf(':');
+  if (separator <= 0 || separator === encodedEntity.length - 1) return fallback;
+  const kind = encodedEntity.slice(0, separator) as Focus['kind'];
+  const id = encodedEntity.slice(separator + 1);
+  if (!(kind in URL_ENTITY_VIEW) || URL_ENTITY_VIEW[kind] !== destination) return fallback;
+  const focus = { kind, id } as Focus;
+  return [{ view: destination }, { view: destination, focus }];
+}
+
+/** Serialize the top stack entry through URLSearchParams so entity identity is encoded exactly once. */
+export function navigationSearchFor(entry: NavEntry): string {
+  const params = new URLSearchParams();
+  params.set('view', entry.view);
+  if (entry.focus && URL_ENTITY_VIEW[entry.focus.kind] === entry.view) {
+    params.set('entity', `${entry.focus.kind}:${entry.focus.id}`);
+  }
+  return `?${params.toString()}`;
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchHealth } from '../lib/healthClient.ts';
 import type { HealthResponse, HealthRow } from '../../server/health/service.ts';
+import { StopControls } from './stopControls.tsx';
 import '../styles/views/health.css';
 
 function valueFor(row: HealthRow): string {
@@ -45,7 +46,7 @@ export function Health({ response }: { response?: HealthResponse } = {}): React.
               </div>
             ))}
           </div>
-          {section.id === 'stop' ? <div className="v-health__stop-slot" data-testid="health-stop-slot" /> : null}
+          {section.id === 'stop' ? <div className="v-health__stop-slot" data-testid="health-stop-slot"><StopControls /></div> : null}
         </section>
       ))}
     </main>

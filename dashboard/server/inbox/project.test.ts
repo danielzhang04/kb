@@ -18,7 +18,7 @@ function index(cards: CardProjection[]): PlaneAIndex {
     cards: { inbox: cards },
     ledgers: {
       dispatch: { count: 0, cards: 0, byProject: {} },
-      cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
+      cost: { stepCount: 0, perModelSteps: {}, modelMix: {} } as unknown as PlaneAIndex['ledgers']['cost'],
       grades: { count: 0, rows: [] },
       activity: { count: 0, rows: [] },
     },

@@ -23,11 +23,11 @@
  */
 import { useEffect, useState } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ParsedCard } from '../../server/planeA/cards';
-import { projectHumanInbox } from '../../server/approvals/humanInbox';
+import type { CardProjection } from '../../server/planeA/cards';
 import type { DestinationId } from '../nav/config';
 import { useSse } from '../lib/sseClient';
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import { fetchInbox, type InboxResponse } from '../lib/inboxClient';
 import { ExecutionUnlock, type ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
@@ -74,7 +74,7 @@ function tierClass(tier: unknown): string {
  * `action` IS its `displayName` (planeA/cards.ts#cardTitle), already rendered by `EntityName` in the
  * column beside it. The name appears once now, and this column adds the thing it operates on.
  */
-function cardTarget(card: ParsedCard): string {
+function cardTarget(card: CardProjection): string {
   return String(card.meta.target ?? '') || '—';
 }
 
@@ -121,16 +121,18 @@ function KpiTile({
 
 function KpiTiles({
   index,
+  inbox,
   onNavigate,
 }: {
   index: PlaneAIndex;
+  inbox: InboxResponse;
   onNavigate?: (id: DestinationId) => void;
 }): React.JSX.Element {
   // The `waiting` tile counts WHO MUST ACT, not card state. `stateCount(index, 'approvals')` used to
   // supply this number and rendered 0 while seven `human-operator` gates sat in `state: inbox` — the
   // promotion step into `queue/approvals/` is not what makes something the operator's problem. This is
   // the same projection the Approvals view lists, so the tile and that view can never disagree.
-  const waiting = projectHumanInbox(index).counts.total;
+  const waiting = inbox.items.length;
   // FOUR tiles, not six: agents / running / waiting / blocked. `queued` and `steps` went — a queued
   // count is not a state anyone acts on from here, and the step count is already the first number in
   // the Usage panel below, where it belongs.
@@ -139,10 +141,10 @@ function KpiTiles({
       <KpiTile testId="kpi-agents" label="agents" value={agentCount(index)} to="agents" onNavigate={onNavigate} />
       <KpiTile testId="kpi-running" label="running" value={stateCount(index, 'working')} to="tasks" onNavigate={onNavigate} />
       <KpiTile
-        testId="kpi-approvals"
+        testId="kpi-inbox"
         label="waiting"
         value={waiting}
-        to="approvals"
+        to="inbox"
         accent={waiting > 0}
         onNavigate={onNavigate}
       />
@@ -230,17 +232,23 @@ function ResumeGroup({
 
 function RunningResume({
   index,
+  inbox,
   onNavigate,
   onNavigateTarget,
 }: {
   index: PlaneAIndex;
+  inbox: InboxResponse;
   onNavigate?: (id: DestinationId) => void;
   onNavigateTarget?: (target: NavTarget) => void;
 }): React.JSX.Element {
   const working = index.cards.working ?? [];
-  // Same projection as the KPI tile and the Approvals view — NOT `index.cards.approvals`, which is the
-  // promoted-card bucket and was empty (only a `.gitkeep`) while seven operator gates waited in `inbox`.
-  const waiting = projectHumanInbox(index).items;
+  // Same escalation-only projection as the Inbox KPI.
+  const cardsById = new Map(
+    Object.values(index.cards).flat().map((card) => [String(card.meta.id), card]),
+  );
+  const waiting = inbox.items
+    .map((item) => ({ item, card: cardsById.get(item.subject.cardId) }))
+    .filter((entry): entry is { item: typeof entry.item; card: CardProjection } => entry.card !== undefined);
   const blocked = index.cards.blocked ?? [];
   const activity = index.ledgers.activity.rows;
 
@@ -274,19 +282,19 @@ function RunningResume({
         count={waiting.length}
         emptyLabel="Nothing is waiting on you."
       >
-        {waiting.map((item) => (
+        {waiting.map(({ item, card }) => (
           <ResumeRow
-            key={String(item.card.meta.id)}
-            id={String(item.card.meta.id)}
-            entity={{ kind: 'card', displayName: item.card.displayName, shortRef: item.card.shortRef }}
-            main={cardTarget(item.card)}
-            meta={item.categoryLabel}
-            tier={item.card.meta['risk-tier']}
+            key={item.subject.cardId}
+            id={item.subject.cardId}
+            entity={{ kind: 'card', displayName: card.displayName, shortRef: card.shortRef }}
+            main={cardTarget(card)}
+            meta={item.reason}
+            tier={card.meta['risk-tier']}
             dot="idle"
-            to="approvals"
+            to="inbox"
             /* spec §5 — a waiting row opens the CARD, where the gate is answered with its work order
              * in front of the operator, not the Inbox list that shows none of it. */
-            target={cardLink(String(item.card.meta.id))}
+            target={cardLink(item.subject.cardId)}
             onNavigate={onNavigate}
             onNavigateTarget={onNavigateTarget}
           />
@@ -352,7 +360,7 @@ function RunningResume({
             key={`activity-${i}`}
             id={String(row.card ?? row.date ?? `#${i}`)}
             main={Object.values(row).filter(Boolean).join(' · ') || '—'}
-            to="activity"
+            to="home"
             onNavigate={onNavigate}
           />
         ))}
@@ -408,11 +416,13 @@ function UsagePanel({ index }: { index: PlaneAIndex }): React.JSX.Element {
  */
 export function Home({
   snapshot,
+  inboxSnapshot,
   onNavigate,
   onNavigateTarget,
   executionClient,
 }: {
   snapshot?: PlaneAIndex;
+  inboxSnapshot?: InboxResponse;
   onNavigate?: (id: DestinationId) => void;
   /** Open one exact entity. Wired by the shell to its nav stack; rows fall back to `onNavigate`. */
   onNavigateTarget?: (target: NavTarget) => void;
@@ -421,6 +431,7 @@ export function Home({
   executionClient?: ExecutionUnlockClient;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
+  const [fetchedInbox, setFetchedInbox] = useState<InboxResponse | null>(null);
   // A Plane-A delta on the hub bumps `count`; we refetch the snapshot on each tick (skipped when a
   // snapshot is supplied directly, and a no-op under jsdom where EventSource is absent).
   const { count } = useSse('/events');
@@ -449,14 +460,26 @@ export function Home({
     };
   }, [snapshot, count]);
 
+  useEffect(() => {
+    if (inboxSnapshot) return;
+    let cancelled = false;
+    fetchInbox()
+      .then((response) => { if (!cancelled) setFetchedInbox(response); })
+      .catch(() => {
+        /* retain the last verified Inbox response; the empty-safe initial state remains valid */
+      });
+    return () => { cancelled = true; };
+  }, [inboxSnapshot, count]);
+
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
+  const inbox = inboxSnapshot ?? fetchedInbox ?? { items: [] };
 
   return (
     <div className="v-home" aria-label="Home view">
-      <KpiTiles index={index} onNavigate={onNavigate} />
+      <KpiTiles index={index} inbox={inbox} onNavigate={onNavigate} />
       <div className="v-home__grid">
         <div className="v-home__col v-home__col--wide">
-          <RunningResume index={index} onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />
+          <RunningResume index={index} inbox={inbox} onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />
         </div>
         <div className="v-home__col">
           <UsagePanel index={index} />

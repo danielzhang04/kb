@@ -2,10 +2,10 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadOverride, loadPolicy } from '../routing/policy.ts';
 import { indexConnections } from '../registry/connections.ts';
-import { buildHealthPanel } from '../panels/health.ts';
-import { buildUsagePanel } from '../panels/usage.ts';
+import { buildHealthPanel } from './fleet.ts';
+import { buildUsagePanel } from './usage.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
-import type { LivenessStatus } from '../panels/health.ts';
+import type { LivenessStatus } from './fleet.ts';
 
 export type FleetRow = { kind: 'fleet'; key: `agent:${string}`; label: string; value: { status: 'working' | 'active' | 'stale' | 'idle'; role: string | null; working: boolean; lastActive: string | null }; observedAt: string; source: 'fleet' };
 export type StopRow = { kind: 'stop'; key: 'stop-file'; label: 'STOP'; value: 'present' | 'clear'; observedAt: string; source: 'stop' };

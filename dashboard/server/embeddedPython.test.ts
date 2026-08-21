@@ -22,7 +22,6 @@ import { MANAGED_ROOT_ACTIVATION_SCRIPT, WORKFLOW_CARD_OP_SCRIPT } from './write
 import { CARD_RESPOND_SCRIPT } from './write/cardRespond.ts';
 import { CARD_ROUTING_SCRIPT } from './write/cardRouting.ts';
 import { CARD_OP_SCRIPT } from './write/launch.ts';
-import { STOP_CARD_SCRIPT } from './stop/floor.ts';
 import {
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
@@ -41,7 +40,6 @@ const SCRIPTS: Record<string, string> = {
   CARD_RESPOND_SCRIPT,
   CARD_ROUTING_SCRIPT,
   CARD_OP_SCRIPT,
-  STOP_CARD_SCRIPT,
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,

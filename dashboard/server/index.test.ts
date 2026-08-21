@@ -221,12 +221,10 @@ describe('server', () => {
 
   it.each([
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
-    '/api/registry', '/api/registry/skills', '/api/registry/connections',
-    '/api/index', '/api/ledgers/slices', '/api/dag', '/api/routing',
+    '/api/index', '/api/inbox', '/api/health', '/api/dag', '/api/routing',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
-    '/api/panels/health', '/api/panels/usage', '/api/panels/atlas', '/api/panels/schedules', '/api/panels/grades-history?agent=codex-worker',
+    '/api/panels/schedules', '/api/panels/autonomy-ladder', '/api/panels/grades-history?agent=codex-worker',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
-    '/api/human-inbox', '/api/approvals', '/api/composer/sessions', '/api/composer/sessions/example',
     '/api/control/proposals', '/api/control/execution', '/api/control/runs', '/api/control/runs/example',
     '/api/control/proposals/example/revisions/example', '/api/control/runs/example/attempts/example/io',
     '/api/control/runs/example/events', '/api/control/retention/inventory', '/events',
@@ -262,7 +260,7 @@ describe('server', () => {
 
   it.each([
     ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
-    ['/api/agents/example', 404], ['/api/workflows/example', 404], ['/api/composer/sessions/example', 404],
+    ['/api/agents/example', 404], ['/api/workflows/example', 404],
     ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],
   ])('keeps matched resource %s at its normal %i after authentication', async (url, expected) => {
     app = matrixApp();
@@ -439,5 +437,32 @@ describe('Human Request orphan-sweep wiring — ON BY DEFAULT (data-only, no fil
       auditFailures: ['request-1'],
     });
     expect(line).toContain('AUDIT ROW FAILED for request-1');
+  });
+});
+
+describe('P1 route matrix', () => {
+  it('serves Inbox and Health only behind a session', async () => {
+    app = matrixApp();
+    for (const url of ['/api/inbox', '/api/health']) {
+      expect((await app.inject({ method: 'GET', url, headers: matrixHeaders })).statusCode, url).toBe(401);
+      expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(200);
+    }
+  });
+
+  it('returns authenticated 404 for retired read routes and keeps retained projections', async () => {
+    app = matrixApp();
+    for (const url of [
+      '/api/human-inbox', '/api/approvals', '/api/registry', '/api/registry/skills',
+      '/api/registry/connections', '/api/ledgers/slices', '/api/panels/health', '/api/panels/usage',
+      '/api/panels/atlas', '/api/panels/loop-status', '/api/composer/sessions', '/api/composer/sessions/example',
+    ]) {
+      expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(404);
+    }
+    for (const url of [
+      '/api/index', '/api/panels/schedules', '/api/panels/autonomy-ladder',
+      '/api/panels/grades-history?agent=codex-worker',
+    ]) {
+      expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(200);
+    }
   });
 });

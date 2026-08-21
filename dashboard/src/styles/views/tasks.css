@@ -47,7 +47,6 @@
   margin: 0;
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
 }
@@ -297,5 +296,4 @@
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
   letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
 }

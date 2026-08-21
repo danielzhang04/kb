@@ -1,8 +1,7 @@
 /**
  * Command palette (U4) — Raycast-style centered overlay opened with Ctrl/Cmd+K. It NAVIGATES and it
- * shortcuts to governed surfaces; it is NEVER a bypass. Running a command only changes the active view —
- * no command here issues a verify/launch/stop network request. Governed controls stay WebAuthn-gated on
- * their own surfaces (the emergency-stop shortcut opens Sentinel, where those controls live).
+ * contains the exact ten P1 destinations. Running a command only changes the active view; no command
+ * here issues a governed network request.
  *
  * Interaction: focus is trapped in the input while open (the list uses aria-activedescendant so the
  * input keeps focus); Arrow keys move the selection (left-border accent = the shared selection

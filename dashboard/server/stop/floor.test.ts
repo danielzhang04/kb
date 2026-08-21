@@ -1,6 +1,6 @@
 /**
- * D2.8 — files-only stop floor. Every test injects a fake `PyRunner` / `OpsGitRunner` / clock (see
- * `floor.ts`'s module docstring for why: hermetic — no test here ever shells a real `py`/`git` binary,
+ * D2.8 — files-only stop floor. Every test injects a fake `OpsGitRunner` / clock (see
+ * `floor.ts`'s module docstring for why: hermetic — no test here ever shells a real git binary,
  * touches the network, or sleeps a real timer). `writeStop` and `pauseCadence` DO touch a real
  * filesystem (a throwaway `mkdtemp` scratch dir), mirroring the established pattern in
  * `dashboard/server/audit/log.test.ts` — only the git/py subprocess boundary is faked.
@@ -14,12 +14,10 @@ import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import {
   pauseCadence,
-  requestStop,
   sigkillBackstop,
   writeStop,
-  STOP_CARD_SCRIPT,
 } from './floor.ts';
-import type { FloorDeps, OpsGitRunner, PyRunResult, PyRunner, SessionInput } from './floor.ts';
+import type { FloorDeps, OpsGitRunner, SessionInput } from './floor.ts';
 
 const SECRET = Buffer.from('floor-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
@@ -53,16 +51,6 @@ afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
-
-/** Records every invocation so tests can assert exactly what would have been shelled (or wasn't). */
-function recordingPyRunner(result: PyRunResult): { runner: PyRunner; calls: Array<{ code: string; jsonArg: string }> } {
-  const calls: Array<{ code: string; jsonArg: string }> = [];
-  const runner: PyRunner = (_repoRoot, code, jsonArg) => {
-    calls.push({ code, jsonArg });
-    return result;
-  };
-  return { runner, calls };
-}
 
 /** Records every git invocation (argv after `git`); never touches the network or a real repo. */
 function recordingGitRunner(): { runner: OpsGitRunner; calls: string[][] } {
@@ -109,98 +97,6 @@ describe('writeStop — creates the STOP file (session-gated)', () => {
 
     expect(result).toEqual({ ok: false, reason: 'unauthenticated', detail: 'expired' });
     expect(existsSync(join(repo, 'STOP'))).toBe(false);
-  });
-});
-
-describe('requestStop — transitions the card working→stop-requested→halting via the governed path', () => {
-  it('transitions the card working→stop-requested→halting via the governed path (no ValidationError)', async () => {
-    const { runner: runPy, calls: pyCalls } = recordingPyRunner({
-      exitCode: 0,
-      stdout: '{"id":"card-1","path":"queue/working/card-1.md","state":"halting"}\n',
-      stderr: '',
-    });
-    const { runner: runGit, calls: gitCalls } = recordingGitRunner();
-
-    const result = await requestStop('card-1', validSession(), { repoRoot: '/repo', runPy, runGit });
-
-    expect(result).toEqual({
-      ok: true,
-      cardId: 'card-1',
-      cardPath: 'queue/working/card-1.md',
-      state: 'halting',
-    });
-
-    // Exactly one subprocess call, shelling the governed STOP_CARD_SCRIPT — imports scripts/cards.py
-    // as a module and calls cards.transition twice (working -> stop-requested -> halting).
-    expect(pyCalls).toHaveLength(1);
-    expect(pyCalls[0].code).toBe(STOP_CARD_SCRIPT);
-    expect(STOP_CARD_SCRIPT).toContain('import cards');
-    expect(STOP_CARD_SCRIPT).toContain('cards.transition');
-    const payload = JSON.parse(pyCalls[0].jsonArg);
-    expect(payload.cardId).toBe('card-1');
-
-    // The card-state write is a coordination write: routes to `ops` via pull-rebase-push, staging
-    // only the card path that changed (never `git add .`).
-    const verbs = gitCalls.map((c) => c.slice(0, 2).join(' '));
-    expect(verbs).toEqual(['pull --rebase', 'add --', 'commit -m', 'push origin']);
-    expect(gitCalls[0]).toEqual(['pull', '--rebase', 'origin', 'ops']);
-    expect(gitCalls[1]).toEqual(['add', '--', 'queue/working/card-1.md']);
-    expect(gitCalls[3]).toEqual(['push', 'origin', 'ops']);
-  });
-
-  it('refuses without a valid session, spawning neither the card-op subprocess nor git', async () => {
-    const { runner: runPy, calls: pyCalls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
-    const { runner: runGit, calls: gitCalls } = recordingGitRunner();
-
-    const result = await requestStop('card-1', noSession(), { repoRoot: '/repo', runPy, runGit });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe('unauthenticated');
-    expect(pyCalls).toHaveLength(0);
-    expect(gitCalls).toHaveLength(0);
-  });
-
-  it('surfaces a card-op failure (e.g. illegal transition) instead of pretending success, and never touches git', async () => {
-    const { runner: runPy } = recordingPyRunner({
-      exitCode: 1,
-      stdout: '',
-      stderr: 'ValidationError: illegal transition done -> stop-requested',
-    });
-    const { runner: runGit, calls: gitCalls } = recordingGitRunner();
-
-    const result = await requestStop('card-1', validSession(), { repoRoot: '/repo', runPy, runGit });
-
-    expect(result).toEqual({
-      ok: false,
-      reason: 'card-op-failed',
-      detail: 'ValidationError: illegal transition done -> stop-requested',
-    });
-    expect(gitCalls).toHaveLength(0);
-  });
-
-  it('re-reads (pull --rebase) and retries when the push is rejected', async () => {
-    const { runner: runPy } = recordingPyRunner({
-      exitCode: 0,
-      stdout: '{"id":"card-2","path":"queue/working/card-2.md","state":"halting"}\n',
-      stderr: '',
-    });
-    const calls: string[][] = [];
-    let pushes = 0;
-    const runGit: OpsGitRunner = (_repoRoot, args) => {
-      calls.push(args);
-      if (args[0] === 'push') {
-        pushes += 1;
-        if (pushes === 1) throw new Error('! [rejected] ops -> ops (fetch first)');
-      }
-      return '';
-    };
-
-    const result = await requestStop('card-2', validSession(), { repoRoot: '/repo', runPy, runGit });
-
-    expect(result.ok).toBe(true);
-    const pushIdx = calls.map((c, i) => (c[0] === 'push' ? i : -1)).filter((i) => i >= 0);
-    expect(pushIdx).toHaveLength(2);
-    expect(calls[pushIdx[0] + 1]).toEqual(['pull', '--rebase', 'origin', 'ops']);
   });
 });
 

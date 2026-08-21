@@ -3,12 +3,13 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { kbBrowserRoutes } from './kb/routes.ts';
-import { registerRegistry } from './registry/routes.ts';
 import { registerPlaneA } from './planeA/routes.ts';
 import { registerDag } from './dag/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
+import { registerInboxRoutes } from './inbox/routes.ts';
+import { registerHealthRoutes } from './health/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
 import { registerBrainSearch } from './brain/routes.ts';
 import { registerContextLifecycle } from './contextLifecycle/routes.ts';
@@ -205,11 +206,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     scope.addHook('preHandler', requireSession(surfaceCtx.sessionConfig));
     scope.get('/api/runtime/capabilities', async () => surfaceCtx.runtimeCapabilities);
     scope.register(kbBrowserRoutes, { repoRoot });
-    registerRegistry(scope, repoRoot);
     registerPlaneA(scope, repoRoot);
     registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
     registerAgents(scope, repoRoot, undefined, surfaceCtx.runtimeCapabilities);
+    registerInboxRoutes(scope, surfaceCtx);
+    registerHealthRoutes(scope, surfaceCtx);
     // The Schedules panel's governed HEARTBEAT edit (-> work-branch PR, never auto-merged) needs the
     // SAME one-per-process session config, side-effect runners and audit sink the write surface uses.
     // Without a session config it fails closed with 503; without an audit sink it fails open and simply

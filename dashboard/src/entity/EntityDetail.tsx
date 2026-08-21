@@ -7,8 +7,7 @@
  * component over its own DTO slice, which is what makes each one testable with a literal fixture and
  * no fetch mock.
  *
- * `render()`-per-section matches the tabbed-panel convention already in `App.tsx` (the Sentinel layer
- * panels are `{ id, label, render }` too), so this introduces no new pattern.
+ * `render()`-per-section matches the tabbed-panel convention already used by the app shell.
  *
  * Visual rules (binding): the active tab and the selected anything use the exact pair learned in
  * `.mc-nav-item--active` — the 2px LEFT-BORDER marker plus `--accent-quiet`, which app.css defines as

@@ -1,19 +1,16 @@
 /**
  * D2.8 — the files-only stop floor: the dashboard-down-safe coarse-stop layer that never needs the
- * Broker (design §3.1/§6; docs/specs/2026-07-16-dashboard-design.md). Four primitives:
+ * Broker (design §3.1/§6; docs/specs/2026-07-16-dashboard-design.md). Three retained primitives:
  *
  *  - `writeStop(session, deps)` — writes the repo-root `STOP` sentinel that `scripts/preamble.py`
  *    checks at the start of every loop/task (fleet-wide, nuclear halt).
- *  - `requestStop(cardId, session, deps)` — walks a `working` card through the D1.3 steering-floor
- *    ladder (`working` -> `stop-requested` -> `halting`) via the governed `scripts/cards.py` module
- *    path (same shelling pattern as `dashboard/server/write/launch.ts`'s `CARD_OP_SCRIPT`).
  *  - `pauseCadence(name, session, deps)` — writes the `queue/paused/<name>` presence-only sentinel
  *    that `scripts/dispatch.py#due()` (D1.1) checks to suppress a single cadence's next beat.
  *  - `sigkillBackstop(pid, ladder, deps)` — the Q8 escalation ladder (60s grace -> `interrupt()`-
  *    equivalent -> SIGKILL at +30s more) for a card that never self-halts. Pure function of elapsed
  *    time against an injected clock — no real sleeps, ever.
  *
- * WHY `writeStop` NEVER touches git: unlike `requestStop`/`pauseCadence` (queue/ coordination writes,
+ * WHY `writeStop` NEVER touches git: unlike `pauseCadence` (a queue coordination write,
  * routed to `ops` per CLAUDE.md's branch rule), the `STOP` sentinel is documented elsewhere
  * (docs/plans/2026-07-15-agentic-os-m1.md's manual-verification note: "Do not commit the STOP file")
  * as a deliberately UNCOMMITTED, purely-local file. That is what makes it the dashboard-down-safe
@@ -25,14 +22,14 @@
  * already in a bad state. Every primitive here is still strictly WebAuthn-session-gated
  * (`verifySession`) — the invariant is "session-gated", not "preamble-gated".
  *
- * `requestStop` and `pauseCadence` DO route their writes to `ops` via `git pull --rebase origin ops`
+ * `pauseCadence` routes its writes to `ops` via `git pull --rebase origin ops`
  * -> stage-only-the-changed-path -> commit -> push, retrying a rejected push after re-reading state
  * (CLAUDE.md: "a rejected push means: re-read state, reconcile, retry") — same `OpsGitRunner` DI shape
  * as `dashboard/server/audit/log.ts` / `dashboard/server/trace/commit.ts`, redefined locally here per
  * this codebase's established convention of NOT sharing that type across write-surface modules.
  *
- * Hermetic by construction: `PyRunner` and `OpsGitRunner` are injected (no test ever shells a real
- * `py`/`git` binary or touches the network — see `floor.test.ts`), and `sigkillBackstop` takes an
+ * Hermetic by construction: `OpsGitRunner` is injected (no test shells a real git binary or touches
+ * the network — see `floor.test.ts`), and `sigkillBackstop` takes an
  * injected clock (`now`) and an injected `kill` function (no test ever sends a real OS signal).
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -44,8 +41,7 @@ import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
 import { isCoordinationPath } from '../write/branch.ts';
 import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
-import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
-import { readHeartbeatCadences } from '../panels/health.ts';
+import { readHeartbeatCadences } from '../schedules/heartbeat.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
@@ -69,57 +65,6 @@ function checkSession(session: SessionInput): { ok: true; claims: SessionClaims 
   return { ok: true, claims: check.claims };
 }
 
-/** Raw result of one subprocess run (`py` or `git`). */
-export interface PyRunResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
-
-/** Runs `py -3 -c <code> <jsonArg>` under `repoRoot` and returns its exit code + stdio. Injected for
- *  hermetic tests — no test ever shells a real Python interpreter or touches a real `queue/` tree. */
-export type PyRunner = (repoRoot: string, code: string, jsonArg: string) => PyRunResult;
-
-/** Default runner: shells `py -3 -c <code> <jsonArg>`, matching `write/launch.ts#defaultPyRunner`. */
-export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
-  try {
-    const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
-    return { exitCode: 0, stdout, stderr: '' };
-  } catch (err) {
-    return pythonFailureResult(err);
-  }
-};
-
-/**
- * The fixed Python payload shelled by `requestStop`. Reads `{"cardId": ...}` from `sys.argv[1]`,
- * locates the card under `queue/**`, and walks it `working` -> `stop-requested` -> `halting` using
- * `scripts/cards.py`'s own `transition()` (the sole schema/legality authority — LEGAL transitions +
- * `_validate`), never a raw queue/ byte write. Prints `{"id", "path", "state"}` as its only stdout
- * line. A card not in `working` (or otherwise illegal per `cards.LEGAL`) raises `ValidationError`,
- * which surfaces as a non-zero exit — `requestStop` reports that as `card-op-failed`, never silently
- * swallowing it.
- */
-export const STOP_CARD_SCRIPT = `
-import sys, json
-from pathlib import Path
-sys.path.insert(0, "scripts")
-import cards
-
-op = json.loads(sys.argv[1])
-queue_root = Path("queue")
-
-matches = list(queue_root.glob(f"**/{op['cardId']}.md"))
-if not matches:
-    print(f"card not found: {op['cardId']}", file=sys.stderr)
-    raise SystemExit(1)
-
-card = cards.parse(matches[0])
-cards.transition(card, "stop-requested", queue_root)
-path = cards.transition(card, "halting", queue_root)
-
-print(json.dumps({"id": card.meta["id"], "path": str(path), "state": card.meta["state"]}))
-`.trim();
-
 /** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests — the ONE
  *  shared, widened type from `write/asyncGit.ts` (unified with `audit/log.ts` / `trace/commit.ts`). */
 export type { OpsGitRunner };
@@ -131,7 +76,7 @@ export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner({ requireT
 /**
  * Stage exactly `relPaths` (never `git add .`) and commit+push to `ops` via pull-rebase-push, retrying
  * a rejected push after re-reading state (CLAUDE.md: "a rejected push means: re-read state, reconcile,
- * retry"). Shared by `requestStop` and `pauseCadence` — the two coordination writes this module makes.
+ * retry").
  */
 async function commitToOps(
   repoRoot: string,
@@ -160,7 +105,6 @@ async function commitToOps(
 /** Injectable dependencies shared by every primitive in this module. Every field is hermetic-test-safe. */
 export interface FloorDeps {
   repoRoot: string;
-  runPy?: PyRunner;
   runGit?: OpsGitRunner;
   publication?: CoordinationPublication;
   outboxRoot?: string;
@@ -186,52 +130,6 @@ export function writeStop(session: SessionInput, deps: FloorDeps): WriteStopOutc
     'utf8',
   );
   return { ok: true, path: 'STOP' };
-}
-
-/** Parse the one-line `{"id", "path", "state"}` JSON `STOP_CARD_SCRIPT` prints on success. */
-function parseStopOpStdout(stdout: string): { id: string; path: string; state: string } {
-  const lastLine = stdout.trim().split('\n').filter(Boolean).pop() ?? '';
-  return JSON.parse(lastLine) as { id: string; path: string; state: string };
-}
-
-export type RequestStopOutcome =
-  | { ok: true; cardId: string; cardPath: string; state: string }
-  | Unauthenticated
-  | { ok: false; reason: 'card-op-failed'; detail: string };
-
-/**
- * Walk `cardId` (scoped, this-card control) `working` -> `stop-requested` -> `halting` via the
- * governed `scripts/cards.py` module path (`STOP_CARD_SCRIPT`, same shelling pattern as
- * `write/launch.ts`'s `CARD_OP_SCRIPT` — `scripts/cards.py` is a MODULE, not a CLI). On success, the
- * changed card path is a coordination write and is committed to `ops` via pull-rebase-push (retrying a
- * rejected push) — never a raw `queue/` byte write from this process, and never `git add .`.
- */
-export async function requestStop(cardId: string, session: SessionInput, deps: FloorDeps): Promise<RequestStopOutcome> {
-  const gated = checkSession(session);
-  if (!gated.ok) return gated;
-
-  // The card mutation and its ops commit are ONE transaction — another writer's pull/stage in between
-  // would sweep or refuse this card's change.
-  return withOpsTransaction(async () => {
-    const runPy = deps.runPy ?? defaultPyRunner;
-    const result = runPy(deps.repoRoot, STOP_CARD_SCRIPT, JSON.stringify({ cardId }));
-    if (result.exitCode !== 0) {
-      return { ok: false, reason: 'card-op-failed', detail: result.stderr.trim() || result.stdout.trim() };
-    }
-    const { id, path, state } = parseStopOpStdout(result.stdout);
-
-    await commitToOps(
-      deps.repoRoot,
-      [path],
-      `chore(stop): ${id} working -> stop-requested -> halting`,
-      deps.runGit ?? defaultOpsGitRunner,
-      3,
-      deps.publication,
-      deps.outboxRoot,
-    );
-
-    return { ok: true, cardId: id, cardPath: path, state };
-  });
 }
 
 type PauseCadenceOutcome =
@@ -265,7 +163,7 @@ function cadencePauseTarget(
  * Write the `queue/paused/<name>` presence-only sentinel `scripts/dispatch.py#due()` (D1.1) checks to
  * suppress exactly that one cadence's next beat — files-only, never edits `HEARTBEAT.md`, and the
  * marker's contents (there are none) are never read/parsed, matching `due()`'s own contract. The write
- * is a coordination write and routes to `ops` via pull-rebase-push, same as `requestStop`.
+ * is a coordination write and routes to `ops` via pull-rebase-push.
  */
 export async function pauseCadence(name: string, session: SessionInput, deps: FloorDeps): Promise<PauseCadenceOutcome> {
   const gated = checkSession(session);

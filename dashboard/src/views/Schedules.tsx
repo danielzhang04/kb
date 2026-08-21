@@ -66,24 +66,24 @@ function drift(scheduledFor: string | null, dispatchedAt: string | null): string
 }
 
 function LastOutcome({ row }: { row: ScheduleRow }): React.JSX.Element {
-  if (row.lastRun === null) return <span className="mc-badge ap-schedules__outcome">never run</span>;
+  if (row.lastRun === null) return <span className="mc-badge schedules__outcome">never run</span>;
   const narration = row.lastRun.narration ?? `card ${row.lastRun.card} recorded`;
-  return <span className="mc-badge ap-schedules__outcome" title={narration}>last outcome</span>;
+  return <span className="mc-badge schedules__outcome" title={narration}>last outcome</span>;
 }
 
 function HistoryTimeline({ history, loading }: { history: ScheduleHistory | null | undefined; loading: boolean }): React.JSX.Element {
-  if (loading) return <p className="ap-schedules__quiet">Reading history…</p>;
-  if (history === null) return <p className="ap-schedules__quiet">History is unavailable. Nothing was changed.</p>;
-  if (!history || history.runs.length === 0) return <p className="ap-schedules__quiet">No recorded fires yet.</p>;
-  return <ol className="ap-schedules__timeline">
+  if (loading) return <p className="schedules__quiet">Reading history…</p>;
+  if (history === null) return <p className="schedules__quiet">History is unavailable. Nothing was changed.</p>;
+  if (!history || history.runs.length === 0) return <p className="schedules__quiet">No recorded fires yet.</p>;
+  return <ol className="schedules__timeline">
     {history.runs.map((fire, index) => {
       const result = fire.result ?? 'No result recorded.';
       const short = result.length > 120 ? `${result.slice(0, 120)}…` : result;
       const late = drift(fire.scheduledFor, fire.dispatchedAt);
       return <li key={`${fire.card ?? 'unknown'}-${index}`}>
-        <span className="ap-schedules__timeline-dot" aria-hidden="true" />
+        <span className="schedules__timeline-dot" aria-hidden="true" />
         <div>
-          <div className="ap-schedules__timeline-meta"><span title={fire.scheduledFor ?? undefined}>{dateRelative(fire.scheduledFor ?? fire.dispatchedAt)}</span>{late ? <span>{late}</span> : null}<span>{fire.outcome}</span></div>
+          <div className="schedules__timeline-meta"><span title={fire.scheduledFor ?? undefined}>{dateRelative(fire.scheduledFor ?? fire.dispatchedAt)}</span>{late ? <span>{late}</span> : null}<span>{fire.outcome}</span></div>
           {result.length > 120 ? <details><summary>{short}</summary><p>{result}</p></details> : <p>{short}</p>}
         </div>
       </li>;
@@ -107,9 +107,9 @@ export function SchedulesBody(): React.JSX.Element {
   const [historyLoading, setHistoryLoading] = useState<Set<string>>(() => new Set());
   const [pickerValid, setPickerValid] = useState(true);
 
-  if (!session) return <p className="ap-schedules__quiet" data-testid="ap-schedules-locked">Unlock the dashboard to read schedules.</p>;
-  if (state === 'loading' || state === 'idle') return <p className="ap-schedules__quiet">Reading schedules…</p>;
-  if (state === 'unavailable' || data === null) return <p className="ap-schedules__quiet" data-testid="ap-schedules-unavailable">Schedules are unavailable. Nothing was changed.</p>;
+  if (!session) return <p className="schedules__quiet" data-testid="schedules-locked">Unlock the dashboard to read schedules.</p>;
+  if (state === 'loading' || state === 'idle') return <p className="schedules__quiet">Reading schedules…</p>;
+  if (state === 'unavailable' || data === null) return <p className="schedules__quiet" data-testid="schedules-unavailable">Schedules are unavailable. Nothing was changed.</p>;
 
   const prefill = editFile === null ? '' : data.files[editFile] ?? '';
   const editsAvailable = data.edits?.available !== false;
@@ -143,7 +143,7 @@ export function SchedulesBody(): React.JSX.Element {
       const response = await fetch('/api/write/pause-cadence', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ name }) });
       await invalidateSessionOnGovernedAuthFailure(response);
       const result = await response.json() as { path?: string; reason?: string; error?: string };
-      setPauseMessages((old) => ({ ...old, [name]: response.ok ? `paused (${result.path ?? 'sentinel written'})` : `refused (HTTP ${response.status}): ${result.reason ?? result.error ?? 'request refused'}` }));
+      setPauseMessages((old) => ({ ...old, [name]: response.ok ? `paused (${result.path ?? 'pause marker written'})` : `refused (HTTP ${response.status}): ${result.reason ?? result.error ?? 'request refused'}` }));
       if (response.ok) setPausedNames((old) => new Set(old).add(name));
     } catch { setPauseMessages((old) => ({ ...old, [name]: 'pause request failed' })); }
   }
@@ -163,39 +163,39 @@ export function SchedulesBody(): React.JSX.Element {
     } catch { setHistories((current) => ({ ...current, [key]: null })); } finally { setHistoryLoading((current) => { const next = new Set(current); next.delete(key); return next; }); }
   }
 
-  return <div className="ap-schedules">
-    <div className="ap-schedules__intro"><h4>Schedules <span>{data.cadences.length}</span></h4><p>{data.pausedCount} paused · HEARTBEAT declarations only</p></div>
-    {data.cadences.length === 0 ? <p className="ap-schedules__quiet">No schedules are declared yet.</p> : <ul className="ap-schedules__list">
+  return <div className="schedules">
+    <div className="schedules__intro"><h4>Schedules <span>{data.cadences.length}</span></h4><p>{data.pausedCount} paused · HEARTBEAT declarations only</p></div>
+    {data.cadences.length === 0 ? <p className="schedules__quiet">No schedules are declared yet.</p> : <ul className="schedules__list">
       {data.cadences.map((row) => {
         const paused = row.paused || pausedNames.has(row.name);
         const historyKey = `${row.project}:${row.name}`;
         const historyOpen = expandedHistory.has(historyKey);
         const attention = needsYou(row.lastRun?.narration ?? null);
-        return <li className="ap-schedules__card" data-testid={`ap-schedules-row-${row.name}`} key={`${row.file}:${row.name}`}>
-          <div className="ap-schedules__card-main">
-            <div className="ap-schedules__title"><span className="ap-schedules__project">{row.project}</span><strong>{row.name}</strong>{paused ? <span className="mc-badge ap-schedules__paused" data-testid={`ap-schedules-state-${row.name}`}>paused</span> : null}</div>
-            <p className="ap-schedules__recurrence">{describeSchedule(row.schedule).label}</p>
+        return <li className="schedules__card" data-testid={`schedules-row-${row.name}`} key={`${row.file}:${row.name}`}>
+          <div className="schedules__card-main">
+            <div className="schedules__title"><span className="schedules__project">{row.project}</span><strong>{row.name}</strong>{paused ? <span className="mc-badge schedules__paused" data-testid={`schedules-state-${row.name}`}>paused</span> : null}</div>
+            <p className="schedules__recurrence">{describeSchedule(row.schedule).label}</p>
           </div>
-          <div className="ap-schedules__card-status"><span className="ap-schedules__next"><small>next window</small>{relativeScheduleWindow(nextScheduleWindow(row.schedule))}</span><LastOutcome row={row} />{attention ? <span className="mc-badge ap-schedules__needs-you">needs you</span> : null}</div>
-          <div className="ap-schedules__actions">{editsAvailable ? <button type="button" onClick={() => openEditor(row.file, row.name)}>Edit in PR</button> : null}{!paused ? <button type="button" onClick={() => void pauseCadence(row.name)} aria-label={`Pause cadence ${row.name}`}>Pause</button> : null}<button type="button" onClick={() => void toggleHistory(row)} aria-expanded={historyOpen} aria-label={`History for cadence ${row.name}`}>{historyOpen ? 'Hide history' : 'History'}</button></div>
-          {unboundedCron(row.schedule) ? <p className="ap-schedules__quiet" data-testid={`ap-schedules-subhourly-${row.name}`}>This declaration can fire many times a day, each spending tokens.</p> : null}
-          {paused ? <p className="ap-schedules__quiet">Resuming is a manual ops act (delete queue/paused/{row.name})</p> : null}
-          {pauseMessages[row.name] ? <p data-testid={`ap-schedules-pause-${row.name}`} className="ap-schedules__quiet">{pauseMessages[row.name]}</p> : null}
-          {historyOpen ? <section className="ap-schedules__history" data-testid={`ap-schedules-history-${row.name}`}><HistoryTimeline history={histories[historyKey]} loading={historyLoading.has(historyKey)} /></section> : null}
+          <div className="schedules__card-status"><span className="schedules__next"><small>next window</small>{relativeScheduleWindow(nextScheduleWindow(row.schedule))}</span><LastOutcome row={row} />{attention ? <span className="mc-badge schedules__needs-you">needs you</span> : null}</div>
+          <div className="schedules__actions">{editsAvailable ? <button type="button" onClick={() => openEditor(row.file, row.name)}>Edit in PR</button> : null}{!paused ? <button type="button" onClick={() => void pauseCadence(row.name)} aria-label={`Pause cadence ${row.name}`}>Pause</button> : null}<button type="button" onClick={() => void toggleHistory(row)} aria-expanded={historyOpen} aria-label={`History for cadence ${row.name}`}>{historyOpen ? 'Hide history' : 'History'}</button></div>
+          {unboundedCron(row.schedule) ? <p className="schedules__quiet" data-testid={`schedules-subhourly-${row.name}`}>This declaration can fire many times a day, each spending tokens.</p> : null}
+          {paused ? <p className="schedules__quiet">Resuming is a manual ops act (delete queue/paused/{row.name})</p> : null}
+          {pauseMessages[row.name] ? <p data-testid={`schedules-pause-${row.name}`} className="schedules__quiet">{pauseMessages[row.name]}</p> : null}
+          {historyOpen ? <section className="schedules__history" data-testid={`schedules-history-${row.name}`}><HistoryTimeline history={histories[historyKey]} loading={historyLoading.has(historyKey)} /></section> : null}
         </li>;
       })}
     </ul>}
-    {!editsAvailable ? <p className="ap-schedules__quiet" data-testid="ap-schedules-edit-unavailable">{data.edits?.reason}</p> : null}
-    <div className="ap-schedules__files"><span>Declaration files</span>{Object.keys(data.files).map((file) => editsAvailable ? <button type="button" key={file} onClick={() => openEditor(file)}>Edit {file} in PR</button> : <code key={file}>{file}</code>)}</div>
-    {editFile ? <div className="ap-schedules__backdrop" onMouseDown={() => setEditFile(null)}><form className="ap-schedules__sheet" role="dialog" aria-modal="true" aria-label="Edit schedule in pull request" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => void submitEdit(event)}>
-      <div className="ap-schedules__sheet-head"><div><span className="ap-schedules__project">{editFile}</span><h4>Edit schedule in PR</h4></div><button type="button" aria-label="Close schedule editor" onClick={() => setEditFile(null)}>Close</button></div>
-      <p className="ap-schedules__quiet">Choose a cadence and recurrence. The resulting change is proposed for human review.</p>
-      {cadenceForPicker ? <><label className="ap-schedules__cadence">Cadence<select aria-label="cadence" value={cadenceForPicker.name} onChange={(event) => { setSelectedCadence(event.target.value); setPickerValid(true); }}><option value={cadenceForPicker.name}>{cadenceForPicker.name}</option>{editableCadences.filter((row) => row.name !== cadenceForPicker.name).map((row) => <option key={row.name} value={row.name}>{row.name}</option>)}</select></label><RecurrencePicker key={`${editFile}:${cadenceForPicker.name}:${cadenceForPicker.schedule ?? ''}`} initialCron={cadenceForPicker.schedule} onChange={(schedule) => setContent((current) => replaceCadenceSchedule(current, cadenceForPicker.name, schedule))} onValidityChange={setPickerValid} /></> : <p className="ap-schedules__quiet">This file has no declared cadence.</p>}
-      <details className="ap-schedules__source"><summary>Review full source</summary><label>Full file contents — replaces {editFile}<textarea aria-label={`full file contents — replaces ${editFile}`} value={content} onChange={(event) => setContent(event.target.value)} /></label></details>
-      <div className="ap-schedules__sheet-actions"><button type="submit" disabled={editDisabled}>{editBusy ? 'Creating PR…' : 'Create edit PR'}</button></div>
-      {editResult ? <p className="ap-schedules__quiet" data-testid="ap-schedules-edit-result">{editResult.ok ? <>Edit proposed; merges by human only. {editResult.pr?.url ? <a href={editResult.pr.url}>Open pull request</a> : 'PR metadata unavailable.'}</> : `Edit refused: ${editResult.reason ?? 'request failed'}`}</p> : null}
+    {!editsAvailable ? <p className="schedules__quiet" data-testid="schedules-edit-unavailable">{data.edits?.reason}</p> : null}
+    <div className="schedules__files"><span>Declaration files</span>{Object.keys(data.files).map((file) => editsAvailable ? <button type="button" key={file} onClick={() => openEditor(file)}>Edit {file} in PR</button> : <code key={file}>{file}</code>)}</div>
+    {editFile ? <div className="schedules__backdrop" onMouseDown={() => setEditFile(null)}><form className="schedules__sheet" role="dialog" aria-modal="true" aria-label="Edit schedule in pull request" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => void submitEdit(event)}>
+      <div className="schedules__sheet-head"><div><span className="schedules__project">{editFile}</span><h4>Edit schedule in PR</h4></div><button type="button" aria-label="Close schedule editor" onClick={() => setEditFile(null)}>Close</button></div>
+      <p className="schedules__quiet">Choose a cadence and recurrence. The resulting change is proposed for human review.</p>
+      {cadenceForPicker ? <><label className="schedules__cadence">Cadence<select aria-label="cadence" value={cadenceForPicker.name} onChange={(event) => { setSelectedCadence(event.target.value); setPickerValid(true); }}><option value={cadenceForPicker.name}>{cadenceForPicker.name}</option>{editableCadences.filter((row) => row.name !== cadenceForPicker.name).map((row) => <option key={row.name} value={row.name}>{row.name}</option>)}</select></label><RecurrencePicker key={`${editFile}:${cadenceForPicker.name}:${cadenceForPicker.schedule ?? ''}`} initialCron={cadenceForPicker.schedule} onChange={(schedule) => setContent((current) => replaceCadenceSchedule(current, cadenceForPicker.name, schedule))} onValidityChange={setPickerValid} /></> : <p className="schedules__quiet">This file has no declared cadence.</p>}
+      <details className="schedules__source"><summary>Review full source</summary><label>Full file contents — replaces {editFile}<textarea aria-label={`full file contents — replaces ${editFile}`} value={content} onChange={(event) => setContent(event.target.value)} /></label></details>
+      <div className="schedules__sheet-actions"><button type="submit" disabled={editDisabled}>{editBusy ? 'Creating PR…' : 'Create edit PR'}</button></div>
+      {editResult ? <p className="schedules__quiet" data-testid="schedules-edit-result">{editResult.ok ? <>Edit proposed; merges by human only. {editResult.pr?.url ? <a href={editResult.pr.url}>Open pull request</a> : 'PR metadata unavailable.'}</> : `Edit refused: ${editResult.reason ?? 'request failed'}`}</p> : null}
     </form></div> : null}
-    <p className="ap-schedules__quiet">Read-only timing display. The dashboard never starts, resumes, or reschedules a run.</p>
+    <p className="schedules__quiet">Read-only timing display. The dashboard never starts, resumes, or reschedules a run.</p>
   </div>;
 }
 

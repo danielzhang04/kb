@@ -1,6 +1,5 @@
 /**
- * U2 — browser glue for the approvals surface. `fetchHumanInbox` reads the unified read-only Human
- * Inbox projection; `verifyApproval` drives `POST /api/approvals/verify` for an EXPLICIT operator
+ * Browser glue for governed card actions. `verifyApproval` drives `POST /api/approvals/verify` for an explicit operator
  * verify click (never on card selection). `fetch` is injected (mirrors the sseClient/webauthnClient DI
  * seam) so this is unit-testable with no network.
  *
@@ -9,25 +8,11 @@
  * the WebAuthn login (`authClient.ts`); absent a session the server replies 401, which is surfaced to
  * the caller rather than hidden.
  */
-import type { HumanInboxProjection } from '../../server/approvals/humanInbox';
 import type { OwnerLiveness } from '../../server/runner/liveness';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
 export type FetchLike = typeof fetch;
-
-/** Fetch the unified, read-only Human Inbox projection. */
-export async function fetchHumanInbox(fetchImpl: FetchLike = fetch): Promise<HumanInboxProjection> {
-  const res = await fetchImpl('/api/human-inbox', { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error(`GET /api/human-inbox failed: ${res.status}`);
-  const body = (await res.json()) as HumanInboxProjection;
-  return {
-    items: Array.isArray(body.items) ? body.items : [],
-    // Default must match the server HumanInboxCounts shape EXACTLY — `gate` and `stranded` were omitted,
-    // which left those tiles blank on the pre-first-fetch render.
-    counts: body.counts ?? { total: 0, decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
-  };
-}
 
 export interface VerifyResult {
   ok: boolean;

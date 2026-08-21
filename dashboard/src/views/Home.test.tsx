@@ -17,6 +17,7 @@ import type { ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import type { ExecutionPostureDto } from '../control/controlClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import type { InboxResponse } from '../lib/inboxClient';
 import { renderWithTestSession } from '../test/session';
 
 /** Render a locked Home (no stored bearer) — the default for every read-only rollup assertion. */
@@ -59,7 +60,12 @@ function card(id: string, owner: string | null, state: string, tier = 'T1'): Car
 
 const SNAPSHOT: PlaneAIndex = {
   cards: {
-    inbox: [card('id-inbox', null, 'inbox')],
+    inbox: [{
+      ...card('68a70000-wake-card', null, 'inbox'),
+      meta: { ...card('68a70000-wake-card', null, 'inbox').meta, action: 'wake-me:failed-run' },
+      body: '## Work order\n\nInspect the failed run.\n',
+      displayName: 'wake-me:failed-run',
+    }],
     blocked: [card('id-blocked', 'codex-a', 'blocked', 'T2')],
     working: [card('id-work-1', 'claude-m1', 'working', 'T2'), card('id-work-2', 'codex-a', 'working', 'T1')],
     approvals: [card('id-appr-1', 'claude-m1', 'approvals', 'T3')],
@@ -80,6 +86,19 @@ const SNAPSHOT: PlaneAIndex = {
   ],
 };
 
+const INBOX_SNAPSHOT: InboxResponse = {
+  items: [{
+    id: 'a'.repeat(64),
+    createdAt: '2026-08-21T00:00:00.000Z',
+    revision: 'b'.repeat(64),
+    kind: 'escalation',
+    subject: { cardId: '68a70000-wake-card' },
+    related: {},
+    title: 'wake-me:failed-run',
+    reason: 'Inspect the failed run.',
+  }],
+};
+
 beforeEach(() => {
   // Home self-fetches /api/index when no snapshot is passed; a never-resolving stub keeps any such
   // path on the empty-safe scaffold without real network. Snapshot-driven tests never hit it.
@@ -91,16 +110,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('Home P1 Inbox count', () => {
+  it('counts the escalation-only Inbox projection and navigates to Inbox', () => {
+    const escalation = card('68a70000-wake-card', null, 'inbox');
+    escalation.meta.action = 'wake-me:failed-run';
+    escalation.body = '## Work order\n\nInspect the failed run.\n';
+    const snapshot: PlaneAIndex = {
+      ...SNAPSHOT,
+      cards: { ...SNAPSHOT.cards, inbox: [escalation] },
+    };
+    const onNavigate = vi.fn();
+    render0(<Home snapshot={snapshot} inboxSnapshot={INBOX_SNAPSHOT} onNavigate={onNavigate} />);
+
+    expect(screen.getByTestId('kpi-inbox').textContent).toContain('1');
+    fireEvent.click(screen.getByTestId('kpi-inbox'));
+    expect(onNavigate).toHaveBeenCalledWith('inbox');
+  });
+});
+
 describe('Home view — KPI tiles', () => {
   it('renders KPI tiles from an index snapshot', () => {
-    render0(<Home snapshot={SNAPSHOT} />);
+    render0(<Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} />);
 
     // Two distinct card owners across all buckets → 2 agents.
     expect(screen.getByTestId('kpi-agents').textContent).toContain('2');
     // Two cards in `working` → running 2.
     expect(screen.getByTestId('kpi-running').textContent).toContain('2');
     // One card in `approvals` → waiting 1.
-    expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
+    expect(screen.getByTestId('kpi-inbox').textContent).toContain('1');
     expect(screen.getByTestId('kpi-blocked').textContent).toContain('1');
     // FOUR tiles only: `queued` and `steps` are gone — a queued count is not something acted on here,
     // and the step count is the Usage panel's first number.
@@ -112,7 +149,9 @@ describe('Home view — KPI tiles', () => {
 describe('Home view — running / resume hero', () => {
   it('rejects a non-OK index response and retains the empty-safe scaffold', async () => {
     let resolveFetch!: (response: Response) => void;
-    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    const fetchMock = vi.fn((input: RequestInfo | URL) => String(input) === '/api/inbox'
+      ? new Promise<Response>(() => undefined)
+      : new Promise<Response>((resolve) => { resolveFetch = resolve; }));
     vi.stubGlobal('fetch', fetchMock);
 
     expect(() => render0(<Home />)).not.toThrow();
@@ -128,7 +167,9 @@ describe('Home view — running / resume hero', () => {
 
   it('rejects a 200 index response whose ledgers cannot satisfy Home dereferences', async () => {
     let resolveFetch!: (response: Response) => void;
-    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    const fetchMock = vi.fn((input: RequestInfo | URL) => String(input) === '/api/inbox'
+      ? new Promise<Response>(() => undefined)
+      : new Promise<Response>((resolve) => { resolveFetch = resolve; }));
     vi.stubGlobal('fetch', fetchMock);
 
     expect(() => render0(<Home />)).not.toThrow();
@@ -142,8 +183,8 @@ describe('Home view — running / resume hero', () => {
     expect(screen.getByTestId('home-resume').textContent).toMatch(/Nothing running/i);
   });
 
-  it('lists working cards and the pending-approval in the resume panel', () => {
-    render0(<Home snapshot={SNAPSHOT} />);
+  it('lists working cards and the Inbox escalation in the resume panel', () => {
+    render0(<Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} />);
     const resume = screen.getByTestId('home-resume');
 
     // Rows name the card; the raw id is never rendered as text.
@@ -153,14 +194,14 @@ describe('Home view — running / resume hero', () => {
     expect([...resume.querySelectorAll('[data-testid="entity-name"]')].map((n) => n.getAttribute('title')))
       .toContain('id-work-1');
     // The approval waiting on a signature is surfaced here too.
-    expect(resume.textContent).toContain('demo:id-appr-1');
+    expect(resume.textContent).toContain('wake-me:failed-run');
     // Project STATE one-liner is reconstructed for resume.
     expect(resume.textContent).toContain('demo');
     expect(resume.textContent).toContain('Building the Plane-A indexer.');
   });
 
   it('shows calm empty states when nothing is running or pending', () => {
-    render0(<Home snapshot={{ ...SNAPSHOT, cards: {} }} />);
+    render0(<Home snapshot={{ ...SNAPSHOT, cards: {} }} inboxSnapshot={{ items: [] }} />);
     const resume = screen.getByTestId('home-resume');
     expect(resume.textContent).toMatch(/Nothing running/i);
     // Legitimately empty: `cards: {}` means there is genuinely nothing for the operator anywhere.
@@ -168,71 +209,9 @@ describe('Home view — running / resume hero', () => {
   });
 });
 
-/**
- * REGRESSION: the `waiting` KPI counted `index.cards.approvals` — card STATE — and so rendered 0 while
- * seven `human-operator` gates (six T3, including the four OAuth gates blocking all external reach)
- * waited in `state: inbox`. `queue/approvals/` held only a `.gitkeep`, so the tile was structurally
- * incapable of being non-zero. The resume hero then printed "No approvals pending — nothing needs you."
- *
- * These snapshots contain NOTHING in `approvals`, so the old state-keyed code renders 0 and the false
- * empty state; every assertion below fails against it.
- */
-function gate(id: string, action: string, owner: string | null = 'human-operator', tier = 'T3'): CardProjection {
-  return {
-    meta: { id, project: 'kb', action, target: '.', 'risk-tier': tier, owner, state: 'inbox' },
-    body: '## Work order\n\nClear the gate.\n',
-    displayName: action,
-    shortRef: 1,
-  };
-}
-
-function snapshotOf(cards: CardProjection[]): PlaneAIndex {
-  const grouped: Record<string, CardProjection[]> = {};
-  for (const value of cards) (grouped[String(value.meta.state)] ??= []).push(value);
-  return { ...SNAPSHOT, cards: grouped, orgStates: [] };
-}
-
-describe('Home view — counts who must act, not card state', () => {
-  it('counts human-operator inbox gates in the waiting KPI even with an empty approvals bucket', () => {
-    render0(<Home snapshot={snapshotOf([
-      gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
-      gate('6a5d6b23-05204b15', 'approve:oauth-gate-g2'),
-      gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
-    ])} />);
-
-    expect(screen.getByTestId('kpi-approvals').textContent).toContain('3');
-  });
-
-  it('counts a gate on the owner limb alone', () => {
-    // `decide:*` matches no other predicate — only `owner: human-operator` can surface it.
-    render0(<Home snapshot={snapshotOf([gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing')])} />);
-    expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
-  });
-
-  it('counts a gate on the approve:* limb alone, with an agent owner', () => {
-    render0(<Home snapshot={snapshotOf([gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1', 'codex-worker')])} />);
-    expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
-  });
-
-  it('lists the gates in the resume hero and never claims nothing is waiting', () => {
-    render0(<Home snapshot={snapshotOf([
-      gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
-      gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
-    ])} />);
-    const resume = screen.getByTestId('home-resume');
-
-    expect(resume.textContent).not.toContain('6a5d6b23-12ddfee2');
-    expect(resume.textContent).toContain('approve:oauth-gate-g1');
-    expect(resume.textContent).toContain('decide:budget-gate-measures-nothing');
-    // The false empty state must be impossible while anything at all awaits the human.
-    expect(resume.textContent).not.toMatch(/Nothing is waiting on you/i);
-    expect(resume.textContent).not.toMatch(/nothing needs you/i);
-  });
-});
-
 describe('Home view — usage, never spend', () => {
   it('surfaces model mix but never renders a dollar figure anywhere', () => {
-    const { container } = render0(<Home snapshot={SNAPSHOT} />);
+    const { container } = render0(<Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} />);
 
     const usage = screen.getByTestId('home-usage');
     expect(usage.textContent).toContain('claude-sonnet-5');
@@ -247,7 +226,7 @@ describe('Home view — usage, never spend', () => {
 describe('Home view — navigation', () => {
   it('fires onNavigate with the entity id when a running row is activated', () => {
     const onNavigate = vi.fn();
-    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
+    render0(<Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} onNavigate={onNavigate} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Open demo:id-work-1/i }));
     expect(onNavigate).toHaveBeenCalledWith('tasks');
@@ -256,28 +235,28 @@ describe('Home view — navigation', () => {
   it('opens the exact CARD when a deep-link handler is wired, not just its destination', () => {
     const onNavigate = vi.fn();
     const onNavigateTarget = vi.fn();
-    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />);
+    render0(<Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />);
 
     // spec §5 — a waiting-on-you row lands on the card that needs the operator, with its work order.
-    fireEvent.click(screen.getByRole('button', { name: /Open demo:id-appr-1/i }));
-    expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: 'id-appr-1' } });
+    fireEvent.click(screen.getByRole('button', { name: /Open wake-me:failed-run/i }));
+    expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: '68a70000-wake-card' } });
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it('renders a row name exactly once — the name column and the detail column are not the same text', () => {
-    render0(<Home snapshot={SNAPSHOT} />);
+    render0(<Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} />);
     const row = screen.getByRole('button', { name: /Open demo:id-work-1/i });
     expect(row.textContent?.match(/demo:id-work-1/g)).toHaveLength(1);
     // The second column carries what the card ACTS ON, which is a different fact.
     expect(row.textContent).toContain('docs/x.md');
   });
 
-  it('fires onNavigate to approvals from the Waiting KPI tile', () => {
+  it('fires onNavigate to Inbox from the Waiting KPI tile', () => {
     const onNavigate = vi.fn();
-    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
+    render0(<Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} onNavigate={onNavigate} />);
 
-    fireEvent.click(screen.getByTestId('kpi-approvals'));
-    expect(onNavigate).toHaveBeenCalledWith('approvals');
+    fireEvent.click(screen.getByTestId('kpi-inbox'));
+    expect(onNavigate).toHaveBeenCalledWith('inbox');
   });
 });
 
@@ -285,7 +264,7 @@ describe('Home view — execution status stays', () => {
   it('keeps the execution panel and has no launch form beside it', async () => {
     persistSession({ token: 'fake-session-token', expiresAt: Date.now() + 60_000 });
     await renderWithTestSession(
-      <Home snapshot={SNAPSHOT} executionClient={executionClient(LOCKED_EXECUTION)} />,
+      <Home snapshot={SNAPSHOT} inboxSnapshot={INBOX_SNAPSHOT} executionClient={executionClient(LOCKED_EXECUTION)} />,
     );
 
     // The panel survives the sweep, but as a STATUS readout. Execution arms with the sign-in, so

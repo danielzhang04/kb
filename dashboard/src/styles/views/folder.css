@@ -264,7 +264,6 @@
   cursor: pointer;
   color: var(--fg-dim);
   font-size: var(--text-xs);
-  text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 

@@ -29,7 +29,7 @@ import { respondToCard, resolveCardPath } from './cardRespond.ts';
 import type { RespondVerb } from './cardRespond.ts';
 import { parseValidatedCard } from '../planeA/cards.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
-import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
+import { writeStop, pauseCadence } from '../stop/floor.ts';
 import { setOverride, clearOverride } from './routingOverride.ts';
 import type { OverrideScope } from './routingOverride.ts';
 import { setCardRouting, clearCardRouting } from './cardRouting.ts';
@@ -286,7 +286,6 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       { token: session?.token, config: ctx.sessionConfig },
       {
         repoRoot: ctx.repoRoot,
-        runPy: ctx.runPy,
         runGit: ctx.opsGit,
         publication: ctx.coordinationPublication,
         outboxRoot: ctx.outboxRoot,
@@ -304,40 +303,6 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
   });
 
-  scope.post('/api/write/stop-card', { preHandler }, async (req, reply: FastifyReply) => {
-    const session = verifiedSession(req);
-    const body = asRecord(req.body);
-    const cardId = str(body.cardId);
-    // LOW (same class as rerun): reject glob-metachar / traversal card ids before the id reaches
-    // floor.ts's queue_root.glob(f"**/{cardId}.md").
-    if (!CARD_ID_RE.test(cardId)) {
-      return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
-    }
-    const outcome = await requestStop(
-      cardId,
-      { token: session?.token, config: ctx.sessionConfig },
-      {
-        repoRoot: ctx.repoRoot,
-        runPy: ctx.runPy,
-        runGit: ctx.opsGit,
-        publication: ctx.coordinationPublication,
-        outboxRoot: ctx.outboxRoot,
-      },
-    );
-    // FINDING 3: audit only on a successful state transition.
-    if (outcome.ok) {
-      await audit(ctx.repoRoot, {
-        action: 'stop-card',
-        owner: session?.claims.sub,
-        cardId,
-        result: `halting:${outcome.state}`,
-      }, auditOpts);
-      return reply.code(200).send({ ok: true, cardId: outcome.cardId, state: outcome.state });
-    }
-    if (outcome.reason === 'unauthenticated') return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
-    return reply.code(500).send({ error: outcome.reason, detail: outcome.detail });
-  });
-
   scope.post('/api/write/pause-cadence', { preHandler }, async (req, reply: FastifyReply) => {
     const session = verifiedSession(req);
     const body = asRecord(req.body);
@@ -347,7 +312,6 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       { token: session?.token, config: ctx.sessionConfig },
       {
         repoRoot: ctx.repoRoot,
-        runPy: ctx.runPy,
         runGit: ctx.opsGit,
         publication: ctx.coordinationPublication,
         outboxRoot: ctx.outboxRoot,

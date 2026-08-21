@@ -1,5 +1,5 @@
 .recurrence-picker { display: grid; gap: var(--space-3); min-inline-size: 0; margin: 0; padding: var(--space-1) 0 0; border: 0; color: var(--fg-primary); }
-.recurrence-picker legend { padding: 0 var(--space-1); color: var(--fg-faint); font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; }
+.recurrence-picker legend { padding: 0 var(--space-1); color: var(--fg-faint); font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-eyebrow); }
 .recurrence-picker__preset, .recurrence-picker__weekly { display: grid; gap: var(--space-1); color: var(--fg-primary); font-size: var(--text-xs); }
 .recurrence-picker select { width: fit-content; max-width: 100%; border-color: var(--border-strong); }
 .recurrence-picker select:focus-visible { border-color: var(--focus); }

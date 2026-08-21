@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { WAKE_ACTION } from '../approvals/cardActions.ts';
 import type { CardProjection } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 
@@ -18,8 +19,6 @@ export interface InboxProjection {
 }
 
 const CARD_ID_PREFIX = /^[0-9a-f]{8}-/;
-const WAKE_ACTION = /^wake-me(?::|$)/i;
-
 function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
