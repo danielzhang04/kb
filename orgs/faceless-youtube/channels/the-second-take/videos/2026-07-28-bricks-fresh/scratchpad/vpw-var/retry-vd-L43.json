@@ -1,0 +1,14 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [{
+    "kind": "scene",
+    "shot": "L43",
+    "name": "L43-vd-retry1",
+    "defect": "content",
+    "replace": {
+      "from": "Beside four slate locker bays, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands at the single emptied bay with one pale-pink notice; three occupied coat hooks remain under winter light across dark concrete.",
+      "to": "Beyond four slate locker bays, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands at the single emptied bay within a bounded rear worker group; three occupied coat hooks remain while the broad near corridor stays empty under winter light."
+    }
+  }]
+}

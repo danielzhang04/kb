@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L48.png": {
+   "canonical_sha256": "cfe05fdc16d60bcfafef4f171b35f442d1046ef8b6818ff4d39fbc5a033f3735",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: L47 composition, banker acting, contract, table, chair, model and light hold; one exact 20 MILLION brass weight is the sole visible delta, clean for chaining.",
+   "date": "2026-08-21"
+  }
+ }
+}

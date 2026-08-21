@@ -1,0 +1,203 @@
+[
+  {
+    "name": "L33",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`miniscribe-rep` stands before a towering stack of boxed drives on a deep factory floor; broad skylight crosses cream cartons, pale concrete, and dark steel bays, making production scale the whole argument.",
+    "payload": "`miniscribe-rep` stands before a towering stack of boxed drives on a deep factory floor; broad skylight crosses cream cartons, pale concrete, and dark steel bays, making production scale the whole argument.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--33e8c57f.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--33e8c57f.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--33e8c57f REUSED"
+  },
+  {
+    "name": "L35",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set. The SECOND image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\nAtop a stepped summit of drive cartons marked '1988', `miniscribe-rep` `action-powerstance` `expr-delighted` overlooks full production lanes; diffuse roof light crosses cream boxes, pale concrete, and steel bays.",
+    "payload": "Atop a stepped summit of drive cartons marked '1988', `miniscribe-rep` `action-powerstance` `expr-delighted` overlooks full production lanes; diffuse roof light crosses cream boxes, pale concrete, and steel bays.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364 REUSED; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L41",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\n`ibm-suit` `action-armscrossed` `expr-deadpan` stands beside empty outbound racks; cold skylight crosses paper-white doors, slate trusses, and bare steel while the long loading corridor exposes the order cut.",
+    "payload": "`ibm-suit` `action-armscrossed` `expr-deadpan` stands beside empty outbound racks; cold skylight crosses paper-white doors, slate trusses, and bare steel while the long loading corridor exposes the order cut.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d.png",
+        "role": "figure",
+        "character": "ibm-suit"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`ibm-suit` STEP-1 fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d REUSED"
+  },
+  {
+    "name": "L43",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `line-worker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\nBeside four slate locker bays, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands at the single emptied bay with one pale-pink notice; three occupied coat hooks remain under winter light across dark concrete.",
+    "payload": "Beside four slate locker bays, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands at the single emptied bay with one pale-pink notice; three occupied coat hooks remain under winter light across dark concrete.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf.png",
+        "role": "figure",
+        "character": "line-worker"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`line-worker` STEP-1 fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf REUSED"
+  },
+  {
+    "name": "L44",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\nBeside an abandoned hard-drive casing, `terry-johnson` `action-slump` `expr-crestfallen` occupies an open factory doorway; cold high-window light crosses steel-blue benches and paper-white doors, with the exit beyond.",
+    "payload": "Beside an abandoned hard-drive casing, `terry-johnson` `action-slump` `expr-crestfallen` occupies an open factory doorway; cold high-window light crosses steel-blue benches and paper-white doors, with the exit beyond.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--action-slump--expr-crestfallen--c692247f.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--action-slump--expr-crestfallen--c692247f.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`terry-johnson` STEP-1 fig-terry-johnson--action-slump--expr-crestfallen--c692247f REUSED"
+  },
+  {
+    "name": "L47",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `hq-banker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set. The SECOND image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\nAt a walnut bank table, `hq-banker` `action-present` `expr-deadpan` presents a cream contract marked 'HAMBRECHT & QUIST' toward a small MiniScribe factory model; high-window light crosses brown wool, brass chain, walnut, teal steel, and one vacant chair.",
+    "payload": "At a walnut bank table, `hq-banker` `action-present` `expr-deadpan` presents a cream contract marked 'HAMBRECHT & QUIST' toward a small MiniScribe factory model; high-window light crosses brown wool, brass chain, walnut, teal steel, and one vacant chair.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-hq-banker--action-present--expr-deadpan--31d3064d.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-hq-banker--action-present--expr-deadpan--31d3064d.png",
+        "role": "figure",
+        "character": "hq-banker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`hq-banker` STEP-1 fig-hq-banker--action-present--expr-deadpan--31d3064d REUSED; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L50",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `qt-wiles`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set.\n\nAt the head of a MiniScribe boardroom, `qt-wiles` `action-powerstance` `expr-smug` occupies a low brass dais; hard skylight crosses his steel-grey suit, gold tie clip, walnut panels, teal windows, and the empty table below.",
+    "payload": "At the head of a MiniScribe boardroom, `qt-wiles` `action-powerstance` `expr-smug` occupies a low brass dais; hard skylight crosses his steel-grey suit, gold tie clip, walnut panels, teal windows, and the empty table below.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-qt-wiles--action-powerstance--expr-smug--56775123.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-qt-wiles--action-powerstance--expr-smug--56775123.png",
+        "role": "figure",
+        "character": "qt-wiles"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`qt-wiles` STEP-1 fig-qt-wiles--action-powerstance--expr-smug--56775123 REUSED"
+  }
+]

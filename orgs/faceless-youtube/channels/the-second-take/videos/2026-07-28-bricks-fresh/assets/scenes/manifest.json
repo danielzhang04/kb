@@ -519,6 +519,304 @@
    "parent_depth": 0,
    "lineage": 0,
    "notes": "Scene uncalled; failed STEP-1 card `fig-ibm-suit--5ca0c6c1`; no scene digest or provenance"
+  },
+  {
+   "shot_id": "L33",
+   "file": "assets/scenes/L33.png",
+   "technique": "(d) One-shot single-character -- reviewed miniscribe-rep STEP-1 figure",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--33e8c57f.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L33.png`; SHA-256 `6e4269a18ba60a1b93a6af0e432722987087897d114f43b8b2d46e61df4e7e8a`; `spec-vd-wave3B-resume.json`; clean on first scene call"
+  },
+  {
+   "shot_id": "L34",
+   "file": "assets/scenes/L34.png",
+   "technique": "(c) Character-free scene -- cast-free composition with lettering exemplar",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L34.png`; SHA-256 `f52b5579a188d6503c0cce82fcc2b80a9edab4b24a2cc10cba8ded253ee31493`; `spec-vd-wave3B.json`; exact `125 MILLION`; clean on first generation"
+  },
+  {
+   "shot_id": "L35",
+   "file": null,
+   "technique": "(d) One-shot single-character -- reviewed miniscribe-rep STEP-1 figure",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+   ],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "Wave 3B parked after one scene call: detailed undeclared workers occupy the production lanes; the positive conveyor-row retry required a new STEP-1 card after the nine-card cap was exhausted."
+   ],
+   "retry_cause": "Initial scene invented detailed production-lane workers; the positive conveyor-row replacement could not pass Forge without reminting its STEP-1 card.",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L35.png`; SHA-256 `8a3bb5f5ec6dd54787b3ddd624b172074c08b3fc46caab2c5cb5d8e60c0f5d9e`; `spec-vd-wave3B-resume.json`; called once and honestly parked"
+  },
+  {
+   "shot_id": "L36",
+   "file": null,
+   "technique": "(d) One-shot single-character -- scene uncalled",
+   "seeds": [],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "rig: defect",
+    "Wave 3B parked uncalled: the demanded presenting/delighted miniscribe-rep STEP-1 card rendered three arms; the nine-card allowance was exhausted."
+   ],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Scene uncalled after failed STEP-1 card `fig-miniscribe-rep--action-present--expr-delighted--0c18ff22`; no scene digest or provenance"
+  },
+  {
+   "shot_id": "L37",
+   "file": "assets/scenes/L37.png",
+   "technique": "(c) Character-free scene -- cast-free stage base with lettering exemplar",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L37.png`; SHA-256 `eec76c0f2433769628a623f2ec62cc30bde34ea27238a531cd346ca8defa8e90`; `spec-vd-wave3B.json`; exact `600 MILLION`; clean stage parent"
+  },
+  {
+   "shot_id": "L38",
+   "file": null,
+   "technique": "(e) Seeded delta-chain -- L37 parent with lettering and style exemplars",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L37.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "Wave 3B parked after one retry: the L37 camera and lettering hold, but the brass bellows still reads collapsed rather than tall with visibly stretched accordion ribs."
+   ],
+   "retry_cause": "Initial inflation delta was too subtle; retry replaced it with a tall, fully stretched accordion-rib mechanism, which still failed in pixels.",
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "D call output `visual-kit/_staging/L38-vd-retry1.png`; SHA-256 `4210edc5712925f467b4b2ecec3b73868eab7f52d91da4c1d0f0444e848251f3`; `spec-vd-retry-L38.json`; called twice and honestly parked"
+  },
+  {
+   "shot_id": "L39",
+   "file": null,
+   "technique": "(e) Seeded delta-chain -- scene uncalled",
+   "seeds": [],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "Wave 3B parked uncalled: immediate parent L38 was not verified after its one retry, so the Reddit-weight doubt delta could not run."
+   ],
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 1,
+   "notes": "Scene uncalled because immediate parent L38 remained parked after its one retry; no scene digest or provenance"
+  },
+  {
+   "shot_id": "L40",
+   "file": "assets/scenes/L40.png",
+   "technique": "(c) Character-free scene -- cast-free composition with lettering exemplar",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "Initial scene invented MiniScribe carton lettering; retry replaced the loading-bay mechanism with solid kraft cartons on outbound steel racks.",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L40-vd-retry1.png`; SHA-256 `9eef0ba690c65df3a9587f4abb40378e0e30b293bbd51f072eb0371c7b177943`; `spec-vd-retry-L40.json`; exact `1984`; verified after one retry"
+  },
+  {
+   "shot_id": "L41",
+   "file": "assets/scenes/L41.png",
+   "technique": "(d) One-shot single-character -- reviewed ibm-suit STEP-1 figure",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L41.png`; SHA-256 `1ba29504dce91af4385f6194cab9fd9939b25170f96f01dbaff8da1ca16ca42b`; `spec-vd-wave3B-resume.json`; clean on first scene call"
+  },
+  {
+   "shot_id": "L42",
+   "file": "assets/scenes/L42.png",
+   "technique": "(c) Character-free scene -- cast-free composition",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L42.png`; SHA-256 `51cfb78918459a83d93d2726be9b00be2f1f18e38fecbf5368bb51664c15183b`; `spec-vd-wave3B.json`; clean on first generation"
+  },
+  {
+   "shot_id": "L43",
+   "file": null,
+   "technique": "(d) One-shot single-character -- reviewed line-worker STEP-1 figure with bounded rear worker-group intent",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf.png"
+   ],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "Wave 3B parked after one scene call: pixels show one foreground line-worker rather than a bounded rear worker group with an empty near corridor; the positive geometry retry required a new STEP-1 card after the cap."
+   ],
+   "retry_cause": "Initial scene lost the authored rear-group and clear-corridor geometry; the positive locker-bay replacement could not pass Forge without reminting its STEP-1 card.",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L43.png`; SHA-256 `dd2e70672d9d49abacc187641d1123c46cefe041269162106e69ea2afd85e1d9`; `spec-vd-wave3B-resume.json`; called once and honestly parked"
+  },
+  {
+   "shot_id": "L44",
+   "file": null,
+   "technique": "(d) One-shot single-character -- reviewed Terry Johnson STEP-1 stage base",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--action-slump--expr-crestfallen--c692247f.png"
+   ],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "Wave 3B parked after one scene call: Terry Johnson's slump and crestfallen acting read, but the frame invents an EXIT sign; the positive doorway retry required a new STEP-1 card after the cap."
+   ],
+   "retry_cause": "Initial scene invented EXIT lettering; the positive open loading-doorway replacement could not pass Forge without reminting its STEP-1 card.",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L44.png`; SHA-256 `3061f2491415b390ecbc2aebc11e979718174579d051d885f60229bc5d319eac`; `spec-vd-wave3B-resume.json`; called once and honestly parked"
+  },
+  {
+   "shot_id": "L45",
+   "file": null,
+   "technique": "(e) Seeded delta-chain -- scene uncalled",
+   "seeds": [],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "Wave 3B parked uncalled: immediate parent L44 was not verified, so its founder-exit delta could not run."
+   ],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "Scene uncalled because immediate parent L44 was parked; no scene digest or provenance"
+  },
+  {
+   "shot_id": "L46",
+   "file": null,
+   "technique": "(d) One-shot single-character -- scene uncalled after ACT BOUNDARY hard cut",
+   "seeds": [],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: defect",
+    "Wave 3B parked uncalled after the ACT BOUNDARY hard cut: the demanded slump/worried miniscribe-rep STEP-1 card remained upright; the nine-card allowance was exhausted."
+   ],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Scene uncalled after failed STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--307850b2`; hard cut preserved; no scene digest or provenance"
+  },
+  {
+   "shot_id": "L47",
+   "file": "assets/scenes/L47.png",
+   "technique": "(d) One-shot single-character -- reviewed hq-banker STEP-1 stage base with lettering exemplar",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-hq-banker--action-present--expr-deadpan--31d3064d.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L47.png`; SHA-256 `4e68a73200751b6d736d09f0fd3b4e3fb291e0bdfbb6a3f79033d18306211ae3`; `spec-vd-wave3B-resume.json`; exact `HAMBRECHT & QUIST`; clean stage parent"
+  },
+  {
+   "shot_id": "L48",
+   "file": "assets/scenes/L48.png",
+   "technique": "(e) Seeded delta-chain -- L47 parent plus canonical hq-banker and lettering exemplar",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L47.png",
+    "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "D call output `visual-kit/_staging/L48.png`; SHA-256 `cfe05fdc16d60bcfafef4f171b35f442d1046ef8b6818ff4d39fbc5a033f3735`; `spec-vd-L48.json`; L47 held and exact `20 MILLION` weight added as sole delta"
+  },
+  {
+   "shot_id": "L49",
+   "file": "assets/scenes/L49.png",
+   "technique": "(e) Seeded delta-chain -- L48 parent plus canonical hq-banker and lettering exemplar",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L48.png",
+    "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 1,
+   "notes": "D call output `visual-kit/_staging/L49.png`; SHA-256 `506a3e2aa3a0116a94a87715b1bd78002318dc213b315a2a4652add0ba2a373b`; `spec-vd-L49.json`; L48 held and brass track added as sole delta"
+  },
+  {
+   "shot_id": "L50",
+   "file": "assets/scenes/L50.png",
+   "technique": "(d) One-shot single-character -- reviewed qt-wiles STEP-1 figure",
+   "seeds": [
+    "channels/the-second-take/visual-kit/_staging/fig-qt-wiles--action-powerstance--expr-smug--56775123.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "D call output `visual-kit/_staging/L50.png`; SHA-256 `7d27cc802c8ecd0684fbc2f1fece647157964636561006d97e0c477a080d829a`; `spec-vd-wave3B-resume.json`; clean on first scene call"
   }
  ]
 }

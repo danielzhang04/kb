@@ -1,0 +1,112 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--33e8c57f.png": {
+   "canonical_sha256": "5cd588b78b68586d381f173e1c638713f4ea33dc875c5af205d2d33ddc2ba10c",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Miniscribe identity, pinned tan jacket, neutral acting, squat proportion, clean hands, outline and flat-cel register match the canonical.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364.png": {
+   "canonical_sha256": "8b66f9fe4ce8b34bbadcc5d9b4507420ca09b42ba7c5d8b0c28fc8413abfc199",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Miniscribe identity and costume hold; hands-on-hips power stance and delighted face read clearly; figure remains squat and on-register.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-miniscribe-rep--action-present--expr-delighted--0c18ff22.png": {
+   "canonical_sha256": "ac35cebe94c0b5943aef992622e4f21d5f71798a3555d561e1c6ede56f169e9c",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "fail",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: the presenting card has two downward arms plus a third raised presenting arm; three-arm anatomy breaks the authored action and family rig, so it cannot seed L36.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d.png": {
+   "canonical_sha256": "5eb40e08a57b7c93b8a59f8f23541017b06cc48913656a30a794f18ad5032add",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: IBM identity, navy pinstripe three-piece suit, crossed arms, deadpan register, squat proportion and flat-cel linework all hold.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf.png": {
+   "canonical_sha256": "054e646dbb25689ae4f179379723cb1f352dabf145ef6a3821f469f1b7136bc9",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: line-worker identity and coat hold; the paper is held at both side edges, crestfallen acting is clear, and hands/proportion/render remain on-rig.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-terry-johnson--action-slump--expr-crestfallen--c692247f.png": {
+   "canonical_sha256": "fbadc77252245f7162cd3872214bc98ad15fb1e4a6cacd1a351085016227632b",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Terry identity, white shirt and tie, slumped shoulders and crestfallen eye-line read clearly; hands, proportion, outline and render hold.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried--307850b2.png": {
+   "canonical_sha256": "441901444cb67bbbae09a6cdc66ae04c6800776dc8ea7d643872f0a9e7145d52",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "fail",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: worried expression and Miniscribe identity hold, but the body stands upright with level shoulders instead of carrying the registered slump; it cannot seed L46.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-hq-banker--action-present--expr-deadpan--31d3064d.png": {
+   "canonical_sha256": "2d715c406c672028e70259d86ac715a72049acd4e567ad6bb999253d014e5cd9",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: HQ banker identity, brown chalk-stripe three-piece, brass chain, presenting arm and restrained half-lidded deadpan register all hold on the family rig.",
+   "date": "2026-08-21"
+  },
+  "_staging/fig-qt-wiles--action-powerstance--expr-smug--56775123.png": {
+   "canonical_sha256": "3e54bb0fb5f2e0b08c1176271439e39cbd53543e1251cfb0a12c8d3786c38397",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass",
+    "texture-strip": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: Q.T. Wiles identity, steel-grey suit and tie clip, hands-on-hips power stance, smug face, squat proportion and flat-cel register all hold.",
+   "date": "2026-08-21"
+  }
+ }
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [{
+    "kind": "scene",
+    "shot": "L40",
+    "name": "L40-vd-retry1",
+    "defect": "content",
+    "replace": {
+      "from": "A brass timeline reel curls backward to a warehouse calendar marked '1984' above a MiniScribe loading bay full of outbound racks; cold winter skylight crosses slate trusses, paper-white doors, and bare steel.",
+      "to": "A brass timeline reel curls backward to a warehouse calendar marked '1984' above outbound steel racks of solid kraft cartons; cold winter skylight crosses slate trusses, paper-white doors, and bare steel."
+    }
+  }]
+}

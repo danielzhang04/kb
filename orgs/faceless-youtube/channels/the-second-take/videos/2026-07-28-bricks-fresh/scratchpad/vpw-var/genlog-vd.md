@@ -205,3 +205,74 @@ Retry prompts also retained authored no-growth against vb: L03 `37≤39`, L04 `4
 ### Ops cost row (five tab-separated fields; boss writes ledger)
 
 Variant D doctrine wave 3A: 25 calls, 15/18 verified, 3/18 parked; 16 base/parent-regen calls, 4 retries, 5 STEP-1 cards; conservative $0.134/call, provider-table $0.039/call; genlog scratchpad/vpw-var/genlog-vd.md on claude/bricks-variant-vd.	gemini-3-pro-image	gemini-3-pro-image	bricks variant D wave 3A 17 shots	3.350
+
+## Wave 3B (L33–L50)
+
+- Date: `2026-08-21`
+- Branch: `claude/bricks-variant-vd`
+- Video: `2026-07-28-bricks-fresh`
+- Requested model: `gemini-3-pro-image`
+- Responding model: recorded per call
+- Image size: `1K`
+- Aspect: `16:9`
+- Conservative rate: `$0.134/call`
+- Provider-table comparator: `$0.039/call`
+- Base allowance: `18`
+- Retry allowance: `18` (one re-authored retry per failing shot)
+- STEP-1 figure-card allowance: up to `9`, only when demanded by the dry run
+- Maximum calls: `45`
+- Conservative ceiling: `$6.030`
+- Provider comparator ceiling: `$1.755`
+- Spend gate: PASSED — Daniel commissioned this wave on `2026-08-21`.
+- Upstream authority: `shots.json` at HEAD is the lint-passed, critic-passed D fragment L01–L50; this window is L33–L50 only.
+- Dry run: 13 non-delta scenes + 9 STEP-1 cards; zero `unregistered slug` lines; each figure card resolves from its registry canonical; 16:9/1K scenes and 2:3/1K cards; no API calls.
+- Holds: revenue-comparison L37→L38→L39; founder-exit L44→L45; bank-rescue L47→L48→L49. Every child waits for its immediate verified/promoted parent; L45→L46 is a hard cut.
+
+### Wave 3B calls
+
+| call | shot | base/retry/parent-regen | spec | seed roles | requested model | responding model | $0.134 cost | $0.039 comparator | output | fresh-eyes verdict | retry cause/park reason |
+| ---: | --- | --- | --- | --- | --- | --- | ---: | ---: | --- | --- | --- |
+| 63 | L33 figure card | base | `spec-vd-wave3B.json` | canonical=`miniscribe-rep`; STEP-1=`fig-miniscribe-rep--33e8c57f` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-miniscribe-rep--33e8c57f.png` | verified figure card | Miniscribe identity, costume, neutral acting and rig clean; L33 scene initially skipped pending P3 review |
+| 64 | L34 | base | `spec-vd-wave3B.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L34.png` | verified | exact `125 MILLION`; clean balance causality |
+| 65 | L35 figure card | base | `spec-vd-wave3B.json` | canonical=`miniscribe-rep`; pose=`action-powerstance`; expression=`expr-delighted`; STEP-1=`fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364.png` | verified figure card | identity/costume, power stance, delighted register and rig clean; L35 scene initially skipped pending P3 review |
+| 66 | L36 figure card | base | `spec-vd-wave3B.json` | canonical=`miniscribe-rep`; pose=`action-present`; expression=`expr-delighted`; STEP-1=`fig-miniscribe-rep--action-present--expr-delighted--0c18ff22` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-miniscribe-rep--action-present--expr-delighted--0c18ff22.png` | defect — three-arm anatomy | L36 scene uncalled and parked; nine-card allowance exhausted |
+| 67 | L37 | base | `spec-vd-wave3B.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L37.png` | verified parent | exact `600 MILLION`; clean collapsed-bellows base |
+| 68 | L40 | base | `spec-vd-wave3B.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L40.png` | failed; retried at call 83 | invented MiniScribe carton lettering |
+| 69 | L41 figure card | base | `spec-vd-wave3B.json` | canonical=`ibm-suit`; pose=`action-armscrossed`; expression=`expr-deadpan`; STEP-1=`fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d.png` | verified figure card | IBM identity, navy pinstripe suit, crossed arms, deadpan acting and rig clean |
+| 70 | L42 | base | `spec-vd-wave3B.json` | style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L42.png` | verified | factory conveyor-to-cliff causality clean |
+| 71 | L43 figure card | base | `spec-vd-wave3B.json` | canonical=`line-worker`; pose=`hold-paper-by-sides`; expression=`expr-crestfallen`; STEP-1=`fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf.png` | verified figure card | identity/costume, paper hold, crestfallen acting and rig clean |
+| 72 | L44 figure card | base | `spec-vd-wave3B.json` | canonical=`terry-johnson`; pose=`action-slump`; expression=`expr-crestfallen`; STEP-1=`fig-terry-johnson--action-slump--expr-crestfallen--c692247f` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-terry-johnson--action-slump--expr-crestfallen--c692247f.png` | verified figure card | Terry identity/costume, slumped shoulders, crestfallen acting and rig clean |
+| 73 | L46 figure card | base | `spec-vd-wave3B.json` | canonical=`miniscribe-rep`; pose=`action-slump`; expression=`expr-worried`; STEP-1=`fig-miniscribe-rep--action-slump--expr-worried--307850b2` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-miniscribe-rep--action-slump--expr-worried--307850b2.png` | defect — pose fidelity | L46 scene uncalled and parked; upright body lost the registered slump; nine-card allowance exhausted |
+| 74 | L47 figure card | base | `spec-vd-wave3B.json` | canonical=`hq-banker`; pose=`action-present`; expression=`expr-deadpan`; STEP-1=`fig-hq-banker--action-present--expr-deadpan--31d3064d` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-hq-banker--action-present--expr-deadpan--31d3064d.png` | verified figure card | HQ identity/costume, present gesture, restrained deadpan register and rig clean |
+| 75 | L50 figure card | base | `spec-vd-wave3B.json` | canonical=`qt-wiles`; pose=`action-powerstance`; expression=`expr-smug`; STEP-1=`fig-qt-wiles--action-powerstance--expr-smug--56775123` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/fig-qt-wiles--action-powerstance--expr-smug--56775123.png` | verified figure card | Q.T. identity/costume, power stance, smug acting and rig clean |
+| 76 | L33 | base | `spec-vd-wave3B-resume.json` | STEP-1=`fig-miniscribe-rep--33e8c57f` (reviewed) | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L33.png` | verified | scale-dominant cartons and identity clean |
+| 77 | L35 | base | `spec-vd-wave3B-resume.json` | STEP-1=`fig-miniscribe-rep--action-powerstance--expr-delighted--f0de2364` (reviewed); lettering | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L35.png` | parked | undeclared detailed workers; re-authored retry blocked by STEP-1 remint after card cap |
+| 78 | L41 | base | `spec-vd-wave3B-resume.json` | STEP-1=`fig-ibm-suit--action-armscrossed--expr-deadpan--c258436d` (reviewed) | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L41.png` | verified | IBM identity, crossed arms, deadpan register and empty racks clean |
+| 79 | L43 | base | `spec-vd-wave3B-resume.json` | STEP-1=`fig-line-worker--hold-paper-by-sides--expr-crestfallen--9c2bfecf` (reviewed) | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L43.png` | parked | group/near-corridor geometry failed; re-authored retry blocked by STEP-1 remint after card cap |
+| 80 | L44 | base | `spec-vd-wave3B-resume.json` | STEP-1=`fig-terry-johnson--action-slump--expr-crestfallen--c692247f` (reviewed) | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L44.png` | parked | invented EXIT sign; re-authored retry blocked by STEP-1 remint after card cap |
+| 81 | L47 | base | `spec-vd-wave3B-resume.json` | STEP-1=`fig-hq-banker--action-present--expr-deadpan--31d3064d` (reviewed); lettering | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L47.png` | verified parent | exact `HAMBRECHT & QUIST`; set and acting clean |
+| 82 | L50 | base | `spec-vd-wave3B-resume.json` | STEP-1=`fig-qt-wiles--action-powerstance--expr-smug--56775123` (reviewed) | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L50.png` | verified | Q.T. identity, power stance and smug acting clean |
+| 83 | L40 | retry | `spec-vd-retry-L40.json` | lettering=`lettering-marker-italic`; style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L40-vd-retry1.png` | verified | invented MiniScribe carton lettering replaced by solid-kraft outbound racks |
+| 84 | L38 | parent-regen | `spec-vd-L38.json` | parent=`assets/scenes/L37.png` sha256=`eec76c0f…a8e90`; lettering; style-anchor | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L38.png` | failed; retried at call 85 | expansion remained too subtle |
+| 85 | L38 | retry | `spec-vd-retry-L38.json` | parent=`assets/scenes/L37.png` sha256=`eec76c0f…a8e90`; lettering; style-anchor | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L38-vd-retry1.png` | parked | bellows still reads collapsed after the tall stretched-rib replacement |
+| 86 | L48 | parent-regen | `spec-vd-L48.json` | parent=`assets/scenes/L47.png` sha256=`4e68a732…11ae3`; canonical=`hq-banker`; lettering | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L48.png` | verified parent | exact `20 MILLION` weight is the sole delta |
+| 87 | L49 | parent-regen | `spec-vd-L49.json` | parent=`assets/scenes/L48.png` sha256=`cfe05fdc…f3735`; canonical=`hq-banker`; lettering | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L49.png` | verified | brass track is the sole delta; parent composition and lettering hold |
+
+### Wave 3B closure
+
+- Calls: `25` total = `11` standalone/stage-base scene calls + `3` parent-regens + `2` one-shot retries + `9` demanded STEP-1 figure cards. Allowance unused: `20/45` total calls and `16/18` scene retries; the `9/9` card cap was used.
+- Verified `10/18`: `L33`, `L34`, `L37`, `L40` (retry: invented carton lettering replaced by solid-kraft outbound racks), `L41`, `L42`, `L47`, `L48`, `L49`, `L50`.
+- Parked `8/18`: `L35` undeclared workers (positive retry blocked by post-cap STEP-1 remint); `L36` uncalled, three-arm card; `L38` bellows still collapsed after its one retry; `L39` uncalled, parent L38 not verified; `L43` group/corridor geometry failed (positive retry blocked by post-cap STEP-1 remint); `L44` invented EXIT sign (positive retry blocked by post-cap STEP-1 remint); `L45` uncalled, parent L44 not verified; `L46` uncalled, slump card remained upright.
+- Figure cards minted: `9`; clean `L33`, `L35`, `L41`, `L43`, `L44`, `L47`, `L50`; defective `L36` and `L46`.
+- Copied comparison frames: `14` D-called bytes with matching scene-manifest path and SHA-256; uncalled `L36`, `L39`, `L45`, `L46` remain absent.
+- Cost: `25 × $0.134 = $3.350`; provider-table comparator `25 × $0.039 = $0.975`; the `$6.030` conservative wave ceiling remained intact.
+- Cumulative D manifest: `87` calls; `$11.658` conservative; `$3.393` provider-table; `39` verified / `11` parked across L01–L50.
+
+### Ops cost row (five tab-separated fields; boss writes ledger)
+
+Variant D doctrine wave 3B: 25 calls, 10/18 verified, 8/18 parked; 14 base/parent-regen calls, 2 retries, 9 STEP-1 cards; conservative $0.134/call, provider-table $0.039/call; genlog scratchpad/vpw-var/genlog-vd.md on claude/bricks-variant-vd.	gemini-3-pro-image	gemini-3-pro-image	bricks variant D wave 3B 18 shots	3.350
+
+## Boss grading note — wave 3A (2026-08-21)
+
+- Independent Claude vision check (claude-sonnet-5, read-only, pixels only) concurred with 12/15 `verified` rulings: no brick visible in L01/L03, no gibberish or unrequested humans, L05→L06 / L07→L08→L09 / L16→L17 each hold set+camera with exactly one visible change, L07–L09 crowd bounded beyond the rail with the near lane clear, identities correct for `pc-boxy`/`rival-pc`/`miniscribe-rep`, `HARD DRIVE` lettering exact on L25/L26.
+- Dissents: **L22** — the near zone is boxed in by foreground carton stacks (narrow centre gap, not the clear lane the crowd rule requires); **L30** — `expr-thinking` reads as neutral/startled, no pose cue; **L03** — trophy-on-ledger reads as ironic but not legibly "funniest" in a 2 s cold read. L22 and L30 retain their unspent single retry → wave 3C; L03 stays verified as a taste call for the board.

@@ -1,0 +1,14 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [{
+    "kind": "scene",
+    "shot": "L38",
+    "name": "L38-vd-retry1",
+    "defect": "content",
+    "replace": {
+      "from": "the collapsed brass bellows beneath the left weight now stands fully expanded",
+      "to": "the brass bellows beneath the left pan now rises tall with every accordion rib stretched apart"
+    }
+  }]
+}

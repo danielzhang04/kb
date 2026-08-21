@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L47.png": {
+   "canonical_sha256": "4e68a73200751b6d736d09f0fd3b4e3fb291e0bdfbb6a3f79033d18306211ae3",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: HQ banker presents the exact HAMBRECHT & QUIST contract toward the factory model; the vacant chair, walnut-brass set, identity, deadpan acting and rig are clean for chaining.",
+   "date": "2026-08-21"
+  }
+ }
+}

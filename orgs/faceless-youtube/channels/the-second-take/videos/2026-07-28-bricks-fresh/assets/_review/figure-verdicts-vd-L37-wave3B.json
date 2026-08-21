@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L37.png": {
+   "canonical_sha256": "eec76c0f2433769628a623f2ec62cc30bde34ea27238a531cd346ca8defa8e90",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes pixels: exact 600 MILLION brass weight rests on the collapsed bellows in the left pan; the right pan is empty, the factory palette holds, and the frame is a valid clean parent.",
+   "date": "2026-08-21"
+  }
+ }
+}
