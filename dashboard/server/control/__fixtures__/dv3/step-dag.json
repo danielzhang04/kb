@@ -1,0 +1,4 @@
+{
+  "stages": ["research", "write"],
+  "edges": [["research", "write"]]
+}
