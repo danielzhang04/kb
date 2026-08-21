@@ -55,3 +55,5 @@
 - HAZARD: `cd <scratchpad> && py -3 "$(git rev-parse --show-toplevel)/scripts/codex_dispatch.py"` resolves to `C:\Program Files\Git\scripts\...` — always the absolute script path, as the skill says.
 - RULING (Daniel agreed): schedules are store-first, repo-mirrored — control store is the live authority, `HEARTBEAT.md` seeds import once, a sweeper-cadence agent mirrors store → repo by PR (bookkeeping, not a gate); a cadence arms only once its entry is on protected `main`.
 - REMAINS: Daniel has not yet read the final spec (P0 gate); P1 plan next; P3 needs a `kb-shell` uid on the VM before Daniel's CLI logins; P5 blocked on the movement helper install.
+
+- RULE (Daniel, 2026-08-20): branch prefix follows the TERMINAL running the boss — a Claude Code boss cuts `claude/<name>`, a codex CLI boss cuts `codex/<name>`; the git `user.name` in this checkout (`codex-boss`) is stale for a Claude terminal and must not drive the choice. v3 branch renamed `codex/dashboard-v3` → `claude/dashboard-v3` (same commits, 9e391633).

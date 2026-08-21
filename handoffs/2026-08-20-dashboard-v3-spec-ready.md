@@ -3,10 +3,10 @@
 **Topic:** Daniel's dashboard UX/IA overhaul ("operating should be easier and cleaner"). One
 brainstorm session produced FINAL product decisions, an inspiration board, a grounded umbrella spec
 + binding UX rules (codex-deep authored, codex-deep adversarially reviewed, fixed), a task list
-P0–P7, and branch `codex/dashboard-v3`. Next terminal picks up at **P0 gate → P1 plan**.
+P0–P7, and branch `claude/dashboard-v3`. Next terminal picks up at **P0 gate → P1 plan**.
 
 ## Where things are
-- Branch `codex/dashboard-v3` (cut from `main` 64fb3d02): `9e391633` — spec, rules, research.
+- Branch `claude/dashboard-v3` (cut from `main` 64fb3d02): `9e391633` — spec, rules, research.
 - Spec: `docs/specs/2026-08-20-dashboard-v3-design.md` (~600 lines; §10 = phases with plan/scope/
   routes/deletions/verify/adversarial/risks each). Rules: `dashboard/docs/ux-rules.md` (13 rules).
   Research: `docs/research/2026-08-20-dashboard-v3-inspiration.md`. Board (screens + palette
