@@ -1,0 +1,35 @@
+[
+  {
+    "name": "L10-vd-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured while using THIS frame's authored locked hues and temperature; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nOne beige computer carton rests nose-down on a tilted oak display ramp aimed at a plain open shop door; clear daylight crosses cream board and bare timber, while an unmarked glass frontage opens into one long empty aisle.",
+    "payload": "One beige computer carton rests nose-down on a tilted oak display ramp aimed at a plain open shop door; clear daylight crosses cream board and bare timber, while an unmarked glass frontage opens into one long empty aisle.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette saturation); PLATE \u2014 place-first frame, bible descriptor, no content anchor; RETRY overlay from `L10`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "On a tilted oak display ramp, one beige computer carton points toward an open shop door; clear daylight crosses the cream box and timber shelves while a long empty aisle makes the release analogy read without a logo.",
+      "to": "One beige computer carton rests nose-down on a tilted oak display ramp aimed at a plain open shop door; clear daylight crosses cream board and bare timber, while an unmarked glass frontage opens into one long empty aisle."
+    }
+  }
+]

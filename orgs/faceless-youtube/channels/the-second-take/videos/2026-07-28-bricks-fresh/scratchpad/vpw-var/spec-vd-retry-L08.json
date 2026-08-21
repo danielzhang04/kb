@@ -1,0 +1,43 @@
+[
+  {
+    "name": "L08-vd-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nThe established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, bounded 1980s shoppers in bright knit tops and jeans face the computers.",
+    "payload": "The established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, bounded 1980s shoppers in bright knit tops and jeans face the computers.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L07.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L07.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L07.png",
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place; RETRY overlay from `L08`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "The established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, a bounded shopper group now faces the computers beneath the rear mezzanine.",
+      "to": "The established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, bounded 1980s shoppers in bright knit tops and jeans face the computers."
+    }
+  }
+]

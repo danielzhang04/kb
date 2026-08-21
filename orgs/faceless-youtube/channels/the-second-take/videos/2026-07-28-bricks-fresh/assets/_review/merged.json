@@ -5,7 +5,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, R1 retry): 1980s home den at night -- TV glow, bookshelf, starlit window, walnut desk with an open-flap carton (reddish interior peeking) beside an unlit beige home computer. No shop counter/register/arcade cabinet (R1 fixed the prior gen's retail-room drift). No unrequested text. Flat-cel line register on-recipe."
+  "why": "Variant D fresh-eyes: oversized beige hard-drive carton dominates the walnut desk, with a clay-red rectangular corner at the seam and the tiny unlit computer held far back; fidelity and style clean, no unrequested text."
  },
  {
   "id": "L02",
@@ -13,7 +13,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, R1 retry): bright skylit mall corridor, brass rail foreground, small crowd gathered around a distant arcade cabinet. All figures now hold the plain round-head/dot-eye crowd rig throughout (R1 fixed the prior gen's off-rig detailed faces/hair). Cobalt/peach/cream palette on-recipe, no unrequested text."
+  "why": "Variant D fresh-eyes: distant arcade cabinet glows below extravagant 1980s wigs in a long mall corridor, with amber light, brass trim, empty terrazzo foreground, and receding shop fronts; fidelity and style clean."
  },
  {
   "id": "L03",
@@ -21,7 +21,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, clean on first gen): hard-drive carton displayed like a trophy on a polished plinth, a small red-clay corner pressing through the lower seam; teal filing bays and tall office windows recede behind. No unrequested text; palette on-recipe."
+  "why": "Variant D fresh-eyes after one retry: trophy-like hard-drive carton on a walnut corporate plinth now has one rigid clay-red rectangular corner forcing a straight-edged seam opening; fidelity and style clean."
  },
  {
   "id": "L04",
@@ -29,7 +29,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, R1 retry): `pc-boxy` at a middle-distance scale facing the suspicious carton in a long electronics aisle, foreground cable coil. R1 fixed a HARD rig defect (fingered hands rendered on the first gen, violating the no_hands canonical) -- the retry frame shows only stubby armless-handed limbs, matching the registry costume exactly."
+  "why": "Variant D fresh-eyes after one retry: pc-boxy holds the requested middle-distance occupancy while facing the suspicious carton in the long electronics aisle; canonical silhouette, skeptical expression, fidelity, and style clean."
  },
  {
   "id": "L05",
@@ -37,7 +37,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, R1 retry): oak counter with beige home computer, joystick, and a desk calendar reading '1983' verbatim (DSG letter-by-letter pass). R1 fixed the first gen's invented illegible window signage -- windows now read plain/unmarked glass as authored. Green wall panels, cobalt/cream/walnut palette on-recipe."
+  "why": "Variant D fresh-eyes: broad oak counter, beige home computer, and desk calendar read '1983' verbatim; tall-window daylight crosses cream plastic, green panels, and wood grain. Fidelity, style, lettering, and applicable rig rows clean; valid parent for pc-arrival."
  },
  {
   "id": "L06",
@@ -45,7 +45,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, clean on first gen): squat home computer at the near end of a long exhibition bench opposite a tiny circuit-board sprout; cream-and-teal showroom with roof trusses dwarfing the machine. No unrequested text; palette on-recipe."
+  "why": "Variant D fresh-eyes: established L05 counter, 1983 calendar, daylight, panels, and computer hold while the computer is now half-unpacked in a straw-lined shipping crate; single delta, fidelity, style, and lettering clean."
  },
  {
   "id": "L07",
@@ -53,7 +53,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, R1 retry): delta-chain BASE for L08 -- fully stocked shelf wall of plain beige PC boxes under a skylight, brass queue rail crossing the foreground, cool blue/cream/walnut palette. R1 fixed the first gen's unauthored shopper crowd and fabricated box labels/price tags -- retry frame is the required empty, unlabeled plate."
+  "why": "Variant D fresh-eyes: fully stocked beige PC shelf wall under a milky skylight, empty brass queue lane across pale terrazzo, and long plaster bays; fidelity/style clean and the unoccupied near zone makes this a valid retail-shelf parent."
  },
  {
   "id": "L09",
@@ -61,7 +61,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, R1 retry): shopper crowd behind the brass rail in plain 1980s clothing (denim jacket, overalls, perms, pastel sweaters) toward the few remaining PC boxes. R1 fixed a HARD fidelity defect (first gen rendered an anachronistic Victorian-era crowd -- top hats, bonnets, long gowns) -- retry frame is era-correct on the plain crowd rig."
+  "why": "Variant D fresh-eyes: L08 shop, bounded rear crowd, brass rail, empty near lane, camera, and simplified 1980s crowd rig hold while the shelf wall becomes mostly bare; single delta, fidelity, and style clean."
  },
  {
   "id": "L10",
@@ -69,7 +69,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, clean on first gen): lone beige computer carton tilted on a display ramp, poised toward a distant open shop door with arcade cabinets visible beyond; cropped price rail, long shelves, blue daylight. No logo, no unrequested text."
+  "why": "Variant D fresh-eyes after one retry: lone beige computer carton tilts toward a distant plain open shop door with unmarked glass; the retry removed gibberish storefront text and fidelity/style are clean."
  },
  {
   "id": "L11",
@@ -77,7 +77,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, clean on first gen): compact hard drive on a broad repair bench like a small vault, coiled cables foreground, layered tool stations, high green-tinted windows onto a city skyline. No unrequested text; palette on-recipe."
+  "why": "Variant D fresh-eyes after one retry: exposed hard-disk chassis, platter, and connector read clearly on the broad repair bench instead of a safe/toaster silhouette; fidelity and style clean, no unrequested text."
  },
  {
   "id": "L12",
@@ -85,7 +85,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, clean on first gen): beige computer and separate hard-drive unit on a cutaway worktable joined by one thick copper conduit; tall green-and-cream workshop with receding benches. No unrequested text; palette on-recipe."
+  "why": "Variant D fresh-eyes: beige computer and separate hard-drive unit sit on the cutaway worktable joined by one thick copper conduit, with the tall workshop receding behind; fidelity and style clean."
  },
  {
   "id": "L13",
@@ -189,7 +189,7 @@
   "s": "clean",
   "r": "clean",
   "worst": "clean",
-  "why": "fresh-eyes (variant-B re-gen, clean on first gen, delta off the R1-corrected L07 base): SAME held shelf/rail/skylight/palette; the shelf wall is now mostly bare with a few boxes remaining -- the single authored depletion delta, world persists, no unrequested text."
+  "why": "Variant D fresh-eyes after one retry: held skylit shop and stocked wall persist; a bounded rear group in visibly 1980s knit tops, jeans, and jackets appears beyond the brass rail while the near lane remains empty. Crowd scale, simplified rig, fidelity, and style clean."
  },
  {
   "id": "L25",

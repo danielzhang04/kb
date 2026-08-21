@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L07.png": {
+   "canonical_sha256": "6a0617b8d5aea89ff3f4848945ae2696045f361b07b45e3b94e3d14c98363bff",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  }
+ }
+}

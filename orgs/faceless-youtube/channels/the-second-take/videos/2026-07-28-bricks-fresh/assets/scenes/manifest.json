@@ -743,25 +743,25 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "content (re-authored prompt, see genlog)",
+   "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L01.png`; SHA-256 `5007643cedc275ebf6b52d8ae589806209cc3f355b61b9e57fc32f7a4281066b`; `spec-vd-wave1.json`; style tile; clean on first D generation"
   },
   {
    "shot_id": "L02",
    "file": "assets/scenes/L02.png",
-   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "technique": "(c) Character-free scene -- cast-free composition",
    "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "content (re-authored prompt, see genlog)",
+   "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "no cast — the scene composes from the place; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L02.png`; SHA-256 `9e7b802eda8eb0a385dc73d0859bb13293280ff79359a16bb64544855d9c2469`; `spec-vd-wave1.json`; style tile; clean on first D generation"
   },
   {
    "shot_id": "L03",
@@ -773,25 +773,26 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call rendered the red corner as a round bulb; one re-authored retry specified a rigid rectangular corner and straight-edged seam opening",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L03-vd-retry1.png`; SHA-256 `e4c58d7dd4b314e2d497a8a59c373eadf823c586b7fe77e8c81101e458a6e902`; `spec-vd-retry-L03.json`; style tile; verified after one retry"
   },
   {
    "shot_id": "L04",
    "file": "assets/scenes/L04.png",
    "technique": "(d) One-shot single-character -- pc-boxy (no_hands canonical)",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
+    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "content (re-authored prompt, see genlog)",
+   "retry_cause": "First D call made pc-boxy foreground-dominant; one re-authored retry constrained the character to middle-distance occupancy",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "`pc-boxy` no_hands -> canonical; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L04-vd-retry1.png`; SHA-256 `7dd2aea824a8b2d718bc16eda1c4f190bee3cb1ee68d99104b741b2e28c066bc`; `spec-vd-retry-L04.json`; pc-boxy canonical plus skeptical expression; verified after one retry"
   },
   {
    "shot_id": "L05",
@@ -804,25 +805,27 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "content (re-authored prompt, see genlog)",
+   "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L05.png`; SHA-256 `dca7190cf62f68750bd6c4f9b407f25306e6891fbf927e4f9172ec53b913061b`; `spec-vd-wave1.json`; lettering exemplar plus style tile; clean on first D generation"
   },
   {
    "shot_id": "L06",
    "file": "assets/scenes/L06.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
+   "technique": "(e) Seeded delta-chain -- one changed element off the held parent",
    "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
     "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "D call output `visual-kit/_staging/L06.png`; SHA-256 `fd543c089405bfad906f7cec0b1aa7437718737a24af2e1641f0ef439a135bdb`; `spec-vd-L06.json`; verified parent L05 SHA-256 `dca7190cf62f68750bd6c4f9b407f25306e6891fbf927e4f9172ec53b913061b`; changed element: computer half-unpacked in a straw-lined shipping crate; clean on first D generation"
   },
   {
    "shot_id": "L07",
@@ -834,25 +837,26 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "content (re-authored prompt, see genlog)",
+   "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L07.png`; SHA-256 `6a0617b8d5aea89ff3f4848945ae2696045f361b07b45e3b94e3d14c98363bff`; `spec-vd-wave1.json`; style tile; clean on first D generation"
   },
   {
    "shot_id": "L09",
    "file": "assets/scenes/L09.png",
-   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "technique": "(e) Seeded delta-chain -- one changed element off the held parent (crowd)",
    "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L08.png",
     "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": "content (re-authored prompt, see genlog)",
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "no cast — the scene composes from the place; ONE re-authored retry (R1) applied, see scratchpad/vpw-var/genlog.md; forge dispatches NO style suffix (variant-B doctrine)"
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 1,
+   "notes": "D call output `visual-kit/_staging/L09.png`; SHA-256 `dfd16fd4b4c2c6cf271d3d049448ac21c7592b607e4c868417ffc1a8ae7386df`; `spec-vd-L09.json`; verified parent L08 SHA-256 `3c3fa9ae3ba298a231f9ed7b5accb3b261948efee30ecbcb33c1862ab45b93ae`; changed element: shelf wall now mostly bare; clean on first D generation"
   },
   {
    "shot_id": "L10",
@@ -864,10 +868,10 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call added gibberish storefront text; one re-authored retry specified a plain doorway and unmarked glass",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L10-vd-retry1.png`; SHA-256 `9fa47ef041b3e3dee6abf2cc9b9e074e8b649aa18dfd3d0a525a4d6c032718b2`; `spec-vd-retry-L10.json`; style tile; verified after one retry"
   },
   {
    "shot_id": "L11",
@@ -879,10 +883,10 @@
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call read as a safe or toaster; one re-authored retry specified exposed hard-disk chassis, platter, and connector",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L11-vd-retry1.png`; SHA-256 `eb2b54cac2032743bcc09b22b2af0652c2bf4f49b0068cf06ed562fe10331b3d`; `spec-vd-retry-L11.json`; style tile; verified after one retry"
   },
   {
    "shot_id": "L12",
@@ -897,7 +901,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); PLATE — place-first frame, bible descriptor, no content anchor; clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L12.png`; SHA-256 `8447744bb18ea6d622d326e59f7a75f0c8a663b1a531fa28dec188509cd0748f`; `spec-vd-wave1.json`; style tile; clean on first D generation"
   },
   {
    "shot_id": "L13",
@@ -1085,18 +1089,18 @@
   {
    "shot_id": "L08",
    "file": "assets/scenes/L08.png",
-   "technique": "(e) Seeded delta-chain -- one changed element off the stage's held base/parent",
+   "technique": "(e) Seeded delta-chain -- one changed element off the held parent (crowd)",
    "seeds": [
     "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L07.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "First D call rendered Victorian clothing; one re-authored retry used positive 1980s knit-top/jeans period cues",
    "parent_depth": 1,
    "lineage": 1,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette saturation); clean on first gen; forge dispatches NO style suffix (variant-B doctrine)"
+   "notes": "D call output `visual-kit/_staging/L08-vd-retry1.png`; SHA-256 `3c3fa9ae3ba298a231f9ed7b5accb3b261948efee30ecbcb33c1862ab45b93ae`; `spec-vd-retry-L08.json`; verified parent L07 SHA-256 `6a0617b8d5aea89ff3f4848945ae2696045f361b07b45e3b94e3d14c98363bff`; crowd exemplar plus Forge section 2d; verified after one retry"
   },
   {
    "shot_id": "L25",

@@ -1,0 +1,41 @@
+[
+  {
+    "name": "L04-vd-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-skeptical` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's.\n\nFar down a fluorescent electronics aisle, `pc-boxy` `expr-skeptical` occupies the middle distance facing one suspicious carton on a cream display table; steel shelf bays, a cable coil, and a bright rear door make the quiet reaction secondary to the store.",
+    "payload": "Far down a fluorescent electronics aisle, `pc-boxy` `expr-skeptical` occupies the middle distance facing one suspicious carton on a cream display table; steel shelf bays, a cable coil, and a bright rear door make the quiet reaction secondary to the store.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical; RETRY overlay from `L04`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "faces the suspicious carton on a cream display table; a cable coil, steel shelf bays, and a bright rear door hold the restrained reaction.",
+      "to": "occupies the middle distance facing one suspicious carton on a cream display table; steel shelf bays, a cable coil, and a bright rear door make the quiet reaction secondary to the store."
+    }
+  }
+]

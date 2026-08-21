@@ -168,21 +168,23 @@ Only L08–L09 uses `figures.crowd: true`. The mass is the generalized buying de
 
 ## Per-shot no-growth review against `claude/bricks-variant-vb`
 
+Rows L03, L04, L08, L10, L11 reflect the Task-3 single re-authored retries (see genlog-vd.md); all remain ≤ vb.
+
 Authored words use `len(still_prompt.split())`. Assembled-provider deltas are computed separately with dry `Kit.prompt_for("style", ..., hold=bool(shot_cast), figures=...)`; positive assembled changes reflect changed cast/crowd routing and do not excuse authored growth.
 
 | id | vb authored | vd authored | authored delta | exact lower-value text removed | exact replacement fact | assembled-provider delta | verdict |
 | --- | ---: | ---: | ---: | --- | --- | ---: | --- |
 | L01 | 78 | 36 | -42 | `A television's soft glow, a bookshelf` | `cool night beyond` | -36 | PASS |
 | L02 | 71 | 34 | -37 | `Cobalt, peach, and cream convey the era` | `amber cabinet light crosses brass trim and empty terrazzo foreground` | -112 | PASS |
-| L03 | 39 | 34 | -5 | `displayed like a trophy` | `cool fluorescent light crosses teal steel filing bays` | -5 | PASS |
-| L04 | 61 | 32 | -29 | `a beige boxy computer character with only short stubby arms and legs and NO hands or fingers` | `fluorescent electronics aisle` | -28 | PASS |
+| L03 | 39 | 37 | -2 | `displayed like a trophy` | `cool fluorescent light crosses teal steel filing bays` | -5 | PASS |
+| L04 | 61 | 40 | -21 | `a beige boxy computer character with only short stubby arms and legs and NO hands or fingers` | `fluorescent electronics aisle` | -28 | PASS |
 | L05 | 45 | 32 | -13 | `cobalt, cream, and walnut retail scene` | `tall windows cast pale daylight across cream plastic, green wall panels, and the wood grain` | -13 | PASS |
 | L06 | 39 | 29 | -10 | `vast cream-and-teal showroom` | `half-unpacked in a straw-lined shipping crate` | -10 | PASS |
 | L07 | 62 | 33 | -29 | `cool blue, cream, and walnut` | `milky skylight` across `pale terrazzo` and brass | -29 | PASS |
-| L08 | 30 | 29 | -1 | `once-full shelf wall is now mostly bare` | `bounded shopper group now faces the computers beneath the rear mezzanine` | +74 | PASS |
+| L08 | 30 | 29 | -1 | `once-full shelf wall is now mostly bare` | `bounded 1980s shoppers in bright knit tops and jeans face the computers` | +74 | PASS |
 | L09 | 62 | 32 | -30 | `simple round-head crowd rig` recitation | `shopper group beyond the brass rail` plus `near lane empty` | -30 | PASS |
-| L10 | 46 | 38 | -8 | `blue daylight arcade` | `clear daylight crosses the cream box and timber shelves` | -8 | PASS |
-| L11 | 36 | 27 | -9 | `inside a deep working world` | `high green-glass windows cast cool light across coiled cables` | -9 | PASS |
+| L10 | 46 | 38 | -8 | `blue daylight arcade` | `clear daylight crosses cream board and bare timber` | -8 | PASS |
+| L11 | 36 | 33 | -3 | `inside a deep working world` | `high green-glass windows cast cool light across coiled cables` | -9 | PASS |
 | L12 | 42 | 36 | -6 | `mechanism reads as a scene rather than a card` | `hard drive nested inside its chassis` | -11 | PASS |
 | L13 | 38 | 27 | -11 | `stored memory feel quiet and durable` | `cool window light crosses its sealed shell, indigo shelving` | -9 | PASS |
 | L14 | 41 | 32 | -9 | `give each object ample room` | `overhead light crosses sage shelving, steel runners, and the cream desk` | -9 | PASS |

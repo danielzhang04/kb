@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L03",
+      "name": "L03-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "On a walnut corporate plinth, a hard-drive carton stands like a trophy while one clay-red corner presses through its seam; cool fluorescent light crosses teal steel filing bays and tall office windows behind it.",
+        "to": "On a walnut corporate plinth, a hard-drive carton stands like a trophy, one rigid clay-red rectangular corner forcing a straight-edged opening through its taut seam; cool fluorescent light crosses teal steel filing bays and tall office windows."
+      }
+    }
+  ]
+}

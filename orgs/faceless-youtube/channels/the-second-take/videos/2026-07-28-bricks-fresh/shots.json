@@ -39,7 +39,7 @@
         "vo_text": "and one of the funniest",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "On a walnut corporate plinth, a hard-drive carton stands like a trophy while one clay-red corner presses through its seam; cool fluorescent light crosses teal steel filing bays and tall office windows behind it.",
+        "still_prompt": "On a walnut corporate plinth, a hard-drive carton stands like a trophy, one rigid clay-red rectangular corner forcing a straight-edged opening through its taut seam; cool fluorescent light crosses teal steel filing bays and tall office windows.",
         "notes": "Palette basis: office-teal field — fluorescent window light crosses teal steel filing bays and a walnut plinth."
       },
       {
@@ -56,7 +56,7 @@
             "expression_ref": "expr-skeptical"
           }
         ],
-        "still_prompt": "Far down a fluorescent electronics aisle, `pc-boxy` `expr-skeptical` faces the suspicious carton on a cream display table; a cable coil, steel shelf bays, and a bright rear door hold the restrained reaction.",
+        "still_prompt": "Far down a fluorescent electronics aisle, `pc-boxy` `expr-skeptical` occupies the middle distance facing one suspicious carton on a cream display table; steel shelf bays, a cable coil, and a bright rear door make the quiet reaction secondary to the store.",
         "notes": "Palette basis: neutral-retail field — fluorescent light falls across cream laminate and steel shelving."
       },
       {
@@ -117,7 +117,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "The established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, a bounded shopper group now faces the computers beneath the rear mezzanine.",
+        "still_prompt": "The established skylit shop, stocked shelf wall, brass rail, and empty near lane hold; beyond the rail, bounded 1980s shoppers in bright knit tops and jeans face the computers.",
         "notes": "Mass purchasing is the causal subject; one rear-zone crowd addition."
       },
       {
@@ -147,7 +147,7 @@
         "vo_text": "It was like when Apple released the iPhone.",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "On a tilted oak display ramp, one beige computer carton points toward an open shop door; clear daylight crosses the cream box and timber shelves while a long empty aisle makes the release analogy read without a logo.",
+        "still_prompt": "One beige computer carton rests nose-down on a tilted oak display ramp aimed at a plain open shop door; clear daylight crosses cream board and bare timber, while an unmarked glass frontage opens into one long empty aisle.",
         "notes": "Palette basis: daylight-oak field — open-door daylight crosses oak shelving and the cream carton."
       },
       {
@@ -158,7 +158,7 @@
         "vo_text": "Well, computers run on these things called hard drives.",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "One compact hard drive rests like a vault on a broad steel repair bench; high green-glass windows cast cool light across coiled cables and layered tool stations.",
+        "still_prompt": "One exposed compact hard-disk drive rests on a broad steel repair bench, its metal chassis, circular platter, and cable socket unmistakable; high green-glass windows cast cool light across coiled cables and tool stations.",
         "notes": "Palette basis: green-workshop field — high green-glass daylight crosses a steel bench and dark cable coils."
       },
       {

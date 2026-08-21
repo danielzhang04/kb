@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L10",
+      "name": "L10-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "On a tilted oak display ramp, one beige computer carton points toward an open shop door; clear daylight crosses the cream box and timber shelves while a long empty aisle makes the release analogy read without a logo.",
+        "to": "One beige computer carton rests nose-down on a tilted oak display ramp aimed at a plain open shop door; clear daylight crosses cream board and bare timber, while an unmarked glass frontage opens into one long empty aisle."
+      }
+    }
+  ]
+}

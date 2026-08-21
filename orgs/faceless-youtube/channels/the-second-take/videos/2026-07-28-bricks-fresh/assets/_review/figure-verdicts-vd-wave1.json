@@ -1,0 +1,67 @@
+{
+ "figures": {
+  "_staging/L01.png": {
+   "canonical_sha256": "5007643cedc275ebf6b52d8ae589806209cc3f355b61b9e57fc32f7a4281066b",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L02.png": {
+   "canonical_sha256": "9e7b802eda8eb0a385dc73d0859bb13293280ff79359a16bb64544855d9c2469",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L03.png": {
+   "canonical_sha256": "fac8f213fceafec7869b0617f666aaadcb907ed591ab308939ce0f85196e3b87",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L04.png": {
+   "canonical_sha256": "01c1b93107a1f2964b806eaa7f288916736170a2aa45b42338f2f4c214d47fad",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L05.png": {
+   "canonical_sha256": "dca7190cf62f68750bd6c4f9b407f25306e6891fbf927e4f9172ec53b913061b",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L07.png": {
+   "canonical_sha256": "6a0617b8d5aea89ff3f4848945ae2696045f361b07b45e3b94e3d14c98363bff",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L10.png": {
+   "canonical_sha256": "23b3e1864a3d665c5e24925bca85e73a3afe535a363517ef565e2b9085710fb3",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L11.png": {
+   "canonical_sha256": "c8b3d90514a8085aa923037ee889176b48659301bc84b84550bdabcc15e39b8c",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  },
+  "_staging/L12.png": {
+   "canonical_sha256": "8447744bb18ea6d622d326e59f7a75f0c8a663b1a531fa28dec188509cd0748f",
+   "expression_sha256": null,
+   "verdicts": {},
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  }
+ }
+}

@@ -1,0 +1,15 @@
+{
+ "figures": {
+  "_staging/L08-vd-retry1.png": {
+   "canonical_sha256": "3c3fa9ae3ba298a231f9ed7b5accb3b261948efee30ecbcb33c1862ab45b93ae",
+   "expression_sha256": null,
+   "verdicts": {
+    "fidelity": "pass",
+    "style": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-21"
+  }
+ }
+}

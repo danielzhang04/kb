@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L04",
+      "name": "L04-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "faces the suspicious carton on a cream display table; a cable coil, steel shelf bays, and a bright rear door hold the restrained reaction.",
+        "to": "occupies the middle distance facing one suspicious carton on a cream display table; steel shelf bays, a cable coil, and a bright rear door make the quiet reaction secondary to the store."
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L11",
+      "name": "L11-vd-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "One compact hard drive rests like a vault on a broad steel repair bench; high green-glass windows cast cool light across coiled cables and layered tool stations.",
+        "to": "One exposed compact hard-disk drive rests on a broad steel repair bench, its metal chassis, circular platter, and cable socket unmistakable; high green-glass windows cast cool light across coiled cables and tool stations."
+      }
+    }
+  ]
+}
