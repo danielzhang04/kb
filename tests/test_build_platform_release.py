@@ -40,7 +40,7 @@ def release_source(root: Path) -> Path:
     return source
 
 
-def test_release_is_versioned_and_excludes_data(tmp_path: Path):
+def test_cadence_files_byte_identical_in_versioned_release_that_excludes_data(tmp_path: Path):
     source = release_source(tmp_path)
     (source / "deploy/__pycache__").mkdir()
     (source / "deploy/__pycache__/activate_release.cpython-313.pyc").write_bytes(b"local bytecode")

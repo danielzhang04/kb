@@ -6,7 +6,7 @@ import { EntityCard } from './EntityCard';
 afterEach(cleanup);
 
 describe('EntityCard', () => {
-  it('renders exactly the ordered card facts and opens as one button', () => {
+  it('renders exactly the ordered card facts without exposing the raw id and opens as one button', () => {
     const onOpen = vi.fn();
     render(<EntityCard summary={{ ref: { type: 'agent', id: 'fyt-checker', sourcePath: 'agents/fyt-checker.md' }, humanName: 'Incorrect name', status: 'needs-you', modelLabel: 'gpt-5.6-sol', temporalLabel: 'ran 2h ago · failed', host: 'desktop', gatedRunCount: 1, activeRuns: [], latestRun: 'failed', nextSchedule: null }} onOpen={onOpen} />);
     const card = screen.getByRole('button', { name: /FYT Checker/ });

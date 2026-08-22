@@ -318,7 +318,7 @@ def test_extract_rejects_manifest_omissions(tmp_path):
         activate_release.extract_read_only(archive_path, tmp_path / "destination")
 
 
-def test_rollback_repoints_current_only_when_quiescent(tmp_path, monkeypatch):
+def test_rollback_with_sidecars_repoints_current_only_when_quiescent(tmp_path, monkeypatch):
     releases = tmp_path / "releases"
     first = releases / ("a" * 40)
     second = releases / ("b" * 40)
@@ -515,7 +515,7 @@ def test_static_failure_after_extraction_cleans_candidate(tmp_path, monkeypatch)
     assert not (releases / ("b" * 40)).exists()
 
 
-def test_activation_orders_signature_static_validation_and_real_link_selection(tmp_path, monkeypatch):
+def test_activation_with_sidecars_orders_signature_static_validation_and_real_link_selection(tmp_path, monkeypatch):
     releases = tmp_path / "releases"
     releases.mkdir()
     staging = tmp_path / "staging"

@@ -3771,6 +3771,30 @@ describe('operator cross-subject authority', () => {
     } finally { await app.close(); }
   });
 
+  it('rejects a stale response revision before audit, event, or resume', async () => {
+    const { app, store, audit, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'stale-response', 'daily-news');
+      const { requestRef, version } = parkEngineRunWithGate(store, engineRun);
+      const response = await app.inject({
+        method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`, headers: headers(token),
+        payload: { expectedRevision: 2, decision: 'responded', idempotencyKey: `stale:${requestRef}`, response: 'ship it' },
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toEqual({ error: 'request-revision-changed' });
+      expect(audit.some((row) => row.action === 'control-human-response-authorize')).toBe(false);
+      expect(store.getHumanRequest('dashboard-engine', requestRef)).toMatchObject({
+        ok: true, value: { state: 'open', revision: 1, response: null },
+      });
+      const run = store.getRun('dashboard-engine', engineRun);
+      if (!run.ok) throw new Error(run.detail);
+      expect(run.value.run).toMatchObject({ lifecycle: { kind: 'waiting-human' }, version });
+      const events = store.listEvents('dashboard-engine', engineRun);
+      if (!events.ok) throw new Error(events.detail);
+      expect(events.value.some((event) => event.summary?.includes('responded') === true)).toBe(false);
+    } finally { await app.close(); }
+  });
+
   it('messages, steers and stops a dashboard-engine run — the executor still acts as the run`s owner', async () => {
     const queued: Array<[string, string]> = [];
     const cancelAutomatic = vi.fn(async () => ({

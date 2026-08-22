@@ -70,7 +70,7 @@ describe('composeHealth', () => {
     expect(row).toMatchObject({ key: 'agent:fyt_api-worker', label: 'FYT API Worker' });
   });
 
-  it('projects a deleted schedule owner into Fleet as the bounded integrity row, never Unknown', () => {
+  it('projects a deleted schedule owner into the Health integrity row, never Unknown', () => {
     const source = readers();
     const schedule: Schedule = {
       id: 'd'.repeat(64), owner: { type: 'agent', id: 'deleted-owner', sourcePath: 'agents/deleted-owner.md' },

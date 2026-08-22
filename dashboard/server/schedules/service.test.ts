@@ -287,7 +287,7 @@ describe('ScheduleService', () => {
     expect(store.claimEmissions).toBe(1);
   });
 
-  it('refuses GET rows and occurrence claims when the persisted owner is no longer resolvable', async () => {
+  it('keeps a deleted schedule owner non-firing by refusing GET rows and occurrence claims', async () => {
     const store = new MemoryScheduleStore();
     const schedule: Schedule = {
       id: 'c'.repeat(64), owner: OWNER, cadence: { source: '*/15 * * * *', words: 'Every 15 minutes' },

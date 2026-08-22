@@ -6,6 +6,18 @@ import { fileURLToPath } from 'node:url';
 import { healthResponseFixture } from '../health/__fixtures__/health.ts';
 import type { HealthResponse } from '../health/service.ts';
 import { inboxFixtureData, type InboxFixtureScenario } from '../inbox/fixture.ts';
+import {
+  isP2BrowserScenario,
+  P2_ATTENTION,
+  P2_BROWSER_SCENARIOS,
+  P2_SCHEDULE,
+  P2_SCHEDULE_COLLECTION,
+  p2EntityDetail,
+  p2EntityList,
+  p2Home,
+  p2RunDetail,
+  p2RunEvents,
+} from './p2BrowserFixtureData.ts';
 
 export const P1_BROWSER_SCENARIOS = [
   'inbox-populated',
@@ -13,6 +25,7 @@ export const P1_BROWSER_SCENARIOS = [
   'inbox-error-after-success',
   'events-reconnect-unknown',
   'health-reader-error',
+  ...P2_BROWSER_SCENARIOS,
 ] as const;
 
 export type P1BrowserScenario = (typeof P1_BROWSER_SCENARIOS)[number];
@@ -24,6 +37,7 @@ export interface P1BrowserFixtureState {
   eventConnections: number;
   eventFrames: number;
   unknownEventFrames: number;
+  runStopRequests: number;
 }
 
 export interface P1BrowserFixture {
@@ -108,8 +122,11 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     eventConnections: 0,
     eventFrames: 0,
     unknownEventFrames: 0,
+    runStopRequests: 0,
   };
-  const inboxScenario: InboxFixtureScenario = options.scenario === 'health-reader-error' ? 'inbox-populated' : options.scenario;
+  const inboxScenario: InboxFixtureScenario = isP2BrowserScenario(options.scenario)
+    ? 'inbox-empty'
+    : options.scenario === 'health-reader-error' ? 'inbox-populated' : options.scenario;
   const inboxData = inboxFixtureData(inboxScenario);
   const pendingInbox = new Set<() => void>();
   const streams = new Set<ServerResponse>();
@@ -131,6 +148,64 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
 
   const server = createServer((request, reply) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+
+    if (isP2BrowserScenario(options.scenario)) {
+      if (request.method === 'GET' && url.pathname === '/api/agents') return json(reply, 200, p2EntityList('agents'));
+      if (request.method === 'GET' && url.pathname === '/api/workflows') return json(reply, 200, p2EntityList('workflows'));
+      const entity = url.pathname.match(/^\/api\/(agents|workflows)\/([^/]+)$/);
+      if (request.method === 'GET' && entity) {
+        return json(reply, 200, p2EntityDetail(entity[1] as 'agents' | 'workflows', decodeURIComponent(entity[2])));
+      }
+      if (request.method === 'GET' && url.pathname === '/api/attention') return json(reply, 200, P2_ATTENTION);
+      if (request.method === 'GET' && url.pathname === '/api/home') {
+        return json(reply, 200, p2Home(options.scenario === 'p2-home-partial-failure'));
+      }
+      if (request.method === 'GET' && url.pathname === '/api/schedules') {
+        return options.scenario === 'p2-schedule-load-error'
+          ? json(reply, 503, { error: 'schedule-store-unavailable' })
+          : json(reply, 200, P2_SCHEDULE_COLLECTION);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/schedules') {
+        return json(reply, 400, { error: 'invalid-cadence' });
+      }
+      if (request.method === 'POST' && /^\/api\/schedules\/[^/]+\/(arm|disarm)$/.test(url.pathname)) {
+        return json(reply, 409, { error: 'stale-schedule-version' });
+      }
+      if (request.method === 'DELETE' && url.pathname === `/api/schedules/${P2_SCHEDULE.id}`) {
+        return json(reply, 200, {
+          tombstone: { id: P2_SCHEDULE.id, deletedAt: '2026-08-21T12:01:00.000Z', version: 3 },
+          collectionRevision: 5, replayed: false,
+        });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture') {
+        return json(reply, 200, p2RunDetail(options.scenario));
+      }
+      if (request.method === 'POST' && url.pathname === '/api/control/human-requests/request-t3/respond') {
+        return json(reply, 403, { error: 'ceremony-unavailable' });
+      }
+      if (request.method === 'POST' && url.pathname === '/api/control/runs/run-fixture/manager/stop') {
+        state.runStopRequests += 1;
+        return state.runStopRequests === 1
+          ? json(reply, 200, { state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false })
+          : json(reply, 409, { error: 'stale-run-version' });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture/events/stream') {
+        const page = p2RunEvents(url.searchParams.get('stageRef'));
+        reply.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-store',
+          connection: 'keep-alive',
+        });
+        for (const event of page.items) {
+          reply.write(`id: ${event.cursor}\nevent: run-event\ndata: ${JSON.stringify(event)}\n\n`);
+        }
+        return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture/events') {
+        return json(reply, 200, p2RunEvents(url.searchParams.get('stageRef')));
+      }
+    }
+
     if (request.method !== 'GET') return json(reply, 404, { error: 'not found' });
 
     if (url.pathname === '/api/auth/context') return json(reply, 200, { mode: 'tailnet' });

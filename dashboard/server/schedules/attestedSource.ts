@@ -7,8 +7,11 @@ export type AttestedSourceUnavailableReason =
   | 'release-attestation-mismatch';
 
 export class AttestedSourceError extends Error {
-  constructor(readonly code: 'attested-source-path-refused' | 'attested-source-file-unavailable', message = code) {
+  readonly code: 'attested-source-path-refused' | 'attested-source-file-unavailable';
+
+  constructor(code: 'attested-source-path-refused' | 'attested-source-file-unavailable', message = code) {
     super(message);
+    this.code = code;
     this.name = 'AttestedSourceError';
   }
 }

@@ -164,6 +164,17 @@ def test_gate1_passes_only_with_auth_confinement_tailnet_and_locked_execution():
     assert decide(evidence)["passed"] is False
 
 
+def test_gate1_route_inventory_replaces_the_retired_dag_with_p2_surfaces():
+    assert "/api/dag" not in REQUIRED_UNAUTH
+    assert {
+        "/api/agents",
+        "/api/workflows",
+        "/api/attention",
+        "/api/schedules",
+        "/api/home",
+    }.issubset(REQUIRED_UNAUTH)
+
+
 def test_derive_tailnet_evidence_accepts_loopback_serve_no_funnel_and_acl_probes():
     assert derive_tailnet_evidence(PASSING_SERVE, PASSING_FUNNEL, ACL_PROBES, EXTERNAL_SERVE_ENDPOINT) == {
         "serveTailnetOnly": True, "funnelDisabled": True,

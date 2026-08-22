@@ -210,8 +210,8 @@ const registryByStateRoot = new Map<string, NamingRegistry>();
 /** The display-name registry a DTO builder should use for this context. */
 export function namingFor(ctx: SurfaceContext): NamingRegistry {
   if (ctx.naming) return ctx.naming;
-  // The ungoverned Plane-A reads (`/api/index`, `/api/dag`, `/api/agents`) hold no SurfaceContext and
-  // use `defaultNamingRegistry()` over the SAME shared file. On the production state root this must
+  // Repository projections such as `/api/index` hold no SurfaceContext and use
+  // `defaultNamingRegistry()` over the SAME shared file. On the production state root this must
   // resolve to that very instance, never a second one.
   if (resolve(ctx.stateRoot) === resolve(resolveDashboardStateRoot())) return defaultNamingRegistry();
   const existing = registryByStateRoot.get(ctx.stateRoot);

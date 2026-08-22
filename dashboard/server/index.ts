@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { kbBrowserRoutes } from './kb/routes.ts';
 import { registerPlaneA } from './planeA/routes.ts';
-import { registerDag } from './dag/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { readDeclaredAgentDetails } from './agents/roster.ts';
@@ -231,7 +230,6 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     scope.get('/api/runtime/capabilities', async () => surfaceCtx.runtimeCapabilities);
     scope.register(kbBrowserRoutes, { repoRoot });
     registerPlaneA(scope, repoRoot);
-    registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
     registerAgents(scope, surfaceCtx);
     const schedules = createScheduleService(repoRoot, surfaceCtx.controlStore);

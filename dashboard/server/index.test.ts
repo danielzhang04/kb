@@ -298,7 +298,7 @@ describe('server', () => {
 
   it.each([
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
-    '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/dag', '/api/routing',
+    '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
     '/api/schedules',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
@@ -350,6 +350,8 @@ describe('server', () => {
 
   it('pins P2 removed routes to 404 after the entity and schedule replacements are live', async () => {
     app = matrixApp();
+    expect((await app.inject({ method: 'GET', url: '/api/dag' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/dag', headers: sessionHeaders() })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/agents/system-workers', headers: sessionHeaders() })).statusCode).toBe(404);
     for (const [method, url] of [
       ['GET', '/api/panels/schedules'],

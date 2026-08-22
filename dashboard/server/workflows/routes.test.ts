@@ -120,7 +120,7 @@ describe('Workflow P2 routes', () => {
   it('serves grouped EntitySummary and EntityDetail envelopes with a serializable step DAG and ETag', async () => {
     const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
     expect(listed.statusCode).toBe(200);
-    expect(listed.json()).toMatchObject({ revision: expect.any(String), groups: [{ id: 'kb-ops', collapsed: false }], items: [{ ref: { type: 'workflow', id: 'amendable', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/amendable.md' }, humanName: 'Assigned research', modelLabel: 'varies' }] });
+    expect(listed.json()).toMatchObject({ revision: expect.any(String), groups: [{ id: 'kb-ops', collapsed: false }], items: [{ ref: { type: 'workflow', id: 'amendable', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/amendable.md' }, humanName: 'Amendable', modelLabel: 'varies' }] });
     expect((await app.inject({ method: 'GET', url: '/api/workflows', headers: { 'if-none-match': listed.headers.etag! } })).statusCode).toBe(304);
     const detail = await app.inject({ method: 'GET', url: '/api/workflows/amendable' });
     expect(detail.json()).toMatchObject({ revision: expect.any(String), summary: { ref: { id: 'amendable' } }, brief: { outputs: [{ kind: 'artifact', label: 'Cited brief', path: 'orgs/kb-ops/output/brief.md' }] }, details: { sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/), workflow: { stepDag: { nodes: [{ stageRef: 'brief', label: 'Research a topic' }], edges: [] }, parameters: [] } } });

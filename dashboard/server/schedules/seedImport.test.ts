@@ -53,7 +53,7 @@ function fixtureRelease(
 }
 
 describe('importHeartbeatScheduleSeedsV1', () => {
-  it('reads packed cadence and declaration bytes through the attested release and derives arming', async () => {
+  it('reads the fixture release tree cadence and declaration bytes through attestation and derives arming', async () => {
     const root = fixtureRelease();
     const source = await openAttestedScheduleSource({ currentPath: root });
     const commit = vi.fn(async () => undefined);
@@ -85,7 +85,7 @@ describe('importHeartbeatScheduleSeedsV1', () => {
     expect(implementation).not.toMatch(/\.attested\b|input\.releaseSha/);
   });
 
-  it('treats every valid version-1 marker as a permanent later-boot no-op', async () => {
+  it('treats duplicate seed import as a permanent later-boot no-op for every valid version-1 marker', async () => {
     const firstCommit = vi.fn(async () => undefined);
     const first = await importHeartbeatScheduleSeedsV1({
       source: await openAttestedScheduleSource({ currentPath: fixtureRelease('a'.repeat(40)) }),

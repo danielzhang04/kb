@@ -38,7 +38,7 @@ describe('EntityDetail', () => {
     }
   });
 
-  it('renders structural Live Brief Details chrome over existing loaded facts without a projection join', () => {
+  it('renders the entity header and structural Live Brief Details chrome without a projection join', () => {
     render(
       <EntityDetail entity={{ kind: 'workflow', id: 'fyt-video' }} eyebrow="Workflow" title="FYT Video"
         facts={[]} sections={[{ id: 'live', label: 'Live', render: () => <p>Loaded fact</p> }, { id: 'brief', label: 'Brief', render: () => <p>Brief fact</p> }]}

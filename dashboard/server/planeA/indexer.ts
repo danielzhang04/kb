@@ -17,8 +17,8 @@ import { readOrgStates } from './states.ts';
 import type { OrgState } from './states.ts';
 
 export interface PlaneAIndex {
-  /** Cards carry their server-owned `displayName`/`shortRef`: this index IS the DTO `/api/index`,
-   *  `/api/dag`, `/api/agents`, and `/api/human-inbox` are all built from. */
+  /** Cards carry their server-owned `displayName`/`shortRef`. This index is the `/api/index` DTO and
+   *  remains the shared card source for routing, Inbox, Home, Health, and declared-agent readers. */
   cards: Record<string, CardProjection[]>;
   /** Present on live indexer results; optional only for legacy/test projection literals. */
   rejectedCards?: number;

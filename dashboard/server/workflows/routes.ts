@@ -890,7 +890,7 @@ function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRu
   const activeRuns = activity.filter((item) => item.category === 'active' || item.category === 'attention').map((item) => item.row);
   const latest = latestWorkflowOutcome(runs);
   return {
-    ref, humanName: scanned.def?.title, projects: [scanned.entry.project], modelLabel: 'varies',
+    ref, projects: [scanned.entry.project], modelLabel: 'varies',
     temporalLabel: latest ? `ran ${relativeRunTime(latest.completedAt, now)} \u00b7 ${latest.outcome}` : projectLiveEmpty(null, nextScheduleOccurrence(ctx.controlStore, ref)?.nextAt ?? null),
     host: activeRuns[0]
       ? owned.find((run) => run.runRef === activeRuns[0]?.runRef)?.executionHost ?? resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud')
