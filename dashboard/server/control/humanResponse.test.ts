@@ -12,10 +12,18 @@ function request(overrides: Partial<HumanRequest> = {}): HumanRequest {
   };
 }
 
-function harness(initial: HumanRequest[], reserved = new Set<string>()) {
+function harness(
+  initial: HumanRequest[],
+  reserved = new Set<string>(),
+  faults: { append?: number; resume?: number } = {},
+) {
   const requests = new Map(initial.map((item) => [item.requestRef, structuredClone(item)]));
   const events: string[] = [];
+  const eventKeys = new Set<string>();
   const resumes: string[] = [];
+  const resumedRuns = new Set<string>();
+  let appendFaults = faults.append ?? 0;
+  let resumeFaults = faults.resume ?? 0;
   const audits: AuditEvent[] = [];
   const store: HumanResponseStorePort = {
     getHumanRequest: async (_actor, requestRef) => {
@@ -38,8 +46,27 @@ function harness(initial: HumanRequest[], reserved = new Set<string>()) {
       return { request: responded, replayed: false };
     },
     listHumanRequestsForRun: async (_actor, runRef) => [...requests.values()].filter((item) => item.runRef === runRef),
-    appendResponseEvent: async (_actor, item) => { events.push(item.requestRef); },
-    resumeRunAfterBoundaryAccepted: async (_actor, runRef) => { resumes.push(runRef); },
+    appendResponseEvent: async (_actor, item) => {
+      if (appendFaults > 0) {
+        appendFaults -= 1;
+        throw new Error('event append unavailable');
+      }
+      const key = `${item.requestRef}:${item.response?.idempotencyKey ?? ''}`;
+      if (!eventKeys.has(key)) {
+        eventKeys.add(key);
+        events.push(item.requestRef);
+      }
+    },
+    resumeRunAfterBoundaryAccepted: async (_actor, runRef) => {
+      if (resumeFaults > 0) {
+        resumeFaults -= 1;
+        throw new Error('resume unavailable');
+      }
+      if (!resumedRuns.has(runRef)) {
+        resumedRuns.add(runRef);
+        resumes.push(runRef);
+      }
+    },
   };
   return {
     requests, events, resumes, audits, store,
@@ -176,6 +203,33 @@ describe('gate-kind-aware human response service', () => {
     expect(h.resumes).toEqual([]);
     await service.respond({ ...ordinaryInput, requestRef: 'ask-2', idempotencyKey: 'respond-2' });
     expect(h.events).toEqual(['ask-1', 'ask-2']);
+    expect(h.resumes).toEqual(['run-1']);
+  });
+
+  it('repairs a committed answer when event append fails, without emitting twice', async () => {
+    const h = harness([request()], new Set(), { append: 1 });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+
+    await expect(service.respond(ordinaryInput)).rejects.toThrow('event append unavailable');
+    expect(h.requests.get('ask-1')?.response?.idempotencyKey).toBe('respond-1');
+    expect(h.events).toEqual([]);
+
+    await expect(service.respond(ordinaryInput)).resolves.toMatchObject({ ok: true, replayed: true });
+    await expect(service.respond(ordinaryInput)).resolves.toMatchObject({ ok: true, replayed: true });
+    expect(h.events).toEqual(['ask-1']);
+    expect(h.resumes).toEqual(['run-1']);
+  });
+
+  it('repairs a committed answer when resume fails, without appending a second event', async () => {
+    const h = harness([request()], new Set(), { resume: 1 });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+
+    await expect(service.respond(ordinaryInput)).rejects.toThrow('resume unavailable');
+    expect(h.events).toEqual(['ask-1']);
+    expect(h.resumes).toEqual([]);
+
+    await expect(service.respond(ordinaryInput)).resolves.toMatchObject({ ok: true, replayed: true });
+    expect(h.events).toEqual(['ask-1']);
     expect(h.resumes).toEqual(['run-1']);
   });
 

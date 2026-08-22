@@ -1352,3 +1352,66 @@ select option {
 .org-states__empty {
   color: var(--fg-dim);
 }
+
+/* ---- Dashboard v3 Run: one full-width record stream with one right inspector ---- */
+.run-v3 {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.run-v3__header,
+.run-v3__actions,
+.run-v3__steps {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.run-v3__header {
+  justify-content: space-between;
+}
+
+.run-v3__header h1,
+.run-v3__header p {
+  margin: 0;
+}
+
+.run-v3__stream-pane [data-testid='run-stream'],
+.run-v3__stream-pane [data-testid^='console-pane'] {
+  width: 100%;
+  min-width: 0;
+  max-height: 55vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  background: var(--bg-panel);
+}
+
+.run-v3__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 22rem);
+  gap: var(--gap);
+  align-items: start;
+}
+
+.run-v3__body--collapsed {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.run-v3__stream-pane,
+.run-v3__inspector-shell {
+  min-width: 0;
+}
+
+.run-v3__inspector-shell > aside {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 800px) {
+  .run-v3__body {
+    grid-template-columns: 1fr;
+  }
+}

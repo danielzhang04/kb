@@ -8,6 +8,7 @@ import {
   decideProposalRevision,
   dryRunQuarantine,
   getExecutionPosture,
+  getAttention,
   getRun,
   launchProposalRevision,
   listRunEvents,
@@ -20,6 +21,7 @@ import {
   rerouteManagedStage,
   resolveIterationGate,
   respondToHumanRequest,
+  respondToHumanRequestWithCeremony,
   resumeRunAfterHumanResponse,
   steerManagerAtCheckpoint,
   unlockExecution,
@@ -318,12 +320,47 @@ describe('control client run and retention writes', () => {
   });
 
   it('requests cursor replay without spawning a session', async () => {
-    const fetchImpl = recordedFetch({ ok: true, value: [] });
-    await listRunEvents('run/ref', 41, 50, 'bearer', fetchImpl);
+    const page = { revision: 'a'.repeat(64), items: [], nextCursor: null };
+    const fetchImpl = recordedFetch(page);
+    await expect(listRunEvents('run/ref', 41, 50, 'bearer', fetchImpl)).resolves.toEqual(page);
     expect(fetchImpl).toHaveBeenCalledWith(
       '/api/control/runs/run%2Fref/events?after=41&limit=50',
       expect.objectContaining({ method: 'GET' }),
     );
+  });
+
+  it('rejects an open replay envelope and reads the direct attention projection', async () => {
+    await expect(listRunEvents('run-1', 0, 50, 'bearer', recordedFetch({
+      revision: 'a'.repeat(64), items: [], nextCursor: null, hidden: true,
+    }))).rejects.toThrow('invalid run event page');
+    const attention = { revision: 'b'.repeat(64), pairs: [], agents: {}, workflows: {} };
+    await expect(getAttention('bearer', recordedFetch(attention))).resolves.toEqual(attention);
+  });
+
+  it('binds a T3 response through challenge, assertion, and the final response write', async () => {
+    const options = { challenge: 'challenge', rpId: 'localhost', allowCredentials: [], userVerification: 'required' as const };
+    const assertion = { id: 'credential-1', rawId: 'credential-1', type: 'public-key' as const,
+      response: { authenticatorData: 'auth', clientDataJSON: 'client', signature: 'sig', userHandle: null },
+      clientExtensionResults: {}, authenticatorAttachment: 'platform' as const };
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/respond/challenge')) return response({
+        ceremonyId: 'ceremony-1', options, challengeExpiresAt: '2026-08-21T12:05:00.000Z',
+      });
+      return response({ ok: true, value: { requestRef: 'request-1' } });
+    }) as unknown as FetchLike;
+    const perform = vi.fn(async () => assertion);
+
+    await respondToHumanRequestWithCeremony('request-1', {
+      expectedRevision: 3, decision: 'approved', response: 'ship it', idempotencyKey: 'response-3',
+    }, 'bearer', fetchImpl, perform as never);
+
+    expect(perform).toHaveBeenCalledWith(options);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const finalBody = JSON.parse(String((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1]?.body));
+    expect(finalBody).toMatchObject({
+      expectedRevision: 3, decision: 'approved', response: 'ship it', idempotencyKey: 'response-3',
+      ceremonyId: 'ceremony-1', challengeExpiresAt: '2026-08-21T12:05:00.000Z', assertion,
+    });
   });
 
   it('carries run version and manager generation when checkpoint steering', async () => {

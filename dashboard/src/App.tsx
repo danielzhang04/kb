@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ExecutionArmingProvider } from './control/ExecutionUnlock';
+import { getAttention } from './control/controlClient';
 import { fetchInbox } from './lib/inboxClient';
 import { createInboxRefresher } from './lib/inboxRefresher';
 import { type ClientRuntimeCapabilities, RuntimeCapabilitiesProvider } from './lib/runtimeCapabilities';
@@ -36,9 +37,8 @@ const DISABLED_SSE_FACTORY: SseFactory = () => ({
   close: () => undefined,
 });
 
-function useInboxCount(enabled: boolean): number {
+function useInboxCount(enabled: boolean, tick: number): number {
   const [count, setCount] = useState(0);
-  const { count: tick } = useSse('/events', enabled ? undefined : DISABLED_SSE_FACTORY);
   const refresher = useMemo(() => createInboxRefresher({
     load: () => fetchInbox(),
     onSuccess: (response) => setCount(response.items.length),
@@ -53,6 +53,30 @@ function useInboxCount(enabled: boolean): number {
     refresher.trigger();
   }, [enabled, refresher, tick]);
   return count;
+}
+
+function useAttentionCounts(token: string | undefined, tick: number): { agents: number; workflows: number } {
+  const [counts, setCounts] = useState({ agents: 0, workflows: 0 });
+  useEffect(() => {
+    if (!token) {
+      setCounts({ agents: 0, workflows: 0 });
+      return;
+    }
+    let alive = true;
+    void getAttention(token).then((attention) => {
+      if (!alive) return;
+      const distinct = new Map(attention.pairs.map((pair) => [
+        `${pair.runRef}\u0000${pair.owner.type}\u0000${pair.owner.id}\u0000${pair.owner.type === 'workflow' ? pair.owner.project : ''}`,
+        pair,
+      ]));
+      setCounts({
+        agents: [...distinct.values()].filter((pair) => pair.owner.type === 'agent').length,
+        workflows: [...distinct.values()].filter((pair) => pair.owner.type === 'workflow').length,
+      });
+    }).catch(() => { if (alive) setCounts({ agents: 0, workflows: 0 }); });
+    return () => { alive = false; };
+  }, [tick, token]);
+  return counts;
 }
 
 export function NavItem({ item, active, badge, onSelect }: {
@@ -178,7 +202,9 @@ function AuthenticatedAppShell(): React.JSX.Element {
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const [runtimeCapabilities, setRuntimeCapabilities] = useState<ClientRuntimeCapabilities>({ pty: true, localTranscripts: false });
   const [runAgentId, setRunAgentId] = useState<string | null>(null);
-  const inboxCount = useInboxCount(view !== 'inbox');
+  const { count: controlTick } = useSse('/events', session?.token ? undefined : DISABLED_SSE_FACTORY);
+  const inboxCount = useInboxCount(view !== 'inbox', controlTick);
+  const attention = useAttentionCounts(session?.token, controlTick);
   const terminalVisible = view === 'terminal';
 
   useEffect(() => applyTheme(theme), [theme]);
@@ -244,7 +270,9 @@ function AuthenticatedAppShell(): React.JSX.Element {
   return (
     <RuntimeCapabilitiesProvider value={runtimeCapabilities}>
       <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
-        <Sidebar active={view} onSelect={goTo} rail={rail} onToggleRail={() => setRail((value) => !value)} badges={{ inbox: inboxCount }} />
+        <Sidebar active={view} onSelect={goTo} rail={rail} onToggleRail={() => setRail((value) => !value)} badges={{
+          inbox: inboxCount, agents: attention.agents, workflows: attention.workflows,
+        }} />
         <header className="mc-topbar">
           <h1 className="mc-topbar__title">kb mission control</h1>
           <span className="mc-topbar__glance"><span className="mc-status-dot mc-status-dot--running" aria-hidden="true" />local agent operations</span>

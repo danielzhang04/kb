@@ -22,10 +22,17 @@ export type RunEventSource =
 export interface ReadRunEventSourcesInput {
   subject: string;
   runRef: string;
+  scope?: 'own-subject' | 'all-subjects';
+}
+
+export interface RunEventInvalidationSource {
+  subscribe(listener: () => void): () => void;
+  release(): void;
 }
 
 export interface RunEventSourcePort {
   readRunEventSources(input: ReadRunEventSourcesInput): readonly RunEventSource[] | Promise<readonly RunEventSource[]>;
+  openRunEventSource?(input: ReadRunEventSourcesInput): RunEventInvalidationSource;
 }
 
 export interface ReplayRunEventsInput extends ReadRunEventSourcesInput {
@@ -45,6 +52,7 @@ export interface ProjectRunRowInput extends Omit<RunRow, 'streamKind' | 'session
 export interface RunEventService {
   projectRunRow(input: ProjectRunRowInput): RunRow;
   replay(input: ReplayRunEventsInput): Promise<RunEventPage>;
+  openLive(input: ReadRunEventSourcesInput): RunEventInvalidationSource;
 }
 
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -214,7 +222,9 @@ export function createRunEventService(port: RunEventSourcePort): RunEventService
       const limit = input.limit ?? 250;
       if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) throw new Error('event cursor must be non-negative');
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 250) throw new Error('event limit must be 1-250');
-      const sources = await port.readRunEventSources({ subject: input.subject, runRef: input.runRef });
+      const sources = await port.readRunEventSources({
+        subject: input.subject, runRef: input.runRef, scope: input.scope,
+      });
       const fullStream = normalizedSources(sources).filter((event) => event.runRef === input.runRef);
       const matching = fullStream
         .filter((event) => event.cursor > afterCursor)
@@ -224,6 +234,12 @@ export function createRunEventService(port: RunEventSourcePort): RunEventService
         revision: revisionOf(fullStream),
         items,
         nextCursor: matching.length > limit ? items.at(-1)?.cursor ?? null : null,
+      };
+    },
+    openLive(input) {
+      return port.openRunEventSource?.(input) ?? {
+        subscribe: () => () => undefined,
+        release: () => undefined,
       };
     },
   };

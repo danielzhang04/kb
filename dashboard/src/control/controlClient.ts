@@ -6,12 +6,19 @@
  */
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import type {
+  AttentionEnvelope,
   ControlRunDto as RunDto,
+  RunEventPage,
 } from '../../server/control/p2Contracts.ts';
+import type { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
+import { performAssertion } from '../lib/webauthnClient.ts';
 export type {
+  AttentionEnvelope,
   ArchivedFrom as ArchivedFromDto,
   ControlRunDto as RunDto,
+  OutputRef,
   RunnableRef as RunnableRefDto,
+  RunEventPage,
   RunOutcome as RunOutcomeDto,
 } from '../../server/control/p2Contracts.ts';
 
@@ -442,6 +449,9 @@ export interface IterationLoopDto {
 }
 
 export interface RunDetailDto {
+  /** Present on every server DTO; optional here while literal fixtures migrate. */
+  streamKind?: 'pty' | 'transcript';
+  sessionId?: string;
   run: RunDto;
   /** The subject that owns this run. See {@link RunMetadataDto.ownerSubject}. */
   ownerSubject: string;
@@ -1000,11 +1010,88 @@ export async function listRunEvents(
   limit: number,
   token: string,
   fetchImpl?: FetchLike,
-): Promise<OperationalEventDto[]> {
-  const body = await read<{ ok: true; value: OperationalEventDto[] }>(
+): Promise<RunEventPage> {
+  const body = await read<unknown>(
     `/api/control/runs/${segment(runRef)}/events?after=${after}&limit=${limit}`, token, fetchImpl,
   );
-  return body.value;
+  const page = decodeRunEventPage(body);
+  if (page === null) throw new Error('invalid run event page');
+  return page;
+}
+
+const RUN_EVENT_KEYS = [
+  'cursor', 'runRef', 'kind', 'source', 'stageRef', 'attemptRef', 'sessionRef', 'status', 'summary',
+  'command', 'toolName', 'path', 'diff', 'checkpoint', 'createdAt',
+] as const;
+
+function wireRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : null;
+}
+
+function exactWireKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && Object.keys(value).every((key) => keys.includes(key));
+}
+
+function nullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string';
+}
+
+export function decodeOperationalEvent(value: unknown): OperationalEventDto | null {
+  const event = wireRecord(value);
+  if (!event || !exactWireKeys(event, RUN_EVENT_KEYS)
+    || !Number.isSafeInteger(event.cursor) || (event.cursor as number) < 0
+    || typeof event.runRef !== 'string' || event.runRef.length === 0
+    || !['message', 'command', 'tool', 'file', 'diff', 'checkpoint', 'lifecycle', 'session-link', 'governance'].includes(String(event.kind))
+    || !['system', 'manager', 'worker', 'human'].includes(String(event.source))
+    || ![event.stageRef, event.attemptRef, event.sessionRef, event.summary, event.command, event.toolName,
+      event.path, event.diff, event.checkpoint].every(nullableString)
+    || !(event.status === null || ['pending', 'running', 'success', 'failure', 'stopped', 'interrupted', 'waiting'].includes(String(event.status)))
+    || typeof event.createdAt !== 'string') return null;
+  return event as unknown as OperationalEventDto;
+}
+
+function decodeRunEventPage(value: unknown): RunEventPage | null {
+  const page = wireRecord(value);
+  if (!page || !exactWireKeys(page, ['revision', 'items', 'nextCursor'])
+    || typeof page.revision !== 'string' || !/^[a-f0-9]{64}$/.test(page.revision)
+    || !Array.isArray(page.items)
+    || !(page.nextCursor === null || (Number.isSafeInteger(page.nextCursor) && (page.nextCursor as number) >= 0))) return null;
+  const items = page.items.map(decodeOperationalEvent);
+  if (items.some((event) => event === null)) return null;
+  return { revision: page.revision, items: items as OperationalEventDto[], nextCursor: page.nextCursor as number | null };
+}
+
+function decodeAttention(value: unknown): AttentionEnvelope | null {
+  const envelope = wireRecord(value);
+  if (!envelope || !exactWireKeys(envelope, ['revision', 'pairs', 'agents', 'workflows'])
+    || typeof envelope.revision !== 'string' || !/^[a-f0-9]{64}$/.test(envelope.revision)
+    || !Array.isArray(envelope.pairs)) return null;
+  const agents = wireRecord(envelope.agents);
+  const workflows = wireRecord(envelope.workflows);
+  if (!agents || !workflows || ![...Object.values(agents), ...Object.values(workflows)]
+    .every((count) => Number.isSafeInteger(count) && (count as number) >= 0)) return null;
+  for (const valuePair of envelope.pairs) {
+    const pair = wireRecord(valuePair);
+    const owner = wireRecord(pair?.owner);
+    if (!pair || !exactWireKeys(pair, ['runRef', 'owner']) || typeof pair.runRef !== 'string' || !owner) return null;
+    if (owner.type === 'agent') {
+      if (!exactWireKeys(owner, ['type', 'id', 'sourcePath']) || typeof owner.id !== 'string'
+        || typeof owner.sourcePath !== 'string' || !owner.sourcePath.startsWith('agents/')) return null;
+    } else if (owner.type === 'workflow') {
+      if (!exactWireKeys(owner, ['type', 'id', 'project', 'sourcePath']) || typeof owner.id !== 'string'
+        || typeof owner.project !== 'string' || typeof owner.sourcePath !== 'string'
+        || !owner.sourcePath.startsWith('orgs/')) return null;
+    } else return null;
+  }
+  return envelope as unknown as AttentionEnvelope;
+}
+
+export async function getAttention(token: string, fetchImpl?: FetchLike): Promise<AttentionEnvelope> {
+  const body = await read<unknown>('/api/attention', token, fetchImpl);
+  const attention = decodeAttention(body);
+  if (attention === null) throw new Error('invalid attention envelope');
+  return attention;
 }
 
 export interface ManagerCasInput {
@@ -1097,6 +1184,9 @@ export function respondToHumanRequest(
     decision: HumanRequestDecision;
     idempotencyKey: string;
     response?: string | null;
+    ceremonyId?: string;
+    assertion?: AuthenticationResponseJSON;
+    challengeExpiresAt?: string;
   },
   token: string,
   fetchImpl?: FetchLike,
@@ -1104,6 +1194,46 @@ export function respondToHumanRequest(
   return write<{ ok: true; value: HumanRequestDto }>(
     `/api/control/human-requests/${segment(requestRef)}/respond`, input, token, fetchImpl,
   ).then((body) => body.value);
+}
+
+export interface HumanResponseChallengeDto {
+  ceremonyId: string;
+  options: PublicKeyCredentialRequestOptionsJSON;
+  challengeExpiresAt: string;
+}
+
+export function requestHumanResponseChallenge(
+  requestRef: string,
+  input: { expectedRevision: number; decision: HumanRequestDecision; response?: string | null },
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<HumanResponseChallengeDto> {
+  return write<HumanResponseChallengeDto>(
+    `/api/control/human-requests/${segment(requestRef)}/respond/challenge`, input, token, fetchImpl,
+  );
+}
+
+/** T3 responses are signed over the exact request revision, decision, response digest, origin, and expiry. */
+export async function respondToHumanRequestWithCeremony(
+  requestRef: string,
+  input: {
+    expectedRevision: number;
+    decision: HumanRequestDecision;
+    idempotencyKey: string;
+    response?: string | null;
+  },
+  token: string,
+  fetchImpl?: FetchLike,
+  perform: (options: PublicKeyCredentialRequestOptionsJSON) => Promise<AuthenticationResponseJSON> = performAssertion,
+): Promise<HumanRequestDto> {
+  const challenge = await requestHumanResponseChallenge(requestRef, input, token, fetchImpl);
+  const assertion = await perform(challenge.options);
+  return respondToHumanRequest(requestRef, {
+    ...input,
+    ceremonyId: challenge.ceremonyId,
+    assertion,
+    challengeExpiresAt: challenge.challengeExpiresAt,
+  }, token, fetchImpl);
 }
 
 /** One-off, server-constrained repair for the authorized 2026-07-31 execution-lock boundary. */

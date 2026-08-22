@@ -6,7 +6,6 @@ import { clearStoredSession, persistSession } from './lib/authClient';
 import { installTestAuthContext, type InstalledTestAuthContext } from './test/session';
 import { SessionProvider } from './lib/sessionContext';
 import { Agents } from './views/Agents';
-import { AgentTile } from './views/RunDetail';
 import { SchedulesBody } from './views/Schedules';
 import { Inbox } from './views/Inbox';
 import { Home } from './views/Home';
@@ -85,21 +84,40 @@ describe('App P1 shell', () => {
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 
-  it('sidebar badges appear only on Inbox Agents Workflows', async () => {
+  it('sidebar badges use Inbox plus distinct-run Agent and Workflow attention only', async () => {
     authContext.restore();
     const inboxResponse = new Response(JSON.stringify({ items: [{
       id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
       subject: { cardId: '68a70000-card' }, related: {}, title: 'wake-me', reason: 'Needs you',
     }] }), { status: 200 });
-    fetchStub = vi.fn((input: RequestInfo | URL) => String(input) === '/api/inbox' ? Promise.resolve(inboxResponse.clone()) : new Promise<Response>(() => undefined));
+    const attentionResponse = new Response(JSON.stringify({
+      revision: 'c'.repeat(64),
+      pairs: [
+        { runRef: 'run-agent', owner: { type: 'agent', id: 'writer', sourcePath: 'agents/writer.md' } },
+        { runRef: 'run-agent', owner: { type: 'agent', id: 'writer', sourcePath: 'agents/writer.md' } },
+        { runRef: 'run-workflow', owner: { type: 'workflow', id: 'release', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/release.md' } },
+      ],
+      agents: { 'agent:contradiction': 99 },
+      workflows: { 'workflow:contradiction': 88 },
+    }), { status: 200 });
+    fetchStub = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/inbox') return Promise.resolve(inboxResponse.clone());
+      if (String(input) === '/api/attention') return Promise.resolve(attentionResponse.clone());
+      return new Promise<Response>(() => undefined);
+    });
     vi.stubGlobal('fetch', fetchStub);
     authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
     await renderApp();
-    await waitFor(() => expect(screen.getByLabelText('1 pending')).toBeTruthy());
+    await waitFor(() => {
+      const agents = screen.getByText('Agents').closest('button')!;
+      const workflows = screen.getByText('Workflows').closest('button')!;
+      expect(within(agents).getByLabelText('1 pending')).toBeTruthy();
+      expect(within(workflows).getByLabelText('1 pending')).toBeTruthy();
+    });
     const badged = [...document.querySelectorAll('.mc-nav-item')]
       .filter((item) => item.querySelector('.mc-nav-item__badge'))
       .map((item) => item.querySelector('.mc-nav-item__label')?.textContent);
-    expect(badged).toEqual(['Inbox']);
+    expect(badged).toEqual(['Inbox', 'Agents', 'Workflows']);
     expect(badged.every((label) => ['Inbox', 'Agents', 'Workflows'].includes(label ?? ''))).toBe(true);
   });
 
@@ -181,11 +199,6 @@ describe('App P1 shell', () => {
     fireEvent.click(screen.getByTestId(`agent-open-${rawAgent}`));
     expect(screen.getByTestId('entity-detail-title').textContent).toBe('FYT API Worker');
     expect(screen.getByTestId('entity-detail-agent').getAttribute('aria-label')).toBe(`agent ${rawAgent}`);
-    cleanup();
-
-    render(<SessionProvider><AgentTile agentId={rawAgent} runRef="run-raw" events={[]} fetchImpl={vi.fn()} /></SessionProvider>);
-    expect(screen.getByText('FYT API Worker').getAttribute('data-raw-id')).toBe(rawAgent);
-    expect(screen.getByTestId(`run-tile-${rawAgent}`)).toBeTruthy();
     cleanup();
 
     const rawSchedule = 'daily-digest';

@@ -36,7 +36,7 @@ export interface StepDefinition {
 
 export interface StepEvent {
   stageRef: string | null;
-  [key: string]: unknown;
+  cursor?: number;
 }
 
 export interface StepDagNode {

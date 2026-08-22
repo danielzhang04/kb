@@ -3,6 +3,7 @@ import type { RunEventPage } from '../../server/control/p2Contracts.ts';
 import { foldRecords, type TimelineModel } from '../lib/timelineModel.ts';
 
 type RunEvent = RunEventPage['items'][number];
+const MAX_RENDERED_DIFF_CHARS = 2_000;
 
 export function orderedRunEventRecords(
   events: readonly RunEvent[],
@@ -44,6 +45,25 @@ function transcriptRecords(event: RunEvent): TranscriptRecord[] {
       },
     };
     return [assistant, result];
+  }
+  if (event.kind === 'file' || event.kind === 'diff'
+    || event.kind === 'checkpoint' || event.kind === 'lifecycle') {
+    const diff = event.diff ?? null;
+    const record = {
+      type: 'assistant',
+      timestamp: event.createdAt,
+      message: { content: [{
+        type: 'run_event',
+        kind: event.kind,
+        text: label(event),
+        path: event.path,
+        diff: diff === null ? null : diff.slice(0, MAX_RENDERED_DIFF_CHARS),
+        status: event.status,
+        checkpoint: event.checkpoint,
+        truncated: diff !== null && diff.length > MAX_RENDERED_DIFF_CHARS,
+      }] },
+    };
+    return [record as unknown as TranscriptRecord];
   }
   return [{
     type: 'assistant',

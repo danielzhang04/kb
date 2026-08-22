@@ -26,6 +26,7 @@ import {
 } from './routes.ts';
 import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailedRunReconciliation.ts';
 import { createAttemptIoStore } from './attemptIo.ts';
+import { createBus } from '../hub/bus.ts';
 import { executeApprovedLaunch } from './launch.ts';
 import { admit } from './admission.ts';
 import * as publication from './publication.ts';
@@ -134,6 +135,27 @@ function model(value: PlanProposal = proposal): TimelineModel {
 
 function headers(token: string) {
   return { origin: ORIGIN, host: 'localhost:5317', authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+}
+
+async function readSseUntil(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  predicate: (text: string) => boolean,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = '';
+  for (let chunk = 0; chunk < 20; chunk += 1) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      reader.read(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('timed out waiting for SSE frame')), 1_000);
+      }),
+    ]).finally(() => { if (timer) clearTimeout(timer); });
+    if (result.done) break;
+    text += decoder.decode(result.value, { stream: true });
+    if (predicate(text)) return text;
+  }
+  throw new Error(`SSE predicate not reached: ${text}`);
 }
 
 function expectExactWireRun(
@@ -1989,7 +2011,7 @@ describe('control proposal routes', () => {
 
   it('never resumes on a rejected decision', async () => {
     const detail = seedActivatableRun(false);
-    const boundary = seedOpenBoundary(detail.run.runRef, 'operator', { kind: 'approval', title: 'Publish approval' });
+    const boundary = seedOpenBoundary(detail.run.runRef, 'operator', { kind: 'intervention', title: 'Publish refusal' });
     const wired = await activatedApp();
     try {
       const responded = await wired.activated.inject({
@@ -2806,7 +2828,7 @@ describe('control proposal routes', () => {
     });
     if (!run.ok) throw new Error(run.detail);
     const request = controlStore.createHumanRequest('operator', run.value.run.runRef, {
-      kind: 'approval', title: 'Audit-bound approval', prompt: 'Approve only after canonical audit.',
+      kind: 'intervention', title: 'Audit-bound response', prompt: 'Respond only after canonical audit.',
     });
     if (!request.ok) throw new Error(request.detail);
 
@@ -2833,7 +2855,7 @@ describe('control proposal routes', () => {
       });
       const response = await auditFailApp.inject({
         method: 'POST', url: `/api/control/human-requests/${request.value.requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 1, decision: 'approved', idempotencyKey: 'response-audit-must-land' },
+        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: 'response-audit-must-land' },
       });
       expect(response.statusCode, response.body).toBe(500);
       expect(controlStore.getHumanRequest('operator', request.value.requestRef)).toMatchObject({
@@ -3647,7 +3669,7 @@ describe('operator cross-subject authority', () => {
 
       const events = await app.inject({ method: 'GET', url: `/api/control/runs/${engineRun}/events`, headers: headers(token) });
       expect(events.statusCode).toBe(200);
-      expect((events.json() as { value: Array<{ summary: string }> }).value.map((event) => event.summary))
+      expect((events.json() as { items: Array<{ summary: string }> }).items.map((event) => event.summary))
         .toContain('engine started');
     } finally { await app.close(); }
   });
@@ -3685,7 +3707,7 @@ describe('operator cross-subject authority', () => {
     const parked = store.transitionRun('dashboard-engine', runRef, published.value.version, 'waiting-human');
     if (!parked.ok) throw new Error(parked.detail);
     const request = store.createHumanRequest('dashboard-engine', runRef, {
-      kind: 'approval', title: 'Publish the cut?', prompt: 'Approve the render before it goes out.',
+      kind: 'input', title: 'Publish the cut?', prompt: 'Confirm the render before it goes out.',
     });
     if (!request.ok) throw new Error(request.detail);
     return { requestRef: request.value.requestRef, version: parked.value.version };
@@ -3716,14 +3738,14 @@ describe('operator cross-subject authority', () => {
       // The exact P0 symptom: the Inbox lists this gate (via the widened read) and the SPA submits here.
       const answered = await app.inject({
         method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 1, decision: 'approved', idempotencyKey: `respond:${requestRef}`, response: 'ship it' },
+        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: `respond:${requestRef}`, response: 'ship it' },
       });
       expect(answered.statusCode, answered.body).toBe(200);
 
       // ATTRIBUTION: the T3 row names the operator as the ACTOR and the engine as the run's owner, so a
       // cross-subject answer is attributable from the ledger alone.
       expect(audit.find((row) => row.action === 'control-human-response-authorize')).toMatchObject({
-        owner: 'operator', target: requestRef, riskTier: 'T3', result: 'authorized:approved',
+        owner: 'operator', target: requestRef, riskTier: 'T2', result: 'authorized:responded',
         detail: { requestRef, runRef: engineRun, runOwnerSubject: 'dashboard-engine' },
       });
 
@@ -3732,13 +3754,13 @@ describe('operator cross-subject authority', () => {
       if (!owned.ok) throw new Error(owned.detail);
       expect(owned.value.ownerSubject).toBe('dashboard-engine');
       expect(owned.value.humanRequests).toEqual([expect.objectContaining({
-        requestRef, state: 'resolved', response: expect.objectContaining({ respondedBy: 'operator', decision: 'approved' }),
+        requestRef, state: 'resolved', response: expect.objectContaining({ respondedBy: 'operator', decision: 'responded' }),
       })]);
       expect(store.listRuns('operator')).toEqual([]);
       // The governance event landed on the run's OWN timeline, not on an operator partition.
       const events = store.listEvents('dashboard-engine', engineRun);
       if (!events.ok) throw new Error(events.detail);
-      expect(events.value.map((event) => event.summary)).toContain('Human Request approved at revision 1');
+      expect(events.value.map((event) => event.summary)).toContain('Human Request responded at revision 1');
 
       // Boundary accepted, so the owner can move the run on — it is genuinely unblocked, not just green.
       // Answering a gate resolves the REQUEST; it does not itself bump the run — the owner's own
@@ -3876,6 +3898,258 @@ describe('operator cross-subject authority', () => {
       expect(owned.value.run.lifecycle.kind).toBe('waiting-human');
       expect(owned.value.humanRequests).toEqual([expect.objectContaining({ requestRef, state: 'open' })]);
     } finally { await app.close(); }
+  });
+});
+
+describe('Dashboard v3 run and gate routes', () => {
+  function seededSurface() {
+    let id = 0;
+    const store = createInMemoryControlPlaneStore({ newId: () => `dv3-${++id}` });
+    const created = store.createProposalRevision('dashboard-engine', {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: 'daily-news', title: proposal.title,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    const approved = store.decideProposal('dashboard-engine', created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'dv3-approve',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const run = store.createRun('dashboard-engine', {
+      owner: { type: 'workflow', id: 'daily-news', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/daily-news.md' },
+      executionHost: 'desktop', title: proposal.title, proposalRef: created.value.proposalRef,
+      proposalRevision: 1, expectedProposalHash: created.value.hash,
+      managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
+      idempotencyKey: 'dv3-launch',
+      stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    for (const summary of ['first', 'second']) {
+      const appended = store.appendEvent('dashboard-engine', run.value.run.runRef, {
+        kind: 'message', source: 'worker', stageRef: run.value.stages[0]?.stageRef ?? null, summary,
+      });
+      if (!appended.ok) throw new Error(appended.detail);
+    }
+    const request = store.createHumanRequest('dashboard-engine', run.value.run.runRef, {
+      kind: 'approval', title: 'Approve result', prompt: 'Approve the result.',
+    });
+    if (!request.ok) throw new Error(request.detail);
+    const providerAttempt = store.createAttempt('dashboard-engine', run.value.stages[0].stageRef, {
+      expectedStageVersion: run.value.stages[0].version, runtime: 'codex', model: 'gpt-5.6-sol',
+    });
+    if (!providerAttempt.ok) throw new Error(providerAttempt.detail);
+
+    const ownProposal = store.createProposalRevision('other-agent', {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: 'own-workflow', title: 'Own run',
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!ownProposal.ok) throw new Error(ownProposal.detail);
+    const ownApproval = store.decideProposal('other-agent', ownProposal.value.proposalRef, 1, {
+      expectedHash: ownProposal.value.hash, expectedApprovalRevision: 0,
+      decision: 'approved', idempotencyKey: 'own-approve',
+    });
+    if (!ownApproval.ok) throw new Error(ownApproval.detail);
+    const ownRun = store.createRun('other-agent', {
+      owner: { type: 'workflow', id: 'own-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/own-workflow.md' },
+      executionHost: 'desktop', title: 'Own run', proposalRef: ownProposal.value.proposalRef,
+      proposalRevision: 1, expectedProposalHash: ownProposal.value.hash,
+      managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
+      idempotencyKey: 'own-launch',
+      stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    if (!ownRun.ok) throw new Error(ownRun.detail);
+
+    const hubBus = createBus();
+    const ioRoot = mkdtempSync(join(tmpdir(), 'dv3-run-events-'));
+    const attemptIo = createAttemptIoStore({ root: ioRoot, flushMs: 0 });
+    const app = Fastify();
+    app.addHook('onClose', async () => {
+      attemptIo.stop();
+      rmSync(ioRoot, { recursive: true, force: true });
+    });
+    registerWriteSurface(app, makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
+      allowedOrigins: [ORIGIN], credentials: () => [], controlStore: store,
+      hubBus,
+      executionLatch: {
+        snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedAt: 'now', unlockedBy: 'operator' }),
+        current: () => ({ attemptIo }), unlock: vi.fn(), lock: vi.fn(),
+      } as never,
+      appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
+      appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
+      runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+    }));
+    return {
+      app, store, hubBus, attemptIo, providerAttemptRef: providerAttempt.value.attemptRef,
+      runRef: run.value.run.runRef, ownRunRef: ownRun.value.run.runRef, request: request.value,
+      operatorToken: mintSession('operator', SESSION).token,
+      unauthorizedToken: mintSession('other-agent', SESSION).token,
+    };
+  }
+
+  it('serves one revision-stable closed replay page and returns 304 across pages', async () => {
+    const fixture = seededSurface();
+    try {
+      const first = await fixture.app.inject({
+        method: 'GET', url: `/api/control/runs/${fixture.runRef}/events?after=0&limit=1`,
+        headers: headers(fixture.operatorToken),
+      });
+      expect(first.statusCode, first.body).toBe(200);
+      const page = first.json() as { revision: string; items: Array<{ summary: string }>; nextCursor: number | null };
+      expect(page.items.map((item) => item.summary)).toEqual(['first']);
+      expect(page.nextCursor).not.toBeNull();
+      expect(first.headers.etag).toBe(`"${page.revision}"`);
+
+      const next = await fixture.app.inject({
+        method: 'GET', url: `/api/control/runs/${fixture.runRef}/events?after=${page.nextCursor}&limit=1`,
+        headers: { ...headers(fixture.operatorToken), 'if-none-match': first.headers.etag! },
+      });
+      expect(next.statusCode).toBe(304);
+      expect(next.body).toBe('');
+    } finally { await fixture.app.close(); }
+  });
+
+  it('authorizes every stream by scoped getRun before headers, including a non-operator own run', async () => {
+    const fixture = seededSurface();
+    try {
+      const foreign = await fixture.app.inject({
+        method: 'GET', url: `/api/control/runs/${fixture.runRef}/events/stream`,
+        headers: headers(fixture.unauthorizedToken),
+      });
+      expect(foreign.statusCode).toBe(404);
+      expect(foreign.body).toBe('');
+      expect(String(foreign.headers['content-type'] ?? '')).not.toContain('text/event-stream');
+
+      const missing = await fixture.app.inject({
+        method: 'GET', url: '/api/control/runs/missing-run/events/stream',
+        headers: headers(fixture.operatorToken),
+      });
+      expect(missing.statusCode).toBe(404);
+      expect(missing.body).toBe('');
+      expect(String(missing.headers['content-type'] ?? '')).not.toContain('text/event-stream');
+
+      const unauthenticated = await fixture.app.inject({
+        method: 'GET', url: `/api/control/runs/${fixture.ownRunRef}/events/stream`,
+        headers: { origin: ORIGIN, host: 'localhost:5317' },
+      });
+      expect(unauthenticated.statusCode).toBe(401);
+      expect(String(unauthenticated.headers['content-type'] ?? '')).not.toContain('text/event-stream');
+      expect(unauthenticated.body).not.toContain('event: run-event');
+
+      await fixture.app.listen({ host: 'localhost', port: 5317 });
+      const controller = new AbortController();
+      const own = await fetch(`${ORIGIN}/api/control/runs/${fixture.ownRunRef}/events/stream`, {
+        headers: headers(fixture.unauthorizedToken), signal: controller.signal,
+      });
+      expect(own.status).toBe(200);
+      expect(own.headers.get('content-type')).toContain('text/event-stream');
+      controller.abort();
+    } finally { await fixture.app.close(); }
+  });
+
+  it.each(['-1', '1.5', '1e3', '9007199254740992', 'wat'])(
+    'rejects unsafe SSE after/Last-Event-ID cursors before writing stream headers: %s',
+    async (cursor) => {
+      const fixture = seededSurface();
+      try {
+        for (const request of [
+          { url: `/api/control/runs/${fixture.runRef}/events/stream?after=${cursor}`, headers: headers(fixture.operatorToken) },
+          { url: `/api/control/runs/${fixture.runRef}/events/stream`, headers: { ...headers(fixture.operatorToken), 'last-event-id': cursor } },
+        ]) {
+          const response = await fixture.app.inject({ method: 'GET', ...request });
+          expect(response.statusCode).toBe(400);
+          expect(response.headers['content-type']).not.toContain('text/event-stream');
+        }
+      } finally { await fixture.app.close(); }
+    },
+  );
+
+  it('replays from Last-Event-ID, delivers an append after connect, and releases the subscription on abort', async () => {
+    const fixture = seededSurface();
+    try {
+      await fixture.app.listen({ host: 'localhost', port: 5317 });
+      const controller = new AbortController();
+      const response = await fetch(`${ORIGIN}/api/control/runs/${fixture.runRef}/events/stream?after=0`, {
+        headers: { ...headers(fixture.operatorToken), 'last-event-id': '1000' }, signal: controller.signal,
+      });
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const replay = await readSseUntil(reader, (text) => text.includes('"summary":"second"'));
+      expect(replay).not.toContain('id: 1000\n');
+      expect(replay).toContain('id: 2000\n');
+      await vi.waitFor(() => expect(fixture.hubBus.subscriberCount()).toBe(1));
+
+      const appended = fixture.store.appendEvent('dashboard-engine', fixture.runRef, {
+        kind: 'message', source: 'worker', stageRef: null, summary: 'arrived after connect',
+      });
+      if (!appended.ok) throw new Error(appended.detail);
+      fixture.hubBus.publish({ channel: 'control', kind: 'store-change' });
+      const live = await readSseUntil(reader, (text) => text.includes('arrived after connect'));
+      expect(live).toContain('event: run-event');
+
+      controller.abort();
+      await vi.waitFor(() => expect(fixture.hubBus.subscriberCount()).toBe(0));
+    } finally { await fixture.app.close(); }
+  });
+
+  it('projects real Codex golden output through the shared REST route service', async () => {
+    const fixture = seededSurface();
+    try {
+      const transcript = readFileSync(fileURLToPath(new URL('./__fixtures__/dv3/transcripts/codex-real-sanitized.jsonl', import.meta.url)), 'utf8');
+      for (const line of transcript.trim().split(/\r?\n/)) fixture.attemptIo.append(fixture.providerAttemptRef, 'out', line);
+      const response = await fixture.app.inject({
+        method: 'GET', url: `/api/control/runs/${fixture.runRef}/events?after=0&limit=250`,
+        headers: headers(fixture.operatorToken),
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const items = (response.json() as { items: Array<{ kind: string; toolName: string | null; summary: string | null }> }).items;
+      expect(items).toContainEqual(expect.objectContaining({ kind: 'message', summary: expect.stringContaining('REWRITE') }));
+      expect(items).toContainEqual(expect.objectContaining({ kind: 'lifecycle', summary: 'succeeded' }));
+    } finally { await fixture.app.close(); }
+  });
+
+  it('projects distinct-run attention with a revision ETag', async () => {
+    const fixture = seededSurface();
+    try {
+      const extra = fixture.store.createHumanRequest('dashboard-engine', fixture.runRef, {
+        kind: 'input', title: 'Second request', prompt: 'One more answer.',
+      });
+      if (!extra.ok) throw new Error(extra.detail);
+      const response = await fixture.app.inject({ method: 'GET', url: '/api/attention', headers: headers(fixture.operatorToken) });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        pairs: [{ runRef: fixture.runRef }], workflows: { 'workflow:kb-ops:daily-news': 1 },
+      });
+      const cached = await fixture.app.inject({
+        method: 'GET', url: '/api/attention', headers: { ...headers(fixture.operatorToken), 'if-none-match': response.headers.etag! },
+      });
+      expect(cached.statusCode).toBe(304);
+    } finally { await fixture.app.close(); }
+  });
+
+  it('registers challenge-bound T3 response and fails closed when the ceremony is unavailable', async () => {
+    const fixture = seededSurface();
+    try {
+      const challenge = await fixture.app.inject({
+        method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond/challenge`,
+        headers: headers(fixture.operatorToken), payload: {
+          expectedRevision: fixture.request.revision, decision: 'approved', response: null,
+        },
+      });
+      expect(challenge.statusCode).toBe(403);
+      expect(challenge.json()).toEqual({ error: 'ceremony-unavailable' });
+
+      const response = await fixture.app.inject({
+        method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond`,
+        headers: headers(fixture.operatorToken), payload: {
+          expectedRevision: fixture.request.revision, decision: 'approved', idempotencyKey: 'approve-result', response: null,
+        },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ error: 'ceremony-unavailable' });
+      expect(fixture.store.getHumanRequest('dashboard-engine', fixture.request.requestRef)).toMatchObject({
+        ok: true, value: { state: 'open', response: null },
+      });
+    } finally { await fixture.app.close(); }
   });
 });
 

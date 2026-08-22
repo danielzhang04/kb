@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
-import { useSse } from './sseClient';
+import { useRunEventStream, useSse } from './sseClient';
 import type { SseSource } from './sseClient';
 
 afterEach(cleanup);
@@ -77,5 +77,45 @@ describe('useSse', () => {
     });
 
     expect(result.current.last).toEqual({ channel: 'control', kind: 'store-change' });
+  });
+});
+
+describe('useRunEventStream', () => {
+  const replay = [{
+    cursor: 1, runRef: 'run-1', kind: 'message' as const, source: 'worker' as const,
+    stageRef: null, attemptRef: null, sessionRef: null, status: null, summary: 'replayed',
+    command: null, toolName: null, path: null, diff: null, checkpoint: null,
+    createdAt: '2026-08-21T00:00:01.000Z',
+  }];
+
+  it('resumes after replay, rejects invalid frames, deduplicates cursors, and closes when detached', () => {
+    const sources: FakeSource[] = [];
+    const factory = (url: string): SseSource => {
+      const source = new FakeSource(url);
+      sources.push(source);
+      return source;
+    };
+    const { result, rerender } = renderHook(
+      ({ attached }) => useRunEventStream('run-1', replay, attached, factory),
+      { initialProps: { attached: true } },
+    );
+    expect(sources[0].url).toBe('/api/control/runs/run-1/events/stream?after=1');
+    expect(result.current.events.map((event) => event.summary)).toEqual(['replayed']);
+
+    act(() => sources[0].emit('run-event', JSON.stringify({ ...replay[0], cursor: 2, summary: 'live' })));
+    act(() => sources[0].emit('run-event', JSON.stringify({ ...replay[0], cursor: 2, summary: 'live' })));
+    act(() => sources[0].emit('run-event', JSON.stringify({ ...replay[0], cursor: 3, runRef: 'foreign', summary: 'foreign' })));
+    act(() => sources[0].emit('run-event', '{not-json'));
+    expect(result.current.connection).toBe('live');
+    expect(result.current.events.map((event) => event.summary)).toEqual(['replayed', 'live']);
+
+    act(() => sources[0].emit('error', ''));
+    expect(result.current.connection).toBe('reconnecting');
+    expect(result.current.events).toHaveLength(2);
+
+    rerender({ attached: false });
+    expect(sources[0].closed).toBe(true);
+    expect(result.current.connection).toBe('replay');
+    expect(result.current.events.map((event) => event.summary)).toEqual(['replayed', 'live']);
   });
 });

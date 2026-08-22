@@ -227,7 +227,8 @@ describe('server', () => {
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
     '/api/control/proposals', '/api/control/execution', '/api/control/runs', '/api/control/runs/example',
     '/api/control/proposals/example/revisions/example', '/api/control/runs/example/attempts/example/io',
-    '/api/control/runs/example/events', '/api/control/retention/inventory', '/events',
+    '/api/control/runs/example/events', '/api/control/runs/example/events/stream',
+    '/api/control/retention/inventory', '/api/attention', '/events',
   ])('rejects unauthenticated read %s', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
@@ -245,7 +246,9 @@ describe('server', () => {
   // Governed writes composed OUTSIDE the write surface (`registerWriteSurface`) — so `surface.test.ts`'s
   // own "session-less POST is 401, never 404" matrix cannot see them. They are gated by THIS file's
   // scope-level `requireSession`, and must prove the same property: gated, not missing.
-  it.each(['/api/schedules/edit'])('rejects unauthenticated write %s (401, never 404)', async (url) => {
+  it.each([
+    '/api/schedules/edit', '/api/control/human-requests/example/respond/challenge',
+  ])('rejects unauthenticated write %s (401, never 404)', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
     expect(response.statusCode, `${url} should be gated, not missing`).not.toBe(404);
@@ -262,6 +265,7 @@ describe('server', () => {
     ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
     ['/api/agents/example', 404], ['/api/workflows/example', 404],
     ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],
+    ['/api/control/runs/example/events/stream', 404], ['/api/attention', 200],
   ])('keeps matched resource %s at its normal %i after authentication', async (url, expected) => {
     app = matrixApp();
     expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode).toBe(expected);

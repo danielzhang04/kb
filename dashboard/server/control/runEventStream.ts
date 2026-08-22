@@ -27,7 +27,10 @@ export interface RunEventStream {
 function lastAcceptedCursor(value: string | null | undefined): number {
   if (value == null || value.trim() === '') return 0;
   const cursor = Number(value);
-  return Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : 0;
+  if (!Number.isSafeInteger(cursor) || cursor < 0 || String(cursor) !== value.trim()) {
+    throw new Error('Last-Event-ID must be a safe non-negative integer');
+  }
+  return cursor;
 }
 
 function frameFor(item: RunEvent): RunEventSseFrame {

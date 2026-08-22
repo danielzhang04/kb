@@ -8,6 +8,7 @@ import {
   latestAttemptRefOfAgent,
   overlaysFromRun,
   participantStageKey,
+  stepDagFromRun,
 } from './runGraph';
 
 const assignment = (agentId: string) => ({
@@ -160,9 +161,7 @@ describe('run graph selectors', () => {
     const gate = detail.humanRequests.find((request) => request.requestRef === loop.interventionRef)!;
     loop.state = 'passed';
     gate.state = 'resolved';
-    gate.response = {
-      requestRevision: gate.revision, decision: 'approved', response: null, respondedAt: '',
-    };
+    gate.response = { requestRevision: gate.revision, decision: 'approved', response: null, respondedAt: '' };
 
     const resolved = overlaysFromRun(detail).alpha.participantStages[0]!;
     expect(resolved).toMatchObject({
@@ -254,5 +253,27 @@ describe('run graph selectors', () => {
     expect(absent.lastVerdict).toBeUndefined();
     expect(absent.acceptedGenerationRefs).toBeUndefined();
     expect(absent.unresolvedResidue).toBeUndefined();
+  });
+});
+
+describe('run step graph', () => {
+  it('uses definition order, resolves stage-id dependencies to run-scoped refs, and filters one event source', () => {
+    const detail = runDetail();
+    const events = [{ cursor: 2, stageRef: 'stage-2' }, { cursor: 1, stageRef: 'stage-1' }];
+    const graph = stepDagFromRun(detail, events);
+    expect(graph.nodes).toEqual([
+      { stageRef: 'stage-1', label: 'Research' },
+      { stageRef: 'stage-2', label: 'Draft' },
+      { stageRef: 'stage-3', label: 'Review' },
+    ]);
+    expect(graph.edges).toEqual([{ from: 'stage-1', to: 'stage-2' }, { from: 'stage-2', to: 'stage-3' }]);
+    expect(graph.eventsFor('stage-2')).toEqual([{ cursor: 2, stageRef: 'stage-2' }]);
+    expect(graph.eventsFor(null)).toEqual(events);
+  });
+
+  it('drops an unresolved dependency instead of inventing a node', () => {
+    const detail = runDetail();
+    detail.stages[1]!.dependsOn = ['missing'];
+    expect(stepDagFromRun(detail, []).edges).toEqual([{ from: 'stage-2', to: 'stage-3' }]);
   });
 });

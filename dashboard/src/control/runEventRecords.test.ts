@@ -3,18 +3,22 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createRunEventService, type RunEventSource } from '../../server/control/runEventService.ts';
-import { createRunEventStream } from '../../server/control/runEventStream.ts';
 import type { OperationalEvent } from '../../server/control/types.ts';
 import { orderedRunEventRecords, serializeRunEventFold } from './runEventRecords.ts';
 
 const transcriptDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'server', 'control', '__fixtures__', 'dv3', 'transcripts');
 
-function event(cursor: number, stageRef: string | null, kind: OperationalEvent['kind'] = 'message'): OperationalEvent {
+function event(
+  cursor: number,
+  stageRef: string | null,
+  kind: OperationalEvent['kind'] = 'message',
+  overrides: Partial<OperationalEvent> = {},
+): OperationalEvent {
   return {
     cursor, runRef: 'run-1', kind, source: 'worker', stageRef, attemptRef: null, sessionRef: null,
     status: kind === 'tool' ? 'success' : null, summary: kind === 'message' ? `message ${cursor}` : null,
     command: null, toolName: kind === 'tool' ? 'Read' : null, path: null, diff: null, checkpoint: null,
-    createdAt: `2026-08-21T00:00:0${cursor}.000Z`,
+    createdAt: `2026-08-21T00:00:0${cursor}.000Z`, ...overrides,
   };
 }
 
@@ -32,7 +36,26 @@ describe('run event record projection', () => {
     ] });
   });
 
-  it.each([['Claude', 'claude'], ['Codex', 'codex']] as const)('%s golden REST and SSE item folds are byte-equal', async (_label, provider) => {
+  it('keeps file, diff, checkpoint, lifecycle, and truncation evidence structured through the fold', () => {
+    const longDiff = `@@ -1 +1 @@\n-${'x'.repeat(2_500)}`;
+    const model = JSON.parse(serializeRunEventFold([
+      event(1, null, 'file', { path: 'src/run.ts', status: 'success', summary: 'Saved file' }),
+      event(2, null, 'diff', { path: 'src/run.ts', diff: longDiff, summary: 'Changed file' }),
+      event(3, null, 'checkpoint', { checkpoint: 'tests-green', status: 'success' }),
+      event(4, null, 'lifecycle', { status: 'stopped', summary: 'Run stopped' }),
+    ]));
+    const steps = model.turns.flatMap((turn: { steps: unknown[] }) => turn.steps);
+
+    expect(steps).toEqual([
+      expect.objectContaining({ kind: 'file', path: 'src/run.ts', status: 'success' }),
+      expect.objectContaining({ kind: 'diff', path: 'src/run.ts', diff: expect.stringContaining('@@ -1 +1 @@'), truncated: true }),
+      expect.objectContaining({ kind: 'checkpoint', checkpoint: 'tests-green', status: 'success' }),
+      expect.objectContaining({ kind: 'lifecycle', status: 'stopped', text: 'Run stopped' }),
+    ]);
+    expect(steps[1].diff.length).toBeLessThan(longDiff.length);
+  });
+
+  it.each([['Claude', 'claude'], ['Codex', 'codex']] as const)('%s golden provider records fold into known semantic rows', async (_label, provider) => {
     const sources: RunEventSource[] = readFileSync(resolve(transcriptDir, `${provider}-real-sanitized.jsonl`), 'utf8')
       .trim().split(/\r?\n/).map((rawLine, index) => ({
         kind: 'provider', provider, cursor: (index + 1) * 10, runRef: 'golden-run', stageRef: null,
@@ -42,11 +65,20 @@ describe('run event record projection', () => {
     const page = await service.replay({
       subject: 'operator', runRef: 'golden-run', afterCursor: 0, limit: 250,
     });
-    const streamed = await createRunEventStream(service).replay({
-      subject: 'operator', runRef: 'golden-run', afterCursor: 0, limit: 250,
-    });
-    const sseRoundTrip = streamed.frames.map((frame) => JSON.parse(frame.data) as OperationalEvent);
-    expect(serializeRunEventFold(sseRoundTrip)).toBe(serializeRunEventFold(page.items));
+    const model = JSON.parse(serializeRunEventFold(page.items)) as {
+      turns: Array<{ steps: Array<{ kind: string; name?: string; text?: string; status?: string; result?: { isError: boolean } }> }>;
+    };
+    const steps = model.turns.flatMap((turn) => turn.steps);
+    if (provider === 'claude') {
+      expect(steps.map((step) => [step.kind, step.name, step.result?.isError])).toEqual([
+        ['tool_use', 'Glob', false], ['tool_use', 'Glob', false], ['tool_use', 'Write', false],
+      ]);
+    } else {
+      expect(steps).toEqual([
+        expect.objectContaining({ kind: 'text', text: expect.stringContaining('REWRITE') }),
+        expect.objectContaining({ kind: 'lifecycle', text: 'succeeded', status: 'success' }),
+      ]);
+    }
   });
 
   it('unknown provider raw lifecycle line folds as inert visible text', async () => {

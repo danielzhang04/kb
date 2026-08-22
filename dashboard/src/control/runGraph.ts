@@ -11,6 +11,23 @@ import type {
   RunDetailDto,
 } from './controlClient';
 import type { WorkflowDefEntry } from '../views/WorkflowDetail';
+import { projectStepDag, type StepEvent } from '../../server/entities/project.ts';
+
+/** Adapt legacy run-detail stage ids at the boundary, then use the P2 step projection as the sole DAG source. */
+export function stepDagFromRun(detail: Pick<RunDetailDto, 'stages'>, events: StepEvent[]) {
+  const stageRefById = new Map(detail.stages.map((stage) => [stage.stageId, stage.stageRef]));
+  return projectStepDag({
+    stages: detail.stages.map((stage) => ({
+      stageRef: stage.stageRef,
+      label: stage.title,
+      dependsOn: stage.dependsOn.flatMap((stageId) => {
+        const stageRef = stageRefById.get(stageId);
+        return stageRef === undefined ? [] : [stageRef];
+      }),
+    })),
+    events,
+  });
+}
 
 export type AgentRunState =
   | 'failed'

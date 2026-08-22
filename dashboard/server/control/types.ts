@@ -613,6 +613,8 @@ export interface IterationLoopDto extends Omit<IterationLoop, 'unresolvedResidue
 export interface RunDetailDto extends Omit<RunDetail, 'run' | 'iterationLoops'> {
   run: RunDto;
   iterationLoops: IterationLoopDto[];
+  streamKind: 'pty' | 'transcript';
+  sessionId?: string;
 }
 
 export interface StorageInventoryItem {

@@ -38,7 +38,7 @@ export interface HumanResponseStorePort {
   ): Awaitable<{ request: HumanRequest; replayed: boolean }>;
   listHumanRequestsForRun(actorSubject: string, runRef: string): Awaitable<readonly HumanRequest[]>;
   appendResponseEvent(actorSubject: string, request: HumanRequest): Awaitable<void>;
-  resumeRunAfterBoundaryAccepted(actorSubject: string, runRef: string): Awaitable<void>;
+  resumeRunAfterBoundaryAccepted(actorSubject: string, runRef: string, answeredRequest: HumanRequest): Awaitable<void>;
 }
 
 export interface HumanResponseAuditPort {
@@ -69,11 +69,23 @@ export interface HumanResponseService {
 
 const T3_KINDS = new Set<HumanRequest['kind']>(['approval', 'review', 'governance-refusal']);
 
-function digestResponse(input: HumanResponseInput): string {
+export function humanResponseDigest(input: Pick<HumanResponseInput, 'decision' | 'response'>): string {
   return createHash('sha256').update(JSON.stringify({
     decision: input.decision,
     response: input.response ?? null,
   })).digest('hex');
+}
+
+/** Purpose-bound preimage signed by WebAuthn. The wire challenge is base64url(UTF8(this string)). */
+export function humanResponseChallenge(input: Omit<CeremonyVerificationInput, 'assertion'>): string {
+  return `kb.human-response.v1.${Buffer.from(JSON.stringify({
+    requestRef: input.requestRef,
+    requestRevision: input.requestRevision,
+    responseDigest: input.responseDigest,
+    action: input.action,
+    origin: input.origin,
+    challengeExpiresAt: input.challengeExpiresAt,
+  }), 'utf8').toString('base64url')}`;
 }
 
 function accepted(request: HumanRequest): boolean {
@@ -95,6 +107,13 @@ export function createHumanResponseService(options: {
   now?: () => number;
 }): HumanResponseService {
   const now = options.now ?? Date.now;
+  const reconcile = async (actorSubject: string, request: HumanRequest): Promise<void> => {
+    await options.store.appendResponseEvent(actorSubject, request);
+    const requests = await options.store.listHumanRequestsForRun(actorSubject, request.runRef);
+    if (requests.length > 0 && requests.every(accepted)) {
+      await options.store.resumeRunAfterBoundaryAccepted(actorSubject, request.runRef, request);
+    }
+  };
   return {
     async respond(input) {
       if (input.actor.kind === 'host') return { ok: false, status: 403, error: 'host-human-response-refused' };
@@ -110,9 +129,11 @@ export function createHumanResponseService(options: {
         };
       }
       if (request.response) {
-        return sameReplay(request, input)
-          ? { ok: true, status: 200, value: request, replayed: true }
-          : { ok: false, status: 409, error: 'human-response-idempotency-conflict' };
+        if (!sameReplay(request, input)) {
+          return { ok: false, status: 409, error: 'human-response-idempotency-conflict' };
+        }
+        await reconcile(input.actor.subject, request);
+        return { ok: true, status: 200, value: request, replayed: true };
       }
       if (request.state !== 'open' || request.revision !== input.expectedRevision) {
         return { ok: false, status: 409, error: 'request-revision-changed' };
@@ -132,7 +153,7 @@ export function createHumanResponseService(options: {
             assertion: input.ceremonyAssertion,
             requestRef: request.requestRef,
             requestRevision: request.revision,
-            responseDigest: digestResponse(input),
+            responseDigest: humanResponseDigest(input),
             action: input.decision,
             origin: input.origin,
             challengeExpiresAt,
@@ -156,7 +177,7 @@ export function createHumanResponseService(options: {
             runOwnerSubject,
             requestRevision: request.revision,
             decision: input.decision,
-            ...(t3 ? { responseDigest: digestResponse(input), origin: input.origin } : {}),
+            ...(t3 ? { responseDigest: humanResponseDigest(input), origin: input.origin } : {}),
           },
         });
       } catch {
@@ -169,13 +190,7 @@ export function createHumanResponseService(options: {
         idempotencyKey: input.idempotencyKey,
         response: input.response ?? null,
       });
-      if (!response.replayed) {
-        await options.store.appendResponseEvent(input.actor.subject, response.request);
-        const requests = await options.store.listHumanRequestsForRun(input.actor.subject, response.request.runRef);
-        if (requests.length > 0 && requests.every(accepted)) {
-          await options.store.resumeRunAfterBoundaryAccepted(input.actor.subject, response.request.runRef);
-        }
-      }
+      await reconcile(input.actor.subject, response.request);
       return { ok: true, status: 200, value: response.request, replayed: response.replayed };
     },
   };
