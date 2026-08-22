@@ -9,6 +9,36 @@ const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath
   new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
 
 describe('control document migrations', () => {
+  it('migrates v2 to v3 and round-trips every P2 addition through the checksummed down carrier', () => {
+    const source = fixture('v2-empty.json') as Record<string, any>;
+    const migrated = migrateControlDocument(source, 3, {
+      stamp: '2026-08-21T00:00:00.000Z',
+    }).document as unknown as Record<string, any>;
+    expect(migrated).toMatchObject({ version: 3, scheduleCollectionRevision: 0 });
+    expect(migrated.schedules).toEqual([]);
+    expect(migrated.scheduleTombstones).toEqual([]);
+    expect(migrated.scheduleOccurrenceClaims).toEqual([]);
+    expect(migrated.scheduleSeedImports).toEqual([]);
+
+    const identity = {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop', terminalOutcome: 'interrupted',
+      completedAt: '2026-08-21T00:00:00.000Z', archivedFrom: 'interrupted',
+    };
+    migrated.runs.push({ runRef: 'run-active', ...identity });
+    migrated.quarantine.push({ run: { runRef: 'run-quarantined', ...identity } });
+    migrated.scheduleCollectionRevision = 4;
+    migrated.schedules.push({ id: 'schedule-one', privateSeedBytes: 'exact-bytes' });
+    const down = applyMigrationEdgeForTest(migrated, 2, {
+      stamp: '2026-08-21T00:00:00.000Z',
+    }) as Record<string, any>;
+    expect(down.version).toBe(2);
+    expect(down).not.toHaveProperty('schedules');
+    expect(down.events.at(-1).summary).toMatch(/^kb\.control-plane-v3-down-carrier\/v1:/);
+    expect(applyMigrationEdgeForTest(down, 3, { stamp: '2026-08-21T00:00:00.000Z' }))
+      .toEqual(migrated);
+  });
+
   it('migrates v1 to v2 once and is repeat-safe', () => {
     const first = migrateControlDocument(fixture('v1-supported.json'), 2, {
       stamp: '2026-08-20T00:00:00.000Z',
@@ -21,9 +51,10 @@ describe('control document migrations', () => {
   });
 
   it('rejects future versions before mutation', () => {
-    const future = fixture('future-v3.json');
+    const future = fixture('future-v3.json') as Record<string, unknown>;
+    future.version = 4;
     const before = structuredClone(future);
-    expect(() => assertMigrationEnvelope(future)).toThrow(/unsupported control-plane version 3/);
+    expect(() => assertMigrationEnvelope(future)).toThrow(/unsupported control-plane version 4/);
     expect(future).toEqual(before);
   });
 

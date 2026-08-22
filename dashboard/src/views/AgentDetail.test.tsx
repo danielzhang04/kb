@@ -91,6 +91,8 @@ const EMPTY_INDEX: PlaneAIndex = {
 
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
   ownerSubject: 'operator',
+  owner: { type: 'agent', id: 'manager', sourcePath: 'agents/manager.md' }, executionHost: 'desktop',
+  terminalOutcome: null, completedAt: null, archivedFrom: null,
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline',
   displayName: 'Rebuild the faceless video pipeline',

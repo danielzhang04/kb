@@ -49,6 +49,8 @@ function createRun(store: ControlPlaneStore, subject = 'alice') {
   });
   if (!approved.ok) throw new Error(approved.detail);
   const run = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Broker run',
     proposalRef: approved.value.proposalRef,
     proposalRevision: approved.value.revision,

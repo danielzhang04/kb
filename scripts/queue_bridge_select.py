@@ -1,16 +1,15 @@
-"""Queue -> dashboard-engine bridge selector: the exact inverse of agent_runner.ps1's owner scan.
+"""Queue -> dashboard-engine bridge selector and bounded wake helper.
 
 A card belongs to the governed dashboard executor **iff** all three hold:
 
   * ``execution-controller`` is exactly the literal ``"dashboard"`` (an absent/null
     controller does NOT belong here),
-  * ``owner`` equals the dashboard executor subject, and
   * ``state`` is ``inbox`` or ``working``.
 
 This is the complement, on the ``execution-controller`` axis, of the legacy runner's
 filter in ``scripts/agent_runner.ps1`` (step 6), which claims a card iff
 ``execution-controller != "dashboard" and owner == agent and state in (inbox, working)``.
-The two predicates PARTITION the owner/state-matched card space with no overlap and no
+The two predicates PARTITION the controller/state-matched card space with no overlap and no
 gap: ``!= "dashboard"`` -> legacy runner, ``== "dashboard"`` -> this bridge. That single
 frontmatter flag is the double-execution guard; keeping this selector's controller test
 an EXACT string equality (never a truthiness or "not legacy" test) is what preserves it.
@@ -28,21 +27,21 @@ from pathlib import Path
 
 sys.path.insert(0, "scripts")
 import cards  # noqa: E402  (path insert must precede the fleet import, mirroring agent_runner.ps1)
+import agent_runner  # noqa: E402
 
 DASHBOARD_CONTROLLER = "dashboard"
 CLAIMABLE_STATES = ("inbox", "working")
 
 
-def claims_card(meta: dict, subject: str) -> bool:
-    """True iff the dashboard-engine bridge (not the legacy runner) owns this card."""
+def claims_card(meta: dict) -> bool:
+    """True iff the dashboard controller owns this claimable card."""
     return (
         meta.get("execution-controller") == DASHBOARD_CONTROLLER
-        and meta.get("owner") == subject
         and meta.get("state") in CLAIMABLE_STATES
     )
 
 
-def select_owned_dashboard_cards(queue_root: Path, subject: str) -> list[dict]:
+def select_owned_dashboard_cards(queue_root: Path) -> list[dict]:
     """Return ``[{id, path, state}]`` for every dashboard-owned inbox/working card.
 
     Sorted by directory then filename for deterministic output, exactly like the
@@ -61,7 +60,7 @@ def select_owned_dashboard_cards(queue_root: Path, subject: str) -> list[dict]:
             except Exception:
                 # A single unparseable file never aborts the scan (legacy-runner parity).
                 continue
-            if claims_card(card.meta, subject):
+            if claims_card(card.meta):
                 owned.append({
                     "id": card.meta["id"],
                     "path": str(path),
@@ -72,11 +71,17 @@ def select_owned_dashboard_cards(queue_root: Path, subject: str) -> list[dict]:
 
 def main(argv: list[str]) -> int:
     op = json.loads(argv[1]) if len(argv) > 1 else {}
-    subject = op.get("subject")
-    if not isinstance(subject, str) or subject == "":
-        raise ValueError("queue_bridge_select requires a non-empty 'subject'")
+    if op.get("operation", "select") == "wake":
+        repo_root = op.get("repoRoot")
+        reason = op.get("reason")
+        detail = op.get("detail")
+        if not all(isinstance(value, str) and value for value in (repo_root, reason, detail)):
+            raise ValueError("queue bridge wake requires repoRoot, reason, and detail")
+        card_id = agent_runner.wake_me(Path(repo_root).resolve(), reason, detail)
+        print(json.dumps({"cardId": card_id}))
+        return 0
     queue_root = Path(op.get("queueRoot", "queue"))
-    print(json.dumps(select_owned_dashboard_cards(queue_root, subject)))
+    print(json.dumps(select_owned_dashboard_cards(queue_root)))
     return 0
 
 

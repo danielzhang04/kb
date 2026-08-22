@@ -26,6 +26,8 @@ import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonO
 import { OPERATOR_SUBJECT, type CreateHumanRequestInput } from './store.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 import { runLifecycleKind } from './runLifecycle.ts';
+import { decodeHostKind, decodeRunnableRef } from './p2Decoders.ts';
+import type { HostKind, RunnableRef } from './p2Contracts.ts';
 
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
 export interface LaunchOutcome {
@@ -64,6 +66,36 @@ export interface ApprovedLaunchInput {
   source?: string;
   /** Optional, trusted origin resolved by the HTTP workflow route from an owned Composer workspace. */
   agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenance | null;
+  /** Server-resolved execution identity. HTTP bodies never populate this field. */
+  identity?: { owner: RunnableRef; executionHost: HostKind };
+}
+
+export function validateTrustedLaunchIdentity(value: unknown):
+  | { ok: true; value: { owner: RunnableRef; executionHost: HostKind } }
+  | { ok: false; code: 'runnable-owner-required' } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, code: 'runnable-owner-required' };
+  }
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).sort().join(',') !== 'executionHost,owner') {
+    return { ok: false, code: 'runnable-owner-required' };
+  }
+  const owner = decodeRunnableRef(row.owner);
+  const executionHost = decodeHostKind(row.executionHost);
+  return owner && executionHost
+    ? { ok: true, value: { owner, executionHost } }
+    : { ok: false, code: 'runnable-owner-required' };
+}
+
+function sameTrustedLaunchIdentity(
+  left: { owner: RunnableRef; executionHost: HostKind },
+  right: { owner: RunnableRef; executionHost: HostKind },
+): boolean {
+  return left.executionHost === right.executionHost
+    && left.owner.type === right.owner.type
+    && left.owner.id === right.owner.id
+    && left.owner.sourcePath === right.owner.sourcePath
+    && (left.owner.type !== 'workflow' || (right.owner.type === 'workflow' && left.owner.project === right.owner.project));
 }
 
 export function statusOf(result: Extract<ControlResult<unknown>, { ok: false }>): number {
@@ -177,6 +209,23 @@ export async function executeApprovedLaunch(
     // accepts the server-compiled shape here.
     const parsed = validateServerCompiledPlanProposal(snapshot, registry);
     if (!parsed.ok) return { status: 409, body: { error: 'stored-proposal-invalid', detail: parsed.detail } };
+    const bootHost: HostKind = process.platform === 'win32' ? 'desktop' : 'vm';
+    let derivedIdentity = input.identity ?? (input.agentWorkspaceLaunch ? {
+      owner: {
+        type: 'agent' as const,
+        id: input.agentWorkspaceLaunch.agentId,
+        sourcePath: input.agentWorkspaceLaunch.declarationPath,
+      },
+      executionHost: bootHost,
+    } : input.source?.startsWith('workflow:') ? {
+      owner: {
+        type: 'workflow' as const,
+        id: input.source.slice('workflow:'.length),
+        project: parsed.value.project,
+        sourcePath: `orgs/${parsed.value.project}/workflows/${input.source.slice('workflow:'.length)}.md`,
+      },
+      executionHost: bootHost,
+    } : null);
     const compiled = compileApprovedProposal(parsed.value, storedHash, storedHash, {
       policy: loadPolicyEnvironment(ctx.repoRoot, parsed.value.project, parsed.value.governanceRefs),
       defaultWorkers: defaultWorkers(ctx.repoRoot),
@@ -193,6 +242,20 @@ export async function executeApprovedLaunch(
         || predecessor.value.run.proposalHash !== storedHash) {
         return { status: 409, body: { error: 'retry-predecessor-changed' } };
       }
+      const predecessorIdentity = {
+        owner: predecessor.value.run.owner,
+        executionHost: predecessor.value.run.executionHost,
+      };
+      if (input.identity) {
+        const asserted = validateTrustedLaunchIdentity(input.identity);
+        if (!asserted.ok || !sameTrustedLaunchIdentity(asserted.value, predecessorIdentity)) {
+          return { status: 409, body: { error: 'runnable-owner-conflict' } };
+        }
+      }
+      // Retry is a continuation of the same server-owned runnable. Current
+      // declaration/workflow selectors may have changed since the predecessor
+      // launched; they cannot transfer ownership or host on a successor.
+      derivedIdentity = predecessorIdentity;
       const canonical = await reconcileCanonicalPublication({
         repoRoot: ctx.repoRoot, runRef: predecessorRunRef, proposal: parsed.value,
         defaultWorkers: defaultWorkers(ctx.repoRoot), runGit: ctx.opsGit ?? defaultGitRunner,
@@ -207,6 +270,8 @@ export async function executeApprovedLaunch(
         };
       }
     }
+    const launchIdentity = validateTrustedLaunchIdentity(derivedIdentity);
+    if (!launchIdentity.ok) return { status: 409, body: { error: launchIdentity.code } };
     const created = ctx.controlStore.createRun(sub, {
       title: parsed.value.title,
       proposalRef,
@@ -215,6 +280,8 @@ export async function executeApprovedLaunch(
       managerRuntime: parsed.value.manager.runtime,
       managerModel: parsed.value.manager.model,
       managerAssignment: parsed.value.manager.assignment ?? null,
+      owner: launchIdentity.value.owner,
+      executionHost: launchIdentity.value.executionHost,
       idempotencyKey,
       predecessorRunRef,
       expectedPredecessorVersion: predecessorRunRef === null ? undefined : input.expectedPredecessorVersion,

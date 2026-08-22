@@ -9,6 +9,7 @@ import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import {
   persistControlDocumentSync,
+  writeControlPlaneMigrationBackupSync,
   type PersistenceDeps,
   type SaveDurability,
 } from './persistence.ts';
@@ -18,8 +19,11 @@ import {
   legacyGroupForStages,
   loadAndMigrate,
   normalizeCrash,
+  type MigrationContext,
 } from './migrations.ts';
 import { CONTROL_PLANE_SCHEMA_VERSION, type ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
+import { decodeHostKind, decodeRunnableRef, identityFieldsFromRun } from './p2Decoders.ts';
+import type { HostKind, RunnableRef, Schedule } from './p2Contracts.ts';
 import type {
   ProposalCompletionGate,
   ProposalIterationGroup,
@@ -388,6 +392,38 @@ export interface QuarantinedRunBundle {
   generationSupersessions: StoredGenerationSupersession[];
 }
 
+/** W6.4 consumes these private v3 rows through the store; public Schedule never exposes them. */
+export interface StoredSchedule extends Schedule {
+  cadenceCanonical: string;
+  seedBytes: string | null;
+  seedDigest: string | null;
+  seedAuthorized: boolean;
+  launchPayload: JsonObject | null;
+  operationReceipts: JsonObject[];
+  emissionReceipts: JsonObject[];
+  mirrorMetadataRevision: number;
+  tombstone: JsonObject | null;
+}
+
+export interface StoredScheduleTombstone extends JsonObject {
+  id: string;
+  deletedAt: string;
+  version: number;
+}
+
+export interface StoredScheduleOccurrenceClaim extends JsonObject {
+  scheduleId: string;
+  scheduledFor: string;
+  phase: string;
+}
+
+export interface StoredScheduleSeedImport extends JsonObject {
+  version: number;
+  releaseSha: string;
+  seedDigest: string;
+  importedAt: string;
+}
+
 export interface StoreDocumentCollections {
   proposals: StoredProposal[];
   runs: StoredRun[];
@@ -403,12 +439,17 @@ export interface StoreDocumentCollections {
   generationSupersessions: StoredGenerationSupersession[];
   quarantine: QuarantinedRunBundle[];
   deployments: StoredDeployment[];
+  schedules: StoredSchedule[];
+  scheduleTombstones: StoredScheduleTombstone[];
+  scheduleOccurrenceClaims: StoredScheduleOccurrenceClaim[];
+  scheduleSeedImports: StoredScheduleSeedImport[];
 }
 
 export interface StoreDocument extends StoreDocumentCollections {
-  version: 2;
+  version: 3;
   documentRevision: number;
   nextEventCursor: number;
+  scheduleCollectionRevision: number;
 }
 
 type StoreDocumentCollectionEquality =
@@ -463,6 +504,8 @@ export interface ControlStoreOptions {
   persistenceTargetBytesForTest?: number;
   /** @internal Future migration-edge regression seam. */
   loadAndMigrateForTest?: typeof loadAndMigrate;
+  /** Server-owned catalogs and optional checksum-bound operator mapping for v2 -> v3. */
+  p2MigrationContext?: Omit<MigrationContext, 'stamp'>;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
   beforeIterationBoundaryValidationForTest?: (
     boundary: 'quarantine' | 'restore',
@@ -509,6 +552,10 @@ export interface CreateRunInput {
   expectedProposalHash: string;
   managerRuntime: string;
   managerModel: string;
+  /** Trusted full owner resolved by the server before this transaction. */
+  owner: RunnableRef;
+  /** Boot-verified daemon host, never a client field. */
+  executionHost: HostKind;
   /** Must exactly match the approved compiler snapshot for the Manager. */
   managerAssignment?: ResolvedAgentAssignment | null;
   idempotencyKey: string;
@@ -914,9 +961,10 @@ function genericPersistenceDocument(document: StoreDocument): StoreDocument {
 
 export function emptyStoreDocumentForTest(): StoreDocument {
   return {
-    version: 2,
+    version: 3,
     documentRevision: 0,
     nextEventCursor: 1,
+    scheduleCollectionRevision: 0,
     proposals: [],
     runs: [],
     stages: [],
@@ -931,6 +979,10 @@ export function emptyStoreDocumentForTest(): StoreDocument {
     generationSupersessions: [],
     quarantine: [],
     deployments: [],
+    schedules: [],
+    scheduleTombstones: [],
+    scheduleOccurrenceClaims: [],
+    scheduleSeedImports: [],
   };
 }
 
@@ -2215,6 +2267,7 @@ function validateStoreDocument(document: StoreDocument): void {
   assertDeploymentCollection(document.deployments);
   const validateRows = (bundle: Pick<StoreDocumentCollections, 'runs' | 'stages'>): void => {
     for (const run of bundle.runs) {
+      if (!identityFieldsFromRun(run)) throw new Error('invalid control-plane run identity');
       if (normalizeAssignment(run.managerAssignment) === undefined) {
         throw new Error('invalid control-plane assignment provenance');
       }
@@ -3262,6 +3315,10 @@ function makeStore(
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
       const managerAssignment = normalizeAssignment(input.managerAssignment);
       if (managerAssignment === undefined) return fail('invalid', 'manager assignment provenance is invalid');
+      const owner = decodeRunnableRef(input.owner);
+      const executionHost = decodeHostKind(input.executionHost);
+      if (!owner) return fail('invalid', 'runnable-owner-required');
+      if (!executionHost) return fail('invalid', 'execution host is invalid');
       const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(input.agentWorkspaceLaunch);
       if (agentWorkspaceLaunch === undefined) return fail('invalid', 'agent workspace launch provenance is invalid');
       if (!Array.isArray(input.stages) || input.stages.length === 0 || input.stages.length > MAX_STAGES_PER_RUN) {
@@ -3317,6 +3374,8 @@ function makeStore(
         managerRuntime: input.managerRuntime,
         managerModel: input.managerModel,
         managerAssignment,
+        owner,
+        executionHost,
         agentWorkspaceLaunch,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,
@@ -3400,6 +3459,10 @@ function makeStore(
           return fail('invalid', 'only a terminal or interrupted run can have a Retry successor');
         }
         if (predecessor.proposalHash !== proposal.hash) return fail('conflict', 'Retry successor must bind the same approved proposal hash');
+        if (JSON.stringify(predecessor.owner) !== JSON.stringify(owner)
+          || predecessor.executionHost !== executionHost) {
+          return fail('conflict', 'Retry successor must preserve immutable runnable owner and execution host');
+        }
         if (!sameAssignment(predecessor.managerAssignment, managerAssignment)
           || input.stages.some((stage) => {
             const predecessorStage = document.stages.find((item) =>
@@ -3432,6 +3495,11 @@ function makeStore(
         proposalHash: proposal.hash,
         publicationState: 'pending',
         lifecycle: lifecycleForKind('planned', null),
+        owner: clone(owner),
+        executionHost,
+        terminalOutcome: null,
+        completedAt: null,
+        archivedFrom: null,
         version: 1,
         managerSessionRef,
         managerGeneration: 1,
@@ -3694,6 +3762,11 @@ function makeStore(
       run.lifecycle = lifecycleForKind(state, null);
       run.version += 1;
       run.updatedAt = stamp();
+      if (state === 'succeeded' || state === 'failed' || state === 'stopped') {
+        run.terminalOutcome = state === 'succeeded' ? 'ok' : state;
+        run.completedAt ??= run.updatedAt;
+        run.archivedFrom = null;
+      }
       // A bare transition can land a run on a terminal state (`archived` goes through `archiveRun`
       // exclusively — rejected above). Close its open requests in the SAME commit, so a run that just
       // failed/stopped/succeeded can never leave a haunting ask behind the way the pre-fix zombies did.
@@ -3837,6 +3910,11 @@ function makeStore(
       run.lifecycle = lifecycleForKind(runState, null);
       run.version += 1;
       run.updatedAt = changedAt;
+      if (runState === 'succeeded' || runState === 'failed' || runState === 'stopped') {
+        run.terminalOutcome = runState === 'succeeded' ? 'ok' : runState;
+        run.completedAt ??= changedAt;
+        run.archivedFrom = null;
+      }
       if (runState === 'succeeded' && !runCanSucceed(document, run)) {
         return fail('invalid', 'canonical projection left a nonterminal descendant');
       }
@@ -5819,9 +5897,18 @@ function makeStore(
           response: reason,
         }, archivedAt);
       }
+      const archivedFrom = runLifecycleKind(run.lifecycle);
       run.lifecycle = lifecycleForKind('archived', null);
       run.version += 1;
       run.updatedAt = archivedAt;
+      run.archivedFrom = archivedFrom as Run['archivedFrom'];
+      if (archivedFrom === 'interrupted') {
+        run.terminalOutcome = 'interrupted';
+        run.completedAt = archivedAt;
+      } else if (archivedFrom === 'waiting-human') {
+        run.terminalOutcome = 'abandoned';
+        run.completedAt = archivedAt;
+      }
       run.archiveOperationKey = input.idempotencyKey;
       run.archiveOperationFingerprint = fingerprint;
       commit(document);
@@ -6111,6 +6198,18 @@ export function createFileControlPlaneStore(
   const lease = access.lease;
   const migrateDocument = options.loadAndMigrateForTest ?? loadAndMigrate;
   const startupStamp = (options.now ?? (() => new Date()))().toISOString();
+  const migrationContext = (source: string): MigrationContext => ({
+    stamp: startupStamp,
+    executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+    agentDeclarations: [],
+    workflowDefinitions: [],
+    workflowLaunchAudits: [],
+    auditRows: [],
+    ...options.p2MigrationContext,
+    // Bind any explicit operator mapping to the exact persisted bytes being
+    // migrated. Callers cannot substitute a checksum for a different store.
+    sourceSha256: createHash('sha256').update(source).digest('hex'),
+  });
   const bootId = options.bootId ?? lease.bootId;
   const requiresGenericRewrite = (raw: Record<string, unknown>): boolean => {
     const quarantined = Array.isArray(raw.quarantine) ? raw.quarantine as Array<Record<string, unknown>> : [];
@@ -6122,7 +6221,7 @@ export function createFileControlPlaneStore(
         || !Object.hasOwn(bundle, 'iterationReceipts'));
   };
   const hydrate = (encoded: string): StoreDocument => {
-    const migrated = migrateDocument(encoded, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp }).document;
+    const migrated = migrateDocument(encoded, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(encoded)).document;
     validateStoreDocument(migrated);
     validateGenericIterationBundle(migrated);
     for (const bundle of migrated.quarantine) validateGenericIterationBundle(bundle);
@@ -6162,6 +6261,7 @@ export function createFileControlPlaneStore(
   let migrated = false;
   let legacyRewrite = false;
   let sourceBytes = 0;
+  let migrationBackupSource: Buffer | null = null;
   if (existsSync(path)) {
     sourceBytes = statSync(path).size;
     const source = readFileSync(path, 'utf8');
@@ -6192,12 +6292,16 @@ export function createFileControlPlaneStore(
     legacyRewrite = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
       && (parsed as Record<string, unknown>).version === 1
       && requiresGenericRewrite(parsed as Record<string, unknown>);
-    const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp });
+    const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(source));
     recovered = initial.document;
     validateStoreDocument(recovered);
     validateGenericIterationBundle(recovered);
     for (const bundle of recovered.quarantine) validateGenericIterationBundle(bundle);
     migrated = initial.applied.length > 0;
+    if ((parsed as Record<string, unknown>).version === 2
+      && initial.applied.some((edge) => edge.from === 2 && edge.to === 3)) {
+      migrationBackupSource = Buffer.from(source, 'utf8');
+    }
   }
   const normalized = normalizeCrash(recovered, { stamp: startupStamp, bootId });
   if (normalized || migrated) {
@@ -6214,6 +6318,9 @@ export function createFileControlPlaneStore(
       ? acceptedMaxBytes + migrationGrowth
       : acceptedMaxBytes;
     acceptedMaxBytes = nextAcceptedMaxBytes;
+    if (migrationBackupSource) {
+      writeControlPlaneMigrationBackupSync(stateRoot, migrationBackupSource, options.persistenceDepsForTest);
+    }
     save(recovered, 'deploy-critical');
     if (pureSchemaMigrationOverage) {
       assertWriterLeaseForRoot(lease, stateRoot);

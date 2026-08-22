@@ -37,7 +37,7 @@ def run(args: list[str], repo: Path, *, input_text: str | None = None, stdout=No
                           stderr=subprocess.STDOUT if stdout else subprocess.PIPE, check=False)
 
 
-def wake_me(repo: Path, target: str, reason: str) -> None:
+def wake_me(repo: Path, target: str, reason: str) -> str | None:
     """Best-effort, deduplicated human escalation; a failed wake never bypasses a gate."""
     sys.path.insert(0, str(repo / "scripts"))
     import cards  # noqa: PLC0415
@@ -49,12 +49,14 @@ def wake_me(repo: Path, target: str, reason: str) -> None:
             except Exception:
                 continue
             if current.meta.get("action") == "wake-me" and current.meta.get("target") == target:
-                return
+                return str(current.meta.get("id"))
         card = cards.new_card(project="kb", action="wake-me", target=target, risk_tier="T1",
                               body=f"## Work order\n\n{reason}\n")
         cards.save(card, queue)
+        return str(card.meta["id"])
     except Exception as err:  # wake-me must not turn a bounded refusal into a crash
         log(f"wake-me-failed target={target}: {err}")
+        return None
 
 
 def owned_cards(repo: Path, agent: str) -> list[dict[str, str]]:

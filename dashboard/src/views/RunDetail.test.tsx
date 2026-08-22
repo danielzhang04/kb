@@ -110,6 +110,8 @@ function makeDetail(over: Partial<RunDetailDto> = {}): RunDetailDto {
   return {
     ownerSubject: over.ownerSubject ?? 'operator',
     run: {
+      owner: { type: 'agent', id: 'fyt-runner', sourcePath: 'agents/fyt-runner.md' }, executionHost: 'desktop',
+      terminalOutcome: null, completedAt: null, archivedFrom: null,
       runRef: 'run-1', predecessorRunRef: null, title: 'headless run',
       displayName: 'headless run', shortRef: 1, workflowRef: 'kb~video.md', proposalRef: 'p-1', proposalRevision: 1,
       proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running', version: 1,

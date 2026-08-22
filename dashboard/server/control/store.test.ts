@@ -21,7 +21,7 @@ import {
 } from './store.ts';
 import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
-import { applyMigrationEdgeForTest, loadAndMigrate } from './migrations.ts';
+import { applyMigrationEdgeForTest, loadAndMigrate, migrateControlDocument } from './migrations.ts';
 import { createNodePersistenceDeps } from './persistence.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
@@ -32,7 +32,7 @@ const createFileControlPlaneStore = fileStores.open;
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
 
 function persistedV1(value: unknown): any {
-  return applyMigrationEdgeForTest(value, 1, { stamp: '2026-08-20T00:00:00.000Z' });
+  return migrateControlDocument(value, 1, { stamp: '2026-08-20T00:00:00.000Z' }).document;
 }
 
 function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
@@ -45,6 +45,8 @@ function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
       title: `Large run ${index}`, proposalRef: `proposal-${index}`, proposalRevision: 1,
       proposalHash: `${index.toString(16).padStart(2, '0')}${'a'.repeat(62)}`,
       publicationState: 'published', state: 'succeeded', version: 1,
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop', terminalOutcome: 'ok', completedAt: stamp, archivedFrom: null,
       managerSessionRef: `manager-${index}`, managerGeneration: 1,
       createdAt: stamp, updatedAt: stamp,
     })),
@@ -211,14 +213,34 @@ describe('authorized 2026-08-01 proposal provenance', () => {
     };
   }
 
+  function historicalMapping(encoded: string) {
+    return {
+      p2MigrationContext: {
+        explicitMapping: {
+          storeSha256: createHash('sha256').update(encoded).digest('hex'),
+          runs: {
+            [RUN_REF]: {
+              owner: { type: 'agent' as const, id: 'fyt-runner', sourcePath: 'agents/fyt-runner.md' as const },
+              executionHost: 'desktop' as const,
+              terminalOutcome: 'failed' as const,
+              completedAt: '2026-08-01T03:32:49.635Z',
+              archivedFrom: null,
+            },
+          },
+        },
+      },
+    };
+  }
+
   it('classifies the historical run as claimable after the real normalizer has filled its stage keys', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-settlement-normalized-'));
     roots.push(root);
     const path = join(root, 'control', 'control-plane.json');
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(historicalDocument())}\n`, 'utf8');
+    const encoded = `${JSON.stringify(historicalDocument())}\n`;
+    writeFileSync(path, encoded, 'utf8');
 
-    const store = createFileControlPlaneStore(root);
+    const store = createFileControlPlaneStore(root, historicalMapping(encoded));
     const normalized = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
     // The normalizer really did fill and PERSIST the keys the snapshot omits — the exact asymmetry
     // that made classify report conflict.
@@ -243,9 +265,10 @@ describe('authorized 2026-08-01 proposal provenance', () => {
     mkdirSync(dirname(path), { recursive: true });
     const drifted = historicalDocument();
     drifted.stages[6].workflowProfile = 'checker-readonly';
-    writeFileSync(path, `${JSON.stringify(drifted)}\n`, 'utf8');
+    const encoded = `${JSON.stringify(drifted)}\n`;
+    writeFileSync(path, encoded, 'utf8');
 
-    expect(createFileControlPlaneStore(root)
+    expect(createFileControlPlaneStore(root, historicalMapping(encoded))
       .preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
       .toMatchObject({ ok: false, reason: 'conflict' });
   });
@@ -449,6 +472,8 @@ function seedAuthorizedLegacyExecutionLock(store: ControlPlaneStore) {
     schema: 'kb.plan-proposal/v1', title: 'Validate one all-Codex faceless-video opening slice', manager: {}, stages: stageSpecs,
   });
   const created = store.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Validate one all-Codex faceless-video opening slice', proposalRef: proposal.proposalRef,
     proposalRevision: proposal.revision, expectedProposalHash: proposal.hash,
     managerRuntime: 'codex', managerModel: 'gpt-5.6-sol', idempotencyKey: 'legacy-launch',
@@ -519,6 +544,8 @@ function createApprovedProposal(
 function createRun(store: ControlPlaneStore, subject = 'alice', agentWorkspaceLaunch?: { composerRef: string; agentId: string; declarationPath: string; declarationHash: string }) {
   const proposal = createApprovedProposal(store, subject);
   const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Synthetic run',
     proposalRef: proposal.proposalRef,
     proposalRevision: proposal.revision,
@@ -535,6 +562,29 @@ function createRun(store: ControlPlaneStore, subject = 'alice', agentWorkspaceLa
   if (!created.ok) throw new Error(created.detail);
   return created.value;
 }
+
+it('persists immutable run owner/host and derives terminal outcome plus archive provenance', () => {
+  let tick = 0;
+  const store = createInMemoryControlPlaneStore({
+    now: () => new Date(`2026-08-21T00:0${tick++}:00.000Z`),
+    newId: () => `p2-id-${tick}`,
+  });
+  const created = createRun(store);
+  expect(created.run).toMatchObject({
+    owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    executionHost: 'desktop', terminalOutcome: null, completedAt: null, archivedFrom: null,
+  });
+  const running = store.transitionRun('alice', created.run.runRef, created.run.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const failed = store.transitionRun('alice', created.run.runRef, running.value.version, 'failed');
+  expect(failed).toMatchObject({ ok: true, value: { terminalOutcome: 'failed', completedAt: expect.any(String), archivedFrom: null } });
+  if (!failed.ok) throw new Error(failed.detail);
+  const archived = store.archiveRun('alice', created.run.runRef, { idempotencyKey: 'archive-p2' });
+  expect(archived).toMatchObject({
+    ok: true,
+    value: { run: { terminalOutcome: 'failed', completedAt: failed.value.completedAt, archivedFrom: 'failed' } },
+  });
+});
 
 function prepareActivatableRun(store: ControlPlaneStore, withAcceptedRequest = true) {
   const created = createRun(store);
@@ -586,6 +636,8 @@ function createAssignedRun(
     ],
   });
   const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Assigned synthetic run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: assignments.manager.runtime, managerModel: assignments.manager.model,
     managerAssignment: assignments.manager, idempotencyKey: 'launch-assigned',
@@ -625,6 +677,8 @@ function checkerStages(maxCreatorReworks = CHECKER_REVIEW.maxCreatorReworks) {
 function createCheckerRun(store: ControlPlaneStore, subject = 'alice', maxCreatorReworks = CHECKER_REVIEW.maxCreatorReworks) {
   const proposal = createApprovedProposal(store, subject, checkerSnapshot(maxCreatorReworks));
   const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Checker synthetic run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     idempotencyKey: `launch-checker-${maxCreatorReworks}`, stages: checkerStages(maxCreatorReworks),
@@ -934,6 +988,8 @@ function createTask2IterationRun(store: ControlPlaneStore, group = task2Iteratio
   } as unknown as JsonObject;
   const proposal = createApprovedProposal(store, 'alice', snapshot);
   return store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Iteration run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     idempotencyKey: `iteration-${group.iterationGroupId}`, iterationGroups: [structuredClone(group)],
@@ -993,6 +1049,8 @@ function createTask4IterationRun(store: ControlPlaneStore, groups = [task4Iterat
   } as unknown as JsonObject;
   const proposal = createApprovedProposal(store, 'alice', snapshot);
   const created = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Task 4 iteration run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     idempotencyKey: `task4-${groups.map((group) => group.iterationGroupId).join('-')}`,
@@ -2187,7 +2245,7 @@ describe('Task 2 generic iteration durability', () => {
     expect(secondBoot.createProposalRevision('alice', {
       sourceComposerRef: 'large-v1-second-boot', sourceTurnId: 'turn-second', title: 'Second boot', snapshot: {},
     }).ok).toBe(true);
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, documentRevision: 3 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 3, documentRevision: 3 });
   });
 
   it.each([
@@ -2248,22 +2306,22 @@ describe('Task 2 generic iteration durability', () => {
     createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
     const firstGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
     expect(statSync(path).size).toBeGreaterThan(maxDocumentBytes);
-    expect(firstGrant).toMatchObject({ schemaVersion: 2 });
+    expect(firstGrant).toMatchObject({ schemaVersion: 3 });
 
     expect(() => createFileControlPlaneStore(root, {
       ...deterministicOptions(),
       maxDocumentBytes,
       loadAndMigrateForTest: (encoded, target, context) => {
         const result = loadAndMigrate(encoded, target, context);
-        if ((JSON.parse(encoded) as { version: number }).version === 2) {
+        if ((JSON.parse(encoded) as { version: number }).version === 3) {
           for (const run of result.document.runs) run.title = `${run.title}x`;
-          return { document: result.document, applied: [{ from: 2, to: 3, breaking: true, down: 'present' }] };
+          return { document: result.document, applied: [{ from: 3, to: 4, breaking: true, down: 'present' }] };
         }
         return result;
       },
     })).not.toThrow();
     const secondGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
-    expect(secondGrant.schemaVersion).toBe(2);
+    expect(secondGrant.schemaVersion).toBe(3);
     expect(secondGrant.maxBytes).toBeGreaterThan(firstGrant.maxBytes);
   });
 
@@ -2444,6 +2502,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const proposal = createApprovedProposal(store, 'alice', { manager: {}, stages: [{ id: 'build', title: 'Build', dependsOn: [] }] });
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Idempotent run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'launch-once', stages: [{ stageId: 'build', title: 'Build', dependsOn: [] }],
@@ -2452,7 +2512,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const replay = store.createRun('alice', input);
     expect(first.ok && replay.ok && replay.value.run.runRef).toBe(first.ok ? first.value.run.runRef : '');
     expect(replay).toMatchObject({ ok: true, replayed: true });
-    expect(store.createRun('alice', { ...input, title: 'Changed' })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(store.createRun('alice', {
+      ...input, title: 'Changed' })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
   });
 
   it('copies only the exact approved assignment snapshot into a run and its stages', () => {
@@ -2482,6 +2543,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const proposal = createApprovedProposal(store, 'alice', checkerSnapshot());
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Checker run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'checker-launch-once', stages: checkerStages(),
@@ -2521,24 +2584,34 @@ describe('run graph, attempts, and managed sessions', () => {
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     };
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-omitted', stages: [checkerStages()[0], { ...checkerStages()[1], review: null, completionGate: null, workflowProfile: null }],
     })).toMatchObject({ ok: false, reason: 'conflict' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-substituted', stages: [checkerStages()[0], {
         ...checkerStages()[1], review: { ...CHECKER_REVIEW, maxCreatorReworks: 2 },
       }],
     })).toMatchObject({ ok: false, reason: 'conflict' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-injected', stages: [checkerStages()[0], {
         ...checkerStages()[1], review: { ...CHECKER_REVIEW, extra: true } as never,
       }],
     })).toMatchObject({ ok: false, reason: 'invalid' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-wrong-profile', stages: [checkerStages()[0], {
         ...checkerStages()[1], workflowProfile: 'writer-profile',
       }],
     })).toMatchObject({ ok: false, reason: 'invalid' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-gate-without-review', stages: [checkerStages()[0], {
         ...checkerStages()[1], review: null,
       }],
@@ -2551,6 +2624,8 @@ describe('run graph, attempts, and managed sessions', () => {
       manager: { assignment: MANAGER_ASSIGNMENT }, stages: [{ id: 'build', title: 'Build', dependsOn: [], assignment: BUILD_ASSIGNMENT }],
     });
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Tampered assignment', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: MANAGER_ASSIGNMENT.runtime, managerModel: MANAGER_ASSIGNMENT.model,
       managerAssignment: { ...MANAGER_ASSIGNMENT }, idempotencyKey: 'tampered-assignment',
@@ -2582,6 +2657,8 @@ describe('run graph, attempts, and managed sessions', () => {
       ],
     });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Tampered dependencies', proposalRef: dependencyProposal.proposalRef, proposalRevision: dependencyProposal.revision,
       expectedProposalHash: dependencyProposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'tampered-dependencies',
@@ -2591,6 +2668,8 @@ describe('run graph, attempts, and managed sessions', () => {
     })).toMatchObject({ ok: false, reason: 'invalid' });
     const incomplete = createApprovedProposal(store, 'alice', { manager: {}, stages: [{ id: 'build', title: 'Build', dependsOn: [] }] });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Missing approved stage', proposalRef: incomplete.proposalRef, proposalRevision: incomplete.revision,
       expectedProposalHash: incomplete.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'missing-approved-stage',
@@ -2606,6 +2685,8 @@ describe('run graph, attempts, and managed sessions', () => {
       ],
     });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Extra approved stage', proposalRef: excessive.proposalRef, proposalRevision: excessive.revision,
       expectedProposalHash: excessive.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'extra-approved-stage',
@@ -2621,6 +2702,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const predecessor = settleRetryPredecessor(store, 'alice', createAssignedRun);
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Assigned Retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
       expectedProposalHash: predecessor.run.proposalHash, managerRuntime: MANAGER_ASSIGNMENT.runtime, managerModel: MANAGER_ASSIGNMENT.model,
       managerAssignment: structuredClone(MANAGER_ASSIGNMENT), idempotencyKey: 'assigned-retry',
@@ -2643,6 +2726,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const predecessor = settleRetryPredecessor(store, 'alice', createCheckerRun);
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Checker Retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
       expectedProposalHash: predecessor.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'checker-retry', predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: predecessor.run.version,
@@ -2723,6 +2808,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const first = settleRetryPredecessor(store);
     const successor = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Retry run', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
       expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'retry-run-1', predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version,
@@ -2730,6 +2817,8 @@ describe('run graph, attempts, and managed sessions', () => {
     });
     expect(successor.ok && successor.value.run).toMatchObject({ predecessorRunRef: first.run.runRef, lifecycle: { kind: 'planned', deployPause: null } });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Bad retry', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
       expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'retry-run-stale', predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version - 1,
@@ -2774,6 +2863,8 @@ describe('run graph, attempts, and managed sessions', () => {
     if (!interruptedRun.ok) throw new Error(interruptedRun.detail);
 
     const successor = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Retry interrupted run', proposalRef: created.run.proposalRef, proposalRevision: created.run.proposalRevision,
       expectedProposalHash: created.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'retry-interrupted-run', predecessorRunRef: created.run.runRef,
@@ -2786,6 +2877,8 @@ describe('run graph, attempts, and managed sessions', () => {
 
   it('refuses Retry while publication, canonical work, sessions, or Human Requests remain unresolved', () => {
     const retry = (store: ControlPlaneStore, predecessor: ReturnType<typeof createRun>, idempotencyKey: string) => store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Unsafe retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
       expectedProposalHash: predecessor.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey, predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: predecessor.run.version,
@@ -2851,6 +2944,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const unapproved = store.createProposalRevision('alice', { ...SOURCE, title: 'Pending', snapshot: { stages: [] } });
     if (!unapproved.ok) throw new Error(unapproved.detail);
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'No', proposalRef: unapproved.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: unapproved.value.hash, managerRuntime: 'claude', managerModel: 'fixed',
       idempotencyKey: 'launch-unapproved',
@@ -3199,6 +3294,8 @@ describe('run graph, attempts, and managed sessions', () => {
       ],
     } as unknown as JsonObject);
     const launched = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Canonical dependency guard', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'canonical-dependency-guard', iterationGroups: [upstream, consumer], stages,
@@ -3628,15 +3725,16 @@ describe('durability, crash recovery, and retention', () => {
     const first = createFileControlPlaneStore(root, deterministicOptions());
     createRun(first);
     const path = join(root, 'control', 'control-plane.json');
-    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as {
+    const current = JSON.parse(readFileSync(path, 'utf8')) as {
       runs: Array<Record<string, unknown>>;
       stages: Array<Record<string, unknown>>;
       quarantine: Array<Record<string, unknown>>;
     };
-    document.quarantine.push({
-      subject: 'archived', quarantinedAt: '2026-07-18T12:00:00.000Z', run: structuredClone(document.runs[0]),
-      stages: structuredClone(document.stages), attempts: [], sessions: [], humanRequests: [], events: [],
+    current.quarantine.push({
+      subject: 'archived', quarantinedAt: '2026-07-18T12:00:00.000Z', run: structuredClone(current.runs[0]),
+      stages: structuredClone(current.stages), attempts: [], sessions: [], humanRequests: [], events: [],
     });
+    const document = persistedV1(current) as typeof current;
     for (const stage of [...document.stages, ...(document.quarantine[0].stages as Array<Record<string, unknown>>)]) {
       delete stage.workflowProfile;
       delete stage.review;
@@ -3799,7 +3897,7 @@ describe('durability, crash recovery, and retention', () => {
     if (!managerRunning.ok) throw new Error(managerRunning.detail);
 
     const path = join(root, 'control', 'control-plane.json');
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, nextEventCursor: 1 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 3, nextEventCursor: 1 });
     expect(readdirSync(join(root, 'control')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
 
     const restarted = createFileControlPlaneStore(root, clock);
@@ -4011,6 +4109,8 @@ describe('authorized 2026-08-01 settlement durability', () => {
 
   function successorInput(run: { proposalRef: string; proposalRevision: number; proposalHash: string; version: number }) {
     return {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Successor of the settled run',
       proposalRef: run.proposalRef,
       proposalRevision: run.proposalRevision,
@@ -4053,7 +4153,8 @@ describe('authorized 2026-08-01 settlement durability', () => {
     const detail = reopened.getRun('alice', AUTHORIZED_20260801_FAILED_RUN_REF);
     if (!detail.ok) throw new Error(detail.detail);
     // The receipt travels with the run, so finality survives the quarantine round trip.
-    const successor = reopened.createRun('alice', { ...successorInput(run), expectedPredecessorVersion: detail.value.run.version });
+    const successor = reopened.createRun('alice', {
+      ...successorInput(run), expectedPredecessorVersion: detail.value.run.version });
     expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
     expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);
   });

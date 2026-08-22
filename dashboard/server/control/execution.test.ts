@@ -100,6 +100,8 @@ function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runR
   });
   expect(approved.ok).toBe(true);
   const run = store.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: plan.title,
     proposalRef: createdProposal.value.proposalRef,
     proposalRevision: 1,

@@ -10,6 +10,7 @@ import {
   QueueBridgeError,
   QUEUE_BRIDGE_SELECT_SCRIPT,
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
+  resolveQueueBridgeRunnable,
   type OwnedCard,
 } from './queueBridge.ts';
 import { createInMemoryControlPlaneStore, proposalSnapshotHash } from './store.ts';
@@ -34,7 +35,7 @@ function pyReturning(rows: unknown): { runPy: (r: string, c: string, a: string) 
 
 // --- bridgeClaimsCard: the owner x execution-controller x state matrix (double-execution guard) --------
 
-describe('bridgeClaimsCard — inverse of agent_runner.ps1 step 6', () => {
+describe('bridgeClaimsCard — inverse of agent_runner.ps1 on the controller axis', () => {
   // Legacy-runner predicate, transcribed verbatim from scripts/agent_runner.ps1 step 6, to prove the
   // two sides partition the space with no overlap and no gap.
   const legacyClaims = (meta: Record<string, unknown>, agent: string): boolean =>
@@ -42,9 +43,9 @@ describe('bridgeClaimsCard — inverse of agent_runner.ps1 step 6', () => {
     && meta.owner === agent
     && (meta.state === 'inbox' || meta.state === 'working');
 
-  it('claims only (controller==="dashboard", owner===subject, state∈inbox|working)', () => {
-    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: SUBJECT, state: 'inbox' })).toBe(true);
-    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: SUBJECT, state: 'working' })).toBe(true);
+  it('claims every dashboard-controlled card in a claimable state regardless of runnable owner', () => {
+    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: 'grader', state: 'inbox' })).toBe(true);
+    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: null, state: 'working' })).toBe(true);
   });
 
   it('rejects absent/null controller — that card belongs to the legacy runner', () => {
@@ -57,8 +58,8 @@ describe('bridgeClaimsCard — inverse of agent_runner.ps1 step 6', () => {
     expect(bridgeClaimsCard({ 'execution-controller': 'DASHBOARD', owner: SUBJECT, state: 'inbox' })).toBe(false);
   });
 
-  it('rejects a wrong owner', () => {
-    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: 'claude-boss', state: 'inbox' })).toBe(false);
+  it('does not treat card owner as the dashboard service subject', () => {
+    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: 'claude-boss', state: 'inbox' })).toBe(true);
   });
 
   it('rejects non-claimable states (blocked/done/approvals/absent)', () => {
@@ -76,27 +77,55 @@ describe('bridgeClaimsCard — inverse of agent_runner.ps1 step 6', () => {
     }
   });
 
-  it('honors a non-default subject', () => {
-    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: 'other', state: 'inbox' }, 'other')).toBe(true);
-    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: SUBJECT, state: 'inbox' }, 'other')).toBe(false);
+});
+
+describe('receipt-first runnable resolution', () => {
+  const agent = { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' } as const;
+  const workflow = {
+    type: 'workflow', id: 'video-run', project: 'faceless-youtube',
+    sourcePath: 'orgs/faceless-youtube/workflows/video-run.md',
+  } as const;
+
+  it('uses an occurrence receipt first and treats workflow/card owners as equality assertions', () => {
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: workflow, workflowOwner: workflow, cardOwner: 'video-run', declaredAgents: [agent],
+    })).toEqual({ ok: true, value: workflow, source: 'schedule-receipt' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: workflow, workflowOwner: null, cardOwner: 'grader', declaredAgents: [agent],
+    })).toEqual({ ok: false, code: 'runnable-owner-conflict' });
+  });
+
+  it('falls back to workflow-def, then one current declared Agent, and otherwise requires an owner', () => {
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: null, workflowOwner: workflow, cardOwner: null, declaredAgents: [agent],
+    })).toEqual({ ok: true, value: workflow, source: 'workflow-def' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: null, workflowOwner: null, cardOwner: 'grader', declaredAgents: [agent],
+    })).toEqual({ ok: true, value: agent, source: 'card-owner' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: null, workflowOwner: null, cardOwner: 'missing', declaredAgents: [agent],
+    })).toEqual({ ok: false, code: 'runnable-owner-required' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: null, workflowOwner: null, cardOwner: 'grader', declaredAgents: [agent, { ...agent }],
+    })).toEqual({ ok: false, code: 'runnable-owner-required' });
   });
 });
 
 // --- scanOwnedDashboardCards: invokes the selector, parses, fail-closed --------------------------------
 
 describe('scanOwnedDashboardCards', () => {
-  it('passes subject + queueRoot to the selector and returns the parsed rows', () => {
+  it('passes queueRoot without requiring a service subject and returns the parsed rows', () => {
     const rows: OwnedCard[] = [{ id: 'wf-abc', path: 'queue/inbox/wf-abc.md', state: 'inbox' }];
     const py = pyReturning(rows);
-    const got = scanOwnedDashboardCards({ repoRoot: '/repo', runPy: py.runPy }, { subject: SUBJECT, queueRoot: 'q' });
+    const got = scanOwnedDashboardCards({ repoRoot: '/repo', runPy: py.runPy }, { queueRoot: 'q' });
     expect(got).toEqual(rows);
-    expect(JSON.parse(py.calls[0])).toEqual({ subject: SUBJECT, queueRoot: 'q' });
+    expect(JSON.parse(py.calls[0])).toEqual({ queueRoot: 'q' });
   });
 
-  it('defaults the subject to the dashboard executor identity', () => {
+  it('does not add a service subject to the selector operation', () => {
     const py = pyReturning([]);
     scanOwnedDashboardCards({ repoRoot: '/repo', runPy: py.runPy }, {});
-    expect(JSON.parse(py.calls[0])).toEqual({ subject: SUBJECT });
+    expect(JSON.parse(py.calls[0])).toEqual({});
   });
 
   it('fails closed on a non-zero selector exit (never silently claims nothing)', () => {
@@ -111,7 +140,7 @@ describe('scanOwnedDashboardCards', () => {
 
   it('the embedded script defers to the committed python module (parse-parity), not an inline reimpl', () => {
     expect(QUEUE_BRIDGE_SELECT_SCRIPT).toContain('import queue_bridge_select');
-    expect(QUEUE_BRIDGE_SELECT_SCRIPT).toContain('select_owned_dashboard_cards');
+    expect(QUEUE_BRIDGE_SELECT_SCRIPT).toContain('queue_bridge_select.main');
     expect(QUEUE_BRIDGE_SELECT_SCRIPT).toContain('sys.argv[1]');
   });
 });
@@ -409,6 +438,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     snapshotHash: () => 'hash-abc',
     runPreamble: okPre,
     internalCaller: stubCaller,
+    declaredRunnableOwners: () => [{ type: 'agent' as const, id: SUBJECT, sourcePath: `agents/${SUBJECT}.md` as const }],
     ...over,
   });
 
@@ -550,6 +580,8 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
         const parsed = validateServerCompiledPlanProposal(input.snapshot, registry);
         if (!parsed.ok) return { status: 409, body: { error: parsed.detail } };
         const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
           title: parsed.value.title,
           proposalRef: input.proposalRef,
           proposalRevision: input.revision,
@@ -629,6 +661,8 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
         const parsed = validateServerCompiledPlanProposal(input.snapshot, registry);
         if (!parsed.ok) return { status: 409, body: { error: parsed.detail } };
         const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
           title: parsed.value.title,
           proposalRef: input.proposalRef,
           proposalRevision: input.revision,
@@ -1012,11 +1046,11 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     }
   });
 
-  it('bridge tick launches and reconciles one dashboard-owned card, then ignores it after its owner changes', async () => {
+  it('bridge tick launches and reconciles one dashboard-controlled card, then ignores it after its controller changes', async () => {
     const queueRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-integration-'));
     const inbox = join(queueRoot, 'inbox');
     const cardPath = join(inbox, '6a5ed0b7-56cc254c.md');
-    const cardText = (owner: string) => [
+    const cardText = (owner: string, controller = 'dashboard') => [
       '---',
       'id: 6a5ed0b7-56cc254c',
       'project: kb-ops',
@@ -1026,7 +1060,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
       'profile: research',
       `owner: ${owner}`,
       'state: inbox',
-      'execution-controller: dashboard',
+      `execution-controller: ${controller}`,
       '---',
       '',
       '## Work order',
@@ -1065,7 +1099,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
       expect(internalCaller).toHaveBeenCalledWith(SUBJECT);
       expect(reconcile).toHaveBeenCalledOnce();
 
-      writeFileSync(cardPath, cardText('someone-else'), 'utf8');
+      writeFileSync(cardPath, cardText('someone-else', 'codex'), 'utf8');
       await expect(bridge.tick()).resolves.toEqual({
         ran: true, blocked: false, discovered: 0, dispatched: 0,
       });
@@ -1095,10 +1129,55 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     const { ctx } = fakeCtx();
     const launch = vi.fn();
     const res = await dispatchClaimedCard(ctx, owned, commonDeps({
-      readCard: () => ({ ...baseCard(), meta: { ...baseCard().meta, owner: 'someone-else' } }),
+      readCard: () => ({ ...baseCard(), meta: { ...baseCard().meta, 'execution-controller': 'codex' } }),
       launch: launch as never,
     }));
     expect(res.outcome).toBe('skipped');
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unresolved card owner before synthesizing, compiling, or writing a proposal', async () => {
+    const { ctx, store } = fakeCtx();
+    const compile = vi.fn();
+    const launch = vi.fn();
+    const wake = vi.fn();
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({
+      declaredRunnableOwners: () => [],
+      compile,
+      launch: launch as never,
+      wake,
+    }));
+    expect(res).toEqual({
+      cardId: owned.id, outcome: 'failed', status: 409, reconciled: false,
+      detail: 'runnable-owner-required',
+    });
+    expect(wake).toHaveBeenCalledWith(ctx, owned.id, 'runnable-owner-required');
+    expect(compile).not.toHaveBeenCalled();
+    expect(store.createProposalRevision).not.toHaveBeenCalled();
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a receipt/card owner conflict before synthesizing or writing a proposal', async () => {
+    const { ctx, store } = fakeCtx();
+    const receiptOwner = {
+      type: 'workflow' as const, id: 'video-run', project: 'faceless-youtube',
+      sourcePath: 'orgs/faceless-youtube/workflows/video-run.md' as const,
+    };
+    const compile = vi.fn();
+    const launch = vi.fn();
+    const wake = vi.fn();
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({
+      resolveScheduleReceiptOwner: () => receiptOwner,
+      compile,
+      launch: launch as never,
+      wake,
+    }));
+    expect(res).toMatchObject({
+      outcome: 'failed', status: 409, reconciled: false, detail: 'runnable-owner-conflict',
+    });
+    expect(wake).toHaveBeenCalledWith(ctx, owned.id, 'runnable-owner-conflict');
+    expect(compile).not.toHaveBeenCalled();
+    expect(store.createProposalRevision).not.toHaveBeenCalled();
     expect(launch).not.toHaveBeenCalled();
   });
 

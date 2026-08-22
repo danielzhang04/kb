@@ -22,6 +22,8 @@ async function renderUnlocked(ui: React.ReactElement) {
 const detail: RunDetailDto = {
   ownerSubject: 'operator',
   run: {
+    owner: { type: 'agent', id: 'manager', sourcePath: 'agents/manager.md' }, executionHost: 'desktop',
+    terminalOutcome: null, completedAt: null, archivedFrom: null,
     runRef: 'run-1', predecessorRunRef: null, title: 'Run', displayName: 'Run', shortRef: 1, workflowRef: 'wf',
     proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64), publicationState: 'published',
     state: 'running', version: 1, managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,

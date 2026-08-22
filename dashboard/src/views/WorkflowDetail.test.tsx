@@ -41,6 +41,8 @@ const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntr
 
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
   ownerSubject: 'operator',
+  owner: { type: 'workflow', id: 'video', project: 'kb', sourcePath: 'orgs/kb/workflows/video.md' }, executionHost: 'desktop',
+  terminalOutcome: null, completedAt: null, archivedFrom: null,
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline and republish the audio stage',
   displayName: 'Rebuild the faceless video pipeline and republish the audio stage',

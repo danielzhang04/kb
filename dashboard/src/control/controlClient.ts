@@ -130,7 +130,18 @@ export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'su
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
 
+export type RunnableRefDto =
+  | { type: 'agent'; id: string; sourcePath: `agents/${string}.md` }
+  | { type: 'workflow'; id: string; project: string; sourcePath: `orgs/${string}/workflows/${string}.md` };
+export type RunOutcomeDto = 'ok' | 'failed' | 'stopped' | 'interrupted' | 'abandoned';
+export type ArchivedFromDto = 'succeeded' | 'failed' | 'stopped' | 'interrupted' | 'waiting-human';
+
 export interface RunDto {
+  owner: RunnableRefDto;
+  executionHost: 'vm' | 'desktop';
+  terminalOutcome: RunOutcomeDto | null;
+  completedAt: string | null;
+  archivedFrom: ArchivedFromDto | null;
   runRef: string;
   predecessorRunRef: string | null;
   title: string;

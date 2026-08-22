@@ -471,6 +471,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok) return sendResult(reply, stored);
     if (stored.value.hash !== string(body.expectedHash)) return reply.code(409).send({ error: 'revision-mismatch' });
     if (stored.value.approval?.decision !== 'approved') return reply.code(409).send({ error: 'not-approved' });
+    const workspace = ctx.composerStore.get(stored.value.ownerSubject, stored.value.sourceComposerRef);
+    const agentWorkspaceLaunch = workspace.ok && workspace.workspace.agent ? {
+      composerRef: workspace.workspace.composerRef,
+      agentId: workspace.workspace.agent.id,
+      declarationPath: workspace.workspace.agent.path,
+      declarationHash: workspace.workspace.agent.sourceHash,
+    } : null;
     // The single canonical launch body (one ops transaction: reconcile, compile, publish cards +
     // audit, activate) lives in control/launch.ts. Every launch surface calls it; nothing forks it.
     const outcome = await executeApprovedLaunch(ctx, stored.value.ownerSubject, {
@@ -483,6 +490,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       idempotencyKey: string(body.idempotencyKey),
       predecessorRunRef: body.predecessorRunRef == null ? null : string(body.predecessorRunRef),
       expectedPredecessorVersion: integer(body.expectedPredecessorVersion),
+      source: stored.value.sourceComposerRef === 'workflow-registry'
+        ? `workflow:${stored.value.sourceTurnId}`
+        : undefined,
+      agentWorkspaceLaunch,
     });
     return reply.code(outcome.status).send(outcome.body);
   });

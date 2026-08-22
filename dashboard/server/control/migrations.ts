@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
 import { assertDeploymentCollection } from './deploymentState.ts';
@@ -9,6 +10,20 @@ import {
   runLifecycleKind,
 } from './runLifecycle.ts';
 import { TERMINAL_ATTEMPT } from './types.ts';
+import { decodeHostKind, decodeRunIdentityFields, decodeRunnableRef, identityFieldsFromRun } from './p2Decoders.ts';
+import {
+  migrateRunIdentities,
+  type LegacyAgentDeclaration,
+  type LegacyWorkflowDefinition,
+  type LegacyWorkflowLaunchAudit,
+  type RunIdentityMigrationReport,
+} from './runIdentity.ts';
+import {
+  migrateRunOutcomes,
+  type LegacyArchiveAudit,
+  type RunOutcomeMigrationReport,
+} from './runOutcomeMigration.ts';
+import type { HostKind, RunIdentityFields } from './p2Contracts.ts';
 import type {
   IterationLoop,
   IterationRequest,
@@ -39,11 +54,28 @@ const ACTIVATION_PHASES = new Set(['claimed', 'roots-activated', 'dispatched', '
 const ORDINARY_RUN_KINDS = new Set(RUN_LIFECYCLE_KINDS.filter((kind) => kind !== 'paused-for-deploy'));
 const TERMINAL_DEPLOYMENT_STATES = new Set(['succeeded', 'aborted', 'failed', 'acknowledged']);
 const CARRIER_PREFIX = 'kb.control-plane-v2-down-carrier/v1:';
+const P2_CARRIER_PREFIX = 'kb.control-plane-v3-down-carrier/v1:';
+const MAX_P2_CARRIER_BYTES = 64 * 1024 * 1024;
+const V2_COLLECTIONS = [
+  'proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events',
+  'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts',
+  'generationSupersessions', 'quarantine', 'deployments',
+] as const;
 
 type RawDocument = Record<string, any>;
 
 export interface MigrationContext {
   stamp: string;
+  executionHost?: HostKind;
+  agentDeclarations?: readonly LegacyAgentDeclaration[];
+  workflowDefinitions?: readonly LegacyWorkflowDefinition[];
+  workflowLaunchAudits?: readonly LegacyWorkflowLaunchAudit[];
+  auditRows?: readonly LegacyArchiveAudit[];
+  sourceSha256?: string;
+  explicitMapping?: {
+    storeSha256: string;
+    runs: Readonly<Record<string, RunIdentityFields>>;
+  };
 }
 
 export interface AppliedMigration {
@@ -56,6 +88,21 @@ export interface AppliedMigration {
 export interface MigrationResult {
   document: StoreDocument;
   applied: AppliedMigration[];
+}
+
+export interface P2RunMigrationReports {
+  runIdentity: RunIdentityMigrationReport;
+  runOutcome: RunOutcomeMigrationReport;
+}
+
+export class P2RunMigrationError extends Error {
+  readonly reports: P2RunMigrationReports;
+
+  constructor(reports: P2RunMigrationReports) {
+    super(JSON.stringify(reports));
+    this.reports = reports;
+    this.name = 'P2RunMigrationError';
+  }
 }
 
 interface LegacyStoreReviewLoopMigrationRow {
@@ -151,7 +198,7 @@ export function assertMigrationEnvelope(value: unknown): asserts value is RawDoc
   }
   const required = version === 1
     ? ['proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'quarantine']
-    : [...CONTROL_PLANE_COLLECTIONS];
+    : version === 2 ? [...V2_COLLECTIONS] : [...CONTROL_PLANE_COLLECTIONS];
   if (required.some((field) => !boundedArray(value[field]))) throw new Error('invalid control-plane store');
   if (version === 1) {
     for (const field of [
@@ -163,6 +210,10 @@ export function assertMigrationEnvelope(value: unknown): asserts value is RawDoc
   } else if (typeof value.documentRevision !== 'number' || !Number.isSafeInteger(value.documentRevision)
     || value.documentRevision < 0) {
     throw new Error('invalid control-plane store');
+  }
+  if (version >= 3 && (typeof value.scheduleCollectionRevision !== 'number'
+    || !Number.isSafeInteger(value.scheduleCollectionRevision) || value.scheduleCollectionRevision < 0)) {
+    throw new Error('invalid control-plane schedule collection revision');
   }
 }
 
@@ -238,7 +289,10 @@ export function assertDocumentInvariant(value: unknown): asserts value is StoreD
   if (value.version !== CONTROL_PLANE_SCHEMA_VERSION) throw new Error('invalid control-plane store target');
   assertDeploymentCollection(value.deployments);
   assertEventCursorSequence(value);
-  for (const run of value.runs) assertRunLifecycle(run);
+  for (const run of value.runs) {
+    assertRunLifecycle(run);
+    if (!identityFieldsFromRun(run)) throw new Error('invalid control-plane run identity');
+  }
   for (const stage of value.stages) assertStoredStageGenerationProjection(stage);
   for (const bundle of value.quarantine) {
     if (!isPlainRecord(bundle) || !isPlainRecord(bundle.run)) throw new Error('invalid control-plane quarantine');
@@ -247,6 +301,7 @@ export function assertDocumentInvariant(value: unknown): asserts value is StoreD
       'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions',
     ]) if (!boundedArray(bundle[field])) throw new Error('invalid control-plane quarantine');
     assertRunLifecycle(bundle.run);
+    if (!identityFieldsFromRun(bundle.run)) throw new Error('invalid control-plane run identity');
     for (const stage of bundle.stages as RawDocument[]) assertStoredStageGenerationProjection(stage);
   }
 }
@@ -821,14 +876,283 @@ function downV2ToV1(source: RawDocument): RawDocument {
   return source;
 }
 
+interface P2LocatedRun {
+  run: RawDocument;
+  subject: string;
+  location: string;
+  humanRequests: RawDocument[];
+  events: RawDocument[];
+}
+
+function p2LocatedRuns(document: RawDocument): P2LocatedRun[] {
+  return [
+    ...document.runs.map((run: RawDocument, index: number) => ({
+      run, subject: String(run.subject), location: `runs[${index}]`,
+      humanRequests: document.humanRequests.filter((row: RawDocument) => row.subject === run.subject && row.runRef === run.runRef),
+      events: document.events.filter((row: RawDocument) => row.subject === run.subject && row.runRef === run.runRef),
+    })),
+    ...document.quarantine.map((bundle: RawDocument, index: number) => ({
+      run: bundle.run as RawDocument, subject: String(bundle.subject), location: `quarantine[${index}].run`,
+      humanRequests: (bundle.humanRequests as RawDocument[]).filter((row) => row.runRef === bundle.run.runRef),
+      events: (bundle.events as RawDocument[]).filter((row) => row.runRef === bundle.run.runRef),
+    })),
+  ];
+}
+
+function existingOwnerHost(run: RawDocument): Pick<RunIdentityFields, 'owner' | 'executionHost'> | null {
+  const owner = decodeRunnableRef(run.owner);
+  const executionHost = decodeHostKind(run.executionHost);
+  return owner && executionHost ? { owner, executionHost } : null;
+}
+
+function explicitOutcomeMatchesLifecycle(fields: RunIdentityFields, lifecycle: RunLifecycle['kind']): boolean {
+  if (lifecycle === 'succeeded') return fields.terminalOutcome === 'ok' && fields.archivedFrom === null;
+  if (lifecycle === 'failed' || lifecycle === 'stopped') {
+    return fields.terminalOutcome === lifecycle && fields.archivedFrom === null;
+  }
+  if (lifecycle !== 'archived') {
+    return fields.terminalOutcome === null && fields.completedAt === null && fields.archivedFrom === null;
+  }
+  const archivedOutcome = {
+    succeeded: 'ok', failed: 'failed', stopped: 'stopped',
+    interrupted: 'interrupted', 'waiting-human': 'abandoned',
+  } as const;
+  return fields.archivedFrom !== null && fields.terminalOutcome === archivedOutcome[fields.archivedFrom];
+}
+
+export function reportP2RunMigrations(document: RawDocument, context: MigrationContext): P2RunMigrationReports & {
+  identities: Array<{ location: string; runRef: string; value: Pick<RunIdentityFields, 'owner' | 'executionHost'> }>;
+  outcomes: Array<{ location: string; runRef: string; value: Pick<RunIdentityFields, 'terminalOutcome' | 'completedAt' | 'archivedFrom'> }>;
+} {
+  const located = p2LocatedRuns(document);
+  if (context.explicitMapping && context.explicitMapping.storeSha256 !== context.sourceSha256) {
+    throw new Error('explicit run migration mapping store SHA mismatch');
+  }
+  const identities: Array<{ location: string; runRef: string; value: Pick<RunIdentityFields, 'owner' | 'executionHost'> }> = [];
+  const identityInputs = [];
+  for (const item of located) {
+    const existing = existingOwnerHost(item.run);
+    const mapped = context.explicitMapping?.runs[String(item.run.runRef)];
+    const decodedMapping = mapped ? decodeRunIdentityFields(mapped) : null;
+    if (mapped && !decodedMapping) throw new Error(`invalid explicit run migration mapping for ${String(item.run.runRef)}`);
+    if (existing) {
+      identities.push({ location: item.location, runRef: String(item.run.runRef), value: existing });
+      continue;
+    }
+    if (decodedMapping) {
+      identities.push({
+        location: item.location, runRef: String(item.run.runRef),
+        value: { owner: decodedMapping.owner, executionHost: decodedMapping.executionHost },
+      });
+      continue;
+    }
+    const proposal = document.proposals.find((row: RawDocument) => row.subject === item.run.subject
+      && row.proposalRef === item.run.proposalRef && row.revision === item.run.proposalRevision
+      && row.hash === item.run.proposalHash);
+    identityInputs.push({
+      runRef: String(item.run.runRef), location: item.location,
+      executionHost: context.executionHost ?? (process.platform === 'win32' ? 'desktop' : 'vm'),
+      agentWorkspaceLaunch: item.run.agentWorkspaceLaunch == null ? null : {
+        agentId: String(item.run.agentWorkspaceLaunch.agentId),
+        declarationPath: String(item.run.agentWorkspaceLaunch.declarationPath),
+        declarationHash: String(item.run.agentWorkspaceLaunch.declarationHash),
+      },
+      proposal: proposal ? {
+        proposalRef: String(proposal.proposalRef), proposalRevision: Number(proposal.revision), proposalHash: String(proposal.hash),
+      } : null,
+      agentDeclarations: context.agentDeclarations ?? [],
+      workflowDefinitions: context.workflowDefinitions ?? [],
+      workflowLaunchAudits: context.workflowLaunchAudits ?? [],
+    });
+  }
+  const identityResolution = migrateRunIdentities(identityInputs);
+  identities.push(...identityResolution.items.map((item) => ({
+    location: item.location, runRef: item.runRef,
+    value: { owner: item.value.owner, executionHost: item.value.executionHost },
+  })));
+  const runIdentity: RunIdentityMigrationReport = {
+    ...identityResolution.report,
+    total: located.length,
+    migrated: identities.length,
+  };
+
+  const outcomes: Array<{
+    location: string;
+    runRef: string;
+    value: Pick<RunIdentityFields, 'terminalOutcome' | 'completedAt' | 'archivedFrom'>;
+  }> = [];
+  const outcomeInputs = located.flatMap((item) => {
+    const mapped = context.explicitMapping?.runs[String(item.run.runRef)];
+    const decodedMapping = mapped ? decodeRunIdentityFields(mapped) : null;
+    if (decodedMapping) {
+      const lifecycle = runLifecycleKind(item.run.lifecycle as RunLifecycle);
+      if (!explicitOutcomeMatchesLifecycle(decodedMapping, lifecycle)) {
+        throw new Error(`explicit run migration mapping outcome mismatch for ${String(item.run.runRef)}`);
+      }
+      outcomes.push({
+        location: item.location,
+        runRef: String(item.run.runRef),
+        value: {
+          terminalOutcome: decodedMapping.terminalOutcome,
+          completedAt: decodedMapping.completedAt,
+          archivedFrom: decodedMapping.archivedFrom,
+        },
+      });
+      return [];
+    }
+    return [{
+      runRef: String(item.run.runRef), subject: item.subject, location: item.location,
+      lifecycle: runLifecycleKind(item.run.lifecycle as RunLifecycle),
+      updatedAt: String(item.run.updatedAt), version: Number(item.run.version),
+      archiveOperationKey: typeof item.run.archiveOperationKey === 'string' ? item.run.archiveOperationKey : null,
+      humanRequests: item.humanRequests.map((row) => ({ response: row.response == null ? null : {
+        idempotencyKey: String(row.response.idempotencyKey), respondedAt: String(row.response.respondedAt),
+      } })),
+      events: item.events.map((row) => ({ createdAt: String(row.createdAt) })),
+      auditRows: context.auditRows ?? [],
+      existing: identityFieldsFromRun(item.run),
+    }];
+  });
+  const outcomeResolution = migrateRunOutcomes(outcomeInputs);
+  outcomes.push(...outcomeResolution.items.map((item) => ({ location: item.location, runRef: item.runRef, value: item.value })));
+  const runOutcome: RunOutcomeMigrationReport = {
+    ...outcomeResolution.report,
+    total: located.length,
+    migrated: outcomes.length,
+  };
+  return { runIdentity, runOutcome, identities, outcomes };
+}
+
+function applyP2RunMigration(document: RawDocument, context: MigrationContext): void {
+  const reported = reportP2RunMigrations(document, context);
+  if (reported.runIdentity.errors.length > 0 || reported.runOutcome.errors.length > 0) {
+    throw new P2RunMigrationError({ runIdentity: reported.runIdentity, runOutcome: reported.runOutcome });
+  }
+  const byLocation = new Map(p2LocatedRuns(document).map((item) => [item.location, item.run]));
+  for (const item of reported.identities) Object.assign(byLocation.get(item.location)!, clone(item.value));
+  for (const item of reported.outcomes) Object.assign(byLocation.get(item.location)!, clone(item.value));
+}
+
+function p2CarrierSummary(payload: JsonValue): string {
+  const canonical = canonicalJson(payload);
+  const digest = createHash('sha256').update(canonical, 'utf8').digest('hex');
+  const compressed = deflateSync(Buffer.from(canonical, 'utf8'));
+  return `${P2_CARRIER_PREFIX}${digest}:${compressed.toString('base64url')}`;
+}
+
+function p2IdentityRows(document: RawDocument): JsonValue {
+  return {
+    runs: document.runs.map((run: RawDocument) => ({ runRef: run.runRef, ...identityFieldsFromRun(run)! })),
+    quarantine: document.quarantine.map((bundle: RawDocument) => ({ runRef: bundle.run.runRef, ...identityFieldsFromRun(bundle.run)! })),
+  } as unknown as JsonValue;
+}
+
+function restoreP2DownCarrier(document: RawDocument): boolean {
+  const carrier = document.events.at(-1);
+  if (!isPlainRecord(carrier) || carrier.kind !== 'lifecycle' || carrier.source !== 'system'
+    || typeof carrier.summary !== 'string' || !carrier.summary.startsWith(P2_CARRIER_PREFIX)) return false;
+  const [digest, encoded, ...extra] = carrier.summary.slice(P2_CARRIER_PREFIX.length).split(':');
+  if (!/^[a-f0-9]{64}$/.test(digest) || !encoded || extra.length > 0) throw new Error('invalid control-plane v3 down carrier');
+  const inflated = inflateSync(Buffer.from(encoded, 'base64url'), { maxOutputLength: MAX_P2_CARRIER_BYTES });
+  const canonical = inflated.toString('utf8');
+  if (createHash('sha256').update(canonical, 'utf8').digest('hex') !== digest) {
+    throw new Error('invalid control-plane v3 down carrier checksum');
+  }
+  const payload = JSON.parse(canonical) as RawDocument;
+  if (!isPlainRecord(payload) || canonicalJson(payload as JsonValue) !== canonical
+    || Object.keys(payload).sort().join(',') !== [
+      'documentRevision', 'nextEventCursor', 'runIdentity', 'scheduleCollectionRevision',
+      'scheduleOccurrenceClaims', 'scheduleSeedImports', 'scheduleTombstones', 'schedules',
+    ].sort().join(',')
+    || !isPlainRecord(payload.runIdentity)
+    || !Array.isArray(payload.runIdentity.runs) || !Array.isArray(payload.runIdentity.quarantine)
+    || carrier.cursor !== payload.nextEventCursor) {
+    throw new Error('invalid control-plane v3 down carrier');
+  }
+  const restore = (runs: RawDocument[], rows: RawDocument[]): void => {
+    if (runs.length !== rows.length) throw new Error('invalid control-plane v3 down carrier run set');
+    for (let index = 0; index < runs.length; index += 1) {
+      const { runRef, ...fields } = rows[index];
+      if (runs[index].runRef !== runRef || !decodeRunIdentityFields(fields)) {
+        throw new Error('invalid control-plane v3 down carrier run identity');
+      }
+      Object.assign(runs[index], fields);
+    }
+  };
+  restore(document.runs, payload.runIdentity.runs as RawDocument[]);
+  restore(document.quarantine.map((bundle: RawDocument) => bundle.run), payload.runIdentity.quarantine as RawDocument[]);
+  document.events.pop();
+  document.documentRevision = payload.documentRevision;
+  document.nextEventCursor = payload.nextEventCursor;
+  document.scheduleCollectionRevision = payload.scheduleCollectionRevision;
+  document.schedules = payload.schedules;
+  document.scheduleTombstones = payload.scheduleTombstones;
+  document.scheduleOccurrenceClaims = payload.scheduleOccurrenceClaims;
+  document.scheduleSeedImports = payload.scheduleSeedImports;
+  return true;
+}
+
+function upV2ToV3(source: RawDocument, context: MigrationContext): RawDocument {
+  const restored = restoreP2DownCarrier(source);
+  if (!restored) {
+    applyP2RunMigration(source, context);
+    source.scheduleCollectionRevision = 0;
+    source.schedules = [];
+    source.scheduleTombstones = [];
+    source.scheduleOccurrenceClaims = [];
+    source.scheduleSeedImports = [];
+  }
+  source.version = 3;
+  return source;
+}
+
+function downV3ToV2(source: RawDocument): RawDocument {
+  const runIdentity = p2IdentityRows(source);
+  const payload = {
+    documentRevision: source.documentRevision,
+    nextEventCursor: source.nextEventCursor,
+    runIdentity,
+    scheduleCollectionRevision: source.scheduleCollectionRevision,
+    schedules: source.schedules,
+    scheduleTombstones: source.scheduleTombstones,
+    scheduleOccurrenceClaims: source.scheduleOccurrenceClaims,
+    scheduleSeedImports: source.scheduleSeedImports,
+  } as unknown as JsonValue;
+  source.events.push({
+    subject: 'system', cursor: source.nextEventCursor, runRef: '__control-plane-v3-migration__',
+    kind: 'lifecycle', source: 'system', stageRef: null, attemptRef: null, sessionRef: null,
+    status: 'success', summary: p2CarrierSummary(payload), command: null, toolName: null,
+    path: null, diff: null, checkpoint: null, createdAt: '1970-01-01T00:00:00.000Z',
+  });
+  source.nextEventCursor += 1;
+  for (const run of [...source.runs, ...source.quarantine.map((bundle: RawDocument) => bundle.run)]) {
+    delete run.owner;
+    delete run.executionHost;
+    delete run.terminalOutcome;
+    delete run.completedAt;
+    delete run.archivedFrom;
+  }
+  delete source.scheduleCollectionRevision;
+  delete source.schedules;
+  delete source.scheduleTombstones;
+  delete source.scheduleOccurrenceClaims;
+  delete source.scheduleSeedImports;
+  source.version = 2;
+  return source;
+}
+
 export function applyMigrationEdgeForTest(
   source: unknown,
-  target: 1 | 2,
+  target: 1 | 2 | 3,
   context: MigrationContext,
 ): unknown {
   assertMigrationEnvelope(source);
   const document = clone(source);
-  return target === 2 ? upV1ToV2(document, context) : downV2ToV1(document);
+  if (document.version === 1 && target === 2) return upV1ToV2(document, context);
+  if (document.version === 2 && target === 1) return downV2ToV1(document);
+  if (document.version === 2 && target === 3) return upV2ToV3(document, context);
+  if (document.version === 3 && target === 2) return downV3ToV2(document);
+  throw new Error(`no control-plane migration edge ${document.version}->${target}`);
 }
 
 export function migrateControlDocument(
@@ -842,13 +1166,22 @@ export function migrateControlDocument(
   }
   const document = clone(source);
   const applied: AppliedMigration[] = [];
-  if (document.version === 1 && target === 2) {
+  if (document.version === 1 && target >= 2) {
     upV1ToV2(document, context);
     applied.push({ from: 1, to: 2, breaking: true, down: 'present' });
-  } else if (document.version === 2 && target === 1) {
+  }
+  if (document.version === 2 && target === 3) {
+    upV2ToV3(document, context);
+    applied.push({ from: 2, to: 3, breaking: true, down: 'present' });
+  } else if (document.version === 3 && target <= 2) {
+    downV3ToV2(document);
+    applied.push({ from: 3, to: 2, breaking: true, down: 'present' });
+  }
+  if (document.version === 2 && target === 1) {
     downV2ToV1(document);
     applied.push({ from: 2, to: 1, breaking: true, down: 'present' });
-  } else if (document.version !== target) {
+  }
+  if (document.version !== target) {
     throw new Error(`no control-plane migration path ${document.version}->${target}`);
   }
   if (target === CONTROL_PLANE_SCHEMA_VERSION) assertDocumentInvariant(document);
@@ -883,12 +1216,12 @@ export function normalizeCrash(
     const pendingActivation = [...run.activationReceipts].reverse()
       .find((receipt: RawDocument) => receipt.phase === 'claimed' || receipt.phase === 'roots-activated');
     const normalizedLifecycle = crashNormalizedLifecycle(run.lifecycle, pendingActivation !== undefined);
-    if (normalizedLifecycle !== run.lifecycle) {
-      run.lifecycle = normalizedLifecycle;
-      run.version += 1;
-      run.updatedAt = context.stamp;
-      runChanged = true;
-    }
+      if (normalizedLifecycle !== run.lifecycle) {
+        run.lifecycle = normalizedLifecycle;
+        run.version += 1;
+        run.updatedAt = context.stamp;
+        runChanged = true;
+      }
     for (const stage of raw.stages.filter((item: RawDocument) => item.subject === run.subject && item.runRef === run.runRef)) {
       if (stage.state !== 'running') continue;
       stage.state = 'interrupted';

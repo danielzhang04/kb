@@ -88,11 +88,11 @@ describe('P2 control contracts', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('does not attach P2 identity fields or an inheritance clause to legacy Run shapes', () => {
+  it('attaches P2 identity exactly once through RunIdentityFields at the W6.1 cutover', () => {
     const types = readFileSync(resolve(here, 'types.ts'), 'utf8');
     const store = readFileSync(resolve(here, 'store.ts'), 'utf8');
     const storedRunBody = /interface\s+StoredRun(?:\s+extends\s+[^\{]+)?\s*\{([^}]*)\}/.exec(store)?.[1];
-    expect(types).not.toMatch(/interface\s+Run\s+extends\s+RunIdentityFields/);
+    expect(types).toMatch(/interface\s+Run\s+extends\s+RunIdentityFields/);
     expect(types).not.toMatch(/interface\s+Run\s*\{[\s\S]*?\b(?:owner|executionHost|terminalOutcome|completedAt|archivedFrom)\s*:/);
     expect(storedRunBody).toBeDefined();
     expect(storedRunBody).not.toMatch(/\b(?:owner|executionHost|terminalOutcome|completedAt|archivedFrom)\s*:/);

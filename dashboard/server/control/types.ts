@@ -15,6 +15,7 @@ import type {
 import type { IterationOutcome } from './iterationOutcome.ts';
 import type { DeploymentState } from './deploymentState.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
+import type { RunIdentityFields } from './p2Contracts.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -164,7 +165,7 @@ export interface AgentWorkspaceLaunchProvenance {
   declarationHash: string;
 }
 
-export interface Run {
+export interface Run extends RunIdentityFields {
   runRef: string;
   predecessorRunRef: string | null;
   title: string;

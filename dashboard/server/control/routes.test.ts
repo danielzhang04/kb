@@ -145,6 +145,9 @@ function expectExactWireRun(
 
 it('pins the failed-run reconciliation success wire shape', () => {
   const run: Run = {
+    owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    executionHost: 'desktop', terminalOutcome: 'failed',
+    completedAt: '2026-08-01T01:00:00.000Z', archivedFrom: null,
     runRef: 'run-reconciled', predecessorRunRef: null, title: 'Reconciled run',
     proposalRef: 'proposal-reconciled', proposalRevision: 1, proposalHash: 'a'.repeat(64),
     publicationState: 'published', lifecycle: { kind: 'failed', deployPause: null }, version: 8,
@@ -185,7 +188,10 @@ describe('control proposal routes', () => {
       protector: { seal: (value) => value, open: (value) => value }, newId,
     });
     controlStore = createInMemoryControlPlaneStore({ newId });
-    const workspace = composerStore.create('operator', 'Control');
+    const workspace = composerStore.create('operator', 'Control', {
+      id: 'grader', path: 'agents/grader.md', sourceHash: 'a'.repeat(64),
+      projects: ['kb'], instructionMarkdown: 'Grade the assigned work.',
+    });
     composerRef = workspace.composerRef;
     const lease = composerStore.acquireWriter('operator', composerRef);
     if (!lease.ok) throw new Error('lease failed');
@@ -259,7 +265,7 @@ describe('control proposal routes', () => {
         : structuredClone(stage)),
     };
     const stored = controlStore.createProposalRevision('operator', {
-      sourceComposerRef: 'iteration-launch', sourceTurnId: 'iteration-launch-turn', title: snapshot.title,
+      sourceComposerRef: composerRef, sourceTurnId: 'iteration-launch-turn', title: snapshot.title,
       snapshot: snapshot as unknown as JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
@@ -408,6 +414,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun(owner, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: proposal.title,
       proposalRef: stored.value.proposalRef,
       proposalRevision: stored.value.revision,
@@ -589,6 +597,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Generic completion gate', proposalRef: proposal.value.proposalRef, proposalRevision: proposal.value.revision,
       expectedProposalHash: proposal.value.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'launch-generic-completion', iterationGroups: [structuredClone(group)], stages: [
@@ -1194,7 +1204,7 @@ describe('control proposal routes', () => {
 
   async function approvedLaunchRevision(snapshot: PlanProposal, idempotencySuffix: string) {
     const stored = controlStore.createProposalRevision('operator', {
-      sourceComposerRef: `launch-${idempotencySuffix}`, sourceTurnId: `turn-${idempotencySuffix}`, title: snapshot.title,
+      sourceComposerRef: composerRef, sourceTurnId: `turn-${idempotencySuffix}`, title: snapshot.title,
       snapshot: snapshot as unknown as import('./types.ts').JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
@@ -1317,6 +1327,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
       idempotencyKey: 'launch-manager', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
@@ -1393,6 +1405,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
       managerAssignment, idempotencyKey: 'launch-reroute',
@@ -1519,6 +1533,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
       managerAssignment, idempotencyKey: 'launch-successor', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
@@ -2633,6 +2649,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime,
       managerModel: proposal.manager.model, idempotencyKey: 'launch-reconcile-wire',
@@ -2698,6 +2716,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const create = (idempotencyKey: string) => controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: assigned.title, proposalRef: stored.value.proposalRef, proposalRevision: 1, expectedProposalHash: stored.value.hash,
       managerRuntime: assigned.manager.runtime, managerModel: assigned.manager.model, managerAssignment, idempotencyKey,
       stages: assigned.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn, assignment: stage.assignment ?? null })),
@@ -2773,6 +2793,8 @@ describe('control proposal routes', () => {
     });
     if (!approved.ok) throw new Error(approved.detail);
     const run = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: revision.revision,
       expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
       idempotencyKey: 'audit-failure-run', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
@@ -2879,6 +2901,8 @@ function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key:
     expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
   }).ok) throw new Error('approval failed');
   const run = store.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
     expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
     idempotencyKey: `${key}-launch`,
@@ -2912,6 +2936,8 @@ describe('control execution latch routes', () => {
       expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-agent-message',
     }).ok) throw new Error('approval failed');
     const run = store.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: assignedProposal.title, proposalRef: created.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: created.value.hash, managerRuntime: assignedProposal.manager.runtime, managerModel: assignedProposal.manager.model,
       idempotencyKey: 'launch-agent-message',
@@ -3580,6 +3606,8 @@ describe('operator cross-subject authority', () => {
       expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
     }).ok) throw new Error('approval failed');
     const run = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
       idempotencyKey: `${key}-launch`,
@@ -3948,6 +3976,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     idempotencyKey: string,
   ) {
     const run = store.createRun(ENGINE, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
       expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
       idempotencyKey,
@@ -4055,6 +4085,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       // DIRECTION 2 — bridge -> operator. The bridge re-ticks the SAME card and still replays ITS OWN
       // run, because nothing the operator wrote can occupy `queue-bridge:<cardId>`.
       const replay = store.createRun(ENGINE, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
         title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
         expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
         idempotencyKey: bridgeKey,

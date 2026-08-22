@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +7,8 @@ import {
   createNodePersistenceDeps,
   fakePersistenceDeps,
   persistControlDocumentSync,
+  restoreControlPlaneMigrationBackupSync,
+  writeControlPlaneMigrationBackupSync,
   spyPersistenceDeps,
 } from './persistence.ts';
 import {
@@ -19,6 +21,27 @@ const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath
   new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
 
 const readDocument = (path: string): Record<string, any> => JSON.parse(readFileSync(path, 'utf8'));
+
+it('writes a SHA-keyed v2 backup and restores only checksum-matching bytes atomically', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kb-p2-backup-'));
+  try {
+    const livePath = join(root, 'control', 'control-plane.json');
+    mkdirSync(join(root, 'control'), { recursive: true });
+    const source = Buffer.from('{"version":2}\n', 'utf8');
+    writeFileSync(livePath, source);
+    const backup = writeControlPlaneMigrationBackupSync(root, source);
+    expect(existsSync(backup.path)).toBe(true);
+    expect(readFileSync(backup.path)).toEqual(source);
+    writeFileSync(livePath, '{"version":3}\n', 'utf8');
+    restoreControlPlaneMigrationBackupSync(root, backup.path);
+    expect(readFileSync(livePath)).toEqual(source);
+    writeFileSync(backup.sidecarPath, `${'0'.repeat(64)}\n`, 'utf8');
+    expect(() => restoreControlPlaneMigrationBackupSync(root, backup.path)).toThrow(/checksum/);
+    expect(readFileSync(livePath)).toEqual(source);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 it('pads only test documents to an exact persisted byte target', () => {
   const opened = createLeasedFileStoreForTest({ persistenceTargetBytesForTest: 8192 });
@@ -121,6 +144,9 @@ it('injects a real spy and coalesces migration plus crash normalization into one
       proposals: [],
       runs: [{
         subject: 'alice', runRef: 'run-live', state: 'running', version: 1,
+        agentWorkspaceLaunch: {
+          composerRef: 'composer-grader', agentId: 'grader', declarationPath: 'agents/grader.md', declarationHash: 'a'.repeat(64),
+        },
         createdAt: '2026-08-20T00:00:00.000Z', updatedAt: '2026-08-20T00:00:00.000Z',
       }],
       stages: [], attempts: [], sessions: [], humanRequests: [], events: [],
@@ -132,6 +158,9 @@ it('injects a real spy and coalesces migration plus crash normalization into one
       now: () => new Date('2026-08-20T01:00:00.000Z'),
       bootId: 'boot-spy',
       persistenceDepsForTest: spyPersistenceDeps(calls, createNodePersistenceDeps()),
+      p2MigrationContext: {
+        agentDeclarations: [{ id: 'grader', sourcePath: 'agents/grader.md', declarationHash: 'a'.repeat(64) }],
+      },
     });
     expect(calls.filter((call) => call === 'rename')).toHaveLength(1);
     expect(calls.slice(0, 5)).toEqual(['open-temp', 'write', 'fsync-temp', 'close-temp', 'rename']);
@@ -139,7 +168,11 @@ it('injects a real spy and coalesces migration plus crash normalization into one
     const encoded = readFileSync(path, 'utf8');
     expect(encoded.endsWith('\n')).toBe(true);
     const persisted = JSON.parse(encoded) as Record<string, any>;
-    expect(persisted).toMatchObject({ version: 2, documentRevision: 1, nextEventCursor: 2 });
+    expect(persisted).toMatchObject({ version: 3, documentRevision: 1, nextEventCursor: 2 });
+    expect(persisted.runs[0]).toMatchObject({
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      terminalOutcome: null, completedAt: null, archivedFrom: null,
+    });
     expect(persisted.runs[0].lifecycle).toEqual({ kind: 'interrupted', deployPause: null });
     expect(persisted.runs[0]).not.toHaveProperty('state');
     expect(persisted.events).toHaveLength(1);

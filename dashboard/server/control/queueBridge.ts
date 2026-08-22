@@ -5,8 +5,8 @@
  * disjoint slice of the queue, arbitrated by ONE frontmatter flag, `execution-controller`:
  *   - legacy runner claims iff `execution-controller != "dashboard"` (absent/null included) — ps1 step 6;
  *   - this bridge claims iff `execution-controller === "dashboard"` (the exact literal) AND
- *     `owner === <dashboard subject>` AND `state ∈ {inbox, working}`.
- * The two predicates partition the owner/state-matched card space with no overlap and no gap — that is
+ *     `state ∈ {inbox, working}`; owner is resolved only after the full card is read.
+ * The two predicates partition the controller/state-matched card space with no overlap and no gap — that is
  * the double-execution guard. `bridgeClaimsCard` is the authoritative TS statement of the bridge side;
  * `scripts/queue_bridge_select.py#claims_card` is its Python mirror (unit-tested for parity on both
  * sides). Keeping the controller test an EXACT string equality — never a truthiness or "not legacy"
@@ -31,15 +31,17 @@ import { validateServerCompiledPlanProposal, type ProposalRiskTier } from './pro
 import { proposalSnapshotHash, type ControlPlaneStore } from './store.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
 import type { JsonObject, RunDetail } from './types.ts';
+import type { RunnableRef } from './p2Contracts.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { runLifecycleKind } from './runLifecycle.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
 import type { CoordinationPublication } from '../write/outbox.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
 
 export class QueueBridgeError extends Error {}
 
-/** The claim-relevant slice of a card's parsed frontmatter. Only these three fields decide ownership. */
+/** The claim-relevant slice of a card's parsed frontmatter. `owner` is deliberately ignored here. */
 export interface CardClaimMeta {
   'execution-controller'?: string | null;
   owner?: string | null;
@@ -54,12 +56,11 @@ export const CLAIMABLE_STATES: readonly string[] = ['inbox', 'working'];
 /**
  * The bridge side of the double-execution guard: true iff the dashboard engine (not the legacy runner)
  * owns this card. The exact inverse, on the `execution-controller` axis, of `agent_runner.ps1` step 6.
- * `subject` defaults to the single dashboard executor identity (D1); T4 re-asserts this on the full card
- * meta read at dispatch time, so a card the Python selector returned is never dispatched on stale state.
+ * T4 re-asserts this on the full card meta read at dispatch time, so a card the Python selector returned
+ * is never dispatched on stale state.
  */
-export function bridgeClaimsCard(meta: CardClaimMeta, subject: string = DASHBOARD_EXECUTOR_SUBJECT): boolean {
+export function bridgeClaimsCard(meta: CardClaimMeta): boolean {
   return meta['execution-controller'] === DASHBOARD_CONTROLLER
-    && meta.owner === subject
     && typeof meta.state === 'string'
     && CLAIMABLE_STATES.includes(meta.state);
 }
@@ -82,8 +83,7 @@ import sys, json
 from pathlib import Path
 sys.path.insert(0, "scripts")
 import queue_bridge_select
-op = json.loads(sys.argv[1])
-print(json.dumps(queue_bridge_select.select_owned_dashboard_cards(Path(op.get("queueRoot", "queue")), op["subject"])))
+raise SystemExit(queue_bridge_select.main(["queue_bridge_select.py", sys.argv[1]]))
 `.trim();
 
 export interface ScanDeps {
@@ -92,7 +92,6 @@ export interface ScanDeps {
 }
 
 export interface ScanOptions {
-  subject?: string;
   /** Overrides the default `queue` root (repo-relative), for tests/fixtures. */
   queueRoot?: string;
 }
@@ -104,8 +103,7 @@ export interface ScanOptions {
  */
 export function scanOwnedDashboardCards(deps: ScanDeps, options: ScanOptions = {}): OwnedCard[] {
   const runPy = deps.runPy ?? defaultPyRunner;
-  const subject = options.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
-  const op: Record<string, string> = { subject };
+  const op: Record<string, string> = {};
   if (options.queueRoot !== undefined) op.queueRoot = options.queueRoot;
 
   const result = runPy(deps.repoRoot, QUEUE_BRIDGE_SELECT_SCRIPT, JSON.stringify(op));
@@ -132,7 +130,6 @@ export function scanOwnedDashboardCards(deps: ScanDeps, options: ScanOptions = {
 
 export interface QueueBridgeOptions {
   repoRoot: string;
-  subject?: string;
   runPy?: PyRunner;
   runPreamble?: PreambleRunner;
   queueRoot?: string;
@@ -171,7 +168,6 @@ const NOOP_DISPATCH = async (_card: OwnedCard): Promise<void> => {};
  * halts every other governed writer. A single-flight guard prevents overlapping ticks.
  */
 export function createQueueBridge(options: QueueBridgeOptions): QueueBridge {
-  const subject = options.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
   const dispatch = options.dispatch ?? NOOP_DISPATCH;
   const onError = options.onError ?? (() => {});
   let running = false;
@@ -187,7 +183,7 @@ export function createQueueBridge(options: QueueBridgeOptions): QueueBridge {
 
       const owned = scanOwnedDashboardCards(
         { repoRoot: options.repoRoot, runPy: options.runPy },
-        { subject, queueRoot: options.queueRoot },
+        { queueRoot: options.queueRoot },
       );
       let dispatched = 0;
       for (const card of owned) {
@@ -262,9 +258,36 @@ export interface ParsedCard {
   body: string;
 }
 
+export interface QueueBridgeRunnableResolutionInput {
+  receiptOwner: RunnableRef | null;
+  workflowOwner: RunnableRef | null;
+  cardOwner: string | null;
+  declaredAgents: readonly RunnableRef[];
+}
+
+export type QueueBridgeRunnableResolution =
+  | { ok: true; value: RunnableRef; source: 'schedule-receipt' | 'workflow-def' | 'card-owner' }
+  | { ok: false; code: 'runnable-owner-conflict' | 'runnable-owner-required' };
+
+/** Resolve provenance before any proposal or Run write. */
+export function resolveQueueBridgeRunnable(input: QueueBridgeRunnableResolutionInput): QueueBridgeRunnableResolution {
+  if (input.receiptOwner) {
+    const asserted = [input.workflowOwner?.id ?? null, input.cardOwner].filter((value): value is string => value !== null);
+    return asserted.every((value) => value === input.receiptOwner!.id)
+      ? { ok: true, value: input.receiptOwner, source: 'schedule-receipt' }
+      : { ok: false, code: 'runnable-owner-conflict' };
+  }
+  if (input.workflowOwner) return { ok: true, value: input.workflowOwner, source: 'workflow-def' };
+  const matches = input.declaredAgents.filter((owner) => owner.type === 'agent' && owner.id === input.cardOwner);
+  return matches.length === 1
+    ? { ok: true, value: matches[0], source: 'card-owner' }
+    : { ok: false, code: 'runnable-owner-required' };
+}
+
 /** A card mapped to a one-stage workflow definition. The Work order is the only card content delivered. */
 export interface CardWorkflowRequest {
   def: WorkflowDef;
+  owner?: RunnableRef;
 }
 
 /**
@@ -401,7 +424,13 @@ function registeredWorkflowRequest(
 
   // The existing launch shape has no run-level context slot. The trigger card's Work order therefore
   // remains advisory for a registered definition; its parsed per-stage workOrders are authoritative.
-  return { def: instantiated.value };
+  return {
+    def: instantiated.value,
+    owner: {
+      type: 'workflow', id: workflowId, project,
+      sourcePath: `orgs/${project}/workflows/${workflowId}.md`,
+    },
+  };
 }
 
 /**
@@ -545,6 +574,9 @@ export interface DispatchCardDeps {
   internalCaller?: (subject: string) => InternalServiceCaller;
   /** Re-assert that this dispatch still belongs to the same armed execution window. */
   isArmed?: () => boolean;
+  resolveScheduleReceiptOwner?: (cardId: string) => RunnableRef | null;
+  declaredRunnableOwners?: (repoRoot: string) => readonly RunnableRef[];
+  wake?: (ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required') => void;
 }
 
 export interface DispatchCardResult {
@@ -570,6 +602,20 @@ function defaultReadCard(ctx: SurfaceContext, cardPath: string): ParsedCard {
   return JSON.parse(result.stdout.trim()) as ParsedCard;
 }
 
+function defaultDeclaredRunnableOwners(repoRoot: string): RunnableRef[] {
+  return [...readDeclaredAgentDetails(repoRoot).values()].map((agent) => ({
+    type: 'agent', id: agent.id, sourcePath: agent.source as `agents/${string}.md`,
+  }));
+}
+
+function defaultWake(ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required'): void {
+  const result = (ctx.runPy ?? defaultPyRunner)(ctx.repoRoot, QUEUE_BRIDGE_SELECT_SCRIPT, JSON.stringify({
+    operation: 'wake', repoRoot: ctx.repoRoot, reason: code,
+    detail: `queue bridge card ${cardId} refused before proposal creation`,
+  }));
+  if (result.exitCode !== 0) throw new QueueBridgeError(`queue bridge wake failed: ${result.stderr.trim() || result.stdout.trim()}`);
+}
+
 /**
  * Create the canonical run for one claimed card via the launch machinery. Idempotent per card: the
  * idempotencyKey/source are derived from the card id, so a re-tick after a crash replays the same run
@@ -591,6 +637,7 @@ export async function dispatchClaimedCard(
   const launch = deps.launch ?? executeApprovedLaunch;
   const reconcile = deps.reconcile ?? defaultReconcileTriggerCard;
   const internalCaller = deps.internalCaller ?? createInternalServiceCaller;
+  const wake = deps.wake ?? defaultWake;
 
   // D7 belt-and-suspenders: re-assert the shared preamble (STOP file + budget) immediately before
   // dispatch, even though the poll tick already gated on it — a STOP dropped mid-batch must halt the very
@@ -603,15 +650,38 @@ export async function dispatchClaimedCard(
   try {
     // Re-assert the claim on the card's CURRENT meta: it may have changed between scan and dispatch.
     const parsed = readCard(ctx, card.path);
-    if (!bridgeClaimsCard(parsed.meta, subject)) {
+    if (!bridgeClaimsCard(parsed.meta)) {
       return { cardId: card.id, outcome: 'skipped', status: 0, reconciled: false, detail: 'card no longer claimed by the bridge' };
     }
 
-  let mapped: CardWorkflowRequest;
+  // A registered workflow may be read before owner resolution because it is the
+  // server-owned provenance for that resolution. A bare card must not be mapped
+  // to its transient execution definition until its Agent/receipt owner is known:
+  // refusals create no proposal, Run, adapter, or synthesized workflow.
+  let mapped: CardWorkflowRequest | null = null;
   try {
-    mapped = cardToWorkflowRequest(parsed, { knownProfiles: knownProfiles(), repoRoot: ctx.repoRoot });
+    if (parsed.meta['workflow-def'] !== undefined) {
+      mapped = cardToWorkflowRequest(parsed, { knownProfiles: knownProfiles(), repoRoot: ctx.repoRoot });
+    }
   } catch (error) {
     return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: String(error) };
+  }
+  const runnable = resolveQueueBridgeRunnable({
+    receiptOwner: deps.resolveScheduleReceiptOwner?.(card.id) ?? null,
+    workflowOwner: mapped?.owner ?? null,
+    cardOwner: typeof parsed.meta.owner === 'string' ? parsed.meta.owner : null,
+    declaredAgents: (deps.declaredRunnableOwners ?? defaultDeclaredRunnableOwners)(ctx.repoRoot),
+  });
+  if (!runnable.ok) {
+    wake(ctx, card.id, runnable.code);
+    return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: runnable.code };
+  }
+  if (mapped === null) {
+    try {
+      mapped = cardToWorkflowRequest(parsed, { knownProfiles: knownProfiles(), repoRoot: ctx.repoRoot });
+    } catch (error) {
+      return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: String(error) };
+    }
   }
   const registry = loadRegistry(ctx.repoRoot);
   const compiled = compile(mapped.def, { registry });
@@ -718,6 +788,10 @@ export async function dispatchClaimedCard(
     predecessorRunRef: null,
     expectedPredecessorVersion: -1,
     source: `queue-bridge:${card.id}`,
+    identity: {
+      owner: runnable.value,
+      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+    },
   });
 
   const runRef = typeof result.body.runRef === 'string' ? result.body.runRef : undefined;

@@ -19,6 +19,8 @@ function runDetail(states: [string, string, string] = ['succeeded', 'running', '
   return {
     ownerSubject: 'operator',
     run: {
+      owner: { type: 'agent', id: 'manager', sourcePath: 'agents/manager.md' }, executionHost: 'desktop',
+      terminalOutcome: null, completedAt: null, archivedFrom: null,
       runRef: 'run-1', predecessorRunRef: null, title: 'Run graph', displayName: 'Run graph', shortRef: 1,
       workflowRef: 'workflow-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'b'.repeat(64),
       publicationState: 'published', state: 'running', version: 1, managerSessionRef: 'manager-session', managerGeneration: 1,

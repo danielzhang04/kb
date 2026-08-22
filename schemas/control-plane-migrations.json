@@ -72,12 +72,67 @@
         "documentRevision",
         "nextEventCursor"
       ]
+    },
+    {
+      "version": 3,
+      "collections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "stageGenerations",
+        "iterationLoops",
+        "iterationRequests",
+        "iterationReceipts",
+        "generationSupersessions",
+        "quarantine",
+        "deployments",
+        "schedules",
+        "scheduleTombstones",
+        "scheduleOccurrenceClaims",
+        "scheduleSeedImports"
+      ],
+      "requiredCollections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "stageGenerations",
+        "iterationLoops",
+        "iterationRequests",
+        "iterationReceipts",
+        "generationSupersessions",
+        "quarantine",
+        "deployments",
+        "schedules",
+        "scheduleTombstones",
+        "scheduleOccurrenceClaims",
+        "scheduleSeedImports"
+      ],
+      "envelopeRequired": [
+        "version",
+        "documentRevision",
+        "nextEventCursor",
+        "scheduleCollectionRevision"
+      ]
     }
   ],
   "migrations": [
     {
       "from": 1,
       "to": 2,
+      "breaking": true,
+      "down": "present"
+    },
+    {
+      "from": 2,
+      "to": 3,
       "breaking": true,
       "down": "present"
     }

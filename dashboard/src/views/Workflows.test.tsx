@@ -43,6 +43,8 @@ const definition = (over: Partial<{
 
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
   ownerSubject: 'operator',
+  owner: { type: 'workflow', id: 'research-brief', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/research-brief.md' }, executionHost: 'vm',
+  terminalOutcome: 'ok', completedAt: '2026-08-04T10:00:00.000Z', archivedFrom: null,
   predecessorRunRef: null,
   title: 'Research brief run',
   displayName: 'Research brief run',

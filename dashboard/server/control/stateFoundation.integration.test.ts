@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import {
@@ -30,6 +31,8 @@ function pausedV2Fixture({ resumeClaimBootId }: { resumeClaimBootId: string }): 
     proposalRef: 'proposal-paused',
     proposalRevision: 1,
     proposalHash: 'c'.repeat(64),
+    owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    executionHost: 'desktop',
     publicationState: 'published',
     lifecycle: {
       kind: 'paused-for-deploy',
@@ -70,12 +73,20 @@ function readPaused(path: string): Record<string, any> {
   };
 }
 
-it('migrates once, commits CAS once, and reopens byte-identically', () => {
-  const opened = createLeasedFileStoreForTest({}, fixture('v1-supported.json'));
+it('backs up and migrates v2 once, commits CAS once, and reopens byte-identically', () => {
+  const opened = createLeasedFileStoreForTest({}, fixture('v2-empty.json'));
   let bytes: Buffer;
   let document: Record<string, any>;
   try {
-    expect(readDocument(opened.path)).toMatchObject({ version: 2, documentRevision: 1, deployments: [] });
+    expect(readDocument(opened.path)).toMatchObject({
+      version: 3, documentRevision: 1, scheduleCollectionRevision: 0, deployments: [], schedules: [],
+    });
+    const backups = join(dirname(opened.path), 'backups');
+    expect(existsSync(backups)).toBe(true);
+    expect(readdirSync(backups)).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^control-plane-v2-to-v3-[a-f0-9]{64}\.json$/),
+      expect.stringMatching(/^control-plane-v2-to-v3-[a-f0-9]{64}\.json\.sha256$/),
+    ]));
     const input = createDeploymentFixture();
     const made = opened.store.createDeployment('operator', input);
     expect(made.ok).toBe(true);
