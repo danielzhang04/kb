@@ -23,7 +23,13 @@ const fixture = (name: string): Record<string, any> => JSON.parse(readFileSync(f
 
 const readDocument = (path: string): Record<string, any> => JSON.parse(readFileSync(path, 'utf8'));
 
-function pausedV2Fixture({ resumeClaimBootId }: { resumeClaimBootId: string }): Record<string, any> {
+function pausedV2Fixture({
+  resumeClaimBootId,
+  executionHost = 'desktop',
+}: {
+  resumeClaimBootId: string;
+  executionHost?: 'desktop' | 'vm';
+}): Record<string, any> {
   const document = fixture('v2-empty.json');
   document.runs = [{
     subject: 'operator',
@@ -34,7 +40,7 @@ function pausedV2Fixture({ resumeClaimBootId }: { resumeClaimBootId: string }): 
     proposalRevision: 1,
     proposalHash: 'c'.repeat(64),
     owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
-    executionHost: 'desktop',
+    executionHost,
     publicationState: 'published',
     lifecycle: {
       kind: 'paused-for-deploy',
@@ -137,7 +143,8 @@ it('aborts generated-Python prepublication validation before backup or store pub
 
 it('normalizes a stale resume claim only at construction', () => {
   const opened = createLeasedFileStoreForTest(
-    {}, pausedV2Fixture({ resumeClaimBootId: 'boot-old' }), 'boot-new',
+    { p2MigrationContext: { executionHost: 'desktop' } },
+    pausedV2Fixture({ resumeClaimBootId: 'boot-old' }), 'boot-new',
   );
   try {
     expect(readPaused(opened.path).lifecycle.deployPause.resumeClaim).toBeNull();
@@ -145,6 +152,20 @@ it('normalizes a stale resume claim only at construction', () => {
     expect(opened.store.appendEvent('operator', RUN_REF,
       { kind: 'message', source: 'manager', summary: 'ordinary mutation' })).toMatchObject({ ok: true });
     expect(readPaused(opened.path).lifecycle.kind).toBe('paused-for-deploy');
+    expect(readPaused(opened.path).pendingActivation).toEqual(PENDING_ACTIVATION_FIXTURE);
+  } finally {
+    opened.close();
+  }
+});
+
+it('uses the supplied migration host to normalize a stale resume claim', () => {
+  const executionHost = process.platform === 'win32' ? 'vm' : 'desktop';
+  const opened = createLeasedFileStoreForTest(
+    { p2MigrationContext: { executionHost } },
+    pausedV2Fixture({ resumeClaimBootId: 'boot-old', executionHost }), 'boot-new',
+  );
+  try {
+    expect(readPaused(opened.path).lifecycle.deployPause.resumeClaim).toBeNull();
     expect(readPaused(opened.path).pendingActivation).toEqual(PENDING_ACTIVATION_FIXTURE);
   } finally {
     opened.close();

@@ -11,7 +11,7 @@ import {
 import { decodeEntityDetail, decodeEntityList } from '../../src/lib/entityClient.ts';
 import { decodeHomeResponse } from '../../src/lib/homeClient.ts';
 import { decodeScheduleCollection } from '../../src/lib/scheduleClient.ts';
-import { decodeOperationalEvent } from '../../src/control/controlClient.ts';
+import { decodeOperationalEvent, getRun } from '../../src/control/controlClient.ts';
 
 const fixtures: P1BrowserFixture[] = [];
 const roots: string[] = [];
@@ -133,7 +133,7 @@ describe('P1 browser fixture', () => {
     const lifecycle = await startP1BrowserFixture({ scenario: 'p2-run-lifecycle-step-filter' as never, distDir, port: 0 });
     fixtures.push(lifecycle);
     const allEvents = await (await fetch(`${lifecycle.origin}/api/control/runs/run-fixture/events?after=0&limit=250`)).json() as {
-      items: Array<{ stageRef: string | null }>;
+      items: Array<{ stageRef: string | null; summary: string }>;
     };
     const researchEvents = await (await fetch(`${lifecycle.origin}/api/control/runs/run-fixture/events?after=0&limit=250&stageRef=research`)).json() as {
       items: Array<{ stageRef: string | null }>;
@@ -141,12 +141,33 @@ describe('P1 browser fixture', () => {
     expect(allEvents.items.length).toBeGreaterThan(researchEvents.items.length);
     expect(researchEvents.items.every((event) => event.stageRef === 'research')).toBe(true);
     expect(allEvents.items.every((event) => decodeOperationalEvent(event) !== null)).toBe(true);
+    expect(allEvents.items.map((event) => event.summary).join('\n')).toContain('"provider":"claude"');
+    expect(allEvents.items.map((event) => event.summary).join('\n')).toContain('"provider":"codex"');
 
     const gates = await startP1BrowserFixture({ scenario: 'p2-gate-dedupe-t3' as never, distDir, port: 0 });
     fixtures.push(gates);
     const attention = await (await fetch(`${gates.origin}/api/attention`)).json() as { pairs: unknown[]; agents: Record<string, number> };
     expect(attention).toMatchObject({ agents: { 'fyt-checker': 1 } });
     expect(attention.pairs).toHaveLength(1);
+    const gateFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(new URL(String(input), gates.origin), init)) as typeof fetch;
+    const gateDetail = await getRun('run-fixture', 'bearer', gateFetch);
+    expect(gateDetail.humanRequests).toHaveLength(2);
+    expect(gateDetail.humanRequests.map((request) => request.kind)).toEqual(['approval', 'input']);
+    const ordinaryInput = {
+      expectedRevision: 1, decision: 'responded', response: 'Continue with the bounded step.',
+      idempotencyKey: 'fixture:ordinary:1',
+    };
+    const ordinary = await (await fetch(`${gates.origin}/api/control/human-requests/request-ordinary/respond`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(ordinaryInput),
+    })).json() as { value: unknown; replayed: boolean };
+    const ordinaryReplay = await (await fetch(`${gates.origin}/api/control/human-requests/request-ordinary/respond`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(ordinaryInput),
+    })).json() as { value: unknown; replayed: boolean };
+    expect(ordinaryReplay).toMatchObject({ value: ordinary.value, replayed: true });
+    const resolvedDetail = await getRun('run-fixture', 'bearer', gateFetch);
+    expect(resolvedDetail.humanRequests.find((request) => request.requestRef === 'request-ordinary'))
+      .toMatchObject({ state: 'resolved', revision: 2, response: { decision: 'responded' } });
     const ceremony = await fetch(`${gates.origin}/api/control/human-requests/request-t3/respond`, { method: 'POST' });
     expect(ceremony.status).toBe(403);
     expect(await ceremony.json()).toEqual({ error: 'ceremony-unavailable' });
@@ -155,9 +176,14 @@ describe('P1 browser fixture', () => {
     fixtures.push(stream);
     const replay = await (await fetch(`${stream.origin}/api/control/runs/run-fixture/events?after=0&limit=250`)).json() as { items: unknown[] };
     expect(replay.items.length).toBeGreaterThan(2);
-    const live = await fetch(`${stream.origin}/api/control/runs/run-fixture/events/stream?after=0`);
+    const live = await fetch(`${stream.origin}/api/control/runs/run-fixture/events/stream?after=2`);
     expect(live.headers.get('content-type')).toContain('text/event-stream');
-    await live.body?.cancel();
+    const queryReconnect = await live.text();
+    const headerReconnect = await (await fetch(`${stream.origin}/api/control/runs/run-fixture/events/stream`, {
+      headers: { 'Last-Event-ID': '2' },
+    })).text();
+    expect(headerReconnect).toBe(queryReconnect);
+    expect(queryReconnect).not.toContain('id: 2\n');
 
     const schedule = await startP1BrowserFixture({ scenario: 'p2-schedule-cas-invalid' as never, distDir, port: 0 });
     fixtures.push(schedule);
@@ -170,6 +196,36 @@ describe('P1 browser fixture', () => {
     const invalid = await fetch(`${schedule.origin}/api/schedules`, { method: 'POST' });
     expect(invalid.status).toBe(400);
     expect(await invalid.json()).toEqual({ error: 'invalid-cadence' });
+    const createInput = {
+      owner: { type: 'workflow', id: 'research-brief', project: 'kb-ops' },
+      cadence: { kind: 'words', words: 'daily', time: '09:00' },
+      expectedCollectionRevision: 4, idempotencyKey: 'schedule:create:fixture',
+    };
+    const create = await (await fetch(`${schedule.origin}/api/schedules`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(createInput),
+    })).json() as Record<string, any>;
+    const createReplay = await (await fetch(`${schedule.origin}/api/schedules`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(createInput),
+    })).json() as Record<string, any>;
+    expect(create).toMatchObject({ schedule: { version: 1, armed: false }, collectionRevision: 5, replayed: false });
+    expect(createReplay).toMatchObject({ schedule: create.schedule, collectionRevision: 5, replayed: true });
+    const scheduleId = create.schedule.id as string;
+    const mutateSchedule = async (action: 'arm' | 'disarm', version: number, armed: boolean) =>
+      (await fetch(`${schedule.origin}/api/schedules/${scheduleId}/${action}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+          expectedVersion: version, armed, idempotencyKey: `schedule:${action}:${version}`,
+        }),
+      })).json() as Promise<Record<string, any>>;
+    const armed = await mutateSchedule('arm', 1, true);
+    const disarmed = await mutateSchedule('disarm', 2, false);
+    expect(armed).toMatchObject({ schedule: { version: 2, armed: true }, collectionRevision: 6 });
+    expect(disarmed).toMatchObject({ schedule: { version: 3, armed: false }, collectionRevision: 7 });
+    const deleted = await (await fetch(`${schedule.origin}/api/schedules/${scheduleId}`, {
+      method: 'DELETE', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ expectedVersion: 3, idempotencyKey: 'schedule:delete:3' }),
+    })).json();
+    expect(deleted).toMatchObject({ tombstone: { id: scheduleId, version: 4 }, collectionRevision: 8, replayed: false });
+    expect(decodeScheduleCollection(await (await fetch(`${schedule.origin}/api/schedules`)).json()).rows).toHaveLength(1);
 
     const scheduleError = await startP1BrowserFixture({ scenario: 'p2-schedule-load-error' as never, distDir, port: 0 });
     fixtures.push(scheduleError);
@@ -189,8 +245,20 @@ describe('P1 browser fixture', () => {
 
     const actions = await startP1BrowserFixture({ scenario: 'p2-run-actions' as never, distDir, port: 0 });
     fixtures.push(actions);
-    expect((await fetch(`${actions.origin}/api/control/runs/run-fixture/manager/stop`, { method: 'POST' })).status).toBe(200);
-    expect((await fetch(`${actions.origin}/api/control/runs/run-fixture/manager/stop`, { method: 'POST' })).status).toBe(409);
+    const runAction = async (action: string, version: number, key: string) => {
+      const response = await fetch(`${actions.origin}/api/control/runs/run-fixture/manager/${action}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ expectedRunVersion: version, expectedManagerGeneration: 1, idempotencyKey: key }),
+      });
+      return { status: response.status, body: await response.json() as Record<string, any> };
+    };
+    expect(await runAction('reattach', 3, 'run:reattach:3')).toMatchObject({ status: 200, body: { attached: true, version: 4 } });
+    expect(await runAction('detach', 4, 'run:detach:4')).toMatchObject({ status: 200, body: { attached: false, version: 5 } });
+    expect(await runAction('copy', 5, 'run:copy:5')).toMatchObject({ status: 200, body: { copied: true, version: 6 } });
+    const stopped = await runAction('stop', 6, 'run:stop:6');
+    expect(stopped).toMatchObject({ status: 200, body: { state: 'stopped', replayed: false } });
+    expect(await runAction('stop', 6, 'run:stop:6')).toMatchObject({ status: 200, body: { replayed: true } });
+    expect(await runAction('stop', 7, 'run:stop:7')).toMatchObject({ status: 409, body: { error: 'stale-run-version' } });
   });
 
   it('keeps the retired repository DAG files deleted after the step-DAG fixture is consumable', () => {

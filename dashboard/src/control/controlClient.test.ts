@@ -28,6 +28,7 @@ import {
   type FetchLike,
   type PlanProposalDto,
 } from './controlClient';
+import { p2RunDetail } from '../../server/testFixtures/p2BrowserFixtureData.ts';
 import { SESSION_STORAGE_KEY } from '../lib/authClient';
 
 const proposal: PlanProposalDto = {
@@ -250,6 +251,25 @@ describe('control client proposal CAS', () => {
   });
 });
 
+function acceptedRunDetail(
+  publicationState: 'published' | 'waiting-human',
+  kind: 'approval' | 'intervention',
+  decision: 'approved' | 'responded',
+): Record<string, any> {
+  const value = structuredClone(p2RunDetail('p2-gate-dedupe-t3').value) as Record<string, any>;
+  Object.assign(value.run, {
+    runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+    publicationState, state: 'waiting-human', version: 5, managerGeneration: 1,
+  });
+  Object.assign(value.humanRequests[0], {
+    runRef: 'run-1', kind, revision: 2, state: 'resolved',
+    response: {
+      requestRevision: 1, decision, response: null, respondedAt: '2026-08-21T12:01:00.000Z',
+    },
+  });
+  return value;
+}
+
 describe('control client run and retention writes', () => {
   it('retains complete iteration loop request receipt and residue fields from run detail', async () => {
     const residue = {
@@ -269,7 +289,8 @@ describe('control client run and retention writes', () => {
       failureReason: 'required output was byte-identical',
     };
     const value = {
-      run: { runRef: 'run-1' }, ownerSubject: 'operator', stages: [], attempts: [], sessions: [], humanRequests: [],
+      run: p2RunDetail('p2-run-actions').value.run,
+      ownerSubject: 'operator', stages: [], attempts: [], sessions: [], humanRequests: [],
       stageGenerations: [{ generationRef: 'generation-1', runRef: 'run-1', logicalStageRef: 'stage-1', logicalStageId: 'draft', generation: 1, predecessorGenerationRef: null, attemptRef: 'attempt-1', canonicalResultOperationKey: 'result-1', resultHash: 'hash', resultCardRef: 'card-1', baseCommit: 'base', canonicalCommit: 'head', state: 'committed', createdAt: 'now', updatedAt: 'now' }],
       generationSupersessions: [{ runRef: 'run-1', predecessorGenerationRef: 'generation-0', successorGenerationRef: 'generation-1', triggerReceiptRef: 'iteration-receipt-1', operationKey: 'supersede-1', createdAt: 'now' }],
       iterationLoops: [{
@@ -289,6 +310,11 @@ describe('control client run and retention writes', () => {
     expect(detail).toEqual(value);
     expect(detail.iterationLoops[0]?.unresolvedResidue).toMatchObject({ cyclesUsed: 2, attemptedRequestCycle: 3 });
     expect(detail.iterationReceipts[0]?.version).toBe(4);
+
+    const injected = structuredClone(value) as typeof value & { run: typeof value.run & { injected?: boolean } };
+    injected.run.injected = true;
+    await expect(getRun('run-1', 'bearer', recordedFetch({ ok: true, value: injected })))
+      .rejects.toThrow('invalid run detail');
   });
 
   it('resolves completion and reason-coded iteration-park gates through the dedicated iteration endpoint', async () => {
@@ -438,14 +464,9 @@ describe('control client run and retention writes', () => {
   // boundary is accepted; a client-side activate here would be a second, differently-keyed activation
   // of the same run that nothing dedupes.
   it('never activates a published run from the client after a Human Request response', async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'approval', state: 'resolved', response: { decision: 'approved' } }],
-      } })) as unknown as FetchLike;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response({
+      ok: true, value: acceptedRunDetail('published', 'approval', 'approved'),
+    })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -457,13 +478,9 @@ describe('control client run and retention writes', () => {
   // so the accepted boundary re-enters the exact launch operation from here.
   it('re-enters the exact launch operation for a run still waiting on publication', async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'waiting-human', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'approval', state: 'resolved', response: { decision: 'approved' } }],
-      } }))
+      .mockResolvedValueOnce(response({
+        ok: true, value: acceptedRunDetail('waiting-human', 'approval', 'approved'),
+      }))
       .mockResolvedValueOnce(response({ ok: true, value: {} })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
@@ -551,14 +568,9 @@ describe('control client run and retention writes', () => {
   // A locked daemon is no longer this function's problem either: it never activates a published run, so
   // the durable response flow ends after the refresh read and the operator keeps the manual Resume.
   it('keeps a durable Human Request response successful without touching a locked execution latch', async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
-      } })) as unknown as FetchLike;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response({
+      ok: true, value: acceptedRunDetail('published', 'intervention', 'responded'),
+    })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -593,13 +605,9 @@ describe('control client run and retention writes', () => {
 
   it('does not swallow a failed pre-publication launch after a Human Request response', async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'waiting-human', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
-      } }))
+      .mockResolvedValueOnce(response({
+        ok: true, value: acceptedRunDetail('waiting-human', 'intervention', 'responded'),
+      }))
       .mockResolvedValueOnce(response({ error: 'canonical-reconciliation-failed' }, 409)) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).rejects.toMatchObject({

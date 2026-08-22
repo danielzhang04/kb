@@ -1,4 +1,4 @@
-import { RUN_LIFECYCLE_KINDS } from '../control/runLifecycle.ts';
+import { readFileSync } from 'node:fs';
 
 export const P2_BROWSER_SCENARIOS = [
   'p2-entity-groups-overlay',
@@ -164,12 +164,25 @@ function operationalEvent(cursor: number, stageRef: string | null, summary: stri
   };
 }
 
-export function p2RunEvents(stageRef: string | null = null) {
-  const items = RUN_LIFECYCLE_KINDS.map((lifecycle, index) =>
-    operationalEvent(index + 1, index % 2 === 0 ? 'research' : 'write', lifecycle));
-  items.push(operationalEvent(items.length + 1, null, 'Unknown provider event (fixture): safe raw line'));
-  const filtered = stageRef === null ? items : items.filter((event) => event.stageRef === stageRef);
-  return { revision: 'c'.repeat(64), items: filtered, nextCursor: null };
+const GOLDEN_TRANSCRIPTS = [
+  { stageRef: 'research', url: new URL('../control/__fixtures__/dv3/transcripts/claude-real-sanitized.jsonl', import.meta.url) },
+  { stageRef: 'write', url: new URL('../control/__fixtures__/dv3/transcripts/codex-real-sanitized.jsonl', import.meta.url) },
+] as const;
+
+export function p2RunEvents(stageRef: string | null = null, after = 0, limit = 250) {
+  let cursor = 0;
+  const items = GOLDEN_TRANSCRIPTS.flatMap((golden) => readFileSync(golden.url, 'utf8')
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => operationalEvent(++cursor, golden.stageRef, line)));
+  const filtered = (stageRef === null ? items : items.filter((event) => event.stageRef === stageRef))
+    .filter((event) => event.cursor > after);
+  const page = filtered.slice(0, limit);
+  return {
+    revision: 'c'.repeat(64),
+    items: page,
+    nextCursor: filtered.length > page.length ? page.at(-1)?.cursor ?? null : null,
+  };
 }
 
 export function p2RunDetail(scenario: P2BrowserScenario) {

@@ -4277,10 +4277,11 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     store: ControlPlaneStore,
     revision: { proposalRef: string; hash: string },
     idempotencyKey: string,
+    executionHost: Run['executionHost'] = 'desktop',
   ) {
     const run = store.createRun(ENGINE, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
-      executionHost: 'desktop',
+      executionHost,
       title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
       expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
       idempotencyKey,
@@ -4331,11 +4332,12 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     } finally { await app.close(); opened.close(); }
   });
 
-  it('resolves the Retry predecessor as the run OWNER, not the caller', async () => {
+  it('copies the Retry predecessor owner and host instead of the caller daemon identity', async () => {
     const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });
     const store = opened.store;
     const revision = approvedRevisionFor(store, ENGINE, 'engine-retry');
-    const predecessor = bridgeRunFor(store, revision, 'queue-bridge:card-retry');
+    const predecessorHost = process.platform === 'win32' ? 'vm' : 'desktop';
+    const predecessor = bridgeRunFor(store, revision, 'queue-bridge:card-retry', predecessorHost);
     const interrupted = store.transitionRun(ENGINE, predecessor.run.runRef, predecessor.run.version, 'interrupted');
     if (!interrupted.ok) throw new Error(interrupted.detail);
     const { app, token } = surface(store);
@@ -4351,10 +4353,11 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       // `not-found`; read as the owner it is found, its version matches, and the launch proceeds to the
       // canonical quiescence check — which this in-memory surface has no committed cards to satisfy.
       expect(retried.statusCode, retried.body).toBe(409);
+      expect(retried.json()).not.toMatchObject({ error: 'runnable-owner-conflict' });
       expect(retried.json()).toMatchObject({ error: 'retry-predecessor-not-quiescent' });
       const firstPersisted = JSON.parse(readFileSync(opened.path, 'utf8')) as { runs: Run[] };
       expect(firstPersisted.runs.find((run) => run.runRef === predecessor.run.runRef)).toMatchObject({
-        owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+        owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: predecessorHost,
       });
     } finally { await app.close(); opened.close(); }
   });

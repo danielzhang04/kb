@@ -29,7 +29,8 @@ async function renderApp(): Promise<void> {
 }
 
 function openPalette(metaKey = false): void {
-  fireEvent.keyDown(window, { key: 'k', ctrlKey: !metaKey, metaKey });
+  document.body.focus();
+  fireEvent.keyDown(document.body, { key: 'k', ctrlKey: !metaKey, metaKey });
 }
 
 function input(): HTMLElement {
@@ -65,7 +66,7 @@ describe('P1 command palette', () => {
     fireEvent.change(input(), { target: { value: 'workflows' } });
     expect(screen.getAllByRole('option')).toHaveLength(1);
     fireEvent.keyDown(input(), { key: 'Enter' });
-    expect(screen.getByRole('region', { name: 'Workflows' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Workflows view' })).toBeTruthy();
     expect(window.location.search).toBe('?view=workflows');
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
   });

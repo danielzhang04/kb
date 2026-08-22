@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createServer, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,6 +46,19 @@ export interface P1BrowserFixture {
   state: P1BrowserFixtureState;
   releaseInbox(): void;
   close(): Promise<void>;
+}
+
+async function requestJson(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  if (chunks.length === 0) return {};
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
 }
 
 export interface P1BrowserFixtureOptions {
@@ -132,6 +145,23 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
   const streams = new Set<ServerResponse>();
   const timers = new Set<NodeJS.Timeout>();
   let closed = false;
+  const schedules = [structuredClone(P2_SCHEDULE)] as Array<Record<string, any>>;
+  let scheduleCollectionRevision = P2_SCHEDULE_COLLECTION.scheduleCollectionRevision;
+  const scheduleReplays = new Map<string, Record<string, any>>();
+  const detail = structuredClone(p2RunDetail(
+    isP2BrowserScenario(options.scenario) ? options.scenario : 'p2-run-actions',
+  )) as Record<string, any>;
+  const runActionReplays = new Map<string, Record<string, any>>();
+  let attached = true;
+  let copied = false;
+  if (options.scenario === 'p2-gate-dedupe-t3') {
+    const ordinary = structuredClone(detail.value.humanRequests[0]);
+    Object.assign(ordinary, {
+      requestRef: 'request-ordinary', kind: 'input', title: 'Provide ordinary input',
+      prompt: 'Provide the next bounded input.', ask: 'What should the run do next?',
+    });
+    detail.value.humanRequests.push(ordinary);
+  }
 
   const later = (callback: () => void, delay: number): void => {
     const timer = setTimeout(() => {
@@ -146,7 +176,7 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     pendingInbox.clear();
   };
 
-  const server = createServer((request, reply) => {
+  const server = createServer(async (request, reply) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
 
     if (isP2BrowserScenario(options.scenario)) {
@@ -163,34 +193,122 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
       if (request.method === 'GET' && url.pathname === '/api/schedules') {
         return options.scenario === 'p2-schedule-load-error'
           ? json(reply, 503, { error: 'schedule-store-unavailable' })
-          : json(reply, 200, P2_SCHEDULE_COLLECTION);
+          : json(reply, 200, { scheduleCollectionRevision, rows: schedules });
       }
       if (request.method === 'POST' && url.pathname === '/api/schedules') {
-        return json(reply, 400, { error: 'invalid-cadence' });
+        const body = await requestJson(request);
+        if (!body.cadence || typeof body.idempotencyKey !== 'string') {
+          return json(reply, 400, { error: 'invalid-cadence' });
+        }
+        const replay = scheduleReplays.get(body.idempotencyKey);
+        if (replay) return json(reply, 200, { ...replay, replayed: true });
+        if (body.expectedCollectionRevision !== scheduleCollectionRevision) {
+          return json(reply, 409, { error: 'stale-schedule-collection-revision' });
+        }
+        const created = {
+          ...structuredClone(P2_SCHEDULE), id: 'b'.repeat(64), armed: false, version: 1,
+          cadence: typeof body.cadence === 'object' && body.cadence !== null && 'words' in body.cadence
+            ? { source: String(body.cadence.words), words: String(body.cadence.words) }
+            : structuredClone(P2_SCHEDULE.cadence),
+        };
+        schedules.push(created);
+        scheduleCollectionRevision += 1;
+        const receipt = { schedule: created, collectionRevision: scheduleCollectionRevision, replayed: false };
+        scheduleReplays.set(body.idempotencyKey, receipt);
+        return json(reply, 200, receipt);
       }
-      if (request.method === 'POST' && /^\/api\/schedules\/[^/]+\/(arm|disarm)$/.test(url.pathname)) {
-        return json(reply, 409, { error: 'stale-schedule-version' });
+      const scheduleAction = url.pathname.match(/^\/api\/schedules\/([^/]+)\/(arm|disarm)$/);
+      if (request.method === 'POST' && scheduleAction) {
+        const body = await requestJson(request);
+        const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+        const replay = scheduleReplays.get(idempotencyKey);
+        if (replay) return json(reply, 200, { ...replay, replayed: true });
+        const row = schedules.find((candidate) => candidate.id === decodeURIComponent(scheduleAction[1]));
+        if (!row || body.expectedVersion !== row.version || body.armed !== (scheduleAction[2] === 'arm')) {
+          return json(reply, 409, { error: 'stale-schedule-version' });
+        }
+        row.armed = scheduleAction[2] === 'arm';
+        row.version += 1;
+        scheduleCollectionRevision += 1;
+        const receipt = { schedule: structuredClone(row), collectionRevision: scheduleCollectionRevision, replayed: false };
+        if (idempotencyKey) scheduleReplays.set(idempotencyKey, receipt);
+        return json(reply, 200, receipt);
       }
-      if (request.method === 'DELETE' && url.pathname === `/api/schedules/${P2_SCHEDULE.id}`) {
-        return json(reply, 200, {
-          tombstone: { id: P2_SCHEDULE.id, deletedAt: '2026-08-21T12:01:00.000Z', version: 3 },
-          collectionRevision: 5, replayed: false,
-        });
+      const scheduleDelete = url.pathname.match(/^\/api\/schedules\/([^/]+)$/);
+      if (request.method === 'DELETE' && scheduleDelete) {
+        const body = await requestJson(request);
+        const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+        const replay = scheduleReplays.get(idempotencyKey);
+        if (replay) return json(reply, 200, { ...replay, replayed: true });
+        const id = decodeURIComponent(scheduleDelete[1]);
+        const index = schedules.findIndex((candidate) => candidate.id === id);
+        if (index < 0 || body.expectedVersion !== schedules[index].version) {
+          return json(reply, 409, { error: 'stale-schedule-version' });
+        }
+        const [deleted] = schedules.splice(index, 1);
+        scheduleCollectionRevision += 1;
+        const receipt = {
+          tombstone: { id, deletedAt: '2026-08-21T12:01:00.000Z', version: deleted.version + 1 },
+          collectionRevision: scheduleCollectionRevision, replayed: false,
+        };
+        if (idempotencyKey) scheduleReplays.set(idempotencyKey, receipt);
+        return json(reply, 200, receipt);
       }
       if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture') {
-        return json(reply, 200, p2RunDetail(options.scenario));
+        return json(reply, 200, detail);
       }
       if (request.method === 'POST' && url.pathname === '/api/control/human-requests/request-t3/respond') {
         return json(reply, 403, { error: 'ceremony-unavailable' });
       }
-      if (request.method === 'POST' && url.pathname === '/api/control/runs/run-fixture/manager/stop') {
-        state.runStopRequests += 1;
-        return state.runStopRequests === 1
-          ? json(reply, 200, { state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false })
-          : json(reply, 409, { error: 'stale-run-version' });
+      if (request.method === 'POST' && url.pathname === '/api/control/human-requests/request-ordinary/respond') {
+        const body = await requestJson(request);
+        const ordinary = detail.value.humanRequests.find((candidate: Record<string, unknown>) =>
+          candidate.requestRef === 'request-ordinary');
+        if (!ordinary) return json(reply, 404, { error: 'not-found' });
+        const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+        const replay = runActionReplays.get(idempotencyKey);
+        if (replay) return json(reply, 200, { ...replay, replayed: true });
+        if (body.expectedRevision !== ordinary.revision) return json(reply, 409, { error: 'stale-request-revision' });
+        ordinary.state = 'resolved';
+        ordinary.revision += 1;
+        ordinary.response = {
+          requestRevision: body.expectedRevision, decision: body.decision,
+          response: typeof body.response === 'string' ? body.response : null, respondedAt: '2026-08-21T12:02:00.000Z',
+        };
+        ordinary.updatedAt = '2026-08-21T12:02:00.000Z';
+        detail.value.run.version += 1;
+        const receipt = { ok: true, value: structuredClone(ordinary), replayed: false };
+        if (idempotencyKey) runActionReplays.set(idempotencyKey, receipt);
+        return json(reply, 200, receipt);
+      }
+      const runAction = url.pathname.match(/^\/api\/control\/runs\/run-fixture\/(?:manager\/)?(reattach|detach|copy|stop)$/);
+      if (request.method === 'POST' && runAction) {
+        const action = runAction[1];
+        const body = await requestJson(request);
+        const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+        const replay = runActionReplays.get(idempotencyKey);
+        if (replay) return json(reply, 200, { ...replay, replayed: true });
+        if (action === 'stop') state.runStopRequests += 1;
+        if (detail.value.run.state === 'stopped'
+          || (body.expectedRunVersion !== undefined && body.expectedRunVersion !== detail.value.run.version)) {
+          return json(reply, 409, { error: 'stale-run-version' });
+        }
+        if (action === 'reattach') attached = true;
+        if (action === 'detach') attached = false;
+        if (action === 'copy') copied = true;
+        detail.value.run.version += 1;
+        if (action === 'stop') detail.value.run.state = 'stopped';
+        const receipt = action === 'stop'
+          ? { state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false }
+          : { action, state: detail.value.run.state, attached, copied, version: detail.value.run.version, replayed: false };
+        if (idempotencyKey) runActionReplays.set(idempotencyKey, receipt);
+        return json(reply, 200, receipt);
       }
       if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture/events/stream') {
-        const page = p2RunEvents(url.searchParams.get('stageRef'));
+        const headerCursor = Array.isArray(request.headers['last-event-id'])
+          ? request.headers['last-event-id'][0] : request.headers['last-event-id'];
+        const after = Math.max(Number(url.searchParams.get('after') ?? 0), Number(headerCursor ?? 0));
+        const page = p2RunEvents(url.searchParams.get('stageRef'), Number.isSafeInteger(after) ? after : 0);
         reply.writeHead(200, {
           'content-type': 'text/event-stream; charset=utf-8',
           'cache-control': 'no-store',
@@ -199,10 +317,15 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
         for (const event of page.items) {
           reply.write(`id: ${event.cursor}\nevent: run-event\ndata: ${JSON.stringify(event)}\n\n`);
         }
-        return;
+        return reply.end();
       }
       if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture/events') {
-        return json(reply, 200, p2RunEvents(url.searchParams.get('stageRef')));
+        const after = Number(url.searchParams.get('after') ?? 0);
+        const limit = Number(url.searchParams.get('limit') ?? 250);
+        return json(reply, 200, p2RunEvents(
+          url.searchParams.get('stageRef'), Number.isSafeInteger(after) ? after : 0,
+          Number.isSafeInteger(limit) && limit > 0 ? limit : 250,
+        ));
       }
     }
 

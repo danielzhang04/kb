@@ -976,11 +976,191 @@ export async function listRuns(token: string, fetchImpl?: FetchLike): Promise<Ru
   return body.runs;
 }
 
+type WireValidator = (value: unknown) => boolean;
+
+const wireString: WireValidator = (value) => typeof value === 'string';
+const wireNumber: WireValidator = (value) => typeof value === 'number' && Number.isFinite(value);
+const wireBoolean: WireValidator = (value) => typeof value === 'boolean';
+const nullable = (validator: WireValidator): WireValidator => (value) => value === null || validator(value);
+const arrayOf = (validator: WireValidator): WireValidator =>
+  (value) => Array.isArray(value) && value.every(validator);
+const stringRecord: WireValidator = (value) => {
+  const record = wireRecord(value);
+  return record !== null && Object.values(record).every(wireString);
+};
+
+function exactDto(
+  value: unknown,
+  required: Record<string, WireValidator>,
+  optional: Record<string, WireValidator> = {},
+): boolean {
+  const record = wireRecord(value);
+  if (!record) return false;
+  const keys = Object.keys(record);
+  if (!Object.keys(required).every((key) => Object.hasOwn(record, key))
+    || !keys.every((key) => Object.hasOwn(required, key) || Object.hasOwn(optional, key))) return false;
+  return Object.entries(required).every(([key, validator]) => validator(record[key]))
+    && Object.entries(optional).every(([key, validator]) => !Object.hasOwn(record, key) || validator(record[key]));
+}
+
+const assignmentDto: WireValidator = (value) => exactDto(value, {
+  agentId: wireString, declarationPath: wireString, declarationHash: wireString,
+  profileId: wireString, runtime: wireString, model: wireString,
+});
+const ownerDto: WireValidator = (value) => {
+  const owner = wireRecord(value);
+  if (!owner || owner.type === undefined) return false;
+  return owner.type === 'agent'
+    ? exactDto(owner, { type: wireString, id: wireString, sourcePath: wireString })
+    : owner.type === 'workflow' && exactDto(owner, {
+      type: wireString, id: wireString, project: wireString, sourcePath: wireString,
+    });
+};
+const runDto: WireValidator = (value) => exactDto(value, {
+  runRef: wireString, predecessorRunRef: nullable(wireString), title: wireString, displayName: wireString,
+  shortRef: wireNumber, workflowRef: nullable(wireString), proposalRef: wireString,
+  proposalRevision: wireNumber, proposalHash: wireString, publicationState: wireString, state: wireString,
+  version: wireNumber, managerSessionRef: wireString, managerGeneration: wireNumber,
+  managerAssignment: nullable(assignmentDto), owner: ownerDto, executionHost: wireString,
+  terminalOutcome: nullable(wireString), completedAt: nullable(wireString), archivedFrom: nullable(wireString),
+  createdAt: wireString, updatedAt: wireString,
+}, {
+  agentWorkspaceLaunch: nullable((entry) => exactDto(entry, {
+    composerRef: wireString, agentId: wireString, declarationPath: wireString, declarationHash: wireString,
+  })),
+});
+const stageDto: WireValidator = (value) => exactDto(value, {
+  stageRef: wireString, runRef: wireString, stageId: wireString, title: wireString,
+  dependsOn: arrayOf(wireString), canonicalCardRef: nullable(wireString), state: wireString, version: wireNumber,
+  currentAttemptRef: nullable(wireString), assignment: nullable(assignmentDto), createdAt: wireString, updatedAt: wireString,
+});
+const attemptDto: WireValidator = (value) => exactDto(value, {
+  attemptRef: wireString, runRef: wireString, stageRef: wireString, generation: wireNumber,
+  predecessorAttemptRef: nullable(wireString), runtime: wireString, model: wireString, state: wireString,
+  version: wireNumber, managedSessionRef: nullable(wireString), createdAt: wireString, updatedAt: wireString,
+});
+const managedSessionDto: WireValidator = (value) => exactDto(value, {
+  sessionRef: wireString, runRef: wireString, stageRef: nullable(wireString), attemptRef: nullable(wireString),
+  role: wireString, generation: wireNumber, predecessorSessionRef: nullable(wireString), runtime: wireString,
+  model: wireString, state: wireString, version: wireNumber, createdAt: wireString, updatedAt: wireString,
+});
+const humanResponseDto: WireValidator = (value) => exactDto(value, {
+  requestRevision: wireNumber, decision: wireString, response: nullable(wireString), respondedAt: wireString,
+});
+const humanRequestDto: WireValidator = (value) => exactDto(value, {
+  requestRef: wireString, runRef: wireString, displayName: wireString, shortRef: wireNumber,
+  stageRef: nullable(wireString), kind: wireString, revision: wireNumber, state: wireString, title: wireString,
+  prompt: wireString, ask: wireString, technicalDetail: nullable(wireString), response: nullable(humanResponseDto),
+  createdAt: wireString, updatedAt: wireString,
+}, { gateKind: wireString });
+const participantDto: WireValidator = (value) => exactDto(value, {
+  participantId: wireString, stageRef: wireString, role: wireString, perspective: wireString, mandate: wireString,
+}, { goal: wireString });
+const routeDto: WireValidator = (value) => exactDto(value, {
+  routeId: wireString, senderParticipantId: wireString, recipientParticipantId: wireString,
+  requestKinds: arrayOf(wireString), baseResolutionStageIds: arrayOf(wireString),
+});
+const scheduleStepDto: WireValidator = (value) => exactDto(value, {
+  stepId: wireString, routeId: wireString, cycle: wireString,
+}, { after: (entry) => exactDto(entry, { stepId: wireString, participantId: wireString, verdict: wireString }) });
+const findingDto: WireValidator = (value) => exactDto(value, {
+  findingId: wireString, criterionId: wireString, severity: wireString, summary: wireString,
+  evidencePaths: arrayOf(wireString),
+});
+const positionDto: WireValidator = (value) => exactDto(value, {
+  positionId: wireString, participantId: wireString, summary: wireString, generationRefs: arrayOf(wireString),
+});
+const dissentDto: WireValidator = (value) => exactDto(value, {
+  dissentId: wireString, participantId: wireString, positionId: wireString, summary: wireString,
+});
+const criterionOutcomeDto: WireValidator = (value) => exactDto(value, {
+  criterionId: wireString, verdict: wireString, findingIds: arrayOf(wireString),
+});
+const outcomeDto: WireValidator = (value) => exactDto(value, {
+  schema: wireString, requestRef: wireString, iterationLoopRef: wireString, participantId: wireString,
+  cycle: wireNumber, verdict: wireString, inputGenerationRefs: arrayOf(wireString),
+  criteria: arrayOf(criterionOutcomeDto), findings: arrayOf(findingDto), positions: arrayOf(positionDto),
+  recordedDissent: arrayOf(dissentDto), summary: wireString,
+}, { resolvedFindingRefs: arrayOf(wireString) });
+const artifactSnapshotDto: WireValidator = (value) => exactDto(value, {
+  path: wireString, regularFile: wireBoolean, size: nullable(wireNumber), sha256: nullable(wireString),
+  afterRegularFile: wireBoolean, afterSize: nullable(wireNumber), afterSha256: nullable(wireString),
+  byteIdentical: wireBoolean,
+});
+const residueDto: WireValidator = (value) => exactDto(value, {
+  unresolvedFindings: arrayOf(findingDto), positions: arrayOf(positionDto), recordedDissent: arrayOf(dissentDto),
+  requestRefs: arrayOf(wireString), receiptRefs: arrayOf(wireString), activeGenerationRefs: arrayOf(wireString),
+  acceptedGenerationRefs: arrayOf(wireString), nextRouteId: wireString, cycleUnit: wireString,
+  cyclesUsed: wireNumber, maxCycles: wireNumber,
+}, {
+  attemptedRequestRef: wireString, attemptedRequestCycle: wireNumber, attemptedOutcome: outcomeDto,
+  artifactSnapshots: arrayOf(artifactSnapshotDto), failureReason: wireString,
+});
+const iterationRequestDto: WireValidator = (value) => exactDto(value, {
+  schema: wireString, requestRef: wireString, iterationLoopRef: wireString, routeId: wireString,
+  senderParticipantId: wireString, recipientParticipantId: wireString, kind: wireString, cycle: wireNumber,
+  inputGenerationRefs: arrayOf(wireString), baseCommit: wireString, artifactHashes: stringRecord,
+  criteria: arrayOf((entry) => exactDto(entry, { id: wireString, description: wireString })),
+  unresolvedFindingRefs: arrayOf(wireString), preservedInvariants: arrayOf(wireString),
+  nextAcceptanceCheck: wireString, instructions: wireString,
+}, { stepId: wireString });
+const iterationReceiptDto: WireValidator = (value) => exactDto(value, {
+  schema: wireString, receiptRef: wireString, requestRef: wireString, iterationLoopRef: wireString,
+  participantId: wireString, cycle: wireNumber, verdict: wireString, inputGenerationRefs: arrayOf(wireString),
+  criteria: arrayOf(criterionOutcomeDto), findings: arrayOf(findingDto), positions: arrayOf(positionDto),
+  recordedDissent: arrayOf(dissentDto), summary: wireString, outcomeHash: wireString,
+  outputGenerationRefs: arrayOf(wireString), baseCommit: wireString, canonicalCommit: wireString,
+  createdAt: wireString, version: wireNumber,
+}, { resolvedFindingRefs: arrayOf(wireString) });
+const stageGenerationDto: WireValidator = (value) => exactDto(value, {
+  generationRef: wireString, runRef: wireString, logicalStageRef: wireString, logicalStageId: wireString,
+  generation: wireNumber, predecessorGenerationRef: nullable(wireString), attemptRef: wireString,
+  canonicalResultOperationKey: nullable(wireString), resultHash: nullable(wireString),
+  resultCardRef: nullable(wireString), baseCommit: nullable(wireString), canonicalCommit: nullable(wireString),
+  state: wireString, createdAt: wireString, updatedAt: wireString,
+});
+const generationSupersessionDto: WireValidator = (value) => exactDto(value, {
+  runRef: wireString, predecessorGenerationRef: wireString, successorGenerationRef: wireString,
+  triggerReceiptRef: wireString, operationKey: wireString, createdAt: wireString,
+});
+const iterationLoopDto: WireValidator = (value) => exactDto(value, {
+  iterationLoopRef: wireString, runRef: wireString, definitionHash: wireString, iterationGroupId: wireString,
+  participants: arrayOf(participantDto), routes: arrayOf(routeDto), activation: (entry) => exactDto(entry, {
+    seedParticipantId: wireString, seedArtifactIds: arrayOf(wireString),
+  }), initialStepId: wireString, schedule: arrayOf(scheduleStepDto), artifacts: arrayOf(wireString),
+  criteria: arrayOf((entry) => exactDto(entry, { id: wireString, description: wireString })),
+  maxCycles: wireNumber, cycleUnit: wireString,
+  terminalAuthorities: arrayOf((entry) => exactDto(entry, { participantId: wireString, verdict: wireString })),
+  cyclesUsed: wireNumber, state: wireString, activeGenerationRefs: arrayOf(wireString), version: wireNumber,
+  createdAt: wireString, updatedAt: wireString,
+}, {
+  goal: wireString,
+  completionGate: (entry) => exactDto(entry, { id: wireString, kind: wireString, prompt: wireString, requiresReview: wireString }),
+  turnOwnerParticipantId: wireString, currentStepId: wireString, acceptedGenerationRefs: arrayOf(wireString),
+  lastReceiptRef: wireString, completionGateRef: wireString, interventionRef: wireString,
+  parkReason: wireString, unresolvedResidue: residueDto,
+});
+
+/** Closed decoder for the complete Run-detail wire graph. */
+export function decodeRunDetail(value: unknown): RunDetailDto | null {
+  return exactDto(value, {
+    run: runDto, ownerSubject: wireString, stages: arrayOf(stageDto), attempts: arrayOf(attemptDto),
+    sessions: arrayOf(managedSessionDto), humanRequests: arrayOf(humanRequestDto),
+    stageGenerations: arrayOf(stageGenerationDto), generationSupersessions: arrayOf(generationSupersessionDto),
+    iterationLoops: arrayOf(iterationLoopDto), iterationRequests: arrayOf(iterationRequestDto),
+    iterationReceipts: arrayOf(iterationReceiptDto),
+  }, { streamKind: wireString, sessionId: wireString }) ? value as RunDetailDto : null;
+}
+
 export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailDto> {
-  const body = await read<{ ok: true; value: RunDetailDto }>(
+  const body = await read<unknown>(
     `/api/control/runs/${segment(runRef)}`, token, fetchImpl,
   );
-  return body.value;
+  const envelope = wireRecord(body);
+  const detail = envelope && exactWireKeys(envelope, ['ok', 'value']) && envelope.ok === true
+    ? decodeRunDetail(envelope.value) : null;
+  if (!detail) throw new Error('invalid run detail');
+  return detail;
 }
 
 /**

@@ -111,7 +111,7 @@ export function Workflows({
 
   const requiredParameters = detail?.details.workflow?.parameters ?? [];
 
-  return <section className="code-view entity-roster" aria-label="Workflows">
+  return <section className="code-view entity-roster" aria-label="Workflows view">
     <header className="page-header"><div><p className="page-eyebrow">Automation</p><h2>Workflows</h2></div></header>
     <div className="entity-roster-controls">
       <input aria-label="Search workflows" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search workflows" />

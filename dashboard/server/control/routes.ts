@@ -584,6 +584,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     } : null;
     const bootHost: HostKind = process.platform === 'win32' ? 'desktop' : 'vm';
     let owner: RunnableRef | null = null;
+    let executionHost: HostKind = bootHost;
     const predecessorRef = body.predecessorRunRef == null ? null : string(body.predecessorRunRef);
     if (predecessorRef) {
       const predecessor = ctx.controlStore.getRun(stored.value.ownerSubject, predecessorRef);
@@ -597,6 +598,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             && item.def.project === candidate.project && item.entry.path === candidate.sourcePath && item.entry.valid);
           if (definition) owner = candidate;
         }
+        if (owner) executionHost = predecessor.value.run.executionHost;
       }
     } else if (agentWorkspaceLaunch) {
       const declared = readDeclaredAgentDetails(ctx.repoRoot).get(agentWorkspaceLaunch.agentId);
@@ -630,7 +632,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         ? `workflow:${stored.value.sourceTurnId}`
         : undefined,
       agentWorkspaceLaunch,
-      identity: { owner, executionHost: bootHost },
+      identity: { owner, executionHost },
     });
     return reply.code(outcome.status).send(outcome.body);
   });

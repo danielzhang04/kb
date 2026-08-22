@@ -18,7 +18,7 @@ function event(cursor: number): OperationalEventDto {
 function serverWith(total: number): ListRunEvents {
   const all = Array.from({ length: total }, (_, index) => event(index + 1));
   return async (_runRef, after, limit) => {
-    const items = all.filter((item) => item.cursor > after).slice(0, limit);
+    const items = all.slice(after, after + limit);
     const nextCursor = after + items.length < total ? items.at(-1)!.cursor : null;
     return { revision: 'a'.repeat(64), items, nextCursor };
   };
