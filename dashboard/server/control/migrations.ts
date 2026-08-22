@@ -24,6 +24,13 @@ import {
   type RunOutcomeMigrationReport,
 } from './runOutcomeMigration.ts';
 import type { HostKind, RunIdentityFields } from './p2Contracts.ts';
+import { openAttestedScheduleSource } from '../schedules/attestedSource.ts';
+import {
+  importHeartbeatScheduleSeedsV1,
+  type DevelopmentScheduleSeedSource,
+  type ScheduleSeedImportMarker,
+  type ScheduleSeedImportPlan,
+} from '../schedules/seedImport.ts';
 import type {
   IterationLoop,
   IterationRequest,
@@ -1241,6 +1248,43 @@ export function loadAndMigrate(encoded: string, target: number, context: Migrati
   const parsed: unknown = JSON.parse(encoded);
   assertMigrationEnvelope(parsed);
   return migrateControlDocument(parsed, target, context);
+}
+
+export interface P2ScheduleStartupMigrationReport {
+  phases: ['identity', 'outcome', 'schedule-collections', 'seed-import', 'pause-marker-conversion'];
+  source: Awaited<ReturnType<typeof openAttestedScheduleSource>>;
+}
+
+/**
+ * The Run migration and v3 collection creation are completed by `loadAndMigrate` before this async
+ * startup continuation is called. Keeping the remaining phases here makes their order observable and
+ * prevents pause conversion from racing seed creation.
+ */
+export async function runP2ScheduleStartupMigrations(
+  input: {
+    currentReleasePath?: string;
+    existingMarker?: ScheduleSeedImportMarker | null;
+    development?: DevelopmentScheduleSeedSource;
+    commitSeeds(plan: ScheduleSeedImportPlan): Promise<void>;
+    convertPauseMarkers(): Promise<unknown>;
+  },
+  deps: {
+    openSource?: typeof openAttestedScheduleSource;
+    importSeeds?: typeof importHeartbeatScheduleSeedsV1;
+  } = {},
+): Promise<P2ScheduleStartupMigrationReport> {
+  const source = await (deps.openSource ?? openAttestedScheduleSource)({ currentPath: input.currentReleasePath });
+  const imported = await (deps.importSeeds ?? importHeartbeatScheduleSeedsV1)({
+    source,
+    existingMarker: input.existingMarker,
+    ...(input.development ? { development: input.development } : {}),
+  }, input.commitSeeds);
+  if (!imported.ok) throw Object.assign(new Error(imported.code), { code: imported.code, report: imported.report });
+  await input.convertPauseMarkers();
+  return {
+    phases: ['identity', 'outcome', 'schedule-collections', 'seed-import', 'pause-marker-conversion'],
+    source,
+  };
 }
 
 export function normalizeCrash(

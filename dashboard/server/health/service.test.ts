@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { composeHealth } from './service.ts';
+import type { Schedule } from '../control/p2Contracts.ts';
 
 const now = () => '2026-08-21T12:00:00.000Z';
 
@@ -10,6 +11,7 @@ function readers() {
     platform: vi.fn(() => 'win32' as const),
     connections: vi.fn(() => ({ items: [{ project: 'demo', server: 'files', tools: ['read'] }] })),
     usage: vi.fn(() => ({ stepCount: 4, dispatchCount: 2, cards: 1, models: [{ model: 'gpt-5', steps: 4, mix: 1 }] })),
+    owners: vi.fn(() => [{ type: 'agent' as const, id: 'worker-a', sourcePath: 'agents/worker-a.md' as const }]),
     now,
   };
 }
@@ -66,5 +68,21 @@ describe('composeHealth', () => {
     }] });
     const row = composeHealth('repo', source).sections[0].rows[0];
     expect(row).toMatchObject({ key: 'agent:fyt_api-worker', label: 'FYT API Worker' });
+  });
+
+  it('projects a deleted schedule owner into Fleet as the bounded integrity row, never Unknown', () => {
+    const source = readers();
+    const schedule: Schedule = {
+      id: 'd'.repeat(64), owner: { type: 'agent', id: 'deleted-owner', sourcePath: 'agents/deleted-owner.md' },
+      cadence: { source: '0 9 * * *', words: 'Daily \u00b7 9:00 AM' }, nextAt: null, lastOutcome: null,
+      armed: true, origin: 'operator', mirroredAt: null, mirrorPath: 'HEARTBEAT.md', version: 1,
+    };
+    const fleet = composeHealth('repo', source, [schedule]).sections[0];
+    expect(fleet.rows).toContainEqual({
+      kind: 'integrity', key: `schedule-owner:${schedule.id}`, label: 'Schedule owner',
+      value: { status: 'error', code: 'schedule-owner-unresolvable', owner: schedule.owner },
+      observedAt: now(), source: 'schedule-store',
+    });
+    expect(JSON.stringify(fleet)).not.toContain('Unknown');
   });
 });

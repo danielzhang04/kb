@@ -3,8 +3,8 @@
  *
  * The dashboard's runtime writes fall into two classes that route differently (plan §"Runtime write
  * classification", binding on this path):
- *   - **Coordination artifacts** — `queue/**`, `ledgers/**`, `traces/**`, the audit log, `queue/paused/**`
- *     markers — go to `ops` via `git pull --rebase origin ops` -> add -> commit -> push, retrying a
+ *   - **Coordination artifacts** — `queue/**`, `ledgers/**`, `traces/**`, and the audit log — go to
+ *     `ops` via `git pull --rebase origin ops` -> add -> commit -> push, retrying a
  *     rejected push after re-reading state (CLAUDE.md: "a rejected push means: re-read state,
  *     reconcile, retry").
  *   - **Durable content** — `skills/**`, `docs/**`, KB markdown, dashboard code — goes to a work
@@ -22,6 +22,12 @@
  */
 
 import { createAsyncGitRunner, createAsyncPrOpener, withOpsTransaction } from './asyncGit.ts';
+import { createHash } from 'node:crypto';
+import { constants } from 'node:fs';
+import { lstat, open, readFile, readdir, unlink } from 'node:fs/promises';
+import { relative, resolve } from 'node:path';
+import type { ScheduleSnapshot } from '../schedules/contracts.ts';
+import { HEARTBEAT_SEED_PATHS, seedScheduleId } from '../schedules/seedImport.ts';
 import { pushOpsWithReconcile } from './opsPushRetry.ts';
 import type { AsyncPrResult } from './asyncGit.ts';
 import type { OpsGitRunner } from './asyncGit.ts';
@@ -51,7 +57,7 @@ function normalize(relpath: string): string {
 /**
  * Classify a relpath as `'durable'` (skills/**, docs/**, KB markdown, dashboard code — work branch ->
  * PR to main) or `'coordination'` (queue/**, ledgers/**, traces/**, the audit log under ledgers/audit/,
- * queue/paused/** markers — ops pull-rebase-push). Total: everything not explicitly coordination is
+ * coordination paths — ops pull-rebase-push). Total: everything not explicitly coordination is
  * durable content, per the plan's binary classification.
  */
 export function isCoordinationPath(relpath: string): boolean {
@@ -628,6 +634,112 @@ export async function routeCoordination(repoRoot: string, relpath: string, optio
   return withOpsTransaction(async () => {
     await prepareCoordination(repoRoot, runGit, options.publication, options.outboxRoot);
     await commitPreparedCoordination(repoRoot, relpath, { ...options, runGit });
+  });
+}
+
+/** Publisher-owned discovery of legacy Schedule marker candidates under coordination directories. */
+export async function discoverLegacyScheduleMarkers(
+  repoRoot: string,
+  snapshot: ScheduleSnapshot,
+): Promise<Array<{ marker: string; scheduleId: string; digest: string }>> {
+  const root = resolve(repoRoot);
+  const coordinationRoot = resolve(root, 'queue');
+  let directories;
+  try { directories = await readdir(coordinationRoot, { withFileTypes: true }); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+  const markers: Array<{ marker: string; scheduleId: string; digest: string }> = [];
+  for (const directory of directories.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!directory.isDirectory() || directory.isSymbolicLink()) continue;
+    const directoryPath = resolve(coordinationRoot, directory.name);
+    const entries = await readdir(directoryPath, { withFileTypes: true });
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(entry.name)) continue;
+      if (!entry.isFile() || entry.isSymbolicLink()) throw new Error('pause-marker-migration-invalid');
+      const path = resolve(directoryPath, entry.name);
+      const stat = await lstat(path);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('pause-marker-migration-invalid');
+      const candidates = HEARTBEAT_SEED_PATHS
+        .map((heartbeatPath) => seedScheduleId(heartbeatPath, entry.name))
+        .filter((id) => snapshot.schedules.some((schedule) => schedule.id === id));
+      if (candidates.length === 0) continue;
+      if (candidates.length !== 1) throw new Error('pause-marker-schedule-ambiguous');
+      markers.push({
+        marker: relative(root, path).replaceAll('\\', '/'),
+        scheduleId: candidates[0],
+        digest: createHash('sha256').update(await readFile(path)).digest('hex'),
+      });
+    }
+  }
+  return markers;
+}
+
+interface VerifiedScheduleMarkerRemovalOptions {
+  /** Test seam; production uses the coordination publisher's prepare phase. */
+  prepare?: (repoRoot: string) => Promise<void>;
+  /** Test seam; production commits the exact removed coordination path. */
+  commit?: (repoRoot: string, marker: string) => Promise<void>;
+  /** Fault seam proving a crash after unlink is resumable. */
+  afterUnlink?: () => Promise<void>;
+}
+
+/**
+ * Publisher-owned retirement of an opaque legacy Schedule coordination marker. The open descriptor is
+ * no-follow, the descriptor/path identity and digest are re-proved immediately before unlink, and an
+ * already-missing path is the resumable state left by a crash between unlink and publication.
+ */
+export async function publishVerifiedScheduleMarkerRemoval(
+  repoRoot: string,
+  marker: string,
+  expectedDigest: string,
+  options: VerifiedScheduleMarkerRemovalOptions = {},
+): Promise<void> {
+  const normalized = normalize(marker);
+  if (!isCoordinationPath(normalized) || normalized.split('/').includes('..')
+    || !/^[0-9a-f]{64}$/.test(expectedDigest)) throw new Error('pause-marker-migration-invalid');
+  const root = resolve(repoRoot);
+  const absolute = resolve(root, ...normalized.split('/'));
+  const bounded = relative(root, absolute);
+  if (bounded === '' || bounded === '..' || bounded.startsWith('../') || bounded.startsWith('..\\')) {
+    throw new Error('pause-marker-migration-invalid');
+  }
+  const prepare = options.prepare ?? (async (targetRoot) => prepareCoordination(targetRoot));
+  const commit = options.commit ?? (async (targetRoot, targetMarker) =>
+    commitPreparedCoordination(targetRoot, targetMarker));
+
+  await withOpsTransaction(async () => {
+    let pathStat;
+    try {
+      pathStat = await lstat(absolute);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        await commit(root, normalized);
+        return;
+      }
+      throw error;
+    }
+    if (!pathStat.isFile() || pathStat.isSymbolicLink()) throw new Error('pause-marker-migration-invalid');
+    await prepare(root);
+    let handle;
+    try {
+      handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const bytes = await handle.readFile();
+      const descriptorStat = await handle.stat();
+      const immediateStat = await lstat(absolute);
+      if (!immediateStat.isFile() || immediateStat.isSymbolicLink()
+        || immediateStat.dev !== descriptorStat.dev || immediateStat.ino !== descriptorStat.ino) {
+        throw new Error('pause-marker-migration-invalid');
+      }
+      if (createHash('sha256').update(bytes).digest('hex') !== expectedDigest) {
+        throw new Error('pause-marker-digest-changed');
+      }
+      await unlink(absolute);
+    } finally {
+      await handle?.close();
+    }
+    await options.afterUnlink?.();
+    await commit(root, normalized);
   });
 }
 

@@ -1,9 +1,16 @@
+import type { CadenceInput } from '../../server/schedules/contracts.ts';
+
 /**
  * Human words for schedule declarations. This is a display/editor aid only:
  * scripts/dispatch.py remains the scheduler and source of truth for every fire.
  */
 
 export type RecurrencePreset = 'daily' | 'weekday' | 'weekly' | 'custom-raw';
+
+export interface CadenceValidationError {
+  field: 'words' | 'time' | 'cron';
+  message: 'Invalid cadence. Check the words, time, or five-field cron.';
+}
 
 export function localTimestampLabel(iso: string): string {
   const parsed = Date.parse(iso);
@@ -30,6 +37,44 @@ const DAY_LABEL: Record<Day, string> = {
 };
 
 const DAY_NUMBER: Record<string, Day> = { '0': 'sun', '7': 'sun', '1': 'mon', '2': 'tue', '3': 'wed', '4': 'thu', '5': 'fri', '6': 'sat' };
+const CADENCE_ERROR = 'Invalid cadence. Check the words, time, or five-field cron.' as const;
+
+function validCronAtom(value: string, minimum: number, maximum: number, names?: ReadonlyMap<string, number>): number | null {
+  const normalized = value.toLowerCase();
+  const parsed = names?.get(normalized) ?? (/^\d+$/.test(normalized) ? Number(normalized) : Number.NaN);
+  return Number.isInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
+}
+
+function validCronField(value: string, minimum: number, maximum: number, names?: ReadonlyMap<string, number>): boolean {
+  if (value === '') return false;
+  return value.split(',').every((part) => {
+    const [range, stepText, ...extraStep] = part.split('/');
+    if (extraStep.length > 0 || (stepText !== undefined && (!/^\d+$/.test(stepText) || Number(stepText) < 1))) return false;
+    if (range === '*') return true;
+    const bounds = range.split('-');
+    if (bounds.length > 2) return false;
+    const start = validCronAtom(bounds[0], minimum, maximum, names);
+    const end = bounds.length === 2 ? validCronAtom(bounds[1], minimum, maximum, names) : start;
+    return start !== null && end !== null && end >= start;
+  });
+}
+
+/** Shared browser/server preview validator; the Python scheduler remains the fire-time authority. */
+export function validateScheduleCadence(input: CadenceInput): CadenceValidationError | null {
+  if (input.kind === 'words') {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) return { field: 'time', message: CADENCE_ERROR };
+    if (input.words === 'daily' || input.words === 'weekday') return null;
+    const weekly = /^weekly:([a-z0-9]+)$/i.exec(input.words);
+    return weekly && day(weekly[1]) ? null : { field: 'words', message: CADENCE_ERROR };
+  }
+  const dayNames = new Map<string, number>(DAYS.map((value, index) => [value, index]));
+  return validCronField(input.minute, 0, 59)
+    && validCronField(input.hour, 0, 23)
+    && validCronField(input.dayOfMonth, 1, 31)
+    && validCronField(input.month, 1, 12)
+    && validCronField(input.dayOfWeek, 0, 7, dayNames)
+    ? null : { field: 'cron', message: CADENCE_ERROR };
+}
 
 interface ScheduleDescription {
   label: string;

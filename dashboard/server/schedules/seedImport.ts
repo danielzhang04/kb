@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import type { RunnableRef } from '../control/p2Contracts.ts';
 import type { AttestedScheduleSource } from './attestedSource.ts';
 import type { ScheduleStorePort } from './contracts.ts';
@@ -85,9 +87,23 @@ interface ParsedSeed {
   sourceBytes: string;
 }
 
-const HEARTBEAT_SEED_PATHS: readonly HeartbeatSeedPath[] = [
+export const HEARTBEAT_SEED_PATHS: readonly HeartbeatSeedPath[] = [
   'HEARTBEAT.md', 'orgs/atlas-prep/HEARTBEAT.md', 'orgs/kb-ops/HEARTBEAT.md',
 ];
+
+export async function readDevelopmentScheduleSeedSource(repoRoot: string): Promise<DevelopmentScheduleSeedSource> {
+  const heartbeatFiles = await Promise.all(HEARTBEAT_SEED_PATHS.map(async (path) => ({
+    path,
+    bytes: await readFile(resolve(repoRoot, path), 'utf8'),
+  })));
+  const agentFiles = await Promise.all([...new Set(Object.values(EXPECTED_SEED_OWNER_BY_CADENCE))]
+    .sort()
+    .map(async (id) => ({
+      path: `agents/${id}.md` as const,
+      bytes: await readFile(resolve(repoRoot, 'agents', `${id}.md`), 'utf8'),
+    })));
+  return { heartbeatFiles, agentFiles };
+}
 
 const AGENT_SEED_PATHS: readonly `agents/${string}.md`[] = [
   ...new Set(Object.values(EXPECTED_SEED_OWNER_BY_CADENCE)),
@@ -318,7 +334,8 @@ export async function migratePausedCadenceMarkersToScheduleArmedV1(input: {
   const snapshot = await input.store.readScheduleSnapshot();
   const completed: PauseMarkerMigrationReceipt[] = [];
   for (const marker of input.markers) {
-    if (!/^queue\/paused\/[a-z0-9][a-z0-9-]*$/.test(marker.marker)
+    if (!/^queue\/[a-z0-9][a-z0-9./-]{1,240}$/.test(marker.marker)
+      || marker.marker.includes('//') || marker.marker.split('/').includes('..')
       || !/^[0-9a-f]{64}$/.test(marker.scheduleId)
       || !/^[0-9a-f]{64}$/.test(marker.digest)) throw new Error('pause-marker-migration-invalid');
     const existing = await input.receipts.read(marker.marker);

@@ -3,8 +3,8 @@ import type {
   CreateScheduleInput,
   DeleteScheduleInput,
   DeleteScheduleReceipt,
+  ScheduleCollection,
   ScheduleMutationReceipt,
-  ScheduleSnapshot,
   SetScheduleArmedInput,
 } from '../../server/schedules/contracts.ts';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient.ts';
@@ -78,14 +78,14 @@ function schedule(value: unknown): Schedule | null {
   };
 }
 
-export function decodeScheduleSnapshot(value: unknown): ScheduleSnapshot {
+export function decodeScheduleCollection(value: unknown): ScheduleCollection {
   const body = record(value);
-  if (!body || !exactKeys(body, ['collectionRevision', 'schedules'])
-    || !Number.isSafeInteger(body.collectionRevision) || Number(body.collectionRevision) < 0
-    || !Array.isArray(body.schedules)) throw new Error('Invalid Schedule response');
-  const rows = body.schedules.map(schedule);
+  if (!body || !exactKeys(body, ['scheduleCollectionRevision', 'rows'])
+    || !Number.isSafeInteger(body.scheduleCollectionRevision) || Number(body.scheduleCollectionRevision) < 0
+    || !Array.isArray(body.rows)) throw new Error('Invalid Schedule response');
+  const rows = body.rows.map(schedule);
   if (rows.some((row) => row === null)) throw new Error('Invalid Schedule response');
-  return { collectionRevision: body.collectionRevision as number, schedules: rows as Schedule[] };
+  return { scheduleCollectionRevision: body.scheduleCollectionRevision as number, rows: rows as Schedule[] };
 }
 
 function decodeMutation(value: unknown): ScheduleMutationReceipt {
@@ -125,9 +125,9 @@ function headers(token: string): HeadersInit {
   return { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${token}` };
 }
 
-export async function fetchSchedules(token: string, fetchImpl: ScheduleFetch = fetch): Promise<ScheduleSnapshot> {
+export async function fetchSchedules(token: string, fetchImpl: ScheduleFetch = fetch): Promise<ScheduleCollection> {
   const response = await fetchImpl('/api/schedules', { headers: headers(token) });
-  return decodeScheduleSnapshot(await bodyOrError(response));
+  return decodeScheduleCollection(await bodyOrError(response));
 }
 
 export async function createSchedule(token: string, input: CreateScheduleInput, fetchImpl: ScheduleFetch = fetch): Promise<ScheduleMutationReceipt> {

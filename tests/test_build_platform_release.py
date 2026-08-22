@@ -31,6 +31,8 @@ def release_source(root: Path) -> Path:
         "schemas/compatibility.json", "dashboard/config/repositories.json",
         "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/control_plane_schema.py", "deploy/export_tier0.py",
         "deploy/validate_vm_runtime.py", "deploy/systemd/kb-dashboard.service",
+        "HEARTBEAT.md", "orgs/kb-ops/HEARTBEAT.md", "orgs/atlas-prep/HEARTBEAT.md",
+        "agents/hygiene.md", "agents/dispatcher-cloud.md",
     ):
         path = source / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +60,12 @@ def test_release_is_versioned_and_excludes_data(tmp_path: Path):
         assert "deploy/export_tier0.py" in names
         assert "deploy/validate_vm_runtime.py" in names
         assert "deploy/systemd/kb-dashboard.service" in names
+        for rel in (
+            "HEARTBEAT.md", "orgs/kb-ops/HEARTBEAT.md", "orgs/atlas-prep/HEARTBEAT.md",
+            "agents/hygiene.md", "agents/dispatcher-cloud.md",
+        ):
+            assert rel in names
+            assert archive.extractfile(rel).read() == (source / rel).read_bytes()
         assert not any("__pycache__" in name or name.endswith(".pyc") for name in names)
         assert not any(name.startswith("queue/") for name in names)
         assert archive.extractfile("VERSION").read().decode() == VERSION + "\n"
@@ -80,8 +88,8 @@ def test_release_attestation_uses_registry_metadata(tmp_path):
     assert value == {
         "archive": output.name, "schema": "kb.release-attestation/v2",
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-        "sourceCommit": VERSION, "stateSchema": "2",
-        "rollbackStateSchema": "1", "stateMigration": "breaking",
+        "sourceCommit": VERSION, "stateSchema": "3",
+        "rollbackStateSchema": "2", "stateMigration": "breaking",
         "workflow": "kb-platform-release",
     }
 
@@ -146,12 +154,14 @@ def test_published_javascript_build_directories_are_retained(tmp_path: Path):
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_real_repo_release_manifest_is_accepted_by_the_release_consumer(tmp_path: Path):
+    if NODE is None:
+        pytest.fail("release acceptance prerequisite missing: node is not installed")
     source = Path(__file__).resolve().parents[1]
     required = [source / rel for rel in ("dashboard/dist", "dashboard/node_modules")]
-    if any(not path.exists() for path in required):
-        pytest.skip("real release build inputs are not installed")
+    missing = [str(path.relative_to(source)) for path in required if not path.exists()]
+    if missing:
+        pytest.fail(f"release acceptance prerequisites missing: {', '.join(missing)}")
     output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
     build_release(source, VERSION, output, tmp_path / "attestation.json")
     extracted = tmp_path / "extracted"

@@ -23,7 +23,7 @@ describe('ScheduleRows store-backed cutover component', () => {
     persistSession({ token: 'schedule-token', expiresAt: Date.now() + 3_600_000 });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ error: 'unavailable' }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ collectionRevision: 4, schedules: [ROW] }) });
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ scheduleCollectionRevision: 4, rows: [ROW] }) });
     vi.stubGlobal('fetch', fetchMock);
     renderRows();
     await screen.findByText('Schedules are unavailable.');
@@ -37,7 +37,7 @@ describe('ScheduleRows store-backed cutover component', () => {
     persistSession({ token: 'schedule-token', expiresAt: Date.now() + 3_600_000 });
     const operator = { ...ROW, id: 'b'.repeat(64), origin: 'operator' as const, armed: false, version: 1 };
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === '/api/schedules' && init?.method === undefined) return Promise.resolve({ ok: true, status: 200, json: async () => ({ collectionRevision: 4, schedules: [ROW] }) });
+      if (url === '/api/schedules' && init?.method === undefined) return Promise.resolve({ ok: true, status: 200, json: async () => ({ scheduleCollectionRevision: 4, rows: [ROW] }) });
       if (url === '/api/schedules' && init?.method === 'POST') return Promise.resolve({ ok: true, status: 201, json: async () => ({ schedule: operator, collectionRevision: 5, replayed: false }) });
       if (url === `/api/schedules/${ROW.id}/disarm`) return Promise.resolve({ ok: true, status: 200, json: async () => ({ schedule: { ...ROW, armed: false, version: 4 }, collectionRevision: 6, replayed: false }) });
       if (url === `/api/schedules/${operator.id}` && init?.method === 'DELETE') return Promise.resolve({ ok: true, status: 200, json: async () => ({ tombstone: { id: operator.id, deletedAt: '2026-08-21T12:00:00.000Z', version: 2 }, collectionRevision: 7, replayed: false }) });
@@ -60,7 +60,7 @@ describe('ScheduleRows store-backed cutover component', () => {
 
   it('renders the exact live-store empty state', async () => {
     persistSession({ token: 'schedule-token', expiresAt: Date.now() + 3_600_000 });
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ collectionRevision: 0, schedules: [] }) })));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ scheduleCollectionRevision: 0, rows: [] }) })));
     renderRows();
     await screen.findByText('No schedules');
   });

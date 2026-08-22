@@ -14,6 +14,15 @@ export interface CreateScheduleInput {
   idempotencyKey: string;
 }
 
+/** Trusted create payload assembled only after the server resolves the selector. */
+export interface ResolvedCreateScheduleInput {
+  owner: RunnableRef;
+  cadence: Schedule['cadence'];
+  mirrorPath: Schedule['mirrorPath'];
+  expectedCollectionRevision: number;
+  idempotencyKey: string;
+}
+
 export interface SetScheduleArmedInput {
   expectedVersion: number;
   idempotencyKey: string;
@@ -28,6 +37,24 @@ export interface DeleteScheduleInput {
 export interface ScheduleSnapshot {
   collectionRevision: number;
   schedules: Schedule[];
+}
+
+/** Exact browser-facing collection shape. The internal socket keeps ScheduleSnapshot. */
+export interface ScheduleCollection {
+  scheduleCollectionRevision: number;
+  rows: Schedule[];
+}
+
+/** One durable event for a fresh operator arm, disarm, or delete mutation. */
+export interface ScheduleMutationEvent {
+  kind: 'schedule-mutation-event';
+  cursor: number;
+  operation: 'armed' | 'disarmed' | 'deleted';
+  scheduleId: string;
+  scheduleVersion: number;
+  collectionRevision: number;
+  idempotencyKey: string;
+  createdAt: string;
 }
 
 export interface ScheduleTombstone {
@@ -53,6 +80,8 @@ export interface ScheduleOccurrenceClaim {
   scheduledFor: string;
   owner: RunnableRef;
   phase: 'claimed' | 'card-saved' | 'ledger-appended';
+  card: Record<string, unknown>;
+  cardBytesSha256: string;
 }
 
 export interface ClaimScheduleOccurrenceInput {
@@ -72,7 +101,7 @@ export interface CompleteScheduleOccurrenceInput {
 
 export interface ScheduleStorePort {
   readScheduleSnapshot(): Promise<ScheduleSnapshot>;
-  createSchedule(input: CreateScheduleInput): Promise<ScheduleMutationReceipt>;
+  createSchedule(input: ResolvedCreateScheduleInput): Promise<ScheduleMutationReceipt>;
   setScheduleArmed(id: string, input: SetScheduleArmedInput): Promise<ScheduleMutationReceipt>;
   deleteSchedule(id: string, input: DeleteScheduleInput): Promise<DeleteScheduleReceipt>;
   claimScheduleOccurrence(input: ClaimScheduleOccurrenceInput): Promise<ScheduleOccurrenceClaim>;

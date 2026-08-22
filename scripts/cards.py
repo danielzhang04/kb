@@ -1,7 +1,11 @@
 """Task cards — the coordination unit. Schema: governance/card-schema.md (spec section 5)."""
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
 import secrets
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -186,6 +190,54 @@ def render(card: Card) -> bytes:
     return f"---\n{fm}---\n\n{card.body}".encode("utf-8")
 
 
+def schedule_occurrence_claim(*, schedule_id: str, scheduled_for: str,
+                              owner: dict, mirror_path: str,
+                              dispatched_at: str) -> dict:
+    """Build the one deterministic card payload persisted by a schedule claim."""
+    if (not isinstance(schedule_id, str) or len(schedule_id) != 64
+            or any(ch not in "0123456789abcdef" for ch in schedule_id)):
+        raise ValidationError("schedule id must be a lowercase SHA-256")
+    if not isinstance(owner, dict) or owner.get("type") not in ("agent", "workflow"):
+        raise ValidationError("schedule owner is invalid")
+    owner_id = owner.get("id")
+    if not isinstance(owner_id, str) or not owner_id:
+        raise ValidationError("schedule owner is invalid")
+    digest = hashlib.sha256(
+        f"schedule-card\0{schedule_id}\0{scheduled_for}".encode("utf-8")
+    ).hexdigest()
+    extra = {
+        "id": f"{digest[:8]}-{digest[8:16]}",
+        "owner": owner_id,
+        "execution-controller": "dashboard",
+        "scheduled_for": scheduled_for,
+        "dispatched_at": dispatched_at,
+    }
+    project = "kb"
+    if owner["type"] == "workflow":
+        project = owner.get("project")
+        if not isinstance(project, str) or not project:
+            raise ValidationError("schedule workflow project is invalid")
+        extra["workflow-def"] = owner_id
+        extra["parameters"] = {}
+    card = new_card(
+        project=project,
+        action=f"cadence:{owner_id}",
+        target=owner.get("sourcePath", mirror_path),
+        risk_tier="T1",
+        body=f"## Work order\n\nRun the scheduled {owner_id} {owner['type']}.\n",
+        **extra,
+    )
+    payload = render(card)
+    return {
+        "scheduleId": schedule_id,
+        "scheduledFor": scheduled_for,
+        "owner": owner,
+        "phase": "claimed",
+        "card": {"meta": card.meta, "body": card.body},
+        "cardBytesSha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
 def save(card: Card, queue_root: Path) -> Path:
     dest = Path(queue_root) / STATE_DIR[card.meta["state"]] / f"{card.meta['id']}.md"
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -240,3 +292,29 @@ def transition(card: Card, new_state: str, queue_root: Path) -> Path:
     if old_path.exists() and old_path != new_path:
         old_path.unlink()
     return new_path
+
+
+def _main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="canonical task-card renderer")
+    parser.add_argument("--schedule-occurrence-claim", action="store_true")
+    args = parser.parse_args(argv)
+    if not args.schedule_occurrence_claim:
+        parser.error("an operation is required")
+    try:
+        request = json.load(sys.stdin)
+        result = schedule_occurrence_claim(
+            schedule_id=request["scheduleId"],
+            scheduled_for=request["scheduledFor"],
+            owner=request["owner"],
+            mirror_path=request["mirrorPath"],
+            dispatched_at=request["dispatchedAt"],
+        )
+    except (KeyError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as error:
+        print(str(error)[:256], file=sys.stderr)
+        return 2
+    print(json.dumps(result, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

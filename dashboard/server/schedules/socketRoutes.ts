@@ -324,6 +324,8 @@ function fixtureStore(): ScheduleSocketStorePort {
         scheduledFor: String(originalClaim.scheduledFor),
         owner: originalClaim.owner as ScheduleOccurrenceClaim['owner'],
         phase,
+        card: originalClaim.card as Record<string, unknown>,
+        cardBytesSha256: String(originalClaim.cardBytesSha256),
       };
     },
     completeScheduleOccurrence: async () => structuredClone(completeExample.response.receipt) as ScheduleMutationReceipt,

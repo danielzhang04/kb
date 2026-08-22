@@ -34,7 +34,7 @@ import { drainVibeProcesses } from '../vibe/session.ts';
 import { activeVibeProcessCount } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { activeAsyncGitCount } from '../write/asyncGit.ts';
-import { createFileControlPlaneStore } from '../control/store.ts';
+import { createFileControlPlaneStore, createPythonScheduleClaimRenderer } from '../control/store.ts';
 import { loadP2MigrationEvidence } from '../control/p2MigrationEvidence.ts';
 import type { FileControlPlaneAccess } from '../control/writerLease.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
@@ -149,8 +149,9 @@ export function makeSurfaceContext(
   const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? (overrides.fileControlAccess
-    ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess, {
+      ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess, {
         p2MigrationContext: loadP2MigrationEvidence(repoRoot),
+        renderScheduleClaim: createPythonScheduleClaimRenderer(repoRoot),
       })
     : (() => { throw new Error('makeSurfaceContext requires controlStore or fileControlAccess'); })());
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
@@ -358,6 +359,8 @@ export function makeSurfaceContext(
                   }
                   return serviceCaller;
                 },
+                resolveScheduleReceiptOwner: (cardId) => ctx.controlStore.resolveScheduleReceiptOwner(cardId),
+                bindScheduleOccurrenceRun: (cardId, runRef) => ctx.controlStore.bindScheduleOccurrenceRun(cardId, runRef),
               });
               if (result.outcome !== 'launched' && result.outcome !== 'replayed') {
                 console.error('queue bridge dispatch did not launch', result);

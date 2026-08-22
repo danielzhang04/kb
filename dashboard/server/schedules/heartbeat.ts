@@ -104,9 +104,3 @@ export function resultNarration(body: string): string | null {
   if (!first) return null;
   return first.length > 200 ? `${first.slice(0, 200)}…` : first;
 }
-
-/** Presence-only pause state for a declared, filename-safe cadence id. */
-export function isPaused(repoRoot: string, cadence: string): boolean {
-  if (cadence === '' || cadence.includes('/') || cadence.includes('\\') || cadence.includes('..')) return false;
-  return existsSync(join(repoRoot, 'queue', 'paused', cadence));
-}

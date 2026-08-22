@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
   classifyTarget,
   routeWrite,
@@ -14,11 +15,17 @@ import {
   createPreparedCoordinationCommit,
   publishPreparedCoordinationCommit,
   PublishedCoordinationCommitError,
+  publishVerifiedScheduleMarkerRemoval,
   DEFAULT_WORK_BRANCH,
   type GitRunner,
   type PrOpener,
   type PrRequest,
 } from './branch.ts';
+
+const MIGRATION_FIXTURES = resolve(import.meta.dirname, '../control/__fixtures__/dv3');
+const MARKER_GOLDEN = readdirSync(MIGRATION_FIXTURES).map((name) => {
+  try { return JSON.parse(readFileSync(resolve(MIGRATION_FIXTURES, name), 'utf8')) as Record<string, unknown>; } catch { return {}; }
+}).find((value) => Array.isArray(value.markers))?.markers as Array<{ marker: string }>;
 
 /** A recording git runner; each call is captured as its argv (after `git`). Never throws. */
 function recorder(branch = 'ops'): { runner: GitRunner; calls: string[][] } {
@@ -43,7 +50,6 @@ describe('classifyTarget', async () => {
   it('classifies queue/**, ledgers/**, traces/** as coordination', async () => {
     expect(classifyTarget('queue/inbox/card-x.md')).toBe('coordination');
     expect(classifyTarget('./queue/inbox/card-x.md')).toBe('coordination');
-    expect(classifyTarget('queue/paused/dispatcher.md')).toBe('coordination');
     expect(classifyTarget('ledgers/audit/dashboard-audit.ndjson')).toBe('coordination');
     expect(classifyTarget('traces/card-x/index.html')).toBe('coordination');
   });
@@ -56,6 +62,50 @@ describe('classifyTarget', async () => {
 
   it('does not classify a nested non-project STATE path as coordination', () => {
     expect(classifyTarget('orgs/kb-ops/archive/STATE.md')).toBe('durable');
+  });
+});
+
+describe('verified legacy Schedule marker publication', () => {
+  it('refuses removal when the marker digest changed after discovery', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-marker-digest-'));
+    const marker = MARKER_GOLDEN[0].marker;
+    const absolute = join(repoRoot, ...marker.split('/'));
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, 'changed bytes', 'utf8');
+    try {
+      await expect(publishVerifiedScheduleMarkerRemoval(repoRoot, marker, 'a'.repeat(64), {
+        prepare: vi.fn(), commit: vi.fn(),
+      })).rejects.toThrow('pause-marker-digest-changed');
+      expect(existsSync(absolute)).toBe(true);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('resumes publication on the next startup after a crash immediately after unlink', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-marker-resume-'));
+    const marker = MARKER_GOLDEN[0].marker;
+    const absolute = join(repoRoot, ...marker.split('/'));
+    mkdirSync(dirname(absolute), { recursive: true });
+    const bytes = Buffer.from('legacy marker bytes');
+    writeFileSync(absolute, bytes);
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const prepare = vi.fn(async () => undefined);
+    const commit = vi.fn(async () => undefined);
+    try {
+      await expect(publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, {
+        prepare, commit, afterUnlink: async () => { throw new Error('crash-after-unlink'); },
+      })).rejects.toThrow('crash-after-unlink');
+      expect(existsSync(absolute)).toBe(false);
+      expect(commit).not.toHaveBeenCalled();
+
+      await publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, { prepare, commit });
+      expect(prepare).toHaveBeenCalledTimes(1);
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(commit).toHaveBeenCalledWith(repoRoot, marker);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 });
 

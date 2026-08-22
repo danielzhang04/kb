@@ -107,20 +107,6 @@ describe('receipt-first runnable resolution', () => {
     })).toEqual({ ok: false, code: 'runnable-owner-conflict' });
   });
 
-  it('falls back to workflow-def, then one current declared Agent, and otherwise requires an owner', () => {
-    expect(resolveQueueBridgeRunnable({
-      receiptOwner: null, workflowOwner: workflow, cardOwner: null, declaredAgents: [agent],
-    })).toEqual({ ok: true, value: workflow, source: 'workflow-def' });
-    expect(resolveQueueBridgeRunnable({
-      receiptOwner: null, workflowOwner: null, cardOwner: 'grader', declaredAgents: [agent],
-    })).toEqual({ ok: true, value: agent, source: 'card-owner' });
-    expect(resolveQueueBridgeRunnable({
-      receiptOwner: null, workflowOwner: null, cardOwner: 'missing', declaredAgents: [agent],
-    })).toEqual({ ok: false, code: 'runnable-owner-required' });
-    expect(resolveQueueBridgeRunnable({
-      receiptOwner: null, workflowOwner: null, cardOwner: 'grader', declaredAgents: [agent, { ...agent }],
-    })).toEqual({ ok: false, code: 'runnable-owner-required' });
-  });
 });
 
 // --- scanOwnedDashboardCards: invokes the selector, parses, fail-closed --------------------------------
@@ -1194,17 +1180,20 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
-  it('refuses a schedule-stamped card when the receipt adapter is unavailable before proposal creation', async () => {
+  it('refuses a schedule-stamped card when the production receipt resolver returns null before proposal creation', async () => {
     const { ctx, store } = fakeCtx();
     const compile = vi.fn();
     const launch = vi.fn();
     const wake = vi.fn();
+    const resolveScheduleReceiptOwner = vi.fn(() => null);
     const card = baseCard();
     card.meta.scheduled_for = '2026-08-21T12:15:00-04:00';
     const res = await dispatchClaimedCard(ctx, owned, commonDeps({
-      readCard: () => card, compile, launch: launch as never, wake, resolveScheduleReceiptOwner: undefined,
+      readCard: () => card, compile, launch: launch as never, wake, resolveScheduleReceiptOwner,
     }));
     expect(res).toMatchObject({ outcome: 'failed', status: 409, detail: 'runnable-owner-required' });
+    expect(resolveScheduleReceiptOwner).toHaveBeenCalledTimes(1);
+    expect(resolveScheduleReceiptOwner).toHaveBeenCalledWith(owned.id);
     expect(compile).not.toHaveBeenCalled();
     expect(store.createProposalRevision).not.toHaveBeenCalled();
     expect(launch).not.toHaveBeenCalled();
@@ -1263,6 +1252,25 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(input.predecessorRunRef).toBeNull();
     expect(reconcile).toHaveBeenCalledWith(ctx, owned, 'run-1');
     expect(store.createProposalRevision).toHaveBeenCalledOnce();
+  });
+
+  it('binds a schedule claim receipt to the launched Run before reconciling the trigger card', async () => {
+    const { ctx } = fakeCtx();
+    const card = baseCard();
+    card.meta.scheduled_for = '2026-08-21T12:15:00-04:00';
+    const receiptOwner = { type: 'agent' as const, id: SUBJECT, sourcePath: `agents/${SUBJECT}.md` as const };
+    const bindScheduleOccurrenceRun = vi.fn(async () => undefined);
+    const reconcile = vi.fn(async () => undefined);
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({
+      readCard: () => card,
+      resolveScheduleReceiptOwner: () => receiptOwner,
+      bindScheduleOccurrenceRun,
+      launch: vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-scheduled', cards: [] } }) as never,
+      reconcile,
+    }));
+    expect(res).toMatchObject({ outcome: 'launched', runRef: 'run-scheduled' });
+    expect(bindScheduleOccurrenceRun).toHaveBeenCalledWith(owned.id, 'run-scheduled');
+    expect(bindScheduleOccurrenceRun.mock.invocationCallOrder[0]).toBeLessThan(reconcile.mock.invocationCallOrder[0]);
   });
 
   it('persists the queue-resolved identity in the first file-backed Run bytes', async () => {

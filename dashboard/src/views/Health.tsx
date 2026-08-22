@@ -9,6 +9,7 @@ function valueFor(row: HealthRow): string {
   if (row.kind === 'mcp') return row.value.tools.join(', ') || 'no configured tools';
   if (row.kind === 'usage') return typeof row.value === 'number' ? String(row.value) : `${row.value.steps} steps · ${row.value.mix}`;
   if (row.kind === 'unavailable') return row.value.reason;
+  if (row.kind === 'integrity') return row.value.code;
   return row.value;
 }
 

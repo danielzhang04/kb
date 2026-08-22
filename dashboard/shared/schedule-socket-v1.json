@@ -35,7 +35,7 @@
           "card": {
             "meta": {
               "schema-version": 1,
-              "id": "65feea8a-d70dca15",
+              "id": "96b5fff9-ef10702d",
               "project": "kb",
               "action": "cadence:hygiene",
               "target": "agents/hygiene.md",
@@ -50,11 +50,14 @@
               "role": "work",
               "session-id": null,
               "runtime": null,
-              "model": null
+              "model": null,
+              "execution-controller": "dashboard",
+              "scheduled_for": "2026-08-21T12:15:00-04:00",
+              "dispatched_at": "2026-08-21T12:15:01-04:00"
             },
-            "body": "## Work order\n\nRun the scheduled Hygiene agent.\n"
+            "body": "## Work order\n\nRun the scheduled hygiene agent.\n"
           },
-          "cardBytesSha256": "4bfc759ea93ada49a1507477bd2ea04696c0db00a2a5955dec7fac0888d32f2e"
+          "cardBytesSha256": "7d528784d4e0066691491cb7596c2a42889582dadfb45309b90ab21b0b1975bb"
         }
       }
     },
@@ -77,7 +80,33 @@
           "scheduleId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "scheduledFor": "2026-08-21T12:15:00-04:00",
           "owner": { "type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md" },
-          "phase": "card-saved"
+          "phase": "card-saved",
+          "card": {
+            "meta": {
+              "schema-version": 1,
+              "id": "96b5fff9-ef10702d",
+              "project": "kb",
+              "action": "cadence:hygiene",
+              "target": "agents/hygiene.md",
+              "risk-tier": "T1",
+              "owner": "hygiene",
+              "claim-token": null,
+              "state": "inbox",
+              "approval": null,
+              "workflow": null,
+              "depends-on": [],
+              "variant-group": null,
+              "role": "work",
+              "session-id": null,
+              "runtime": null,
+              "model": null,
+              "execution-controller": "dashboard",
+              "scheduled_for": "2026-08-21T12:15:00-04:00",
+              "dispatched_at": "2026-08-21T12:15:01-04:00"
+            },
+            "body": "## Work order\n\nRun the scheduled hygiene agent.\n"
+          },
+          "cardBytesSha256": "7d528784d4e0066691491cb7596c2a42889582dadfb45309b90ab21b0b1975bb"
         }
       }
     },

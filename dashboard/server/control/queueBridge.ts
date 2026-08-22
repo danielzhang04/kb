@@ -580,6 +580,7 @@ export interface DispatchCardDeps {
   /** Re-assert that this dispatch still belongs to the same armed execution window. */
   isArmed?: () => boolean;
   resolveScheduleReceiptOwner?: (cardId: string) => RunnableRef | null;
+  bindScheduleOccurrenceRun?: (cardId: string, runRef: string) => void | Promise<void>;
   declaredRunnableOwners?: (repoRoot: string) => readonly RunnableRef[];
   wake?: (ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required') => void;
 }
@@ -658,7 +659,9 @@ export async function dispatchClaimedCard(
     if (!bridgeClaimsCard(parsed.meta)) {
       return { cardId: card.id, outcome: 'skipped', status: 0, reconciled: false, detail: 'card no longer claimed by the bridge' };
     }
-    if (typeof parsed.meta.scheduled_for === 'string' && !deps.resolveScheduleReceiptOwner) {
+    const scheduled = typeof parsed.meta.scheduled_for === 'string';
+    const receiptOwner = deps.resolveScheduleReceiptOwner?.(card.id) ?? null;
+    if (scheduled && receiptOwner === null) {
       wake(ctx, card.id, 'runnable-owner-required');
       return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: 'runnable-owner-required' };
     }
@@ -676,7 +679,7 @@ export async function dispatchClaimedCard(
     return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: String(error) };
   }
   const runnable = resolveQueueBridgeRunnable({
-    receiptOwner: deps.resolveScheduleReceiptOwner?.(card.id) ?? null,
+    receiptOwner,
     workflowOwner: mapped?.owner ?? null,
     cardOwner: typeof parsed.meta.owner === 'string' ? parsed.meta.owner : null,
     declaredAgents: (deps.declaredRunnableOwners ?? defaultDeclaredRunnableOwners)(ctx.repoRoot),
@@ -804,6 +807,7 @@ export async function dispatchClaimedCard(
   });
 
   const runRef = typeof result.body.runRef === 'string' ? result.body.runRef : undefined;
+  if (scheduled && runRef) await deps.bindScheduleOccurrenceRun?.(card.id, runRef);
   if (result.status === 201 && runRef) {
     await reconcile(ctx, card, runRef);
     return { cardId: card.id, outcome: 'launched', status: 201, runRef, reconciled: true };

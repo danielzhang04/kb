@@ -7,7 +7,7 @@ import { registerPlaneA } from './planeA/routes.ts';
 import { registerDag } from './dag/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
-import { registerPanels } from './panels/routes.ts';
+import { readDeclaredAgentDetails } from './agents/roster.ts';
 import { registerInboxRoutes } from './inbox/routes.ts';
 import { registerHealthRoutes } from './health/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
@@ -21,6 +21,8 @@ import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { requireSession, surfaceRateLimitHook } from './http/middleware.ts';
 import { registerWorkflows } from './workflows/routes.ts';
+import { ScheduleService, registerScheduleRoutes } from './schedules/service.ts';
+import { resolveScheduleOwner } from './schedules/owners.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { registerSessionRunRoutes } from './pty/sessionRunRoutes.ts';
@@ -32,16 +34,23 @@ import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
-import { auditFn } from './http/context.ts';
 import type { SurfaceContext } from './http/context.ts';
 import type { RuntimeCapabilities } from './runtime/capabilities.ts';
-import type { SaveFn as ScheduleSaveFn } from './panels/schedules.ts';
 import type { VibeSpawner } from './vibe/session.ts';
 import { createPtyHost } from './pty/host.ts';
 import { resolveDashboardStateRoot } from './composer/store.ts';
 import { acquireWriterLease } from './control/writerLease.ts';
 import type { FileControlPlaneAccess, WriterLease } from './control/writerLease.ts';
 import type { ControlPlaneStore } from './control/store.ts';
+import { createFileControlPlaneStore, createPythonScheduleClaimRenderer } from './control/store.ts';
+import { loadP2MigrationEvidence } from './control/p2MigrationEvidence.ts';
+import { runP2ScheduleStartupMigrations } from './control/migrations.ts';
+import {
+  migratePausedCadenceMarkersToScheduleArmedV1,
+  readDevelopmentScheduleSeedSource,
+} from './schedules/seedImport.ts';
+import { createScheduleSocketServer, scheduleSocketRuntimeCapability } from './schedules/socketRoutes.ts';
+import { discoverLegacyScheduleMarkers, publishVerifiedScheduleMarkerRemoval } from './write/branch.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -145,11 +154,25 @@ export interface BuildAppOptions {
   coordinationPublication?: SurfaceContext['coordinationPublication'];
   openPr?: SurfaceContext['openPr'];
   traceRoot?: string | null;
-  scheduleSave?: ScheduleSaveFn;
   spawn?: VibeSpawner;
   createPtyHost?: typeof createPtyHost;
   controlStore?: ControlPlaneStore;
   fileControlAccess?: FileControlPlaneAccess;
+}
+
+function createScheduleService(repoRoot: string, store: ControlPlaneStore): ScheduleService {
+  return new ScheduleService({
+    store,
+    resolveOwner: async (selector) => resolveScheduleOwner(repoRoot, selector),
+    seedAuthorization: async (scheduleId) => store.isScheduleSeedAuthorized(scheduleId),
+    mirrorPathForOwner: (owner) => {
+      if (owner.type === 'workflow') return `orgs/${owner.project}/HEARTBEAT.md`;
+      const declaration = readDeclaredAgentDetails(repoRoot).get(owner.id);
+      if (!declaration || declaration.group === 'system') return 'HEARTBEAT.md';
+      const primaryProject = [...declaration.projects].sort()[0];
+      return primaryProject ? `orgs/${primaryProject}/HEARTBEAT.md` : 'HEARTBEAT.md';
+    },
+  });
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -210,27 +233,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
     registerAgents(scope, surfaceCtx);
+    const schedules = createScheduleService(repoRoot, surfaceCtx.controlStore);
+    registerScheduleRoutes(scope, schedules);
     registerInboxRoutes(scope, surfaceCtx);
     registerHealthRoutes(scope, surfaceCtx);
-    // The Schedules panel's governed HEARTBEAT edit (-> work-branch PR, never auto-merged) needs the
-    // SAME one-per-process session config, side-effect runners and audit sink the write surface uses.
-    // Without a session config it fails closed with 503; without an audit sink it fails open and simply
-    // records no row (see panels/schedules.ts). Pausing is NOT here — it is /api/write/pause-cadence.
-    registerPanels(scope, repoRoot, {
-      durablePrWrites: surfaceCtx.runtimeCapabilities.durablePrWrites,
-      save: options.scheduleSave,
-      sessionConfig: surfaceCtx.sessionConfig,
-      durableRepoRoot: surfaceCtx.durableRepoRoot,
-      runGit: surfaceCtx.saveGit,
-      openPr: surfaceCtx.openPr,
-      runPreamble: surfaceCtx.runPreamble,
-      publication: surfaceCtx.coordinationPublication,
-      outboxRoot: surfaceCtx.outboxRoot,
-      audit: auditFn(surfaceCtx),
-      opsGit: surfaceCtx.opsGit,
-      now: surfaceCtx.now,
-      admission: surfaceCtx.admission,
-    });
     if (surfaceCtx.runtimeCapabilities.localTranscripts && surfaceCtx.traceRoot) {
       registerTraceRead(scope, surfaceCtx.traceRoot);
     }
@@ -384,6 +390,36 @@ export interface StartOptions {
   buildApplication?: typeof buildApp;
 }
 
+/** Production Schedule boot unit, exported so crash/restart tests exercise the exact startup path. */
+export async function runScheduleBootMigrations(
+  repoRoot: string,
+  controlStore: ControlPlaneStore,
+  publishRemoval: (marker: string, digest: string) => Promise<void> =
+    (marker, digest) => publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest),
+): Promise<void> {
+  await runP2ScheduleStartupMigrations({
+    existingMarker: controlStore.getScheduleSeedImportMarker(),
+    development: await readDevelopmentScheduleSeedSource(repoRoot),
+    commitSeeds: (plan) => controlStore.commitScheduleSeedImport(plan),
+    convertPauseMarkers: async () => {
+      const discovered = await discoverLegacyScheduleMarkers(repoRoot, await controlStore.readScheduleSnapshot());
+      const incomplete = await controlStore.listIncompleteSchedulePauseMarkerReceipts?.() ?? [];
+      const markers = [...new Map([...discovered, ...incomplete].map((marker) => [marker.marker, {
+        marker: marker.marker, scheduleId: marker.scheduleId, digest: marker.digest,
+      }])).values()];
+      return migratePausedCadenceMarkersToScheduleArmedV1({
+        markers,
+        store: controlStore,
+        receipts: {
+          read: (marker) => controlStore.readSchedulePauseMarkerReceipt(marker),
+          write: (receipt) => controlStore.writeSchedulePauseMarkerReceipt(receipt),
+        },
+        publishRemoval,
+      });
+    },
+  });
+}
+
 export async function start(
   port: number = PORT,
   host: string = HOST,
@@ -397,11 +433,37 @@ export async function start(
     bootId: randomUUID(),
   });
   try {
+    const repoRoot = options.repoRoot ?? fileURLToPath(new URL('../../', import.meta.url));
+    let controlStore: ControlPlaneStore | undefined;
+    if (!options.buildApplication) {
+      controlStore = createFileControlPlaneStore(lease.stateRoot, { mode: 'already-locked', lease }, {
+        p2MigrationContext: loadP2MigrationEvidence(repoRoot),
+        renderScheduleClaim: createPythonScheduleClaimRenderer(repoRoot),
+      });
+      await runScheduleBootMigrations(repoRoot, controlStore);
+    }
     const app = buildApplication({
-      repoRoot: options.repoRoot,
+      repoRoot,
       validateData: true,
-      fileControlAccess: { mode: 'already-locked', lease },
+      ...(controlStore
+        ? { controlStore }
+        : { fileControlAccess: { mode: 'already-locked' as const, lease } }),
     });
+    if (controlStore && scheduleSocketRuntimeCapability().available) {
+      const uid = process.getuid?.();
+      if (uid === undefined) throw new Error('schedule dispatcher uid is unavailable');
+      const scheduleService = createScheduleService(repoRoot, controlStore);
+      const socket = createScheduleSocketServer({
+        socketPath: '/run/kb-dashboard/schedules.sock',
+        store: {
+          ...controlStore,
+          readScheduleSnapshot: () => scheduleService.list(),
+          claimScheduleOccurrence: (input) => scheduleService.claimScheduleOccurrence(input),
+        },
+        dispatcherUid: uid,
+      });
+      app.addHook('onClose', async () => { await new Promise<void>((done) => socket.close(() => done())); });
+    }
     app.addHook('onClose', async () => {
       lease?.release();
       lease = null;

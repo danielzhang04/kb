@@ -86,12 +86,12 @@ def test_cli_failure_is_nonzero_with_empty_stdout_and_bounded_stderr(tmp_path):
     assert "schedule-socket-unavailable" in result.stderr
 
 
-def test_native_linux_actual_unix_service_and_client_interoperate(tmp_path):
+def test_native_linux_actual_unix_service_and_client_interoperate(tmp_path, monkeypatch):
     if sys.platform != "linux":
-        source = (REPO_ROOT / "dashboard" / "server" / "schedules" / "socketRoutes.ts").read_text(encoding="utf-8")
-        assert "SO_PEERCRED" in source
-        assert "--fixture-socket" in source
-        assert "createServer" in source
+        monkeypatch.delattr(socket, "AF_UNIX", raising=False)
+        with pytest.raises(schedule_store.ScheduleStoreError) as error:
+            schedule_store.snapshot(tmp_path / "unsupported.sock", timeout=0.01)
+        assert error.value.code == "schedule-socket-unavailable"
         return
     socket_path = tmp_path / "schedule.sock"
     process = subprocess.Popen(
@@ -150,22 +150,23 @@ def test_socket_outage_fails_closed_and_restart_reconnects(tmp_path):
 
 
 def _claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claimed") -> dict:
-    card_id_hash = hashlib.sha256(f"schedule-card\0{schedule_id}\0{scheduled_for}".encode()).hexdigest()
-    card = cards.new_card(
-        project="kb", action="cadence:hygiene", target="agents/hygiene.md", risk_tier="T1",
-        body="## Work order\n\nRun the scheduled Hygiene agent.\n",
-        owner="hygiene", state="inbox",
+    receipt = cards.schedule_occurrence_claim(
+        schedule_id=schedule_id,
+        scheduled_for=scheduled_for,
+        owner={"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
+        mirror_path="HEARTBEAT.md",
+        dispatched_at="2026-08-21T12:15:01-04:00",
     )
-    card.meta["id"] = f"{card_id_hash[:8]}-{card_id_hash[8:16]}"
-    payload = cards.render(card)
-    return {
-        "scheduleId": schedule_id,
-        "scheduledFor": scheduled_for,
-        "phase": phase,
-        "owner": {"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
-        "card": {"meta": card.meta, "body": card.body},
-        "cardBytesSha256": hashlib.sha256(payload).hexdigest(),
-    }
+    receipt["phase"] = phase
+    return receipt
+
+
+def test_schedule_claim_bytes_are_owned_by_cards_render():
+    receipt = _claim_receipt("a" * 64, "2026-08-21T12:15:00-04:00")
+    card = cards.Card(meta=receipt["card"]["meta"], body=receipt["card"]["body"])
+    assert receipt["cardBytesSha256"] == hashlib.sha256(cards.render(card)).hexdigest()
+    assert card.meta["execution-controller"] == "dashboard"
+    assert card.meta["scheduled_for"] == "2026-08-21T12:15:00-04:00"
 
 
 class ClaimClient:
@@ -212,6 +213,32 @@ def test_dispatch_passes_claim_next_at_and_expected_version(tmp_path):
     assert client.claim_kwargs["next_at"] == "2026-08-21T12:30:00-04:00"
     assert client.claim_kwargs["expected_version"] == 3
 
+
+def test_later_same_window_tick_skips_an_occurrence_already_covered_by_next_at(tmp_path):
+    schedule_id = "a" * 64
+
+    class CoveredClient:
+        def __init__(self):
+            self.claimed = False
+
+        def snapshot(self):
+            return {"collectionRevision": 8, "schedules": [{
+                "id": schedule_id, "armed": True, "version": 4,
+                "cadence": {"source": "*/15 * * * *", "words": "Every 15 minutes"},
+                "nextAt": "2026-08-21T12:30:00-04:00", "lastOutcome": "failed",
+            }]}
+
+        def claim(self, **_kwargs):
+            self.claimed = True
+            raise AssertionError("covered occurrence must not be claimed")
+
+    client = CoveredClient()
+    assert dispatch.dispatch_stored_schedules(
+        tmp_path, client, "dispatcher-cloud",
+        now=dt.datetime.fromisoformat("2026-08-21T12:16:00-04:00"),
+    ) == []
+    assert client.claimed is False
+
 class RealClaimClient:
     def __init__(self, socket_path: Path, crash_boundary: str):
         self.socket_path = socket_path
@@ -234,15 +261,19 @@ class RealClaimClient:
 ])
 def test_all_claim_crash_boundaries_replay_once_through_real_socket(
         tmp_path, monkeypatch, crash_boundary):
+    request = _example("claim")["request"]
     if sys.platform != "linux":
-        client_source = (REPO_ROOT / "scripts" / "schedule_store.py").read_text(encoding="utf-8")
-        dispatch_source = (REPO_ROOT / "scripts" / "dispatch.py").read_text(encoding="utf-8")
-        assert '"expectedVersion": expected_version' in client_source
-        assert 'next_at=next_fire.isoformat()' in dispatch_source
-        assert set(PROTOCOL["operations"]) == {"snapshot", "claim", "advance", "complete"}
+        with pytest.raises(schedule_store.ScheduleStoreError) as error:
+            schedule_store.claim(
+                tmp_path / "unsupported.sock", schedule_id=request["scheduleId"],
+                scheduled_for=request["scheduledFor"], next_at=request["nextAt"],
+                expected_version=request["expectedVersion"], idempotency_key=request["idempotencyKey"],
+                timeout=0.01,
+            )
+        assert error.value.code == "schedule-socket-unavailable"
+        assert not (tmp_path / "queue").exists()
         return
 
-    request = _example("claim")["request"]
     socket_path = tmp_path / "schedule.sock"
     process = subprocess.Popen(
         ["node", str(REPO_ROOT / "dashboard" / "server" / "schedules" / "socketRoutes.ts"),

@@ -236,17 +236,6 @@ def test_due_cron_is_local_time_and_same_day():
     assert due_bool(cadence, dt.date(2026, 8, 21), now=dt.datetime(2026, 8, 20, 9, 0)) is False
 
 
-def test_due_cron_respects_the_pause_sentinel(tmp_path):
-    cadence = {"name": "cron-nightly", "schedule": "3 7 * * *"}
-    now = dt.datetime(2026, 8, 20, 9, 0)
-    day = dt.date(2026, 8, 20)
-    assert due_bool(cadence, day, repo_root=tmp_path, now=now) is True
-    paused = tmp_path / "queue" / "paused"
-    paused.mkdir(parents=True)
-    (paused / "cron-nightly").write_text("paused\n", encoding="utf-8")
-    assert due_bool(cadence, day, repo_root=tmp_path, now=now) is False
-
-
 # --------------------------------------------------------------------------- #
 # Occurrence dedup in the dispatch loop + card stamps                          #
 # --------------------------------------------------------------------------- #

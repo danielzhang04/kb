@@ -28,9 +28,12 @@ function validRow(value: unknown, section: HealthSectionId): value is HealthRow 
   if (unavailable(row, section)) return true;
   if (!exactKeys(row, ['kind', 'key', 'label', 'value', 'observedAt', 'source']) || !string(row.key) || !string(row.label) || !string(row.observedAt)) return false;
   const body = record(row.value);
-  if (section === 'fleet') return row.kind === 'fleet' && row.source === 'fleet' && row.key.startsWith('agent:') && body !== null
+  if (section === 'fleet') return (row.kind === 'fleet' && row.source === 'fleet' && row.key.startsWith('agent:') && body !== null
     && exactKeys(body, ['status', 'role', 'working', 'lastActive']) && ['working', 'active', 'stale', 'idle'].includes(String(body.status))
-    && (body.role === null || string(body.role)) && typeof body.working === 'boolean' && (body.lastActive === null || string(body.lastActive));
+    && (body.role === null || string(body.role)) && typeof body.working === 'boolean' && (body.lastActive === null || string(body.lastActive)))
+    || (row.kind === 'integrity' && row.source === 'schedule-store' && row.key.startsWith('schedule-owner:')
+      && row.label === 'Schedule owner' && body !== null && exactKeys(body, ['status', 'code', 'owner'])
+      && body.status === 'error' && body.code === 'schedule-owner-unresolvable' && record(body.owner) !== null);
   if (section === 'stop') return row.kind === 'stop' && row.source === 'stop' && row.key === 'stop-file' && row.label === 'STOP' && (row.value === 'present' || row.value === 'clear');
   if (section === 'daemon-machine') return (row.kind === 'machine' && row.source === 'machine' && row.key === 'daemon-platform' && row.label === 'Daemon' && (row.value === 'win32' || row.value === 'linux'))
     || (row.kind === 'deferred' && row.source === 'deferred' && row.key === 'release' && row.label === 'Release' && row.value === 'unavailable in P1');

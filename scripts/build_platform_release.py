@@ -24,6 +24,11 @@ RELEASE_ROOTS = (
     "dashboard/package.json", "dashboard/package-lock.json",
     "dashboard/config/repositories.json", "scripts", "schemas", "deploy",
 )
+ATTESTED_SCHEDULE_SOURCES = (
+    "HEARTBEAT.md",
+    "orgs/*/HEARTBEAT.md",
+    "agents/*.md",
+)
 NATIVE_BUILD_KEEP_SUFFIXES = {".node", ".dll", ".so", ".dylib", ".exe"}
 
 
@@ -68,7 +73,12 @@ def release_files(source: Path) -> list[Path]:
                 and not _is_node_gyp_intermediate(item, build_roots)
             )
         )
-    return sorted(files, key=lambda item: item.relative_to(source).as_posix())
+    for pattern in ATTESTED_SCHEDULE_SOURCES:
+        matches = sorted(path for path in source.glob(pattern) if path.is_file())
+        if not matches:
+            raise FileNotFoundError(pattern)
+        files.extend(matches)
+    return sorted(set(files), key=lambda item: item.relative_to(source).as_posix())
 
 
 def build_release(source: Path, version: str, output: Path, attestation: Path) -> None:

@@ -1,7 +1,7 @@
-"""Single-scheduler dispatcher — reads HEARTBEAT.md declarations, emits claimed cards.
+"""Single-scheduler dispatcher — fires live control-store schedules into claimed cards.
 
-The repo is the source of truth for cadences; Routines/Task Scheduler are just the clock
-(spec s6). Only dispatchers assign work (owner + claim-token); workers never self-claim.
+HEARTBEAT declarations are seed/mirror material; the dashboard store is live authority.
+Only dispatchers assign work (owner + claim-token); workers never self-claim.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ import cards
 import ledger
 import promotion
 import routing
+import schedule_store
 
 _ZERO = datetime.timedelta(0)
 _HOUR = datetime.timedelta(hours=1)
@@ -775,16 +776,9 @@ def next_occurrence(spec: CronSpec | None, now: datetime.datetime) -> datetime.d
     return None
 
 
-def due(cadence: dict, today: datetime.date, repo_root: Path | None = None,
+def due(cadence: dict, today: datetime.date,
         now: datetime.datetime | None = None) -> bool:
     """True iff `cadence` is scheduled for `today` (and, for cron, by `now`).
-
-    `repo_root` is optional (default None) so every pre-D1.1 call site (two
-    positional args, no repo awareness) keeps working unchanged. When
-    supplied, a files-only `queue/paused/<cadence-name>` sentinel SUPPRESSES
-    this cadence's beat -- and only this one; it can never trigger or widen a
-    schedule, only skip it. Presence-only check: the marker's contents (if
-    any) are never read/parsed.
 
     `now` is likewise optional (default: the local wall clock) and is consulted
     ONLY by the cron branch, which needs a time of day the `today` date has no
@@ -793,10 +787,6 @@ def due(cadence: dict, today: datetime.date, repo_root: Path | None = None,
     injected `today` that is not the clock's own day never fires cron at all.
     The legacy `daily`/`weekly:<day>` branches below are untouched by `now`.
     """
-    if repo_root is not None:
-        name = cadence.get("name")
-        if name and (Path(repo_root) / "queue" / "paused" / name).exists():
-            return False
     schedule = cadence.get("schedule", "")
     spec = parse_cron(schedule)
     if spec is not None:
@@ -897,7 +887,7 @@ def run(repo_root: Path, tier: str, agent_id: str,
             # Legacy forms: the pre-Task-7 guard, unchanged (per-day dedup).
             if cadence.get("tier") != tier or (spec is None and key in ran):
                 continue
-            if not due(cadence, today, repo_root, now=now):
+            if not due(cadence, today, now=now):
                 continue
             if spec is None:
                 # Additive: legacy rows now name the day they fired for, so every
@@ -1174,8 +1164,8 @@ def dispatch_stored_schedules(repo_root: Path, client, agent_id: str,
                               now: datetime.datetime | None = None) -> list[dict]:
     """Fire due raw store rows through the claim protocol without a second clock.
 
-    This is an unregistered W4 seam. W6 wires it after the live socket/store
-    route exists; the existing HEARTBEAT caller remains untouched here.
+    The production CLI calls this store-only path. HEARTBEAT parsing remains
+    available only for legacy migration/regression coverage.
     """
     now = now or datetime.datetime.now(OPERATOR_TIMEZONE)
     eastern = now.astimezone(OPERATOR_TIMEZONE) if now.tzinfo else now
@@ -1196,6 +1186,18 @@ def dispatch_stored_schedules(repo_root: Path, client, agent_id: str,
         occurrence = latest_occurrence(spec, eastern) if spec else None
         if occurrence is None:
             continue
+        covered_next_at = schedule.get("nextAt")
+        if covered_next_at is not None:
+            if not isinstance(covered_next_at, str):
+                raise ScheduleDispatchError("schedule-snapshot-invalid")
+            try:
+                covered = datetime.datetime.fromisoformat(covered_next_at)
+            except ValueError as error:
+                raise ScheduleDispatchError("schedule-snapshot-invalid") from error
+            if covered.tzinfo is None:
+                raise ScheduleDispatchError("schedule-snapshot-invalid")
+            if occurrence < covered.astimezone(occurrence.tzinfo):
+                continue
         next_fire = next_occurrence(spec, occurrence)
         if next_fire is None:
             raise ScheduleDispatchError("schedule-next-occurrence-unavailable")
@@ -1209,15 +1211,35 @@ def dispatch_stored_schedules(repo_root: Path, client, agent_id: str,
     return results
 
 
+class _LiveScheduleStoreClient:
+    """Fixed production socket adapter; callers cannot redirect schedule authority."""
+
+    @staticmethod
+    def snapshot():
+        return schedule_store.snapshot()
+
+    @staticmethod
+    def claim(**kwargs):
+        return schedule_store.claim(schedule_store.DEFAULT_SOCKET_PATH, **kwargs)
+
+    @staticmethod
+    def advance(**kwargs):
+        return schedule_store.advance(schedule_store.DEFAULT_SOCKET_PATH, **kwargs)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tier", required=True, choices=("cloud", "desktop"))
     ap.add_argument("--agent", required=True)
     args = ap.parse_args()
-    emitted = run(Path.cwd(), args.tier, args.agent)
+    repo_root = Path.cwd()
+    # Dependency release remains a queue concern independent of schedule
+    # authority, so the production tick retains that bounded pass.
+    release_dependents(repo_root)
+    emitted = dispatch_stored_schedules(repo_root, _LiveScheduleStoreClient(), args.agent)
     print(f"dispatched {len(emitted)} card(s)")
-    for p in emitted:
-        print(f"  {p}")
+    for receipt in emitted:
+        print(f"  {receipt['card_id']}")
     return 0
 
 

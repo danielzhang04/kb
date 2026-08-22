@@ -187,8 +187,8 @@ def test_resident_parser_rejects_structurally_invalid_v2_values(tmp_path, field,
 
 
 @pytest.mark.parametrize(("field", "value"), [
-    ("stateSchema", "3"),
-    ("rollbackStateSchema", "0"),
+    ("stateSchema", "4"),
+    ("rollbackStateSchema", "1"),
     ("stateMigration", "compatible"),
 ])
 def test_desktop_parser_rejects_structurally_valid_nonregistry_v2_values(tmp_path, field, value):
@@ -324,6 +324,9 @@ def test_rollback_repoints_current_only_when_quiescent(tmp_path, monkeypatch):
     second = releases / ("b" * 40)
     first.mkdir(parents=True)
     second.mkdir()
+    for release, marker in ((first, b"first"), (second, b"second")):
+        (release / "attestation.json").write_bytes(marker)
+        (release / "attestation.json.sig").write_bytes(marker + b"-signature")
     paths = activate_release.RuntimePaths(
         releases=releases,
         current=second,
@@ -343,6 +346,10 @@ def test_rollback_repoints_current_only_when_quiescent(tmp_path, monkeypatch):
         ["systemctl", "restart", "kb-dashboard.service"],
         ["healthy"],
     ]
+    assert (first / "attestation.json").read_bytes() == b"first"
+    assert (first / "attestation.json.sig").read_bytes() == b"first-signature"
+    assert (second / "attestation.json").read_bytes() == b"second"
+    assert (second / "attestation.json.sig").read_bytes() == b"second-signature"
 
 
 def test_rollback_refuses_when_previous_is_current(tmp_path, monkeypatch):
@@ -566,6 +573,11 @@ def test_activation_orders_signature_static_validation_and_real_link_selection(t
     )
 
     assert activate_release.activate_from_upload(upload, paths, activation_io) == commit
+    installed = releases / commit
+    assert (installed / "attestation.json").read_bytes() == (upload / "attestation.json").read_bytes()
+    assert (installed / "attestation.json.sig").read_bytes() == (upload / "attestation.json.sig").read_bytes()
+    assert stat.S_IMODE((installed / "attestation.json").stat().st_mode) == 0o444
+    assert stat.S_IMODE((installed / "attestation.json.sig").stat().st_mode) == 0o444
     if paths.current.exists():
         assert paths.current.resolve() == (releases / commit).resolve()
     else:

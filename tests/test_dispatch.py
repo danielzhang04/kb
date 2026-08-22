@@ -1,6 +1,8 @@
 import datetime
 import hashlib
+import json
 import subprocess
+import sys
 from pathlib import Path
 
 import dispatch
@@ -758,43 +760,24 @@ def test_run_without_session_id_leaves_field_null(tmp_path):
     assert c.meta["session-id"] is None
 
 
-def test_due_skips_paused_cadence(tmp_path):
+def test_due_ignores_legacy_pause_marker_and_reader_is_absent(tmp_path):
     import cards
     repo = make_repo(tmp_path)
-    day = datetime.date(2026, 7, 14)  # Tuesday: nightly-review (cloud daily) is due
-    paused_dir = repo / "queue" / "paused"
-    paused_dir.mkdir(parents=True)
-    (paused_dir / "nightly-review").write_text("paused 2026-07-14: investigating\n",
-                                                encoding="utf-8")
+    fixture_dir = Path(__file__).resolve().parents[1] / "dashboard/server/control/__fixtures__/dv3"
+    fixture = next(
+        parsed
+        for path in fixture_dir.glob("*.json")
+        if "markers" in (parsed := json.loads(path.read_text(encoding="utf-8")))
+    )
+    marker = repo / fixture["markers"][0]["marker"]
+    marker.parent.mkdir(parents=True)
+    marker.write_text("legacy marker\n", encoding="utf-8")
 
-    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud", today=day)
-    assert emitted == []  # nightly-review suppressed; no other cloud cadence due today
-
-    # A marker for one cadence must not affect an unrelated cadence -- add
-    # weekly-audit's Saturday run and confirm it is unaffected by nightly's pause.
-    sat = datetime.date(2026, 7, 18)
-    emitted_sat = dispatch.run(repo, "cloud", "dispatcher-cloud", today=sat)
-    assert len(emitted_sat) == 1
-    assert cards.parse(emitted_sat[0]).meta["action"] == "cadence:weekly-audit"
-
-    # Removing the marker restores nightly-review's next beat.
-    (paused_dir / "nightly-review").unlink()
-    wed = datetime.date(2026, 7, 15)
-    emitted_wed = dispatch.run(repo, "cloud", "dispatcher-cloud", today=wed)
-    assert len(emitted_wed) == 1
-    assert cards.parse(emitted_wed[0]).meta["action"] == "cadence:nightly-review"
-
-
-def test_due_paused_check_is_repo_root_aware_and_backward_compatible():
-    # Existing two-positional-arg call sites (no repo_root) must keep working
-    # unchanged -- this is the pre-D1.1 regression surface.
-    sat = datetime.date(2026, 7, 18)
-    tue = datetime.date(2026, 7, 14)
-    daily = {"name": "n", "schedule": "daily"}
-    weekly = {"name": "w", "schedule": "weekly:sat"}
-    assert dispatch.due(daily, tue) is True
-    assert dispatch.due(weekly, sat) is True
-    assert dispatch.due(weekly, tue) is False
+    emitted = dispatch.run(repo, "cloud", "dispatcher-cloud", today=datetime.date(2026, 7, 14))
+    assert len(emitted) == 1
+    assert cards.parse(emitted[0]).meta["action"] == "cadence:nightly-review"
+    source = (Path(__file__).resolve().parents[1] / "scripts/dispatch.py").read_text(encoding="utf-8")
+    assert "repo_root" not in source[source.index("def due("):source.index("def _heartbeats(")]
 
 
 # --------------------------------------------------------------------------- #
@@ -1103,6 +1086,24 @@ def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     reread = cards.parse(plain.path)
     assert reread.meta["state"] == "inbox"
     assert reread.body == plain.body
+
+
+def test_cli_uses_live_schedule_store_and_keeps_dependency_release(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(dispatch, "release_dependents", lambda root: calls.append(("release", root)))
+    monkeypatch.setattr(dispatch, "run", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("production CLI must not read HEARTBEAT cadences")))
+    monkeypatch.setattr(dispatch, "dispatch_stored_schedules", lambda root, client, agent: (
+        calls.append(("store", root, agent, client.snapshot())), [{"phase": "ledger-appended", "card_id": "card-1"}]
+    )[1])
+    monkeypatch.setattr(dispatch.schedule_store, "snapshot", lambda: {"collectionRevision": 0, "schedules": []})
+    monkeypatch.setattr(sys, "argv", ["dispatch.py", "--tier", "cloud", "--agent", "dispatcher-cloud"])
+
+    assert dispatch.main() == 0
+    assert calls[0] == ("release", tmp_path)
+    assert calls[1][:3] == ("store", tmp_path, "dispatcher-cloud")
+    assert calls[1][3] == {"collectionRevision": 0, "schedules": []}
 
 
 def test_cards_render_is_the_exact_byte_source_used_by_save(tmp_path):

@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,11 @@ import {
 } from './seedImport.ts';
 
 const REPO = resolve(import.meta.dirname, '../../..');
+const DV3_FIXTURES = resolve(import.meta.dirname, '../control/__fixtures__/dv3');
+const PAUSE_FIXTURE = readdirSync(DV3_FIXTURES).map((name) => {
+  try { return JSON.parse(readFileSync(resolve(DV3_FIXTURES, name), 'utf8')) as Record<string, unknown>; } catch { return {}; }
+}).find((value) => Array.isArray(value.markers));
+const PAUSE_GOLDEN = (PAUSE_FIXTURE?.markers as Array<{ marker: string; scheduleId: string; digest: string }>)[0];
 const HEARTBEAT_PATHS = ['HEARTBEAT.md', 'orgs/atlas-prep/HEARTBEAT.md', 'orgs/kb-ops/HEARTBEAT.md'] as const;
 const AGENT_IDS = [...new Set(Object.values(EXPECTED_SEED_OWNER_BY_CADENCE))].sort();
 const NEW_SYSTEM_AGENT_IDS = [
@@ -155,11 +160,11 @@ describe('importHeartbeatScheduleSeedsV1', () => {
     };
     let crashed = false;
     const publishRemoval = vi.fn(async () => { if (!crashed) { crashed = true; throw new Error('publisher crash'); } });
-    const input = { markers: [{ marker: 'queue/paused/hygiene', scheduleId: schedule.id, digest: 'b'.repeat(64) }], store, receipts, publishRemoval };
+    const input = { markers: [{ ...PAUSE_GOLDEN, scheduleId: schedule.id }], store, receipts, publishRemoval };
     await expect(migratePausedCadenceMarkersToScheduleArmedV1(input)).rejects.toThrow('publisher crash');
-    expect(saved.get('queue/paused/hygiene')).toMatchObject({ storePhase: true, publisherPhase: false });
+    expect(saved.get(PAUSE_GOLDEN.marker)).toMatchObject({ storePhase: true, publisherPhase: false });
     await expect(migratePausedCadenceMarkersToScheduleArmedV1(input)).resolves.toEqual([
-      { marker: 'queue/paused/hygiene', scheduleId: schedule.id, digest: 'b'.repeat(64), storePhase: true, publisherPhase: true },
+      { ...PAUSE_GOLDEN, scheduleId: schedule.id, storePhase: true, publisherPhase: true },
     ]);
     expect(setScheduleArmed).toHaveBeenCalledTimes(1);
     expect(publishRemoval).toHaveBeenCalledTimes(2);

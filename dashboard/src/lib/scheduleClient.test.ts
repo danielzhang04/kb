@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Schedule } from '../../server/control/p2Contracts.ts';
-import { ScheduleClientError, createSchedule, decodeScheduleSnapshot, fetchSchedules, setScheduleArmed } from './scheduleClient.ts';
+import { ScheduleClientError, createSchedule, decodeScheduleCollection, fetchSchedules, setScheduleArmed } from './scheduleClient.ts';
 
 const ROW: Schedule = {
   id: 'a'.repeat(64), owner: { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' },
@@ -10,14 +10,15 @@ const ROW: Schedule = {
 
 describe('scheduleClient', () => {
   it('decodes the closed W0 schedule snapshot and rejects extra/source-path shapes', () => {
-    expect(decodeScheduleSnapshot({ collectionRevision: 4, schedules: [ROW] })).toEqual({ collectionRevision: 4, schedules: [ROW] });
-    expect(() => decodeScheduleSnapshot({ collectionRevision: 4, schedules: [{ ...ROW, pending: true }] })).toThrow('Invalid Schedule response');
-    expect(() => decodeScheduleSnapshot({ collectionRevision: 4, schedules: [{ ...ROW, owner: { type: 'agent', id: 'hygiene', sourcePath: '../hygiene.md' } }] })).toThrow('Invalid Schedule response');
+    expect(decodeScheduleCollection({ scheduleCollectionRevision: 4, rows: [ROW] })).toEqual({ scheduleCollectionRevision: 4, rows: [ROW] });
+    expect(() => decodeScheduleCollection({ scheduleCollectionRevision: 4, rows: [{ ...ROW, pending: true }] })).toThrow('Invalid Schedule response');
+    expect(() => decodeScheduleCollection({ scheduleCollectionRevision: 4, rows: [{ ...ROW, owner: { type: 'agent', id: 'hygiene', sourcePath: '../hygiene.md' } }] })).toThrow('Invalid Schedule response');
+    expect(() => decodeScheduleCollection({ collectionRevision: 4, schedules: [ROW] })).toThrow('Invalid Schedule response');
   });
 
   it('uses immediate REST actions with expected revisions and idempotency keys', async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ collectionRevision: 4, schedules: [ROW] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ scheduleCollectionRevision: 4, rows: [ROW] }) })
       .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ schedule: { ...ROW, origin: 'operator' }, collectionRevision: 5, replayed: false }) })
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ schedule: { ...ROW, armed: false, version: 4 }, collectionRevision: 6, replayed: false }) });
     await fetchSchedules('token', fetchImpl);

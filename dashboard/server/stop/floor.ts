@@ -1,222 +1,56 @@
-/**
- * D2.8 — the files-only stop floor: the dashboard-down-safe coarse-stop layer that never needs the
- * Broker (design §3.1/§6; docs/specs/2026-07-16-dashboard-design.md). Three retained primitives:
- *
- *  - `writeStop(session, deps)` — writes the repo-root `STOP` sentinel that `scripts/preamble.py`
- *    checks at the start of every loop/task (fleet-wide, nuclear halt).
- *  - `pauseCadence(name, session, deps)` — writes the `queue/paused/<name>` presence-only sentinel
- *    that `scripts/dispatch.py#due()` (D1.1) checks to suppress a single cadence's next beat.
- *  - `sigkillBackstop(pid, ladder, deps)` — the Q8 escalation ladder (60s grace -> `interrupt()`-
- *    equivalent -> SIGKILL at +30s more) for a card that never self-halts. Pure function of elapsed
- *    time against an injected clock — no real sleeps, ever.
- *
- * WHY `writeStop` NEVER touches git: unlike `pauseCadence` (a queue coordination write,
- * routed to `ops` per CLAUDE.md's branch rule), the `STOP` sentinel is documented elsewhere
- * (docs/plans/2026-07-15-agentic-os-m1.md's manual-verification note: "Do not commit the STOP file")
- * as a deliberately UNCOMMITTED, purely-local file. That is what makes it the dashboard-down-safe
- * layer: it works even when git/network is broken, can't be silently reverted by a rebase, and (unlike
- * a coordination write) must be creatable even when the fleet is ALREADY frozen or the daily budget is
- * blown — so, also unlike `dashboard/server/write/launch.ts`, none of these four primitives run
- * `assertFleetRunnable()` first. Gating a STOP-THE-FLEET action behind "is the fleet currently
- * runnable" would be backwards: an operator must be able to hit stop precisely when the fleet is
- * already in a bad state. Every primitive here is still strictly WebAuthn-session-gated
- * (`verifySession`) — the invariant is "session-gated", not "preamble-gated".
- *
- * `pauseCadence` routes its writes to `ops` via `git pull --rebase origin ops`
- * -> stage-only-the-changed-path -> commit -> push, retrying a rejected push after re-reading state
- * (CLAUDE.md: "a rejected push means: re-read state, reconcile, retry") — same `OpsGitRunner` DI shape
- * as `dashboard/server/audit/log.ts` / `dashboard/server/trace/commit.ts`, redefined locally here per
- * this codebase's established convention of NOT sharing that type across write-surface modules.
- *
- * Hermetic by construction: `OpsGitRunner` is injected (no test shells a real git binary or touches
- * the network — see `floor.test.ts`), and `sigkillBackstop` takes an
- * injected clock (`now`) and an injected `kill` function (no test ever sends a real OS signal).
- */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+/** Dashboard-down-safe fleet STOP and process escalation primitives. */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
-import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
-import type { OpsGitRunner } from '../write/asyncGit.ts';
-import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
-import { isCoordinationPath } from '../write/branch.ts';
-import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
-import { readHeartbeatCadences } from '../schedules/heartbeat.ts';
 
-/** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
   token: string | null | undefined;
   config: SessionConfig;
 }
 
-/** A gate failure shared by every session-gated primitive in this module. */
 export type Unauthenticated = { ok: false; reason: 'unauthenticated'; detail: string };
 
-/** Session-gate every state-changing action in this module. No preamble/fleet-runnable check — see
- *  the module docstring for why a stop control must work even when the fleet is already frozen. */
 function checkSession(session: SessionInput): { ok: true; claims: SessionClaims } | Unauthenticated {
-  if (!session.token) {
-    return { ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' };
-  }
+  if (!session.token) return { ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' };
   const check = verifySession(session.token, session.config);
-  if (!check.ok) {
-    return { ok: false, reason: 'unauthenticated', detail: check.reason };
-  }
-  return { ok: true, claims: check.claims };
+  return check.ok
+    ? { ok: true, claims: check.claims }
+    : { ok: false, reason: 'unauthenticated', detail: check.reason };
 }
 
-/** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests — the ONE
- *  shared, widened type from `write/asyncGit.ts` (unified with `audit/log.ts` / `trace/commit.ts`). */
-export type { OpsGitRunner };
-
-/** Default runner: the shared async git runner (spawn, off the event loop, 60s kill-timeout). gpg
- *  signing off; the repo's pre-commit hook still runs. */
-export const defaultOpsGitRunner: OpsGitRunner = createAsyncGitRunner({ requireTransaction: true });
-
-/**
- * Stage exactly `relPaths` (never `git add .`) and commit+push to `ops` via pull-rebase-push, retrying
- * a rejected push after re-reading state (CLAUDE.md: "a rejected push means: re-read state, reconcile,
- * retry").
- */
-async function commitToOps(
-  repoRoot: string,
-  relPaths: string[],
-  message: string,
-  runGit: OpsGitRunner,
-  maxRetryPushes = 3,
-  publication: CoordinationPublication = 'direct',
-  outboxRoot = '/var/lib/kb/state/outbox',
-): Promise<void> {
-  if (publication === 'outbox') {
-    await recoverUnspooledCoordinationCommits({ repoRoot, spoolRoot: outboxRoot, runGit, isCoordinationPath });
-  } else {
-    await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
-  }
-  await runGit(repoRoot, ['add', '--', ...relPaths]);
-  await runGit(repoRoot, ['commit', '-m', message]);
-
-  if (publication === 'outbox') {
-    await recoverUnspooledCoordinationCommits({ repoRoot, spoolRoot: outboxRoot, runGit, isCoordinationPath });
-  } else {
-    await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
-  }
-}
-
-/** Injectable dependencies shared by every primitive in this module. Every field is hermetic-test-safe. */
 export interface FloorDeps {
   repoRoot: string;
-  runGit?: OpsGitRunner;
-  publication?: CoordinationPublication;
-  outboxRoot?: string;
 }
 
 export type WriteStopOutcome = { ok: true; path: string } | Unauthenticated;
 
-/**
- * Write the repo-root `STOP` sentinel (session-gated). Presence-only — `scripts/preamble.py` only
- * checks `(repoRoot / "STOP").exists()`, never reads its contents — so the body here is purely an
- * informational breadcrumb for a human reading the file, never parsed by anything. Deliberately never
- * committed to git (see module docstring). The nuclear, whole-fleet control.
- */
+/** Fleet-wide STOP remains local and uncommitted so it works while coordination is unavailable. */
 export function writeStop(session: SessionInput, deps: FloorDeps): WriteStopOutcome {
   const gated = checkSession(session);
   if (!gated.ok) return gated;
-
   mkdirSync(deps.repoRoot, { recursive: true });
-  const abs = join(deps.repoRoot, 'STOP');
   writeFileSync(
-    abs,
+    join(deps.repoRoot, 'STOP'),
     `STOP — fleet frozen via dashboard stop floor at ${new Date().toISOString()} (session sub: ${gated.claims.sub})\n`,
     'utf8',
   );
   return { ok: true, path: 'STOP' };
 }
 
-type PauseCadenceOutcome =
-  | { ok: true; path: string }
-  | Unauthenticated
-  | { ok: false; reason: 'invalid-cadence'; detail: string };
-
-/** Resolve one declared cadence marker as a direct child of queue/paused, or refuse it unread. */
-function cadencePauseTarget(
-  repoRoot: string,
-  name: string,
-): { relPath: string; absPath: string } | null {
-  if (
-    name === ''
-    || name.includes('/')
-    || name.includes('\\')
-    || name.includes('..')
-    || name.includes('\0')
-    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name)
-  ) return null;
-
-  const pausedRoot = resolve(repoRoot, 'queue', 'paused');
-  const absPath = resolve(pausedRoot, name);
-  if (dirname(absPath) !== pausedRoot) return null;
-  const declared = new Set(readHeartbeatCadences(repoRoot).map((cadence) => cadence.name));
-  if (!declared.has(name)) return null;
-  return { relPath: `queue/paused/${name}`, absPath };
-}
-
-/**
- * Write the `queue/paused/<name>` presence-only sentinel `scripts/dispatch.py#due()` (D1.1) checks to
- * suppress exactly that one cadence's next beat — files-only, never edits `HEARTBEAT.md`, and the
- * marker's contents (there are none) are never read/parsed, matching `due()`'s own contract. The write
- * is a coordination write and routes to `ops` via pull-rebase-push.
- */
-export async function pauseCadence(name: string, session: SessionInput, deps: FloorDeps): Promise<PauseCadenceOutcome> {
-  const gated = checkSession(session);
-  if (!gated.ok) return gated;
-  const target = cadencePauseTarget(deps.repoRoot, name);
-  if (!target) {
-    return {
-      ok: false,
-      reason: 'invalid-cadence',
-      detail: 'cadence must be a declared, filename-safe HEARTBEAT cadence id',
-    };
-  }
-
-  return withOpsTransaction(async () => {
-    mkdirSync(dirname(target.absPath), { recursive: true });
-    if (!existsSync(target.absPath)) writeFileSync(target.absPath, '', 'utf8');
-
-    await commitToOps(
-      deps.repoRoot,
-      [target.relPath],
-      `chore(pause): ${name}`,
-      deps.runGit ?? defaultOpsGitRunner,
-      3,
-      deps.publication,
-      deps.outboxRoot,
-    );
-
-    return { ok: true, path: target.relPath };
-  });
-}
-
-/** One stop-ladder's timing + origin: when the `stop-requested` clock started, and (optionally) a
- *  non-default grace/escalation window — defaults are the Q8 ladder (design doc / plan §D2.8). */
 export interface StopLadder {
-  /** Epoch ms when `stop-requested` was set (the ladder's t=0). */
   requestedAt: number;
-  /** Grace period before the first escalation. Default 60_000 (Q8: 60s). */
   graceMs?: number;
-  /** Additional time after `graceMs` before SIGKILL. Default 30_000 (Q8: +30s). */
   escalateMs?: number;
 }
 
-/** The Q8 ladder's default timings (docs/plans/2026-07-16-dashboard-implementation.md: "Q8 escalation
- *  ladder = 60s stop-requested -> interrupt() -> SIGKILL at +30s"). */
 export const Q8_GRACE_MS = 60_000;
 export const Q8_ESCALATE_MS = 30_000;
 
 export type BackstopAction = 'none' | 'interrupt' | 'sigkill';
 
 export interface SigkillBackstopDeps {
-  /** Injectable clock; defaults to `Date.now`. Tests advance this instead of a real timer. */
   now?: () => number;
-  /** Injectable OS-signal sender; defaults to `process.kill`. No test ever sends a real signal. */
   kill?: (pid: number, signal: NodeJS.Signals) => void;
 }
 
@@ -224,25 +58,13 @@ const defaultKill = (pid: number, signal: NodeJS.Signals): void => {
   process.kill(pid, signal);
 };
 
-/**
- * The Q8 escalation ladder: a pure function of elapsed time since `ladder.requestedAt` against an
- * injected clock (no real sleeps, ever). Before `graceMs`: no-op (`'none'`) — cooperative stop hasn't
- * timed out yet. From `graceMs` to `graceMs + escalateMs`: the "interrupt() equivalent" backstop — at
- * this files-only floor there is no live Broker session handle to `interrupt()` (that's D3), so a
- * process-group `SIGTERM` is the analogous soft-stop signal. At/after `graceMs + escalateMs`: `SIGKILL`
- * — the hard backstop for a card that never self-halts (design invariant: "a card that never
- * self-halts gets SIGKILL as backstop"). Intended to be POLLED repeatedly (by a cadence/monitor outside
- * this module's scope) with the same `ladder.requestedAt` each time; calling it again once past the
- * SIGKILL threshold keeps returning `'sigkill'` (and would re-signal an already-dead pid harmlessly —
- * `process.kill` on a reaped pid throws ESRCH, which is the caller's concern, not this pure primitive's).
- */
+/** Bounded Q8 escalation: grace, soft interrupt, then SIGKILL. */
 export function sigkillBackstop(pid: number, ladder: StopLadder, deps: SigkillBackstopDeps = {}): BackstopAction {
   const now = deps.now ?? Date.now;
   const kill = deps.kill ?? defaultKill;
   const graceMs = ladder.graceMs ?? Q8_GRACE_MS;
   const escalateMs = ladder.escalateMs ?? Q8_ESCALATE_MS;
   const elapsed = now() - ladder.requestedAt;
-
   if (elapsed < graceMs) return 'none';
   if (elapsed < graceMs + escalateMs) {
     kill(pid, 'SIGTERM');

@@ -27,6 +27,8 @@ import { createNodePersistenceDeps } from './persistence.ts';
 import { acquireWriterLease } from './writerLease.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
+import { ScheduleService } from '../schedules/service.ts';
+import { resolveQueueBridgeRunnable } from './queueBridge.ts';
 
 const roots: string[] = [];
 const fileStores = createExistingRootFileStoreHarnessForTest();
@@ -80,6 +82,137 @@ it('leaves file-backed v2 bytes unchanged on host contradiction and partial outc
       lease.release();
     }
   }
+});
+
+describe('control-store schedule authority', () => {
+  it('appends one durable event and advances the cursor only for each fresh arm, disarm, and delete', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedule-events-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root);
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
+    const created = await api.create({
+      owner: { type: 'agent', id: owner.id },
+      cadence: { kind: 'words', words: 'daily', time: '09:15' },
+      expectedCollectionRevision: 0,
+      idempotencyKey: 'event-create',
+    });
+    const persisted = () => JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      nextEventCursor: number;
+      schedules: Array<{ operationReceipts: Array<{ kind?: string; cursor?: number; operation?: string }> }>;
+      scheduleTombstones: Array<{ operationReceipts: Array<{ kind?: string; cursor?: number; operation?: string }> }>;
+    };
+    const state = () => {
+      const document = persisted();
+      const events = [...document.schedules, ...document.scheduleTombstones]
+        .flatMap((row) => row.operationReceipts)
+        .filter((receipt) => receipt.kind === 'schedule-mutation-event');
+      return { cursor: document.nextEventCursor, events };
+    };
+
+    const beforeArm = state();
+    const armInput = { expectedVersion: created.schedule.version, idempotencyKey: 'event-arm', armed: true };
+    const armed = await api.setArmed(created.schedule.id, armInput);
+    expect(state()).toMatchObject({ cursor: beforeArm.cursor + 1, events: [...beforeArm.events, { operation: 'armed', cursor: beforeArm.cursor }] });
+    await api.setArmed(created.schedule.id, armInput);
+    expect(state()).toEqual({ cursor: beforeArm.cursor + 1, events: [...beforeArm.events, expect.objectContaining({ operation: 'armed', cursor: beforeArm.cursor })] });
+
+    const beforeDisarm = state();
+    const disarmInput = { expectedVersion: armed.schedule.version, idempotencyKey: 'event-disarm', armed: false };
+    const disarmed = await api.setArmed(created.schedule.id, disarmInput);
+    expect(state()).toMatchObject({ cursor: beforeDisarm.cursor + 1, events: [...beforeDisarm.events, { operation: 'disarmed', cursor: beforeDisarm.cursor }] });
+
+    const beforeDelete = state();
+    const deleteInput = { expectedVersion: disarmed.schedule.version, idempotencyKey: 'event-delete' };
+    await api.delete(created.schedule.id, deleteInput);
+    expect(state()).toMatchObject({ cursor: beforeDelete.cursor + 1, events: [...beforeDelete.events, { operation: 'deleted', cursor: beforeDelete.cursor }] });
+    await api.delete(created.schedule.id, deleteInput);
+    expect(state().cursor).toBe(beforeDelete.cursor + 1);
+    expect(state().events).toHaveLength(beforeDelete.events.length + 1);
+  });
+
+  it('persists mutation replay, receipt-first ownership, and one terminal completion across restart', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedules-'));
+    roots.push(root);
+    const scheduledFor = '2026-08-23T07:15:00.000Z';
+    const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+      const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+      return { card: {
+        meta: {
+          'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+          project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+          'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+          workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+          runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+        },
+        body: '## Work order\n\nRun the scheduled Hygiene agent.\n',
+      }, cardBytesSha256: 'b'.repeat(64) };
+    });
+    let store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({
+      store,
+      resolveOwner: async () => owner,
+      mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md',
+      seedAuthorization: async () => true,
+    });
+    const create = {
+      owner: { type: 'agent' as const, id: 'hygiene' }, cadence: { kind: 'cron' as const, minute: '15', hour: '3', dayOfMonth: '*', month: '*', dayOfWeek: '0' },
+      expectedCollectionRevision: 0, idempotencyKey: 'operator-create',
+    };
+    const created = await api.create(create);
+    await api.setArmed(created.schedule.id, { expectedVersion: 1, idempotencyKey: 'arm', armed: true });
+
+    store = fileStores.restart(root, { renderScheduleClaim });
+    const restarted = new ScheduleService({
+      store, resolveOwner: async () => owner, mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md', seedAuthorization: async () => true,
+    });
+    await expect(restarted.create(create)).resolves.toMatchObject({ replayed: true, schedule: { owner } });
+    const armed = store.getScheduleSnapshot().schedules[0];
+    const claim = await restarted.claimScheduleOccurrence({
+      occurrence: { scheduleId: armed.id, scheduledFor, nextAt: '2026-08-23T07:30:00.000Z' },
+      expectedVersion: armed.version, idempotencyKey: 'claim-1',
+    });
+    const cardId = String((claim.card.meta as Record<string, unknown>).id);
+    await store.advanceScheduleOccurrence({
+      scheduleId: armed.id, scheduledFor, nextAt: '2026-08-23T07:30:00.000Z',
+      phase: 'card-saved', idempotencyKey: 'claim-1:card-saved',
+    });
+    await store.advanceScheduleOccurrence({
+      scheduleId: armed.id, scheduledFor, nextAt: '2026-08-23T07:30:00.000Z',
+      phase: 'ledger-appended', idempotencyKey: 'claim-1:ledger-appended',
+    });
+    expect(store.resolveScheduleReceiptOwner(cardId)).toEqual(owner);
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: store.resolveScheduleReceiptOwner(cardId), workflowOwner: null, cardOwner: 'hygiene', declaredAgents: [owner],
+    })).toMatchObject({ ok: true, value: owner, source: 'schedule-receipt' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: store.resolveScheduleReceiptOwner(cardId),
+      workflowOwner: { type: 'workflow', id: 'video-run', project: 'faceless-youtube', sourcePath: 'orgs/faceless-youtube/workflows/video-run.md' },
+      cardOwner: 'hygiene', declaredAgents: [owner],
+    })).toMatchObject({ ok: false, code: 'runnable-owner-conflict' });
+    expect(renderScheduleClaim).toHaveBeenCalledWith(expect.objectContaining({ mirrorPath: 'orgs/kb-ops/HEARTBEAT.md' }));
+    expect(renderScheduleClaim).toHaveBeenCalledTimes(1);
+
+    const launched = createRun(store, 'alice');
+    await store.bindScheduleOccurrenceRun(cardId, launched.run.runRef);
+    const running = store.transitionRun('alice', launched.run.runRef, launched.run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const beforeTerminal = store.getScheduleSnapshot();
+    const failed = store.transitionRun('alice', launched.run.runRef, running.value.version, 'failed');
+    if (!failed.ok) throw new Error(failed.detail);
+    expect(store.getScheduleSnapshot()).toMatchObject({
+      collectionRevision: beforeTerminal.collectionRevision + 1,
+      schedules: [{ lastOutcome: 'failed', nextAt: '2026-08-23T07:30:00.000Z' }],
+    });
+    const replay = store.transitionRun('alice', launched.run.runRef, failed.value.version, 'failed');
+    expect(replay).toMatchObject({ ok: true, replayed: true });
+    expect(store.getScheduleSnapshot().collectionRevision).toBe(beforeTerminal.collectionRevision + 1);
+    const document = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      scheduleOccurrenceClaims: Array<{ runRef: string | null; completionReceipt: unknown }>;
+    };
+    expect(document.scheduleOccurrenceClaims.filter((row) => row.runRef === launched.run.runRef && row.completionReceipt !== null)).toHaveLength(1);
+  });
 });
 
 function persistedV1(value: unknown): any {

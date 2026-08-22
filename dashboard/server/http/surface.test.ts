@@ -8,7 +8,7 @@
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -262,7 +262,6 @@ describe('write surface — composition chain', () => {
       '/api/write/launch',
       '/api/write/rerun',
       '/api/write/stop',
-      '/api/write/pause-cadence',
       '/api/approvals/verify',
     ]) {
       const res = await app.inject({ method: 'POST', url, headers: headers(false), payload: {} });
@@ -276,45 +275,6 @@ describe('write surface — composition chain', () => {
       { method: 'GET' as const, url: '/api/human-inbox' },
     ]) {
       expect((await app.inject({ method: request.method, url: request.url, headers: headers(true), payload: request.method === 'POST' ? {} : undefined })).statusCode).toBe(404);
-    }
-  });
-
-  it('rejects invalid pause names before filesystem, git, or audit work and accepts a declared id', async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), 'pause-route-'));
-    writeFileSync(
-      join(repoRoot, 'HEARTBEAT.md'),
-      '# test\n\n```yaml\ncadences:\n  - name: nightly-review\n    schedule: daily\n```\n',
-      'utf8',
-    );
-    const git = vi.fn(okOpsGit);
-    const audit = recordingAudit();
-    ({ app } = buildApp({ repoRoot, opsGit: git, appendAudit: audit.fn }));
-
-    try {
-      for (const name of ['../../STOP', '..\\..\\STOP', 'nightly-review/../x', 'undeclared']) {
-        const response = await app.inject({
-          method: 'POST', url: '/api/write/pause-cadence', headers: headers(true), payload: { name },
-        });
-        expect(response.statusCode, name).toBe(400);
-        expect(response.json()).toMatchObject({ error: 'invalid-cadence' });
-      }
-      expect(existsSync(join(repoRoot, 'queue'))).toBe(false);
-      expect(existsSync(join(repoRoot, 'STOP'))).toBe(false);
-      expect(git).not.toHaveBeenCalled();
-      expect(audit.rows).toEqual([]);
-
-      const accepted = await app.inject({
-        method: 'POST', url: '/api/write/pause-cadence', headers: headers(true),
-        payload: { name: 'nightly-review' },
-      });
-      expect(accepted.statusCode).toBe(200);
-      expect(existsSync(join(repoRoot, 'queue', 'paused', 'nightly-review'))).toBe(true);
-      expect(git).toHaveBeenCalled();
-      expect(audit.rows).toHaveLength(1);
-    } finally {
-      await app.close();
-      app = undefined;
-      rmSync(repoRoot, { recursive: true, force: true });
     }
   });
 
@@ -1167,8 +1127,12 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
 
     const card: OwnedCard = { id: 'card-1', path: 'queue/inbox/card-1.md', state: 'inbox' };
     await bridgeOptions?.dispatch?.(card);
-    expect(dispatch).toHaveBeenCalledWith(ctx, card, expect.objectContaining({ internalCaller: expect.any(Function) }));
+    expect(dispatch).toHaveBeenCalledWith(ctx, card, expect.objectContaining({
+      internalCaller: expect.any(Function), resolveScheduleReceiptOwner: expect.any(Function),
+    }));
     const internalCaller = dispatch.mock.calls[0][2].internalCaller as (subject: string) => unknown;
+    const receiptOwner = dispatch.mock.calls[0][2].resolveScheduleReceiptOwner as (cardId: string) => unknown;
+    expect(receiptOwner('unmatched-card')).toBeNull();
     expect(internalCaller('dashboard-engine')).toMatchObject({ subject: 'dashboard-engine' });
     expect(() => internalCaller('other-subject')).toThrow(/unexpected internal service subject/);
 
@@ -1334,9 +1298,9 @@ describe('surface — shared PTY host fleet gate', () => {
 });
 
 describe('P1 route matrix', () => {
-  it('retains verify, fleet STOP, and cadence pause while retired writes and Composer are 404', async () => {
+  it('retains verify and fleet STOP while retired writes and Composer are 404', async () => {
     ({ app } = buildApp());
-    for (const url of ['/api/approvals/verify', '/api/write/stop', '/api/write/pause-cadence']) {
+    for (const url of ['/api/approvals/verify', '/api/write/stop']) {
       expect((await app.inject({ method: 'POST', url, headers: headers(false), payload: {} })).statusCode, url).toBe(401);
     }
     for (const request of [

@@ -204,19 +204,22 @@ describe('App P1 shell', () => {
     cleanup();
 
     const rawSchedule = 'daily-digest';
-    const rawProject = 'kb_ops';
+    const rawProject = 'kb-ops';
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) !== '/api/panels/schedules') return new Response('', { status: 404 });
+      if (String(input) !== '/api/schedules') return new Response('', { status: 404 });
       return new Response(JSON.stringify({
-        label: 'schedules', pausedCount: 0, files: { 'HEARTBEAT.md': '' },
-        cadences: [{ project: rawProject, name: rawSchedule, schedule: '0 9 * * mon', tier: 'T1', riskTier: 'low', paused: false, file: 'HEARTBEAT.md', lastRun: null, runCount: 0, scheduleHint: null }],
+        scheduleCollectionRevision: 1,
+        rows: [{
+          id: 'd'.repeat(64), owner: { type: 'workflow', id: rawSchedule, project: rawProject, sourcePath: `orgs/${rawProject}/workflows/${rawSchedule}.md` },
+          cadence: { source: '0 9 * * mon', words: 'Mon \u00b7 9:00 AM' }, nextAt: null, lastOutcome: null,
+          armed: true, origin: 'operator', mirroredAt: null, mirrorPath: `orgs/${rawProject}/HEARTBEAT.md`, version: 1,
+        }],
       }), { status: 200 });
     }));
     render(<SessionProvider><SchedulesBody /></SessionProvider>);
-    const scheduleRow = await screen.findByTestId(`schedules-row-${rawSchedule}`);
+    const scheduleRow = await screen.findByTestId(`schedules-row-${'d'.repeat(64)}`);
     expect(within(scheduleRow).getByText('KB Ops').getAttribute('title')).toBe(rawProject);
     expect(within(scheduleRow).getByText('Daily Digest').getAttribute('title')).toBe(rawSchedule);
-    expect(scheduleRow.getAttribute('data-raw-id')).toBe(`${rawProject}:${rawSchedule}`);
     cleanup();
 
     const rawInbox = 'wake-me_runner-failed';

@@ -1,14 +1,34 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyMigrationEdgeForTest, assertMigrationEnvelope, migrateControlDocument, P2RunMigrationError,
+  runP2ScheduleStartupMigrations,
 } from './migrations.ts';
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(
   new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
 
 describe('control document migrations', () => {
+  it('runs schedule startup only after Run identity/outcome and collection creation, then seeds before pause conversion', async () => {
+    const phases: string[] = [];
+    const marker = { version: 1 as const, releaseSha: null, seedDigest: 'a'.repeat(64), importedAt: '2026-08-22T00:00:00.000Z' };
+    const openSource = vi.fn(async () => ({ available: false as const, reason: 'release-unavailable' as const }));
+    const importSeeds = vi.fn(async () => { phases.push('seed-import'); return { ok: true as const, replayed: true as const, marker }; });
+    const convertPauseMarkers = vi.fn(async () => { phases.push('pause-marker-conversion'); return []; });
+
+    const report = await runP2ScheduleStartupMigrations({
+      currentReleasePath: '/missing-release', existingMarker: marker,
+      commitSeeds: async () => { throw new Error('replayed seed import must not commit'); },
+      convertPauseMarkers,
+    }, { openSource, importSeeds });
+
+    expect(openSource).toHaveBeenCalledWith({ currentPath: '/missing-release' });
+    expect(phases).toEqual(['seed-import', 'pause-marker-conversion']);
+    expect(report.phases).toEqual(['identity', 'outcome', 'schedule-collections', 'seed-import', 'pause-marker-conversion']);
+    expect(report.source).toEqual({ available: false, reason: 'release-unavailable' });
+  });
+
   const p2Run = (overrides: Record<string, unknown> = {}) => ({
     subject: 'operator', runRef: 'run-p2', predecessorRunRef: null, title: 'P2 fixture',
     proposalRef: 'proposal-p2', proposalRevision: 1, proposalHash: 'a'.repeat(64),

@@ -5,5 +5,6 @@ import { composeHealth } from './service.ts';
 
 /** Staged registrar. W5 owns mounting it on the served HTTP surface. */
 export function registerHealthRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
-  scope.get('/api/health', { preHandler: requireSession(ctx.sessionConfig) }, async () => composeHealth(ctx.repoRoot));
+  scope.get('/api/health', { preHandler: requireSession(ctx.sessionConfig) }, async () =>
+    composeHealth(ctx.repoRoot, undefined, ctx.controlStore.getScheduleSnapshot().schedules));
 }

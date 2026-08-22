@@ -7,6 +7,10 @@ import { buildUsagePanel } from './usage.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import type { LivenessStatus } from './fleet.ts';
 import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
+import type { RunnableRef, Schedule } from '../control/p2Contracts.ts';
+import type { ScheduleOwnerIntegrityRow } from '../home/contracts.ts';
+import { projectScheduleOwnerIntegrity } from './scheduleOwnerIntegrity.ts';
+import { declaredScheduleOwners } from '../schedules/owners.ts';
 
 export type FleetRow = { kind: 'fleet'; key: `agent:${string}`; label: string; value: { status: 'working' | 'active' | 'stale' | 'idle'; role: string | null; working: boolean; lastActive: string | null }; observedAt: string; source: 'fleet' };
 export type StopRow = { kind: 'stop'; key: 'stop-file'; label: 'STOP'; value: 'present' | 'clear'; observedAt: string; source: 'stop' };
@@ -17,9 +21,10 @@ export type ReleaseRow = { kind: 'deferred'; key: 'release'; label: 'Release'; v
 export type McpAvailabilityRow = { kind: 'deferred'; key: `mcp:${string}:${string}:vm` | `mcp:${string}:${string}:desktop`; label: 'VM availability' | 'Desktop availability'; value: 'unavailable in P1'; observedAt: string; source: 'deferred' };
 export type HealthSectionId = 'fleet' | 'stop' | 'daemon-machine' | 'mcp' | 'usage';
 export type UnavailableRow<S extends HealthSectionId = HealthSectionId> = { kind: 'unavailable'; key: `error:${S}`; label: 'Unavailable'; value: { status: 'unavailable'; reason: string }; observedAt: string; source: 'error' };
-export type HealthRow = FleetRow | StopRow | MachineRow | McpRow | UsageRow | ReleaseRow | McpAvailabilityRow | UnavailableRow;
+export type ScheduleIntegrityRow = ScheduleOwnerIntegrityRow & { label: 'Schedule owner' };
+export type HealthRow = FleetRow | ScheduleIntegrityRow | StopRow | MachineRow | McpRow | UsageRow | ReleaseRow | McpAvailabilityRow | UnavailableRow;
 export type HealthResponse = { sections: [
-  { id: 'fleet'; label: 'Fleet'; rows: Array<FleetRow | UnavailableRow<'fleet'>> },
+  { id: 'fleet'; label: 'Fleet'; rows: Array<FleetRow | ScheduleIntegrityRow | UnavailableRow<'fleet'>> },
   { id: 'stop'; label: 'STOP'; rows: Array<StopRow | UnavailableRow<'stop'>> },
   { id: 'daemon-machine'; label: 'Daemon and machine'; rows: Array<MachineRow | ReleaseRow | UnavailableRow<'daemon-machine'>> },
   { id: 'mcp'; label: 'MCP'; rows: Array<McpRow | McpAvailabilityRow | UnavailableRow<'mcp'>> },
@@ -36,6 +41,7 @@ export interface HealthReaders {
   platform: () => NodeJS.Platform;
   connections: ConnectionsReader;
   usage: UsageReader;
+  owners: (repoRoot: string) => RunnableRef[];
   now: () => string;
 }
 
@@ -47,6 +53,7 @@ export const defaultHealthReaders: HealthReaders = {
   platform: () => runtimeCapabilities().platform,
   connections: indexConnections,
   usage: buildUsagePanel,
+  owners: declaredScheduleOwners,
   now: () => new Date().toISOString(),
 };
 
@@ -61,13 +68,22 @@ function isMachinePlatform(platform: NodeJS.Platform): platform is MachineRow['v
   return platform === 'win32' || platform === 'linux';
 }
 
-function fleetRows(repoRoot: string, observedAt: string, reader: FleetReader): Array<FleetRow | UnavailableRow<'fleet'>> {
+function fleetRows(
+  repoRoot: string,
+  observedAt: string,
+  reader: FleetReader,
+  ownerReader: HealthReaders['owners'],
+  schedules: readonly Schedule[],
+): Array<FleetRow | ScheduleIntegrityRow | UnavailableRow<'fleet'>> {
   try {
-    return reader(repoRoot).agents.map((agent) => ({
+    const fleet: FleetRow[] = reader(repoRoot).agents.map((agent) => ({
       kind: 'fleet', key: `agent:${agent.id}`, label: humanizeEntityId(agent.id),
       value: { status: agent.status, role: agent.role, working: agent.working, lastActive: agent.lastActive },
       observedAt, source: 'fleet',
     }));
+    const integrity = projectScheduleOwnerIntegrity(schedules, ownerReader(repoRoot), () => observedAt)
+      .map((row) => ({ ...row, label: 'Schedule owner' as const }));
+    return [...fleet, ...integrity];
   } catch {
     return [unavailable('fleet', observedAt)];
   }
@@ -131,11 +147,15 @@ function usageRows(repoRoot: string, observedAt: string, reader: UsageReader): A
 }
 
 /** Compose the closed Health response directly from its server readers. */
-export function composeHealth(repoRoot: string, readers: HealthReaders = defaultHealthReaders): HealthResponse {
+export function composeHealth(
+  repoRoot: string,
+  readers: HealthReaders = defaultHealthReaders,
+  schedules: readonly Schedule[] = [],
+): HealthResponse {
   const observedAt = readers.now();
   return {
     sections: [
-      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet) },
+      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet, readers.owners, schedules) },
       { id: 'stop', label: 'STOP', rows: stopRows(repoRoot, observedAt, readers.stop) },
       { id: 'daemon-machine', label: 'Daemon and machine', rows: machineRows(observedAt, readers.platform) },
       { id: 'mcp', label: 'MCP', rows: mcpRows(repoRoot, observedAt, readers.connections) },

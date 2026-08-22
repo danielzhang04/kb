@@ -27,6 +27,28 @@ import { CONTROL_PLANE_SCHEMA_VERSION, type ControlPlaneCollection } from './gen
 import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
 import type { HostKind, RunnableRef, Schedule } from './p2Contracts.ts';
 import type {
+  CompleteScheduleOccurrenceInput,
+  DeleteScheduleInput,
+  DeleteScheduleReceipt,
+  ResolvedCreateScheduleInput,
+  ScheduleMutationReceipt,
+  ScheduleMutationEvent,
+  ScheduleOccurrenceClaim,
+  ScheduleSnapshot,
+  SetScheduleArmedInput,
+} from '../schedules/contracts.ts';
+import type {
+  AtomicScheduleStorePort,
+  ScheduleMutationTransaction,
+  StoredScheduleMutationReceipt,
+} from '../schedules/service.ts';
+import type { AdvanceScheduleOccurrenceInput, ScheduleSocketStorePort } from '../schedules/socketRoutes.ts';
+import type {
+  PauseMarkerMigrationReceipt,
+  ScheduleSeedImportMarker,
+  ScheduleSeedImportPlan,
+} from '../schedules/seedImport.ts';
+import type {
   ProposalCompletionGate,
   ProposalIterationGroup,
   ProposalReview,
@@ -411,12 +433,22 @@ export interface StoredScheduleTombstone extends JsonObject {
   id: string;
   deletedAt: string;
   version: number;
+  operationReceipts: JsonObject[];
 }
 
 export interface StoredScheduleOccurrenceClaim extends JsonObject {
   scheduleId: string;
   scheduledFor: string;
-  phase: string;
+  nextAt: string;
+  owner: JsonObject;
+  phase: ScheduleOccurrenceClaim['phase'];
+  idempotencyKey: string;
+  fingerprint: string;
+  card: JsonObject;
+  cardBytesSha256: string;
+  runRef: string | null;
+  phaseReceipts: JsonObject[];
+  completionReceipt: JsonObject | null;
 }
 
 export interface StoredScheduleSeedImport extends JsonObject {
@@ -510,11 +542,57 @@ export interface ControlStoreOptions {
   p2MigrationContext?: Omit<MigrationContext, 'stamp'>;
   /** @internal Integration seam; production always executes the generated Python validator. */
   generatedPythonRoundTripForTest?: (document: StoreDocument) => void;
+  /** Server-owned card renderer. The persisted result is returned verbatim on occurrence replay. */
+  renderScheduleClaim?: (input: {
+    scheduleId: string;
+    scheduledFor: string;
+    nextAt: string;
+    owner: RunnableRef;
+    mirrorPath: Schedule['mirrorPath'];
+  }) => Promise<{ card: Record<string, unknown>; cardBytesSha256: string }>;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
   beforeIterationBoundaryValidationForTest?: (
     boundary: 'quarantine' | 'restore',
     target: StoreDocument | QuarantinedRunBundle,
   ) => void;
+}
+
+/** Invoke the canonical Python card renderer without a shell or caller-provided path. */
+export function createPythonScheduleClaimRenderer(
+  repoRoot: string,
+  now: () => Date = () => new Date(),
+): NonNullable<ControlStoreOptions['renderScheduleClaim']> {
+  const script = join(repoRoot, 'scripts', 'cards.py');
+  return async (input) => {
+    const command = process.platform === 'win32' ? 'py' : 'python3';
+    const args = process.platform === 'win32'
+      ? ['-3', script, '--schedule-occurrence-claim']
+      : [script, '--schedule-occurrence-claim'];
+    const result = spawnSync(command, args, {
+      cwd: repoRoot,
+      input: JSON.stringify({
+        scheduleId: input.scheduleId,
+        scheduledFor: input.scheduledFor,
+        owner: input.owner,
+        mirrorPath: input.mirrorPath,
+        dispatchedAt: now().toISOString(),
+      }),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+    if (result.error || result.status !== 0 || !result.stdout) {
+      throw Object.assign(new Error('schedule-card-renderer-failed'), { status: 503, code: 'schedule-card-renderer-failed' });
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(result.stdout); } catch {
+      throw Object.assign(new Error('schedule-card-renderer-invalid'), { status: 503, code: 'schedule-card-renderer-invalid' });
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw Object.assign(new Error('schedule-card-renderer-invalid'), { status: 503, code: 'schedule-card-renderer-invalid' });
+    }
+    return parsed as { card: Record<string, unknown>; cardBytesSha256: string };
+  };
 }
 
 export interface CreateProposalRevisionInput {
@@ -793,10 +871,18 @@ export interface BrokerStoreBackend {
   }): BrokerMutation;
 }
 
-export interface ControlPlaneStore extends BrokerStoreBackend {
+export interface ControlPlaneStore extends BrokerStoreBackend, AtomicScheduleStorePort, ScheduleSocketStorePort {
   getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision' | 'scheduleCollectionRevision'>;
   /** W6 schedule read side; private durability fields never cross this boundary. */
   getScheduleSnapshot(): { collectionRevision: number; schedules: Schedule[] };
+  resolveScheduleReceiptOwner(cardId: string): RunnableRef | null;
+  bindScheduleOccurrenceRun(cardId: string, runRef: string): Promise<void>;
+  isScheduleSeedAuthorized(scheduleId: string): boolean;
+  getScheduleSeedImportMarker(): ScheduleSeedImportMarker | null;
+  commitScheduleSeedImport(plan: ScheduleSeedImportPlan): Promise<void>;
+  readSchedulePauseMarkerReceipt(marker: string): Promise<PauseMarkerMigrationReceipt | null>;
+  listIncompleteSchedulePauseMarkerReceipts?(): Promise<PauseMarkerMigrationReceipt[]>;
+  writeSchedulePauseMarkerReceipt(receipt: PauseMarkerMigrationReceipt): Promise<void>;
   getDeployment(deploymentRef: string): ControlResult<Deployment>;
   listDeployments(): Deployment[];
   createDeployment(subject: string, input: CreateDeploymentInput): ControlResult<Deployment>;
@@ -3115,6 +3201,257 @@ function makeStore(
     });
   };
 
+  const publicSchedule = (schedule: StoredSchedule): Schedule => ({
+    id: schedule.id,
+    owner: clone(schedule.owner),
+    cadence: { ...schedule.cadence },
+    nextAt: schedule.nextAt,
+    lastOutcome: schedule.lastOutcome,
+    armed: schedule.armed,
+    origin: schedule.origin,
+    mirroredAt: schedule.mirroredAt,
+    mirrorPath: schedule.mirrorPath,
+    version: schedule.version,
+  });
+
+  const scheduleSnapshot = (document: StoreDocument): ScheduleSnapshot => ({
+    collectionRevision: document.scheduleCollectionRevision,
+    schedules: document.schedules.map(publicSchedule),
+  });
+
+  const scheduleFailure = (status: number, code: string): Error & { status: number; code: string } =>
+    Object.assign(new Error(code), { status, code });
+
+  const scheduleReceiptRows = (document: StoreDocument): JsonObject[][] => [
+    ...document.schedules.map((schedule) => schedule.operationReceipts),
+    ...document.scheduleTombstones.map((tombstone) => tombstone.operationReceipts),
+  ];
+
+  const appendScheduleMutationEvent = (
+    document: StoreDocument,
+    target: JsonObject[],
+    input: Omit<ScheduleMutationEvent, 'kind' | 'cursor' | 'createdAt'>,
+  ): void => {
+    const event: ScheduleMutationEvent = {
+      kind: 'schedule-mutation-event',
+      cursor: document.nextEventCursor,
+      createdAt: stamp(),
+      ...input,
+    };
+    document.nextEventCursor += 1;
+    target.push(clone(event as unknown as JsonObject));
+  };
+
+  let scheduleTransactionTail: Promise<void> = Promise.resolve();
+  const scheduleTransaction = <T>(operation: (transaction: ScheduleMutationTransaction) => Promise<T>): Promise<T> => {
+    const run = scheduleTransactionTail.then(async () => {
+      const document = load();
+      let dirty = false;
+      const transaction: ScheduleMutationTransaction = {
+        readScheduleSnapshot: async () => clone(scheduleSnapshot(document)),
+        readMutationReceipt: async (key) => {
+          const row = scheduleReceiptRows(document).flat().find((candidate) =>
+            candidate.operation === key.operation && candidate.target === key.target
+            && candidate.idempotencyKey === key.idempotencyKey);
+          if (!row || typeof row.fingerprint !== 'string' || typeof row.receipt !== 'object' || row.receipt === null) return null;
+          return clone({ fingerprint: row.fingerprint, receipt: row.receipt } as unknown as StoredScheduleMutationReceipt);
+        },
+        writeMutationReceipt: async (key, fingerprint, receipt) => {
+          const target = 'schedule' in receipt
+            ? document.schedules.find((schedule) => schedule.id === receipt.schedule.id)?.operationReceipts
+            : document.scheduleTombstones.find((tombstone) => tombstone.id === receipt.tombstone.id)?.operationReceipts;
+          if (!target) throw scheduleFailure(500, 'schedule-mutation-receipt-target-missing');
+          target.push(clone({ ...key, fingerprint, receipt } as unknown as JsonObject));
+          dirty = true;
+        },
+        createSchedule: async (input: ResolvedCreateScheduleInput) => {
+          if (input.expectedCollectionRevision !== document.scheduleCollectionRevision) {
+            throw scheduleFailure(409, 'stale-schedule-collection');
+          }
+          const id = sha256(`schedule\0operator\0${input.owner.type}\0${input.owner.id}\0${input.idempotencyKey}`);
+          if (document.schedules.some((schedule) => schedule.id === id)
+            || document.scheduleTombstones.some((tombstone) => tombstone.id === id)) {
+            throw scheduleFailure(409, 'schedule-id-conflict');
+          }
+          const schedule: StoredSchedule = {
+            id,
+            owner: clone(input.owner),
+            cadence: { ...input.cadence },
+            cadenceCanonical: input.cadence.source,
+            nextAt: null,
+            lastOutcome: null,
+            armed: false,
+            origin: 'operator',
+            mirroredAt: null,
+            mirrorPath: input.mirrorPath,
+            version: 1,
+            seedBytes: null,
+            seedDigest: null,
+            seedAuthorized: false,
+            launchPayload: null,
+            operationReceipts: [],
+            emissionReceipts: [],
+            mirrorMetadataRevision: 0,
+            tombstone: null,
+          };
+          document.schedules.push(schedule);
+          document.scheduleCollectionRevision += 1;
+          dirty = true;
+          return { schedule: publicSchedule(schedule), collectionRevision: document.scheduleCollectionRevision, replayed: false };
+        },
+        setScheduleArmed: async (id: string, input: SetScheduleArmedInput) => {
+          const schedule = document.schedules.find((candidate) => candidate.id === id);
+          if (!schedule) throw scheduleFailure(404, 'schedule-not-found');
+          if (schedule.version !== input.expectedVersion) throw scheduleFailure(409, 'stale-schedule-version');
+          schedule.armed = input.armed;
+          schedule.version += 1;
+          document.scheduleCollectionRevision += 1;
+          appendScheduleMutationEvent(document, schedule.operationReceipts, {
+            operation: input.armed ? 'armed' : 'disarmed',
+            scheduleId: id,
+            scheduleVersion: schedule.version,
+            collectionRevision: document.scheduleCollectionRevision,
+            idempotencyKey: input.idempotencyKey,
+          });
+          dirty = true;
+          return { schedule: publicSchedule(schedule), collectionRevision: document.scheduleCollectionRevision, replayed: false };
+        },
+        deleteSchedule: async (id: string, input: DeleteScheduleInput): Promise<DeleteScheduleReceipt> => {
+          const index = document.schedules.findIndex((candidate) => candidate.id === id);
+          if (index === -1) throw scheduleFailure(404, 'schedule-not-found');
+          const schedule = document.schedules[index];
+          if (schedule.version !== input.expectedVersion) throw scheduleFailure(409, 'stale-schedule-version');
+          document.scheduleCollectionRevision += 1;
+          appendScheduleMutationEvent(document, schedule.operationReceipts, {
+            operation: 'deleted',
+            scheduleId: id,
+            scheduleVersion: schedule.version + 1,
+            collectionRevision: document.scheduleCollectionRevision,
+            idempotencyKey: input.idempotencyKey,
+          });
+          const tombstone: StoredScheduleTombstone = {
+            id,
+            deletedAt: stamp(),
+            version: schedule.version + 1,
+            operationReceipts: schedule.operationReceipts,
+          };
+          document.schedules.splice(index, 1);
+          document.scheduleTombstones.push(tombstone);
+          dirty = true;
+          return {
+            tombstone: { id, deletedAt: tombstone.deletedAt, version: tombstone.version },
+            collectionRevision: document.scheduleCollectionRevision,
+            replayed: false,
+          };
+        },
+        claimScheduleOccurrence: async (input) => {
+          const schedule = document.schedules.find((candidate) => candidate.id === input.occurrence.scheduleId);
+          if (!schedule) throw scheduleFailure(404, 'schedule-not-found');
+          if (schedule.version !== input.expectedVersion) throw scheduleFailure(409, 'stale-schedule-version');
+          if (!schedule.armed) throw scheduleFailure(409, 'schedule-not-armed');
+          const fingerprint = sha256(canonicalJson(input as unknown as JsonValue));
+          const prior = document.scheduleOccurrenceClaims.find((candidate) =>
+            candidate.scheduleId === input.occurrence.scheduleId && candidate.scheduledFor === input.occurrence.scheduledFor);
+          if (prior) {
+            if (prior.idempotencyKey !== input.idempotencyKey || prior.fingerprint !== fingerprint) {
+              throw scheduleFailure(409, 'schedule-occurrence-conflict');
+            }
+            return clone({
+              scheduleId: prior.scheduleId,
+              scheduledFor: prior.scheduledFor,
+              owner: prior.owner as unknown as RunnableRef,
+              phase: prior.phase,
+              card: prior.card,
+              cardBytesSha256: prior.cardBytesSha256,
+            });
+          }
+          if (!options.renderScheduleClaim) throw scheduleFailure(503, 'schedule-card-renderer-unavailable');
+          const rendered = await options.renderScheduleClaim({
+            scheduleId: schedule.id,
+            scheduledFor: input.occurrence.scheduledFor,
+            nextAt: input.occurrence.nextAt,
+            owner: clone(schedule.owner),
+            mirrorPath: schedule.mirrorPath,
+          });
+          const card = clone(rendered.card) as JsonObject;
+          const meta = card.meta;
+          if (!/^[0-9a-f]{64}$/.test(rendered.cardBytesSha256)
+            || typeof meta !== 'object' || meta === null || Array.isArray(meta)
+            || meta['execution-controller'] !== 'dashboard'
+            || meta.scheduled_for !== input.occurrence.scheduledFor
+            || typeof meta.id !== 'string') throw scheduleFailure(500, 'schedule-card-render-invalid');
+          const claim: StoredScheduleOccurrenceClaim = {
+            scheduleId: schedule.id,
+            scheduledFor: input.occurrence.scheduledFor,
+            nextAt: input.occurrence.nextAt,
+            owner: clone(schedule.owner) as unknown as JsonObject,
+            phase: 'claimed',
+            idempotencyKey: input.idempotencyKey,
+            fingerprint,
+            card,
+            cardBytesSha256: rendered.cardBytesSha256,
+            runRef: null,
+            phaseReceipts: [],
+            completionReceipt: null,
+          };
+          document.scheduleOccurrenceClaims.push(claim);
+          dirty = true;
+          return clone({
+            scheduleId: claim.scheduleId,
+            scheduledFor: claim.scheduledFor,
+            owner: schedule.owner,
+            phase: claim.phase,
+            card: claim.card,
+            cardBytesSha256: claim.cardBytesSha256,
+          });
+        },
+      };
+      const result = await operation(transaction);
+      if (dirty) commit(document);
+      return result;
+    });
+    scheduleTransactionTail = run.then(() => undefined, () => undefined);
+    return run;
+  };
+
+  const claimReceipt = (claim: StoredScheduleOccurrenceClaim): ScheduleOccurrenceClaim => ({
+    scheduleId: claim.scheduleId,
+    scheduledFor: claim.scheduledFor,
+    owner: clone(claim.owner) as unknown as RunnableRef,
+    phase: claim.phase,
+    card: clone(claim.card),
+    cardBytesSha256: claim.cardBytesSha256,
+  });
+
+  const completeStoredScheduleOccurrence = (
+    document: StoreDocument,
+    input: CompleteScheduleOccurrenceInput,
+  ): ScheduleMutationReceipt => {
+    const claim = document.scheduleOccurrenceClaims.find((candidate) =>
+      candidate.scheduleId === input.scheduleId && candidate.scheduledFor === input.scheduledFor);
+    const schedule = document.schedules.find((candidate) => candidate.id === input.scheduleId);
+    if (!claim || !schedule || claim.phase !== 'ledger-appended' || claim.runRef !== input.runRef) {
+      throw scheduleFailure(409, 'schedule-occurrence-conflict');
+    }
+    const fingerprint = sha256(canonicalJson(input as unknown as JsonValue));
+    if (claim.completionReceipt) {
+      if (claim.completionReceipt.idempotencyKey !== input.idempotencyKey
+        || claim.completionReceipt.fingerprint !== fingerprint) throw scheduleFailure(409, 'idempotency-conflict');
+      return clone(claim.completionReceipt.result as unknown as ScheduleMutationReceipt);
+    }
+    schedule.lastOutcome = input.lastOutcome;
+    schedule.nextAt = input.nextAt;
+    schedule.version += 1;
+    document.scheduleCollectionRevision += 1;
+    const result: ScheduleMutationReceipt = {
+      schedule: publicSchedule(schedule),
+      collectionRevision: document.scheduleCollectionRevision,
+      replayed: false,
+    };
+    claim.completionReceipt = clone({ idempotencyKey: input.idempotencyKey, fingerprint, result } as unknown as JsonObject);
+    return result;
+  };
+
   return {
     getControlDocumentMetadata() {
       const { version, documentRevision, scheduleCollectionRevision } = load();
@@ -3122,15 +3459,193 @@ function makeStore(
     },
 
     getScheduleSnapshot() {
-      const document = load();
-      return {
-        collectionRevision: document.scheduleCollectionRevision,
-        schedules: document.schedules.map((schedule) => ({
-          id: schedule.id, owner: structuredClone(schedule.owner), cadence: { ...schedule.cadence },
-          nextAt: schedule.nextAt, lastOutcome: schedule.lastOutcome, armed: schedule.armed,
-          origin: schedule.origin, mirroredAt: schedule.mirroredAt, mirrorPath: schedule.mirrorPath, version: schedule.version,
-        })),
-      };
+      return scheduleSnapshot(load());
+    },
+
+    async readScheduleSnapshot() {
+      return scheduleSnapshot(load());
+    },
+
+    transaction(operation) {
+      return scheduleTransaction(operation);
+    },
+
+    createSchedule(input) {
+      return scheduleTransaction((transaction) => transaction.createSchedule(input));
+    },
+
+    setScheduleArmed(id, input) {
+      return scheduleTransaction((transaction) => transaction.setScheduleArmed(id, input));
+    },
+
+    deleteSchedule(id, input) {
+      return scheduleTransaction((transaction) => transaction.deleteSchedule(id, input));
+    },
+
+    claimScheduleOccurrence(input) {
+      return scheduleTransaction((transaction) => transaction.claimScheduleOccurrence(input));
+    },
+
+    advanceScheduleOccurrence(input: AdvanceScheduleOccurrenceInput) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const claim = document.scheduleOccurrenceClaims.find((candidate) =>
+          candidate.scheduleId === input.scheduleId && candidate.scheduledFor === input.scheduledFor);
+        if (!claim || claim.nextAt !== input.nextAt) throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        const fingerprint = sha256(canonicalJson(input as unknown as JsonValue));
+        const prior = claim.phaseReceipts.find((receipt) => receipt.idempotencyKey === input.idempotencyKey);
+        if (prior) {
+          if (prior.fingerprint !== fingerprint) throw scheduleFailure(409, 'idempotency-conflict');
+          return claimReceipt(claim);
+        }
+        const phases = ['claimed', 'card-saved', 'ledger-appended'] as const;
+        const current = phases.indexOf(claim.phase);
+        const next = phases.indexOf(input.phase);
+        if (next !== current + 1) throw scheduleFailure(409, 'schedule-phase-conflict');
+        claim.phase = input.phase;
+        claim.phaseReceipts.push({ idempotencyKey: input.idempotencyKey, fingerprint });
+        commit(document);
+        return claimReceipt(claim);
+      });
+    },
+
+    completeScheduleOccurrence(input: CompleteScheduleOccurrenceInput) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const result = completeStoredScheduleOccurrence(document, input);
+        commit(document);
+        return result;
+      });
+    },
+
+    bindScheduleOccurrenceRun(cardId, runRef) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const claims = document.scheduleOccurrenceClaims.filter((candidate) => {
+          const meta = candidate.card.meta;
+          return typeof meta === 'object' && meta !== null && !Array.isArray(meta) && meta.id === cardId;
+        });
+        if (claims.length !== 1 || claims[0].phase !== 'ledger-appended') {
+          throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        }
+        const claim = claims[0];
+        if (claim.runRef !== null && claim.runRef !== runRef) throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        if (claim.runRef === runRef) return;
+        claim.runRef = runRef;
+        commit(document);
+      });
+    },
+
+    resolveScheduleReceiptOwner(cardId) {
+      const claim = load().scheduleOccurrenceClaims.find((candidate) => {
+        const meta = candidate.card.meta;
+        return typeof meta === 'object' && meta !== null && !Array.isArray(meta) && meta.id === cardId;
+      });
+      return claim ? clone(claim.owner) as unknown as RunnableRef : null;
+    },
+
+    isScheduleSeedAuthorized(scheduleId) {
+      return load().schedules.find((schedule) => schedule.id === scheduleId)?.seedAuthorized === true;
+    },
+
+    getScheduleSeedImportMarker() {
+      const marker = load().scheduleSeedImports.at(-1);
+      return marker ? clone({
+        version: 1 as const,
+        releaseSha: marker.releaseSha === '' ? null : marker.releaseSha,
+        seedDigest: marker.seedDigest,
+        importedAt: marker.importedAt,
+      }) : null;
+    },
+
+    commitScheduleSeedImport(plan) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const existing = document.scheduleSeedImports.at(-1);
+        if (existing) {
+          if (existing.seedDigest !== plan.marker.seedDigest
+            || (existing.releaseSha === '' ? null : existing.releaseSha) !== plan.marker.releaseSha) {
+            throw scheduleFailure(409, 'schedule-seed-import-conflict');
+          }
+          return;
+        }
+        if (plan.seeds.some((seed) => document.schedules.some((schedule) => schedule.id === seed.id)
+          || document.scheduleTombstones.some((tombstone) => tombstone.id === seed.id))) {
+          throw scheduleFailure(409, 'schedule-seed-id-conflict');
+        }
+        for (const seed of plan.seeds) {
+          document.schedules.push({
+            id: seed.id,
+            owner: clone(seed.owner),
+            cadence: { ...seed.cadence },
+            cadenceCanonical: seed.cadence.source,
+            nextAt: null,
+            lastOutcome: null,
+            armed: seed.armed,
+            origin: 'seed',
+            mirroredAt: null,
+            mirrorPath: seed.path,
+            version: 1,
+            seedBytes: seed.sourceBytes,
+            seedDigest: seed.sourceDigest,
+            seedAuthorized: plan.marker.releaseSha !== null,
+            launchPayload: { cadenceName: seed.name, disarmedReason: seed.disarmedReason },
+            operationReceipts: [],
+            emissionReceipts: [],
+            mirrorMetadataRevision: 0,
+            tombstone: null,
+          });
+        }
+        document.scheduleSeedImports.push({
+          version: 1,
+          releaseSha: plan.marker.releaseSha ?? '',
+          seedDigest: plan.marker.seedDigest,
+          importedAt: plan.marker.importedAt,
+        });
+        document.scheduleCollectionRevision += 1;
+        commit(document);
+      });
+    },
+
+    async readSchedulePauseMarkerReceipt(marker) {
+      for (const schedule of load().schedules) {
+        const receipt = schedule.emissionReceipts.find((candidate) =>
+          candidate.kind === 'legacy-pause-migration' && candidate.marker === marker);
+        if (receipt) return clone({
+          marker: String(receipt.marker),
+          scheduleId: String(receipt.scheduleId),
+          digest: String(receipt.digest),
+          storePhase: receipt.storePhase === true,
+          publisherPhase: receipt.publisherPhase === true,
+        });
+      }
+      return null;
+    },
+
+    async listIncompleteSchedulePauseMarkerReceipts() {
+      return load().schedules.flatMap((schedule) => schedule.emissionReceipts
+        .filter((candidate) => candidate.kind === 'legacy-pause-migration' && candidate.publisherPhase !== true)
+        .map((receipt) => clone({
+          marker: String(receipt.marker),
+          scheduleId: String(receipt.scheduleId),
+          digest: String(receipt.digest),
+          storePhase: receipt.storePhase === true,
+          publisherPhase: false,
+        })));
+    },
+
+    writeSchedulePauseMarkerReceipt(receipt) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const schedule = document.schedules.find((candidate) => candidate.id === receipt.scheduleId);
+        if (!schedule) throw scheduleFailure(409, 'pause-marker-schedule-missing');
+        const index = schedule.emissionReceipts.findIndex((candidate) =>
+          candidate.kind === 'legacy-pause-migration' && candidate.marker === receipt.marker);
+        const stored = clone({ kind: 'legacy-pause-migration', ...receipt } as unknown as JsonObject);
+        if (index === -1) schedule.emissionReceipts.push(stored);
+        else schedule.emissionReceipts[index] = stored;
+        commit(document);
+      });
     },
 
     getDeployment(deploymentRef) {
@@ -3826,6 +4341,21 @@ function makeStore(
           `Automatically closed — the run reached its terminal state ('${state}') without this being answered.`,
           maxEvents,
         );
+      }
+      if (state === 'succeeded' || state === 'failed' || state === 'stopped') {
+        const claims = document.scheduleOccurrenceClaims.filter((candidate) => candidate.runRef === runRef);
+        if (claims.length > 1) throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        const claim = claims[0];
+        if (claim && claim.completionReceipt === null) {
+          completeStoredScheduleOccurrence(document, {
+            scheduleId: claim.scheduleId,
+            scheduledFor: claim.scheduledFor,
+            runRef,
+            lastOutcome: state === 'succeeded' ? 'ok' : state,
+            nextAt: claim.nextAt,
+            idempotencyKey: `terminal-run:${runRef}`,
+          });
+        }
       }
       commit(document);
       return ok(internalRun(run));
@@ -6183,7 +6713,10 @@ export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {
 }
 
 const READ_ONLY_CONTROL_STORE_METHODS = new Set<keyof ControlPlaneStore>([
-  'getControlDocumentMetadata', 'getScheduleSnapshot', 'getDeployment', 'listDeployments',
+  'getControlDocumentMetadata', 'getScheduleSnapshot', 'readScheduleSnapshot', 'resolveScheduleReceiptOwner',
+  'isScheduleSeedAuthorized',
+  'getScheduleSeedImportMarker', 'readSchedulePauseMarkerReceipt', 'listIncompleteSchedulePauseMarkerReceipts',
+  'getDeployment', 'listDeployments',
   'listProposalRevisions', 'listProposalRevisionsForComposer', 'getProposalRevision',
   'listRuns', 'getRun', 'findActiveRunForRevision', 'getRunActivationReceipt', 'hasActiveRunActivation',
   'getHumanRequest', 'preflightAuthorized20260731ExecutionLock',

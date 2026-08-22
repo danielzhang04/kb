@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { describeSchedule, localTimestampLabel, nextScheduleWindow, presetSchedule, relativeScheduleWindow } from './scheduleWords';
+import { describeSchedule, localTimestampLabel, nextScheduleWindow, presetSchedule, relativeScheduleWindow, validateScheduleCadence } from './scheduleWords';
 
 interface ClockVector {
   id: string;
@@ -15,6 +15,13 @@ interface ClockVector {
 const vectors = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../tests/fixtures/schedule-clock-vectors.json'), 'utf8')) as ClockVector[];
 
 describe('scheduleWords', () => {
+  it('shares the closed words, time, and cron validation vectors with the client', () => {
+    expect(validateScheduleCadence({ kind: 'words', words: 'weekly:sun', time: '09:15' })).toBeNull();
+    expect(validateScheduleCadence({ kind: 'words', words: 'sometimes', time: '09:15' })).toMatchObject({ field: 'words' });
+    expect(validateScheduleCadence({ kind: 'words', words: 'daily', time: '24:00' })).toMatchObject({ field: 'time' });
+    expect(validateScheduleCadence({ kind: 'cron', minute: '*/15', hour: '*', dayOfMonth: '*', month: '*', dayOfWeek: 'mon-fri' })).toBeNull();
+    expect(validateScheduleCadence({ kind: 'cron', minute: '60', hour: '9', dayOfMonth: '*', month: '*', dayOfWeek: '*' })).toMatchObject({ field: 'cron' });
+  });
   it.each([
     ['daily', 'Daily', 'daily'],
     ['weekly:sat', 'Weekly on Sat', 'weekly'],

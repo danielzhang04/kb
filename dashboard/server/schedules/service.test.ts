@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 import type { RunnableRef, Schedule } from '../control/p2Contracts.ts';
 import type {
@@ -7,6 +8,7 @@ import type {
   CreateScheduleInput,
   DeleteScheduleInput,
   DeleteScheduleReceipt,
+  ResolvedCreateScheduleInput,
   ScheduleMutationReceipt,
   ScheduleOccurrenceClaim,
   ScheduleSnapshot,
@@ -17,6 +19,7 @@ import {
   ScheduleServiceError,
   normalizeCadenceInput,
   operatorScheduleId,
+  registerScheduleRoutes,
   selectScheduleRecoverySnapshot,
   type AtomicScheduleStorePort,
   type ScheduleMutationReceiptKey,
@@ -55,13 +58,13 @@ class MemoryScheduleStore implements AtomicScheduleStorePort {
     this.order.push('snapshot');
     return structuredClone(this.snapshot);
   }
-  async createSchedule(input: CreateScheduleInput): Promise<ScheduleMutationReceipt> {
+  async createSchedule(input: ResolvedCreateScheduleInput): Promise<ScheduleMutationReceipt> {
     this.order.push('create');
     if (input.expectedCollectionRevision !== this.snapshot.collectionRevision) throw new ScheduleServiceError(409, 'stale-schedule-collection');
-    const id = operatorScheduleId(OWNER, input.idempotencyKey);
+    const id = operatorScheduleId(input.owner, input.idempotencyKey);
     const schedule: Schedule = {
-      id, owner: OWNER, cadence: normalizeCadenceInput(input.cadence), nextAt: null, lastOutcome: null,
-      armed: false, origin: 'operator', mirroredAt: null, mirrorPath: 'HEARTBEAT.md', version: 1,
+      id, owner: input.owner, cadence: input.cadence, nextAt: null, lastOutcome: null,
+      armed: false, origin: 'operator', mirroredAt: null, mirrorPath: input.mirrorPath, version: 1,
     };
     this.snapshot = { collectionRevision: this.snapshot.collectionRevision + 1, schedules: [...this.snapshot.schedules, schedule] };
     return { schedule, collectionRevision: this.snapshot.collectionRevision, replayed: false };
@@ -103,6 +106,8 @@ class MemoryScheduleStore implements AtomicScheduleStorePort {
       scheduledFor: input.occurrence.scheduledFor,
       owner: schedule.owner,
       phase: 'claimed',
+      card: {},
+      cardBytesSha256: 'a'.repeat(64),
     };
   }
   async completeScheduleOccurrence(_input: CompleteScheduleOccurrenceInput): Promise<ScheduleMutationReceipt> { throw new Error('unused'); }
@@ -126,6 +131,46 @@ const CREATE: CreateScheduleInput = {
 };
 
 describe('ScheduleService', () => {
+  it('registers the closed immediate REST surface and rejects extra owner provenance', async () => {
+    const app = Fastify();
+    registerScheduleRoutes(app, service(), async () => undefined);
+
+    const listed = await app.inject({ method: 'GET', url: '/api/schedules' });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual({ scheduleCollectionRevision: 0, rows: [] });
+    expect(listed.headers.etag).toBe('"schedules:0"');
+    expect((await app.inject({
+      method: 'GET', url: '/api/schedules', headers: { 'if-none-match': String(listed.headers.etag) },
+    })).statusCode).toBe(304);
+
+    const refused = await app.inject({
+      method: 'POST', url: '/api/schedules',
+      payload: { ...CREATE, sourcePath: '../agents/hygiene.md' },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json()).toEqual({ error: 'invalid-schedule-create-body' });
+
+    const created = await app.inject({ method: 'POST', url: '/api/schedules', payload: CREATE });
+    expect(created.statusCode).toBe(201);
+    const row = created.json().schedule as Schedule;
+    expect(row.owner).toEqual(OWNER);
+
+    const stale = await app.inject({
+      method: 'POST', url: `/api/schedules/${row.id}/arm`,
+      payload: { expectedVersion: 9, idempotencyKey: 'arm-stale', armed: true },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toEqual({ error: 'stale-schedule-version' });
+
+    const armed = await app.inject({
+      method: 'POST', url: `/api/schedules/${row.id}/arm`,
+      payload: { expectedVersion: 1, idempotencyKey: 'arm-current', armed: true },
+    });
+    expect(armed.statusCode).toBe(200);
+    expect(armed.json()).toMatchObject({ schedule: { armed: true, version: 2 }, collectionRevision: 2 });
+    await app.close();
+  });
+
   it('normalizes valid cadence input and refuses invalid preview before mutation', async () => {
     expect(normalizeCadenceInput({ kind: 'words', words: 'daily', time: '09:15' })).toEqual({
       source: '15 9 * * *', words: 'Daily \u00b7 9:15 AM',
@@ -240,6 +285,25 @@ describe('ScheduleService', () => {
       .resolves.toMatchObject({ scheduleId: schedule.id, phase: 'claimed' });
     expect(store.order).toEqual(['transaction', 'snapshot', 'claim']);
     expect(store.claimEmissions).toBe(1);
+  });
+
+  it('refuses GET rows and occurrence claims when the persisted owner is no longer resolvable', async () => {
+    const store = new MemoryScheduleStore();
+    const schedule: Schedule = {
+      id: 'c'.repeat(64), owner: OWNER, cadence: { source: '*/15 * * * *', words: 'Every 15 minutes' },
+      nextAt: '2026-08-21T12:30:00-04:00', lastOutcome: null, armed: true, origin: 'operator',
+      mirroredAt: null, mirrorPath: 'HEARTBEAT.md', version: 3,
+    };
+    store.snapshot = { collectionRevision: 7, schedules: [schedule] };
+    const api = service(store, true, async () => null);
+
+    await expect(api.list()).rejects.toMatchObject({ status: 409, code: 'schedule-owner-unresolvable' });
+    await expect(api.claimScheduleOccurrence({
+      occurrence: { scheduleId: schedule.id, scheduledFor: '2026-08-21T12:15:00-04:00', nextAt: schedule.nextAt! },
+      expectedVersion: schedule.version,
+      idempotencyKey: 'deleted-owner-claim',
+    })).rejects.toMatchObject({ status: 409, code: 'schedule-owner-unresolvable' });
+    expect(store.claimEmissions).toBe(0);
   });
 
   it('recovers the higher watermark, accepts one survivor, and ignores mirror outage when live exists', () => {
