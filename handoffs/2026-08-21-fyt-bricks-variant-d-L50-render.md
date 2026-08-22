@@ -1,6 +1,6 @@
 # Bricks Variant D — L01–L50 generated, efficacy-audited, rendered over the VO — handoff 2026-08-21
 
-**Topic:** Boss session took the Variant-D fragment from L01–L25 (25 verified) to **L01–L50: 49 verified / 1 parked (L10)** — wave 3D re-rolled L10/L38/L39 with prompts unchanged (4 calls): L38 + L39 passed, after a fresh-eyes script-fidelity audit repaired 13 L01–L45 shots and L46–L50 were authored (A2 opening, Wiles arrival), and rendered the slice over the real narration for Daniel's eye-gate. Consumes and replaces `2026-08-21-fyt-bricks-variant-d-L25.md` (deleted in this push). Resume = Daniel watches the preview + board and rules; nothing in flight.
+**Topic:** Boss session took the Variant-D fragment from L01–L25 (25 verified) to **L01–L50: 49 verified / 1 parked (L10)** — wave 3D re-rolled L10/L38/L39 with prompts unchanged (4 calls): L38 + L39 passed, after a fresh-eyes script-fidelity audit repaired 13 L01–L45 shots and L46–L50 were authored (A2 opening, Wiles arrival), and rendered the slice over the real narration for Daniel's eye-gate. Consumes and replaces `2026-08-21-fyt-bricks-variant-d-L25.md` (deleted in this push). Resume = Daniel rules on the card-wave/forge-hash fixes and L10; nothing in flight.
 
 All work in the STANDALONE CLONE `C:/Users/danie/kb-clones/bricks-arc`, branch **`claude/bricks-variant-vd`** (pushed). Main kb checkout untouched (another terminal holds it on `claude/dashboard-v3`).
 
@@ -47,7 +47,11 @@ All work in the STANDALONE CLONE `C:/Users/danie/kb-clones/bricks-arc`, branch *
 (`V` = `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh`.)
 
 ### Exact Next Step
-Open `C:/Users/danie/kb-clones/bricks-arc/<V>/assets/preview-L01-L50.mp4` (117.97 s, L01–L50 over the narration; L10 is the only placeholder card) and `<V>/assets/board.html`; rule: keep going under D (author + gen A2 onward, repair L10/L38/L39 with a fresh allowance) / fix the register first (render-register experiment) / revert. Name any frame that still doesn't belong to its line — the efficacy audit + Sonnet dissents (L22, L03, L49) are the open calls.
+Daniel has SEEN the render (`<V>/assets/preview-L01-L50.mp4`, 117.97 s, 49 real frames + 1 placeholder at L10 18.1–20.9 s) and the parked-attempts page (`<V>/assets/_review/parked-attempts.html`). His standing question was "why weren't images generated" — answered: 6 of the 7 un-called shots were starved by the per-wave FIGURE-CARD cap plus forge minting a new card whenever the prose clause changes (`figure_frame_name`, `image-generation/scripts/forge.py:339` hashes the clause); all 7 were generated in wave 3C; L38/L39 passed on a plain re-roll (wave 3D, prompts unchanged); L10's crowd rig failed 5 attempts across 4 mechanisms. Resume by getting Daniel's ruling on, in order:
+1. The two process/engine fixes (proposed, unruled): (a) a W2-style seed-card wave — mint + review every STEP-1 card a window needs as its own board BEFORE scene waves; (b) forge card ids hashed on `(character, pose, expression, canonical digest)` instead of the prose clause so re-authoring never remints a reviewed card. (b) is an engine logic change → needs his explicit yes.
+2. L10: drop the crowd (figure-less launch tableau) or accept the placeholder.
+3. Then the arc gate as before: continue D into A2+ / render-register experiment first / revert; open taste calls L22, L03, L49.
+Clone branch tip `4bc82dc2` (pushed). Cumulative D: 112 calls, $15.008 conservative / $4.368 provider-table (ledger rows `127e87e8`, `e6ef49be`).
 
 ### Load list
 - this file; personal memory `bricks-taste-forensics-arc.md`, `occupancy-middle-ground.md`, `detached-codex-dispatch.md`, `codex-0149-approval-policy.md`
