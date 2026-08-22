@@ -17,7 +17,7 @@
         "vo_text": "We're in the 1980s.",
         "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "A beige CRT computer, corded telephone, and cassette deck form a crisp period desk beneath a wall calendar marked '1980s'; tungsten lamplight crosses walnut while cool night enters the window.",
+        "still_prompt": "A beige CRT computer, corded telephone, cassette deck, and stack of new-wave cassettes form a crisp early-eighties desk; tungsten lamplight crosses walnut while cool night enters through venetian blinds.",
         "notes": "Palette basis: walnut-amber field — tungsten lamplight crosses the walnut desk while cool night enters the window."
       },
       {
@@ -79,7 +79,7 @@
         "changed_elements": [
           "an inventor's drafting board showing the same computer's rough exploded blueprint appears behind it"
         ],
-        "still_prompt": "The established oak counter, '1983' calendar, tall-window daylight, green panels, and cream computer hold; an inventor's drafting board now shows the same computer as a rough exploded blueprint.",
+        "still_prompt": "The established oak counter, cream computer, '1983' calendar, tall-window daylight, green panels, and shelving hold in their places; a narrow upright drafting board appears against the back wall left of the computer, showing its rough exploded blueprint.",
         "notes": "Held camera and subject; one prototype-era context board is the story-needed change."
       },
       {
@@ -95,7 +95,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "A fully stocked computer wall rises beneath a milky skylight; beyond the brass rail, bounded 1980s shoppers pack the rear queue facing beige PCs while the clear terrazzo near lane leads into demand.",
+        "still_prompt": "A fully stocked computer wall frames a distant rear queue beneath a milky skylight; compact 1980s shoppers gather behind the far brass rail, their small round heads above bright knit tops, while a broad terrazzo foreground aisle remains clear.",
         "notes": "Palette basis: skylit-ivory field — milky skylight spreads across plaster, pale terrazzo, brass rails, and cream cartons. Craze is the causal mass; shoppers remain beyond the rail with the near lane clear."
       },
       {
@@ -142,13 +142,10 @@
         "synthetic": false,
         "vo_ref": "It was like when Apple",
         "vo_text": "It was like when Apple released the iPhone.",
-        "shot_class": "crowd-multiplication",
+        "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "figures": {
-          "crowd": true
-        },
-        "still_prompt": "A black-glass smartphone stands on a lit pedestal beside a beige computer carton; beyond a serpentine brass rail, bounded shoppers pack the rear launch queue while the clear oak floor leads to the display under open-door daylight.",
-        "notes": "Palette basis: daylight-oak field — open-door daylight crosses oak shelving, the cream carton, and the black-glass phone. Launch demand is bounded beyond the rail; the near floor stays clear."
+        "still_prompt": "A black-glass smartphone and beige computer carton share a bright launch pedestal; concentric brass barriers and camera flashes recede across a modern glass storefront, making both products read as the same sold-out debut.",
+        "notes": "Palette basis: modern-launch field — storefront light crosses the black-glass phone, cream carton, and brass barriers. The product display alone carries the launch analogy."
       },
       {
         "id": "L11",
@@ -341,7 +338,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "Behind a packing bench, a small rear worker line holds open cartons beneath a brass tally marked '26,000'; the empty near aisle frames sealed boxes under pale skylight across kraft board, clay-red seams, and charcoal racks.",
+        "still_prompt": "Bare floor fills the lower half; behind a packing bench, a small rear worker line holds open cartons beneath a brass tally marked '26,000', with every sealed carton stack massed beyond the bench under pale skylight.",
         "notes": "Palette basis: kraft-warehouse field — pale skylight crosses kraft cartons, charcoal steel racks, and clay-red seams. Workers hold cartons behind the bench beyond the empty near aisle."
       },
       {
@@ -451,10 +448,11 @@
         "cast": [
           {
             "character": "terry-johnson",
+            "pose_ref": "action-armscrossed",
             "expression_ref": "expr-thinking"
           }
         ],
-        "still_prompt": "At the head of a drive-assembly bench, `terry-johnson` `expr-thinking` faces repeating machinery bays; tall-window daylight crosses cream casings, teal floor paint, and steel tools.",
+        "still_prompt": "`terry-johnson`, `action-armscrossed`, `expr-thinking`, stands at the head of a long drive-assembly bench with his face three-quarter toward camera and unobscured. Tall windows cast daylight.",
         "notes": "Palette basis: pale-factory field — tall-window daylight crosses cream drive casings, teal floor paint, and steel tools."
       },
       {
@@ -531,7 +529,7 @@
             "expression_ref": "expr-delighted"
           }
         ],
-        "still_prompt": "Atop a stepped summit of drive cartons marked '1988', `miniscribe-rep` `action-powerstance` `expr-delighted` overlooks full production lanes; diffuse roof light crosses cream boxes, pale concrete, and steel bays.",
+        "still_prompt": "Atop a summit of cartons marked '1988', `miniscribe-rep` `action-powerstance` `expr-delighted` overlooks four automated conveyor belts carrying sealed cartons; diffuse roof light crosses cream boxes, pale concrete, and steel bays.",
         "notes": "Palette basis: bright-cream field — diffuse roof light spreads across cream cartons, pale concrete, and steel bays."
       },
       {
@@ -545,11 +543,11 @@
         "cast": [
           {
             "character": "miniscribe-rep",
-            "pose_ref": "action-present",
+            "pose_ref": "action-offering",
             "expression_ref": "expr-delighted"
           }
         ],
-        "still_prompt": "At a loading counter, `miniscribe-rep` `action-present` `expr-delighted` presents one boxed drive beside an oversized purchase order marked 'COMPAQ'; open-sky light crosses concrete, steel bollards, cream cartons, and the contract sheet.",
+        "still_prompt": "At a loading counter, `miniscribe-rep` `action-offering` `expr-delighted` presents one boxed drive beside an oversized purchase order marked 'COMPAQ'; open-sky light crosses concrete, steel bollards, cream cartons, and the contract sheet.",
         "notes": "Palette basis: pale-yard field — open-sky daylight crosses concrete docks, steel bollards, and cream cartons."
       },
       {
@@ -576,10 +574,10 @@
         "stage": "revenue-comparison",
         "stage_role": "delta",
         "changed_elements": [
-          "the collapsed brass bellows beneath the left weight now stands fully expanded"
+          "two plain brass blocks now stack above the marked left weight, tripling the load's height"
         ],
-        "still_prompt": "The established slate factory, long balance, left weight marked '600 MILLION', empty right pan, high-window light, kraft cartons, and teal steel hold; the collapsed brass bellows beneath the left weight now stands fully expanded.",
-        "notes": "Held revenue-comparison set; the collapsed bellows expanding is the one inflation change."
+        "still_prompt": "The established slate factory, long balance, left weight marked '600 MILLION', empty right pan, high-window light, kraft cartons, and teal steel hold; two plain brass blocks now stack above it, tripling the left load's height.",
+        "notes": "Held revenue-comparison set; two added plain brass blocks make a visibly taller inflation stack as the one change."
       },
       {
         "id": "L39",
@@ -594,7 +592,7 @@
         "changed_elements": [
           "one brass weight marked 'REDDIT' now fills the empty right pan"
         ],
-        "still_prompt": "The established slate factory, long balance, expanded bellows, left weight marked '600 MILLION', high-window light, kraft cartons, teal steel, and empty right pan hold; one brass weight marked 'REDDIT' now fills the right pan, bringing the beam nearly level.",
+        "still_prompt": "The established slate factory, long balance, three-tier left weight stack marked '600 MILLION', high-window light, kraft cartons, teal steel, and empty right pan hold; one brass weight marked 'REDDIT' now fills the right pan, bringing the beam nearly level.",
         "notes": "Held revenue-comparison set; the Reddit weight is the one comparison change, while the spoken qualifier carries the doubt turn."
       },
       {
@@ -605,7 +603,7 @@
         "vo_text": "Now rewind four years. At the end of 1984,",
         "shot_class": "register-shift-infographic",
         "source": "ai-gen",
-        "still_prompt": "A brass timeline reel curls backward to a warehouse calendar marked '1984' above a MiniScribe loading bay full of outbound racks; cold winter skylight crosses slate trusses, paper-white doors, and bare steel.",
+        "still_prompt": "A brass timeline reel curls backward to a warehouse calendar marked '1984' above outbound steel racks of solid kraft cartons; cold winter skylight crosses slate trusses, paper-white doors, and bare steel.",
         "notes": "Palette basis: cold-slate field — winter skylight crosses slate trusses, paper-white doors, and bare steel racks."
       },
       {
@@ -652,8 +650,11 @@
             "expression_ref": "expr-crestfallen"
           }
         ],
-        "still_prompt": "Beside four slate locker bays, `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands at the single emptied bay with one pale-pink notice; three occupied coat hooks remain under winter light across dark concrete.",
-        "notes": "Palette basis: winter-locker field — winter light crosses four slate locker bays, dark concrete, and one pale-pink notice. One vacated bay makes the quarter visible."
+        "figures": {
+          "crowd": true
+        },
+        "still_prompt": "Behind a waist-high rail along the far wall, a worker group spans four locker bays; `line-worker` `hold-paper-by-sides` `expr-crestfallen` stands at one empty bay while three coat hooks remain. Bare winter-lit concrete fills the lower half.",
+        "notes": "Palette basis: winter-locker field — winter light crosses four slate locker bays and bare concrete. The far-wall rail bounds the worker group beyond an empty lower-half floor."
       },
       {
         "id": "L44",
@@ -672,7 +673,7 @@
             "expression_ref": "expr-crestfallen"
           }
         ],
-        "still_prompt": "Beside an abandoned hard-drive casing, `terry-johnson` `action-slump` `expr-crestfallen` occupies an open factory doorway; cold high-window light crosses steel-blue benches and paper-white doors, with the exit beyond.",
+        "still_prompt": "Where a tall rectangle of corridor daylight cuts between paper-white door slabs, `terry-johnson` `action-slump` `expr-crestfallen` stands beside an abandoned hard-drive casing; cold high-window light crosses steel-blue benches.",
         "notes": "Palette basis: cold-assembly field — high-window light crosses steel-blue benches, paper-white doors, and an abandoned drive casing."
       },
       {
@@ -686,9 +687,9 @@
         "stage": "founder-exit",
         "stage_role": "delta",
         "changed_elements": [
-          "Terry Johnson is absent from the doorway and founder's station"
+          "Terry Johnson is absent from the corridor-light rectangle and founder's station"
         ],
-        "still_prompt": "The established abandoned casing, steel-blue benches, paper-white doors, cold high-window light, and open exit hold; the founder is now absent, leaving his station empty as the one change.",
+        "still_prompt": "The abandoned casing, steel-blue benches, cold light, and tall corridor-light rectangle between paper-white door slabs hold; Terry Johnson is absent, leaving his station empty as the one change.",
         "notes": "Held camera and set; absence is the sole story state change."
       },
       {
@@ -702,11 +703,11 @@
         "cast": [
           {
             "character": "miniscribe-rep",
-            "pose_ref": "action-slump",
+            "pose_ref": "action-shrug",
             "expression_ref": "expr-worried"
           }
         ],
-        "still_prompt": "At a nearly idle MiniScribe order desk, `miniscribe-rep` `action-slump` `expr-worried` faces sparse order trays; cold clerestory light crosses teal steel, cream drive casings, bare concrete, and a dark walnut desk.",
+        "still_prompt": "At a nearly idle MiniScribe order desk, `miniscribe-rep` `action-shrug` `expr-worried` faces sparse order trays; cold clerestory light crosses teal steel, cream drive casings, bare concrete, and a dark walnut desk.",
         "notes": "Palette basis: cold-teal trouble field — clerestory light crosses teal steel, cream drive casings, bare concrete, and dark walnut."
       },
       {
