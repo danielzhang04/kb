@@ -71,6 +71,8 @@ export interface EntityDetailProps {
   backLabel?: string;
   /** Governed mutations live in the header, never inside a section, so they stay in one place. */
   actions?: React.ReactNode;
+  /** Optional form-first editor opened by the header Edit action. */
+  editorContent?: React.ReactNode;
   /** W4 entity rosters stay mounted while this raised right-hand panel is open. */
   overlay?: boolean;
   onClose?: () => void;
@@ -100,6 +102,7 @@ export function EntityDetail({
   onBack,
   backLabel,
   actions,
+  editorContent,
   overlay = false,
   onClose,
   detailsContent,
@@ -110,13 +113,15 @@ export function EntityDetail({
   // standalone would be a defect, not a simplification. Either way a stale id (after the section set
   // changes) falls back to the first section rather than rendering an empty body.
   const [internalSectionId, setInternalSectionId] = useState<string | undefined>(undefined);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const allSections: DetailSection[] = sections.some((section) => section.id === 'details') ? sections : [...sections, {
+    id: 'details', label: 'Details', render: () => <details data-testid="entity-detail-disclosure"><summary>Details</summary>{detailsContent ?? 'No additional loaded details.'}</details>,
+  }];
   const selectedId = activeSectionId ?? internalSectionId;
-  const active = sections.find((section) => section.id === selectedId) ?? sections[0];
+  const active = allSections.find((section) => section.id === selectedId) ?? allSections[0];
 
   const selectSection = (id: string): void => {
     setInternalSectionId(id);
@@ -158,7 +163,7 @@ export function EntityDetail({
   const detail = (
     <section
       className="entity-detail"
-      aria-label={`${entity.kind} ${entity.id}`}
+      aria-label={`${title} detail`}
       data-testid={`entity-detail-${entity.kind}`}
     >
       {onBack ? (
@@ -192,6 +197,8 @@ export function EntityDetail({
         </div>
         {actions ? <div className="entity-detail__actions">{actions}</div> : null}
       </header>
+
+      {editorContent ? <div className="entity-detail__editor">{editorContent}</div> : null}
 
       {facts.length ? (
         <dl className="entity-detail__facts" data-testid="entity-detail-facts">
@@ -228,9 +235,9 @@ export function EntityDetail({
         className="entity-detail__tabs"
         role="tablist"
         aria-label={`${entity.kind} sections`}
-        hidden={sections.length < 2}
+        hidden={allSections.length < 2}
       >
-        {sections.map((section) => (
+        {allSections.map((section) => (
           <button
             key={section.id}
             type="button"
@@ -268,10 +275,6 @@ export function EntityDetail({
       <aside className="entity-detail__overlay" role="dialog" aria-modal="true" aria-label={`${title} detail`}>
         <button ref={closeRef} type="button" className="entity-detail__close" data-testid="entity-detail-close" onClick={onClose}>Close</button>
         {detail}
-        <button type="button" className="entity-detail__details" data-testid="entity-detail-details" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((open) => !open)}>
-          Details
-        </button>
-        {detailsOpen ? <div className="entity-detail__details-body">{detailsContent ?? 'No additional loaded details.'}</div> : null}
       </aside>
     </div>
   );

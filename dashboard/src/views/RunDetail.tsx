@@ -19,6 +19,7 @@ import { RunStream } from '../control/RunStream.tsx';
 import { ConsolePane } from '../console/ConsolePane.tsx';
 import { useSession } from '../lib/sessionContext.tsx';
 import { useRunEventStream } from '../lib/sseClient.ts';
+import { humanizeEntityId } from '../entity/humanizeEntityId.ts';
 
 export interface RunDetailProps {
   runRef: string;
@@ -207,9 +208,9 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     <header className="run-v3__header">
       {props.onBack ? <button type="button" onClick={props.onBack}>{props.backLabel ?? 'Back'}</button> : null}
       <div>
-        <p>Run · {detail.run.runRef}</p>
+        <p>Run {'\u00b7'} {detail.run.runRef}</p>
         <h1>{detail.run.title}</h1>
-        <p>{detail.run.state} · {detail.ownerSubject} · {detail.run.executionHost}</p>
+        <p>{detail.run.state} {'\u00b7'} {humanizeEntityId(detail.run.owner.id)} {'\u00b7'} {detail.run.executionHost === 'vm' ? 'VM' : 'Desktop'}</p>
       </div>
       <div className="run-v3__actions">
         {liveLifecycle && (attached

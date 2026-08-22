@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { outputHref, projectOutputRef } from './outputs.ts';
+import { outputHref, projectEventOutputRefs, projectOutputRef } from './outputs.ts';
+import type { OperationalEvent } from '../control/types.ts';
 
 describe('output projectors', () => {
   it('projects only catalog-rooted files and pinned PRs', () => {
@@ -21,5 +22,16 @@ describe('output projectors', () => {
       { kind: 'repository-file', label: 'Brief', rootId: 'missing-root', path: 'orgs/kb-ops/output/brief.md' },
       { kb: 'orgs/kb-ops' },
     )).toThrow('unsafe-output-path');
+  });
+
+  it('projects and deduplicates only safe file-bearing operational events', () => {
+    const event = (cursor: number, kind: OperationalEvent['kind'], path: string | null): OperationalEvent => ({
+      cursor, runRef: 'run-1', kind, source: 'worker', stageRef: null, attemptRef: null, sessionRef: null,
+      status: 'success', summary: null, command: null, toolName: null, path, diff: null, checkpoint: null, createdAt: '2026-08-21T00:00:00.000Z',
+    });
+    expect(projectEventOutputRefs([
+      event(1, 'file', 'orgs/kb-ops/output/brief.md'), event(2, 'diff', 'orgs/kb-ops/output/brief.md'),
+      event(3, 'file', '../secret'), event(4, 'tool', 'orgs/kb-ops/output/not-a-file.md'),
+    ], { kb: 'orgs/kb-ops' })).toEqual([{ kind: 'repository-file', label: 'brief.md', path: 'orgs/kb-ops/output/brief.md' }]);
   });
 });

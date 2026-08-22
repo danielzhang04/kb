@@ -209,7 +209,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerPlaneA(scope, repoRoot);
     registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
-    registerAgents(scope, repoRoot, undefined, surfaceCtx.runtimeCapabilities);
+    registerAgents(scope, surfaceCtx);
     registerInboxRoutes(scope, surfaceCtx);
     registerHealthRoutes(scope, surfaceCtx);
     // The Schedules panel's governed HEARTBEAT edit (-> work-branch PR, never auto-merged) needs the

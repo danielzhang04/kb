@@ -41,6 +41,31 @@ export interface EntityDetails {
   lineage: string[];
   grades: string[];
   ids: string[];
+  /** Workflow-only, server-projected definition data. Agents omit this member. */
+  workflow?: {
+    stepDag: {
+      nodes: Array<{ stageRef: string; label: string }>;
+      edges: Array<{ from: string; to: string }>;
+    };
+    parameters: string[];
+    runGraph: {
+      runRef: string;
+      stages: Array<{ stageRef: string; stageId: string; title: string; dependsOn: string[]; state: string }>;
+      attempts: Array<{ attemptRef: string; stageRef: string; state: string }>;
+      events: Array<{ cursor: number; stageRef: string | null; kind: string; summary: string | null; createdAt: string }>;
+    } | null;
+  };
+  /** Closed display/policy choices for the form-first editor; values remain server-owned. */
+  builder?: {
+    models: string[];
+    profiles: string[];
+    tools: string[];
+    skills: string[];
+    connectors: ConnectorGrant[];
+    filesystemRoots: string[];
+    projects: string[];
+    value: EntityBuilderRequest;
+  };
 }
 
 export interface EntityDetail {
@@ -57,8 +82,13 @@ export interface EntityBuilderRequest {
   profile: string;
   tools: string[];
   skills: string[];
-  connectors: string[];
+  connectors: ConnectorGrant[];
   filesystemRoots: string[];
+}
+
+export interface ConnectorGrant {
+  server: string;
+  tools: string[];
 }
 
 export interface CreateEntityRequest extends EntityBuilderRequest {

@@ -271,6 +271,17 @@ describe('server', () => {
     expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode).toBe(expected);
   });
 
+  it('pins P2 removed routes to 404 after the W6.3 entity replacements are live', async () => {
+    app = matrixApp();
+    expect((await app.inject({ method: 'GET', url: '/api/agents/system-workers', headers: sessionHeaders() })).statusCode).toBe(404);
+    for (const url of [
+      '/api/workflows/example/assignment-amendments',
+      '/api/workflows/example/governance-amendments',
+    ]) {
+      expect((await app.inject({ method: 'POST', url, headers: sessionHeaders(), payload: {} })).statusCode).toBe(404);
+    }
+  });
+
   it('binds localhost only and returns 200 on /healthz', async () => {
     app = buildApp({ validateData: false });
     // ephemeral port, localhost bind

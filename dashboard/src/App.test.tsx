@@ -3,14 +3,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { clearStoredSession, persistSession } from './lib/authClient';
-import { installTestAuthContext, type InstalledTestAuthContext } from './test/session';
+import { installTestAuthContext, renderWithTestSession, type InstalledTestAuthContext } from './test/session';
 import { SessionProvider } from './lib/sessionContext';
 import { Agents } from './views/Agents';
 import { SchedulesBody } from './views/Schedules';
 import { Inbox } from './views/Inbox';
 import { Home } from './views/Home';
-import type { AgentRosterEntry } from '../server/agents/roster';
 import type { PlaneAIndex } from '../server/planeA/indexer';
+import { RunDetail } from './views/RunDetail';
+import type { RunDetailDto } from './control/controlClient';
 
 let fetchStub: ReturnType<typeof vi.fn>;
 let authContext: InstalledTestAuthContext;
@@ -174,31 +175,32 @@ describe('App P1 shell', () => {
 
   it('humanizes roster header run-owner Schedules Inbox and Home labels from raw ids', async () => {
     const rawAgent = 'fyt-api_worker';
-    const emptyIndex: PlaneAIndex = {
-      cards: {},
-      ledgers: {
-        dispatch: { count: 0, cards: 0, byProject: {} },
-        cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
-        grades: { count: 0, rows: [] },
-        activity: { count: 0, rows: [] },
-      },
-      orgStates: [],
-    };
-    const roster: AgentRosterEntry[] = [{
-      id: rawAgent, displayName: rawAgent, shortRef: 1, role: null, working: false, current: null,
-      projects: [], cardCount: 0, ledger: { dispatches: 0, steps: 0, days: 0, lastActive: null },
-      sources: [], effective: { runtime: 'claude', model: 'claude-opus-4-8', sourceRuntime: 'policy', sourceModel: 'policy' },
-      declared: true, runnerBound: false, declaredRuntime: 'claude', declaredModel: 'claude-opus-4-8',
-      defaultProfile: null, allowedProfiles: null, description: null,
-    }];
-
-    render(<SessionProvider><Agents snapshot={emptyIndex} roster={roster} /></SessionProvider>);
-    const rosterRow = screen.getByTestId(`agent-row-${rawAgent}`);
-    expect(within(rosterRow).getByText('FYT API Worker')).toBeTruthy();
-    expect(within(rosterRow).getByTestId('entity-name').getAttribute('title')).toBe(rawAgent);
-    fireEvent.click(screen.getByTestId(`agent-open-${rawAgent}`));
+    const summary = { ref: { type: 'agent', id: rawAgent, sourcePath: `agents/${rawAgent}.md` }, humanName: 'FYT API Worker', status: 'idle', modelLabel: 'claude-opus-5', temporalLabel: 'Never run · no schedule', host: 'desktop', gatedRunCount: 0, activeRuns: [], latestRun: null, nextSchedule: null };
+    const entityDetail = { revision: 'detail-1', summary, brief: { purpose: 'Checks APIs.', doingNow: 'Idle.', recentRuns: [], outputs: [], pendingGates: 0, schedule: null, autonomyTier: 'queues-for-me' }, details: { sourcePath: `agents/${rawAgent}.md`, sourceRevision: 'a'.repeat(64), tools: [], declaredCeiling: 'queues-for-me', replaces: [], buildsOn: [], knowledgeSources: [], skills: [], schemas: [], lineage: [], grades: [], ids: [rawAgent] } };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith(rawAgent) ? entityDetail : { revision: 'list-1', groups: [{ id: 'kb-ops', label: 'KB Ops', collapsed: false, items: [summary] }], items: [summary] }), { status: 200 })));
+    await renderWithTestSession(<Agents />);
+    const rosterRow = await screen.findByTestId('entity-card');
+    expect(rosterRow.textContent).toContain('FYT API Worker');
+    fireEvent.click(rosterRow);
     expect(screen.getByTestId('entity-detail-title').textContent).toBe('FYT API Worker');
-    expect(screen.getByTestId('entity-detail-agent').getAttribute('aria-label')).toBe(`agent ${rawAgent}`);
+    expect(screen.getByTestId('entity-detail-agent').getAttribute('aria-label')).toBe('FYT API Worker detail');
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('FYT API Worker detail');
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).not.toContain(rawAgent);
+    cleanup();
+
+    const runDetail = {
+      ownerSubject: rawAgent,
+      run: { owner: summary.ref, executionHost: 'vm', terminalOutcome: null, completedAt: null, archivedFrom: null,
+        runRef: 'run-humanized', predecessorRunRef: null, title: 'API verification', displayName: 'API verification', shortRef: 1,
+        workflowRef: null, proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64), publicationState: 'published',
+        state: 'running', version: 1, managerSessionRef: 'manager-1', managerGeneration: 1, managerAssignment: null,
+        createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:01:00.000Z' },
+      stages: [], attempts: [], sessions: [], humanRequests: [], stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+    } as RunDetailDto;
+    render(<SessionProvider><RunDetail runRef="run-humanized" detail={runDetail} events={[]} /></SessionProvider>);
+    expect(screen.getByText(/FYT API Worker/)).toBeTruthy();
+    expect(screen.getByText(/VM/)).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toContain(rawAgent);
     cleanup();
 
     const rawSchedule = 'daily-digest';
@@ -231,11 +233,12 @@ describe('App P1 shell', () => {
     clearStoredSession();
     const rawHome = 'publish_daily-brief';
     const homeSnapshot: PlaneAIndex = {
-      ...emptyIndex,
       cards: { working: [{
         meta: { id: rawHome, project: 'kb', action: rawHome, target: '.', 'risk-tier': 'T1', owner: rawAgent, state: 'working' },
         body: '', displayName: rawHome, shortRef: 1,
       }] },
+      ledgers: { dispatch: { count: 0, cards: 0, byProject: {} }, cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false }, grades: { count: 0, rows: [] }, activity: { count: 0, rows: [] } },
+      orgStates: [],
     };
     render(<SessionProvider><Home snapshot={homeSnapshot} inboxSnapshot={{ items: [] }} /></SessionProvider>);
     expect(screen.getByText('Publish Daily Brief')).toBeTruthy();

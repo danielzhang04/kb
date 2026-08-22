@@ -21,6 +21,7 @@
  * migrating to a router later is mechanical rather than a rewrite.
  */
 import type { DestinationId } from './config';
+import type { RunnableRef } from '../../server/control/p2Contracts.ts';
 
 /** The entity a pushed entry is focused on. `card` reuses the pre-existing Tasks detail-pane payload. */
 export type Focus =
@@ -34,6 +35,8 @@ export interface NavTarget {
   focus?: Focus;
   /** The detail section (tab) to restore. Written back into the top entry as the operator switches tabs. */
   section?: string;
+  /** New-schedule intent with immutable server-owned runnable identity prefilled. */
+  scheduleOwner?: RunnableRef;
 }
 
 /**

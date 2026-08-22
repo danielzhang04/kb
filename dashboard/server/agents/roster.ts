@@ -196,6 +196,8 @@ export interface AgentRosterEntry {
 /** A declared agent parsed from `agents/<id>.md` frontmatter (C7.3). */
 export interface DeclaredAgent {
   id: string;
+  /** System maintenance declarations are grouped separately and rendered last. */
+  group?: 'system' | null;
   role: string | null;
   runtime: string | null;
   model: string | null;
@@ -203,6 +205,8 @@ export interface DeclaredAgent {
   knowledgeSource?: string[] | null;
   autonomyTier?: string | null;
   skills?: string[] | null;
+  connectors?: Array<{ server: string; tools: string[] }> | null;
+  filesystemRoots?: string[] | null;
   whatItReplaces?: string | null;
   buildsOn?: string[] | null;
   /** Optional complete execution-profile contract. Legacy declarations carry null for both fields. */
@@ -468,6 +472,30 @@ function listField(v: unknown): string[] | null {
   return values;
 }
 
+function connectorField(value: unknown, source?: string): Array<{ server: string; tools: string[] }> | null {
+  if (source) {
+    const frontmatter = /^(?:\uFEFF)?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source)?.[1];
+    const raw = frontmatter ? /^connectors:\s*(.+)$/m.exec(frontmatter)?.[1] : undefined;
+    if (raw !== undefined) {
+      const parsed = parseYaml(`connectors: ${raw}`);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        value = (parsed as Record<string, YamlValue>).connectors;
+      }
+    }
+  }
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) return null;
+  const connectors: Array<{ server: string; tools: string[] }> = [];
+  for (const item of value) {
+    const record = recordValue(item);
+    if (!record || typeof record.server !== 'string') return null;
+    const tools = listField(record.tools);
+    if (tools === null) return null;
+    connectors.push({ server: record.server, tools });
+  }
+  return connectors;
+}
+
 function recordValue(value: unknown): Record<string, YamlValue> | null {
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
     return value as Record<string, YamlValue>;
@@ -661,6 +689,7 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
     const projects = [...new Set([...projectIds(meta.projects), ...inferredProjects])].sort();
     details.set(candidate.claimedId, {
       id: candidate.claimedId,
+      group: meta.group === 'system' ? 'system' : null,
       role: strFieldOrNull(meta.role),
       runtime: strFieldOrNull(meta.runtime),
       model: strFieldOrNull(meta.model),
@@ -668,6 +697,8 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       knowledgeSource: listField(meta['knowledge-source']),
       autonomyTier: strFieldOrNull(meta['autonomy-tier']),
       skills: listField(meta.skills),
+      connectors: connectorField(meta.connectors, candidate.text),
+      filesystemRoots: listField(meta['filesystem-roots']),
       whatItReplaces: strFieldOrNull(meta['what-it-replaces']),
       buildsOn: listField(meta['builds-on']),
       defaultProfile: profileConfig.defaultProfile,
@@ -733,6 +764,7 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
     const id = detail.id;
     out.set(id, {
       id,
+      group: detail.group,
       role: detail.role,
       runtime: detail.runtime,
       model: detail.model,
@@ -740,6 +772,12 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
       knowledgeSource: detail.knowledgeSource === null || detail.knowledgeSource === undefined ? null : [...detail.knowledgeSource],
       autonomyTier: detail.autonomyTier ?? null,
       skills: detail.skills === null || detail.skills === undefined ? null : [...detail.skills],
+      connectors: detail.connectors === null || detail.connectors === undefined
+        ? null
+        : detail.connectors.map((connector) => ({ server: connector.server, tools: [...connector.tools] })),
+      filesystemRoots: detail.filesystemRoots === null || detail.filesystemRoots === undefined
+        ? null
+        : [...detail.filesystemRoots],
       whatItReplaces: detail.whatItReplaces ?? null,
       buildsOn: detail.buildsOn === null || detail.buildsOn === undefined ? null : [...detail.buildsOn],
       defaultProfile: detail.defaultProfile,

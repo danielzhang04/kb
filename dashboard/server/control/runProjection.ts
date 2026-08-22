@@ -55,15 +55,19 @@ function categoryFor(lifecycle: RunLifecycleKind): RunActivityProjection['catego
 export function projectRunActivity(run: ProjectableRun, now: string): RunActivityProjection {
   const latest = [...run.events].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
   const endedAt = run.completedAt ?? (categoryFor(run.lifecycle) === 'active' || categoryFor(run.lifecycle) === 'attention' ? now : run.updatedAt);
+  const elapsedMs = Math.max(0, Date.parse(endedAt) - Date.parse(run.createdAt));
+  const toolsCalled = run.events.filter((event) => event.kind === 'tool').length;
+  const lastLine = latest?.summary ?? run.lifecycle;
+  const common = { runRef: run.runRef, title: run.title, owner: run.owner, lifecycle: run.lifecycle, outcome: run.terminalOutcome, createdAt: run.createdAt, completedAt: run.completedAt, elapsedMs, toolsCalled, lastLine, gateBadge: run.openHumanRequestCount > 0 ? `${run.openHumanRequestCount} pending` : null };
   const row = run.source?.kind === 'pty'
-    ? { runRef: run.runRef, title: run.title, owner: run.owner, lifecycle: run.lifecycle, outcome: run.terminalOutcome, createdAt: run.createdAt, completedAt: run.completedAt, streamKind: 'pty' as const, sessionId: run.source.sessionId }
-    : { runRef: run.runRef, title: run.title, owner: run.owner, lifecycle: run.lifecycle, outcome: run.terminalOutcome, createdAt: run.createdAt, completedAt: run.completedAt, streamKind: 'transcript' as const };
+    ? { ...common, streamKind: 'pty' as const, sessionId: run.source.sessionId }
+    : { ...common, streamKind: 'transcript' as const };
   return {
     row,
     category: categoryFor(run.lifecycle),
-    elapsedMs: Math.max(0, Date.parse(endedAt) - Date.parse(run.createdAt)),
-    toolsCalled: run.events.filter((event) => event.kind === 'tool').length,
-    lastLine: latest?.summary ?? run.lifecycle,
+    elapsedMs,
+    toolsCalled,
+    lastLine,
     result: run.terminalOutcome,
   };
 }

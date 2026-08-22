@@ -1,8 +1,10 @@
 import type { EntityBrief, EntityGroup, EntityList } from './contracts.ts';
 import type { EntityStatus, EntitySummary, OutputRef, RunRow, RunnableRef, ScheduleOccurrence } from '../control/p2Contracts.ts';
+import type { HostKind } from '../control/p2Contracts.ts';
 
 export interface EntityProjectionInput {
   ref: RunnableRef;
+  humanName?: string;
   modelLabel: string;
   temporalLabel: string;
   host: EntitySummary['host'];
@@ -57,6 +59,11 @@ export interface StepDag {
 
 const ACRONYMS = new Set(['api', 'cli', 'cpu', 'fyt', 'gpu', 'kb', 'mcp', 'pr', 'pty', 'ram', 'sse', 'vm', 'wsl']);
 
+/** P2's deterministic current-routing preview; P6 replaces the tier resolver, not this HostKind seam. */
+export function resolveExecutionHost(tier: 'cloud' | 'desktop'): HostKind {
+  return tier === 'cloud' ? 'vm' : 'desktop';
+}
+
 function humanize(id: string): string {
   return id.split(/[-_]+/).filter(Boolean).map((word) => {
     const normalized = word.toLowerCase();
@@ -75,7 +82,7 @@ function statusFor(input: EntityProjectionInput): EntityStatus {
 export function projectEntitySummary(input: EntityProjectionInput): EntitySummary {
   return {
     ref: input.ref,
-    humanName: humanize(input.ref.id),
+    humanName: input.humanName?.trim() || humanize(input.ref.id),
     status: statusFor(input),
     modelLabel: input.ref.type === 'workflow' ? 'varies' : input.modelLabel,
     temporalLabel: input.temporalLabel,

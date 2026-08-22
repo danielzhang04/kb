@@ -1,4 +1,5 @@
 import type { OutputRef } from '../control/p2Contracts.ts';
+import type { OperationalEvent } from '../control/types.ts';
 
 export type OutputCandidate =
   | { kind: 'repository-file' | 'artifact'; label: string; rootId: string; path: string }
@@ -24,6 +25,25 @@ export function projectOutputRef(candidate: OutputCandidate, roots: Record<strin
   const root = roots[candidate.rootId];
   if (root === undefined || !safeRelativePath(candidate.path, root)) throw new Error('unsafe-output-path');
   return { kind: candidate.kind, label: candidate.label, path: candidate.path };
+}
+
+/** Project only safe file-bearing public events; command/tool text never becomes a link. */
+export function projectEventOutputRefs(events: readonly OperationalEvent[], roots: Record<string, string>): OutputRef[] {
+  const projected = new Map<string, OutputRef>();
+  for (const event of [...events].sort((left, right) => right.cursor - left.cursor)) {
+    if ((event.kind !== 'file' && event.kind !== 'diff') || !event.path) continue;
+    for (const rootId of Object.keys(roots).sort()) {
+      try {
+        const output = projectOutputRef({ kind: 'repository-file', label: event.summary?.trim() || event.path.split('/').at(-1) || event.path, rootId, path: event.path }, roots);
+        if (output.kind === 'external-pr') continue;
+        if (!projected.has(output.path)) projected.set(output.path, output);
+        break;
+      } catch {
+        // Try the next server-owned root. No matching root means this event is not linkable.
+      }
+    }
+  }
+  return [...projected.values()];
 }
 
 /** Links are built only from an already-projected closed output union. */

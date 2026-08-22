@@ -26,7 +26,7 @@ describe('EntityDetail', () => {
       const close = screen.getByTestId('entity-detail-close');
       expect(document.activeElement).toBe(close);
       fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
-      expect(document.activeElement).toBe(screen.getByTestId('entity-detail-details'));
+      expect(document.activeElement).toBe(screen.getByTestId('entity-tab-details'));
       fireEvent.keyDown(document, { key: 'Tab' });
       expect(document.activeElement).toBe(close);
       if (closeWith === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
@@ -46,7 +46,9 @@ describe('EntityDetail', () => {
     );
     expect(screen.getByRole('tab', { name: 'Live' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tab', { name: 'Brief' })).toBeTruthy();
-    expect(screen.getByTestId('entity-detail-details').getAttribute('aria-expanded')).toBe('false');
-    expect(screen.getByText('Loaded fact')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Details' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    expect(screen.getByTestId('entity-detail-disclosure').hasAttribute('open')).toBe(false);
+    expect(screen.getByText('No additional loaded details.')).toBeTruthy();
   });
 });

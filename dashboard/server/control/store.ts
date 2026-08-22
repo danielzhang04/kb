@@ -794,7 +794,9 @@ export interface BrokerStoreBackend {
 }
 
 export interface ControlPlaneStore extends BrokerStoreBackend {
-  getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision'>;
+  getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision' | 'scheduleCollectionRevision'>;
+  /** W6 schedule read side; private durability fields never cross this boundary. */
+  getScheduleSnapshot(): { collectionRevision: number; schedules: Schedule[] };
   getDeployment(deploymentRef: string): ControlResult<Deployment>;
   listDeployments(): Deployment[];
   createDeployment(subject: string, input: CreateDeploymentInput): ControlResult<Deployment>;
@@ -3115,8 +3117,20 @@ function makeStore(
 
   return {
     getControlDocumentMetadata() {
-      const { version, documentRevision } = load();
-      return { version, documentRevision };
+      const { version, documentRevision, scheduleCollectionRevision } = load();
+      return { version, documentRevision, scheduleCollectionRevision };
+    },
+
+    getScheduleSnapshot() {
+      const document = load();
+      return {
+        collectionRevision: document.scheduleCollectionRevision,
+        schedules: document.schedules.map((schedule) => ({
+          id: schedule.id, owner: structuredClone(schedule.owner), cadence: { ...schedule.cadence },
+          nextAt: schedule.nextAt, lastOutcome: schedule.lastOutcome, armed: schedule.armed,
+          origin: schedule.origin, mirroredAt: schedule.mirroredAt, mirrorPath: schedule.mirrorPath, version: schedule.version,
+        })),
+      };
     },
 
     getDeployment(deploymentRef) {
@@ -6169,7 +6183,7 @@ export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {
 }
 
 const READ_ONLY_CONTROL_STORE_METHODS = new Set<keyof ControlPlaneStore>([
-  'getControlDocumentMetadata', 'getDeployment', 'listDeployments',
+  'getControlDocumentMetadata', 'getScheduleSnapshot', 'getDeployment', 'listDeployments',
   'listProposalRevisions', 'listProposalRevisionsForComposer', 'getProposalRevision',
   'listRuns', 'getRun', 'findActiveRunForRevision', 'getRunActivationReceipt', 'hasActiveRunActivation',
   'getHumanRequest', 'preflightAuthorized20260731ExecutionLock',

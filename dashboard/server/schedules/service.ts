@@ -246,6 +246,22 @@ export class ScheduleService {
   }
 }
 
+function sameRunnable(left: RunnableRef, right: RunnableRef): boolean {
+  return left.type === right.type && left.id === right.id && left.sourcePath === right.sourcePath
+    && (left.type === 'agent' || right.type === 'agent' || left.project === right.project);
+}
+
+/** Read-only entity projection over W4's schedule service/store collection. */
+export function nextScheduleOccurrence(
+  readSide: { getScheduleSnapshot(): ScheduleSnapshot },
+  owner: RunnableRef,
+): import('../control/p2Contracts.ts').ScheduleOccurrence | null {
+  const next = readSide.getScheduleSnapshot().schedules
+    .filter((schedule) => schedule.armed && schedule.nextAt !== null && sameRunnable(schedule.owner, owner))
+    .sort((left, right) => left.nextAt!.localeCompare(right.nextAt!) || left.id.localeCompare(right.id))[0];
+  return next?.nextAt ? { scheduleId: next.id, scheduledFor: next.nextAt, nextAt: next.nextAt } : null;
+}
+
 type RecoverySource = 'live' | 'state-snapshot' | 'merged-mirror';
 
 export function selectScheduleRecoverySnapshot(input: {

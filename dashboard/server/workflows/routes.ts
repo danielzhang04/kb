@@ -16,13 +16,14 @@
  * injected (production state), the run publishes canonical cards and then stalls at the existing
  * activation gate (`activationGated: true`), exactly like a manual proposal launch does today.
  */
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { requireSession, verifiedSession, writeRateLimitHook } from '../http/middleware.ts';
 import { originPlugin } from '../security/origin.ts';
-import { loadWorkflowCompileEnvironment, workflowProfileIds } from '../control/environment.ts';
+import { loadExecutionProfiles, loadWorkflowCompileEnvironment, loadWorkflowProfiles, workflowProfileIds } from '../control/environment.ts';
 import {
   proposalContentHash,
   validateServerCompiledPlanProposal,
@@ -30,17 +31,24 @@ import {
 } from '../control/proposal.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from '../control/launch.ts';
 import { proposalSnapshotHash } from '../control/store.ts';
-import type { AgentWorkspaceLaunchProvenance, JsonObject } from '../control/types.ts';
-import type { HostKind, RunnableRef } from '../control/p2Contracts.ts';
+import type { AgentWorkspaceLaunchProvenance, JsonObject, RunMetadata } from '../control/types.ts';
+import type { HostKind, OutputRef, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
+import type { EntityDetail, EntityList } from '../entities/contracts.ts';
+import { patchEntityBuilderSource, renderWorkflowBuilderSource, submitEntityBuilder, type EntityBuilderCatalog, type EntityBuilderPort } from '../entities/builder.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { projectEventOutputRefs, projectOutputRef } from '../entities/outputs.ts';
+import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
+import { runLifecycleKind } from '../control/runLifecycle.ts';
 import { instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
-import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isSafeAssignmentValue, isSafeGovernanceValue, patchWorkflowAssignment, patchWorkflowGovernance, readCanonicalDefinitionLocation, sourceHash, type AssignmentTarget, type AssignmentValue, type GovernanceValue } from './amendments.ts';
+import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isSafeAssignmentValue, isSafeGovernanceValue, patchWorkflowAssignment, patchWorkflowGovernance, readCanonicalDefinitionLocation, runBuilderAmendment, sourceHash, type AssignmentTarget, type AssignmentValue, type GovernanceValue } from './amendments.ts';
 import type { PendingDefinitionAmendment } from './amendmentStore.ts';
+import { nextScheduleOccurrence } from '../schedules/service.ts';
 import { DEFAULT_WORK_BRANCH, DurableRouteError, routeDurable } from '../write/branch.ts';
+import { save as governedSave } from '../write/governedSave.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import {
   buildRoster,
-  executionAssignmentRole,
   readDeclaredAgentDetails,
   type AgentRosterEntry,
   type DeclaredAgentDetail,
@@ -576,47 +584,12 @@ function entryWithCompileStatus(scanned: ScannedDef, ctx: SurfaceContext): Workf
   };
 }
 
-interface AssignmentOption {
-  agentId: string;
-  profileId: string;
-}
-
-function eligibleAssignmentOptions(repoRoot: string, def: WorkflowDef, role: 'manager' | 'worker'): { options: AssignmentOption[]; unavailable: string | null } {
-  const environment = loadWorkflowCompileEnvironment(repoRoot);
-  const options: AssignmentOption[] = [];
-  for (const declaration of environment.declaredAgents.values()) {
-    const allowedProfiles = declaration.allowedProfiles;
-    if (!declaration.runnerBound || !declaration.projects.includes(def.project) || executionAssignmentRole(declaration.role) !== role
-      || !declaration.defaultProfile || !allowedProfiles || !allowedProfiles.includes(declaration.defaultProfile)) continue;
-    const defaultProfile = environment.executionProfiles.find((profile) => profile.id === declaration.defaultProfile);
-    if (!defaultProfile || defaultProfile.role !== role || declaration.runtime !== defaultProfile.runtime || declaration.model !== defaultProfile.model) continue;
-    for (const profileId of allowedProfiles) {
-      const profile = environment.executionProfiles.find((candidate) => candidate.id === profileId);
-      if (!profile || profile.role !== role || !environment.availableRuntimes.has(profile.runtime)
-        || !(environment.registry.runtimes[profile.runtime] ?? []).includes(profile.model)) continue;
-      options.push({ agentId: declaration.id, profileId });
-    }
-  }
-  options.sort((a, b) => a.agentId.localeCompare(b.agentId) || a.profileId.localeCompare(b.profileId));
-  return {
-    options,
-    unavailable: options.length ? null : 'Human binding required: no runner-bound declared agent is eligible for this workflow assignment.',
-  };
-}
-
-function eligibleGovernanceAgents(repoRoot: string, def: WorkflowDef): Array<{ id: string; role: string | null; description: string | null }> {
-  const environment = loadWorkflowCompileEnvironment(repoRoot);
-  return [...environment.declaredAgents.values()]
-    .filter((declaration) => declaration.projects.includes(def.project))
-    .map((declaration) => ({ id: declaration.id, role: declaration.role, description: declaration.description }))
-    .sort((a, b) => a.id.localeCompare(b.id));
-}
-
-function parseAmendmentBody(body: unknown): { expectedSourceHash: string; target: AssignmentTarget; assignment: AssignmentValue } | null {
+function parseAmendmentBody(body: unknown): { expectedSourceHash: string; idempotencyKey: string; target: AssignmentTarget; assignment: AssignmentValue } | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const value = body as Record<string, unknown>;
-  if (Object.keys(value).some((key) => key !== 'expectedSourceHash' && key !== 'target' && key !== 'assignment')) return null;
-  if (typeof value.expectedSourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.expectedSourceHash)) return null;
+  if (value.kind !== 'assignment' || Object.keys(value).some((key) => !['kind', 'expectedSourceRevision', 'idempotencyKey', 'target', 'assignment'].includes(key))) return null;
+  if (typeof value.expectedSourceRevision !== 'string' || !/^[a-f0-9]{64}$/.test(value.expectedSourceRevision)) return null;
+  if (typeof value.idempotencyKey !== 'string' || value.idempotencyKey.trim() === '' || value.idempotencyKey.length > 512) return null;
   if (!value.target || typeof value.target !== 'object' || Array.isArray(value.target)) return null;
   const target = value.target as Record<string, unknown>;
   let parsedTarget: AssignmentTarget;
@@ -631,14 +604,15 @@ function parseAmendmentBody(body: unknown): { expectedSourceHash: string; target
     assignment = { agentId: candidate.agentId, profileId: candidate.profileId };
   } else return null;
   if (!isSafeAssignmentValue(assignment)) return null;
-  return { expectedSourceHash: value.expectedSourceHash, target: parsedTarget, assignment };
+  return { expectedSourceHash: value.expectedSourceRevision, idempotencyKey: value.idempotencyKey, target: parsedTarget, assignment };
 }
 
-function parseGovernanceAmendmentBody(body: unknown): { expectedSourceHash: string; governance: GovernanceValue } | null {
+function parseGovernanceAmendmentBody(body: unknown): { expectedSourceHash: string; idempotencyKey: string; governance: GovernanceValue } | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const value = body as Record<string, unknown>;
-  if (Object.keys(value).some((key) => key !== 'expectedSourceHash' && key !== 'governance')) return null;
-  if (typeof value.expectedSourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.expectedSourceHash)) return null;
+  if (value.kind !== 'governance' || Object.keys(value).some((key) => !['kind', 'expectedSourceRevision', 'idempotencyKey', 'governance'].includes(key))) return null;
+  if (typeof value.expectedSourceRevision !== 'string' || !/^[a-f0-9]{64}$/.test(value.expectedSourceRevision)) return null;
+  if (typeof value.idempotencyKey !== 'string' || value.idempotencyKey.trim() === '' || value.idempotencyKey.length > 512) return null;
   if (!value.governance || typeof value.governance !== 'object' || Array.isArray(value.governance)) return null;
   const raw = value.governance as Record<string, unknown>;
   if (Object.keys(raw).some((key) => key !== 'workflow' && key !== 'stages')) return null;
@@ -647,7 +621,46 @@ function parseGovernanceAmendmentBody(body: unknown): { expectedSourceHash: stri
   const stages = raw.stages as Record<string, unknown>;
   if (Object.values(stages).some((owner) => owner !== null && typeof owner !== 'string')) return null;
   const governance: GovernanceValue = { workflow: raw.workflow as string | null, stages: stages as Record<string, string | null> };
-  return isSafeGovernanceValue(governance) ? { expectedSourceHash: value.expectedSourceHash, governance } : null;
+  return isSafeGovernanceValue(governance) ? { expectedSourceHash: value.expectedSourceRevision, idempotencyKey: value.idempotencyKey, governance } : null;
+}
+
+/** Launch one declared Agent through the same compiler/import/approval/Run transaction as a Workflow. */
+export async function launchDeclaredAgent(
+  ctx: SurfaceContext,
+  sub: string,
+  sessionToken: string | undefined,
+  declaration: DeclaredAgentDetail,
+  idempotencyKey: string,
+): Promise<LaunchOutcome> {
+  const project = [...declaration.projects].sort()[0];
+  const profileId = declaration.defaultProfile;
+  if (!project || !declaration.runnerBound || !profileId || !(declaration.allowedProfiles ?? []).includes(profileId)) {
+    return { status: 409, body: { error: 'agent-not-launchable' } };
+  }
+  const executionProfile = loadExecutionProfiles(ctx.repoRoot).find((profile) => profile.id === profileId);
+  if (!executionProfile) return { status: 409, body: { error: 'agent-not-launchable' } };
+  const assignment = { agentId: declaration.id, profileId };
+  const definition: WorkflowDef = {
+    schemaVersion: 1,
+    id: `agent-${declaration.id}`,
+    project,
+    title: `Run ${declaration.id}`,
+    profile: 'producer',
+    ...(executionProfile.role === 'manager' ? { manager: assignment } : {}),
+    readScope: [],
+    description: declaration.instructionMarkdown,
+    stages: [{
+      id: 'run', title: `Run ${declaration.id}`, action: 'draft:agent-run', target: `orgs/${project}`,
+      workOrder: declaration.instructionMarkdown, dependsOn: [], riskTier: 'T2', declaredRiskTier: 'T2',
+      classifiedFloor: 'T2',
+      ...(executionProfile.role === 'worker' ? assignment : {}),
+    }],
+  };
+  const owner: RunnableRef = { type: 'agent', id: declaration.id, sourcePath: declaration.source as `agents/${string}.md` };
+  return launchDefinition(ctx, sub, sessionToken, definition, idempotencyKey, null, {
+    owner,
+    executionHost: resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud'),
+  });
 }
 
 function governanceOf(def: WorkflowDef): GovernanceValue {
@@ -704,7 +717,7 @@ type DefinitionAmendmentSpec = {
  * remain deliberately identical so amendment kinds cannot drift or race. */
 async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: ScannedDef, spec: DefinitionAmendmentSpec): Promise<LaunchOutcome> {
   if (!scanned.def || !scanned.entry.sourceHash) return { status: 409, body: { error: 'definition-invalid', detail: scanned.entry.detail } };
-  if (spec.expectedSourceHash !== scanned.entry.sourceHash) return { status: 409, body: { error: 'stale-source-hash', sourceHash: scanned.entry.sourceHash } };
+  if (spec.expectedSourceHash !== scanned.entry.sourceHash) return { status: 409, body: { error: 'stale-source-revision', sourceRevision: scanned.entry.sourceHash } };
   if (!ctx.durableRepoRoot) return { status: 409, body: { error: 'durable-worktree-required' } };
   const durableRoot = ctx.durableRepoRoot;
   try { if (realpathSync(resolve(ctx.repoRoot)) === realpathSync(resolve(durableRoot))) return { status: 409, body: { error: 'durable-worktree-required' } }; }
@@ -717,13 +730,7 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
       const durableLocation = readCanonicalDefinitionLocation(durableRoot, scanned.entry.path);
       if (!active || !durableLocation || active.path === durableLocation.path) return { outcome: { status: 409, body: { error: 'definition-path-refused' } } };
       const activeHash = sourceHash(active.bytes);
-      if (activeHash !== spec.expectedSourceHash) return { outcome: { status: 409, body: { error: 'stale-source-hash', sourceHash: activeHash } } };
-      // The lookup belongs after the authoritative reread: a concurrent settled record must not block,
-      // and a concurrently-created record must block both amendment kinds before any patch/write.
-      const pendingLookup = ctx.definitionAmendmentStore.lookup(scanned.entry.path, activeHash);
-      if (!pendingLookup.ok) return { outcome: { status: 409, body: { error: 'assignment-amendment-state-invalid' } } };
-      if (pendingLookup.record) return { outcome: { status: 409, body: { error: 'assignment-amendment-pending', pending: pendingLookup.record } } };
-      if (!active.bytes.equals(durableLocation.bytes)) return { outcome: { status: 409, body: { error: 'durable-base-mismatch' } } };
+      if (activeHash !== spec.expectedSourceHash) return { outcome: { status: 409, body: { error: 'stale-source-revision', sourceRevision: activeHash } } };
       const source = decodeUtf8(active.bytes);
       if (source === null) return { outcome: { status: 409, body: { error: 'definition-not-utf8' } } };
       const original = parseWorkflowDef(source, { knownProfiles: workflowProfileIds() });
@@ -733,6 +740,17 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
       const patched = spec.patch(source);
       if (!patched) return { outcome: { status: 409, body: { error: spec.layoutError } } };
       if (patched.source === source) return { outcome: { status: 409, body: { error: spec.noChangeError } } };
+      const proposedSourceHash = sourceHash(Buffer.from(patched.source, 'utf8'));
+      // A retry is the same operation only when the normalized edit reproduces the exact proposal
+      // already waiting for merge. A changed body never borrows an earlier receipt.
+      const pendingLookup = ctx.definitionAmendmentStore.lookup(scanned.entry.path, activeHash);
+      if (!pendingLookup.ok) return { outcome: { status: 409, body: { error: 'assignment-amendment-state-invalid' } } };
+      if (pendingLookup.record) {
+        return pendingLookup.record.kind === spec.kind && pendingLookup.record.proposedSourceHash === proposedSourceHash
+          ? { outcome: { status: 202, body: { ok: true, status: 'pending-human-merge', replayed: true, path: scanned.entry.path, baseSourceHash: activeHash, proposedSourceHash, branch: pendingLookup.record.branch, pr: pendingLookup.record.pr } } }
+          : { outcome: { status: 409, body: { error: 'assignment-amendment-pending', pending: pendingLookup.record } } };
+      }
+      if (!active.bytes.equals(durableLocation.bytes)) return { outcome: { status: 409, body: { error: 'durable-base-mismatch' } } };
       const reparsed = parseWorkflowDef(patched.source, { knownProfiles: workflowProfileIds() });
       if (!reparsed.ok || reparsed.value.project !== scanned.entry.project) return { outcome: { status: 409, body: { error: 'amendment-parse-refused', detail: reparsed.ok ? 'definition project no longer matches path project' : reparsed.detail } } };
       if (!spec.isExact(original.value, reparsed.value, patched.old)) return { outcome: { status: 409, body: { error: spec.semanticError } } };
@@ -749,7 +767,6 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
         if (!beforeValidation.ok) return { outcome: { status: 409, body: { error: 'compiled-proposal-invalid', detail: beforeValidation.detail } } };
         if (proposalContentHash(beforeCompiled.value) !== proposalHash) return { outcome: { status: 409, body: { error: 'governance-changed-execution-proposal' } } };
       }
-      const proposedSourceHash = sourceHash(Buffer.from(patched.source, 'utf8'));
       const pending: PendingDefinitionAmendment = { kind: spec.kind, workflowPath: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, pr: {}, phase: 'prepared' };
       try { ctx.definitionAmendmentStore.put(pending); }
       catch (error) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-write-failed', detail: error instanceof Error ? error.message : String(error) } } }; }
@@ -782,7 +799,7 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
   }
   try { ctx.definitionAmendmentStore.update({ kind: spec.kind, workflowPath: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'pending-human-merge' }); }
   catch (error) { return { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, detail: error instanceof Error ? error.message : String(error) } }; }
-  return { status: 202, body: { ok: true, status: 'pending-human-merge', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, proposalContentHash: prepared.proposalHash, ...spec.successDetail(prepared.proposalHash, prepared.durable) } };
+  return { status: 202, body: { ok: true, status: 'pending-human-merge', replayed: false, path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, proposalContentHash: prepared.proposalHash, ...spec.successDetail(prepared.proposalHash, prepared.durable) } };
 }
 
 async function amendAssignment(
@@ -828,12 +845,234 @@ async function amendGovernance(
   });
 }
 
+function sameWorkflowOwner(left: RunnableRef, right: RunnableRef): boolean {
+  return left.type === 'workflow' && right.type === 'workflow'
+    && left.id === right.id && left.project === right.project && left.sourcePath === right.sourcePath;
+}
+
+function projectableRun(run: RunMetadata, events: ProjectableRun['events'] = []): ProjectableRun {
+  return {
+    runRef: run.runRef, title: run.title, owner: run.owner, lifecycle: runLifecycleKind(run.lifecycle),
+    createdAt: run.createdAt, updatedAt: run.updatedAt, terminalOutcome: run.terminalOutcome,
+    completedAt: run.completedAt, archivedFrom: run.archivedFrom,
+    openHumanRequestCount: run.openHumanRequestCount, events,
+  };
+}
+
+function projectableWorkflowRun(ctx: SurfaceContext, run: RunMetadata): ProjectableRun {
+  const page = ctx.controlStore.listEvents(run.ownerSubject, run.runRef, 0, 250);
+  return projectableRun(run, page.ok ? page.value : []);
+}
+
+function relativeRunTime(iso: string, now: Date): string {
+  const minutes = Math.floor(Math.max(0, now.getTime() - Date.parse(iso)) / 60_000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
+}
+
+function latestWorkflowOutcome(runs: readonly ProjectableRun[]): { outcome: RunOutcome; completedAt: string } | null {
+  const rows = runs
+    .filter((run): run is ProjectableRun & { terminalOutcome: RunOutcome; completedAt: string } => run.terminalOutcome !== null && run.completedAt !== null)
+    .sort((left, right) => right.completedAt.localeCompare(left.completedAt) || left.runRef.localeCompare(right.runRef));
+  return rows[0] ? { outcome: rows[0].terminalOutcome, completedAt: rows[0].completedAt } : null;
+}
+
+function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRuns: readonly RunMetadata[], now: Date): EntityGroupProjectionInput {
+  const ref: RunnableRef = {
+    type: 'workflow', id: scanned.entry.ref, project: scanned.entry.project,
+    sourcePath: scanned.entry.path as `orgs/${string}/workflows/${string}.md`,
+  };
+  const owned = allRuns.filter((run) => sameWorkflowOwner(run.owner, ref));
+  const runs = owned.map((run) => projectableWorkflowRun(ctx, run));
+  const activity = runs.map((run) => projectRunActivity(run, now.toISOString()));
+  const activeRuns = activity.filter((item) => item.category === 'active' || item.category === 'attention').map((item) => item.row);
+  const latest = latestWorkflowOutcome(runs);
+  return {
+    ref, humanName: scanned.def?.title, projects: [scanned.entry.project], modelLabel: 'varies',
+    temporalLabel: latest ? `ran ${relativeRunTime(latest.completedAt, now)} \u00b7 ${latest.outcome}` : projectLiveEmpty(null, nextScheduleOccurrence(ctx.controlStore, ref)?.nextAt ?? null),
+    host: activeRuns[0]
+      ? owned.find((run) => run.runRef === activeRuns[0]?.runRef)?.executionHost ?? resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud')
+      : [...owned].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.executionHost ?? resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud'),
+    activeRuns,
+    gatedRunCount: new Set(runs.filter((run) => run.lifecycle === 'waiting-human' || run.openHumanRequestCount > 0).map((run) => run.runRef)).size,
+    latestRun: latest?.outcome ?? null, nextSchedule: nextScheduleOccurrence(ctx.controlStore, ref),
+    hasFailure: runs.some((run) => run.lifecycle === 'interrupted'),
+  };
+}
+
+function workflowRevision(ctx: SurfaceContext, scanned: readonly ScannedDef[]): string {
+  return createHash('sha256').update(JSON.stringify({
+    documentRevision: ctx.controlStore.getControlDocumentMetadata().documentRevision,
+    scheduleCollectionRevision: ctx.controlStore.getScheduleSnapshot().collectionRevision,
+    definitions: scanned.map((item) => [item.entry.ref, item.entry.sourceHash]),
+  })).digest('hex');
+}
+
+function workflowList(ctx: SurfaceContext): EntityList {
+  const scanned = scanWorkflowDefs(ctx.repoRoot).filter((item) => item.def !== null);
+  const runs = ctx.controlStore.listRuns('operator', 'all-subjects');
+  const now = ctx.now?.() ?? new Date();
+  return projectEntityList(workflowRevision(ctx, scanned), 'workflow', scanned.map((item) => workflowProjectionInput(ctx, item, runs, now)));
+}
+
+function workflowDetail(ctx: SurfaceContext, scanned: ScannedDef & { def: WorkflowDef }): EntityDetail {
+  const runs = ctx.controlStore.listRuns('operator', 'all-subjects');
+  const now = ctx.now?.() ?? new Date();
+  const input = workflowProjectionInput(ctx, scanned, runs, now);
+  const summary = projectEntitySummary(input);
+  const recentRuns: RunRow[] = runs.filter((run) => sameWorkflowOwner(run.owner, input.ref))
+    .map((run) => projectableWorkflowRun(ctx, run)).map((run) => projectRunActivity(run, now.toISOString()).row);
+  const roots = { [scanned.entry.project]: `orgs/${scanned.entry.project}` };
+  const events = runs.filter((run) => sameWorkflowOwner(run.owner, input.ref)).flatMap((run) => {
+    const page = ctx.controlStore.listEvents(run.ownerSubject, run.runRef, 0, 250);
+    return page.ok ? page.value : [];
+  });
+  const selectedRun = [...runs].filter((run) => sameWorkflowOwner(run.owner, input.ref))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.runRef.localeCompare(right.runRef))[0];
+  const storedRun = selectedRun ? ctx.controlStore.getRun(selectedRun.ownerSubject, selectedRun.runRef, 'all-subjects') : null;
+  const selectedEvents = selectedRun ? ctx.controlStore.listEvents(selectedRun.ownerSubject, selectedRun.runRef, 0, 250) : null;
+  const runGraph = storedRun?.ok ? {
+    runRef: storedRun.value.run.runRef,
+    stages: storedRun.value.stages.map((stage) => ({ stageRef: stage.stageRef, stageId: stage.stageId, title: stage.title, dependsOn: [...stage.dependsOn], state: stage.state })),
+    attempts: storedRun.value.attempts.map((attempt) => ({ attemptRef: attempt.attemptRef, stageRef: attempt.stageRef, state: attempt.state })),
+    events: selectedEvents?.ok ? selectedEvents.value.map((event) => ({ cursor: event.cursor, stageRef: event.stageRef, kind: event.kind, summary: event.summary, createdAt: event.createdAt })) : [],
+  } : null;
+  const outputs = new Map<string, OutputRef>();
+  for (const artifact of scanned.def.stages.flatMap((stage) => stage.artifacts ?? [])) {
+    const output = projectOutputRef({ kind: 'artifact', label: artifact.description, rootId: scanned.entry.project, path: artifact.path }, roots);
+    if (output.kind !== 'external-pr') outputs.set(output.path, output);
+  }
+  for (const output of projectEventOutputRefs(events, roots)) if (output.kind !== 'external-pr') outputs.set(output.path, output);
+  return {
+    revision: workflowRevision(ctx, [scanned]), summary,
+    brief: projectEntityBrief({
+      purpose: scanned.def.purpose ?? scanned.def.description.split(/\r?\n/).map((line) => line.trim()).find((line) => line !== '') ?? scanned.def.title,
+      doingNow: summary.activeRuns[0]?.title ?? 'Idle.', recentRuns, outputs: [...outputs.values()],
+      pendingGates: summary.gatedRunCount, schedule: summary.nextSchedule, autonomyTier: scanned.entry.riskTier ?? 'Not declared',
+    }),
+    details: {
+      sourcePath: input.ref.sourcePath, sourceRevision: scanned.entry.sourceHash ?? '', tools: [],
+      declaredCeiling: scanned.entry.riskTier ?? 'Not declared', replaces: [], buildsOn: [],
+      knowledgeSources: [...scanned.def.readScope], skills: [], schemas: ['workflow-definition/v1'], lineage: [], grades: [], ids: [scanned.def.id],
+      workflow: {
+        stepDag: (() => {
+          const dag = projectStepDag({
+            stages: runGraph ? runGraph.stages.map((stage) => ({ stageRef: stage.stageRef, label: stage.title, dependsOn: stage.dependsOn.flatMap((stageId) => {
+              const ref = runGraph.stages.find((candidate) => candidate.stageId === stageId)?.stageRef;
+              return ref ? [ref] : [];
+            }) })) : scanned.def.stages.map((stage) => ({ stageRef: stage.id, label: stage.title, dependsOn: [...stage.dependsOn] })),
+            events: runGraph?.events ?? [],
+          });
+          return { nodes: dag.nodes, edges: dag.edges };
+        })(),
+        parameters: [...(scanned.def.parameters ?? [])],
+        runGraph,
+      },
+      builder: (() => {
+        const catalog = workflowBuilderCatalog(ctx);
+        const profile = loadWorkflowProfiles().find((item) => item.id === scanned.def.profile);
+        return {
+          models: [...catalog.models], profiles: [...catalog.profiles], tools: [...catalog.tools], skills: [...catalog.skills], connectors: [...catalog.connectors], filesystemRoots: Object.keys(catalog.filesystemRoots).sort(), projects: [...catalog.projects],
+          value: { humanName: summary.humanName, purpose: scanned.def.purpose ?? scanned.def.description, model: scanned.def.model ?? catalog.models[0] ?? '', profile: scanned.def.profile, tools: [...(scanned.def.tools ?? profile?.allowedTools ?? [])], skills: [...(scanned.def.skills ?? [])], connectors: (scanned.def.connectors ?? []).map((grant) => ({ server: grant.server, tools: [...grant.tools] })), filesystemRoots: [...(scanned.def.filesystemRoots ?? [scanned.entry.project])] },
+        };
+      })(),
+    },
+  };
+}
+
+function sendEntity(reply: FastifyReply, etagHeader: string | string[] | undefined, value: EntityList | EntityDetail): FastifyReply {
+  const etag = `"${value.revision}"`;
+  reply.header('etag', etag);
+  return etagHeader === etag ? reply.code(304).send() : reply.send(value);
+}
+
+const WORKFLOW_BUILDER_FIELDS = ['humanName', 'purpose', 'model', 'profile', 'tools', 'skills', 'connectors', 'filesystemRoots'] as const;
+
+class WorkflowBuilderFailure extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+
+function workflowBuilderCatalog(ctx: SurfaceContext): EntityBuilderCatalog {
+  const declarations = [...readDeclaredAgentDetails(ctx.repoRoot).values()];
+  const executionProfiles = loadExecutionProfiles(ctx.repoRoot);
+  const workflowProfiles = loadWorkflowProfiles();
+  const projects = readdirSync(join(ctx.repoRoot, ORGS_DIR), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  return {
+    models: [...new Set(executionProfiles.map((profile) => profile.model))].sort(),
+    profiles: workflowProfiles.map((profile) => profile.id).sort(),
+    tools: [...new Set(workflowProfiles.flatMap((profile) => profile.allowedTools))].sort(),
+    skills: [...new Set(declarations.flatMap((item) => item.skills ?? []))].sort(),
+    connectors: [...new Map(declarations.flatMap((item) => item.connectors ?? []).map((connector) => [connector.server, { server: connector.server, tools: [...connector.tools] }])).values()].sort((left, right) => left.server.localeCompare(right.server)),
+    filesystemRoots: Object.fromEntries(projects.map((project) => [project, `orgs/${project}`])),
+    projects,
+  };
+}
+
+function workflowBuilderRequest(body: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(WORKFLOW_BUILDER_FIELDS.map((key) => [key, body[key]]));
+}
+
+function exactWorkflowBody(body: unknown, keys: readonly string[]): body is Record<string, unknown> {
+  return !!body && typeof body === 'object' && !Array.isArray(body)
+    && Object.keys(body as Record<string, unknown>).every((key) => keys.includes(key));
+}
+
+function workflowBuilderPort(ctx: SurfaceContext): EntityBuilderPort {
+  return {
+    async save(input) {
+      if (!ctx.durableRepoRoot) throw new WorkflowBuilderFailure(409, 'durable-worktree-required');
+      const activePath = join(ctx.repoRoot, ...input.sourcePath.split('/'));
+      const exists = existsSync(activePath);
+      let content: string;
+      if (exists) {
+        const source = readFileSync(activePath, 'utf8');
+        const revision = sourceHash(Buffer.from(source, 'utf8'));
+        if (revision !== input.expectedSourceRevision) throw new WorkflowBuilderFailure(409, 'stale-source-revision');
+        const patched = patchEntityBuilderSource('workflow', source, input.request);
+        if (!patched) throw new WorkflowBuilderFailure(409, 'workflow-layout-unsupported');
+        content = patched;
+      } else {
+        if (input.expectedSourceRevision !== workflowList(ctx).revision) throw new WorkflowBuilderFailure(409, 'stale-collection-revision');
+        content = renderWorkflowBuilderSource(input.ref.id, input.request);
+      }
+      const parsed = parseWorkflowDef(content, { knownProfiles: workflowProfileIds() });
+      if (!parsed.ok || parsed.value.id !== input.ref.id || parsed.value.project !== input.request.project) throw new WorkflowBuilderFailure(400, 'invalid-workflow-builder-result');
+      const proposedSourceHash = sourceHash(Buffer.from(content, 'utf8'));
+      return runBuilderAmendment(ctx.definitionAmendmentStore, {
+        kind: exists ? 'workflow-builder-edit' : 'workflow-builder-create', entityPath: input.sourcePath,
+        idempotencyKey: input.idempotencyKey, baseSourceHash: input.expectedSourceRevision, proposedSourceHash,
+        request: input.request,
+        effect: async () => {
+          const outcome = await governedSave({ repoRoot: ctx.durableRepoRoot!, relpath: input.sourcePath, content, sessionToken: input.sessionToken, sessionConfig: ctx.sessionConfig, runGit: ctx.saveGit, openPr: ctx.openPr, runPreamble: ctx.runPreamble, publication: ctx.coordinationPublication, outboxRoot: ctx.outboxRoot, message: `chore(workflow): ${exists ? 'edit' : 'create'} ${input.ref.id}` });
+          if (!outcome.ok) throw new WorkflowBuilderFailure(outcome.status, outcome.reason);
+          await auditFn(ctx)(ctx.repoRoot, { action: 'entity-builder-amend', owner: 'operator', target: input.sourcePath, riskTier: 'T2', result: 'pending-human-merge', detail: { kind: exists ? 'workflow-builder-edit' : 'workflow-builder-create', oldSourceHash: input.expectedSourceRevision, newSourceHash: proposedSourceHash } }, { runGit: ctx.opsGit, now: ctx.now });
+        },
+      });
+    },
+  };
+}
+
+function workflowBuilderError(reply: FastifyReply, error: unknown): FastifyReply {
+  if (error instanceof WorkflowBuilderFailure) return reply.code(error.status).send({ error: error.message });
+  const message = error instanceof Error ? error.message : 'invalid-builder-request';
+  return reply.code(message === 'idempotency-body-conflict' ? 409 : 400).send({ error: message });
+}
+
 /** Register the workflow-definition registry routes + the governed one-step launch route. */
 export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): void {
   const repoRoot = ctx.repoRoot;
+  const builderPort = workflowBuilderPort(ctx);
+  const resolveBuilderSelector = (selector: { type: 'agent' | 'workflow'; id: string }): RunnableRef => {
+    if (selector.type !== 'workflow' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(selector.id)) throw new Error('invalid-runnable-selector');
+    const existing = findScannedDef(repoRoot, selector.id);
+    const project = existing?.entry.project;
+    if (!project) throw new Error('project-required');
+    return { type: 'workflow', id: selector.id, project, sourcePath: `orgs/${project}/workflows/${selector.id}.md` };
+  };
 
-  // Read-only, pre-auth (like registerRegistry).
-  app.get('/api/workflows', async () => ({ items: scanWorkflowDefs(repoRoot).map((scanned) => entryWithCompileStatus(scanned, ctx)) }));
+  app.get('/api/workflows', async (req, reply) => sendEntity(reply, req.headers['if-none-match'], workflowList(ctx)));
   // Profiles are server-owned execution policy. Clients must read them rather than infer a default.
   app.get('/api/workflows/profiles', async () => ({ profiles: [...workflowProfileIds()].sort() }));
 
@@ -841,21 +1080,8 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     const { id } = req.params as { id: string };
     const scanned = findScannedDef(repoRoot, id);
     if (!scanned) return reply.code(404).send({ error: 'not-found' });
-    if (!scanned.def) return reply.send({ entry: scanned.entry, definition: null, compiled: null });
-    const preview = compiledPreview(repoRoot, scanned.def);
-    return reply.send({
-      entry: entryWithCompileStatus(scanned, ctx),
-      definition: scanned.def,
-      assignmentOptions: {
-        manager: eligibleAssignmentOptions(repoRoot, scanned.def, 'manager'),
-        stages: Object.fromEntries(scanned.def.stages.map((stage) => [stage.id, eligibleAssignmentOptions(repoRoot, scanned.def!, 'worker')])),
-      },
-      governanceOptions: eligibleGovernanceAgents(repoRoot, scanned.def),
-      compiled: 'error' in preview ? { ok: false, error: preview.error, detail: preview.detail } : {
-        ok: true, proposalId: preview.proposalId, contentHash: preview.contentHash,
-        manager: preview.proposal.manager, stages: preview.proposal.stages,
-      },
-    });
+    if (!scanned.def) return reply.code(422).send({ error: 'workflow-definition-invalid' });
+    return sendEntity(reply, req.headers['if-none-match'], workflowDetail(ctx, scanned as ScannedDef & { def: WorkflowDef }));
   });
 
   // Governed WRITE: its own origin → rate-limit → session child scope (mirrors the PTY route in index.ts;
@@ -864,6 +1090,21 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
     scope.addHook('onRequest', writeRateLimitHook(ctx.rateGuard));
     const preHandler = requireSession(ctx.sessionConfig);
+    scope.post('/api/workflows', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
+      if (!exactWorkflowBody(req.body, [...WORKFLOW_BUILDER_FIELDS, 'selector', 'project', 'expectedCollectionRevision', 'idempotencyKey'])) return reply.code(400).send({ error: 'invalid-workflow-create-body' });
+      const body = req.body;
+      const selector = body.selector as { type?: unknown; id?: unknown } | undefined;
+      if (!selector || selector.type !== 'workflow' || typeof selector.id !== 'string' || typeof body.project !== 'string') return reply.code(400).send({ error: 'invalid-runnable-selector' });
+      if (findScannedDef(repoRoot, selector.id)) return reply.code(409).send({ error: 'already-exists' });
+      const resolveCreate = (candidate: { type: 'agent' | 'workflow'; id: string }): RunnableRef => {
+        if (candidate.type !== 'workflow' || candidate.id !== selector.id || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(candidate.id)) throw new Error('invalid-runnable-selector');
+        return { type: 'workflow', id: candidate.id, project: body.project as string, sourcePath: `orgs/${body.project as string}/workflows/${candidate.id}.md` };
+      };
+      try {
+        const receipt = await submitEntityBuilder({ selector: { type: 'workflow', id: selector.id }, project: body.project, expectedSourceRevision: body.expectedCollectionRevision as string, idempotencyKey: body.idempotencyKey as string, sessionToken: verifiedSession(req)?.token, request: workflowBuilderRequest(body) }, { resolve: resolveCreate, catalog: workflowBuilderCatalog(ctx), port: builderPort });
+        return reply.code(202).send(receipt);
+      } catch (error) { return workflowBuilderError(reply, error); }
+    });
     scope.post('/api/workflows/:id/launch', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
       const sub = subject(req);
       if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -874,7 +1115,7 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
       // retry a fresh run with duplicate canonical cards, so an absent key is refused, never invented.
       const body = req.body !== null && typeof req.body === 'object' && !Array.isArray(req.body)
         ? req.body as Record<string, unknown> : {};
-      if (Object.keys(body).some((key) => key !== 'idempotencyKey' && key !== 'composerRef' && key !== 'parameters' && key !== 'expectedSourceHash')) {
+      if (Object.keys(body).some((key) => key !== 'idempotencyKey' && key !== 'composerRef' && key !== 'parameters' && key !== 'expectedSourceRevision')) {
         return reply.code(400).send({ error: 'invalid-launch-body' });
       }
       const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
@@ -887,11 +1128,11 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
       const scanned = findScannedDef(repoRoot, id);
       if (!scanned) return reply.code(404).send({ error: 'not-found' });
       if (!scanned.def) return reply.code(409).send({ error: 'definition-invalid', detail: scanned.entry.detail });
-      if (typeof body.expectedSourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(body.expectedSourceHash)) {
-        return reply.code(400).send({ error: 'source-hash-required' });
+      if (typeof body.expectedSourceRevision !== 'string' || !/^[a-f0-9]{64}$/.test(body.expectedSourceRevision)) {
+        return reply.code(400).send({ error: 'source-revision-required' });
       }
-      if (body.expectedSourceHash !== scanned.entry.sourceHash) {
-        return reply.code(409).send({ error: 'stale-source-hash', sourceHash: scanned.entry.sourceHash });
+      if (body.expectedSourceRevision !== scanned.entry.sourceHash) {
+        return reply.code(409).send({ error: 'stale-source-revision', sourceRevision: scanned.entry.sourceHash });
       }
       const pending = pendingAmendmentFor(ctx, scanned.entry);
       if (pending.error) return reply.code(409).send({ error: 'assignment-amendment-state-invalid' });
@@ -906,8 +1147,8 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
         // This is the authoritative launch CAS. No proposal/store/audit/run work starts until the raw
         // canonical bytes are re-read under the same in-process write transaction.
         const fresh = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
-        if (!fresh || sourceHash(fresh.bytes) !== body.expectedSourceHash) {
-          return { status: 409, body: { error: 'stale-source-hash', sourceHash: fresh ? sourceHash(fresh.bytes) : null } };
+        if (!fresh || sourceHash(fresh.bytes) !== body.expectedSourceRevision) {
+          return { status: 409, body: { error: 'stale-source-revision', sourceRevision: fresh ? sourceHash(fresh.bytes) : null } };
         }
         const freshText = decodeUtf8(fresh.bytes);
         if (freshText === null) return { status: 409, body: { error: 'definition-invalid' } };
@@ -937,38 +1178,34 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
           if (!declared || declared.source !== agent.path || declared.sourceHash !== agent.sourceHash) {
             return { status: 409, body: { error: 'runnable-owner-required' } };
           }
-          owner = { type: 'agent', id: declared.id, sourcePath: declared.source as `agents/${string}.md` };
+          // The workspace records who composed the launch, never who owns the immutable Workflow run.
         }
         return launchDefinition(ctx, sub, verifiedSession(req)?.token, instantiated.value, idempotencyKey,
-          agentWorkspaceLaunch, { owner, executionHost: process.platform === 'win32' ? 'desktop' : 'vm' });
+          agentWorkspaceLaunch, { owner, executionHost: resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud') });
       });
       return reply.code(result.status).send(result.body);
     });
-    scope.post('/api/workflows/:id/assignment-amendments', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
+    scope.put('/api/workflows/:id', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
       const sub = subject(req);
       if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
       const admission = ctx.admission('new-work');
       if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
       const { id } = req.params as { id: string };
-      const input = parseAmendmentBody(req.body);
-      if (!input) return reply.code(400).send({ error: 'invalid-assignment-amendment-body' });
       const scanned = findScannedDef(repoRoot, id);
       if (!scanned) return reply.code(404).send({ error: 'not-found' });
-      const result = await amendAssignment(ctx, sub, scanned, input);
-      return reply.code(result.status).send(result.body);
-    });
-    scope.post('/api/workflows/:id/governance-amendments', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
-      const sub = subject(req);
-      if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-      const admission = ctx.admission('new-work');
-      if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
-      const { id } = req.params as { id: string };
-      const input = parseGovernanceAmendmentBody(req.body);
-      if (!input) return reply.code(400).send({ error: 'invalid-governance-amendment-body' });
-      const scanned = findScannedDef(repoRoot, id);
-      if (!scanned) return reply.code(404).send({ error: 'not-found' });
-      const result = await amendGovernance(ctx, sub, scanned, input);
-      return reply.code(result.status).send(result.body);
+      const assignment = parseAmendmentBody(req.body);
+      const governance = parseGovernanceAmendmentBody(req.body);
+      if (assignment || governance) {
+        const result = assignment
+          ? await amendAssignment(ctx, sub, scanned, assignment)
+          : await amendGovernance(ctx, sub, scanned, governance!);
+        return reply.code(result.status).send(result.body);
+      }
+      if (!scanned.def || !exactWorkflowBody(req.body, [...WORKFLOW_BUILDER_FIELDS, 'expectedSourceRevision', 'idempotencyKey'])) return reply.code(400).send({ error: 'invalid-workflow-update-body' });
+      try {
+        const receipt = await submitEntityBuilder({ selector: { type: 'workflow', id }, project: scanned.entry.project, expectedSourceRevision: req.body.expectedSourceRevision as string, idempotencyKey: req.body.idempotencyKey as string, sessionToken: verifiedSession(req)?.token, request: workflowBuilderRequest(req.body) }, { resolve: resolveBuilderSelector, catalog: workflowBuilderCatalog(ctx), port: builderPort });
+        return reply.code(202).send(receipt);
+      } catch (error) { return workflowBuilderError(reply, error); }
     });
   });
 }

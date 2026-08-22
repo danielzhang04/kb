@@ -1,1082 +1,383 @@
 import Fastify from 'fastify';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync, cpSync, existsSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
-import { makeSurfaceContext } from '../http/surface.ts';
-import { createInMemoryControlPlaneStore } from '../control/store.ts';
-import type { ControlPlaneStore } from '../control/store.ts';
-import { createLeasedFileStoreForTest } from '../control/test-fixtures/controlStore.ts';
-import { createInMemoryComposerStore } from '../composer/store.ts';
-import { createProviderIdProtector } from '../composer/protector.ts';
 import type { AuditEvent } from '../audit/log.ts';
+import { createInMemoryControlPlaneStore, type ControlPlaneStore } from '../control/store.ts';
+import { makeSurfaceContext } from '../http/surface.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
-import { parseWorkflowDef } from './defs.ts';
-import {
-  declaredWorkflowDefPath,
-  registerWorkflows,
-  resetWorkflowRosterCache,
-  scanWorkflowDefs,
-  workflowPrimingText,
-} from './routes.ts';
-import { createFileAssignmentAmendmentStore, createInMemoryAssignmentAmendmentStore } from './amendmentStore.ts';
-import { admit } from '../control/admission.ts';
+import { createFileAssignmentAmendmentStore } from './amendmentStore.ts';
+import { registerWorkflows, scanWorkflowDefs } from './routes.ts';
 import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('workflow-route-test-secret-32byte!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
-const HEAD = 'a'.repeat(40);
 
-function headers(token?: string): Record<string, string> {
-  const base: Record<string, string> = { origin: ORIGIN, host: 'localhost:5317', 'content-type': 'application/json' };
-  if (token) base.authorization = `Bearer ${token}`;
-  return base;
+function headers(token: string): Record<string, string> {
+  return { origin: ORIGIN, host: 'localhost:5317', authorization: `Bearer ${token}`, 'content-type': 'application/json' };
 }
 
-async function launchPayload(app: ReturnType<typeof Fastify>, id: string, idempotencyKey: string, extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
-  const detail = await app.inject({ method: 'GET', url: `/api/workflows/${encodeURIComponent(id)}` });
-  const sourceHash = (detail.json() as { entry?: { sourceHash?: string } }).entry?.sourceHash;
-  if (!sourceHash) throw new Error(`missing source hash for test workflow ${id}`);
-  return { idempotencyKey, expectedSourceHash: sourceHash, ...extra };
-}
+const definitionText = (): string => [
+  '---', 'id: amendable', 'project: kb-ops', 'title: Assigned research', 'profile: research',
+  'manager:', '  agentId: assigned-manager', '  profileId: manager:claude:claude-opus-5',
+  'stages:', '  - id: brief', '    title: Research a topic', '    action: research:web-brief',
+  '    target: orgs/kb-ops/output', '    workOrder: research it', '    agentId: assigned-worker', '    profileId: worker:claude:claude-sonnet-5',
+  '    artifacts:', '      - id: brief-file', '        path: orgs/kb-ops/output/brief.md', '        description: Cited brief',
+  '---', 'body', '',
+].join('\n');
 
-/** The launch route's injected side-effect runners: no real git, py, or queue tree is ever touched. */
-function runners() {
-  return {
-    definitionAmendmentStore: createInMemoryAssignmentAmendmentStore(),
-    appendAudit: (_repoRoot: string, event: AuditEvent) => ({ ts: new Date().toISOString(), ...event }),
-    appendAuditLocal: (_repoRoot: string, event: AuditEvent) => ({ ts: new Date().toISOString(), ...event }),
-    runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
-    opsGit: (_repoRoot: string, args: string[]) => {
-      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
-      if (args.join(' ') === 'rev-parse HEAD') return `${HEAD}\n`;
-      return '';
-    },
-    runPy: (_repoRoot: string, _code: string, jsonArg: string) => {
-      const op = JSON.parse(jsonArg) as { runId: string; stages: Array<{ id: string }> };
-      const cards = op.stages.map((stage) => {
-        const cardId = workflowCardId(op.runId, stage.id);
-        return { stageId: stage.id, cardId, state: 'blocked', cardPath: `queue/inbox/${cardId}.md` };
-      });
-      return { exitCode: 0, stdout: `${JSON.stringify({ runId: op.runId, cards })}\n`, stderr: '' };
-    },
-  };
-}
-
-describe('workflow definition routes', () => {
-  let app: ReturnType<typeof Fastify>;
-  let controlStore: ControlPlaneStore;
-  let fileStore: ReturnType<typeof createLeasedFileStoreForTest>;
-  let composerStore: ReturnType<typeof createInMemoryComposerStore>;
-  let token: string;
-  let auditRows: Array<Record<string, unknown>>;
-  let admissionStatus: { pending: number; oldestAgeMs: number; degraded: boolean; reasons: string[] };
-
-  beforeEach(async () => {
-    let id = 0;
-    auditRows = [];
-    admissionStatus = { pending: 0, oldestAgeMs: 0, degraded: false, reasons: [] };
-    fileStore = createLeasedFileStoreForTest({ newId: () => `ref-${++id}` });
-    controlStore = fileStore.store;
-    composerStore = createInMemoryComposerStore({ protector: createProviderIdProtector(SESSION.secret) });
-    token = mintSession('operator', SESSION).token;
-    app = Fastify();
-    const injected = runners();
-    registerWorkflows(app, makeSurfaceContext({
-      repoRoot: REPO_ROOT,
-      sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN],
-      credentials: () => [],
-      controlStore,
-      composerStore,
-      admission: (kind) => admit(kind, admissionStatus),
-      ...injected,
-      appendAudit: (repoRoot, event) => {
-        auditRows.push(event as unknown as Record<string, unknown>);
-        return injected.appendAudit(repoRoot, event);
-      },
-      appendAuditLocal: (repoRoot, event) => {
-        auditRows.push(event as unknown as Record<string, unknown>);
-        return injected.appendAuditLocal(repoRoot, event);
-      },
-    }));
-    await app.ready();
-  });
-
-  afterEach(async () => { await app.close(); fileStore.close(); });
-
-  it('lists the shipped org workflow definitions as valid', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/workflows' });
-    expect(response.statusCode).toBe(200);
-    const items = response.json().items as Array<{ ref: string; valid: boolean; project: string; riskTier: string }>;
-    const triage = items.find((item) => item.ref === 'email-triage');
-    const brief = items.find((item) => item.ref === 'research-brief');
-    expect(triage).toMatchObject({ valid: true, project: 'kb-ops', riskTier: 'T2' });
-    expect(brief).toMatchObject({ valid: true, project: 'kb-ops', riskTier: 'T2' });
-  });
-
-  it('lists server-owned execution profiles in stable order', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/workflows/profiles' });
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ profiles: ['checker-readonly', 'drive-author', 'gmail-triage', 'producer', 'research', 'scanner'] });
-  });
-
-  it('returns a definition with its compiled proposal preview and content hash', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/workflows/research-brief' });
-    expect(response.statusCode).toBe(200);
-    const body = response.json() as { definition: { id: string } | null; compiled: { ok: boolean; proposalId: string; contentHash: string; stages: unknown[] } };
-    expect(body.definition?.id).toBe('research-brief');
-    expect(body.compiled.ok).toBe(true);
-    expect(body.compiled.proposalId).toMatch(/^wf-[a-f0-9]{48}$/);
-    expect(body.compiled.contentHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(body.compiled.stages).toHaveLength(1);
-  });
-
-  it('404s an unknown definition', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/workflows/nope' });
-    expect(response.statusCode).toBe(404);
-  });
-
-  it('refuses the launch without a session', async () => {
-    const response = await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(), payload: { idempotencyKey: 'k1' },
-    });
-    expect(response.statusCode).toBe(401);
-  });
-
-  it('a no-session caller cannot smuggle the internal-service bypass through the request body (still 401)', async () => {
-    // The internal service caller is an in-process principal the gated bridge threads directly into
-    // executeApprovedLaunch; it is NEVER sourced from the wire. A hostile body carrying `internalService`
-    // (or a `sessionToken`) must not reach the launch body — the session chain rejects it, unchanged.
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/workflows/research-brief/launch',
-      headers: headers(),
-      payload: { idempotencyKey: 'k1', internalService: { kind: 'internal-service-caller', subject: 'dashboard-engine' }, sessionToken: 'x' },
-    });
-    expect(response.statusCode).toBe(401);
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-  });
-
-  it('refuses the launch from a foreign origin or a rebound host', async () => {
-    // security/origin.ts is deliberate: a MISSING Origin is admitted only when the Host still matches
-    // the allowlist (non-browser clients), and the Host check is the DNS-rebinding guard. Both halves
-    // must reject before the launch body is ever reached.
-    const rebound = await app.inject({
-      method: 'POST',
-      url: '/api/workflows/research-brief/launch',
-      headers: { host: 'evil.example', 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      payload: { idempotencyKey: 'k1' },
-    });
-    expect(rebound.statusCode).toBe(403);
-
-    const foreign = await app.inject({
-      method: 'POST',
-      url: '/api/workflows/research-brief/launch',
-      headers: { ...headers(token), origin: 'http://evil.example' },
-      payload: { idempotencyKey: 'k1' },
-    });
-    expect(foreign.statusCode).toBe(403);
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-  });
-
-  it('refuses a launch that carries no client idempotencyKey', async () => {
-    const response = await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token), payload: {},
-    });
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error).toBe('idempotency-key-required');
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-  });
-
-  it('refuses a workflow launch before proposal or run side effects when the outbox is degraded', async () => {
-    admissionStatus = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
-    const response = await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
-      payload: await launchPayload(app, 'research-brief', 'outbox-degraded'),
-    });
-    expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({ error: 'outbox-degraded' });
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-    expect(auditRows).toHaveLength(0);
-  });
-
-  it('refuses workflow definition amendments before durable save side effects when the outbox is degraded', async () => {
-    admissionStatus = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
-    for (const url of [
-      '/api/workflows/research-brief/assignment-amendments',
-      '/api/workflows/research-brief/governance-amendments',
-    ]) {
-      const response = await app.inject({ method: 'POST', url, headers: headers(token), payload: {} });
-      expect(response.statusCode).toBe(503);
-      expect(response.json()).toMatchObject({ error: 'outbox-degraded' });
-    }
-    expect(auditRows).toHaveLength(0);
-  });
-
-  it('launches a definition through the canonical path and stalls at the activation gate', async () => {
-    const response = await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
-      payload: await launchPayload(app, 'research-brief', 'launch-1'),
-    });
-    expect(response.statusCode).toBe(202);
-    const body = response.json() as { ok: boolean; runRef: string; activationGated: boolean; waitingHuman: boolean; cards: unknown[] };
-    expect(body.ok).toBe(true);
-    expect(body.activationGated).toBe(true);
-    expect(body.waitingHuman).toBe(true);
-    expect(body.cards).toHaveLength(1);
-    const firstPersisted = JSON.parse(readFileSync(fileStore.path, 'utf8')) as { runs: Array<Record<string, unknown>> };
-    expect(firstPersisted.runs.find((item) => item.runRef === body.runRef)).toMatchObject({
-      owner: { type: 'workflow', id: 'research-brief', project: 'kb-ops',
-        sourcePath: 'orgs/kb-ops/workflows/research-brief.md' },
-      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
-    });
-
-    // The run is durably projected: published, waiting on a recoverable runtime intervention.
-    const run = controlStore.getRun('operator', body.runRef);
-    expect(run.ok).toBe(true);
-    if (!run.ok) return;
-    expect(run.value.run.publicationState).toBe('published');
-    expect(run.value.run.lifecycle.kind).toBe('waiting-human');
-    expect(run.value.humanRequests).toContainEqual(expect.objectContaining({
-      kind: 'intervention', title: 'Automatic execution activation is gated', state: 'open',
-    }));
-  });
-
-  it('drives the shipped iteration demo through launch and seeds only each loop owner', async () => {
-    const response = await app.inject({
-      method: 'POST', url: '/api/workflows/iteration-loop-demo/launch', headers: headers(token),
-      payload: await launchPayload(app, 'iteration-loop-demo', 'iteration-demo-launch', {
-        parameters: { slug: 'route-launch-projection' },
-      }),
-    });
-    expect(response.statusCode, response.body).toBe(202);
-    const body = response.json() as { runRef: string };
-    const run = controlStore.getRun('operator', body.runRef);
-    expect(run.ok).toBe(true);
-    if (!run.ok) return;
-
-    expect(run.value.run).toMatchObject({ publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null } });
-    expect(run.value.stages).toHaveLength(8);
-    expect(run.value.stages.every((stage) => stage.canonicalCardRef !== null)).toBe(true);
-    expect(run.value.iterationLoops).toHaveLength(4);
-    expect(run.value.iterationLoops.every((loop) => loop.state === 'awaiting-seed' && loop.cyclesUsed === 0)).toBe(true);
-
-    const seedStageIds = run.value.iterationLoops.map((loop) => {
-      const seed = loop.participants.find((participant) => participant.participantId === loop.activation.seedParticipantId);
-      if (!seed) throw new Error(`loop '${loop.iterationGroupId}' has no seed participant`);
-      return seed.stageRef;
-    }).sort();
-    const attemptedStageIds = run.value.attempts.map((attempt) => {
-      const stage = run.value.stages.find((candidate) => candidate.stageRef === attempt.stageRef);
-      if (!stage) throw new Error(`attempt '${attempt.attemptRef}' has no stage`);
-      return stage.stageId;
-    }).sort();
-    expect(attemptedStageIds).toEqual(seedStageIds);
-    expect(run.value.sessions.filter((session) => session.role === 'worker')).toHaveLength(seedStageIds.length);
-
-    // The opening exception remains narrow: a linked non-seed stage still cannot steal the turn.
-    const nonSeed = run.value.stages.find((stage) => stage.stageId === 'pair-checker');
-    if (!nonSeed?.assignment) throw new Error('pair-checker assignment is missing');
-    expect(controlStore.createAttempt('operator', nonSeed.stageRef, {
-      expectedStageVersion: nonSeed.version,
-      runtime: nonSeed.assignment.runtime,
-      model: nonSeed.assignment.model,
-    })).toEqual({ ok: false, reason: 'conflict', detail: 'iteration attempt is not the active turn owner' });
-  });
-
-  it('records the canonical audit action names plus the policy snapshot', async () => {
-    await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
-      payload: await launchPayload(app, 'research-brief', 'launch-audit'),
-    });
-    const decision = auditRows.find((row) => row.action === 'control-proposal-decision-authorize');
-    const launch = auditRows.find((row) => row.action === 'control-run-launch');
-    expect(decision).toBeDefined();
-    expect(launch).toBeDefined();
-    // `source` stays the discriminator so audit queries by canonical action never miss a workflow launch.
-    expect((decision?.detail as { source?: string }).source).toBe('workflow:research-brief');
-    const detail = launch?.detail as { source?: string; policyBaseCommit?: string; policyHashes?: Array<{ stageId: string; policyHash: string }> };
-    expect(detail.source).toBe('workflow:research-brief');
-    expect(detail.policyBaseCommit).toBe(HEAD);
-    expect(detail.policyHashes).toHaveLength(1);
-    expect(detail.policyHashes?.[0].policyHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(auditRows.some((row) => String(row.action).startsWith('workflow-'))).toBe(false);
-  });
-
-  it('replays one run for two launches that share an idempotencyKey', async () => {
-    const first = await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
-      payload: await launchPayload(app, 'research-brief', 'same-key'),
-    });
-    const second = await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
-      payload: await launchPayload(app, 'research-brief', 'same-key'),
-    });
-    expect(first.statusCode).toBe(202);
-    expect(second.statusCode).toBe(200);
-    expect(second.json().replayed).toBe(true);
-    expect(second.json().runRef).toBe(first.json().runRef);
-    // Exactly one run, one proposal, and one set of canonical cards — no duplicate queue publication.
-    expect(controlStore.listRuns('operator')).toHaveLength(1);
-    expect(controlStore.listProposalRevisions('operator')).toHaveLength(1);
-  });
-
-  it('requires the exact current source hash before proposal, audit, or run side effects', async () => {
-    const response = await app.inject({
-      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
-      payload: { idempotencyKey: 'stale-source', expectedSourceHash: '0'.repeat(64) },
-    });
-    expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: 'stale-source-hash' });
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-    expect(auditRows).toHaveLength(0);
-  });
-
-  it('derives durable agent-workspace provenance, replays only the same workspace, and refuses a cross-workspace key reuse', async () => {
-    const agent = {
-      id: 'fyt-runner', path: 'agents/fyt-runner.md',
-      sourceHash: normalizedTextSha256(readFileSync(join(REPO_ROOT, 'agents', 'fyt-runner.md'))),
-      projects: ['faceless-youtube'],
-      instructionMarkdown: 'Recorded server declaration context.',
-    };
-    const firstWorkspace = composerStore.create('operator', 'FYT planning', agent);
-    const secondWorkspace = composerStore.create('operator', 'FYT planning fork', agent);
-    const first = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
-    expect(first.statusCode).toBe(202);
-    const replay = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
-    expect(replay.statusCode).toBe(200);
-    expect(replay.json().runRef).toBe(first.json().runRef);
-    const changedParameters = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: firstWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-20-other', slice: 'act-1' } }) });
-    expect(changedParameters.statusCode).toBe(409);
-    const run = controlStore.getRun('operator', first.json().runRef);
-    expect(run.ok && run.value.run.agentWorkspaceLaunch).toEqual({
-      composerRef: firstWorkspace.composerRef, agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: agent.sourceHash,
-    });
-    const firstPersisted = JSON.parse(readFileSync(fileStore.path, 'utf8')) as { runs: Array<Record<string, unknown>> };
-    expect(firstPersisted.runs.find((item) => item.runRef === first.json().runRef)).toMatchObject({
-      owner: { type: 'agent', id: 'fyt-runner', sourcePath: 'agents/fyt-runner.md' },
-      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
-    });
-    const conflict = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: secondWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
-    expect(conflict.statusCode).toBe(409);
-    const crossOwner = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
-      payload: await launchPayload(app, 'video-run', 'other-key', { composerRef: composerStore.create('mallory', 'Foreign', agent).composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
-    expect(crossOwner.statusCode).toBe(404);
-    // Five real launches through the canonical body (compile → import → approve → publish) take ~5.3s on
-    // a Windows dev machine, over vitest's 5s default. The budget is the flake fix, not a slow assertion.
-  }, 15_000);
-
-});
-
-describe('workflow launch governance boundaries', () => {
-  let repoRoot: string;
-  let app: ReturnType<typeof Fastify>;
-  let controlStore: ReturnType<typeof createInMemoryControlPlaneStore>;
-  let token: string;
-
-  /** A scratch repo root carrying the real governance/policy files plus one synthetic definition. */
-  function writeDefinition(name: string, text: string): void {
-    writeDefinitionFor('kb-ops', name, text);
-  }
-
-  function writeDefinitionFor(project: string, name: string, text: string): void {
-    const dir = join(repoRoot, 'orgs', project, 'workflows');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `${name}.md`), text, 'utf8');
-  }
-
-  function writeAgent(id: string, lines: string[]): void {
-    const dir = join(repoRoot, 'agents');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `${id}.md`), ['---', `id: ${id}`, ...lines, '---', 'Bounded declaration instructions.', ''].join('\n'), 'utf8');
-  }
-
-  function assignedDefinition(id: string, managerId = 'assigned-manager', workerId = 'assigned-worker', workerProfile = 'worker:claude:claude-sonnet-5'): string {
-    return [
-      '---', `id: ${id}`, 'project: kb-ops', 'title: Assigned research', 'profile: research',
-      'manager:', `  agentId: ${managerId}`, '  profileId: manager:claude:claude-opus-5',
-      'stages:', '  - id: brief', '    title: Research a topic', '    action: research:web-brief',
-      '    target: orgs/kb-ops/output', '    workOrder: research it', `    agentId: ${workerId}`, `    profileId: ${workerProfile}`,
-      '---', 'body', '',
-    ].join('\n');
-  }
-
-  beforeEach(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'kb-workflow-routes-'));
+function buildRoots(): { activeRoot: string; durableRoot: string } {
+  const activeRoot = mkdtempSync(join(tmpdir(), 'workflow-p2-active-'));
+  const durableRoot = mkdtempSync(join(tmpdir(), 'workflow-p2-durable-'));
+  for (const root of [activeRoot, durableRoot]) {
     for (const rel of ['governance', 'CLAUDE.md', join('orgs', 'kb-ops', 'contract.md')]) {
       const from = join(REPO_ROOT, rel);
-      if (existsSync(from)) {
-        mkdirSync(join(repoRoot, rel, '..'), { recursive: true });
-        cpSync(from, join(repoRoot, rel), { recursive: true });
-      }
+      if (existsSync(from)) { mkdirSync(join(root, rel, '..'), { recursive: true }); cpSync(from, join(root, rel), { recursive: true }); }
     }
-    let id = 0;
-    controlStore = createInMemoryControlPlaneStore({ newId: () => `ref-${++id}` });
-    token = mintSession('operator', SESSION).token;
-    app = Fastify();
-    registerWorkflows(app, makeSurfaceContext({
-      repoRoot,
-      sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN],
-      credentials: () => [],
-      controlStore,
-      ...runners(),
-    }));
-    await app.ready();
-  });
+    const agents = join(root, 'agents'); mkdirSync(agents, { recursive: true });
+    writeFileSync(join(agents, 'assigned-manager.md'), ['---', 'id: assigned-manager', 'runtime: claude', 'model: claude-opus-5', 'default-profile: manager:claude:claude-opus-5', 'allowed-profiles: [manager:claude:claude-opus-5]', 'projects: [kb-ops]', 'runner-bound: true', 'role: manager', '---', 'Manager.'].join('\n'));
+    writeFileSync(join(agents, 'assigned-worker.md'), ['---', 'id: assigned-worker', 'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5', 'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: true', 'role: worker', '---', 'Worker.'].join('\n'));
+    const workflows = join(root, 'orgs', 'kb-ops', 'workflows'); mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, 'amendable.md'), definitionText());
+  }
+  return { activeRoot, durableRoot };
+}
 
-  afterEach(async () => {
-    await app.close();
-    rmSync(repoRoot, { recursive: true, force: true });
-  });
-
-  it('previews and launches a valid immutable manager/stage assignment from server-owned bindings', async () => {
-    writeAgent('assigned-manager', [
-      'runtime: claude', 'model: claude-opus-5', 'default-profile: manager:claude:claude-opus-5',
-      'allowed-profiles: [manager:claude:claude-opus-5]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
-    ]);
-    writeAgent('assigned-worker', [
-      'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5',
-      'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Worker.',
-    ]);
-    writeDefinition('assigned', assignedDefinition('assigned'));
-
-    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
-    const entry = (listed.json().items as Array<Record<string, unknown>>).find((item) => item.ref === 'assigned');
-    expect(entry).toMatchObject({ valid: true, launchable: true, manager: { agentId: 'assigned-manager' } });
-
-    const preview = await app.inject({ method: 'GET', url: '/api/workflows/assigned' });
-    expect(preview.statusCode).toBe(200);
-    expect(preview.json()).toMatchObject({
-      compiled: {
-        ok: true,
-        manager: { runtime: 'claude', model: 'claude-opus-5', assignment: { agentId: 'assigned-manager', declarationHash: expect.stringMatching(/^[a-f0-9]{64}$/) } },
-        stages: [{ worker: { runtime: 'claude', model: 'claude-sonnet-5' }, assignment: { agentId: 'assigned-worker' } }],
-      },
-    });
-
-    const launched = await app.inject({ method: 'POST', url: '/api/workflows/assigned/launch', headers: headers(token), payload: await launchPayload(app, 'assigned', 'assigned') });
-    expect(launched.statusCode).toBe(202);
-    expect(controlStore.listRuns('operator')).toHaveLength(1);
-  });
-
-  it('keeps parser-valid assignments visible but returns the exact compiler refusal and creates no run', async () => {
-    writeAgent('assigned-manager', [
-      'runtime: claude', 'model: claude-opus-5', 'default-profile: manager:claude:claude-opus-5',
-      'allowed-profiles: [manager:claude:claude-opus-5]', 'projects: [kb-ops]', 'runner-bound: true', 'description: Manager.',
-    ]);
-    writeAgent('assigned-worker', [
-      'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5',
-      'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: false', 'description: Worker.',
-    ]);
-    writeDefinition('unbound-assigned', assignedDefinition('unbound-assigned'));
-
-    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
-    const entry = (listed.json().items as Array<Record<string, unknown>>).find((item) => item.ref === 'unbound-assigned');
-    expect(entry).toMatchObject({ valid: true, launchable: false, compileError: 'assigned-agent-not-runner-bound' });
-    expect(entry?.compileDetail).toBe("assigned agent 'assigned-worker' is not runner-bound");
-
-    const preview = await app.inject({ method: 'GET', url: '/api/workflows/unbound-assigned' });
-    expect(preview.json()).toMatchObject({ compiled: { ok: false, error: 'assigned-agent-not-runner-bound', detail: "assigned agent 'assigned-worker' is not runner-bound" } });
-
-    const launched = await app.inject({ method: 'POST', url: '/api/workflows/unbound-assigned/launch', headers: headers(token), payload: await launchPayload(app, 'unbound-assigned', 'unbound') });
-    expect(launched.statusCode).toBe(400);
-    expect(launched.json()).toEqual({ error: 'assigned-agent-not-runner-bound', detail: "assigned agent 'assigned-worker' is not runner-bound" });
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-  });
-
-  it('rejects a definition that targets a tree outside its own org', () => {
-    const outside = [
-      '---',
-      'id: escape',
-      'project: kb-ops',
-      'title: Escape',
-      'profile: research',
-      'stages:',
-      '  - id: edit',
-      '    title: Edit the policy engine',
-      '    action: code:patch',
-      '    target: dashboard/server/control/policy.ts',
-      '    workOrder: rewrite the boundary',
-      '---',
-      'body',
-      '',
-    ].join('\n');
-    const parsed = parseWorkflowDef(outside);
-    expect(parsed.ok).toBe(false);
-    if (parsed.ok) return;
-    expect(parsed.detail).toContain("own org tree 'orgs/kb-ops/'");
-
-    // A sibling org's tree is refused too — a def may only target the project it declares.
-    const sibling = parseWorkflowDef(outside.replace('dashboard/server/control/policy.ts', 'orgs/other-project/output'));
-    expect(sibling.ok).toBe(false);
-  });
-
-  it('surfaces an out-of-org definition as invalid rather than launchable', async () => {
-    writeDefinition('escape', [
-      '---',
-      'id: escape',
-      'project: kb-ops',
-      'title: Escape',
-      'profile: research',
-      'stages:',
-      '  - id: edit',
-      '    title: Edit governance',
-      '    action: code:patch',
-      '    target: governance/risk-tiers.md',
-      '    workOrder: rewrite the rules',
-      '---',
-      'body',
-      '',
-    ].join('\n'));
-    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
-    const entry = (listed.json().items as Array<{ ref: string; valid: boolean }>).find((item) => item.ref === 'kb-ops~escape');
-    expect(entry?.valid).toBe(false);
-
-    const launched = await app.inject({
-      method: 'POST', url: '/api/workflows/kb-ops~escape/launch', headers: headers(token),
-      payload: { idempotencyKey: 'escape' },
-    });
-    expect(launched.statusCode).toBe(409);
-    expect(launched.json().error).toBe('definition-invalid');
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-  });
-
-  it('hard-rejects duplicate ids instead of selecting one project definition', async () => {
-    const definition = [
-      '---',
-      'id: shared',
-      'project: kb-ops',
-      'title: Shared',
-      'profile: research',
-      'stages:',
-      '  - id: research',
-      '    title: Research',
-      '    action: research:brief',
-      '    target: orgs/kb-ops/output',
-      '    workOrder: research it',
-      '---',
-      'body',
-      '',
-    ].join('\n');
-    writeDefinition('shared-a', definition);
-    writeDefinitionFor('other', 'shared-b', definition
-      .replace('project: kb-ops', 'project: other')
-      .replace('target: orgs/kb-ops/output', 'target: orgs/other/output'));
-
-    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
-    const entries = listed.json().items as Array<{ ref: string; valid: boolean; detail: string }>;
-    expect(entries.find((entry) => entry.ref === 'kb-ops~shared')).toMatchObject({ valid: false, detail: expect.stringMatching(/duplicated/) });
-    expect(entries.find((entry) => entry.ref === 'other~shared')).toMatchObject({ valid: false, detail: expect.stringMatching(/duplicated/) });
-    expect((await app.inject({ method: 'GET', url: '/api/workflows/shared' })).statusCode).toBe(404);
-
-    const launched = await app.inject({
-      method: 'POST', url: '/api/workflows/kb-ops~shared/launch', headers: headers(token), payload: { idempotencyKey: 'shared' },
-    });
-    expect(launched.statusCode).toBe(409);
-    expect(launched.json()).toMatchObject({ error: 'definition-invalid' });
-    expect(controlStore.listRuns('operator')).toHaveLength(0);
-  });
-
-  it('does not scan a workflow directory that resolves through a symlink outside its project', async () => {
-    const outside = join(repoRoot, 'outside-workflows');
-    mkdirSync(outside, { recursive: true });
-    writeFileSync(join(outside, 'escape.md'), [
-      '---', 'id: escape-link', 'project: kb-ops', 'title: Escape', 'profile: research', 'stages:',
-      '  - id: research', '    title: Research', '    action: research:brief', '    target: orgs/kb-ops/output', '    workOrder: research it',
-      '---', 'body', '',
-    ].join('\n'), 'utf8');
-    const project = join(repoRoot, 'orgs', 'kb-ops');
-    mkdirSync(project, { recursive: true });
-    symlinkSync(outside, join(project, 'workflows'), 'junction');
-
-    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
-    expect((listed.json().items as Array<{ ref: string }>).some((entry) => entry.ref === 'escape-link')).toBe(false);
-    expect((await app.inject({ method: 'GET', url: '/api/workflows/escape-link' })).statusCode).toBe(404);
-  });
-
-  it('stalls a T3 definition at the human boundary and publishes NO canonical cards', async () => {
-    writeDefinition('release', [
-      '---',
-      'id: release',
-      'project: kb-ops',
-      'title: Release',
-      'profile: research',
-      'stages:',
-      '  - id: ship',
-      '    title: Ship the release',
-      '    action: release:cut',
-      '    target: orgs/kb-ops/output',
-      '    workOrder: cut the release',
-      '---',
-      'body',
-      '',
-    ].join('\n'));
-    const detail = await app.inject({ method: 'GET', url: '/api/workflows/release' });
-    expect((detail.json() as { entry: { riskTier: string } }).entry.riskTier).toBe('T3');
-
-    const response = await app.inject({
-      method: 'POST', url: '/api/workflows/release/launch', headers: headers(token),
-      payload: await launchPayload(app, 'release', 't3-launch'),
-    });
-    expect(response.statusCode).toBe(202);
-    const body = response.json() as { runRef: string; waitingHuman: boolean; cards?: unknown; activationGated?: boolean };
-    expect(body.waitingHuman).toBe(true);
-    // The human-gate path never published, so it must not claim the post-publication activation gate.
-    expect(body.activationGated).toBeUndefined();
-    expect(body.cards).toBeUndefined();
-
-    const run = controlStore.getRun('operator', body.runRef);
-    expect(run.ok).toBe(true);
-    if (!run.ok) return;
-    expect(run.value.run.publicationState).toBe('waiting-human');
-    expect(run.value.run.lifecycle.kind).toBe('waiting-human');
-    expect(run.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
-    expect(run.value.humanRequests.length).toBeGreaterThan(0);
-  });
-
-  it('drives the one-step launch through the activated executor and hands the run to runAutomatic', async () => {
-    // Replaces the pre-2026-07-21 refusal test: with the execution engine injected, the one-step launch
-    // no longer 409s — it flows through the canonical executeApprovedLaunch, activates the root card, and
-    // fires runAutomatic with the created runRef (Wave-A live-fire runbook D0-A).
-    writeDefinition('activated-research', [
-      '---',
-      'id: activated-research',
-      'project: kb-ops',
-      'title: Activated research',
-      'profile: research',
-      'stages:',
-      '  - id: research',
-      '    title: Research',
-      '    action: research:brief',
-      '    target: orgs/kb-ops/output',
-      '    workOrder: research it',
-      '---',
-      'body',
-      '',
-    ].join('\n'));
-
-    const runAutomaticCalls: Array<{ runRef: string }> = [];
-    const activated = Fastify();
-    registerWorkflows(activated, makeSurfaceContext({
-      repoRoot,
-      sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN],
-      credentials: () => [],
-      controlStore: createInMemoryControlPlaneStore({ newId: () => `act-${Math.random()}` }),
-      ...runners(),
-      // The activated managed-root step reads each published card back off disk and diffs it against
-      // `git show HEAD:<path>` (empty via the stub git). So the launch card op writes an EMPTY card file:
-      // the read resolves and the empty on-disk content matches the empty stubbed HEAD content.
-      runPy: (_repo: string, _code: string, jsonArg: string) => {
-        const op = JSON.parse(jsonArg) as { runId?: string; cardRefs?: string[]; stages?: Array<{ id: string }> };
-        if (op.cardRefs) {
-          const cards = [...op.cardRefs].sort().map((ref) => ({
-            cardRef: ref,
-            path: `queue/inbox/${ref}.md`,
-            completed: false,
-            changed: false,
-          }));
-          return { exitCode: 0, stdout: `${JSON.stringify({ cards })}\n`, stderr: '' };
-        }
-        const cards = (op.stages ?? []).map((stage) => {
-          const cardId = workflowCardId(op.runId as string, stage.id);
-          mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
-          writeFileSync(join(repoRoot, 'queue', 'inbox', `${cardId}.md`), '', 'utf8');
-          return { stageId: stage.id, cardId, state: 'blocked', cardPath: `queue/inbox/${cardId}.md` };
-        });
-        return { exitCode: 0, stdout: `${JSON.stringify({ runId: op.runId, cards })}\n`, stderr: '' };
-      },
-      controlBroker: { isRunning: () => true, drain: () => {} } as never,
-      // A spy async fn (invoked synchronously before its first await, so the call is recorded by the time
-      // the 201 returns even though executeApprovedLaunch fires it un-awaited).
-      runAutomatic: (async (arg: { runRef: string }) => { runAutomaticCalls.push(arg); return { ok: true }; }) as never,
-    }));
-    await activated.ready();
-
-    const response = await activated.inject({
-      method: 'POST', url: '/api/workflows/activated-research/launch', headers: headers(token),
-      payload: await launchPayload(activated, 'activated-research', 'activated'),
-    });
-    await activated.close();
-
-    expect(response.statusCode).toBe(201);
-    const body = response.json() as { ok: boolean; runRef: string; cards: unknown[] };
-    expect(body.ok).toBe(true);
-    expect(body.cards).toHaveLength(1);
-    expect(runAutomaticCalls).toHaveLength(1);
-    expect(runAutomaticCalls[0].runRef).toBe(body.runRef);
-  });
-});
-
-describe('workflow assignment amendment route', () => {
+describe('Workflow P2 routes', () => {
   let activeRoot: string;
   let durableRoot: string;
   let app: ReturnType<typeof Fastify>;
   let token: string;
+  let store: ControlPlaneStore;
   let gitCalls: string[][];
-  let prCalls: Array<Record<string, unknown>>;
-  let audits: Array<Record<string, unknown>>;
+  let auditRows: AuditEvent[];
+  let surface: ReturnType<typeof makeSurfaceContext>;
+  let admissionDegraded: boolean;
+  let prFailure: boolean;
+  let prCalls: number;
+  let auditFailure: boolean;
+  let automaticRunRefs: string[];
 
-  const definitionText = (): string => [
-    '---', 'id: amendable', 'project: kb-ops', 'title: Assigned research', 'profile: research',
-    'manager:', '  agentId: assigned-manager', '  profileId: manager:claude:claude-opus-5',
-    'stages:', '  - id: brief', '    title: Research a topic', '    action: research:web-brief',
-    '    target: orgs/kb-ops/output', '    workOrder: research it', '    agentId: assigned-worker', '    profileId: worker:claude:claude-sonnet-5',
-    '---', 'body', '',
-  ].join('\n');
-  function setup(overrides: { gitFailure?: 'commit'; prFailure?: boolean; auditFailure?: boolean } = {}): void {
-    gitCalls = []; prCalls = []; audits = [];
-    activeRoot = mkdtempSync(join(tmpdir(), 'kb-workflow-amend-active-'));
-    durableRoot = mkdtempSync(join(tmpdir(), 'kb-workflow-amend-durable-'));
-    for (const root of [activeRoot, durableRoot]) {
-      for (const rel of ['governance', 'CLAUDE.md', join('orgs', 'kb-ops', 'contract.md')]) {
-        const from = join(REPO_ROOT, rel);
-        if (existsSync(from)) { mkdirSync(join(root, rel, '..'), { recursive: true }); cpSync(from, join(root, rel), { recursive: true }); }
-      }
-      const agents = join(root, 'agents'); mkdirSync(agents, { recursive: true });
-      writeFileSync(join(agents, 'assigned-manager.md'), ['---', 'id: assigned-manager', 'runtime: claude', 'model: claude-opus-5', 'default-profile: manager:claude:claude-opus-5', 'allowed-profiles: [manager:claude:claude-opus-5]', 'projects: [kb-ops]', 'runner-bound: true', 'role: manager', '---', 'Manager.'].join('\n'));
-      writeFileSync(join(agents, 'assigned-worker.md'), ['---', 'id: assigned-worker', 'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5', 'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: true', 'role: worker', '---', 'Worker.'].join('\n'));
-      writeFileSync(join(agents, 'unbound-worker.md'), ['---', 'id: unbound-worker', 'runtime: claude', 'model: claude-sonnet-5', 'default-profile: worker:claude:claude-sonnet-5', 'allowed-profiles: [worker:claude:claude-sonnet-5]', 'projects: [kb-ops]', 'runner-bound: false', 'role: worker', '---', 'Unbound worker.'].join('\n'));
-      const dir = join(root, 'orgs', 'kb-ops', 'workflows'); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'amendable.md'), definitionText());
-    }
+  async function setup(options: { activated?: boolean } = {}): Promise<void> {
+    ({ activeRoot, durableRoot } = buildRoots());
     token = mintSession('operator', SESSION).token;
+    store = createInMemoryControlPlaneStore();
+    gitCalls = [];
+    auditRows = [];
+    admissionDegraded = false;
+    prFailure = false;
+    prCalls = 0;
+    auditFailure = false;
+    automaticRunRefs = [];
     app = Fastify();
-    registerWorkflows(app, makeSurfaceContext({ repoRoot: activeRoot, durableRepoRoot: durableRoot, stateRoot: join(activeRoot, 'dashboard-state'), sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: createInMemoryControlPlaneStore(), ...runners(), definitionAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'dashboard-state')),
-      saveGit: async (_root, args) => { gitCalls.push(args); if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'claude/m1-dashboard\n'; if (overrides.gitFailure === 'commit' && args[0] === 'commit') throw new Error('commit refused'); return ''; },
-      openPr: async (_root, request) => { prCalls.push(request as unknown as Record<string, unknown>); if (overrides.prFailure) throw new Error('PR unavailable'); return { url: 'https://example.test/pull/9', number: 9 }; },
-      appendAudit: (_root, event) => { if (overrides.auditFailure) throw new Error('audit unavailable'); audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; },
-      appendAuditLocal: (_root, event) => { if (overrides.auditFailure) throw new Error('audit unavailable'); audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; },
-    }));
-  }
-  async function amend(body: Record<string, unknown>): Promise<ReturnType<ReturnType<typeof Fastify>['inject']>> { return app.inject({ method: 'POST', url: '/api/workflows/amendable/assignment-amendments', headers: headers(token), payload: body }); }
-  async function input(target: Record<string, unknown> = { kind: 'stage', stageId: 'brief' }, assignment: unknown = null): Promise<Record<string, unknown>> { const hash = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().entry.sourceHash; return { expectedSourceHash: hash, target, assignment }; }
-  async function amendGovernance(body: Record<string, unknown>): Promise<ReturnType<ReturnType<typeof Fastify>['inject']>> { return app.inject({ method: 'POST', url: '/api/workflows/amendable/governance-amendments', headers: headers(token), payload: body }); }
-  async function governanceInput(governance: unknown = { workflow: 'assigned-manager', stages: { brief: 'assigned-worker' } }): Promise<Record<string, unknown>> { const hash = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().entry.sourceHash; return { expectedSourceHash: hash, governance }; }
-
-  beforeEach(async () => { setup(); await app.ready(); });
-  afterEach(async () => { if (app) await app.close(); if (activeRoot) rmSync(activeRoot, { recursive: true, force: true }); if (durableRoot) rmSync(durableRoot, { recursive: true, force: true }); });
-
-  it('patches exactly one assignment, routes its exact path through a PR, and audits pending human merge', async () => {
-    const response = await amend(await input());
-    expect(response.statusCode).toBe(202);
-    expect(response.json()).toMatchObject({ status: 'pending-human-merge', proposedSourceHash: expect.stringMatching(/^[a-f0-9]{64}$/), pr: { url: 'https://example.test/pull/9' } });
-    expect(readFileSync(join(activeRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8')).toBe(definitionText());
-    expect(readFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8')).not.toContain('agentId: assigned-worker');
-    expect(gitCalls).toEqual(expect.arrayContaining([['add', '--', 'orgs/kb-ops/workflows/amendable.md'], expect.arrayContaining(['commit']), ['push', 'origin', 'HEAD:refs/heads/claude/m1-dashboard']]));
-    expect(prCalls).toHaveLength(1); expect(audits).toHaveLength(1); expect(audits[0].action).toBe('workflow-assignment-amendment');
-  });
-
-  it('refuses stale, durable-base-mismatch, and unbound compilation before git, PR, or audit', async () => {
-    expect((await amend({ ...(await input()), expectedSourceHash: '0'.repeat(64) })).statusCode).toBe(409);
-    writeFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), definitionText().replace('Assigned research', 'different durable base'));
-    expect((await amend(await input())).json()).toMatchObject({ error: 'durable-base-mismatch' });
-    writeFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), definitionText());
-    const durableWorkflowDir = join(durableRoot, 'orgs/kb-ops/workflows');
-    rmSync(durableWorkflowDir, { recursive: true }); symlinkSync(join(activeRoot, 'orgs/kb-ops/workflows'), durableWorkflowDir, 'junction');
-    expect((await amend(await input())).json()).toMatchObject({ error: 'definition-path-refused' });
-    rmSync(durableWorkflowDir, { recursive: true }); mkdirSync(durableWorkflowDir, { recursive: true }); writeFileSync(join(durableWorkflowDir, 'amendable.md'), definitionText());
-    expect((await amend(await input({ kind: 'stage', stageId: 'brief' }, { agentId: 'unbound-worker', profileId: 'worker:claude:claude-sonnet-5' }))).statusCode).toBe(409);
-    expect(gitCalls).toHaveLength(0); expect(prCalls).toHaveLength(0); expect(audits).toHaveLength(0);
-  });
-
-  it('restores bytes on pre-commit failure but reports post-commit PR failure without dirty restoration', async () => {
-    await app.close(); setup({ gitFailure: 'commit' }); await app.ready();
-    const original = readFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8');
-    expect((await amend(await input())).statusCode).toBe(500);
-    expect(readFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8')).toBe(original);
-    await app.close(); setup({ prFailure: true }); await app.ready();
-    const response = await amend(await input());
-    expect(response.statusCode).toBe(502); expect(response.json()).toMatchObject({ error: 'assignment-durable-route-incomplete', committed: true, pushed: true });
-    expect(readFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8')).not.toBe(definitionText());
-  });
-
-  it('returns a loud truthful audit failure with the pending durable branch and PR metadata', async () => {
-    await app.close(); setup({ auditFailure: true }); await app.ready();
-    const response = await amend(await input());
-    expect(response.statusCode).toBe(500); expect(response.json()).toMatchObject({ status: 'pending-human-merge', auditStatus: 'failed', branch: 'claude/m1-dashboard', pr: { url: 'https://example.test/pull/9' }, proposedSourceHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
-  });
-
-  it('keeps a file-backed pending amendment across a new app instance and refuses a direct launch', async () => {
-    const amended = await amend(await input()); expect(amended.statusCode).toBe(202);
-    const list = (await app.inject({ method: 'GET', url: '/api/workflows' })).json();
-    expect(list.items.find((item: { ref: string }) => item.ref === 'amendable').pendingAmendment).toMatchObject({ phase: 'pending-human-merge' });
-    const sourceHash = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().entry.sourceHash;
-    const launch = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'must-not-launch', expectedSourceHash: sourceHash, parameters: {} } });
-    expect(launch.json()).toMatchObject({ error: 'assignment-amendment-pending' });
-    expect(gitCalls.filter((call) => call[0] === 'add')).toHaveLength(1);
-    await app.close(); app = Fastify();
-    registerWorkflows(app, makeSurfaceContext({ repoRoot: activeRoot, durableRepoRoot: durableRoot, stateRoot: join(activeRoot, 'dashboard-state'), sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: createInMemoryControlPlaneStore(), ...runners(), definitionAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'dashboard-state')),
+    surface = makeSurfaceContext({
+      repoRoot: activeRoot, durableRepoRoot: durableRoot, stateRoot: join(activeRoot, 'state'), controlStore: store,
+      sessionConfig: SESSION, allowedOrigins: [ORIGIN], runtimeCapabilities: runtimeCapabilities('linux'),
+      definitionAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'state')),
+      admission: () => admissionDegraded ? { ok: false, status: 503, reason: 'outbox-degraded' } : { ok: true },
+      runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+      appendAudit: (_root, event) => { if (auditFailure) throw new Error('audit unavailable'); auditRows.push(event); return { ts: 'now', ...event }; },
+      appendAuditLocal: (_root, event) => { if (auditFailure) throw new Error('audit unavailable'); auditRows.push(event); return { ts: 'now', ...event }; },
+      opsGit: async (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n'
+        : args.join(' ') === 'rev-parse HEAD' ? `${'a'.repeat(40)}\n` : '',
       saveGit: async (_root, args) => { gitCalls.push(args); return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : ''; },
-      openPr: async (_root, request) => { prCalls.push(request as unknown as Record<string, unknown>); return { url: 'https://example.test/pull/9', number: 9 }; },
-      appendAudit: (_root, event) => { audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; },
-      appendAuditLocal: (_root, event) => { audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; },
-    })); await app.ready();
-    expect((await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().entry.pendingAmendment).toMatchObject({ phase: 'pending-human-merge' });
-  });
-
-  it('refuses an aliased default durable root and assignment scalar injection before side effects', async () => {
-    await app.close(); app = Fastify();
-    registerWorkflows(app, makeSurfaceContext({ repoRoot: activeRoot, durableRepoRoot: activeRoot, stateRoot: join(activeRoot, 'dashboard-state-alias'), sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: createInMemoryControlPlaneStore(), ...runners(),
-      saveGit: async (_root, args) => { gitCalls.push(args); return 'claude/m1-dashboard\n'; }, openPr: async (_root, request) => { prCalls.push(request as unknown as Record<string, unknown>); return { url: 'https://example.test/pull/9', number: 9 }; }, appendAudit: (_root, event) => { audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; }, appendAuditLocal: (_root, event) => { audits.push(event as unknown as Record<string, unknown>); return { ts: 'now', ...event }; },
-    })); await app.ready();
-    const original = readFileSync(join(activeRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8');
-    expect((await amend(await input())).json()).toMatchObject({ error: 'durable-worktree-required' });
-    expect((await amend({ ...(await input()), assignment: { agentId: 'writer\n    riskTier: T3', profileId: 'worker:claude:claude-sonnet-5' } })).json()).toMatchObject({ error: 'invalid-assignment-amendment-body' });
-    expect(readFileSync(join(activeRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8')).toBe(original);
-    expect(gitCalls).toHaveLength(0); expect(prCalls).toHaveLength(0); expect(audits).toHaveLength(0);
-  });
-
-  it('normalizes the legacy manage role only when deriving manager assignment eligibility', async () => {
-    const path = join(activeRoot, 'agents', 'assigned-manager.md');
-    writeFileSync(path, readFileSync(path, 'utf8').replace('role: manager', 'role: manage'), 'utf8');
-    const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
-    expect(detail.assignmentOptions.manager.options).toContainEqual({
-      agentId: 'assigned-manager',
-      profileId: 'manager:claude:claude-opus-5',
+      openPr: async () => { prCalls += 1; if (prFailure) throw new Error('PR unavailable'); return { url: 'https://example.test/pull/9', number: 9 }; },
+      runPy: (_root, _code, jsonArg) => {
+        const op = JSON.parse(jsonArg) as { runId: string; stages?: Array<{ id: string }>; cardRefs?: string[] };
+        if (op.cardRefs) return { exitCode: 0, stdout: `${JSON.stringify({ cards: op.cardRefs.map((cardRef) => ({ cardRef, path: `queue/inbox/${cardRef}.md`, completed: false, changed: false })) })}\n`, stderr: '' };
+        const cards = (op.stages ?? []).map((stage) => ({ stageId: stage.id, cardId: workflowCardId(op.runId, stage.id), state: 'blocked', cardPath: `queue/inbox/${workflowCardId(op.runId, stage.id)}.md` }));
+        if (options.activated) {
+          mkdirSync(join(activeRoot, 'queue', 'inbox'), { recursive: true });
+          for (const card of cards) writeFileSync(join(activeRoot, card.cardPath), '', 'utf8');
+        }
+        return { exitCode: 0, stdout: `${JSON.stringify({ runId: op.runId, cards })}\n`, stderr: '' };
+      },
+      ...(options.activated ? {
+        controlBroker: { isRunning: () => true, drain: () => {} } as never,
+        runAutomatic: (async ({ runRef }: { runRef: string }) => { automaticRunRefs.push(runRef); return { ok: true }; }) as never,
+      } : {}),
     });
-    writeFileSync(path, readFileSync(path, 'utf8').replace('role: manage', 'role: observer'), 'utf8');
-    const refused = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
-    expect(refused.assignmentOptions.manager.options).not.toContainEqual(expect.objectContaining({ agentId: 'assigned-manager' }));
+    registerWorkflows(app, surface);
+    await app.ready();
+  }
+
+  beforeEach(setup);
+  afterEach(async () => {
+    if (app) await app.close();
+    if (activeRoot) rmSync(activeRoot, { recursive: true, force: true });
+    if (durableRoot) rmSync(durableRoot, { recursive: true, force: true });
   });
 
-  it.each(['work', 'inspect', 'scout', 'consolidate'])(
-    'normalizes legacy %s only when deriving worker assignment eligibility',
-    async (role) => {
-      const path = join(activeRoot, 'agents', 'assigned-worker.md');
-      writeFileSync(path, readFileSync(path, 'utf8').replace('role: worker', `role: ${role}`), 'utf8');
-      const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
-      expect(detail.assignmentOptions.stages.brief.options).toContainEqual({
-        agentId: 'assigned-worker',
-        profileId: 'worker:claude:claude-sonnet-5',
-      });
-    },
-  );
+  async function sourceRevision(): Promise<string> {
+    return (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().details.sourceRevision as string;
+  }
 
-  it('reports checked-in undeclared and cross-project governance without changing compile or launchability', async () => {
-    const workflowPath = join(activeRoot, 'orgs', 'kb-ops', 'workflows', 'amendable.md');
-    writeFileSync(workflowPath, definitionText()
-      .replace('profile: research', 'profile: research\ngovernedBy: missing-governor')
-      .replace('  - id: brief', '  - id: brief\n    governedBy: other-project-agent'), 'utf8');
-    writeFileSync(join(activeRoot, 'agents', 'other-project-agent.md'), [
-      '---', 'id: other-project-agent', 'projects: [faceless-youtube]', 'runner-bound: false', 'role: work', '---', 'Other project.',
-    ].join('\n'), 'utf8');
+  it('serves grouped EntitySummary and EntityDetail envelopes with a serializable step DAG and ETag', async () => {
+    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toMatchObject({ revision: expect.any(String), groups: [{ id: 'kb-ops', collapsed: false }], items: [{ ref: { type: 'workflow', id: 'amendable', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/amendable.md' }, humanName: 'Assigned research', modelLabel: 'varies' }] });
+    expect((await app.inject({ method: 'GET', url: '/api/workflows', headers: { 'if-none-match': listed.headers.etag! } })).statusCode).toBe(304);
+    const detail = await app.inject({ method: 'GET', url: '/api/workflows/amendable' });
+    expect(detail.json()).toMatchObject({ revision: expect.any(String), summary: { ref: { id: 'amendable' } }, brief: { outputs: [{ kind: 'artifact', label: 'Cited brief', path: 'orgs/kb-ops/output/brief.md' }] }, details: { sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/), workflow: { stepDag: { nodes: [{ stageRef: 'brief', label: 'Research a topic' }], edges: [] }, parameters: [] } } });
+    expect(JSON.stringify(detail.json())).not.toContain('eventsFor');
+  });
 
+  it('projects an armed immutable Workflow schedule into status, Brief, and ETag revision', async () => {
+    let collectionRevision = 4;
+    store.getScheduleSnapshot = () => ({ collectionRevision, schedules: [{
+      id: 'schedule-workflow', owner: { type: 'workflow', id: 'amendable', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/amendable.md' },
+      cadence: { source: '0 10 * * *', words: 'Daily at 10:00 AM' }, nextAt: '2026-08-23T14:00:00.000Z', lastOutcome: null,
+      armed: true, origin: 'operator', mirroredAt: null, mirrorPath: 'HEARTBEAT.md', version: 1,
+    }] });
+    const first = await app.inject({ method: 'GET', url: '/api/workflows' });
+    expect(first.json().items[0]).toMatchObject({ status: 'scheduled', nextSchedule: { scheduleId: 'schedule-workflow', nextAt: '2026-08-23T14:00:00.000Z' } });
+    expect((await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json().brief.schedule).toMatchObject({ scheduleId: 'schedule-workflow' });
+    collectionRevision += 1;
+    const changed = await app.inject({ method: 'GET', url: '/api/workflows' });
+    expect(changed.headers.etag).not.toBe(first.headers.etag);
+  });
+
+  it('performs a positive workflow launch through the canonical Run transaction and refuses stale source before Run creation', async () => {
+    const stale = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'stale', expectedSourceRevision: '0'.repeat(64), parameters: {} } });
+    expect(stale.statusCode).toBe(409);
+    expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
+    const launched = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'launch-1', expectedSourceRevision: await sourceRevision(), parameters: {} } });
+    expect(launched.statusCode).toBe(202);
+    expect(launched.json()).toMatchObject({ runRef: expect.any(String) });
+    expect(store.listRuns('operator', 'all-subjects')).toHaveLength(1);
     const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
-    expect(detail.entry).toMatchObject({
-      valid: true,
-      launchable: true,
-      governanceProblems: [
-        "workflow governance agent 'missing-governor' is not declared",
-        "stage 'brief' governance agent 'other-project-agent' is not declared for project 'kb-ops'",
-      ],
+    expect(detail.details.workflow.runGraph).toMatchObject({
+      runRef: launched.json().runRef,
+      stages: [{ stageId: 'brief', stageRef: expect.stringMatching(/^stage-/), state: expect.any(String) }],
+      attempts: expect.any(Array), events: expect.any(Array),
     });
-    expect(detail.compiled.ok).toBe(true);
-    expect(detail.compiled.manager.assignment.agentId).toBe('assigned-manager');
-    expect(detail.compiled.stages[0].assignment.agentId).toBe('assigned-worker');
+    expect(detail.details.workflow.stepDag.nodes[0].stageRef).toMatch(/^stage-/);
   });
 
-  it('routes a byte-preserving governance snapshot through the same pending/audit pipeline', async () => {
-    const response = await amendGovernance(await governanceInput());
+  it('keeps Workflow ownership immutable when composer provenance is supplied and rejects owner or host body fields', async () => {
+    const source = readFileSync(join(activeRoot, 'agents', 'assigned-manager.md'));
+    const workspace = surface.composerStore.create('operator', 'Compose amendable', {
+      id: 'assigned-manager', path: 'agents/assigned-manager.md', sourceHash: normalizedTextSha256(source),
+      projects: ['kb-ops'], instructionMarkdown: 'Manager.',
+    });
+    const revision = await sourceRevision();
+    for (const injected of [{ owner: 'assigned-manager' }, { host: 'desktop' }]) {
+      expect((await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: `forbidden-${Object.keys(injected)[0]}`, expectedSourceRevision: revision, parameters: {}, ...injected } })).statusCode).toBe(400);
+    }
+    const launched = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'composer-provenance', expectedSourceRevision: revision, parameters: {}, composerRef: workspace.composerRef } });
+    expect(launched.statusCode).toBe(202);
+    const stored = store.getRun('operator', launched.json().runRef, 'all-subjects');
+    expect(stored).toMatchObject({ ok: true, value: { run: {
+      owner: { type: 'workflow', id: 'amendable', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/amendable.md' },
+      agentWorkspaceLaunch: { composerRef: workspace.composerRef, agentId: 'assigned-manager' },
+    } } });
+  });
+
+  it('retains launch authentication, origin, idempotency, and exact replay boundaries', async () => {
+    const revision = await sourceRevision();
+    const payload = { idempotencyKey: 'launch-replay', expectedSourceRevision: revision, parameters: {} };
+    expect((await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: { origin: ORIGIN, host: 'localhost:5317' }, payload })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: { ...headers(token), origin: 'https://evil.example' }, payload })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { expectedSourceRevision: revision, parameters: {} } })).statusCode).toBe(400);
+    const first = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload });
+    const replay = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload });
+    expect(first.statusCode).toBe(202);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({ runRef: first.json().runRef });
+    expect(store.listRuns('operator', 'all-subjects')).toHaveLength(1);
+  });
+
+  it('refuses outbox-degraded launches and definition edits before run, git, or audit effects', async () => {
+    const revision = await sourceRevision();
+    admissionDegraded = true;
+    const launch = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'degraded-launch', expectedSourceRevision: revision, parameters: {} } });
+    const edit = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { kind: 'assignment', idempotencyKey: 'degraded-edit', expectedSourceRevision: revision, target: { kind: 'stage', stageId: 'brief' }, assignment: null } });
+    expect(launch.statusCode).toBe(503);
+    expect(edit.statusCode).toBe(503);
+    expect(launch.json()).toEqual({ error: 'outbox-degraded' });
+    expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
+    expect(gitCalls).toEqual([]);
+    expect(auditRows).toEqual([]);
+  });
+
+  it('records canonical launch audit actions with the policy snapshot', async () => {
+    const launched = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'audit-policy', expectedSourceRevision: await sourceRevision(), parameters: {} } });
+    expect(launched.statusCode).toBe(202);
+    const decision = auditRows.find((row) => row.action === 'control-proposal-decision-authorize');
+    const launch = auditRows.find((row) => row.action === 'control-run-launch');
+    expect(decision?.detail).toMatchObject({ source: 'workflow:amendable' });
+    expect(launch?.detail).toMatchObject({ source: 'workflow:amendable', policyBaseCommit: expect.any(String), policyHashes: [{ stageId: 'brief', policyHash: expect.stringMatching(/^[a-f0-9]{64}$/) }] });
+    expect(auditRows.some((row) => row.action.startsWith('workflow-launch'))).toBe(false);
+  });
+
+  it('keeps parser-valid but compiler-refused assignments unlaunchable', async () => {
+    const workerPath = join(activeRoot, 'agents', 'assigned-worker.md');
+    writeFileSync(workerPath, readFileSync(workerPath, 'utf8').replace('runner-bound: true', 'runner-bound: false'));
+    const response = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'unbound', expectedSourceRevision: await sourceRevision(), parameters: {} } });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: 'assigned-agent-not-runner-bound', detail: expect.stringContaining('assigned-worker') });
+    expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
+  });
+
+  it('stalls T3 at its human gate without publishing canonical cards', async () => {
+    const path = join(activeRoot, 'orgs', 'kb-ops', 'workflows', 'amendable.md');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('action: research:web-brief', 'action: release:cut'));
+    const response = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 't3-gate', expectedSourceRevision: await sourceRevision(), parameters: {} } });
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({ waitingHuman: true });
+    expect(response.json()).not.toHaveProperty('cards');
+    const run = store.getRun('operator', response.json().runRef, 'all-subjects');
+    expect(run.ok).toBe(true);
+    if (!run.ok) return;
+    expect(run.value.run).toMatchObject({ publicationState: 'waiting-human', lifecycle: { kind: 'waiting-human' } });
+    expect(run.value.stages.every((stage) => stage.canonicalCardRef === null)).toBe(true);
+  });
+
+  it('hands an activated one-step launch to runAutomatic exactly once', async () => {
+    await app.close();
+    rmSync(activeRoot, { recursive: true, force: true });
+    rmSync(durableRoot, { recursive: true, force: true });
+    await setup({ activated: true });
+    const response = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'activated', expectedSourceRevision: await sourceRevision(), parameters: {} } });
+    expect(response.statusCode).toBe(201);
+    expect(automaticRunRefs).toEqual([response.json().runRef]);
+  });
+
+  it('preserves assignment amendment source CAS and exact pending replay through generalized PUT', async () => {
+    const body = { kind: 'assignment', idempotencyKey: 'assignment-1', expectedSourceRevision: await sourceRevision(), target: { kind: 'stage', stageId: 'brief' }, assignment: null };
+    expect((await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { ...body, idempotencyKey: undefined } })).statusCode).toBe(400);
+    const stale = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { ...body, expectedSourceRevision: '0'.repeat(64) } });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ error: 'stale-source-revision', sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(gitCalls).toEqual([]);
+    const first = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: body });
+    expect(first.statusCode).toBe(202);
+    expect(first.json()).toMatchObject({ status: 'pending-human-merge', replayed: false, pr: { url: 'https://example.test/pull/9' } });
+    expect(readFileSync(join(activeRoot, 'orgs', 'kb-ops', 'workflows', 'amendable.md'), 'utf8')).toBe(definitionText());
+    expect(readFileSync(join(durableRoot, 'orgs', 'kb-ops', 'workflows', 'amendable.md'), 'utf8')).not.toContain('agentId: assigned-worker');
+    const replay = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: body });
+    expect(replay.statusCode).toBe(202);
+    expect(replay.json()).toMatchObject({ replayed: true, proposedSourceHash: first.json().proposedSourceHash });
+    const changed = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { ...body, target: { kind: 'manager' } } });
+    expect(changed.statusCode).toBe(409);
+    expect(changed.json()).toMatchObject({ error: 'assignment-amendment-pending' });
+    expect(gitCalls.filter((call) => call[0] === 'add')).toHaveLength(1);
+  });
+
+  it('preserves governance amendments through generalized PUT and removes both specialized routes', async () => {
+    const response = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { kind: 'governance', idempotencyKey: 'governance-1', expectedSourceRevision: await sourceRevision(), governance: { workflow: 'assigned-manager', stages: { brief: 'assigned-worker' } } } });
     expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({ status: 'pending-human-merge', governance: { workflow: 'assigned-manager', stages: { brief: 'assigned-worker' } } });
-    const durable = readFileSync(join(durableRoot, 'orgs/kb-ops/workflows/amendable.md'), 'utf8');
-    expect(durable).toContain('governedBy: assigned-manager'); expect(durable).toContain('    governedBy: assigned-worker');
-    expect(audits[0].action).toBe('workflow-governance-amendment');
-    expect((await amendGovernance(await governanceInput())).json()).toMatchObject({ error: 'assignment-amendment-pending' });
+    expect(auditRows.some((row) => row.action === 'workflow-governance-amendment')).toBe(true);
+    expect((await app.inject({ method: 'POST', url: '/api/workflows/amendable/assignment-amendments', headers: headers(token), payload: {} })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/api/workflows/amendable/governance-amendments', headers: headers(token), payload: {} })).statusCode).toBe(404);
   });
 
-  it('rejects stale, undeclared, and cross-project governance owners before durable side effects', async () => {
-    expect((await amendGovernance({ ...(await governanceInput()), expectedSourceHash: '0'.repeat(64) })).json()).toMatchObject({ error: 'stale-source-hash' });
-    expect((await amendGovernance(await governanceInput({ workflow: 'missing-owner', stages: { brief: null } }))).json()).toMatchObject({ error: 'governance-owner-refused' });
-    writeFileSync(join(activeRoot, 'agents', 'other-project-agent.md'), [
-      '---', 'id: other-project-agent', 'projects: [faceless-youtube]', 'runner-bound: false', 'role: work', '---', 'Other project.',
-    ].join('\n'), 'utf8');
-    expect((await amendGovernance(await governanceInput({ workflow: null, stages: { brief: 'other-project-agent' } }))).json()).toMatchObject({
-      error: 'governance-owner-refused',
-      detail: "stage 'brief' governance agent 'other-project-agent' is not declared for project 'kb-ops'",
-    });
-    expect(gitCalls).toHaveLength(0); expect(prCalls).toHaveLength(0); expect(audits).toHaveLength(0);
+  it('reports audit failure truthfully while keeping the durable edit launch-blocking', async () => {
+    auditFailure = true;
+    const revision = await sourceRevision();
+    const response = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { kind: 'governance', idempotencyKey: 'audit-failure', expectedSourceRevision: revision, governance: { workflow: 'assigned-manager', stages: { brief: 'assigned-worker' } } } });
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toMatchObject({ status: 'pending-human-merge', auditStatus: 'failed', error: 'governance-amendment-audit-required' });
+    const launch = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'after-audit-failure', expectedSourceRevision: revision, parameters: {} } });
+    expect(launch.statusCode).toBe(409);
+    expect(launch.json()).toMatchObject({ error: 'assignment-amendment-pending' });
   });
 
-  it('rejects incomplete, extra-stage, and no-op governance snapshots before durable side effects', async () => {
-    expect((await amendGovernance(await governanceInput({ workflow: null, stages: {} }))).json()).toMatchObject({ error: 'governance-layout-unsupported' });
-    expect((await amendGovernance(await governanceInput({ workflow: null, stages: { brief: null, extra: null } }))).json()).toMatchObject({ error: 'governance-layout-unsupported' });
-    expect((await amendGovernance(await governanceInput({ workflow: null, stages: { brief: null } }))).json()).toMatchObject({ error: 'governance-no-change' });
-    expect(gitCalls).toHaveLength(0); expect(prCalls).toHaveLength(0); expect(audits).toHaveLength(0);
-  });
-
-  it('reports governance recovery after a post-commit route failure', async () => {
-    await app.close(); setup({ prFailure: true }); await app.ready();
-    const response = await amendGovernance(await governanceInput());
+  it('persists post-commit PR failure and refuses launch after an app restart', async () => {
+    prFailure = true;
+    const revision = await sourceRevision();
+    const response = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { kind: 'assignment', idempotencyKey: 'pr-failure', expectedSourceRevision: revision, target: { kind: 'stage', stageId: 'brief' }, assignment: null } });
     expect(response.statusCode).toBe(502);
-    expect(response.json()).toMatchObject({ error: 'governance-durable-route-incomplete', committed: true, pushed: true });
-  });
-});
-
-/**
- * DEFAULT ASSIGNMENT projection + the workflow-definition path ALLOWLIST.
- *
- * These exercise the scan/allowlist exports directly against a scratch repo root, so no HTTP, control
- * store, or git seam is involved and no assertion depends on this checkout's own workflow tree.
- */
-describe('workflow default assignments + declaredWorkflowDefPath allowlist', () => {
-  let repoRoot: string;
-
-  function writeDef(project: string, name: string, text: string): void {
-    const dir = join(repoRoot, 'orgs', project, 'workflows');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `${name}.md`), text, 'utf8');
-  }
-
-  function writeAgentDecl(id: string, lines: string[]): void {
-    const dir = join(repoRoot, 'agents');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, `${id}.md`), ['---', `id: ${id}`, ...lines, '---', 'Bounded declaration.', ''].join('\n'), 'utf8');
-  }
-
-  /** A definition whose ONLY assignment signal is its governance chain — the shape of the real defs. */
-  function governedDef(id: string, project: string): string {
-    return [
-      '---', `id: ${id}`, `project: ${project}`, 'title: Governed run', 'profile: research',
-      'governedBy: chief',
-      'stages:',
-      '  - id: brief', '    title: Write the brief', '    action: research:web-brief',
-      `    target: orgs/${project}/output`, '    workOrder: research it',
-      '  - id: check', '    title: Check the brief', '    action: research:web-check',
-      `    target: orgs/${project}/output`, '    workOrder: check it', '    dependsOn: [brief]',
-      '    governedBy: checker',
-      '---', 'body', '',
-    ].join('\n');
-  }
-
-  const MANAGER_DECL = [
-    'role: manage', 'runtime: claude', 'model: claude-opus-5',
-    'default-profile: manager:claude:claude-opus-5', 'allowed-profiles: [manager:claude:claude-opus-5]',
-    'projects: [kb-ops]', 'runner-bound: true',
-  ];
-  const CHECKER_DECL = [
-    'role: inspect', 'runtime: claude', 'model: claude-sonnet-5',
-    'default-profile: worker:claude:claude-sonnet-5', 'allowed-profiles: [worker:claude:claude-sonnet-5]',
-    'projects: [kb-ops]', 'runner-bound: true',
-  ];
-
-  beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'kb-workflow-defaults-'));
-    resetWorkflowRosterCache();
+    expect(response.json()).toMatchObject({ error: 'assignment-durable-route-incomplete', status: 'recovery-required', committed: true, pushed: true });
+    expect(readFileSync(join(durableRoot, 'orgs', 'kb-ops', 'workflows', 'amendable.md'), 'utf8')).not.toContain('agentId: assigned-worker');
+    await app.close();
+    app = Fastify();
+    surface = { ...surface, definitionAmendmentStore: createFileAssignmentAmendmentStore(join(activeRoot, 'state')) };
+    registerWorkflows(app, surface);
+    await app.ready();
+    const launch = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'restarted', expectedSourceRevision: revision, parameters: {} } });
+    expect(launch.statusCode).toBe(409);
+    expect(launch.json()).toMatchObject({ error: 'assignment-amendment-pending' });
   });
 
-  afterEach(() => {
-    resetWorkflowRosterCache();
-    rmSync(repoRoot, { recursive: true, force: true });
+  it('proves launch refusal while a durable edit is pending and creates no Run', async () => {
+    const revision = await sourceRevision();
+    await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { kind: 'assignment', idempotencyKey: 'pending-edit', expectedSourceRevision: revision, target: { kind: 'stage', stageId: 'brief' }, assignment: null } });
+    const launch = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'blocked', expectedSourceRevision: revision, parameters: {} } });
+    expect(launch.statusCode).toBe(409);
+    expect(launch.json()).toMatchObject({ error: 'assignment-amendment-pending' });
+    expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
   });
 
-  it('carries the resolved manager and per-stage default onto the DTO ALONGSIDE the declared fields', () => {
-    writeAgentDecl('chief', MANAGER_DECL);
-    writeAgentDecl('checker', CHECKER_DECL);
-    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
-
-    const entry = scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === 'governed')?.entry;
-    expect(entry?.manager).toBeNull(); // the DECLARED field stays untouched
-    expect(entry?.resolvedManager).toMatchObject({
-      agentId: 'chief', profileId: 'manager:claude:claude-opus-5', source: 'governed-by',
-    });
-    const stages = Object.fromEntries((entry?.stages ?? []).map((stage) => [stage.id, stage]));
-    expect(stages.brief.declaredAssignment).toBeNull();
-    expect(stages.brief.resolvedAssignment).toMatchObject({ agentId: 'chief', source: 'manager-default' });
-    expect(stages.check.declaredAssignment).toBeNull();
-    expect(stages.check.resolvedAssignment).toMatchObject({ agentId: 'checker', source: 'stage-governed-by' });
+  it('rejects POST path and POST sourcePath plus owner/host fields before any durable write', async () => {
+    const list = (await app.inject({ method: 'GET', url: '/api/workflows' })).json();
+    const response = await app.inject({ method: 'POST', url: '/api/workflows', headers: headers(token), payload: { selector: { type: 'workflow', id: 'new-flow' }, project: 'kb-ops', expectedCollectionRevision: list.revision, idempotencyKey: 'create-1', humanName: 'New Flow', purpose: 'Draft safely.', model: 'claude-sonnet-5', profile: 'research', tools: [], skills: [], connectors: [], filesystemRoots: ['kb-ops'], sourcePath: '../../CLAUDE.md', owner: 'operator', host: 'desktop' } });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: 'invalid-workflow-create-body' });
+    expect(gitCalls).toEqual([]);
   });
 
-  it('resolves an all-null cast for a project with no declared agents, and still scans the def as valid', () => {
-    writeDef('kb-ops', 'orphan', governedDef('orphan', 'kb-ops'));
-    const entry = scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === 'orphan')?.entry;
-    expect(entry?.valid).toBe(true);
-    expect(entry?.resolvedManager).toBeNull();
-    expect((entry?.stages ?? []).map((stage) => stage.resolvedAssignment)).toEqual([null, null]);
+  it('rejects PUT path and PUT sourcePath fields before any durable write', async () => {
+    const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
+    const base = { expectedSourceRevision: detail.details.sourceRevision, idempotencyKey: 'edit-1', humanName: 'Amendable', purpose: 'Draft safely.', model: 'claude-sonnet-5', profile: 'research', tools: [], skills: [], connectors: [], filesystemRoots: ['kb-ops'] };
+    for (const injected of [{ path: 'C:/repo/workflow.md' }, { sourcePath: '../../CLAUDE.md' }]) {
+      const response = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { ...base, ...injected } });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error: 'invalid-workflow-update-body' });
+    }
+    expect(gitCalls).toEqual([]);
   });
 
-  it('leaves an INVALID definition with resolvedManager null and no resolved stages', () => {
-    writeDef('kb-ops', 'broken', 'not a definition at all\n');
-    const entry = scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === 'kb-ops~broken')?.entry;
-    expect(entry?.valid).toBe(false);
-    expect(entry?.resolvedManager).toBeNull();
-    expect(entry?.stages).toEqual([]);
+  it('registers positive POST path and PUT path builder saves at server-derived workflow declarations', async () => {
+    const listed = (await app.inject({ method: 'GET', url: '/api/workflows' })).json();
+    const values = { humanName: 'New Flow', purpose: 'Draft safely.', model: 'claude-sonnet-5', profile: 'research', tools: [], skills: [], connectors: [], filesystemRoots: ['kb-ops'] };
+    const createPayload = { ...values, selector: { type: 'workflow', id: 'new-flow' }, project: 'kb-ops', expectedCollectionRevision: listed.revision, idempotencyKey: 'create-positive' };
+    const created = await app.inject({ method: 'POST', url: '/api/workflows', headers: headers(token), payload: createPayload });
+    expect(created.statusCode).toBe(202);
+    expect((await app.inject({ method: 'POST', url: '/api/workflows', headers: headers(token), payload: createPayload })).json()).toMatchObject({ operationId: 'create-positive', replayed: true });
+    const conflict = await app.inject({ method: 'POST', url: '/api/workflows', headers: headers(token), payload: { ...createPayload, purpose: 'Conflicting body.' } });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toEqual({ error: 'idempotency-body-conflict' });
+    expect(gitCalls.filter((call) => call[0] === 'add')).toHaveLength(1);
+    expect(prCalls).toBe(1);
+    expect(auditRows.filter((row) => row.action === 'entity-builder-amend')).toHaveLength(1);
+    expect(readFileSync(join(durableRoot, 'orgs', 'kb-ops', 'workflows', 'new-flow.md'), 'utf8')).toContain('id: "new-flow"');
+    expect(existsSync(join(activeRoot, 'orgs', 'kb-ops', 'workflows', 'new-flow.md'))).toBe(false);
+
+    const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
+    const updated = await app.inject({ method: 'PUT', url: '/api/workflows/amendable', headers: headers(token), payload: { ...values, humanName: 'Renamed Flow', expectedSourceRevision: detail.details.sourceRevision, idempotencyKey: 'edit-positive' } });
+    expect(updated.statusCode).toBe(202);
+    expect(readFileSync(join(durableRoot, 'orgs', 'kb-ops', 'workflows', 'amendable.md'), 'utf8')).toContain('title: "Renamed Flow"');
   });
 
-  it('accepts an injected roster instead of reading one, and never resolves an UNDECLARED roster entry', () => {
-    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
-    const undeclared = {
-      id: 'chief', displayName: 'chief', shortRef: 1, role: 'manage', working: false, current: null,
-      projects: ['kb-ops'], cardCount: 0, ledger: { dispatches: 0, steps: 0, days: 0, lastActive: null },
-      sources: [], effective: { runtime: 'claude', model: 'claude-opus-5', sourceRuntime: 'policy' as const, sourceModel: 'policy' as const },
-      declared: false, runnerBound: false, declaredRuntime: null, declaredModel: null,
-      defaultProfile: null, allowedProfiles: null, description: null,
-    };
-    const withUndeclared = scanWorkflowDefs(repoRoot, { roster: [undeclared] })
-      .find((candidate) => candidate.entry.ref === 'governed')?.entry;
-    expect(withUndeclared?.resolvedManager).toBeNull();
-
-    const withDeclared = scanWorkflowDefs(repoRoot, { roster: [{ ...undeclared, declared: true }] })
-      .find((candidate) => candidate.entry.ref === 'governed')?.entry;
-    expect(withDeclared?.resolvedManager).toEqual({
-      agentId: 'chief', profileId: null, model: 'claude-opus-5', source: 'governed-by',
-    });
+  it('fails closed on duplicate workflow ids instead of selecting one path', async () => {
+    const other = join(activeRoot, 'orgs', 'other', 'workflows'); mkdirSync(other, { recursive: true });
+    writeFileSync(join(other, 'same.md'), definitionText().replace('project: kb-ops', 'project: other'));
+    const duplicate = join(activeRoot, 'orgs', 'kb-ops', 'workflows', 'same.md'); writeFileSync(duplicate, definitionText());
+    const duplicates = scanWorkflowDefs(activeRoot).filter((entry) => entry.entry.ref.includes('amendable'));
+    expect(duplicates).toHaveLength(2);
+    expect(duplicates.every((entry) => !entry.entry.valid && entry.def === null)).toBe(true);
+    expect((await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'duplicate', expectedSourceRevision: 'a'.repeat(64), parameters: {} } })).statusCode).toBe(404);
+    expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
   });
 
-  it('resolves a known ref to its definition file, rebuilt from the SCAN result and re-asserted in-repo', () => {
-    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
-    const resolved = declaredWorkflowDefPath(repoRoot, 'governed');
-    expect(resolved).not.toBeNull();
-    expect(readFileSync(resolved as string, 'utf8')).toContain('id: governed');
-    expect(realpathSync(resolved as string).startsWith(realpathSync(repoRoot))).toBe(true);
-  });
-
-  it('refuses traversal, empty, non-string, unknown, and invalid-definition refs', () => {
-    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
-    writeDef('kb-ops', 'broken', 'not a definition at all\n');
-    expect(declaredWorkflowDefPath(repoRoot, '../../etc/passwd')).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, '..%2f..')).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, '../../../orgs/kb-ops/workflows/governed.md')).toBeNull();
-    // Even the definition's own REAL repo-relative path is not a ref: only `entry.ref` resolves.
-    expect(declaredWorkflowDefPath(repoRoot, 'orgs/kb-ops/workflows/governed.md')).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, '')).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, 42)).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, null)).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, 'no-such-workflow')).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, 'kb-ops~broken')).toBeNull();
-  });
-
-  it('refuses a DUPLICATED id, so neither copy can become a spawn argument', () => {
-    writeDef('kb-ops', 'twin', governedDef('twin', 'kb-ops'));
-    writeDef('faceless-youtube', 'twin', governedDef('twin', 'faceless-youtube'));
-    expect(declaredWorkflowDefPath(repoRoot, 'twin')).toBeNull();
-    expect(declaredWorkflowDefPath(repoRoot, 'kb-ops~twin')).toBeNull();
-  });
-
-  it('renders priming text naming the workflow, its repo-relative path, and the resolved cast', () => {
-    writeAgentDecl('chief', MANAGER_DECL);
-    writeAgentDecl('checker', CHECKER_DECL);
-    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
-
-    const primed = workflowPrimingText(repoRoot, 'governed');
-    expect(primed?.repoRelativePath).toBe('orgs/kb-ops/workflows/governed.md');
-    expect(primed?.text).toContain('# Governing agent — workflow: Governed run');
-    expect(primed?.text).toContain('- workflow ref: governed');
-    expect(primed?.text).toContain('- definition (repo-relative): orgs/kb-ops/workflows/governed.md');
-    expect(primed?.text).toContain('[governed-by]');
-    expect(primed?.text).toContain('brief — Write the brief — research:web-brief → chief');
-    expect(primed?.text).toContain('check — Check the brief — research:web-check → checker');
-    expect(primed?.text).toContain('[stage-governed-by]');
-    expect(workflowPrimingText(repoRoot, 'no-such-workflow')).toBeNull();
-    expect(workflowPrimingText(repoRoot, '../../etc/passwd')).toBeNull();
+  it('does not scan a workflow directory that resolves through a junction outside its project', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'workflow-p2-outside-'));
+    try {
+      writeFileSync(join(outside, 'escape.md'), definitionText().replace('id: amendable', 'id: escape-link').replace('project: kb-ops', 'project: linked').replaceAll('orgs/kb-ops/', 'orgs/linked/'));
+      const project = join(activeRoot, 'orgs', 'linked');
+      mkdirSync(project, { recursive: true });
+      symlinkSync(outside, join(project, 'workflows'), 'junction');
+      expect(scanWorkflowDefs(activeRoot).some((entry) => entry.def?.id === 'escape-link')).toBe(false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });

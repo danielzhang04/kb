@@ -23,7 +23,7 @@ describe('P2 entity contracts', () => {
       profile: string;
       tools: string[];
       skills: string[];
-      connectors: string[];
+      connectors: Array<{ server: string; tools: string[] }>;
       filesystemRoots: string[];
     }>();
     expectTypeOf<CreateEntityRequest>().toMatchTypeOf<EntityBuilderRequest & {
@@ -32,5 +32,16 @@ describe('P2 entity contracts', () => {
       expectedCollectionRevision: string;
       idempotencyKey: string;
     }>();
+    expectTypeOf<EntityDetails['workflow']>().toEqualTypeOf<{
+      stepDag: { nodes: Array<{ stageRef: string; label: string }>; edges: Array<{ from: string; to: string }> };
+      parameters: string[];
+      runGraph: {
+        runRef: string;
+        stages: Array<{ stageRef: string; stageId: string; title: string; dependsOn: string[]; state: string }>;
+        attempts: Array<{ attemptRef: string; stageRef: string; state: string }>;
+        events: Array<{ cursor: number; stageRef: string | null; kind: string; summary: string | null; createdAt: string }>;
+      } | null;
+    } | undefined>();
+    expectTypeOf<NonNullable<EntityDetails['builder']>['value']>().toEqualTypeOf<EntityBuilderRequest>();
   });
 });

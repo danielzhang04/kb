@@ -68,12 +68,16 @@ describe('P2 control contracts', () => {
       completedAt: string | null;
       streamKind: 'pty' | 'transcript';
       sessionId?: string;
+      elapsedMs?: number;
+      toolsCalled?: number;
+      lastLine?: string;
+      gateBadge?: string | null;
     }>();
   });
 
   it('pins the builder request contract to closed catalog identifiers', () => {
     expectTypeOf<EntityBuilderRequest>().toEqualTypeOf<{
-      humanName: string; purpose: string; model: string; profile: string; tools: string[]; skills: string[]; connectors: string[]; filesystemRoots: string[];
+      humanName: string; purpose: string; model: string; profile: string; tools: string[]; skills: string[]; connectors: Array<{ server: string; tools: string[] }>; filesystemRoots: string[];
     }>();
     expectTypeOf<CreateEntityRequest>().toMatchTypeOf<{ project?: string }>();
   });

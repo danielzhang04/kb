@@ -66,6 +66,10 @@ export interface RunRow {
   completedAt: string | null;
   streamKind: 'pty' | 'transcript';
   sessionId?: string;
+  elapsedMs?: number;
+  toolsCalled?: number;
+  lastLine?: string;
+  gateBadge?: string | null;
 }
 
 /** A schedule fire projected for cards and Home. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag } from './project.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost } from './project.ts';
 import type { RunRow } from '../control/p2Contracts.ts';
 
 const agent = { type: 'agent' as const, id: 'fyt-checker', sourcePath: 'agents/fyt-checker.md' as const };
@@ -10,6 +10,10 @@ const detailFixture = JSON.parse(readFileSync(new URL('./__fixtures__/entity-det
 const stepDagFixture = JSON.parse(readFileSync(new URL('../control/__fixtures__/dv3/step-dag.json', import.meta.url), 'utf8')) as { stages: string[]; edges: [string, string][] };
 
 describe('entity projectors', () => {
+  it('maps the current cloud and desktop routing tiers to the fixed P2 host labels', () => {
+    expect(resolveExecutionHost('cloud')).toBe('vm');
+    expect(resolveExecutionHost('desktop')).toBe('desktop');
+  });
   it('groups agents by lexical primary project and places collapsed System last', () => {
     const result = projectEntityList(summaryFixture.revision, 'agent', [
       { ref: agent, projects: ['kb-ops', 'atlas-prep'], modelLabel: 'gpt-5.6-sol', temporalLabel: 'next 09:00', host: 'desktop', activeRuns: [], gatedRunCount: 0, latestRun: null, nextSchedule: null, hasFailure: false },
@@ -23,10 +27,15 @@ describe('entity projectors', () => {
   });
 
   it('rejects a non-System agent without a valid project and derives exact status precedence', () => {
+    const schedule = { scheduleId: 'schedule-1', scheduledFor: '2026-08-22T12:00:00.000Z', nextAt: '2026-08-22T12:00:00.000Z' };
     expect(() => projectEntityList('r1', 'agent', [{ ref: agent, projects: [], modelLabel: 'm', temporalLabel: 'x', host: 'vm', activeRuns: [], gatedRunCount: 0, latestRun: null, nextSchedule: null, hasFailure: false }])).toThrow('project-required');
     expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [], gatedRunCount: 1, latestRun: 'failed', nextSchedule: null, hasFailure: true }).status).toBe('needs-you');
     expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [run('running')], gatedRunCount: 0, latestRun: 'failed', nextSchedule: null, hasFailure: true }).status).toBe('running');
     expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [], gatedRunCount: 0, latestRun: 'failed', nextSchedule: null, hasFailure: true }).status).toBe('failed');
+    expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [], gatedRunCount: 0, latestRun: null, nextSchedule: schedule, hasFailure: false }).status).toBe('scheduled');
+    expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [run('running')], gatedRunCount: 0, latestRun: null, nextSchedule: schedule, hasFailure: false }).status).toBe('running');
+    expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [], gatedRunCount: 0, latestRun: 'stopped', nextSchedule: schedule, hasFailure: false }).status).toBe('scheduled');
+    expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'idle', host: 'vm', activeRuns: [], gatedRunCount: 0, latestRun: 'ok', nextSchedule: null, hasFailure: false }).status).toBe('idle');
   });
 
   it('keeps the card model workflow-safe and bounds Brief runs', () => {
@@ -50,5 +59,5 @@ describe('entity projectors', () => {
 });
 
 function run(lifecycle: 'running' | 'succeeded', suffix = ''): RunRow {
-  return { runRef: `run-${suffix}`, title: 'Run', owner: workflow, lifecycle, streamKind: 'transcript', outcome: lifecycle === 'succeeded' ? 'ok' : null, createdAt: '2026-08-21T10:00:00.000Z', completedAt: lifecycle === 'succeeded' ? '2026-08-21T10:02:00.000Z' : null };
+  return { runRef: `run-${suffix}`, title: 'Run', owner: workflow, lifecycle, streamKind: 'transcript', outcome: lifecycle === 'succeeded' ? 'ok' : null, createdAt: '2026-08-21T10:00:00.000Z', completedAt: lifecycle === 'succeeded' ? '2026-08-21T10:02:00.000Z' : null, elapsedMs: 120_000, toolsCalled: 0, lastLine: lifecycle, gateBadge: null };
 }

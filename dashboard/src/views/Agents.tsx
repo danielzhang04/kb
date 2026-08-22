@@ -1,759 +1,169 @@
-/**
- * Agents view — the fleet roster.
- *
- * ── What a row says (UX overhaul §4) ──
- *
- * Five things an operator actually scans for: WHO the agent is, its role, the model it will run on, what
- * it is doing right now (a deep link into that task), and when it was last active — plus the one action
- * that matters, "Run agent", which lands the operator in a live terminal session already primed as that
- * agent. Declaration/runner/provenance chips are terms of art and have moved into the single technical
- * fold on the agent's detail; a roster is for finding an agent, not for auditing its metadata.
- *
- * ── Where the data comes from ──
- *
- * `/api/agents` enriches declared agents and observed runtime identities. The primary roster contains
- * declarations only; observed default workers are projected separately as system workers. Until the
- * enriched projection loads, `deriveRoster` over `/api/index` supplies observed activity without
- * promoting queue owners into declared agents. Per-agent ROUTING (effective runtime/model + provenance,
- * and the governed toggle) comes from `/api/routing` (R2.1 projection). The model cell is a live
- * governed control: it shows the effective model (mono) + provenance tag, and — with a WebAuthn session —
- * opens a popover to write an agent-scope override (audited, ops pull-rebase-push) or clear it. Fail-closed
- * like launchControls: without a session the control is disabled with a nudge; a point-of-action mint runs
- * inline through the shared session context.
- *
- * A routing-audit strip (R2.4) surfaces routed-vs-ran mismatches + expiring/expired overrides, read-only.
- * Read-only for the roster; every routing mutation is a governed, audited server write.
- */
-import { useEffect, useState, useCallback } from 'react';
-import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { CardProjection, ParsedCard } from '../../server/planeA/cards';
-import type { AgentRosterEntry } from '../../server/agents/roster';
-import { useSession } from '../lib/sessionContext';
-import {
-  EMPTY_ROUTING,
-  fetchRouting,
-  postRoutingOverride,
-  type RoutingSnapshot,
-  type EffectiveView,
-} from '../lib/routingClient';
-import { RoutingControl } from './routingControls';
-import { AgentDetailBody, lastActiveLabel } from './AgentDetail';
-import { EntityName } from '../components/EntityName';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { EntityDetail as EntityDetailDto, EntityGroup } from '../../server/entities/contracts.ts';
+import { EntityCard } from '../entity/EntityCard';
 import { EntityDetail } from '../entity/EntityDetail';
+import { EntityBuilderForm } from '../entity/EntityBuilderForm';
 import { humanizeEntityId } from '../entity/humanizeEntityId';
-import { PLANE_A_RECORDS_KEY, PLANE_A_RUN_ROWS_KEY } from '../lib/planeAKeys';
 import { persistEntityLayout, readEntityLayout, type EntityLayout } from '../entity/entityLayout';
-import { entityRowProps } from '../components/entityRow';
-import { fetchAgentDetail, fetchSystemWorkers, type AgentDetailDto, type SystemWorkerDto } from '../lib/agentClient';
-import { getRun, listRuns, type RunMetadataDto } from '../control/controlClient';
-import { cardLink, cardOwnerIndex, runsForAgent, type RunWithStages } from '../control/entityLinks';
-import { relativeAge } from '../control/runEvents';
+import { fetchAgentDetail, fetchAgentList } from '../lib/agentClient';
+import { useSession } from '../lib/sessionContext';
 import type { NavTarget } from '../nav/stack';
+import { AgentDetailBody } from './AgentDetail';
 import '../styles/views/agents.css';
 import '../styles/views/entity.css';
 
-/**
- * How many recent runs the agent → runs join will scan. Each one costs a governed detail read (stages
- * are not on the run list), so this is bounded and the bound is disclosed in the UI.
- */
-const AGENT_RUN_SCAN_LIMIT = 20;
-
-const EMPTY_INDEX: PlaneAIndex = {
-  cards: {},
-  [PLANE_A_RECORDS_KEY]: {
-    dispatch: { count: 0, cards: 0, byProject: {} },
-    cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
-    grades: { count: 0, rows: [] },
-    [PLANE_A_RUN_ROWS_KEY]: { count: 0, rows: [] },
-  },
-  orgStates: [],
-};
-
-interface AgentRow {
-  id: string;
-  /**
-   * The server-owned agent display identity from `/api/agents`, or null when this row came from the
-   * card-ownership FALLBACK (`deriveRoster`) — that snapshot carries no agent registry entry, and
-   * inventing an ordinal client-side would be a second, disagreeing source of truth. The id is itself
-   * a human name, so the fallback simply renders it.
-   */
-  display: { displayName: string; shortRef: number } | null;
-  working: boolean;
-  current: { action: string; id: string; displayName: string; shortRef: number } | null;
-  projects: string[];
-  cardCount: number;
-  /** Role from `routines/roles/` (only when the enriched `/api/agents` roster is loaded). */
-  role: string | null;
-  /** Most recent ledger-write date (only from the enriched roster), else null. */
-  lastActive: string | null;
-  /** True when an authoritative `agents/<id>.md` declaration exists (C7.3). Snapshot-derived rows: false. */
-  declared: boolean;
-  /** The honest runner-bound flag from the agent file — false = declared, no runner claims its cards yet. */
-  runnerBound: boolean;
-  /** The declared default runtime from the agent file (advisory), or null. */
-  declaredRuntime: string | null;
-  /** arc-3 step 3 — fetched by the roster on every load, previously rendered nowhere. */
-  declaredModel: string | null;
-  /** Declared default execution profile id, or null for a legacy declaration. */
-  defaultProfile: string | null;
-  /** Declared execution profile ids this declaration permits, or null for a legacy declaration. */
-  allowedProfiles: string[] | null;
-  description: string | null;
-  ledger: { dispatches: number; steps: number; days: number };
-  sources: Array<'queue' | 'ledger'>;
+function DetailValues({ detail }: { detail: EntityDetailDto }): React.JSX.Element {
+  const values: Array<[string, string]> = [
+    ['Source', detail.details.sourcePath],
+    ['Revision', detail.details.sourceRevision],
+    ['Tools', detail.details.tools.join(', ') || 'None declared'],
+    ['Declared ceiling', detail.details.declaredCeiling],
+    ['Replaces', detail.details.replaces.join(', ') || 'None'],
+    ['Builds on', detail.details.buildsOn.join(', ') || 'None'],
+    ['Knowledge', detail.details.knowledgeSources.join(', ') || 'None'],
+    ['Skills', detail.details.skills.join(', ') || 'None'],
+    ['Schemas', detail.details.schemas.join(', ') || 'None'],
+    ['Lineage', detail.details.lineage.join(', ') || 'None'],
+    ['Grades', detail.details.grades.join(', ') || 'None'],
+    ['IDs', detail.details.ids.join(', ') || 'None'],
+  ];
+  return <dl className="entity-technical-list">{values.map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="mc-mono">{value}</dd></div>)}</dl>;
 }
 
-/** Normalise a card's `project` field (string | string[]) into a flat list of project names. */
-function projectsOf(card: ParsedCard): string[] {
-  const p = card.meta.project;
-  if (Array.isArray(p)) return p.filter((x): x is string => typeof x === 'string' && x !== '');
-  return typeof p === 'string' && p !== '' ? [p] : [];
-}
-
-/**
- * Derive the roster from the snapshot's card ownership (working-first, then id-alphabetical). This is
- * the fallback when the enriched `/api/agents` roster (which also folds in ledger writers + roles) has
- * not loaded — role/lastActive are null in that case.
- */
-export function deriveRoster(index: PlaneAIndex): AgentRow[] {
-  const byOwner = new Map<string, CardProjection[]>();
-  for (const bucket of Object.values(index.cards)) {
-    for (const card of bucket) {
-      const owner = card.meta.owner;
-      if (typeof owner !== 'string' || owner === '') continue;
-      const existing = byOwner.get(owner);
-      if (existing) existing.push(card);
-      else byOwner.set(owner, [card]);
-    }
-  }
-
-  const rows: AgentRow[] = [];
-  for (const [id, cards] of byOwner) {
-    const workingCard = cards.find((c) => c.meta.state === 'working') ?? null;
-    const projects = [...new Set(cards.flatMap(projectsOf))].sort();
-    rows.push({
-      id,
-      display: null,
-      working: workingCard !== null,
-      current: workingCard
-        ? {
-            action: String(workingCard.meta.action),
-            id: String(workingCard.meta.id),
-            displayName: workingCard.displayName,
-            shortRef: workingCard.shortRef,
-          }
-        : null,
-      projects,
-      cardCount: cards.length,
-      role: null,
-      lastActive: null,
-      declared: false,
-      runnerBound: false,
-      declaredRuntime: null,
-      // Snapshot-derived rows know nothing about declarations or ledgers — say zero/null honestly
-      // rather than inventing values the snapshot cannot support.
-      declaredModel: null,
-      defaultProfile: null,
-      allowedProfiles: null,
-      description: null,
-      ledger: { dispatches: 0, steps: 0, days: 0 },
-      sources: ['queue'],
-    });
-  }
-
-  return rows.sort((a, b) => {
-    if (a.working !== b.working) return a.working ? -1 : 1;
-    return a.id.localeCompare(b.id);
-  });
-}
-
-/** Project the enriched server roster onto the view row shape. */
-function rowFromEntry(e: AgentRosterEntry): AgentRow {
-  return {
-    id: e.id,
-    display: { displayName: e.displayName, shortRef: e.shortRef },
-    working: e.working,
-    current: e.current,
-    projects: e.projects,
-    cardCount: e.cardCount,
-    role: e.role,
-    lastActive: e.ledger.lastActive,
-    declared: e.declared,
-    runnerBound: e.runnerBound,
-    declaredRuntime: e.declaredRuntime,
-    declaredModel: e.declaredModel,
-    defaultProfile: e.defaultProfile ?? null,
-    allowedProfiles: e.allowedProfiles === null || e.allowedProfiles === undefined ? null : [...e.allowedProfiles],
-    description: e.description,
-    ledger: { dispatches: e.ledger.dispatches, steps: e.ledger.steps, days: e.ledger.days },
-    sources: e.sources,
-  };
-}
-
-/** True when either field of an agent's effective routing was supplied by an override entry. */
-function hasOverride(effective: EffectiveView | undefined): boolean {
-  return effective?.sourceRuntime === 'override' || effective?.sourceModel === 'override';
-}
-
-/** The routing-audit strip (R2.4): routed-vs-ran mismatches + expiring/expired overrides. Read-only. */
-function RoutingAuditStrip({ audit }: { audit: RoutingSnapshot['audit'] }): React.JSX.Element | null {
-  const stale = audit.overrides.filter((o) => o.expired || o.expiringSoon);
-  if (audit.mismatches.length === 0 && stale.length === 0) {
-    return (
-      <section className="v-routing-audit" aria-label="Routing audit">
-        <h3 className="v-routing-audit__title">Routing audit</h3>
-        <p className="v-routing-audit__empty">No routed-vs-ran mismatches; no stale overrides.</p>
-      </section>
-    );
-  }
-  return (
-    <section className="v-routing-audit" aria-label="Routing audit">
-      <h3 className="v-routing-audit__title">Routing audit</h3>
-      {audit.mismatches.map((m) => (
-        <div className="v-routing-audit__row" key={`mm-${m.cardId}`} data-testid={`routing-mismatch-${m.cardId}`}>
-          <span className={`mc-status-dot mc-status-dot--${m.kind === 'runtime' ? 'error' : 'blocked'}`} aria-hidden="true" />
-          <span className="mc-mono">{m.cardId}</span>
-          <span>
-            routed <span className="mc-mono">{m.routedModel || m.routedRuntime}</span> · ran{' '}
-            <span className="mc-mono">{m.ranModel}</span>
-          </span>
-          <span className="v-routing__src mc-mono">{m.kind} mismatch</span>
-        </div>
-      ))}
-      {stale.map((o) => (
-        <div className="v-routing-audit__row" key={`ov-${o.scope}-${o.key}`} data-testid={`routing-stale-${o.key}`}>
-          <span className={`mc-status-dot mc-status-dot--${o.expired ? 'error' : 'blocked'}`} aria-hidden="true" />
-          <span className="mc-mono">
-            {o.scope}:{o.key}
-          </span>
-          <span>
-            override <span className="mc-mono">{o.model ?? o.runtime ?? '—'}</span>{' '}
-            {o.expired ? 'expired' : 'expiring'} <span className="mc-mono">{o.expires}</span>
-          </span>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-/**
- * One truthful roster slice. Declared and observed identities intentionally never share a table.
- *
- * Six columns, no more: identity, role, model, what it is doing (deep-linked), last activity, and the
- * Run action. Everything the old `Binding`/`Projects`/`Cards` columns carried now lives on the agent's
- * own detail, behind its one technical fold.
- */
-function AgentRosterTable({
-  rows,
-  onOpenAgent,
-  onNavigate,
-  onRunAgent,
-  renderRouting,
-  now,
-}: {
-  rows: AgentRow[];
-  onOpenAgent: (id: string) => void;
+export interface AgentsProps {
+  focusAgentId?: string | null;
+  onOpenAgent?: (id: string) => void;
+  onBack?: () => void;
+  activeSectionId?: string;
+  onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
-  onRunAgent?: (agent: { id: string }) => void;
-  renderRouting: (agent: AgentRow) => React.JSX.Element;
-  now: number;
-}): React.JSX.Element {
-  return (
-    <div className="v-agents__table-wrap">
-      <table className="mc-table v-agents__table">
-        <thead>
-          <tr>
-            <th scope="col">Agent</th><th scope="col">Role</th><th scope="col">Model</th>
-            <th scope="col">Doing</th><th scope="col">Last active</th><th scope="col">Run</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((agent) => (
-            <tr key={agent.id} data-testid={`agent-row-${agent.id}`}>
-              <td>
-                <div className="mc-row-link v-agents__agent" data-testid={`agent-open-${agent.id}`}
-                  aria-label={`Open ${agent.display?.displayName ?? agent.id} detail`} {...entityRowProps(() => onOpenAgent(agent.id))}>
-                  <span className={`mc-status-dot ${agent.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`} aria-hidden="true" />
-                  {agent.display
-                    ? <EntityName kind="agent" id={agent.id} displayName={agent.display.displayName} shortRef={agent.display.shortRef} />
-                    : <span>{humanizeEntityId(agent.id)}</span>}
-                  <span className="v-agents__state">{agent.working ? 'working' : 'idle'}</span>
-                </div>
-              </td>
-              <td>{agent.role ? <span className="v-agents__role mc-mono">{agent.role}</span> : <span className="v-agents__idle">—</span>}</td>
-              <td>{renderRouting(agent)}</td>
-              {/* The task being worked is NAMED and clickable — the row's one deep link into the work
-                  itself. Its raw id stays in EntityName's tooltip/copy, never as primary text. */}
-              <td>
-                {agent.current ? (
-                  <span
-                    className="v-agents__doing v-agents__doing--link"
-                    data-testid={`agent-doing-${agent.id}`}
-                    aria-disabled={!onNavigate || undefined}
-                    {...entityRowProps(() => onNavigate?.(cardLink(agent.current!.id)))}
-                  >
-                    <span className="v-agents__action">{agent.current.action}</span>
-                    <span className="v-agents__card-id">
-                      <EntityName kind="card" id={agent.current.id} displayName={agent.current.displayName} shortRef={agent.current.shortRef} muted />
-                    </span>
-                  </span>
-                ) : <span className="v-agents__idle">idle</span>}
-              </td>
-              <td className="mc-mono v-agents__last-active">
-                {agent.lastActive ? relativeAge(agent.lastActive, now) : <span className="v-agents__idle">never</span>}
-              </td>
-              <td>
-                {onRunAgent ? (
-                  <button
-                    type="button"
-                    className="mc-btn v-agents__run"
-                    data-testid={`agent-run-${agent.id}`}
-                    onClick={() => onRunAgent({ id: agent.id })}
-                  >
-                    Run agent
-                  </button>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function SystemWorkerTable({ workers }: { workers: SystemWorkerDto[] }): React.JSX.Element {
-  return (
-    <div className="v-agents__table-wrap">
-      <table className="mc-table v-agents__table" data-testid="system-workers-table">
-        <thead><tr><th>Worker</th><th>Runtime</th><th>Registration</th><th>Invocation</th></tr></thead>
-        <tbody>
-          {workers.map((worker) => (
-            <tr key={worker.id} data-testid={`system-worker-${worker.id}`}>
-              <td className="mc-mono">{worker.id}</td>
-              <td className="mc-mono">{worker.runtime}</td>
-              <td>runtime default</td>
-              <td>{worker.dashboardTriggerable ? 'dashboard-triggerable' : 'queue-addressable'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+  onOpenTerminal?: (agent: { id: string }) => void;
 }
 
 export function Agents({
-  snapshot,
-  roster,
-  routing,
-  focusAgentId,
+  focusAgentId = null,
   onOpenAgent,
   onBack,
   activeSectionId,
   onSectionChange,
   onNavigate,
-  onRunAgent,
-  agentRuns,
-  now = Date.now(),
-}: {
-  snapshot?: PlaneAIndex;
-  roster?: AgentRosterEntry[];
-  routing?: RoutingSnapshot;
-  /**
-   * arc-3 step 3 — the open agent, driven by the nav stack. Mirrors Workflows: when `onOpenAgent` is
-   * omitted the view keeps its own state so it stays usable (and testable) standalone. A detail surface
-   * whose every click is inert when rendered without a controller is a defect, not a simplification.
-   */
-  focusAgentId?: string | null;
-  onOpenAgent?: (agentId: string) => void;
-  onBack?: () => void;
-  activeSectionId?: string;
-  onSectionChange?: (id: string) => void;
-  onNavigate?: (target: NavTarget) => void;
-  /**
-   * Start an interactive session as this agent — the caller navigates to the terminal and opens a shell
-   * running claude primed with the agent's own file. One click from a roster row or the detail header.
-   */
-  onRunAgent?: (agent: { id: string }) => void;
-  /** Runs joined to this agent by the caller. `undefined` = not loaded, which the detail says out loud. */
-  agentRuns?: RunMetadataDto[];
-  /** Clock for the relative "last active" column. Injected so the rendering is deterministic in tests. */
-  now?: number;
-} = {}): React.JSX.Element {
+  onOpenTerminal,
+}: AgentsProps = {}): React.JSX.Element {
   const { session, requireSession } = useSession();
-  const sessionToken = session?.token;
-  const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
-  const [rosterState, setRosterState] = useState<AgentRosterEntry[] | null>(roster ?? null);
-  const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
-  // Uncontrolled fallback for the open agent when no nav stack is wired above this view.
-  const [localOpenId, setLocalOpenId] = useState<string | null>(null);
-  const [scannedRuns, setScannedRuns] = useState<RunWithStages[] | null>(null);
-  const [detail, setDetail] = useState<AgentDetailDto | null>(null);
-  const [systemWorkerState, setSystemWorkerState] = useState<SystemWorkerDto[] | null>(null);
-  const [detailState, setDetailState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [list, setList] = useState<Awaited<ReturnType<typeof fetchAgentList>> | null>(null);
+  const [listError, setListError] = useState(false);
+  const [detail, setDetail] = useState<EntityDetailDto | null>(null);
+  const [detailError, setDetailError] = useState(false);
+  const [localOpen, setLocalOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('agents'));
-  const [localDetailSection, setLocalDetailSection] = useState<{ agentId: string; sectionId: string } | null>(null);
-  const [consoleAgentId, setConsoleAgentId] = useState<string | null>(null);
-  const openAgentId = onOpenAgent ? focusAgentId ?? null : localOpenId;
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(['System']));
+  const [launching, setLaunching] = useState(false);
+  const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const openId = focusAgentId ?? localOpen;
 
-  useEffect(() => {
-    if (snapshot) return;
-    let cancelled = false;
-    fetch('/api/index')
-      .then((r) => r.json() as Promise<PlaneAIndex>)
-      .then((d) => {
-        if (!cancelled) setFetched(d);
-      })
-      .catch(() => {
-        /* read-only view: keep the empty-safe scaffold */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [snapshot]);
-
-  useEffect(() => {
-    if (roster) return; // caller supplied the roster (tests) — do not self-fetch
-    let cancelled = false;
-    fetch('/api/agents')
-      .then((r) => r.json() as Promise<AgentRosterEntry[]>)
-      .then((d) => {
-        if (!cancelled && Array.isArray(d)) setRosterState(d);
-      })
-      .catch(() => {
-        /* read-only view: fall back to the snapshot-derived roster */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [roster]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchSystemWorkers()
-      .then((workers) => { if (!cancelled && Array.isArray(workers)) setSystemWorkerState(workers); })
-      .catch(() => { /* routing registry fallback below remains truthful */ });
-    return () => { cancelled = true; };
+  const loadList = useCallback(() => {
+    setListError(false);
+    void fetchAgentList().then(setList).catch(() => setListError(true));
   }, []);
-
-  /**
-   * Agent → its runs, the inverse card index (arc-3 step 4.3).
-   *
-   * `listRuns` returns no stages, so the join needs run DETAILS, which means one governed read per run.
-   * That fan-out is why this loads ONLY while a detail is open and is capped at the most recent
-   * AGENT_RUN_SCAN_LIMIT runs — an unbounded scan on opening an agent would be a self-inflicted
-   * thundering herd against the operator's own control plane.
-   *
-   * The cap is disclosed in the section rather than hidden, because a silently truncated join is worse
-   * than a stated partial one. Failure leaves `runs` undefined, which the detail reports as "not
-   * loaded" instead of the false claim that this agent works no runs.
-   */
-  useEffect(() => {
-    if (agentRuns || !openAgentId || !sessionToken) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const all = await listRuns(sessionToken);
-        const explicit = all.filter((run) => run.agentWorkspaceLaunch?.agentId === openAgentId)
-          .map((run) => ({ run, stages: [] }));
-        const recent = all.filter((run) => run.agentWorkspaceLaunch?.agentId !== openAgentId)
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .slice(0, AGENT_RUN_SCAN_LIMIT);
-        const details = await Promise.all(
-          recent.map(async (meta) => {
-            try {
-              const detail = await getRun(meta.runRef, sessionToken);
-              return { run: meta, stages: detail.stages };
-            } catch {
-              return null; // one unreadable run must not void the whole join
-            }
-          }),
-        );
-        if (!cancelled) setScannedRuns([...explicit, ...details.filter((d): d is RunWithStages => d !== null)]);
-      } catch {
-        /* leaves the section at "not loaded" — never a false "works no runs" */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [agentRuns, openAgentId, sessionToken]);
-
-  const refreshRouting = useCallback(async () => {
-    try {
-      setRoutingState(await fetchRouting());
-    } catch {
-      /* keep last-known routing on failure */
-    }
-  }, []);
-
-  useEffect(() => {
-    if (routing) return; // caller supplied routing (tests) — do not self-fetch
-    void refreshRouting();
-  }, [routing, refreshRouting]);
-
-  const index = snapshot ?? fetched ?? EMPTY_INDEX;
-  const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
-  const enriched = roster ?? rosterState;
-  // Prefer the enriched union; the declared/system-worker partition below is authoritative. The
-  // snapshot-derived fallback supplies observed activity but cannot manufacture declarations.
-  const agentRows = enriched ? enriched.map(rowFromEntry) : deriveRoster(index);
-  const detailTarget = openAgentId ? agentRows.find((agent) => agent.id === openAgentId) : undefined;
-
-  // The compact roster is enough for navigation. Declaration instructions, codebase links, workflow
-  // relationships, and runner facts are loaded only after opening a DECLARED agent. Observed runtime
-  // identities are deliberately not treated as source files or executable agents.
-  useEffect(() => {
-    if (!detailTarget?.declared) {
-      setDetail(null);
-      setDetailState('idle');
-      return;
-    }
-    let cancelled = false;
+  const loadDetail = useCallback((id: string) => {
     setDetail(null);
-    setDetailState('loading');
-    void fetchAgentDetail(detailTarget.id)
-      .then((next) => {
-        if (!cancelled) {
-          setDetail(next);
-          setDetailState('ready');
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setDetailState('unavailable');
+    setDetailError(false);
+    void fetchAgentDetail(id).then(setDetail).catch(() => setDetailError(true));
+  }, []);
+
+  useEffect(loadList, [loadList]);
+  useEffect(() => { if (openId) loadDetail(openId); else setDetail(null); }, [loadDetail, openId]);
+
+  const groups = useMemo(() => {
+    const needle = filter.trim().toLowerCase();
+    return (list?.groups ?? []).map((group): EntityGroup => ({
+      ...group,
+      items: group.items.filter((item) => item.humanName.toLowerCase().includes(needle) || item.ref.id.toLowerCase().includes(needle)),
+    })).filter((group) => group.items.length > 0);
+  }, [filter, list]);
+
+  const open = (id: string): void => {
+    setLocalOpen(id);
+    onOpenAgent?.(id);
+  };
+  const close = (): void => {
+    setLocalOpen(null);
+    setEditing(false);
+    if (focusAgentId) onBack?.();
+  };
+  const changeLayout = (next: EntityLayout): void => {
+    setLayout(next);
+    persistEntityLayout('agents', next);
+  };
+  const launch = async (): Promise<void> => {
+    if (!detail || launching) return;
+    setLaunching(true);
+    setLaunchStatus(null);
+    try {
+      const active = session ?? await requireSession();
+      if (!active) throw new Error('session-required');
+      const response = await fetch(`/api/agents/${encodeURIComponent(detail.summary.ref.id)}/launch`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${active.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ expectedSourceRevision: detail.details.sourceRevision, idempotencyKey: `agent-launch:${detail.summary.ref.id}:${crypto.randomUUID()}` }),
       });
-    return () => { cancelled = true; };
-  }, [detailTarget?.declared, detailTarget?.id]);
-
-  const effectiveById = new Map(routingSnap.agents.map((a) => [a.id, a.effective]));
-  const registry = routingSnap.policy.runtimes;
-  const declaredRows = agentRows.filter((agent) => agent.declared);
-  const declaredIds = new Set(declaredRows.map((agent) => agent.id));
-  const systemWorkers = (systemWorkerState ?? Object.entries(registry).flatMap(([runtime, value]) => value.default_worker ? [{
-    id: value.default_worker,
-    runtime,
-    addressable: true as const,
-    dashboardTriggerable: false,
-    registrationSource: 'runtime-default' as const,
-  }] : [])).filter((worker) => !declaredIds.has(worker.id));
-
-  /** Point-of-action unlock: a routing write on a locked tab runs the ONE ceremony first. */
-  async function resolveToken(): Promise<string | undefined> {
-    return (await requireSession())?.token;
-  }
-
-  /**
-   * The governed model-routing control for one agent. Extracted so the table cell and the detail's
-   * Routing section are literally the same control rather than two drifting copies — every mutation
-   * still carries its own scope/key and is an audited server write.
-   */
-  function routingControlFor(a: AgentRow): React.JSX.Element {
-    return (
-      <RoutingControl
-        label={a.id}
-        testIdPrefix={`agent-${a.id}`}
-        registry={registry}
-        effective={effectiveById.get(a.id) ?? null}
-        ttl
-        canClear={hasOverride(effectiveById.get(a.id))}
-        onApply={async (runtime, model, expires) => {
-          const token = await resolveToken();
-          if (!token) return { ok: false, reason: 'no session' };
-          const res = await postRoutingOverride(
-            { op: 'set', scope: 'agent', key: a.id, runtime, model, expires },
-            token,
-          );
-          if (res.ok) await refreshRouting();
-          return res;
-        }}
-        onClear={async () => {
-          const token = await resolveToken();
-          if (!token) return { ok: false, reason: 'no session' };
-          const res = await postRoutingOverride({ op: 'clear', scope: 'agent', key: a.id }, token);
-          if (res.ok) await refreshRouting();
-          return res;
-        }}
-      />
-    );
-  }
-
-  const openAgent = (id: string): void => {
-    setLocalDetailSection(null);
-    if (onOpenAgent) onOpenAgent(id);
-    else setLocalOpenId(id);
+      const body = await response.json() as { run?: { runRef?: string }; runRef?: string; error?: string };
+      const runRef = body.run?.runRef ?? body.runRef;
+      if (!response.ok) setLaunchStatus(body.error ?? 'Launch refused');
+      else if (runRef) onNavigate?.({ view: 'workflows', focus: { kind: 'run', id: runRef } });
+      else setLaunchStatus('Launch accepted');
+    } catch {
+      setLaunchStatus('Launch unavailable');
+    } finally {
+      setLaunching(false);
+    }
   };
 
-  const backToRoster = (): void => {
-    setLocalDetailSection(null);
-    if (onBack) onBack();
-    else setLocalOpenId(null);
-  };
-
-  /**
-   * The detail REPLACES the roster in place — "a separate window, still inside the agents sidebar, with
-   * a back button", per the mandate. No new nav destination, no new App case: the locked IA is untouched.
-   *
-   * An id that is in the nav stack but NOT in the roster (a deleted agent, a card whose owner has since
-   * been removed, a stale back-forward) gets an EXPLICIT state naming the id, consistent with the missing
-   * run and missing workflow cases. Falling through to the table meant the operator clicked a link,
-   * landed on a roster with no message, and an invisible extra entry sat on the nav stack with no back
-   * affordance rendered to pop it.
-   *
-   * Gated on the roster having actually LOADED — `fetched` is null until the index arrives, and calling an
-   * agent "not on the roster" while the request is still in flight would be its own dishonesty.
-   */
-  const rosterLoaded = Boolean(enriched ?? snapshot ?? fetched);
-  const openAgentRow = openAgentId ? agentRows.find((a) => a.id === openAgentId) : undefined;
-  if (openAgentId && !openAgentRow && rosterLoaded) {
-    return (
-      <section className="v-agents" aria-label="Agents view">
-        <div className="entity-missing" data-testid="agent-not-found">
-          <button
-            type="button"
-            className="entity-detail__back"
-            data-testid="agent-not-found-back"
-            onClick={backToRoster}
-          >
-            <span aria-hidden="true">←</span> All agents
-          </button>
-          <h3>This agent is not in the roster</h3>
-          <p className="mc-mono entity-missing__ref" data-testid="agent-not-found-ref">{openAgentId}</p>
-          <p className="control-help">
-            No agent with this id is on the board. Queue cards keep an owner id after the agent itself is
-            removed from the registry, so links can outlive the agent they point at.
-          </p>
-        </div>
-      </section>
-    );
-  }
-  const visibleDeclaredRows = declaredRows.filter((agent) =>
-    humanizeEntityId(agent.id).toLowerCase().includes(filter.trim().toLowerCase()),
-  );
-
-  const joinedRuns = openAgentRow
-    ? agentRuns ?? (scannedRuns ? runsForAgent(openAgentRow.id, scannedRuns, cardOwnerIndex(index)) : undefined)
-    : undefined;
-  const selectedDetailSection = activeSectionId
-    ?? (localDetailSection?.agentId === openAgentId ? localDetailSection.sectionId : undefined);
-  const selectDetailSection = (id: string): void => {
-    if (openAgentId) setLocalDetailSection({ agentId: openAgentId, sectionId: id });
-    onSectionChange?.(id);
-  };
-
-  const detailOverlay = openAgentRow ? (
-    <EntityDetail
-      entity={{ kind: 'agent', id: openAgentRow.id }}
-      eyebrow={<span title={openAgentRow.id}>Agent · {humanizeEntityId(openAgentRow.id)}</span>}
-      title={humanizeEntityId(openAgentRow.id)}
-      status={{ label: openAgentRow.working ? 'working' : 'idle', tone: openAgentRow.working ? 'running' : 'idle' }}
-      facts={[
-        { label: 'Role', value: openAgentRow.role ?? '—' },
-        { label: 'Model', value: openAgentRow.declaredModel ?? '—', mono: true },
-        { label: 'Tasks', value: openAgentRow.cardCount, mono: true },
-        { label: 'Last active', value: lastActiveLabel(openAgentRow.lastActive, now), mono: true },
-      ]}
-      links={openAgentRow.current ? [{
-        label: 'Current card', target: { view: 'tasks', focus: { kind: 'card', id: openAgentRow.current.id } }, ref: openAgentRow.current.id,
-      }] : []}
-      sections={[
-        {
-          id: 'live',
-          label: 'Live',
-          render: () => (
-            <AgentDetailBody
-              agent={openAgentRow}
-              index={index}
-              runs={joinedRuns}
-              runScanLimit={AGENT_RUN_SCAN_LIMIT}
-              routing={routingControlFor(openAgentRow)}
-              detail={detail}
-              detailState={detailState === 'idle' ? undefined : detailState}
-              onNavigate={onNavigate}
-              surface="live"
-              consoleStarted={consoleAgentId === openAgentRow.id}
-              onConsoleStartedChange={(started) => setConsoleAgentId(started ? openAgentRow.id : null)}
-            />
-          ),
-        },
-        {
-          id: 'brief',
-          label: 'Brief',
-          render: () => (
-            <AgentDetailBody agent={openAgentRow} index={index} runs={joinedRuns}
-              runScanLimit={AGENT_RUN_SCAN_LIMIT} routing={routingControlFor(openAgentRow)} detail={detail}
-              detailState={detailState === 'idle' ? undefined : detailState} onNavigate={onNavigate} surface="brief" />
-          ),
-        },
-      ]}
-      activeSectionId={selectedDetailSection}
-      onSectionChange={selectDetailSection}
+  return <section className="code-view entity-roster" aria-label="Agents">
+    <header className="page-header"><div><p className="page-eyebrow">Fleet</p><h2>Agents</h2></div></header>
+    <div className="entity-roster-controls">
+      <input aria-label="Search agents" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search agents" />
+      <button type="button" aria-pressed={layout === 'grid'} onClick={() => changeLayout('grid')}>Grid</button>
+      <button type="button" aria-pressed={layout === 'list'} onClick={() => changeLayout('list')}>List</button>
+    </div>
+    {listError ? <div className="entity-row" role="status">Agents unavailable <button type="button" onClick={loadList}>Retry</button></div> : null}
+    {!list && !listError ? <p role="status">Loading agents…</p> : null}
+    <div className={`entity-card-groups entity-card-groups--${layout}`}>
+      {groups.map((group) => {
+        const isCollapsed = collapsed.has(group.id);
+        return <section key={group.id} className="entity-card-group">
+          <button type="button" className="entity-card-group__toggle" aria-expanded={!isCollapsed} onClick={() => setCollapsed((value) => {
+            const next = new Set(value); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next;
+          })}>{group.label} <span className="mc-mono">{group.items.length}</span></button>
+          {!isCollapsed ? <div className="entity-card-grid">{group.items.map((summary) => <EntityCard key={summary.ref.id} summary={summary} onOpen={() => open(summary.ref.id)} />)}</div> : null}
+        </section>;
+      })}
+    </div>
+    {openId ? <EntityDetail
+      entity={{ kind: 'agent', id: openId }}
+      eyebrow="Agent"
+      title={humanizeEntityId(openId)}
+      status={detail ? { label: detail.summary.status === 'needs-you' ? 'Needs you' : humanizeEntityId(detail.summary.status), tone: detail.summary.status === 'failed' ? 'error' : detail.summary.status === 'needs-you' ? 'warn' : detail.summary.status === 'running' ? 'running' : 'idle' } : undefined}
+      facts={detail ? [{ label: 'Model', value: detail.summary.modelLabel }, { label: 'Host', value: detail.summary.host === 'vm' ? 'VM' : 'Desktop' }, { label: 'Last activity', value: detail.summary.temporalLabel, mono: true }] : []}
+      sections={detail ? [
+        { id: 'live', label: 'Live', count: detail.summary.gatedRunCount, attention: detail.summary.gatedRunCount > 0, render: () => <AgentDetailBody detail={detail} onNavigate={onNavigate} /> },
+        { id: 'brief', label: 'Brief', render: () => <AgentDetailBody detail={detail} surface="brief" onNavigate={onNavigate} /> },
+      ] : [{ id: 'live', label: 'Live', render: () => detailError ? <p role="status">Agent detail unavailable <button type="button" onClick={() => loadDetail(openId)}>Retry</button></p> : <p role="status">Loading agent…</p> }]}
+      activeSectionId={activeSectionId}
+      onSectionChange={onSectionChange}
+      actions={detail ? <>
+        <button type="button" disabled={launching} onClick={() => void launch()}>{launching ? 'Starting…' : 'Run now'}</button>
+        <button type="button" onClick={() => onNavigate?.({ view: 'schedules', section: 'new', scheduleOwner: detail.summary.ref })}>Schedule</button>
+        <button type="button" onClick={() => setEditing((value) => !value)}>Edit</button>
+        <button type="button" onClick={() => onOpenTerminal?.({ id: openId })}>Open terminal</button>
+        {launchStatus ? <span role="status">{launchStatus}</span> : null}
+      </> : null}
+      editorContent={editing && detail ? <EntityBuilderForm kind="agent" detail={detail} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); loadDetail(openId); loadList(); }} /> : undefined}
       overlay
-      onClose={() => { setConsoleAgentId(null); backToRoster(); }}
-      actions={openAgentRow.declared ? (
-        <button type="button" className="mc-btn mc-btn--primary" data-testid="agent-run" onClick={() => {
-          setConsoleAgentId(openAgentRow.id);
-          selectDetailSection('live');
-        }}>Run agent</button>
-      ) : undefined}
-      detailsContent={(
-        <AgentDetailBody agent={openAgentRow} index={index} runs={joinedRuns}
-          runScanLimit={AGENT_RUN_SCAN_LIMIT} routing={routingControlFor(openAgentRow)} detail={detail}
-          detailState={detailState === 'idle' ? undefined : detailState} onNavigate={onNavigate} surface="details" />
-      )}
-    />
-  ) : null;
-
-  return (
-    <section className={`v-agents v-agents--${layout}`} aria-label="Agents view" data-layout={layout}>
-      <h2 className="v-agents__title">
-        Agents <span className="v-agents__count mc-num">({declaredRows.length})</span>
-      </h2>
-
-      <div className="entity-roster-controls">
-        <input aria-label="Filter agents" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter loaded agents" />
-        <button type="button" aria-pressed={layout === 'grid'} onClick={() => { setLayout('grid'); persistEntityLayout('agents', 'grid'); }}>Grid</button>
-        <button type="button" aria-pressed={layout === 'list'} onClick={() => { setLayout('list'); persistEntityLayout('agents', 'list'); }}>List</button>
-      </div>
-
-      {declaredRows.length === 0 ? (
-        <p className="mc-empty">No user-created agents are registered.</p>
-      ) : (
-        <>
-          <section className="v-agents__group" aria-labelledby="declared-agents-title">
-            <h3 id="declared-agents-title" className="v-agents__group-title">Your agents <span className="mc-num">({visibleDeclaredRows.length})</span></h3>
-            <p className="v-agents__group-note">Agents you created. Open one to see what it does, or run it to talk to it directly.</p>
-            {visibleDeclaredRows.length ? (
-              <AgentRosterTable
-                rows={visibleDeclaredRows}
-                onOpenAgent={openAgent}
-                onNavigate={onNavigate}
-                onRunAgent={onRunAgent}
-                renderRouting={routingControlFor}
-                now={now}
-              />
-            ) : <p className="mc-empty">No agents are registered.</p>}
-          </section>
-        </>
-      )}
-
-      <details className="v-agents__system" data-testid="system-workers">
-        <summary>System workers <span className="mc-num">({systemWorkers.length})</span></summary>
-        <p className="v-agents__group-note">
-          Infrastructure identities registered by the runtime policy. Dashboard-triggerable means this
-          control plane can start the worker directly; queue-addressable workers pick up routed work through
-          their existing runner boundary.
-        </p>
-        {systemWorkers.length ? <SystemWorkerTable workers={systemWorkers} /> : <p className="mc-empty">No separate system workers are registered.</p>}
-      </details>
-
-      <p className="v-agents__note">
-        Identities that only appear in old records are intentionally left out. The model shown is the one
-        an agent will actually run on; changing it is a governed, audited write.
-      </p>
-
-      <RoutingAuditStrip audit={routingSnap.audit} />
-      {detailOverlay}
-    </section>
-  );
+      onClose={close}
+      detailsContent={detail ? <DetailValues detail={detail} /> : undefined}
+    /> : null}
+  </section>;
 }

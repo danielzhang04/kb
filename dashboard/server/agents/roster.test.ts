@@ -266,10 +266,13 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(declared.get('research-worker')).toEqual({
       id: 'research-worker',
       role: 'work',
+      group: null,
       runtime: 'codex',
       model: 'gpt-5.6-sol',
       tools: null,
       knowledgeSource: null,
+      connectors: null,
+      filesystemRoots: null,
       autonomyTier: null,
       skills: null,
       whatItReplaces: null,
