@@ -2,13 +2,13 @@
     "video_slug":  "2026-07-28-bricks-fresh",
     "generated":  "2026-08-21",
     "notes":  "Variant D L01-L50 doctrine trial; copied files are byte-identical to selected D-called bytes with fresh-eyes verified or honestly parked review state.",
-    "calls":  108,
+    "calls":  112,
     "conservative_rate":  0.134,
     "provider_rate":  0.039,
-    "conservative_total":  14.472,
-    "provider_total":  4.212,
-    "verified":  47,
-    "parked":  3,
+    "conservative_total":  15.008,
+    "provider_total":  4.368,
+    "verified":  49,
+    "parked":  1,
     "shots":  [
                   {
                       "shot_id":  "L01",
@@ -195,8 +195,8 @@
                   {
                       "shot_id":  "L10",
                       "file":  "L10.png",
-                      "sha256":  "28978d5e6b54c88b185b252c4af1b70ed1557ac63aa4013dce3b66b6dc71b7f4",
-                      "call":  97,
+                      "sha256":  "506ba407df1da9cea964fe8d56aaad2bb259eb9872632bd5ef83cae85b735d59",
+                      "call":  110,
                       "technique":  "(c) Character-free scene -- product-launch object composition",
                       "seeds":  [
                                     "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
@@ -204,14 +204,13 @@
                       "flagged":  true,
                       "review_status":  "parked",
                       "parked_reasons":  [
-                                             "product-only mechanism still invented a large photographer crowd",
-                                             "undeclared crowd fills both sides outside the approved crowd rig"
+                                             "bounded rear photographer silhouettes remain tall-bodied and lack the approved compact dot-eye crowd rig"
                                          ],
-                      "retry_cause":  "The first retry produced a Victorian/tall queue; the boss-granted second retry removed declared crowd occupancy, but camera flashes still induced undeclared people.",
+                      "retry_cause":  "Wave 3D re-rolled the unchanged prompt twice; call 110 was the better bounded attempt, but its silhouetted crowd remained off-rig.",
                       "parent_depth":  0,
                       "lineage":  0,
-                      "superseded_sha256":  "fdc65a253e9d4af782a3f498ebfc154e07adb89057b4f5907085ab36c3457c2b",
-                      "notes":  "D call `visual-kit/_staging/L10.png`; spec-vd-wave3C-scenes-1.json; boss-granted second retry; selected called bytes honestly parked."
+                      "superseded_sha256":  "28978d5e6b54c88b185b252c4af1b70ed1557ac63aa4013dce3b66b6dc71b7f4",
+                      "notes":  "D call `visual-kit/_staging/L10.png`; `spec-vd-wave3D-L10-a2.json`; unchanged prompt; selected called bytes honestly parked as the better of two fresh base calls."
                   },
                   {
                       "shot_id":  "L11",
@@ -712,33 +711,33 @@
                   {
                       "shot_id": "L38",
                       "file": "L38.png",
-                      "sha256": "fe4527796f555c8dd8162fe33c4a6a0b53068b38435628f00ac19ccdfcabec8c",
-                      "call": 104,
+                      "sha256": "c42c4ae16173e68fc1fb73a3b7255b47eec4a61c3e10d921ee0f2fe422a5425f",
+                      "call": 111,
                       "technique": "(e) Seeded delta-chain -- L37 parent with lettering and style exemplars",
                       "seeds": ["channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L37.png","channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png","channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"],
-                      "flagged": true,
-                      "review_status": "parked",
-                      "parked_reasons": ["tall brass tower displaced the held exact `600 MILLION` lettering"],
-                      "retry_cause": "Bellows inflation stayed collapsed through the first retry; the boss-granted second retry used a tall brass-block tower, which became visible but displaced held lettering.",
+                      "flagged": false,
+                      "review_status": "verified",
+                      "parked_reasons": [],
+                      "retry_cause": "Wave 3D re-rolled the unchanged prompt; fresh parent-regen attempt 1 preserved exact lettering and made the two-block inflation expansion visible.",
                       "parent_depth": 1,
                       "lineage": 1,
-                      "superseded_sha256": "4210edc5712925f467b4b2ecec3b73868eab7f52d91da4c1d0f0444e848251f3",
-                      "notes": "D call `visual-kit/_staging/L38.png`; spec-vd-wave3C-scenes-1.json; boss-granted second retry; selected called bytes honestly parked."
+                      "superseded_sha256": "fe4527796f555c8dd8162fe33c4a6a0b53068b38435628f00ac19ccdfcabec8c",
+                      "notes": "D call `visual-kit/_staging/L38.png`; `spec-vd-wave3D-L38-a1.json`; unchanged prompt; exact `600 MILLION` and sole two-block expansion verified."
                   },
                   {
                       "shot_id": "L39",
-                      "file": null,
-                      "sha256": null,
-                      "call": null,
-                      "technique": "(e) Seeded delta-chain -- scene uncalled",
-                      "seeds": [],
-                      "flagged": true,
-                      "review_status": "parked",
-                      "parked_reasons": ["parent L38 not verified after boss-granted second retry"],
-                      "retry_cause": null,
+                      "file": "L39.png",
+                      "sha256": "0a830c4992d9b6c2bf350623032195cfef0fe459d009f956dc3f847fe3d04780",
+                      "call": 112,
+                      "technique": "(e) Seeded delta-chain -- L38 parent with lettering and style exemplars",
+                      "seeds": ["channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L38.png","channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png","channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"],
+                      "flagged": false,
+                      "review_status": "verified",
+                      "parked_reasons": [],
+                      "retry_cause": "Wave 3D first call became legal after L38 verified; the unchanged prompt rendered exact `REDDIT` as the sole delta.",
                       "parent_depth": 2,
                       "lineage": 1,
-                      "notes": "Scene uncalled because immediate parent L38 remained parked after its boss-granted second retry; no Wave 3C file, digest, or call provenance."
+                      "notes": "D call `visual-kit/_staging/L39.png`; `spec-vd-wave3D-L39-a1.json`; unchanged prompt; exact `REDDIT` sole delta verified."
                   },
                   {
                       "shot_id": "L40",

@@ -146,13 +146,13 @@
    "parked_reasons": [
     "fidelity: defect",
     "rig: defect",
-    "Wave 3C boss-granted second retry: the launch is modern and bounded, but the product-only mechanism still invented a large photographer crowd; those undeclared actors fill both sides and are not carried by the approved crowd rig."
+    "Wave 3D fresh-eyes call 110, better of two: the launch is modern, product-led, text-free, and the photographer mass is fully rearward beyond concentric barriers; however, its silhouettes remain tall-bodied and lack the approved compact dot-eye crowd rig."
    ],
-   "retry_cause": "The first retry produced a Victorian/tall queue; the boss-granted second retry removed declared crowd occupancy and made the product pedestal carry the launch analogy, but camera-flash semantics still induced undeclared people.",
+   "retry_cause": "Wave 3D re-rolled the unchanged prompt twice; call 110 was the better bounded attempt, but its silhouetted crowd remained off-rig.",
    "parent_depth": 0,
    "lineage": 0,
-   "superseded_sha256": "fdc65a253e9d4af782a3f498ebfc154e07adb89057b4f5907085ab36c3457c2b",
-   "notes": "D call output `visual-kit/_staging/L10.png`; SHA-256 `28978d5e6b54c88b185b252c4af1b70ed1557ac63aa4013dce3b66b6dc71b7f4`; `spec-vd-wave3C-scenes-1.json`; boss-granted second retry; called and parked; no active scene file"
+   "superseded_sha256": "28978d5e6b54c88b185b252c4af1b70ed1557ac63aa4013dce3b66b6dc71b7f4",
+   "notes": "D call output `visual-kit/_staging/L10.png`; SHA-256 `506ba407df1da9cea964fe8d56aaad2bb259eb9872632bd5ef83cae85b735d59`; `spec-vd-wave3D-L10-a2.json`; unchanged prompt; selected called bytes honestly parked as the better of two; no active scene file"
   },
   {
    "shot_id": "L11",
@@ -600,40 +600,38 @@
   },
   {
    "shot_id": "L38",
-   "file": null,
+   "file": "assets/scenes/L38.png",
    "technique": "(e) Seeded delta-chain -- L37 parent with lettering and style exemplars",
    "seeds": [
     "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L37.png",
     "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
     "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "Wave 3C boss-granted second retry: the replacement tower is unmistakably tall, but it displaced the held weight's exact `600 MILLION` lettering; the load-bearing claim no longer survives the delta."
-   ],
-   "retry_cause": "Bellows inflation remained collapsed through the first retry; the boss-granted second retry replaced state language with a tall brass-block tower, which became visible but displaced held lettering.",
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "Wave 3D re-rolled the unchanged prompt; fresh parent-regen attempt 1 preserved exact lettering and made the authored two-block inflation expansion visible.",
    "parent_depth": 1,
    "lineage": 1,
-   "superseded_sha256": "4210edc5712925f467b4b2ecec3b73868eab7f52d91da4c1d0f0444e848251f3",
-   "notes": "D call output `visual-kit/_staging/L38.png`; SHA-256 `fe4527796f555c8dd8162fe33c4a6a0b53068b38435628f00ac19ccdfcabec8c`; `spec-vd-wave3C-scenes-1.json`; boss-granted second retry; called and parked because exact held lettering disappeared"
+   "superseded_sha256": "fe4527796f555c8dd8162fe33c4a6a0b53068b38435628f00ac19ccdfcabec8c",
+   "notes": "D call output `visual-kit/_staging/L38.png`; SHA-256 `c42c4ae16173e68fc1fb73a3b7255b47eec4a61c3e10d921ee0f2fe422a5425f`; `spec-vd-wave3D-L38-a1.json`; unchanged prompt; verified sole inflation expansion from L37"
   },
   {
    "shot_id": "L39",
-   "file": null,
-   "technique": "(e) Seeded delta-chain -- scene uncalled",
-   "seeds": [],
-   "flagged": true,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: defect",
-    "Wave 3C parked uncalled: immediate parent L38 remained unverified after its boss-granted second retry, so the Reddit-weight delta could not legally run."
+   "file": "assets/scenes/L39.png",
+   "technique": "(e) Seeded delta-chain -- L38 parent with lettering and style exemplars",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L38.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
    ],
-   "retry_cause": null,
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "Wave 3D first call became legal only after L38 was verified and promoted; the unchanged prompt rendered the exact Reddit-weight sole delta cleanly.",
    "parent_depth": 2,
    "lineage": 1,
-   "notes": "Scene uncalled because immediate parent L38 remained parked after its boss-granted second retry; no Wave 3C scene digest or call provenance"
+   "notes": "D call output `visual-kit/_staging/L39.png`; SHA-256 `0a830c4992d9b6c2bf350623032195cfef0fe459d009f956dc3f847fe3d04780`; `spec-vd-wave3D-L39-a1.json`; unchanged prompt; verified sole `REDDIT` weight delta from L38"
   },
   {
    "shot_id": "L40",

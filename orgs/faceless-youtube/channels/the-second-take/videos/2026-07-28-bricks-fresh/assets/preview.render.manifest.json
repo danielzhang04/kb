@@ -19,8 +19,8 @@
       "sum_scene_seconds": 545.95,
       "retime_basis": "per-line-timings(545.97s, 1632 words)",
       "vo_seconds": 545.965,
-      "scenes_from_files": 47,
-      "inline_fallback": 3,
+      "scenes_from_files": 49,
+      "inline_fallback": 1,
       "camera_moving": 0,
       "breath_count": 33,
       "sentence_gap_count": 33,
@@ -97,11 +97,9 @@
         }
       },
       "allowed_missing_scene_shots": [
-        "L10",
-        "L38",
-        "L39"
+        "L10"
       ],
-      "render_wall_seconds": 1035.5,
+      "render_wall_seconds": 892.8,
       "rendered_seconds": 545.97,
       "audio_lufs": "-14.58",
       "audio_true_peak": "-1.00",

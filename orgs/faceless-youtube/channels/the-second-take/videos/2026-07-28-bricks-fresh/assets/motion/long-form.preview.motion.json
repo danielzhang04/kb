@@ -7315,11 +7315,8 @@
       "start_s": 86.521,
       "duration_s": 2.149,
       "beat": "body",
-      "image": null,
-      "placeholder": {
-        "kind": "missing scene",
-        "label": "Held revenue-comparison set; two added plain brass blocks make a visibly taller "
-      },
+      "image": "scenes/L38.png",
+      "placeholder": null,
       "stage": "revenue-comparison",
       "stage_role": "delta",
       "camera": {
@@ -7328,7 +7325,7 @@
         "intensity": 0.0
       },
       "entrance": "cut",
-      "idle": "none",
+      "idle": "bob",
       "overlays": []
     },
     {
@@ -7336,11 +7333,8 @@
       "start_s": 88.67,
       "duration_s": 3.687,
       "beat": "body",
-      "image": null,
-      "placeholder": {
-        "kind": "missing scene",
-        "label": "Held revenue-comparison set; the Reddit weight is the one comparison change, whi"
-      },
+      "image": "scenes/L39.png",
+      "placeholder": null,
       "stage": "revenue-comparison",
       "stage_role": "delta",
       "camera": {
@@ -7349,7 +7343,7 @@
         "intensity": 0.0
       },
       "entrance": "cut",
-      "idle": "none",
+      "idle": "bob",
       "overlays": []
     },
     {

@@ -345,3 +345,32 @@ Variant D doctrine wave 3C park repairs: 21 calls, 10/13 verified, 3/13 parked; 
 
 - Independent Claude vision check (claude-sonnet-5, read-only, pixels only) concurred with 9/10 `verified` rulings: L28 floor is machines only, L32 `ibm-suit` navy pinstripe + clean handshake, L35/L36 literals exact (`1988`, `COMPAQ`), L43 group bounded behind the rail with empty near concrete, L44 doors unlettered, L44→L45 hold with the founder's absence as the single change.
 - Dissent: **L22** — the packer row still spans the frame to the camera edge (no empty near lane). Both of L22's retries are spent (wave 3A base, wave 3C retry); stays `verified` with this dissent recorded for the board.
+
+## Wave 3D (re-roll L10/L38/L39, prompts unchanged)
+
+- Date: `2026-08-21`
+- Requested/responding model: `gemini-3-pro-image`
+- Image size/aspect: `1K`, `16:9`
+- Conservative/provider rates: `$0.134/call`, `$0.039/call`
+- Maximum calls: `6`; conservative/provider ceilings: `$0.804`, `$0.234`
+- Spend gate: PASSED — owner instructed “just gen them and render” on `2026-08-21`.
+- Prompt authority: `shots.json` SHA-256 `c273394ba598ed7db9ef3f5067e5d45602857aaca95c37460656919a5de7fd8c`; no field may change.
+
+| call | shot | base/retry/parent-regen | spec | seed roles | requested model | responding model | $0.134 cost | $0.039 comparator | output | fresh-eyes verdict | retry cause/park reason |
+| ---: | --- | --- | --- | --- | --- | --- | ---: | ---: | --- | --- | --- |
+| 109 | L10 | fresh base 1 | `spec-vd-wave3D-L10-a1.json` | style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L10.png`; sha256=`c1c3c4ce…c1aa8` | defect — modern launch and text-free, but rear crowd is off-rig | tall/profile photographer figures show nose-like facial structure rather than the approved compact crowd rig |
+| 110 | L10 | fresh base 2 | `spec-vd-wave3D-L10-a2.json` | style-anchor=`scene-style-tile` | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L10.png`; sha256=`506ba407…735d59` | parked best attempt — modern and text-free, with crowd fully rearward, but crowd remains off-rig | silhouettes are better bounded than call 109 but still tall-bodied and lack the approved compact dot-eye crowd form |
+| 111 | L38 | parent-regen 1 | `spec-vd-wave3D-L38-a1.json` | parent=`assets/scenes/L37.png` sha256=`eec76c0f…a8e90`; lettering; style-anchor | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L38.png`; sha256=`c42c4ae1…a5425f` | verified — exact one-change inflation expansion | L37 holds pixel-close; exactly two brass blocks appear above exact `600 MILLION` |
+| 112 | L39 | parent-regen 1 | `spec-vd-wave3D-L39-a1.json` | parent=`assets/scenes/L38.png` sha256=`c42c4ae1…a5425f`; lettering; style-anchor | `gemini-3-pro-image` | `gemini-3-pro-image` | 0.134 | 0.039 | `visual-kit/_staging/L39.png`; sha256=`0a830c49…d04780` | verified — exact `REDDIT` sole delta | L38 holds pixel-close; one marked brass weight appears in the formerly empty right pan |
+
+### Wave 3D closure
+
+- Calls: `4/6` total — L10 `2` fresh bases, L38 `1` parent-regen, L39 `1` parent-regen; `2` calls unused.
+- Verified: `L38`, `L39`. Parked: `L10` — better call 110 is modern, text-free, and rear-bounded, but the silhouettes remain outside the approved compact crowd rig.
+- Provenance: verified L38/L39 and the selected called L10 best attempt are SHA-256 matched in `scratchpad/variant-frames/vd`; cumulative manifest is `112` calls, `49` verified / `1` parked.
+- Prompt integrity: closing `shots.json` SHA-256 remains `c273394ba598ed7db9ef3f5067e5d45602857aaca95c37460656919a5de7fd8c`.
+- Cost: `4 × $0.134 = $0.536` conservative; `4 × $0.039 = $0.156` provider-table comparator; the `$0.804` / `$0.234` Wave 3D ceilings remained intact.
+
+### Ops cost row (five tab-separated fields; boss writes ledger)
+
+Variant D doctrine wave 3D re-roll: 4 calls, 2/3 verified, 1/3 parked; prompts unchanged; conservative $0.134/call, provider-table $0.039/call; genlog scratchpad/vpw-var/genlog-vd.md on claude/bricks-variant-vd.	gemini-3-pro-image	gemini-3-pro-image	bricks variant D wave 3D re-roll	0.536
