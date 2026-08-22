@@ -178,7 +178,8 @@ it('injects a real spy and coalesces migration plus crash normalization into one
     const persisted = JSON.parse(encoded) as Record<string, any>;
     expect(persisted).toMatchObject({ version: 3, documentRevision: 1, nextEventCursor: 2 });
     expect(persisted.runs[0]).toMatchObject({
-      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
       terminalOutcome: null, completedAt: null, archivedFrom: null,
     });
     expect(persisted.runs[0].lifecycle).toEqual({ kind: 'interrupted', deployPause: null });

@@ -2,7 +2,6 @@ import Fastify from 'fastify';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,6 +29,7 @@ import { createAttemptIoStore } from './attemptIo.ts';
 import { executeApprovedLaunch } from './launch.ts';
 import { admit } from './admission.ts';
 import * as publication from './publication.ts';
+import { normalizedTextSha256 } from './textArtifactHash.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -194,7 +194,7 @@ describe('control proposal routes', () => {
     controlStore = createInMemoryControlPlaneStore({ newId });
     const workspace = composerStore.create('operator', 'Control', {
       id: 'grader', path: 'agents/grader.md',
-      sourceHash: createHash('sha256').update(readFileSync(fileURLToPath(new URL('../../../agents/grader.md', import.meta.url)))).digest('hex'),
+      sourceHash: normalizedTextSha256(readFileSync(fileURLToPath(new URL('../../../agents/grader.md', import.meta.url)))),
       projects: ['kb'], instructionMarkdown: 'Grade the assigned work.',
     });
     composerRef = workspace.composerRef;

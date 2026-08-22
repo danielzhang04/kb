@@ -12,7 +12,7 @@
  */
 import { existsSync, readdirSync, readFileSync, lstatSync, realpathSync } from 'node:fs';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import { createHash } from 'node:crypto';
+import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { CardProjection, ParsedCard } from '../planeA/cards.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
@@ -679,7 +679,7 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       defaults: declaredDefaults(meta.defaults),
       source: candidate.source,
       instructionMarkdown: candidate.parsed.body,
-      sourceHash: createHash('sha256').update(candidate.text, 'utf8').digest('hex'),
+      sourceHash: normalizedTextSha256(candidate.text),
       codebasePaths,
       projects,
       workflowPaths: codebasePaths.filter((path) => /^orgs\/[^/]+\/workflows\//.test(path)),

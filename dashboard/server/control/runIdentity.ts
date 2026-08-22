@@ -1,4 +1,5 @@
 import type { HostKind, RunIdentityFields, RunnableRef } from './p2Contracts.ts';
+import { normalizeRepoRelativePath } from './textArtifactHash.ts';
 
 export interface LegacyAgentDeclaration {
   id: string;
@@ -60,11 +61,14 @@ export interface RunIdentityMigrationResult {
 }
 
 function asAgentRef(candidate: LegacyAgentDeclaration): RunnableRef {
-  return { type: 'agent', id: candidate.id, sourcePath: candidate.sourcePath };
+  return { type: 'agent', id: candidate.id, sourcePath: normalizeRepoRelativePath(candidate.sourcePath) as `agents/${string}.md` };
 }
 
 function asWorkflowRef(candidate: LegacyWorkflowDefinition): RunnableRef {
-  return { type: 'workflow', id: candidate.id, project: candidate.project, sourcePath: candidate.sourcePath };
+  return {
+    type: 'workflow', id: candidate.id, project: candidate.project,
+    sourcePath: normalizeRepoRelativePath(candidate.sourcePath) as `orgs/${string}/workflows/${string}.md`,
+  };
 }
 
 function sortedRefs(refs: readonly RunnableRef[]): RunnableRef[] {
@@ -76,7 +80,7 @@ export function resolveLegacyRunIdentity(input: LegacyRunIdentityInput): RunIden
     const provenance = input.agentWorkspaceLaunch;
     const matches = input.agentDeclarations
       .filter((candidate) => candidate.id === provenance.agentId
-        && candidate.sourcePath === provenance.declarationPath
+        && normalizeRepoRelativePath(candidate.sourcePath) === normalizeRepoRelativePath(provenance.declarationPath)
         && candidate.declarationHash === provenance.declarationHash)
       .map(asAgentRef);
     if (matches.length === 1) return { ok: true, value: identityFields(matches[0], input.executionHost) };
@@ -90,7 +94,7 @@ export function resolveLegacyRunIdentity(input: LegacyRunIdentityInput): RunIden
   const matches = definitions.filter((definition) => input.workflowLaunchAudits.some((audit) => audit.runRef === input.runRef
     && audit.workflowId === definition.id
     && audit.project === definition.project
-    && audit.sourcePath === definition.sourcePath
+    && normalizeRepoRelativePath(audit.sourcePath) === normalizeRepoRelativePath(definition.sourcePath)
     && audit.declarationHash === definition.declarationHash));
   const refs = sortedRefs(matches.map(asWorkflowRef));
   if (refs.length === 1) return { ok: true, value: identityFields(refs[0], input.executionHost) };

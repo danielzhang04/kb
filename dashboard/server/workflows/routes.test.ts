@@ -3,7 +3,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
@@ -24,6 +23,7 @@ import {
 } from './routes.ts';
 import { createFileAssignmentAmendmentStore, createInMemoryAssignmentAmendmentStore } from './amendmentStore.ts';
 import { admit } from '../control/admission.ts';
+import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('workflow-route-test-secret-32byte!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -339,7 +339,7 @@ describe('workflow definition routes', () => {
   it('derives durable agent-workspace provenance, replays only the same workspace, and refuses a cross-workspace key reuse', async () => {
     const agent = {
       id: 'fyt-runner', path: 'agents/fyt-runner.md',
-      sourceHash: createHash('sha256').update(readFileSync(join(REPO_ROOT, 'agents', 'fyt-runner.md'))).digest('hex'),
+      sourceHash: normalizedTextSha256(readFileSync(join(REPO_ROOT, 'agents', 'fyt-runner.md'))),
       projects: ['faceless-youtube'],
       instructionMarkdown: 'Recorded server declaration context.',
     };

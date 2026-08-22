@@ -6,9 +6,9 @@
  * narrow patcher below understands only block-style `manager` and `stages` assignments and refuses
  * every layout it cannot prove safe.
  */
-import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import { parseWorkflowDef, type WorkflowDef } from './defs.ts';
 
 export type AssignmentTarget = { kind: 'manager' } | { kind: 'stage'; stageId: string };
@@ -40,8 +40,9 @@ export interface PatchedGovernance {
   oldGovernance: GovernanceValue;
 }
 
+/** Checkout-independent identity for authored UTF-8 Workflow definition text. */
 export function sourceHash(bytes: Buffer): string {
-  return createHash('sha256').update(bytes).digest('hex');
+  return normalizedTextSha256(bytes);
 }
 
 export function decodeUtf8(bytes: Buffer): string | null {

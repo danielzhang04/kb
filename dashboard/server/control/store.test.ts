@@ -32,15 +32,17 @@ const roots: string[] = [];
 const fileStores = createExistingRootFileStoreHarnessForTest();
 const createFileControlPlaneStore = fileStores.open;
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
+const TEST_EXECUTION_HOST = process.platform === 'win32' ? 'desktop' : 'vm';
+const OTHER_EXECUTION_HOST = TEST_EXECUTION_HOST === 'desktop' ? 'vm' : 'desktop';
 
 it('leaves file-backed v2 bytes unchanged on host contradiction and partial outcome aborts', () => {
   for (const [name, fields] of [
     ['host', {
-      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'vm',
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: OTHER_EXECUTION_HOST,
       terminalOutcome: null, completedAt: null, archivedFrom: null,
     }],
     ['partial-outcome', {
-      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: TEST_EXECUTION_HOST,
       terminalOutcome: 'ok',
     }],
   ] as const) {
@@ -95,7 +97,7 @@ function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
       proposalHash: `${index.toString(16).padStart(2, '0')}${'a'.repeat(62)}`,
       publicationState: 'published', state: 'succeeded', version: 1,
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
-      executionHost: 'desktop', terminalOutcome: 'ok', completedAt: stamp, archivedFrom: null,
+      executionHost: TEST_EXECUTION_HOST, terminalOutcome: 'ok', completedAt: stamp, archivedFrom: null,
       managerSessionRef: `manager-${index}`, managerGeneration: 1,
       createdAt: stamp, updatedAt: stamp,
     })),

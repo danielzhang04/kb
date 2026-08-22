@@ -42,9 +42,11 @@ describe('migrateRunIdentityV1', () => {
     const zero = input({ proposal: null, agentWorkspaceLaunch: { agentId: agent.id, declarationPath: agent.sourcePath, declarationHash: agent.declarationHash }, agentDeclarations: [] });
     const multiple = input({ proposal: null, agentWorkspaceLaunch: { agentId: agent.id, declarationPath: agent.sourcePath, declarationHash: agent.declarationHash }, agentDeclarations: [agent, { ...agent }] });
     const mismatchedHash = input({ proposal: null, agentWorkspaceLaunch: { agentId: agent.id, declarationPath: agent.sourcePath, declarationHash: 'd'.repeat(64) } });
+    const mismatchedCase = input({ proposal: null, agentWorkspaceLaunch: { agentId: agent.id, declarationPath: 'Agents/fyt-runner.md', declarationHash: agent.declarationHash } });
     expect(resolveLegacyRunIdentity(zero)).toEqual({ ok: false, reason: 'agent-provenance-required', candidates: [] });
     expect(resolveLegacyRunIdentity(multiple)).toMatchObject({ ok: false, reason: 'agent-provenance-required' });
     expect(resolveLegacyRunIdentity(mismatchedHash)).toEqual({ ok: false, reason: 'agent-provenance-required', candidates: [] });
+    expect(resolveLegacyRunIdentity(mismatchedCase)).toEqual({ ok: false, reason: 'agent-provenance-required', candidates: [] });
   });
 
   it('requires one workflow definition and matching launch audit provenance', () => {

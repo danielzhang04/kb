@@ -6,6 +6,7 @@ import { compileWorkflowDef } from '../workflows/compile.ts';
 import { scanWorkflowDefs } from '../workflows/routes.ts';
 import { loadWorkflowCompileEnvironment } from './environment.ts';
 import { proposalContentHash } from './proposal.ts';
+import { normalizeRepoRelativePath, normalizedTextSha256 } from './textArtifactHash.ts';
 import type { MigrationContext } from './migrations.ts';
 
 type P2Evidence = Required<Pick<MigrationContext,
@@ -13,6 +14,15 @@ type P2Evidence = Required<Pick<MigrationContext,
 type ArchiveAudit = NonNullable<MigrationContext['auditRows']>[number];
 
 const MAX_AUDIT_BYTES = 64 * 1024 * 1024;
+
+function checkedDeclarationHash(repoRoot: string, sourcePath: string, scannedHash: string): string {
+  const normalizedPath = normalizeRepoRelativePath(sourcePath);
+  const recomputed = normalizedTextSha256(readFileSync(join(repoRoot, ...normalizedPath.split('/'))));
+  if (normalizedPath !== sourcePath || recomputed !== scannedHash) {
+    throw new Error(`migration declaration evidence changed while loading: ${normalizedPath}`);
+  }
+  return recomputed;
+}
 
 function readExactAuditRows(repoRoot: string): ArchiveAudit[] {
   const path = join(repoRoot, ...AUDIT_REL_PATH.split('/'));
@@ -43,7 +53,7 @@ export function loadP2MigrationEvidence(repoRoot: string): P2Evidence {
   const agentDeclarations = [...readDeclaredAgentDetails(repoRoot).values()].map((declaration) => ({
     id: declaration.id,
     sourcePath: declaration.source as `agents/${string}.md`,
-    declarationHash: declaration.sourceHash,
+    declarationHash: checkedDeclarationHash(repoRoot, declaration.source, declaration.sourceHash),
   }));
   const definitions = scanWorkflowDefs(repoRoot).flatMap((scanned) => {
     if (!scanned.def || !scanned.entry.valid || !scanned.entry.sourceHash) return [];
@@ -67,10 +77,10 @@ export function loadP2MigrationEvidence(repoRoot: string): P2Evidence {
       && candidate.proposalHash === fields.proposalHash);
     if (!definition || !definition.scanned.entry.sourceHash) continue;
     const { entry } = definition.scanned;
-    const declarationHash = entry.sourceHash;
+    const declarationHash = checkedDeclarationHash(repoRoot, entry.path, definition.scanned.entry.sourceHash);
     const proposalRef = fields.proposalRef;
     const proposalHash = fields.proposalHash;
-    if (declarationHash === null || typeof proposalRef !== 'string' || typeof proposalHash !== 'string') continue;
+    if (typeof proposalRef !== 'string' || typeof proposalHash !== 'string') continue;
     workflowDefinitions.push({
       id: workflowId,
       project: entry.project,

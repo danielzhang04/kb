@@ -91,7 +91,7 @@ export interface WorkflowDefRecord {
   ref: string;
   project: string;
   path: string;
-  /** SHA-256 of the exact raw UTF-8 definition bytes used for this projection. */
+  /** SHA-256 of the UTF-8 definition after BOM removal and CRLF-to-LF normalization. */
   sourceHash: string | null;
   valid: boolean;
   title: string | null;

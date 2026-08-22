@@ -9,7 +9,6 @@
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +34,7 @@ import { admit } from '../control/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { acquireWriterLease } from '../control/writerLease.ts';
+import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const KB_REPO = fileURLToPath(new URL('../../../', import.meta.url));
@@ -1372,7 +1372,7 @@ describe('P2 production migration evidence wiring', () => {
       managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,
       agentWorkspaceLaunch: {
         composerRef: 'composer-evidence', agentId: 'grader', declarationPath: 'agents/grader.md',
-        declarationHash: createHash('sha256').update(readFileSync(join(repoRoot, 'agents', 'grader.md'))).digest('hex'),
+        declarationHash: normalizedTextSha256(readFileSync(join(repoRoot, 'agents', 'grader.md'))),
       },
       activationReceipts: [], authorizedFailedRunReconciliation: null,
       createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:00:02.000Z',
