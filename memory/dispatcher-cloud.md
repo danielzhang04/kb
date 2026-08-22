@@ -562,3 +562,19 @@
 - Queue by state: inbox 17, blocked 10, working 1 (this card), halted 1 (6a6bc3dd STILL parked in
   working/ — persistent stray), done 641, approvals 0. No stranded-in-inbox done card this run.
 - Push path: recorded in the run summary.
+
+### 2026-08-22 nightly-review
+- Clean checks: preamble, pyyaml, sync_skills --check all pass. Dispatch emitted 0 cards
+  (nothing cloud-tier due); no approved records to verify in 4b.
+- **Daemon-dir drift SHRANK 11 -> 1.** The 10-file main->ops drift (5 main-only + 5
+  content-differs) from the 08-19 note is RECONCILED (a desktop --sync landed). Only the
+  ops-only `orgs/kb-ops/workflows/acceptance-run.md` remains, needing the human back-port-
+  or-prune call. Drift shape CHANGED, so refreshed the standing umbrella card 6a7c0ebf
+  (Result: 2026-08-22 refresh) rather than filing a new card -- avoid duplicating a card
+  that already targets the same file+decision. (Initially wrote a new wake card, then
+  caught the dup against 6a7c0ebf and folded it into the umbrella instead.)
+- sync_daemon_dirs.py STILL absent on ops (script is main-authored, routine checks out
+  ops) -> naive step-2b invocation EXIT 2; ran main's copy in refs-fallback mode (the
+  documented cloud path). Restore-to-ops still owed (card 6a605ebb).
+- Push path: DIRECT-PUSH (ops written directly; remote reports "Bypassed rule violations"
+  -- routine identity has the bypass, so no PR fallback needed this run).
