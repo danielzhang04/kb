@@ -256,22 +256,24 @@ Rows L03, L04, L08, L10, L11 reflect the Task-3 single re-authored retries (see 
 
 Rows L13, L15, L16, L17, L18 reflect the wave-2 single re-authored retries (see genlog-vd.md); all remain ≤ vb.
 
+Rows L01, L06, L07, L10, L22, L30, L35, L36, L38, L39, L40, L43, L44, L45, L46 reflect the wave-3A/3B/3C single re-authored retries (see genlog-vd.md); all remain ≤ vb / ≤ 45.
+
 Rows L01, L03, L04, L06–L10, L22, L25, L29, L35–L36, L40, and L43 are recomputed after the efficacy audit; L08–L09 are mechanically forced chain-neighbour repairs. Rows L16–L17, L22, L37–L39, and L49 are recomputed after the L50 critic repair; L46–L50 use the binding 45-word new-shot cap as their comparator.
 
 Authored words use `len(still_prompt.split())`. Assembled-provider deltas are computed separately with dry `Kit.prompt_for("style", ..., hold=bool(shot_cast), figures=...)`; positive assembled changes reflect changed cast/crowd routing and do not excuse authored growth.
 
 | id | vb authored | vd authored | authored delta | exact lower-value text removed | exact replacement fact | assembled-provider delta | verdict |
 | --- | ---: | ---: | ---: | --- | --- | ---: | --- |
-| L01 | 78 | 30 | -48 | brick-bearing hard-drive carton and competing room detail | beige CRT, corded telephone, cassette deck, supplied `'1980s'` calendar | -48 | PASS |
+| L01 | 78 | 29 | -49 | brick-bearing hard-drive carton and competing room detail | beige CRT, corded telephone, cassette deck, and new-wave cassettes on an early-eighties desk | -48 | PASS |
 | L02 | 71 | 34 | -37 | `Cobalt, peach, and cream convey the era` | `amber cabinet light crosses brass trim and empty terrazzo foreground` | -112 | PASS |
 | L03 | 39 | 30 | -9 | brick/disk carton trophy | absurd executive trophy balanced on a tiny expense ledger | -9 | PASS |
 | L04 | 61 | 28 | -33 | mascot reaction and electronics aisle | corporate seal over a false-bottom ledger drawer | -157 | PASS |
 | L05 | 45 | 32 | -13 | `cobalt, cream, and walnut retail scene` | `tall windows cast pale daylight across cream plastic, green wall panels, and the wood grain` | -13 | PASS |
-| L06 | 39 | 28 | -11 | straw-lined delivery crate | inventor's exploded-blueprint board beside the held 1983 computer | -11 | PASS |
-| L07 | 62 | 33 | -29 | empty queue and generic cool-palette prose | bounded shoppers filling the rear queue beyond the brass rail | +46 | PASS |
+| L06 | 39 | 37 | -2 | straw-lined delivery crate | established counter and computer with a narrow drafting board showing its rough exploded blueprint | -11 | PASS |
+| L07 | 62 | 39 | -23 | empty queue and generic cool-palette prose | distant rear queue of compact shoppers behind the far brass rail, with the broad terrazzo foreground clear | +46 | PASS |
 | L08 | 30 | 27 | -3 | crowd arrival after repaired base | held shopper mass gains purchased computer cartons | +72 | PASS |
 | L09 | 62 | 28 | -34 | rig recitation and generic aisle prose | purchased cartons hold while the shelf wall becomes bare | -34 | PASS |
-| L10 | 46 | 37 | -9 | tipped carton and empty launch aisle | black-glass phone pedestal plus bounded rear launch queue | +66 | PASS |
+| L10 | 46 | 33 | -13 | tipped carton and empty launch aisle | black-glass smartphone and beige carton on a launch pedestal, framed by concentric brass barriers and camera flashes | +66 | PASS |
 | L11 | 36 | 33 | -3 | `inside a deep working world` | `high green-glass windows cast cool light across coiled cables` | -9 | PASS |
 | L12 | 42 | 36 | -6 | `mechanism reads as a scene rather than a card` | `hard drive nested inside its chassis` | -11 | PASS |
 | L13 | 38 | 33 | -5 | `stored memory feel quiet and durable` | `cool window light isolates the sealed shell between an indigo built-in shelf` | -9 | PASS |
@@ -291,23 +293,23 @@ Authored words use `len(still_prompt.split())`. Assembled-provider deltas are co
 | L27 | 39 | 31 | -8 | `impossible object stays small against the waiting industrial world` | `cold high-window light crosses steel-blue machinery` | -8 | PASS |
 | L28 | 42 | 26 | -16 | `make the company actor small within its own machine` | `action-present` + `expr-deadpan` on the factory mezzanine | -13 | PASS |
 | L29 | 39 | 32 | -7 | unlabeled founding tool and generic token | Colorado workshop pinned beneath supplied `'1980'` date plate | -7 | PASS |
-| L30 | 40 | 24 | -16 | `give the founder room to read at a glance` | `tall-window daylight crosses cream casings, teal floor paint, and steel tools` | -9 | PASS |
+| L30 | 40 | 24 | -16 | `give the founder room to read at a glance` | Terry at the head of a long drive-assembly bench, three-quarter toward camera | -9 | PASS |
 | L31 | 39 | 24 | -15 | `compact hard drive sits on a low factory platform` | `miniscribe-rep` `action-powerstance` `expr-delighted` | +117 | PASS |
 | L32 | 40 | 32 | -8 | `stage the supply deal without a visible logo` | exact pair token order followed by `handshake` | -8 | PASS |
 | L33 | 32 | 31 | -1 | `established two figures` | `miniscribe-rep` before skylit production scale | +123 | PASS |
 | L34 | 43 | 35 | -8 | `miniscribe-rep holds a small pose` | brass money weight marked `'125 MILLION'` outweighs a drive-box pallet | -135 | PASS |
-| L35 | 43 | 27 | -16 | surprised reaction beneath an undated canopy | `action-powerstance` + `expr-delighted` on carton summit marked `'1988'` | -16 | PASS |
+| L35 | 43 | 29 | -14 | surprised reaction beneath an undated canopy | `action-powerstance` + `expr-delighted` on carton summit marked `'1988'` | -16 | PASS |
 | L36 | 38 | 30 | -8 | unnamed acquiring-company figure and unregistered identity route | supplied `'COMPAQ'` purchase order presented by `miniscribe-rep` | +116 | PASS |
 | L37 | 39 | 39 | 0 | `miniscribe-rep` boast pose and tiny hard-drive prop | same `'600 MILLION'` weight on a collapsed bellows with the comparison pan waiting empty | -124 | PASS |
-| L38 | 41 | 34 | -7 | second anonymous money stack and hard-drive pivot | held `'600 MILLION'` amount with the collapsed bellows now expanded | -7 | PASS |
+| L38 | 41 | 35 | -6 | second anonymous money stack and hard-drive pivot | held slate factory and '600 MILLION' balance gain two brass blocks above the left weight | -7 | PASS |
 | L39 | 41 | 39 | -2 | hollow-base disclosure and worried company reaction | one `'REDDIT'` weight fills the held empty pan for a clean comparison | -126 | PASS |
-| L40 | 34 | 32 | -2 | undated full-rack corridor | backward timeline reel landing on supplied `'1984'` calendar | -2 | PASS |
+| L40 | 34 | 31 | -3 | undated full-rack corridor | backward timeline reel landing on supplied `'1984'` calendar | -2 | PASS |
 | L41 | 30 | 27 | -3 | `established dock bumper` hold | `action-armscrossed` + `expr-deadpan` beside empty outbound racks | +124 | PASS |
 | L42 | 43 | 32 | -11 | `economic fall read as a held tableau` | `pale overcast light crosses steel-blue walls and one empty kraft carton` | -11 | PASS |
-| L43 | 42 | 29 | -13 | undifferentiated laid-off crowd | one seeded worker at the single vacated bay among four lockers | -13 | PASS |
-| L44 | 38 | 26 | -12 | `create a deep, cold exit tableau` | cold high-window light crosses steel-blue benches and paper-white doors | -10 | PASS |
-| L45 | 34 | 28 | -6 | `steel blue, paper white, and charcoal make absence the whole argument` | held founder station with the founder now absent | -6 | PASS |
-| L46 | 45 cap | 30 | -15 | new shot; cap comparator | worried MiniScribe actor at sparse order trays under cold clerestory light | n/a | PASS |
+| L43 | 42 | 35 | -7 | undifferentiated laid-off crowd | worker group spans four locker bays, with `line-worker` at one empty bay | -13 | PASS |
+| L44 | 38 | 27 | -11 | `create a deep, cold exit tableau` | cold high-window light crosses steel-blue benches and paper-white doors | -10 | PASS |
+| L45 | 34 | 28 | -6 | `steel blue, paper white, and charcoal make absence the whole argument` | held casing and corridor-light rectangle remain while Terry Johnson is absent | -6 | PASS |
+| L46 | 45 cap | 30 | -15 | new shot; cap comparator | worried MiniScribe actor now takes `action-shrug` at sparse order trays | n/a | PASS |
 | L47 | 45 cap | 36 | -9 | new shot; cap comparator | fresh `hq-banker` base with named contract and walnut-brass field | n/a | PASS |
 | L48 | 45 cap | 31 | -14 | new shot; cap comparator | held bank set gains supplied `'20 MILLION'` money weight | n/a | PASS |
 | L49 | 45 cap | 38 | -7 | small label-dependent appointment portfolio | broad chair-to-factory brass track makes dispatch dominant while the appointee remains absent | n/a | PASS |
