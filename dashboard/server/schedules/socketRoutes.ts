@@ -1,6 +1,6 @@
-import { chmodSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, readFileSync, unlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { createServer, type Server, type Socket } from 'node:net';
+import { createConnection, createServer, type Server, type Socket } from 'node:net';
 import { isAbsolute, resolve } from 'node:path';
 import type {
   ClaimScheduleOccurrenceInput,
@@ -231,7 +231,10 @@ export function createScheduleSocketServer(options: {
   if (!isAbsolute(options.socketPath) || options.socketPath.includes('\0') || Buffer.byteLength(options.socketPath) > 100) {
     throw new ScheduleSocketError('schedule-socket-io', 'schedule socket path is invalid');
   }
-  if (existsSync(options.socketPath)) throw new ScheduleSocketError('schedule-socket-io', 'schedule socket path already exists');
+  const pathExists = existsSync(options.socketPath);
+  if (pathExists && !lstatSync(options.socketPath).isSocket()) {
+    throw new ScheduleSocketError('schedule-socket-io', 'schedule socket path already exists');
+  }
   const server = createServer((socket) => {
     let bytes = 0;
     let encoded = '';
@@ -270,7 +273,30 @@ export function createScheduleSocketServer(options: {
     chmodSync(options.socketPath, 0o600);
   });
   server.once('close', () => { if (existsSync(options.socketPath)) unlinkSync(options.socketPath); });
-  server.listen(options.socketPath);
+  const listen = (): void => { server.listen(options.socketPath); };
+  if (!pathExists) {
+    listen();
+    return server;
+  }
+  const probe = createConnection(options.socketPath);
+  probe.once('connect', () => {
+    probe.destroy();
+    server.emit('error', new ScheduleSocketError('schedule-socket-io', 'schedule socket path already exists'));
+  });
+  probe.once('error', (error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ECONNREFUSED' && error.code !== 'ENOENT') {
+      server.emit('error', new ScheduleSocketError('schedule-socket-io', 'schedule socket path already exists'));
+      return;
+    }
+    if (existsSync(options.socketPath)) {
+      if (!lstatSync(options.socketPath).isSocket()) {
+        server.emit('error', new ScheduleSocketError('schedule-socket-io', 'schedule socket path already exists'));
+        return;
+      }
+      unlinkSync(options.socketPath);
+    }
+    listen();
+  });
   return server;
 }
 

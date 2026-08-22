@@ -76,7 +76,7 @@ describe('Agent P2 routes', () => {
     expect(listed.json()).toMatchObject({
       revision: expect.any(String),
       groups: [expect.objectContaining({ id: 'kb-ops', collapsed: false }), expect.objectContaining({ id: 'System', collapsed: true })],
-      items: expect.arrayContaining([expect.objectContaining({ ref: { type: 'agent', id: 'research-worker', sourcePath: 'agents/research-worker.md' }, humanName: 'Research worker' })]),
+      items: expect.arrayContaining([expect.objectContaining({ ref: { type: 'agent', id: 'research-worker', sourcePath: 'agents/research-worker.md' }, humanName: 'Research Worker' })]),
     });
     expect((await app.inject({ method: 'GET', url: '/api/agents', headers: { 'if-none-match': listed.headers.etag! } })).statusCode).toBe(304);
     const detail = await app.inject({ method: 'GET', url: '/api/agents/research-worker' });
@@ -142,6 +142,9 @@ describe('Agent P2 routes', () => {
     expect(launched.statusCode).toBe(202);
     expect(launched.json()).toMatchObject({ runRef: expect.any(String) });
     expect(store.listRuns('operator', 'all-subjects')).toHaveLength(1);
-    expect(store.listRuns('operator', 'all-subjects')[0]).toMatchObject({ owner: { type: 'agent', id: 'research-worker', sourcePath: 'agents/research-worker.md' } });
+    expect(store.listRuns('operator', 'all-subjects')[0]).toMatchObject({
+      owner: { type: 'agent', id: 'research-worker', sourcePath: 'agents/research-worker.md' },
+      executionHost: expect.stringMatching(/^(desktop|vm)$/),
+    });
   });
 });

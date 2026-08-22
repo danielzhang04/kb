@@ -4,6 +4,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { createConnection, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import type {
   ClaimScheduleOccurrenceInput,
@@ -153,5 +156,52 @@ describe('schedule Unix socket protocol', () => {
       ok: false, version: 1, error: 'stale-schedule-version',
     });
     expect(store.emissions).toBe(0);
+  });
+
+  it.runIf(scheduleSocketRuntimeCapability().available)('reclaims a stale Unix socket before binding', async () => {
+    const path = await socketPath();
+    const child = spawn(process.execPath, ['-e', [
+      "const { createServer } = require('node:net');",
+      'const server = createServer();',
+      "server.listen(process.argv[1], () => process.stdout.write('ready\\n'));",
+      'setInterval(() => {}, 1_000);',
+    ].join(' '), path], { stdio: ['ignore', 'pipe', 'pipe'] });
+    await once(child.stdout!, 'data');
+    child.kill('SIGKILL');
+    await once(child, 'exit');
+
+    const server = createScheduleSocketServer({ socketPath: path, store: new VectorStore(), dispatcherUid: process.getuid!() });
+    SERVERS.push(server);
+    await once(server, 'listening');
+    expect(server.address()).toBe(path);
+  });
+
+  it.runIf(scheduleSocketRuntimeCapability().available)('refuses to replace a live Unix socket listener', async () => {
+    const path = await socketPath();
+    const listener = createNetServer();
+    listener.listen(path);
+    await once(listener, 'listening');
+    try {
+      const refused = createScheduleSocketServer({
+        socketPath: path,
+        store: new VectorStore(),
+        dispatcherUid: process.getuid!(),
+      });
+      const [error] = await once(refused, 'error');
+      expect(error).toMatchObject({ message: 'schedule socket path already exists' });
+    } finally {
+      listener.close();
+      await once(listener, 'close');
+    }
+  });
+
+  it.runIf(scheduleSocketRuntimeCapability().available)('refuses to replace a non-socket path', async () => {
+    const path = await socketPath();
+    writeFileSync(path, 'not a socket');
+    expect(() => createScheduleSocketServer({
+      socketPath: path,
+      store: new VectorStore(),
+      dispatcherUid: process.getuid!(),
+    })).toThrow('schedule socket path already exists');
   });
 });

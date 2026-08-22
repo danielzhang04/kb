@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost } from './project.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, selectEntityHostRun } from './project.ts';
 import type { RunRow } from '../control/p2Contracts.ts';
+import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
 
 const agent = { type: 'agent' as const, id: 'fyt-checker', sourcePath: 'agents/fyt-checker.md' as const };
 const workflow = { type: 'workflow' as const, id: 'research-brief', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/research-brief.md' as const };
@@ -13,6 +14,37 @@ describe('entity projectors', () => {
   it('maps the current cloud and desktop routing tiers to the fixed P2 host labels', () => {
     expect(resolveExecutionHost('cloud')).toBe('vm');
     expect(resolveExecutionHost('desktop')).toBe('desktop');
+  });
+
+  it('selects the newest-created active host, then the latest actually completed host', () => {
+    const active = [
+      { runRef: 'run-newer-updated', createdAt: '2026-08-21T10:00:00.000Z', updatedAt: '2026-08-21T14:00:00.000Z', completedAt: null, executionHost: 'desktop' as const },
+      { runRef: 'run-newer-created', createdAt: '2026-08-21T12:00:00.000Z', updatedAt: '2026-08-21T13:00:00.000Z', completedAt: null, executionHost: 'vm' as const },
+    ];
+    expect(selectEntityHostRun(active, new Set(active.map((run) => run.runRef)))?.executionHost).toBe('vm');
+
+    const inactive = [
+      { runRef: 'run-updated-failed', createdAt: '2026-08-21T11:00:00.000Z', updatedAt: '2026-08-21T15:00:00.000Z', completedAt: null, executionHost: 'desktop' as const },
+      { runRef: 'run-completed', createdAt: '2026-08-21T09:00:00.000Z', updatedAt: '2026-08-21T10:00:00.000Z', completedAt: '2026-08-21T10:00:00.000Z', executionHost: 'vm' as const },
+    ];
+    expect(selectEntityHostRun(inactive, new Set())?.executionHost).toBe('vm');
+  });
+
+  it('derives every summary name from the one shared entity humanizer', () => {
+    const ids = ['api-gateway', 'fyt_checker', 'research-brief'];
+    const inputs = ids.map((id, index) => projectEntitySummary({
+      ref: index === 1
+        ? { type: 'workflow' as const, id, project: 'kb-ops', sourcePath: `orgs/kb-ops/workflows/${id}.md` as const }
+        : { type: 'agent' as const, id, sourcePath: `agents/${id}.md` as const },
+      modelLabel: 'model', temporalLabel: 'idle', host: 'vm', activeRuns: [], gatedRunCount: 0,
+      latestRun: null, nextSchedule: null, hasFailure: false,
+    }));
+    expect(inputs.map((summary) => summary.humanName)).toEqual(ids.map(humanizeEntityId));
+
+    const projectorSource = readFileSync(new URL('./project.ts', import.meta.url), 'utf8');
+    const agentRouteSource = readFileSync(new URL('../agents/routes.ts', import.meta.url), 'utf8');
+    expect(projectorSource).not.toMatch(/humanName\?:|input\.humanName|function humanize\(/);
+    expect(agentRouteSource).not.toMatch(/humanName:\s*\/\^#\\s/);
   });
   it('groups agents by lexical primary project and places collapsed System last', () => {
     const result = projectEntityList(summaryFixture.revision, 'agent', [

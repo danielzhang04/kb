@@ -1,10 +1,10 @@
 import type { EntityBrief, EntityGroup, EntityList } from './contracts.ts';
 import type { EntityStatus, EntitySummary, OutputRef, RunRow, RunnableRef, ScheduleOccurrence } from '../control/p2Contracts.ts';
 import type { HostKind } from '../control/p2Contracts.ts';
+import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
 
 export interface EntityProjectionInput {
   ref: RunnableRef;
-  humanName?: string;
   modelLabel: string;
   temporalLabel: string;
   host: EntitySummary['host'];
@@ -57,18 +57,23 @@ export interface StepDag {
   eventsFor(stageRef: string | null): StepEvent[];
 }
 
-const ACRONYMS = new Set(['api', 'cli', 'cpu', 'fyt', 'gpu', 'kb', 'mcp', 'pr', 'pty', 'ram', 'sse', 'vm', 'wsl']);
-
 /** P2's deterministic current-routing preview; P6 replaces the tier resolver, not this HostKind seam. */
 export function resolveExecutionHost(tier: 'cloud' | 'desktop'): HostKind {
   return tier === 'cloud' ? 'vm' : 'desktop';
 }
 
-function humanize(id: string): string {
-  return id.split(/[-_]+/).filter(Boolean).map((word) => {
-    const normalized = word.toLowerCase();
-    return ACRONYMS.has(normalized) ? normalized.toUpperCase() : `${normalized.slice(0, 1).toUpperCase()}${normalized.slice(1)}`;
-  }).join(' ');
+export function selectEntityHostRun<T extends {
+  runRef: string;
+  createdAt: string;
+  completedAt: string | null;
+}>(runs: readonly T[], activeRunRefs: ReadonlySet<string>): T | null {
+  const active = runs
+    .filter((run) => activeRunRefs.has(run.runRef))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.runRef.localeCompare(right.runRef));
+  if (active[0]) return active[0];
+  return runs
+    .filter((run): run is T & { completedAt: string } => run.completedAt !== null)
+    .sort((left, right) => right.completedAt.localeCompare(left.completedAt) || left.runRef.localeCompare(right.runRef))[0] ?? null;
 }
 
 function statusFor(input: EntityProjectionInput): EntityStatus {
@@ -82,7 +87,7 @@ function statusFor(input: EntityProjectionInput): EntityStatus {
 export function projectEntitySummary(input: EntityProjectionInput): EntitySummary {
   return {
     ref: input.ref,
-    humanName: input.humanName?.trim() || humanize(input.ref.id),
+    humanName: humanizeEntityId(input.ref.id),
     status: statusFor(input),
     modelLabel: input.ref.type === 'workflow' ? 'varies' : input.modelLabel,
     temporalLabel: input.temporalLabel,
@@ -127,7 +132,7 @@ function groupFor(kind: 'agent' | 'workflow', input: EntityGroupProjectionInput)
 }
 
 function groupLabel(group: string): string {
-  return group === 'System' ? group : humanize(group);
+  return group === 'System' ? group : humanizeEntityId(group);
 }
 
 export function projectEntityList(revision: string, kind: 'agent' | 'workflow', inputs: EntityGroupProjectionInput[]): EntityList {

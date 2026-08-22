@@ -255,9 +255,8 @@ def secure_copy(source: Path, destination: Path) -> None:
 def install_attestation_sidecars(stage: Path, destination: Path) -> None:
     """Install verified release identity beside VERSION before link selection."""
     sources = [stage / "attestation.json", stage / "attestation.json.sig"]
-    # Tests that replace the upload verifier entirely may omit both staged sidecars.
     if not all(source.exists() for source in sources):
-        return
+        raise RuntimeError("verified attestation sidecars are required")
     destination.chmod(0o755)
     installed: list[Path] = []
     try:

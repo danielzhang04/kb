@@ -7,11 +7,12 @@ import { requireSession, verifiedSession, writeRateLimitHook } from '../http/mid
 import { originPlugin } from '../security/origin.ts';
 import type { EntityDetail, EntityList } from '../entities/contracts.ts';
 import { patchEntityBuilderSource, renderAgentBuilderSource, submitEntityBuilder, type EntityBuilderCatalog, type EntityBuilderPort } from '../entities/builder.ts';
-import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, resolveExecutionHost, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, resolveExecutionHost, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs } from '../entities/outputs.ts';
 import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
 import { runLifecycleKind } from '../control/runLifecycle.ts';
-import type { HostKind, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
+import type { AttentionEnvelope, HostKind, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
 import type { RunMetadata } from '../control/types.ts';
 import { loadExecutionProfiles } from '../control/environment.ts';
 import { save as governedSave } from '../write/governedSave.ts';
@@ -71,7 +72,19 @@ function previewHost(): HostKind {
   return resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud');
 }
 
-function projectionInput(ctx: SurfaceContext, declaration: DeclaredAgentDetail, allRuns: readonly RunMetadata[], now: Date): EntityGroupProjectionInput {
+function attentionForRuns(ctx: SurfaceContext, runs: readonly RunMetadata[]): AttentionEnvelope {
+  return projectRunAttention({
+    runs: runs.map((run) => ({ runRef: run.runRef, owner: run.owner, lifecycle: runLifecycleKind(run.lifecycle) })),
+    humanRequests: runs.flatMap((run) => {
+      const detail = ctx.controlStore.getRun(run.ownerSubject, run.runRef, 'all-subjects');
+      return detail.ok
+        ? detail.value.humanRequests.map(({ requestRef, runRef, state }) => ({ requestRef, runRef, state }))
+        : [];
+    }),
+  });
+}
+
+function projectionInput(ctx: SurfaceContext, declaration: DeclaredAgentDetail, allRuns: readonly RunMetadata[], attention: AttentionEnvelope, now: Date): EntityGroupProjectionInput {
   const ref: RunnableRef = { type: 'agent', id: declaration.id, sourcePath: declaration.source as `agents/${string}.md` };
   const ownedRuns = allRuns.filter((run) => sameOwner(run.owner, ref));
   const runs = ownedRuns.map((run) => projectableFor(ctx, run));
@@ -80,20 +93,18 @@ function projectionInput(ctx: SurfaceContext, declaration: DeclaredAgentDetail, 
     .filter((item) => item.category === 'active' || item.category === 'attention')
     .map((item) => item.row);
   const latest = latestOutcome(runs);
+  const hostRun = selectEntityHostRun(ownedRuns, new Set(activeRuns.map((run) => run.runRef)));
   return {
     ref,
-    humanName: /^#\s+(.+?)\s*$/m.exec(declaration.instructionMarkdown)?.[1],
     projects: declaration.projects,
     ...(declaration.group === 'system' ? { group: 'system' as const } : {}),
     modelLabel: declaration.model ?? declaration.defaultProfile ?? 'default',
     temporalLabel: latest
       ? `ran ${relativeTime(latest.completedAt, now)} ${BULLET} ${latest.outcome}`
       : projectLiveEmpty(null, nextScheduleOccurrence(ctx.controlStore, ref)?.nextAt ?? null),
-    host: activeRuns[0]
-      ? ownedRuns.find((run) => run.runRef === activeRuns[0]?.runRef)?.executionHost ?? previewHost()
-      : [...ownedRuns].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.executionHost ?? previewHost(),
+    host: hostRun?.executionHost ?? previewHost(),
     activeRuns,
-    gatedRunCount: new Set(runs.filter((run) => run.lifecycle === 'waiting-human' || run.openHumanRequestCount > 0).map((run) => run.runRef)).size,
+    gatedRunCount: attention.agents[ref.id] ?? 0,
     latestRun: latest?.outcome ?? null,
     nextSchedule: nextScheduleOccurrence(ctx.controlStore, ref),
     hasFailure: runs.some((run) => run.lifecycle === 'interrupted'),
@@ -111,7 +122,8 @@ function agentList(ctx: SurfaceContext): EntityList {
   const declarations = [...readDeclaredAgentDetails(ctx.repoRoot).values()];
   const runs = ctx.controlStore.listRuns('operator', 'all-subjects');
   const now = ctx.now?.() ?? new Date();
-  return projectEntityList(entityRevision(ctx, declarations), 'agent', declarations.map((declaration) => projectionInput(ctx, declaration, runs, now)));
+  const attention = attentionForRuns(ctx, runs);
+  return projectEntityList(entityRevision(ctx, declarations), 'agent', declarations.map((declaration) => projectionInput(ctx, declaration, runs, attention, now)));
 }
 
 function purposeOf(declaration: DeclaredAgentDetail): string {
@@ -122,7 +134,7 @@ function purposeOf(declaration: DeclaredAgentDetail): string {
 function agentDetail(ctx: SurfaceContext, declaration: DeclaredAgentDetail): EntityDetail {
   const runs = ctx.controlStore.listRuns('operator', 'all-subjects');
   const now = ctx.now?.() ?? new Date();
-  const input = projectionInput(ctx, declaration, runs, now);
+  const input = projectionInput(ctx, declaration, runs, attentionForRuns(ctx, runs), now);
   const summary = projectEntitySummary(input);
   const recentRuns: RunRow[] = runs
     .filter((run) => sameOwner(run.owner, input.ref))

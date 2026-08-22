@@ -32,10 +32,11 @@ import {
 import { executeApprovedLaunch, type LaunchOutcome } from '../control/launch.ts';
 import { proposalSnapshotHash } from '../control/store.ts';
 import type { AgentWorkspaceLaunchProvenance, JsonObject, RunMetadata } from '../control/types.ts';
-import type { HostKind, OutputRef, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
+import type { AttentionEnvelope, HostKind, OutputRef, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
 import type { EntityDetail, EntityList } from '../entities/contracts.ts';
 import { patchEntityBuilderSource, renderWorkflowBuilderSource, submitEntityBuilder, type EntityBuilderCatalog, type EntityBuilderPort } from '../entities/builder.ts';
-import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs, projectOutputRef } from '../entities/outputs.ts';
 import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
 import { runLifecycleKind } from '../control/runLifecycle.ts';
@@ -879,7 +880,19 @@ function latestWorkflowOutcome(runs: readonly ProjectableRun[]): { outcome: RunO
   return rows[0] ? { outcome: rows[0].terminalOutcome, completedAt: rows[0].completedAt } : null;
 }
 
-function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRuns: readonly RunMetadata[], now: Date): EntityGroupProjectionInput {
+function workflowAttention(ctx: SurfaceContext, runs: readonly RunMetadata[]): AttentionEnvelope {
+  return projectRunAttention({
+    runs: runs.map((run) => ({ runRef: run.runRef, owner: run.owner, lifecycle: runLifecycleKind(run.lifecycle) })),
+    humanRequests: runs.flatMap((run) => {
+      const detail = ctx.controlStore.getRun(run.ownerSubject, run.runRef, 'all-subjects');
+      return detail.ok
+        ? detail.value.humanRequests.map(({ requestRef, runRef, state }) => ({ requestRef, runRef, state }))
+        : [];
+    }),
+  });
+}
+
+function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRuns: readonly RunMetadata[], attention: AttentionEnvelope, now: Date): EntityGroupProjectionInput {
   const ref: RunnableRef = {
     type: 'workflow', id: scanned.entry.ref, project: scanned.entry.project,
     sourcePath: scanned.entry.path as `orgs/${string}/workflows/${string}.md`,
@@ -889,14 +902,13 @@ function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRu
   const activity = runs.map((run) => projectRunActivity(run, now.toISOString()));
   const activeRuns = activity.filter((item) => item.category === 'active' || item.category === 'attention').map((item) => item.row);
   const latest = latestWorkflowOutcome(runs);
+  const hostRun = selectEntityHostRun(owned, new Set(activeRuns.map((run) => run.runRef)));
   return {
     ref, projects: [scanned.entry.project], modelLabel: 'varies',
     temporalLabel: latest ? `ran ${relativeRunTime(latest.completedAt, now)} \u00b7 ${latest.outcome}` : projectLiveEmpty(null, nextScheduleOccurrence(ctx.controlStore, ref)?.nextAt ?? null),
-    host: activeRuns[0]
-      ? owned.find((run) => run.runRef === activeRuns[0]?.runRef)?.executionHost ?? resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud')
-      : [...owned].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.executionHost ?? resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud'),
+    host: hostRun?.executionHost ?? resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud'),
     activeRuns,
-    gatedRunCount: new Set(runs.filter((run) => run.lifecycle === 'waiting-human' || run.openHumanRequestCount > 0).map((run) => run.runRef)).size,
+    gatedRunCount: attention.workflows[`workflow:${ref.project}:${ref.id}`] ?? 0,
     latestRun: latest?.outcome ?? null, nextSchedule: nextScheduleOccurrence(ctx.controlStore, ref),
     hasFailure: runs.some((run) => run.lifecycle === 'interrupted'),
   };
@@ -914,13 +926,14 @@ function workflowList(ctx: SurfaceContext): EntityList {
   const scanned = scanWorkflowDefs(ctx.repoRoot).filter((item) => item.def !== null);
   const runs = ctx.controlStore.listRuns('operator', 'all-subjects');
   const now = ctx.now?.() ?? new Date();
-  return projectEntityList(workflowRevision(ctx, scanned), 'workflow', scanned.map((item) => workflowProjectionInput(ctx, item, runs, now)));
+  const attention = workflowAttention(ctx, runs);
+  return projectEntityList(workflowRevision(ctx, scanned), 'workflow', scanned.map((item) => workflowProjectionInput(ctx, item, runs, attention, now)));
 }
 
 function workflowDetail(ctx: SurfaceContext, scanned: ScannedDef & { def: WorkflowDef }): EntityDetail {
   const runs = ctx.controlStore.listRuns('operator', 'all-subjects');
   const now = ctx.now?.() ?? new Date();
-  const input = workflowProjectionInput(ctx, scanned, runs, now);
+  const input = workflowProjectionInput(ctx, scanned, runs, workflowAttention(ctx, runs), now);
   const summary = projectEntitySummary(input);
   const recentRuns: RunRow[] = runs.filter((run) => sameWorkflowOwner(run.owner, input.ref))
     .map((run) => projectableWorkflowRun(ctx, run)).map((run) => projectRunActivity(run, now.toISOString()).row);

@@ -13,6 +13,8 @@ import { workflowCardId } from '../write/workflowRun.ts';
 import { createFileAssignmentAmendmentStore } from './amendmentStore.ts';
 import { registerWorkflows, scanWorkflowDefs } from './routes.ts';
 import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
+import { registerAgents } from '../agents/routes.ts';
+import { projectRunAttention } from '../control/attention.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('workflow-route-test-secret-32byte!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -102,6 +104,7 @@ describe('Workflow P2 routes', () => {
         runAutomatic: (async ({ runRef }: { runRef: string }) => { automaticRunRefs.push(runRef); return { ok: true }; }) as never,
       } : {}),
     });
+    registerAgents(app, surface);
     registerWorkflows(app, surface);
     await app.ready();
   }
@@ -127,6 +130,36 @@ describe('Workflow P2 routes', () => {
     expect(JSON.stringify(detail.json())).not.toContain('eventsFor');
   });
 
+  it('keeps Agent and Workflow gate counts byte-parallel with the shared attention projector', async () => {
+    const agentOwner = { type: 'agent' as const, id: 'assigned-worker', sourcePath: 'agents/assigned-worker.md' as const };
+    const workflowOwner = { type: 'workflow' as const, id: 'amendable', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/amendable.md' as const };
+    const runs = [
+      { runRef: 'run-agent', owner: agentOwner, ownerSubject: 'agent-owner', executionHost: 'desktop', title: 'Agent run', lifecycle: { kind: 'running', deployPause: null }, createdAt: '2026-08-21T10:00:00.000Z', updatedAt: '2026-08-21T12:00:00.000Z', completedAt: null, terminalOutcome: null, archivedFrom: null, openHumanRequestCount: 1 },
+      { runRef: 'run-workflow', owner: workflowOwner, ownerSubject: 'workflow-owner', executionHost: 'vm', title: 'Workflow run', lifecycle: { kind: 'running', deployPause: null }, createdAt: '2026-08-21T11:00:00.000Z', updatedAt: '2026-08-21T13:00:00.000Z', completedAt: null, terminalOutcome: null, archivedFrom: null, openHumanRequestCount: 1 },
+    ] as unknown as ReturnType<ControlPlaneStore['listRuns']>;
+    const resolved = runs.map((run) => ({ requestRef: `request-${run.runRef}`, runRef: run.runRef, state: 'resolved' as const }));
+    store.listRuns = () => runs;
+    store.getRun = (_subject, runRef) => ({
+      ok: true,
+      value: { humanRequests: resolved.filter((request) => request.runRef === runRef) },
+    } as never);
+
+    const projected = projectRunAttention({
+      runs: runs.map((run) => ({ runRef: run.runRef, owner: run.owner, lifecycle: run.lifecycle.kind })),
+      humanRequests: resolved,
+    });
+    const agentSummary = (await app.inject({ method: 'GET', url: '/api/agents' })).json().items
+      .find((item: { ref: { id: string } }) => item.ref.id === agentOwner.id);
+    const workflowSummary = (await app.inject({ method: 'GET', url: '/api/workflows' })).json().items[0];
+
+    expect([agentSummary.gatedRunCount, workflowSummary.gatedRunCount]).toEqual([
+      projected.agents[agentOwner.id] ?? 0,
+      projected.workflows[`workflow:${workflowOwner.project}:${workflowOwner.id}`] ?? 0,
+    ]);
+    expect(agentSummary.gatedRunCount).toBe(0);
+    expect(workflowSummary.gatedRunCount).toBe(0);
+  });
+
   it('projects an armed immutable Workflow schedule into status, Brief, and ETag revision', async () => {
     let collectionRevision = 4;
     store.getScheduleSnapshot = () => ({ collectionRevision, schedules: [{
@@ -150,6 +183,7 @@ describe('Workflow P2 routes', () => {
     expect(launched.statusCode).toBe(202);
     expect(launched.json()).toMatchObject({ runRef: expect.any(String) });
     expect(store.listRuns('operator', 'all-subjects')).toHaveLength(1);
+    expect(store.listRuns('operator', 'all-subjects')[0]).toMatchObject({ executionHost: expect.stringMatching(/^(desktop|vm)$/) });
     const detail = (await app.inject({ method: 'GET', url: '/api/workflows/amendable' })).json();
     expect(detail.details.workflow.runGraph).toMatchObject({
       runRef: launched.json().runRef,

@@ -35,6 +35,14 @@ from scripts import deploy_platform_release
 TEST_RELEASE_COMMIT = "d" * 40
 
 
+def test_dashboard_unit_provisions_schedule_socket_runtime_directory():
+    unit = (Path(__file__).parents[1] / "deploy/systemd/kb-dashboard.service").read_text(
+        encoding="utf-8"
+    )
+    assert "RuntimeDirectory=kb-dashboard" in unit.splitlines()
+    assert "RuntimeDirectoryMode=0750" in unit.splitlines()
+
+
 def canonical_attestation(commit: str = "a" * 40, digest: str = "b" * 64) -> bytes:
     value = {
         "archive": f"kb-platform-{commit}.tar.gz",
@@ -414,6 +422,7 @@ def test_live_validation_failure_restores_previous_selection(tmp_path, monkeypat
     def copy_upload(_upload_dir, stage, _io):
         (stage / "release.tar.gz").write_bytes(b"archive")
         (stage / "attestation.json").write_bytes(canonical_attestation(commit="b" * 40, digest=digest))
+        (stage / "attestation.json.sig").write_bytes(b"verified-signature")
 
     def extract(_archive, destination):
         destination.mkdir()
@@ -455,6 +464,7 @@ def test_first_activation_live_failure_unlinks_current_stops_service_and_cleans_
     def copy_upload(_upload_dir, stage, _io):
         (stage / "release.tar.gz").write_bytes(b"archive")
         (stage / "attestation.json").write_bytes(canonical_attestation(commit="b" * 40, digest=digest))
+        (stage / "attestation.json.sig").write_bytes(b"verified-signature")
 
     def extract(_archive, destination):
         destination.mkdir()
@@ -494,6 +504,7 @@ def test_static_failure_after_extraction_cleans_candidate(tmp_path, monkeypatch)
     def copy_upload(_upload_dir, stage, _io):
         (stage / "release.tar.gz").write_bytes(b"archive")
         (stage / "attestation.json").write_bytes(canonical_attestation(commit="b" * 40, digest=digest))
+        (stage / "attestation.json.sig").write_bytes(b"verified-signature")
 
     def extract(_archive, destination):
         destination.mkdir()
@@ -513,6 +524,57 @@ def test_static_failure_after_extraction_cleans_candidate(tmp_path, monkeypatch)
     with pytest.raises(subprocess.CalledProcessError):
         activate_release.activate_from_upload(tmp_path / "upload", paths, SimpleNamespace(run=run, wait_healthy=lambda: None))
     assert not (releases / ("b" * 40)).exists()
+
+
+def test_activation_missing_verified_sidecar_rolls_back_without_partial_install(tmp_path, monkeypatch):
+    releases = tmp_path / "releases"
+    old = releases / ("a" * 40)
+    old.mkdir(parents=True)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    paths = activate_release.RuntimePaths(
+        releases=releases,
+        current=old,
+        previous=releases / "previous",
+        ops_root=tmp_path / "ops",
+        staging=staging,
+    )
+    digest = hashlib.sha256(b"archive").hexdigest()
+
+    def copy_upload(_upload_dir, stage, _io):
+        (stage / "release.tar.gz").write_bytes(b"archive")
+        (stage / "attestation.json").write_bytes(
+            canonical_attestation(commit="b" * 40, digest=digest)
+        )
+
+    def extract(_archive, destination):
+        destination.mkdir()
+        (destination / "VERSION").write_text("b" * 40 + "\n", encoding="ascii")
+
+    monkeypatch.setattr(activate_release.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(activate_release, "require_root_staging", lambda _value: None)
+    monkeypatch.setattr(activate_release, "copy_and_verify_upload", copy_upload)
+    monkeypatch.setattr(activate_release, "extract_read_only", extract)
+    monkeypatch.setattr(
+        activate_release,
+        "read_readiness",
+        lambda: {"ok": True, "quiescent": True, "blockers": []},
+    )
+    monkeypatch.setattr(activate_release, "atomic_link", lambda *_args: None)
+
+    with pytest.raises(RuntimeError, match="verified attestation sidecars are required"):
+        activate_release.activate_from_upload(
+            tmp_path / "upload",
+            paths,
+            SimpleNamespace(
+                run=lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0),
+                wait_healthy=lambda: None,
+            ),
+        )
+
+    assert paths.current.resolve() == old.resolve()
+    assert not (releases / ("b" * 40)).exists()
+    assert not paths.previous.exists()
 
 
 def test_activation_with_sidecars_orders_signature_static_validation_and_real_link_selection(tmp_path, monkeypatch):

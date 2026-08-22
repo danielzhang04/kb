@@ -6,6 +6,8 @@ After=network-online.target
 Type=simple
 User=kb-dashboard
 Group=kb-dashboard
+RuntimeDirectory=kb-dashboard
+RuntimeDirectoryMode=0750
 WorkingDirectory=/opt/kb-releases/current/dashboard
 Environment=DASHBOARD_PLATFORM_ROOT=/opt/kb-releases/current
 Environment=PYTHONPATH=/opt/kb-releases/current

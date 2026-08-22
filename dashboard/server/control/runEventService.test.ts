@@ -6,6 +6,7 @@ import { RUN_LIFECYCLE_KINDS } from './runLifecycle.ts';
 import { createRunEventService, type RunEventSource } from './runEventService.ts';
 import { createRunEventStream } from './runEventStream.ts';
 import type { OperationalEvent } from './types.ts';
+import { serializeRunEventFold } from '../../src/control/runEventRecords.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const transcriptDir = resolve(here, '__fixtures__', 'dv3', 'transcripts');
@@ -110,6 +111,42 @@ describe('run event replay service', () => {
     });
     expect(page.items.length).toBeGreaterThan(0);
     expect(page.items.every((item) => item.runRef === `${provider}-run`)).toBe(true);
+  });
+
+  it.each([
+    ['Claude real golden', () => fixtureSources('claude'), 'claude-run'],
+    ['Codex real golden', () => fixtureSources('codex'), 'codex-run'],
+    ['unknown provider raw line', () => [{
+      kind: 'provider' as const,
+      provider: 'future-cli',
+      cursor: 7,
+      runRef: 'unknown-parity-run',
+      stageRef: null,
+      createdAt: '2026-08-21T00:00:00.000Z',
+      rawLine: JSON.stringify({ type: 'future.event', text: 'safe reconnect fallback' }),
+    }], 'unknown-parity-run'],
+  ] as const)('%s is byte-equal across REST, SSE, and every reconnect fold', async (_label, makeSources, runRef) => {
+    const service = serviceFor(makeSources());
+    const stream = createRunEventStream(service);
+    const rest = await service.replay({ subject: 'operator', runRef, afterCursor: 0, limit: 250 });
+    const sse = await stream.replay({ subject: 'operator', runRef, afterCursor: 0, limit: 250 });
+    const streamed = sse.frames.map((frame) => JSON.parse(frame.data) as OperationalEvent);
+    const expectedBytes = serializeRunEventFold(rest.items);
+
+    expect(JSON.stringify(streamed)).toBe(JSON.stringify(rest.items));
+    expect(serializeRunEventFold(streamed)).toBe(expectedBytes);
+    for (let acceptedCount = 0; acceptedCount <= rest.items.length; acceptedCount += 1) {
+      const accepted = rest.items.slice(0, acceptedCount);
+      const boundary = accepted.at(-1);
+      const resumed = await stream.replay({
+        subject: 'operator', runRef, afterCursor: boundary?.cursor ?? 0, limit: 250,
+      });
+      const resumedItems = resumed.frames.map((frame) => JSON.parse(frame.data) as OperationalEvent);
+      const withDuplicateBoundary = boundary === undefined
+        ? resumedItems
+        : [...accepted, boundary, ...resumedItems];
+      expect(serializeRunEventFold(withDuplicateBoundary)).toBe(expectedBytes);
+    }
   });
 
   it('unknown provider falls back to one safe raw lifecycle line', async () => {
