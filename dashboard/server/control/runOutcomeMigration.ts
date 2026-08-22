@@ -6,7 +6,20 @@ type TerminalLifecycle = 'succeeded' | 'failed' | 'stopped';
 type ArchiveState = ArchivedFrom;
 
 export interface LegacyOutcomeEvent { createdAt: string; }
-export interface LegacyOutcomeHumanRequest { response: { idempotencyKey: string; respondedAt: string } | null; }
+export interface LegacyOutcomeHumanRequest {
+  requestRef: string;
+  runRef: string;
+  updatedAt: string;
+  response: {
+    requestRevision: number;
+    decision: string;
+    respondedBy: string;
+    idempotencyKey: string;
+    response: string | null;
+    respondedAt: string;
+  } | null;
+}
+export interface LegacyOutcomeMutationReceipt { createdAt?: string; claimedAt?: string; updatedAt?: string; recordedAt?: string; }
 export interface LegacyArchiveAudit {
   ts: string;
   action: string;
@@ -25,8 +38,10 @@ export interface LegacyRunOutcomeInput {
   archiveOperationKey: string | null;
   humanRequests: readonly LegacyOutcomeHumanRequest[];
   events: readonly LegacyOutcomeEvent[];
+  mutationReceipts: readonly LegacyOutcomeMutationReceipt[];
   auditRows: readonly LegacyArchiveAudit[];
   existing?: OutcomeFields | null;
+  existingInvalid?: boolean;
 }
 
 export type RunOutcomeResolution =
@@ -60,23 +75,36 @@ function isIso(value: string): boolean {
   return Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 }
 
-function terminalAutoClose(input: LegacyRunOutcomeInput, lifecycle: TerminalLifecycle): string | null {
-  const prefix = `auto-close:terminal:${lifecycle}:`;
-  const values = input.humanRequests
-    .map((request) => request.response)
-    .filter((response): response is NonNullable<typeof response> => response !== null && response.idempotencyKey.startsWith(prefix))
-    .map((response) => response.respondedAt);
-  return values.length === 1 && isIso(values[0]) ? values[0] : null;
+function terminalAutoClose(input: LegacyRunOutcomeInput, lifecycle: TerminalLifecycle): { present: boolean; value: string | null } {
+  const candidates = input.humanRequests.filter((request) => request.response?.decision === 'auto-closed'
+    || request.response?.idempotencyKey.startsWith('auto-close:terminal:'));
+  const values = candidates
+    .filter((request) => request.runRef === input.runRef && request.response !== null
+      && request.response.decision === 'auto-closed'
+      && request.response.idempotencyKey === `auto-close:terminal:${lifecycle}:${input.runRef}:${request.requestRef}`
+      && request.updatedAt === request.response.respondedAt)
+    .map((request) => request.response!.respondedAt);
+  return {
+    present: candidates.length > 0,
+    value: candidates.length === 1 && values.length === 1 && isIso(values[0])
+      && Date.parse(values[0]) <= Date.parse(input.updatedAt) ? values[0] : null,
+  };
 }
 
 function hasLaterEvidence(input: LegacyRunOutcomeInput, terminalAt: string): boolean {
   const terminalMs = Date.parse(terminalAt);
-  return input.events.some((event) => !isIso(event.createdAt) || Date.parse(event.createdAt) > terminalMs);
+  const receiptTimes = input.mutationReceipts.flatMap((receipt) => [
+    receipt.createdAt, receipt.claimedAt, receipt.updatedAt, receipt.recordedAt,
+  ].filter((value): value is string => value !== undefined));
+  return input.events.some((event) => !isIso(event.createdAt) || Date.parse(event.createdAt) > terminalMs)
+    || receiptTimes.some((value) => !isIso(value) || Date.parse(value) > terminalMs);
 }
 
 function directTerminal(input: LegacyRunOutcomeInput, lifecycle: TerminalLifecycle): RunOutcomeResolution {
   if (!isIso(input.updatedAt)) return { ok: false, reason: 'invalid-timestamp', candidates: [] };
-  const completedAt = terminalAutoClose(input, lifecycle) ?? input.updatedAt;
+  const autoClose = terminalAutoClose(input, lifecycle);
+  if (autoClose.present && autoClose.value === null) return { ok: false, reason: 'terminal-order-unproven', candidates: [] };
+  const completedAt = autoClose.value ?? input.updatedAt;
   if (hasLaterEvidence(input, completedAt)) return { ok: false, reason: 'terminal-order-unproven', candidates: [] };
   return { ok: true, value: { terminalOutcome: terminalOutcomes[lifecycle], completedAt, archivedFrom: null } };
 }
@@ -106,8 +134,9 @@ function archivedTerminal(input: LegacyRunOutcomeInput): RunOutcomeResolution {
   if (!isArchiveState(state)) return { ok: false, reason: 'archive-audit-required', candidates: [] };
   if (state === 'interrupted') return { ok: true, value: { terminalOutcome: 'interrupted', completedAt: input.updatedAt, archivedFrom: state } };
   if (state === 'waiting-human') return { ok: true, value: { terminalOutcome: 'abandoned', completedAt: input.updatedAt, archivedFrom: state } };
-  const completedAt = terminalAutoClose(input, state);
-  if (completedAt === null || Date.parse(completedAt) >= Date.parse(input.updatedAt) || hasLaterEvidence(input, completedAt)) {
+  const autoClose = terminalAutoClose(input, state);
+  const completedAt = autoClose.value;
+  if (!autoClose.present || completedAt === null || Date.parse(completedAt) >= Date.parse(input.updatedAt) || hasLaterEvidence(input, completedAt)) {
     return { ok: false, reason: 'terminal-order-unproven', candidates: [] };
   }
   return { ok: true, value: { terminalOutcome: terminalOutcomes[state], completedAt, archivedFrom: state } };
@@ -118,6 +147,7 @@ function equalFields(left: OutcomeFields, right: OutcomeFields): boolean {
 }
 
 export function resolveLegacyRunOutcome(input: LegacyRunOutcomeInput): RunOutcomeResolution {
+  if (input.existingInvalid) return { ok: false, reason: 'outcome-mismatch', candidates: [] };
   const resolved = input.lifecycle === 'succeeded' || input.lifecycle === 'failed' || input.lifecycle === 'stopped'
     ? directTerminal(input, input.lifecycle)
     : input.lifecycle === 'archived'

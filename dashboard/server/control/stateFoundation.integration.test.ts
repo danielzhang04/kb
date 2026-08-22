@@ -1,9 +1,11 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import {
   createDeploymentFixture,
+  createExistingRootFileStoreHarnessForTest,
   createLeasedFileStoreForTest,
 } from './test-fixtures/controlStore.ts';
 
@@ -74,13 +76,20 @@ function readPaused(path: string): Record<string, any> {
 }
 
 it('backs up and migrates v2 once, commits CAS once, and reopens byte-identically', () => {
-  const opened = createLeasedFileStoreForTest({}, fixture('v2-empty.json'));
+  let validationCalls = 0;
+  const opened = createLeasedFileStoreForTest({
+    generatedPythonRoundTripForTest: (document) => {
+      validationCalls += 1;
+      expect(document.version).toBe(3);
+    },
+  }, fixture('v2-empty.json'));
   let bytes: Buffer;
   let document: Record<string, any>;
   try {
     expect(readDocument(opened.path)).toMatchObject({
       version: 3, documentRevision: 1, scheduleCollectionRevision: 0, deployments: [], schedules: [],
     });
+    expect(validationCalls).toBe(1);
     const backups = join(dirname(opened.path), 'backups');
     expect(existsSync(backups)).toBe(true);
     expect(readdirSync(backups)).toEqual(expect.arrayContaining([
@@ -104,6 +113,25 @@ it('backs up and migrates v2 once, commits CAS once, and reopens byte-identicall
     expect(readFileSync(reopened.path)).toEqual(bytes!);
   } finally {
     reopened.close();
+  }
+});
+
+it('aborts generated-Python prepublication validation before backup or store publication', () => {
+  const root = mkdtempSync(join(tmpdir(), 'control-python-prepublish-'));
+  const harness = createExistingRootFileStoreHarnessForTest();
+  const path = join(root, 'control', 'control-plane.json');
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    const source = Buffer.from(`${JSON.stringify(fixture('v2-empty.json'))}\n`, 'utf8');
+    writeFileSync(path, source);
+    expect(() => harness.open(root, {
+      generatedPythonRoundTripForTest: () => { throw new Error('generated Python rejected clone'); },
+    })).toThrow(/generated Python rejected clone/);
+    expect(readFileSync(path)).toEqual(source);
+    expect(existsSync(join(dirname(path), 'backups'))).toBe(false);
+  } finally {
+    harness.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

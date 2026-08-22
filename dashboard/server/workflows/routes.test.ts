@@ -3,10 +3,13 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
+import type { ControlPlaneStore } from '../control/store.ts';
+import { createLeasedFileStoreForTest } from '../control/test-fixtures/controlStore.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
 import type { AuditEvent } from '../audit/log.ts';
@@ -65,7 +68,8 @@ function runners() {
 
 describe('workflow definition routes', () => {
   let app: ReturnType<typeof Fastify>;
-  let controlStore: ReturnType<typeof createInMemoryControlPlaneStore>;
+  let controlStore: ControlPlaneStore;
+  let fileStore: ReturnType<typeof createLeasedFileStoreForTest>;
   let composerStore: ReturnType<typeof createInMemoryComposerStore>;
   let token: string;
   let auditRows: Array<Record<string, unknown>>;
@@ -75,7 +79,8 @@ describe('workflow definition routes', () => {
     let id = 0;
     auditRows = [];
     admissionStatus = { pending: 0, oldestAgeMs: 0, degraded: false, reasons: [] };
-    controlStore = createInMemoryControlPlaneStore({ newId: () => `ref-${++id}` });
+    fileStore = createLeasedFileStoreForTest({ newId: () => `ref-${++id}` });
+    controlStore = fileStore.store;
     composerStore = createInMemoryComposerStore({ protector: createProviderIdProtector(SESSION.secret) });
     token = mintSession('operator', SESSION).token;
     app = Fastify();
@@ -101,7 +106,7 @@ describe('workflow definition routes', () => {
     await app.ready();
   });
 
-  afterEach(async () => app.close());
+  afterEach(async () => { await app.close(); fileStore.close(); });
 
   it('lists the shipped org workflow definitions as valid', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/workflows' });
@@ -223,6 +228,12 @@ describe('workflow definition routes', () => {
     expect(body.activationGated).toBe(true);
     expect(body.waitingHuman).toBe(true);
     expect(body.cards).toHaveLength(1);
+    const firstPersisted = JSON.parse(readFileSync(fileStore.path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+    expect(firstPersisted.runs.find((item) => item.runRef === body.runRef)).toMatchObject({
+      owner: { type: 'workflow', id: 'research-brief', project: 'kb-ops',
+        sourcePath: 'orgs/kb-ops/workflows/research-brief.md' },
+      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+    });
 
     // The run is durably projected: published, waiting on a recoverable runtime intervention.
     const run = controlStore.getRun('operator', body.runRef);
@@ -327,7 +338,9 @@ describe('workflow definition routes', () => {
 
   it('derives durable agent-workspace provenance, replays only the same workspace, and refuses a cross-workspace key reuse', async () => {
     const agent = {
-      id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'b'.repeat(64), projects: ['faceless-youtube'],
+      id: 'fyt-runner', path: 'agents/fyt-runner.md',
+      sourceHash: createHash('sha256').update(readFileSync(join(REPO_ROOT, 'agents', 'fyt-runner.md'))).digest('hex'),
+      projects: ['faceless-youtube'],
       instructionMarkdown: 'Recorded server declaration context.',
     };
     const firstWorkspace = composerStore.create('operator', 'FYT planning', agent);
@@ -344,7 +357,12 @@ describe('workflow definition routes', () => {
     expect(changedParameters.statusCode).toBe(409);
     const run = controlStore.getRun('operator', first.json().runRef);
     expect(run.ok && run.value.run.agentWorkspaceLaunch).toEqual({
-      composerRef: firstWorkspace.composerRef, agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'b'.repeat(64),
+      composerRef: firstWorkspace.composerRef, agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: agent.sourceHash,
+    });
+    const firstPersisted = JSON.parse(readFileSync(fileStore.path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+    expect(firstPersisted.runs.find((item) => item.runRef === first.json().runRef)).toMatchObject({
+      owner: { type: 'agent', id: 'fyt-runner', sourcePath: 'agents/fyt-runner.md' },
+      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
     });
     const conflict = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
       payload: await launchPayload(app, 'video-run', 'workspace-key', { composerRef: secondWorkspace.composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });

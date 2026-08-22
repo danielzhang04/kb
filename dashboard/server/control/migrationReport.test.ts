@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, expect, it } from 'vitest';
 import { runMigrationReportCli } from './migrationReport.ts';
+import { writeControlPlaneMigrationBackupSync } from './persistence.ts';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -87,4 +90,19 @@ it('accepts an explicit run mapping only when it is keyed to the exact store SHA
     explicitMapping: { storeSha256: '0'.repeat(64), runs },
   })).toThrow(/store SHA mismatch/);
   expect(readFileSync(path, 'utf8')).toBe(source);
+});
+
+it('runs the real boss-only leased restore command against a fixture backup', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kb-p2-restore-command-'));
+  roots.push(root);
+  mkdirSync(join(root, 'control'), { recursive: true });
+  const live = join(root, 'control', 'control-plane.json');
+  const source = Buffer.from('{"version":2}\n', 'utf8');
+  writeFileSync(live, source);
+  const backup = writeControlPlaneMigrationBackupSync(root, source);
+  writeFileSync(live, '{"version":3}\n', 'utf8');
+  const cli = fileURLToPath(new URL('./migrationReport.ts', import.meta.url));
+  const output = execFileSync(process.execPath, [cli, '--restore', root, backup.path], { encoding: 'utf8' });
+  expect(JSON.parse(output)).toMatchObject({ schema: 'kb.control-plane-p2-restore/v1', restored: true });
+  expect(readFileSync(live)).toEqual(source);
 });

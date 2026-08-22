@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +10,8 @@ import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
 import { makeSurfaceContext as makeProductionSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import { createInMemoryControlPlaneStore } from './store.ts';
+import type { ControlPlaneStore } from './store.ts';
+import { createLeasedFileStoreForTest } from './test-fixtures/controlStore.ts';
 import type { PlanProposal } from './proposal.ts';
 import type { TimelineModel } from '../../src/lib/timelineModel.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
@@ -189,7 +193,8 @@ describe('control proposal routes', () => {
     });
     controlStore = createInMemoryControlPlaneStore({ newId });
     const workspace = composerStore.create('operator', 'Control', {
-      id: 'grader', path: 'agents/grader.md', sourceHash: 'a'.repeat(64),
+      id: 'grader', path: 'agents/grader.md',
+      sourceHash: createHash('sha256').update(readFileSync(fileURLToPath(new URL('../../../agents/grader.md', import.meta.url)))).digest('hex'),
       projects: ['kb'], instructionMarkdown: 'Grade the assigned work.',
     });
     composerRef = workspace.composerRef;
@@ -3894,7 +3899,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
   const ENGINE = 'dashboard-engine';
 
   function surface(
-    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    store: ControlPlaneStore,
     /** An audit sink that REJECTS — the durable-row precondition every mutation here is gated on. */
     appendAudit?: (repoRoot: string, event: Record<string, unknown>) => unknown,
     /** A git seam that RACES — the concurrent-ops-writer shape the launch push must survive. */
@@ -3952,13 +3957,13 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
 
   /** One APPROVED revision owned by `owner` — the shape the queue bridge imports from a card. */
   function approvedRevisionFor(
-    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    store: ControlPlaneStore,
     owner: string,
     key: string,
     snapshot: PlanProposal = proposal,
   ): { proposalRef: string; hash: string } {
     const created = store.createProposalRevision(owner, {
-      sourceComposerRef: 'workflow-registry', sourceTurnId: key, title: snapshot.title,
+      sourceComposerRef: 'workflow-registry', sourceTurnId: 'self-lint-report', title: snapshot.title,
       snapshot: snapshot as unknown as JsonObject,
     });
     if (!created.ok) throw new Error(created.detail);
@@ -3971,7 +3976,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
 
   /** The run the queue bridge itself creates from that revision, under its own launch operation key. */
   function bridgeRunFor(
-    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    store: ControlPlaneStore,
     revision: { proposalRef: string; hash: string },
     idempotencyKey: string,
   ) {
@@ -3990,7 +3995,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
   // ── GAP-3: launch / retry ────────────────────────────────────────────────────────────────────────
 
   it('launches an engine-owned revision AS the engine, with the operator audited as the actor', async () => {
-    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `x-${++n}`; })() });
+    const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `x-${++n}`; })() });
+    const store = opened.store;
     const revision = approvedRevisionFor(store, ENGINE, 'engine-launch');
     const { app, audit, token } = surface(store);
     try {
@@ -4012,17 +4018,24 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
         .toEqual(proposal.stages.map((stage) => workflowCardId(runRef, stage.id)));
       expect(store.listRuns('operator')).toEqual([]);
       expect(store.getRun('operator', runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+      const firstPersisted = JSON.parse(readFileSync(opened.path, 'utf8')) as { runs: Run[] };
+      expect(firstPersisted.runs.find((run) => run.runRef === runRef)).toMatchObject({
+        owner: { type: 'workflow', id: 'self-lint-report', project: 'kb-ops',
+          sourcePath: 'orgs/kb-ops/workflows/self-lint-report.md' },
+        executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+      });
 
       // ATTRIBUTION: `owner` is the operator (the actor), `runOwnerSubject` is whose run it is.
       expect(audit.find((row) => row.action === 'control-run-launch')).toMatchObject({
         owner: 'operator', result: `launched:${runRef}:${revision.hash}`,
         detail: expect.objectContaining({ runOwnerSubject: ENGINE, proposalHash: revision.hash }),
       });
-    } finally { await app.close(); }
+    } finally { await app.close(); opened.close(); }
   });
 
   it('resolves the Retry predecessor as the run OWNER, not the caller', async () => {
-    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });
+    const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });
+    const store = opened.store;
     const revision = approvedRevisionFor(store, ENGINE, 'engine-retry');
     const predecessor = bridgeRunFor(store, revision, 'queue-bridge:card-retry');
     const interrupted = store.transitionRun(ENGINE, predecessor.run.runRef, predecessor.run.version, 'interrupted');
@@ -4041,7 +4054,11 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       // canonical quiescence check — which this in-memory surface has no committed cards to satisfy.
       expect(retried.statusCode, retried.body).toBe(409);
       expect(retried.json()).toMatchObject({ error: 'retry-predecessor-not-quiescent' });
-    } finally { await app.close(); }
+      const firstPersisted = JSON.parse(readFileSync(opened.path, 'utf8')) as { runs: Run[] };
+      expect(firstPersisted.runs.find((run) => run.runRef === predecessor.run.runRef)).toMatchObject({
+        owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      });
+    } finally { await app.close(); opened.close(); }
   });
 
   /**
@@ -4223,6 +4240,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       proposalRef: 'proposal-collide', revision: 1, storedHash: 'a'.repeat(64), snapshot: {},
       sessionToken: undefined, actorSubject: 'a:b', idempotencyKey: 'c',
       predecessorRunRef: null, expectedPredecessorVersion: -1,
+      identity: { owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop' },
     });
     expect(outcome).toMatchObject({ status: 403, body: { error: 'cross-subject-launch-actor-refused' } });
   });

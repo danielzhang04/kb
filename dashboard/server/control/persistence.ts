@@ -11,6 +11,7 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, join } from 'node:path';
 import { renameWithRetrySync } from '../atomicRename.ts';
+import { assertWriterLeaseForRoot, type WriterLease } from './writerLease.ts';
 
 export type SaveDurability = 'ordinary' | 'deploy-critical';
 
@@ -179,8 +180,11 @@ export function writeControlPlaneMigrationBackupSync(
 export function restoreControlPlaneMigrationBackupSync(
   stateRoot: string,
   backupPath: string,
+  lease: WriterLease,
   deps: PersistenceDeps = NODE_PERSISTENCE_DEPS,
-): void {
+): ControlPlaneMigrationBackup {
+  if (!lease) throw new Error('control-plane restore requires a writer lease');
+  assertWriterLeaseForRoot(lease, stateRoot);
   const expectedRoot = join(stateRoot, 'control', 'backups');
   if (dirname(backupPath) !== expectedRoot
     || !/^control-plane-v2-to-v3-[a-f0-9]{64}\.json$/.test(basename(backupPath))) {
@@ -193,7 +197,9 @@ export function restoreControlPlaneMigrationBackupSync(
   if (expected !== `${actual}\n` || basename(backupPath) !== `control-plane-v2-to-v3-${actual}.json`) {
     throw new Error('control-plane migration backup checksum mismatch');
   }
+  assertWriterLeaseForRoot(lease, stateRoot);
   persistControlDocumentSync(
     join(stateRoot, 'control', 'control-plane.json'), source.toString('utf8'), 'deploy-critical', deps,
   );
+  return { path: backupPath, sidecarPath, sha256: actual };
 }

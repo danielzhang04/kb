@@ -2,13 +2,82 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
-  applyMigrationEdgeForTest, assertMigrationEnvelope, migrateControlDocument,
+  applyMigrationEdgeForTest, assertMigrationEnvelope, migrateControlDocument, P2RunMigrationError,
 } from './migrations.ts';
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(
   new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
 
 describe('control document migrations', () => {
+  const p2Run = (overrides: Record<string, unknown> = {}) => ({
+    subject: 'operator', runRef: 'run-p2', predecessorRunRef: null, title: 'P2 fixture',
+    proposalRef: 'proposal-p2', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+    publicationState: 'published', lifecycle: { kind: 'running', deployPause: null }, version: 1,
+    managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,
+    agentWorkspaceLaunch: null, activationReceipts: [], authorizedFailedRunReconciliation: null,
+    createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('exposes exact owner/outcome abort codes for host contradictions and partial P2 outcomes', () => {
+    const host = fixture('v2-empty.json') as Record<string, any>;
+    host.runs = [p2Run({
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      terminalOutcome: null, completedAt: null, archivedFrom: null,
+    })];
+    try {
+      migrateControlDocument(host, 3, {
+        stamp: '2026-08-21T00:00:00.000Z', executionHost: 'vm',
+        agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
+      });
+      throw new Error('expected host contradiction');
+    } catch (error) {
+      expect(error).toBeInstanceOf(P2RunMigrationError);
+      expect((error as P2RunMigrationError).code).toBe('run-owner-migration-required');
+    }
+
+    const partial = fixture('v2-empty.json') as Record<string, any>;
+    partial.runs = [p2Run({
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      terminalOutcome: 'ok',
+    })];
+    try {
+      migrateControlDocument(partial, 3, {
+        stamp: '2026-08-21T00:00:00.000Z', executionHost: 'desktop',
+        agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
+      });
+      throw new Error('expected partial outcome refusal');
+    } catch (error) {
+      expect(error).toBeInstanceOf(P2RunMigrationError);
+      expect((error as P2RunMigrationError).code).toBe('run-outcome-migration-required');
+    }
+    expect(() => migrateControlDocument(partial, 3, {
+      stamp: '2026-08-21T00:00:00.000Z', executionHost: 'desktop', sourceSha256: 'f'.repeat(64),
+      agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
+      explicitMapping: { storeSha256: 'f'.repeat(64), runs: {
+        'run-p2': {
+          owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+          terminalOutcome: 'ok', completedAt: '2026-08-21T00:00:00.000Z', archivedFrom: null,
+        },
+      } },
+    })).toThrow(/run-outcome-migration-required/);
+  });
+
+  it('passes non-activation run mutation receipts into terminal-order inference', () => {
+    const source = fixture('v2-empty.json') as Record<string, any>;
+    source.runs = [p2Run({
+      lifecycle: { kind: 'succeeded', deployPause: null },
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+    })];
+    source.sessions = [{
+      subject: 'operator', runRef: 'run-p2', brokerReceipts: [{ createdAt: '2026-08-21T00:01:00.000Z' }],
+    }];
+    expect(() => migrateControlDocument(source, 3, {
+      stamp: '2026-08-21T00:00:00.000Z', executionHost: 'desktop',
+      agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
+    })).toThrow(/run-outcome-migration-required/);
+  });
+
   it('migrates v2 to v3 and round-trips every P2 addition through the checksummed down carrier', () => {
     const source = fixture('v2-empty.json') as Record<string, any>;
     const migrated = migrateControlDocument(source, 3, {

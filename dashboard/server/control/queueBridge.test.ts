@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,8 @@ import {
   type OwnedCard,
 } from './queueBridge.ts';
 import { createInMemoryControlPlaneStore, proposalSnapshotHash } from './store.ts';
+import { createLeasedFileStoreForTest } from './test-fixtures/controlStore.ts';
+import type { ApprovedLaunchInput } from './launch.ts';
 import { defaultPyRunner, type PyRunResult } from '../write/launch.ts';
 import type { PreambleRunResult } from '../write/preambleGate.ts';
 import { compileWorkflowDef } from '../workflows/compile.ts';
@@ -92,6 +94,16 @@ describe('receipt-first runnable resolution', () => {
     })).toEqual({ ok: true, value: workflow, source: 'schedule-receipt' });
     expect(resolveQueueBridgeRunnable({
       receiptOwner: workflow, workflowOwner: null, cardOwner: 'grader', declaredAgents: [agent],
+    })).toEqual({ ok: false, code: 'runnable-owner-conflict' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: workflow,
+      workflowOwner: { ...workflow, project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/video-run.md' },
+      cardOwner: 'video-run', declaredAgents: [agent],
+    })).toEqual({ ok: false, code: 'runnable-owner-conflict' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: workflow,
+      workflowOwner: { type: 'agent', id: 'video-run', sourcePath: 'agents/video-run.md' },
+      cardOwner: 'video-run', declaredAgents: [agent],
     })).toEqual({ ok: false, code: 'runnable-owner-conflict' });
   });
 
@@ -438,6 +450,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     snapshotHash: () => 'hash-abc',
     runPreamble: okPre,
     internalCaller: stubCaller,
+    resolveScheduleReceiptOwner: () => null,
     declaredRunnableOwners: () => [{ type: 'agent' as const, id: SUBJECT, sourcePath: `agents/${SUBJECT}.md` as const }],
     ...over,
   });
@@ -1181,6 +1194,22 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
+  it('refuses a schedule-stamped card when the receipt adapter is unavailable before proposal creation', async () => {
+    const { ctx, store } = fakeCtx();
+    const compile = vi.fn();
+    const launch = vi.fn();
+    const wake = vi.fn();
+    const card = baseCard();
+    card.meta.scheduled_for = '2026-08-21T12:15:00-04:00';
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({
+      readCard: () => card, compile, launch: launch as never, wake, resolveScheduleReceiptOwner: undefined,
+    }));
+    expect(res).toMatchObject({ outcome: 'failed', status: 409, detail: 'runnable-owner-required' });
+    expect(compile).not.toHaveBeenCalled();
+    expect(store.createProposalRevision).not.toHaveBeenCalled();
+    expect(launch).not.toHaveBeenCalled();
+  });
+
   it('returns a 400 mapping failure for a missing profile and the same tick continues to the next card', async () => {
     const { ctx } = fakeCtx();
     const cards: OwnedCard[] = [
@@ -1234,6 +1263,48 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(input.predecessorRunRef).toBeNull();
     expect(reconcile).toHaveBeenCalledWith(ctx, owned, 'run-1');
     expect(store.createProposalRevision).toHaveBeenCalledOnce();
+  });
+
+  it('persists the queue-resolved identity in the first file-backed Run bytes', async () => {
+    const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `queue-file-${++n}`; })() });
+    try {
+      const { ctx } = fakeCtx({ controlStore: opened.store });
+      const launch = vi.fn(async (_ctx: SurfaceContext, subject: string, input: ApprovedLaunchInput) => {
+        const parsed = validateServerCompiledPlanProposal(input.snapshot, REAL_WORKFLOW_ENVIRONMENT.registry);
+        if (!parsed.ok) return { status: 409, body: { error: 'stored-proposal-invalid', detail: parsed.detail } };
+        const created = opened.store.createRun(subject, {
+          owner: input.identity.owner, executionHost: input.identity.executionHost,
+          title: parsed.value.title, proposalRef: input.proposalRef, proposalRevision: input.revision,
+          expectedProposalHash: input.storedHash, managerRuntime: parsed.value.manager.runtime,
+          managerModel: parsed.value.manager.model, managerAssignment: parsed.value.manager.assignment ?? null,
+          idempotencyKey: input.idempotencyKey, predecessorRunRef: null,
+          stages: parsed.value.stages.map((stage) => ({
+            stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn,
+            assignment: stage.assignment ?? null, workflowProfile: stage.workflowProfile ?? null,
+            review: stage.review ?? null, completionGate: stage.completionGate ?? null,
+          })),
+        });
+        return created.ok ? { status: 201, body: { runRef: created.value.run.runRef, cards: [] } }
+          : { status: 409, body: { error: created.reason, detail: created.detail } };
+      });
+      const deps = commonDeps({
+        launch: launch as never, reconcile: vi.fn(),
+        loadRegistry: () => REAL_WORKFLOW_ENVIRONMENT.registry,
+        knownProfiles: () => new Set(REAL_WORKFLOW_ENVIRONMENT.registry.workflowProfiles ?? []),
+        compile: (def: Parameters<typeof compileWorkflowDef>[0]) => compileWorkflowDef(def, REAL_WORKFLOW_ENVIRONMENT),
+      });
+      delete (deps as Record<string, unknown>).snapshotHash;
+      delete (deps as Record<string, unknown>).validate;
+      const result = await dispatchClaimedCard(ctx, owned, deps);
+      expect(result.outcome, result.detail).toBe('launched');
+      const document = JSON.parse(readFileSync(opened.path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+      expect(document.runs[0]).toMatchObject({
+        owner: { type: 'agent', id: SUBJECT, sourcePath: `agents/${SUBJECT}.md` },
+        executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+      });
+    } finally {
+      opened.close();
+    }
   });
 
   // Bug B, proven on real data rather than a mock argument: the whole point of the unprefixed

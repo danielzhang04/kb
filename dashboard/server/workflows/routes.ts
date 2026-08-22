@@ -31,6 +31,7 @@ import {
 import { executeApprovedLaunch, type LaunchOutcome } from '../control/launch.ts';
 import { proposalSnapshotHash } from '../control/store.ts';
 import type { AgentWorkspaceLaunchProvenance, JsonObject } from '../control/types.ts';
+import type { HostKind, RunnableRef } from '../control/p2Contracts.ts';
 import { instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
 import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isSafeAssignmentValue, isSafeGovernanceValue, patchWorkflowAssignment, patchWorkflowGovernance, readCanonicalDefinitionLocation, sourceHash, type AssignmentTarget, type AssignmentValue, type GovernanceValue } from './amendments.ts';
@@ -470,6 +471,7 @@ async function launchDefinition(
   def: WorkflowDef,
   idempotencyKey: string,
   agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null,
+  identity: { owner: RunnableRef; executionHost: HostKind },
 ): Promise<LaunchOutcome> {
   // The one-step launch is the sanctioned UI release path for workflow definitions in BOTH daemon
   // postures: it always flows through the canonical `executeApprovedLaunch`, which parks the run
@@ -538,6 +540,7 @@ async function launchDefinition(
     expectedPredecessorVersion: -1,
     source: `workflow:${def.id}`,
     agentWorkspaceLaunch,
+    identity,
   });
 }
 
@@ -918,6 +921,10 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
         const instantiated = instantiateWorkflowDef(reparsed.value, parameters as Record<string, string>);
         if (!instantiated.ok) return { status: 400, body: { error: 'invalid-launch-parameters', detail: instantiated.detail } };
         let agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null = null;
+        let owner: RunnableRef = {
+          type: 'workflow', id: instantiated.value.id, project: instantiated.value.project,
+          sourcePath: scanned.entry.path as `orgs/${string}/workflows/${string}.md`,
+        };
         if (body.composerRef !== undefined) {
           if (typeof body.composerRef !== 'string' || body.composerRef.trim() === '') return { status: 400, body: { error: 'invalid-agent-workspace-ref' } };
           const workspace = ctx.composerStore.get(sub, body.composerRef);
@@ -926,8 +933,14 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
           if (!agent) return { status: 409, body: { error: 'agent-workspace-unbound' } };
           if (!(agent.projects ?? []).includes(instantiated.value.project)) return { status: 403, body: { error: 'agent-workspace-project-refused' } };
           agentWorkspaceLaunch = { composerRef: workspace.workspace.composerRef, agentId: agent.id, declarationPath: agent.path, declarationHash: agent.sourceHash };
+          const declared = readDeclaredAgentDetails(ctx.repoRoot).get(agent.id);
+          if (!declared || declared.source !== agent.path || declared.sourceHash !== agent.sourceHash) {
+            return { status: 409, body: { error: 'runnable-owner-required' } };
+          }
+          owner = { type: 'agent', id: declared.id, sourcePath: declared.source as `agents/${string}.md` };
         }
-        return launchDefinition(ctx, sub, verifiedSession(req)?.token, instantiated.value, idempotencyKey, agentWorkspaceLaunch);
+        return launchDefinition(ctx, sub, verifiedSession(req)?.token, instantiated.value, idempotencyKey,
+          agentWorkspaceLaunch, { owner, executionHost: process.platform === 'win32' ? 'desktop' : 'vm' });
       });
       return reply.code(result.status).send(result.body);
     });

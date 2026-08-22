@@ -254,6 +254,7 @@ export interface ParsedCard {
     owner?: string | null;
     state?: string | null;
     'execution-controller'?: string | null;
+    scheduled_for?: string | null;
   };
   body: string;
 }
@@ -272,8 +273,12 @@ export type QueueBridgeRunnableResolution =
 /** Resolve provenance before any proposal or Run write. */
 export function resolveQueueBridgeRunnable(input: QueueBridgeRunnableResolutionInput): QueueBridgeRunnableResolution {
   if (input.receiptOwner) {
-    const asserted = [input.workflowOwner?.id ?? null, input.cardOwner].filter((value): value is string => value !== null);
-    return asserted.every((value) => value === input.receiptOwner!.id)
+    const sameRef = (left: RunnableRef, right: RunnableRef): boolean => left.type === right.type
+      && left.id === right.id && left.sourcePath === right.sourcePath
+      && (left.type === 'agent' || (right.type === 'workflow' && left.project === right.project));
+    const workflowMatches = input.workflowOwner === null || sameRef(input.receiptOwner, input.workflowOwner);
+    const cardMatches = input.cardOwner === null || input.cardOwner === input.receiptOwner.id;
+    return workflowMatches && cardMatches
       ? { ok: true, value: input.receiptOwner, source: 'schedule-receipt' }
       : { ok: false, code: 'runnable-owner-conflict' };
   }
@@ -652,6 +657,10 @@ export async function dispatchClaimedCard(
     const parsed = readCard(ctx, card.path);
     if (!bridgeClaimsCard(parsed.meta)) {
       return { cardId: card.id, outcome: 'skipped', status: 0, reconciled: false, detail: 'card no longer claimed by the bridge' };
+    }
+    if (typeof parsed.meta.scheduled_for === 'string' && !deps.resolveScheduleReceiptOwner) {
+      wake(ctx, card.id, 'runnable-owner-required');
+      return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: 'runnable-owner-required' };
     }
 
   // A registered workflow may be read before owner resolution because it is the

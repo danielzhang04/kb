@@ -35,6 +35,7 @@ import { activeVibeProcessCount } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { activeAsyncGitCount } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
+import { loadP2MigrationEvidence } from '../control/p2MigrationEvidence.ts';
 import type { FileControlPlaneAccess } from '../control/writerLease.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
@@ -148,7 +149,9 @@ export function makeSurfaceContext(
   const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? (overrides.fileControlAccess
-    ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess)
+    ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess, {
+        p2MigrationContext: loadP2MigrationEvidence(repoRoot),
+      })
     : (() => { throw new Error('makeSurfaceContext requires controlStore or fileControlAccess'); })());
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
   // supplied as an override (tests, or a future explicit injection), activation is skipped entirely so no

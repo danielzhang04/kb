@@ -78,12 +78,23 @@ describe('P2 control contracts', () => {
     expectTypeOf<CreateEntityRequest>().toMatchTypeOf<{ project?: string }>();
   });
 
-  it('has no competing P2 noun declarations outside W0 files', () => {
-    const declarations = /\b(?:interface|type)\s+(RunnableRef|EntitySummary|Schedule)\b/;
+  it('has no competing P2 noun declarations or structural DTO copies outside W0 files', () => {
+    const declarations = /\b(?:interface|type)\s+(?:RunnableRef|RunnableRefDto|RunOutcomeDto|ArchivedFromDto|RunDto|EntitySummary|Schedule)\b/;
+    const runDtoFields = [
+      'owner', 'executionHost', 'terminalOutcome', 'completedAt', 'archivedFrom', 'runRef', 'predecessorRunRef',
+      'title', 'displayName', 'shortRef', 'workflowRef', 'proposalRef', 'proposalRevision', 'proposalHash',
+      'publicationState', 'state', 'version', 'managerSessionRef', 'managerGeneration', 'managerAssignment',
+      'agentWorkspaceLaunch', 'createdAt', 'updatedAt',
+    ].sort().join(',');
+    const structuralDuplicate = (text: string): boolean => {
+      const interfaces = text.matchAll(/\binterface\s+([A-Za-z0-9_]+)(?:\s+extends[^\{]+)?\s*\{([\s\S]*?)^\}/gm);
+      return [...interfaces].some((match) => [...match[2].matchAll(/^\s{2}([A-Za-z0-9_]+)\??:/gm)]
+        .map((field) => field[1]).sort().join(',') === runDtoFields);
+    };
     const offenders = sourceFiles(resolve(dashboardRoot, 'server'))
       .concat(sourceFiles(resolve(dashboardRoot, 'src')))
       .map((path) => ({ path: relative(dashboardRoot, path).replace(/\\/g, '/'), text: readFileSync(path, 'utf8') }))
-      .filter(({ path, text }) => !allowedDeclarations.has(path) && declarations.test(text))
+      .filter(({ path, text }) => !allowedDeclarations.has(path) && (declarations.test(text) || structuralDuplicate(text)))
       .map(({ path }) => path);
     expect(offenders).toEqual([]);
   });

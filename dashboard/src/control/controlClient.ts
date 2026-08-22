@@ -1,11 +1,19 @@
 /**
  * Browser-only client for the managed execution control plane.
  *
- * DTOs are intentionally duplicated at this boundary. Importing server modules into the SPA would
- * make Node-only implementation details part of the browser graph and could accidentally widen the
- * public protocol. Governed mutations always carry an exact hash/version and an idempotency key.
+ * P2 run wire types come from the type-only shared protocol module; no Node implementation enters the
+ * browser graph. Governed mutations always carry an exact hash/version and an idempotency key.
  */
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import type {
+  ControlRunDto as RunDto,
+} from '../../server/control/p2Contracts.ts';
+export type {
+  ArchivedFrom as ArchivedFromDto,
+  ControlRunDto as RunDto,
+  RunnableRef as RunnableRefDto,
+  RunOutcome as RunOutcomeDto,
+} from '../../server/control/p2Contracts.ts';
 
 export type FetchLike = typeof fetch;
 export type JsonPrimitive = string | number | boolean | null;
@@ -129,44 +137,6 @@ export type RunState =
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
-
-export type RunnableRefDto =
-  | { type: 'agent'; id: string; sourcePath: `agents/${string}.md` }
-  | { type: 'workflow'; id: string; project: string; sourcePath: `orgs/${string}/workflows/${string}.md` };
-export type RunOutcomeDto = 'ok' | 'failed' | 'stopped' | 'interrupted' | 'abandoned';
-export type ArchivedFromDto = 'succeeded' | 'failed' | 'stopped' | 'interrupted' | 'waiting-human';
-
-export interface RunDto {
-  owner: RunnableRefDto;
-  executionHost: 'vm' | 'desktop';
-  terminalOutcome: RunOutcomeDto | null;
-  completedAt: string | null;
-  archivedFrom: ArchivedFromDto | null;
-  runRef: string;
-  predecessorRunRef: string | null;
-  title: string;
-  /** Server-owned display identity (`server/naming.ts`, embedded by `server/control/routes.ts`).
-   *  `runRef` stays canonical and stays on the wire; it just never reaches primary UI text again. */
-  displayName: string;
-  shortRef: number;
-  /** The workflow definition this run was launched from, or null for an ad-hoc (Composer) run.
-   *  Joined server-side at the DTO-build site (`server/control/routes.ts#workflowRefIndex`): it is the
-   *  grouping key that files every run under its workflow, so no client surface re-derives it. */
-  workflowRef: string | null;
-  proposalRef: string;
-  proposalRevision: number;
-  proposalHash: string;
-  publicationState: 'pending' | 'waiting-human' | 'publishing' | 'published' | 'reconcile-required';
-  state: RunState;
-  version: number;
-  managerSessionRef: string;
-  managerGeneration: number;
-  /** Immutable logical-manager provenance, or null for a legacy/unassigned run. */
-  managerAssignment: ResolvedAgentAssignmentDto | null;
-  agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenanceDto | null;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface RunMetadataDto extends RunDto {
   /**

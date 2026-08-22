@@ -4,7 +4,9 @@ import {
   statSync,
 } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import {
@@ -22,7 +24,7 @@ import {
   type MigrationContext,
 } from './migrations.ts';
 import { CONTROL_PLANE_SCHEMA_VERSION, type ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
-import { decodeHostKind, decodeRunnableRef, identityFieldsFromRun } from './p2Decoders.ts';
+import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
 import type { HostKind, RunnableRef, Schedule } from './p2Contracts.ts';
 import type {
   ProposalCompletionGate,
@@ -506,6 +508,8 @@ export interface ControlStoreOptions {
   loadAndMigrateForTest?: typeof loadAndMigrate;
   /** Server-owned catalogs and optional checksum-bound operator mapping for v2 -> v3. */
   p2MigrationContext?: Omit<MigrationContext, 'stamp'>;
+  /** @internal Integration seam; production always executes the generated Python validator. */
+  generatedPythonRoundTripForTest?: (document: StoreDocument) => void;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
   beforeIterationBoundaryValidationForTest?: (
     boundary: 'quarantine' | 'restore',
@@ -1004,6 +1008,36 @@ function canonicalJson(value: JsonValue): string {
   return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
 }
 
+/** Windows production invocation: `py -3 deploy/control_plane_schema.py --round-trip-v3` (stdin JSON). */
+export const GENERATED_PYTHON_ROUND_TRIP_COMMAND = 'py -3 deploy/control_plane_schema.py --round-trip-v3';
+
+/** Exact generated-Python prepublication validation command used by production startup. */
+export function validateGeneratedPythonControlPlaneRoundTrip(document: StoreDocument): void {
+  const script = fileURLToPath(new URL('../../../deploy/control_plane_schema.py', import.meta.url));
+  const command = process.platform === 'win32' ? 'py' : 'python3';
+  const args = process.platform === 'win32'
+    ? ['-3', script, '--round-trip-v3']
+    : [script, '--round-trip-v3'];
+  const result = spawnSync(command, args, {
+    input: JSON.stringify(genericPersistenceDocument(document)),
+    encoding: 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0 || !result.stdout) {
+    throw new Error(`generated Python control-plane round trip failed${result.stderr ? `: ${result.stderr.trim()}` : ''}`);
+  }
+  let restored: unknown;
+  try {
+    restored = JSON.parse(result.stdout);
+  } catch {
+    throw new Error('generated Python control-plane round trip returned invalid JSON');
+  }
+  if (canonicalJson(restored as JsonValue) !== canonicalJson(genericPersistenceDocument(document) as unknown as JsonValue)) {
+    throw new Error('generated Python control-plane round trip changed the migrated document');
+  }
+}
+
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -1279,7 +1313,9 @@ function internalRun(value: StoredRun): Run {
     authorizedFailedRunReconciliation: _authorizedFailedRunReconciliation,
     ...run
   } = value;
-  return clone(run);
+  const decoded = decodeRun(run);
+  if (!decoded) throw new Error('invalid control-plane Run transport payload');
+  return decoded;
 }
 
 function publicDeployment(deployment: StoredDeployment): Deployment {
@@ -2267,13 +2303,13 @@ function validateStoreDocument(document: StoreDocument): void {
   assertDeploymentCollection(document.deployments);
   const validateRows = (bundle: Pick<StoreDocumentCollections, 'runs' | 'stages'>): void => {
     for (const run of bundle.runs) {
-      if (!identityFieldsFromRun(run)) throw new Error('invalid control-plane run identity');
       if (normalizeAssignment(run.managerAssignment) === undefined) {
         throw new Error('invalid control-plane assignment provenance');
       }
       if (normalizeAgentWorkspaceLaunch(run.agentWorkspaceLaunch) === undefined) {
         throw new Error('invalid control-plane agent-workspace launch provenance');
       }
+      if (!decodeStoredRun(run)) throw new Error('invalid control-plane stored run');
     }
     for (const stage of bundle.stages) {
       if (normalizeAssignment(stage.assignment) === undefined) {
@@ -6198,18 +6234,25 @@ export function createFileControlPlaneStore(
   const lease = access.lease;
   const migrateDocument = options.loadAndMigrateForTest ?? loadAndMigrate;
   const startupStamp = (options.now ?? (() => new Date()))().toISOString();
-  const migrationContext = (source: string): MigrationContext => ({
-    stamp: startupStamp,
-    executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
-    agentDeclarations: [],
-    workflowDefinitions: [],
-    workflowLaunchAudits: [],
-    auditRows: [],
-    ...options.p2MigrationContext,
-    // Bind any explicit operator mapping to the exact persisted bytes being
-    // migrated. Callers cannot substitute a checksum for a different store.
-    sourceSha256: createHash('sha256').update(source).digest('hex'),
-  });
+  const migrationContext = (source: string): MigrationContext => {
+    const raw = JSON.parse(source) as Record<string, unknown>;
+    const supplied = options.p2MigrationContext;
+    if (Number(raw.version) < CONTROL_PLANE_SCHEMA_VERSION
+      && (!supplied || !Array.isArray(supplied.agentDeclarations)
+        || !Array.isArray(supplied.workflowDefinitions)
+        || !Array.isArray(supplied.workflowLaunchAudits)
+        || !Array.isArray(supplied.auditRows))) {
+      throw new Error('control-plane v2 migration requires attested production evidence');
+    }
+    return {
+      stamp: startupStamp,
+      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+      ...supplied,
+      // Bind any explicit operator mapping to the exact persisted bytes being
+      // migrated. Callers cannot substitute a checksum for a different store.
+      sourceSha256: createHash('sha256').update(source).digest('hex'),
+    };
+  };
   const bootId = options.bootId ?? lease.bootId;
   const requiresGenericRewrite = (raw: Record<string, unknown>): boolean => {
     const quarantined = Array.isArray(raw.quarantine) ? raw.quarantine as Array<Record<string, unknown>> : [];
@@ -6319,6 +6362,7 @@ export function createFileControlPlaneStore(
       : acceptedMaxBytes;
     acceptedMaxBytes = nextAcceptedMaxBytes;
     if (migrationBackupSource) {
+      (options.generatedPythonRoundTripForTest ?? validateGeneratedPythonControlPlaneRoundTrip)(recovered);
       writeControlPlaneMigrationBackupSync(stateRoot, migrationBackupSource, options.persistenceDepsForTest);
     }
     save(recovered, 'deploy-critical');

@@ -6,6 +6,46 @@ from deploy import control_plane_schema
 FIXTURES = Path(__file__).parent / "fixtures/control-plane"
 
 
+def _valid_run(run_ref="run-1"):
+    return {
+        "subject": "operator", "launchOperationKey": None, "launchOperationFingerprint": None,
+        "archiveOperationKey": None, "archiveOperationFingerprint": None, "activationReceipts": [],
+        "authorizedFailedRunReconciliation": None,
+        "owner": {"type": "agent", "id": "grader", "sourcePath": "agents/grader.md"},
+        "executionHost": "vm", "terminalOutcome": None, "completedAt": None, "archivedFrom": None,
+        "runRef": run_ref, "predecessorRunRef": None, "title": "Grade", "proposalRef": "proposal-1",
+        "proposalRevision": 1, "proposalHash": "a" * 64, "publicationState": "published",
+        "lifecycle": {"kind": "running", "deployPause": None}, "version": 1,
+        "managerSessionRef": "session-1", "managerGeneration": 1, "managerAssignment": None,
+        "agentWorkspaceLaunch": None, "createdAt": "2026-08-21T10:00:00.000Z", "updatedAt": "2026-08-21T10:01:00.000Z",
+    }
+
+
+def _valid_schedule():
+    return {
+        "id": "a" * 64, "owner": {"type": "agent", "id": "grader", "sourcePath": "agents/grader.md"},
+        "cadence": {"source": "cron", "words": "daily"}, "nextAt": None, "lastOutcome": None,
+        "armed": False, "origin": "operator", "mirroredAt": None, "mirrorPath": "HEARTBEAT.md", "version": 1,
+        "cadenceCanonical": "0 0 * * *", "seedBytes": None, "seedDigest": None, "seedAuthorized": False,
+        "launchPayload": None, "operationReceipts": [], "emissionReceipts": [], "mirrorMetadataRevision": 0,
+        "tombstone": None,
+    }
+
+
+def _valid_v3_payload():
+    value = json.loads(control_plane_schema.EMPTY_CONTROL_PLANE)
+    run = _valid_run()
+    value["runs"] = [json.loads(json.dumps(run))]
+    value["quarantine"] = [{
+        "subject": "operator", "quarantinedAt": "2026-08-21T11:00:00.000Z",
+        "run": json.loads(json.dumps(run)), "stages": [], "attempts": [], "sessions": [],
+        "humanRequests": [], "events": [], "stageGenerations": [], "iterationLoops": [],
+        "iterationRequests": [], "iterationReceipts": [], "generationSupersessions": [],
+    }]
+    value["schedules"] = [_valid_schedule()]
+    return value
+
+
 @pytest.fixture
 def four_version_breaking_upgrade_registry():
     root = Path(__file__).parents[1]
@@ -64,16 +104,8 @@ def test_state_migration_aggregates_every_up_edge_on_upgrade_path(four_version_b
 
 
 def test_python_v3_down_carrier_restores_schedule_and_quarantined_run_identity():
-    value = json.loads(control_plane_schema.EMPTY_CONTROL_PLANE)
-    identity = {
-        "owner": {"type": "agent", "id": "grader", "sourcePath": "agents/grader.md"},
-        "executionHost": "vm", "terminalOutcome": "failed",
-        "completedAt": "2026-08-21T00:00:00.000Z", "archivedFrom": None,
-    }
-    value["runs"] = [{"runRef": "run-live", **identity}]
-    value["quarantine"] = [{"run": {"runRef": "run-old", **identity}}]
+    value = _valid_v3_payload()
     value["scheduleCollectionRevision"] = 7
-    value["schedules"] = [{"id": "daily"}]
     original = json.loads(json.dumps(value))
     down = control_plane_schema.down_migrate_v3_to_v2(value)
     assert down["version"] == 2
@@ -81,3 +113,20 @@ def test_python_v3_down_carrier_restores_schedule_and_quarantined_run_identity()
     assert "schedules" not in down
     assert down["events"][-1]["summary"].startswith("kb.control-plane-v3-down-carrier/v1:")
     assert control_plane_schema.restore_v3_down_carrier(down) == original
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda value: value["runs"][0]["owner"].update({"id": "../forged"}),
+        lambda value: value["runs"][0].update({"extra": True}),
+        lambda value: value["runs"][0].update({"updatedAt": "not-a-timestamp"}),
+        lambda value: value["schedules"][0].update({"owner": {"type": "agent", "id": "grader", "sourcePath": "../grader.md"}}),
+        lambda value: value["quarantine"][0].update({"extra": True}),
+    ],
+)
+def test_python_v3_payload_validation_rejects_tampered_rows(mutate):
+    value = _valid_v3_payload()
+    mutate(value)
+    with pytest.raises(ValueError):
+        control_plane_schema.assert_control_plane_schema(value)

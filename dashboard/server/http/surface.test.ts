@@ -8,7 +8,8 @@
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,8 +34,10 @@ import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
 import { admit } from '../control/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
+import { acquireWriterLease } from '../control/writerLease.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
+const KB_REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
 const sessionConfig = { secret: SECRET, ttlMs: 60_000 };
 const GOOD_ORIGIN = 'http://localhost';
@@ -1350,6 +1353,74 @@ describe('P1 route matrix', () => {
         ...(request.method === 'POST' ? { payload: {} } : {}),
       });
       expect(response.statusCode, request.url).toBe(404);
+    }
+  });
+});
+
+describe('P2 production migration evidence wiring', () => {
+  function fixture(): { repoRoot: string; stateRoot: string; path: string } {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'kb-surface-p2-repo-'));
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-surface-p2-state-'));
+    mkdirSync(join(repoRoot, 'agents'), { recursive: true });
+    mkdirSync(join(repoRoot, 'ledgers', 'audit'), { recursive: true });
+    mkdirSync(join(stateRoot, 'control'), { recursive: true });
+    copyFileSync(join(KB_REPO, 'agents', 'grader.md'), join(repoRoot, 'agents', 'grader.md'));
+    const run = (overrides: Record<string, unknown>) => ({
+      subject: 'operator', runRef: 'run-evidence', predecessorRunRef: null, title: 'Evidence fixture',
+      proposalRef: 'proposal-evidence', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+      publicationState: 'published', lifecycle: { kind: 'running', deployPause: null }, version: 1,
+      managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,
+      agentWorkspaceLaunch: {
+        composerRef: 'composer-evidence', agentId: 'grader', declarationPath: 'agents/grader.md',
+        declarationHash: createHash('sha256').update(readFileSync(join(repoRoot, 'agents', 'grader.md'))).digest('hex'),
+      },
+      activationReceipts: [], authorizedFailedRunReconciliation: null,
+      createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:00:02.000Z',
+      ...overrides,
+    });
+    const document = JSON.parse(readFileSync(join(KB_REPO, 'tests', 'fixtures', 'control-plane', 'v2-empty.json'), 'utf8'));
+    document.runs = [run({}), run({ runRef: 'run-archive-evidence', lifecycle: { kind: 'archived', deployPause: null },
+      version: 2, archiveOperationKey: 'archive-evidence' })];
+    writeFileSync(join(repoRoot, 'ledgers', 'audit', 'dashboard-audit.ndjson'), `${JSON.stringify({
+      ts: '2026-08-21T00:00:01.000Z', action: 'control-run-archive-authorize', target: 'run-archive-evidence',
+      result: 'authorized:archive-evidence', detail: { runOwnerSubject: 'operator', runVersion: 1, runState: 'waiting-human' },
+    })}\n`, 'utf8');
+    const path = join(stateRoot, 'control', 'control-plane.json');
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    return { repoRoot, stateRoot, path };
+  }
+
+  it('migrates through real surface wiring only when declaration and archive-audit evidence are present', () => {
+    const success = fixture();
+    const successLease = acquireWriterLease({ stateRoot: success.stateRoot, bootId: 'surface-evidence-success' });
+    try {
+      makeProductionSurfaceContext({ repoRoot: success.repoRoot, stateRoot: success.stateRoot,
+        fileControlAccess: { mode: 'already-locked', lease: successLease } });
+      expect(JSON.parse(readFileSync(success.path, 'utf8'))).toMatchObject({
+        version: 3,
+        runs: [
+          { owner: { type: 'agent', id: 'grader' }, terminalOutcome: null },
+          { owner: { type: 'agent', id: 'grader' }, terminalOutcome: 'abandoned', archivedFrom: 'waiting-human' },
+        ],
+      });
+    } finally {
+      successLease.release();
+      rmSync(success.repoRoot, { recursive: true, force: true });
+      rmSync(success.stateRoot, { recursive: true, force: true });
+    }
+
+    const withheld = fixture();
+    const before = readFileSync(withheld.path);
+    unlinkSync(join(withheld.repoRoot, 'agents', 'grader.md'));
+    const withheldLease = acquireWriterLease({ stateRoot: withheld.stateRoot, bootId: 'surface-evidence-withheld' });
+    try {
+      expect(() => makeProductionSurfaceContext({ repoRoot: withheld.repoRoot, stateRoot: withheld.stateRoot,
+        fileControlAccess: { mode: 'already-locked', lease: withheldLease } })).toThrow(/run-owner-migration-required/);
+      expect(readFileSync(withheld.path)).toEqual(before);
+    } finally {
+      withheldLease.release();
+      rmSync(withheld.repoRoot, { recursive: true, force: true });
+      rmSync(withheld.stateRoot, { recursive: true, force: true });
     }
   });
 });

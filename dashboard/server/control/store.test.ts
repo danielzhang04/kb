@@ -18,11 +18,13 @@ import {
   emptyStoreDocumentForTest,
   exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
+  createFileControlPlaneStore as openFileControlPlaneStore,
 } from './store.ts';
 import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
 import { applyMigrationEdgeForTest, loadAndMigrate, migrateControlDocument } from './migrations.ts';
 import { createNodePersistenceDeps } from './persistence.ts';
+import { acquireWriterLease } from './writerLease.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
 
@@ -30,6 +32,53 @@ const roots: string[] = [];
 const fileStores = createExistingRootFileStoreHarnessForTest();
 const createFileControlPlaneStore = fileStores.open;
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
+
+it('leaves file-backed v2 bytes unchanged on host contradiction and partial outcome aborts', () => {
+  for (const [name, fields] of [
+    ['host', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'vm',
+      terminalOutcome: null, completedAt: null, archivedFrom: null,
+    }],
+    ['partial-outcome', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      terminalOutcome: 'ok',
+    }],
+  ] as const) {
+    const root = mkdtempSync(join(tmpdir(), `control-store-p2-${name}-`));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    mkdirSync(dirname(path), { recursive: true });
+    const source = {
+      version: 2, documentRevision: 0, nextEventCursor: 1, proposals: [],
+      runs: [{
+        subject: 'operator', runRef: `run-${name}`, predecessorRunRef: null, title: 'Abort fixture',
+        proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+        publicationState: 'published', lifecycle: { kind: 'running', deployPause: null }, version: 1,
+        managerSessionRef: 'session-1', managerGeneration: 1, managerAssignment: null,
+        agentWorkspaceLaunch: null, activationReceipts: [], authorizedFailedRunReconciliation: null,
+        createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:00:00.000Z', ...fields,
+      }],
+      stages: [], attempts: [], sessions: [], humanRequests: [], events: [], stageGenerations: [],
+      iterationLoops: [], iterationRequests: [], iterationReceipts: [], generationSupersessions: [],
+      quarantine: [], deployments: [],
+    };
+    writeFileSync(path, `${JSON.stringify(source)}\n`, 'utf8');
+    const before = readFileSync(path);
+    const digest = createHash('sha256').update(before).digest('hex');
+    const lease = acquireWriterLease({ stateRoot: root, bootId: `abort-${name}` });
+    try {
+      expect(() => openFileControlPlaneStore(root, { mode: 'already-locked', lease }, {
+        p2MigrationContext: {
+          agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
+        },
+      })).toThrow(/run-(?:owner|outcome)-migration-required/);
+      expect(createHash('sha256').update(readFileSync(path)).digest('hex')).toBe(digest);
+      expect(readFileSync(path)).toEqual(before);
+    } finally {
+      lease.release();
+    }
+  }
+});
 
 function persistedV1(value: unknown): any {
   return migrateControlDocument(value, 1, { stamp: '2026-08-20T00:00:00.000Z' }).document;
@@ -4128,8 +4177,13 @@ describe('authorized 2026-08-01 settlement durability', () => {
   }
 
   it('refuses a successor for the settled run and stays loadable afterwards', () => {
-    const { root, run } = seedSettledStore();
+    const { root, path, run } = seedSettledStore();
     const store = createFileControlPlaneStore(root);
+    const persisted = JSON.parse(readFileSync(path, 'utf8')) as MutableDocument;
+    expect(persisted.runs[0]).toMatchObject({
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      authorizedFailedRunReconciliation: { phase: 'committed' },
+    });
     const successor = store.createRun('alice', successorInput(run));
     expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
     expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);

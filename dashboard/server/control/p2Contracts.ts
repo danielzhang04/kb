@@ -20,6 +20,41 @@ export interface RunIdentityFields {
   archivedFrom: ArchivedFrom | null;
 }
 
+/** Canonical browser/server run transport. Display fields are server projections, never persisted. */
+export interface ControlRunDto extends RunIdentityFields {
+  runRef: string;
+  predecessorRunRef: string | null;
+  title: string;
+  displayName: string;
+  shortRef: number;
+  workflowRef: string | null;
+  proposalRef: string;
+  proposalRevision: number;
+  proposalHash: string;
+  publicationState: 'pending' | 'waiting-human' | 'publishing' | 'published' | 'reconcile-required';
+  state: 'planned' | 'recovering' | 'running' | 'waiting-human' | 'stopping'
+    | 'succeeded' | 'failed' | 'stopped' | 'interrupted' | 'archived';
+  version: number;
+  managerSessionRef: string;
+  managerGeneration: number;
+  managerAssignment: {
+    agentId: string;
+    declarationPath: string;
+    declarationHash: string;
+    profileId: string;
+    runtime: string;
+    model: string;
+  } | null;
+  agentWorkspaceLaunch?: {
+    composerRef: string;
+    agentId: string;
+    declarationPath: string;
+    declarationHash: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** One run row used by entity, attention, and Home projections. */
 export interface RunRow {
   runRef: string;

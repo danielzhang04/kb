@@ -66,8 +66,8 @@ export interface ApprovedLaunchInput {
   source?: string;
   /** Optional, trusted origin resolved by the HTTP workflow route from an owned Composer workspace. */
   agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenance | null;
-  /** Server-resolved execution identity. HTTP bodies never populate this field. */
-  identity?: { owner: RunnableRef; executionHost: HostKind };
+  /** Mandatory server-resolved execution identity. HTTP bodies never populate this field. */
+  identity: { owner: RunnableRef; executionHost: HostKind };
 }
 
 export function validateTrustedLaunchIdentity(value: unknown):
@@ -138,6 +138,8 @@ export async function executeApprovedLaunch(
   input: ApprovedLaunchInput,
 ): Promise<LaunchOutcome> {
   const { proposalRef, revision, storedHash, snapshot } = input;
+  const trustedIdentity = validateTrustedLaunchIdentity(input.identity);
+  if (!trustedIdentity.ok) return { status: 409, body: { error: trustedIdentity.code } };
   const actorSubject = input.actorSubject ?? sub;
   const crossSubject = actorSubject !== sub;
   /**
@@ -209,23 +211,7 @@ export async function executeApprovedLaunch(
     // accepts the server-compiled shape here.
     const parsed = validateServerCompiledPlanProposal(snapshot, registry);
     if (!parsed.ok) return { status: 409, body: { error: 'stored-proposal-invalid', detail: parsed.detail } };
-    const bootHost: HostKind = process.platform === 'win32' ? 'desktop' : 'vm';
-    let derivedIdentity = input.identity ?? (input.agentWorkspaceLaunch ? {
-      owner: {
-        type: 'agent' as const,
-        id: input.agentWorkspaceLaunch.agentId,
-        sourcePath: input.agentWorkspaceLaunch.declarationPath,
-      },
-      executionHost: bootHost,
-    } : input.source?.startsWith('workflow:') ? {
-      owner: {
-        type: 'workflow' as const,
-        id: input.source.slice('workflow:'.length),
-        project: parsed.value.project,
-        sourcePath: `orgs/${parsed.value.project}/workflows/${input.source.slice('workflow:'.length)}.md`,
-      },
-      executionHost: bootHost,
-    } : null);
+    let derivedIdentity = trustedIdentity.value;
     const compiled = compileApprovedProposal(parsed.value, storedHash, storedHash, {
       policy: loadPolicyEnvironment(ctx.repoRoot, parsed.value.project, parsed.value.governanceRefs),
       defaultWorkers: defaultWorkers(ctx.repoRoot),
@@ -246,11 +232,8 @@ export async function executeApprovedLaunch(
         owner: predecessor.value.run.owner,
         executionHost: predecessor.value.run.executionHost,
       };
-      if (input.identity) {
-        const asserted = validateTrustedLaunchIdentity(input.identity);
-        if (!asserted.ok || !sameTrustedLaunchIdentity(asserted.value, predecessorIdentity)) {
-          return { status: 409, body: { error: 'runnable-owner-conflict' } };
-        }
+      if (!sameTrustedLaunchIdentity(trustedIdentity.value, predecessorIdentity)) {
+        return { status: 409, body: { error: 'runnable-owner-conflict' } };
       }
       // Retry is a continuation of the same server-owned runnable. Current
       // declaration/workflow selectors may have changed since the predecessor

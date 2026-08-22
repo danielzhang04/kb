@@ -48,6 +48,9 @@ import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type 
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 import { projectRunState, runLifecycleKind, type RunLifecycleKind } from './runLifecycle.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { scanWorkflowDefs } from '../workflows/routes.ts';
+import type { HostKind, RunnableRef } from './p2Contracts.ts';
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -478,6 +481,38 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       declarationPath: workspace.workspace.agent.path,
       declarationHash: workspace.workspace.agent.sourceHash,
     } : null;
+    const bootHost: HostKind = process.platform === 'win32' ? 'desktop' : 'vm';
+    let owner: RunnableRef | null = null;
+    const predecessorRef = body.predecessorRunRef == null ? null : string(body.predecessorRunRef);
+    if (predecessorRef) {
+      const predecessor = ctx.controlStore.getRun(stored.value.ownerSubject, predecessorRef);
+      if (predecessor.ok) {
+        const candidate = predecessor.value.run.owner;
+        if (candidate.type === 'agent') {
+          const declared = readDeclaredAgentDetails(ctx.repoRoot).get(candidate.id);
+          if (declared?.source === candidate.sourcePath) owner = candidate;
+        } else {
+          const definition = scanWorkflowDefs(ctx.repoRoot).find((item) => item.def?.id === candidate.id
+            && item.def.project === candidate.project && item.entry.path === candidate.sourcePath && item.entry.valid);
+          if (definition) owner = candidate;
+        }
+      }
+    } else if (agentWorkspaceLaunch) {
+      const declared = readDeclaredAgentDetails(ctx.repoRoot).get(agentWorkspaceLaunch.agentId);
+      if (declared && declared.source === agentWorkspaceLaunch.declarationPath
+        && declared.sourceHash === agentWorkspaceLaunch.declarationHash) {
+        owner = { type: 'agent', id: declared.id, sourcePath: declared.source as `agents/${string}.md` };
+      }
+    } else if (stored.value.sourceComposerRef === WORKFLOW_COMPOSER_REF) {
+      const project = typeof stored.value.snapshot.project === 'string' ? stored.value.snapshot.project : '';
+      const definition = scanWorkflowDefs(ctx.repoRoot).find((candidate) => candidate.def?.id === stored.value.sourceTurnId
+        && candidate.def.project === project && candidate.entry.valid);
+      if (definition) owner = {
+        type: 'workflow', id: stored.value.sourceTurnId, project,
+        sourcePath: definition.entry.path as `orgs/${string}/workflows/${string}.md`,
+      };
+    }
+    if (!owner) return reply.code(409).send({ error: 'runnable-owner-required' });
     // The single canonical launch body (one ops transaction: reconcile, compile, publish cards +
     // audit, activate) lives in control/launch.ts. Every launch surface calls it; nothing forks it.
     const outcome = await executeApprovedLaunch(ctx, stored.value.ownerSubject, {
@@ -488,12 +523,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       sessionToken: verifiedSession(req)?.token,
       actorSubject: sub,
       idempotencyKey: string(body.idempotencyKey),
-      predecessorRunRef: body.predecessorRunRef == null ? null : string(body.predecessorRunRef),
+      predecessorRunRef: predecessorRef,
       expectedPredecessorVersion: integer(body.expectedPredecessorVersion),
       source: stored.value.sourceComposerRef === 'workflow-registry'
         ? `workflow:${stored.value.sourceTurnId}`
         : undefined,
       agentWorkspaceLaunch,
+      identity: { owner, executionHost: bootHost },
     });
     return reply.code(outcome.status).send(outcome.body);
   });

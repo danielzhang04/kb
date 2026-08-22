@@ -96,10 +96,15 @@ export interface P2RunMigrationReports {
 }
 
 export class P2RunMigrationError extends Error {
+  readonly code: 'run-owner-migration-required' | 'run-outcome-migration-required';
   readonly reports: P2RunMigrationReports;
 
   constructor(reports: P2RunMigrationReports) {
-    super(JSON.stringify(reports));
+    const code = reports.runIdentity.errors.length > 0
+      ? 'run-owner-migration-required' as const
+      : 'run-outcome-migration-required' as const;
+    super(`${code}: ${JSON.stringify(reports)}`);
+    this.code = code;
     this.reports = reports;
     this.name = 'P2RunMigrationError';
   }
@@ -882,6 +887,22 @@ interface P2LocatedRun {
   location: string;
   humanRequests: RawDocument[];
   events: RawDocument[];
+  mutationReceipts: RawDocument[];
+}
+
+function p2MutationReceipts(bundle: RawDocument, run: RawDocument): RawDocument[] {
+  const matches = (row: RawDocument): boolean => row.subject === run.subject && row.runRef === run.runRef;
+  return [
+    ...(Array.isArray(run.activationReceipts) ? run.activationReceipts : []),
+    ...(run.authorizedFailedRunReconciliation == null ? [] : [run.authorizedFailedRunReconciliation]),
+    ...(bundle.sessions as RawDocument[]).filter(matches).flatMap((session) =>
+      Array.isArray(session.brokerReceipts) ? session.brokerReceipts : []),
+    ...(bundle.iterationReceipts as RawDocument[]).filter(matches),
+    ...(bundle.generationSupersessions as RawDocument[]).filter(matches),
+    ...(bundle.stageGenerations as RawDocument[]).filter(matches),
+    ...(bundle.attempts as RawDocument[]).filter((attempt) => matches(attempt)
+      && (attempt.rerouteOperationKey != null || attempt.iterationAdvanceOperationKey != null)),
+  ];
 }
 
 function p2LocatedRuns(document: RawDocument): P2LocatedRun[] {
@@ -890,11 +911,13 @@ function p2LocatedRuns(document: RawDocument): P2LocatedRun[] {
       run, subject: String(run.subject), location: `runs[${index}]`,
       humanRequests: document.humanRequests.filter((row: RawDocument) => row.subject === run.subject && row.runRef === run.runRef),
       events: document.events.filter((row: RawDocument) => row.subject === run.subject && row.runRef === run.runRef),
+      mutationReceipts: p2MutationReceipts(document, run),
     })),
     ...document.quarantine.map((bundle: RawDocument, index: number) => ({
       run: bundle.run as RawDocument, subject: String(bundle.subject), location: `quarantine[${index}].run`,
       humanRequests: (bundle.humanRequests as RawDocument[]).filter((row) => row.runRef === bundle.run.runRef),
       events: (bundle.events as RawDocument[]).filter((row) => row.runRef === bundle.run.runRef),
+      mutationReceipts: p2MutationReceipts(bundle, bundle.run as RawDocument),
     })),
   ];
 }
@@ -935,8 +958,17 @@ export function reportP2RunMigrations(document: RawDocument, context: MigrationC
     const mapped = context.explicitMapping?.runs[String(item.run.runRef)];
     const decodedMapping = mapped ? decodeRunIdentityFields(mapped) : null;
     if (mapped && !decodedMapping) throw new Error(`invalid explicit run migration mapping for ${String(item.run.runRef)}`);
-    if (existing) {
+    const hasOwnerHost = Object.hasOwn(item.run, 'owner') || Object.hasOwn(item.run, 'executionHost');
+    const verifiedHost = context.executionHost ?? (process.platform === 'win32' ? 'desktop' : 'vm');
+    if (existing && existing.executionHost === verifiedHost) {
       identities.push({ location: item.location, runRef: String(item.run.runRef), value: existing });
+      continue;
+    }
+    if (hasOwnerHost) {
+      identityInputs.push({
+        runRef: String(item.run.runRef), location: item.location, executionHost: verifiedHost,
+        agentWorkspaceLaunch: null, proposal: null, agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [],
+      });
       continue;
     }
     if (decodedMapping) {
@@ -951,7 +983,7 @@ export function reportP2RunMigrations(document: RawDocument, context: MigrationC
       && row.hash === item.run.proposalHash);
     identityInputs.push({
       runRef: String(item.run.runRef), location: item.location,
-      executionHost: context.executionHost ?? (process.platform === 'win32' ? 'desktop' : 'vm'),
+      executionHost: verifiedHost,
       agentWorkspaceLaunch: item.run.agentWorkspaceLaunch == null ? null : {
         agentId: String(item.run.agentWorkspaceLaunch.agentId),
         declarationPath: String(item.run.agentWorkspaceLaunch.declarationPath),
@@ -984,7 +1016,10 @@ export function reportP2RunMigrations(document: RawDocument, context: MigrationC
   const outcomeInputs = located.flatMap((item) => {
     const mapped = context.explicitMapping?.runs[String(item.run.runRef)];
     const decodedMapping = mapped ? decodeRunIdentityFields(mapped) : null;
-    if (decodedMapping) {
+    const outcomeKeys = ['terminalOutcome', 'completedAt', 'archivedFrom'] as const;
+    const outcomeKeysPresent = outcomeKeys.filter((key) => Object.hasOwn(item.run, key));
+    const existing = identityFieldsFromRun(item.run);
+    if (decodedMapping && outcomeKeysPresent.length === 0) {
       const lifecycle = runLifecycleKind(item.run.lifecycle as RunLifecycle);
       if (!explicitOutcomeMatchesLifecycle(decodedMapping, lifecycle)) {
         throw new Error(`explicit run migration mapping outcome mismatch for ${String(item.run.runRef)}`);
@@ -1005,12 +1040,25 @@ export function reportP2RunMigrations(document: RawDocument, context: MigrationC
       lifecycle: runLifecycleKind(item.run.lifecycle as RunLifecycle),
       updatedAt: String(item.run.updatedAt), version: Number(item.run.version),
       archiveOperationKey: typeof item.run.archiveOperationKey === 'string' ? item.run.archiveOperationKey : null,
-      humanRequests: item.humanRequests.map((row) => ({ response: row.response == null ? null : {
-        idempotencyKey: String(row.response.idempotencyKey), respondedAt: String(row.response.respondedAt),
-      } })),
+      humanRequests: item.humanRequests.map((row) => ({
+        requestRef: String(row.requestRef), runRef: String(row.runRef), updatedAt: String(row.updatedAt),
+        response: row.response == null ? null : {
+          requestRevision: Number(row.response.requestRevision), decision: String(row.response.decision),
+          respondedBy: String(row.response.respondedBy), idempotencyKey: String(row.response.idempotencyKey),
+          response: row.response.response == null ? null : String(row.response.response),
+          respondedAt: String(row.response.respondedAt),
+        },
+      })),
       events: item.events.map((row) => ({ createdAt: String(row.createdAt) })),
+      mutationReceipts: item.mutationReceipts.map((receipt: RawDocument) => ({
+        ...(typeof receipt.createdAt === 'string' ? { createdAt: receipt.createdAt } : {}),
+        ...(typeof receipt.claimedAt === 'string' ? { claimedAt: receipt.claimedAt } : {}),
+        ...(typeof receipt.updatedAt === 'string' ? { updatedAt: receipt.updatedAt } : {}),
+        ...(typeof receipt.recordedAt === 'string' ? { recordedAt: receipt.recordedAt } : {}),
+      })),
       auditRows: context.auditRows ?? [],
-      existing: identityFieldsFromRun(item.run),
+      existing,
+      existingInvalid: outcomeKeysPresent.length > 0 && (outcomeKeysPresent.length !== outcomeKeys.length || existing === null),
     }];
   });
   const outcomeResolution = migrateRunOutcomes(outcomeInputs);

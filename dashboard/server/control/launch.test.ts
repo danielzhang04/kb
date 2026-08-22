@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { validateTrustedLaunchIdentity } from './launch.ts';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import { validateTrustedLaunchIdentity, type ApprovedLaunchInput } from './launch.ts';
 
 describe('trusted launch identity', () => {
+  it('makes trusted identity a required launch input', () => {
+    type RequiredIdentity = {} extends Pick<ApprovedLaunchInput, 'identity'> ? false : true;
+    expectTypeOf<RequiredIdentity>().toEqualTypeOf<true>();
+  });
   it('accepts a closed server-resolved owner and boot host', () => {
     expect(validateTrustedLaunchIdentity({
       owner: { type: 'workflow', id: 'video-run', project: 'faceless-youtube', sourcePath: 'orgs/faceless-youtube/workflows/video-run.md' },

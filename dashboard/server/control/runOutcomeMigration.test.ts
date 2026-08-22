@@ -26,22 +26,40 @@ function fixtureInput(row: FixtureStoredRun, location: string): LegacyRunOutcome
   return {
     runRef: row.runRef, subject: row.subject, location, lifecycle: row.lifecycle.kind,
     updatedAt: row.updatedAt, version: row.version, archiveOperationKey: row.archiveOperationKey ?? null,
-    humanRequests: [], events: [], auditRows: [],
+    humanRequests: [], events: [], mutationReceipts: [], auditRows: [],
   };
 }
 
 function input(overrides: Partial<LegacyRunOutcomeInput> = {}): LegacyRunOutcomeInput {
   return {
     runRef: 'run-1', subject: 'operator', location: 'runs[0]', lifecycle: 'succeeded', updatedAt: iso, version: 4,
-    archiveOperationKey: null, humanRequests: [], events: [], auditRows: [], ...overrides,
+    archiveOperationKey: null, humanRequests: [], events: [], mutationReceipts: [], auditRows: [], ...overrides,
   };
 }
 
 describe('migrateRunOutcomeV1', () => {
   it('uses a matching auto-close response for a terminal time and rejects later evidence', () => {
     const responseAt = '2026-08-20T09:59:00.000Z';
-    expect(resolveLegacyRunOutcome(input({ humanRequests: [{ response: { idempotencyKey: 'auto-close:terminal:succeeded:run-1', respondedAt: responseAt } }] }))).toEqual({ ok: true, value: { terminalOutcome: 'ok', completedAt: responseAt, archivedFrom: null } });
+    expect(resolveLegacyRunOutcome(input({ humanRequests: [{
+      requestRef: 'request-1', runRef: 'run-1', updatedAt: responseAt,
+      response: { requestRevision: 1, decision: 'auto-closed', respondedBy: 'operator', response: null, idempotencyKey: 'auto-close:terminal:succeeded:run-1:request-1', respondedAt: responseAt },
+    }] }))).toEqual({ ok: true, value: { terminalOutcome: 'ok', completedAt: responseAt, archivedFrom: null } });
     expect(resolveLegacyRunOutcome(input({ events: [{ createdAt: '2026-08-20T10:01:00.000Z' }] }))).toMatchObject({ ok: false, reason: 'terminal-order-unproven' });
+  });
+
+  it('rejects post-terminal mutation receipts and auto-close time travel', () => {
+    expect(resolveLegacyRunOutcome(input({
+      mutationReceipts: [{ createdAt: '2026-08-20T10:01:00.000Z' }],
+    }))).toMatchObject({ ok: false, reason: 'terminal-order-unproven' });
+    expect(resolveLegacyRunOutcome(input({ humanRequests: [{
+      requestRef: 'request-1', runRef: 'run-1', updatedAt: '2026-08-20T10:01:00.000Z',
+      response: { requestRevision: 1, decision: 'auto-closed', respondedBy: 'operator', response: null, idempotencyKey: 'auto-close:terminal:succeeded:run-1:request-1', respondedAt: '2026-08-20T10:01:00.000Z' },
+    }] }))).toMatchObject({ ok: false, reason: 'terminal-order-unproven' });
+    expect(resolveLegacyRunOutcome(input({ humanRequests: [{
+      requestRef: 'request-1', runRef: 'run-1', updatedAt: iso,
+      response: { requestRevision: 1, decision: 'auto-closed', respondedBy: 'operator', response: null,
+        idempotencyKey: 'auto-close:terminal:failed:run-1:request-1', respondedAt: iso },
+    }] }))).toMatchObject({ ok: false, reason: 'terminal-order-unproven' });
   });
 
   it('requires exactly one archive authorization and preserves archive provenance hierarchy', () => {

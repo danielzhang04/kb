@@ -16,6 +16,7 @@ import {
   createExistingRootFileStoreHarnessForTest,
   createLeasedFileStoreForTest,
 } from './test-fixtures/controlStore.ts';
+import { acquireWriterLease } from './writerLease.ts';
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(
   new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
@@ -33,11 +34,14 @@ it('writes a SHA-keyed v2 backup and restores only checksum-matching bytes atomi
     expect(existsSync(backup.path)).toBe(true);
     expect(readFileSync(backup.path)).toEqual(source);
     writeFileSync(livePath, '{"version":3}\n', 'utf8');
-    restoreControlPlaneMigrationBackupSync(root, backup.path);
+    expect(() => restoreControlPlaneMigrationBackupSync(root, backup.path, undefined as never)).toThrow(/writer lease/i);
+    const lease = acquireWriterLease({ stateRoot: root, bootId: 'restore-test' });
+    restoreControlPlaneMigrationBackupSync(root, backup.path, lease);
     expect(readFileSync(livePath)).toEqual(source);
     writeFileSync(backup.sidecarPath, `${'0'.repeat(64)}\n`, 'utf8');
-    expect(() => restoreControlPlaneMigrationBackupSync(root, backup.path)).toThrow(/checksum/);
+    expect(() => restoreControlPlaneMigrationBackupSync(root, backup.path, lease)).toThrow(/checksum/);
     expect(readFileSync(livePath)).toEqual(source);
+    lease.release();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -143,7 +147,10 @@ it('injects a real spy and coalesces migration plus crash normalization into one
       nextEventCursor: 1,
       proposals: [],
       runs: [{
-        subject: 'alice', runRef: 'run-live', state: 'running', version: 1,
+        subject: 'alice', runRef: 'run-live', predecessorRunRef: null, title: 'Live run',
+        proposalRef: 'proposal-live', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+        publicationState: 'published', state: 'running', version: 1,
+        managerSessionRef: 'manager-live', managerGeneration: 1, managerAssignment: null,
         agentWorkspaceLaunch: {
           composerRef: 'composer-grader', agentId: 'grader', declarationPath: 'agents/grader.md', declarationHash: 'a'.repeat(64),
         },
@@ -160,6 +167,7 @@ it('injects a real spy and coalesces migration plus crash normalization into one
       persistenceDepsForTest: spyPersistenceDeps(calls, createNodePersistenceDeps()),
       p2MigrationContext: {
         agentDeclarations: [{ id: 'grader', sourcePath: 'agents/grader.md', declarationHash: 'a'.repeat(64) }],
+        workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
       },
     });
     expect(calls.filter((call) => call === 'rename')).toHaveLength(1);

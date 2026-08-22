@@ -2,12 +2,36 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { reportP2RunMigrations, type MigrationContext } from './migrations.ts';
+import { restoreControlPlaneMigrationBackupSync } from './persistence.ts';
+import { acquireWriterLease } from './writerLease.ts';
 
 export interface MigrationReportCliDeps extends Omit<MigrationContext, 'stamp' | 'sourceSha256'> {
   writeLine?: (line: string) => void;
 }
 
+export const P2_MAINTENANCE_COMMANDS = {
+  dryRun: 'node dashboard/server/control/migrationReport.ts --dry-run <control-plane-copy.json>',
+  restore: 'node dashboard/server/control/migrationReport.ts --restore <state-root> <backup.json>',
+} as const;
+
 export function runMigrationReportCli(argv: readonly string[], deps: MigrationReportCliDeps = {}): number {
+  const restoreIndex = argv.indexOf('--restore');
+  if (restoreIndex >= 0) {
+    const stateRoot = argv[restoreIndex + 1];
+    const backupPath = argv[restoreIndex + 2];
+    if (!stateRoot || !backupPath || argv.length !== restoreIndex + 3) return 2;
+    const lease = acquireWriterLease({ stateRoot, bootId: `control-plane-restore-${process.pid}` });
+    try {
+      const restored = restoreControlPlaneMigrationBackupSync(stateRoot, backupPath, lease);
+      (deps.writeLine ?? console.log)(JSON.stringify({
+        schema: 'kb.control-plane-p2-restore/v1', restored: true,
+        stateRoot, backupPath: restored.path, sha256: restored.sha256,
+      }));
+      return 0;
+    } finally {
+      lease.release();
+    }
+  }
   const dryRunIndex = argv.indexOf('--dry-run');
   const path = dryRunIndex < 0 ? undefined : argv[dryRunIndex + 1];
   if (!path || argv.length !== dryRunIndex + 2) return 2;
