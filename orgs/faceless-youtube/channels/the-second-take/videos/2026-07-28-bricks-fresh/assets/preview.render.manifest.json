@@ -1,0 +1,111 @@
+{
+  "generated_by": "render-builder",
+  "video_dir": "2026-07-28-bricks-fresh",
+  "channel": "the-second-take",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "source_idea_id": "ST-006",
+  "render_provider": "remotion-local",
+  "render_engine": "remotion",
+  "watermark": false,
+  "dry_run": false,
+  "pieces": [
+    {
+      "piece": "long-form",
+      "out": "assets/preview.mp4",
+      "motion": "assets/motion/long-form.preview.motion.json",
+      "resolution": "1920x1080",
+      "captions": false,
+      "scene_count": 50,
+      "sum_scene_seconds": 545.95,
+      "retime_basis": "per-line-timings(545.97s, 1632 words)",
+      "vo_seconds": 545.965,
+      "scenes_from_files": 47,
+      "inline_fallback": 3,
+      "camera_moving": 0,
+      "breath_count": 33,
+      "sentence_gap_count": 33,
+      "audio": {
+        "ok": false,
+        "warnings": [
+          "music_missing=1 \u2014 mood(s) had no sourced track (run music-forge)",
+          "splice-continuity WARN: raw-VO -34.9 dBFS before the cut @ 102.013s (sentence) \u2014 near truncation (> -35)",
+          "SENTENCE-GAP short: 0.12s of silence after 'Awkward.' @ 206.97s (before 'And' @ 207.12s) \u2014 target 0.45s (tol 0.10)",
+          "SENTENCE-GAP short: 0.15s of silence after 'Wiles.' @ 118.31s (before 'You' @ 118.47s) \u2014 target 0.45s (tol 0.10)"
+        ],
+        "measured": {
+          "lufs": "-14.58",
+          "true_peak": "-1.00",
+          "music_segments": 0,
+          "sfx_count": 0,
+          "sfx_missing": 0,
+          "music_missing": 1,
+          "authored_vs_resolved": {
+            "source": "default",
+            "authored_by_kind": {
+              "sfx": 0,
+              "pause": 0,
+              "music": 0,
+              "dry": 0
+            },
+            "resolved_by_kind": {
+              "sfx": 0,
+              "pause": 0,
+              "music": 0,
+              "dry": 0
+            },
+            "unresolved_by_kind": {
+              "sfx": 0,
+              "pause": 0,
+              "music": 0,
+              "dry": 0
+            },
+            "resolved_pause_s": 0,
+            "resolved_dry_s": 0,
+            "music_present_s": 0,
+            "default_bed": false,
+            "silent_drops": {
+              "sfx_missing": 0,
+              "music_missing": 1
+            },
+            "sfx_tail_overshoots": 0
+          },
+          "splice_continuity": {
+            "gaps": 33,
+            "fail": 0,
+            "warn": 1
+          },
+          "splice_continuity_worst": {
+            "pre_cut_dbfs": -34.9,
+            "at_s": 102.013,
+            "source": "sentence"
+          },
+          "sentence_gaps": {
+            "boundaries": 115,
+            "below": 2,
+            "mean_gap_s": 0.748,
+            "min_gap_s": 0.125
+          },
+          "sentence_gaps_worst": {
+            "final_s": 206.973,
+            "next_s": 207.12,
+            "final_word": "Awkward.",
+            "next_word": "And",
+            "target_s": 0.45,
+            "measured_gap_s": 0.125,
+            "shortfall_s": 0.325
+          }
+        }
+      },
+      "allowed_missing_scene_shots": [
+        "L10",
+        "L38",
+        "L39"
+      ],
+      "render_wall_seconds": 1035.5,
+      "rendered_seconds": 545.97,
+      "audio_lufs": "-14.58",
+      "audio_true_peak": "-1.00",
+      "state": "rendered"
+    }
+  ]
+}
