@@ -308,7 +308,10 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
         const headerCursor = Array.isArray(request.headers['last-event-id'])
           ? request.headers['last-event-id'][0] : request.headers['last-event-id'];
         const after = Math.max(Number(url.searchParams.get('after') ?? 0), Number(headerCursor ?? 0));
-        const page = p2RunEvents(url.searchParams.get('stageRef'), Number.isSafeInteger(after) ? after : 0);
+        const page = p2RunEvents(
+          url.searchParams.get('stageRef'), Number.isSafeInteger(after) ? after : 0, 250,
+          options.scenario === 'p2-stream-reconnect-goldens',
+        );
         reply.writeHead(200, {
           'content-type': 'text/event-stream; charset=utf-8',
           'cache-control': 'no-store',
@@ -325,6 +328,7 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
         return json(reply, 200, p2RunEvents(
           url.searchParams.get('stageRef'), Number.isSafeInteger(after) ? after : 0,
           Number.isSafeInteger(limit) && limit > 0 ? limit : 250,
+          options.scenario === 'p2-stream-reconnect-goldens',
         ));
       }
     }

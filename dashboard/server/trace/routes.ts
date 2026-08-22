@@ -4,7 +4,7 @@
  *   GET /api/trace              → the transcripts that EXIST under the root (id + project + mtime)
  *   GET /api/trace/:sessionId   → the payload-elided {@link RunEnvelope} for one session JSONL
  *
- * Registered exactly like the other read-only projections (`registerPanels`, `registerAgents`): GET
+ * Registered exactly like the other read-only projections (`registerTraceRead`, `registerAgents`): GET
  * only, no write surface, no session state.
  *
  * WHY THE LIST EXISTS (U12). The panel used to hard-code ONE session id, which is a claim about one
@@ -21,7 +21,7 @@
  * WHERE SESSIONS LIVE. Transcripts are NOT in the repo — Claude Code writes them under
  * `~/.claude/projects/<project-dir>/<sessionId>.jsonl`. The root is therefore its own resolution
  * (`resolveSessionRoot`, overridable with `DASHBOARD_TRACE_ROOT`), mirroring the
- * `panels/routes.ts:resolveRepoRoot` override pattern rather than reusing the repo root; tests inject
+ * the dashboard's injectable root-resolution pattern rather than reusing the repo root; tests inject
  * a fixture root as the second argument.
  *
  * PATH SAFETY. `:sessionId` is matched against a strict id charset BEFORE it touches the filesystem,

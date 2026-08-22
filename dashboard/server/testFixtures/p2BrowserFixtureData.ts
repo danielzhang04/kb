@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { SYSTEM_ENTITY_GROUP_ID } from '../entities/contracts.ts';
 
 export const P2_BROWSER_SCENARIOS = [
   'p2-entity-groups-overlay',
@@ -79,7 +80,7 @@ const AGENT_GROUPS = [
     items: [entitySummary(agentOwner('kb-operator'), 'KB Operator')],
   },
   {
-    id: 'system', label: 'System', collapsed: true,
+    id: SYSTEM_ENTITY_GROUP_ID, label: 'System', collapsed: true,
     items: [
       ['agent-maintainer', 'Agent Maintainer'],
       ['context-lifecycle', 'Context Lifecycle'],
@@ -169,12 +170,15 @@ const GOLDEN_TRANSCRIPTS = [
   { stageRef: 'write', url: new URL('../control/__fixtures__/dv3/transcripts/codex-real-sanitized.jsonl', import.meta.url) },
 ] as const;
 
-export function p2RunEvents(stageRef: string | null = null, after = 0, limit = 250) {
+export function p2RunEvents(stageRef: string | null = null, after = 0, limit = 250, includeUnknownProvider = false) {
   let cursor = 0;
   const items = GOLDEN_TRANSCRIPTS.flatMap((golden) => readFileSync(golden.url, 'utf8')
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => operationalEvent(++cursor, golden.stageRef, line)));
+  if (includeUnknownProvider) {
+    items.push(operationalEvent(++cursor, null, '{"provider":"future-cli","raw":"<b>future output</b>"}'));
+  }
   const filtered = (stageRef === null ? items : items.filter((event) => event.stageRef === stageRef))
     .filter((event) => event.cursor > after);
   const page = filtered.slice(0, limit);
@@ -213,6 +217,11 @@ export function p2RunDetail(scenario: P2BrowserScenario) {
         },
       ],
       attempts: [], sessions: [],
+      ...(scenario === 'p2-run-actions' ? { outputs: [
+        { kind: 'repository-file', label: 'Built', path: 'output/p2-browser-report.md' },
+        { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123' },
+        { kind: 'external-pr', label: 'Review', owner: 'openai', repository: 'kb', number: 42 },
+      ] } : {}),
       humanRequests: t3 ? [{
         requestRef: 'request-t3', runRef: 'run-fixture', displayName: 'P2 Fixture Run', shortRef: 1,
         stageRef: 'write', kind: 'approval', revision: 1, state: 'open', title: 'Approve result',
@@ -242,6 +251,7 @@ export const P2_SCHEDULE_COLLECTION = { scheduleCollectionRevision: 4, rows: [P2
 
 const HOME_FULL = {
   revision: 'home:fixture:p2',
+  generatedAt: NOW,
   sections: [
     { state: 'ready', data: { section: 'running-now', runs: [runRow(WORKFLOW_OWNER, 'running')] } },
     { state: 'ready', data: { section: 'attention-counts', agents: 1, workflows: 0, inbox: 0 } },

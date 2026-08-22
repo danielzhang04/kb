@@ -8,6 +8,7 @@ import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import type {
   AttentionEnvelope,
   ControlRunDto as RunDto,
+  OutputRef,
   RunEventPage,
 } from '../../server/control/p2Contracts.ts';
 import type { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
@@ -452,6 +453,7 @@ export interface RunDetailDto {
   /** Present on every server DTO; optional here while literal fixtures migrate. */
   streamKind?: 'pty' | 'transcript';
   sessionId?: string;
+  outputs?: OutputRef[];
   run: RunDto;
   /** The subject that owns this run. See {@link RunMetadataDto.ownerSubject}. */
   ownerSubject: string;
@@ -1016,6 +1018,16 @@ const ownerDto: WireValidator = (value) => {
       type: wireString, id: wireString, project: wireString, sourcePath: wireString,
     });
 };
+const outputRefDto: WireValidator = (value) => {
+  const output = wireRecord(value);
+  if (!output) return false;
+  if (output.kind === 'repository-file' || output.kind === 'artifact') {
+    return exactDto(output, { kind: wireString, label: wireString, path: wireString });
+  }
+  return output.kind === 'external-pr' && exactDto(output, {
+    kind: wireString, label: wireString, owner: wireString, repository: wireString, number: wireNumber,
+  });
+};
 const runDto: WireValidator = (value) => exactDto(value, {
   runRef: wireString, predecessorRunRef: nullable(wireString), title: wireString, displayName: wireString,
   shortRef: wireNumber, workflowRef: nullable(wireString), proposalRef: wireString,
@@ -1149,7 +1161,7 @@ export function decodeRunDetail(value: unknown): RunDetailDto | null {
     stageGenerations: arrayOf(stageGenerationDto), generationSupersessions: arrayOf(generationSupersessionDto),
     iterationLoops: arrayOf(iterationLoopDto), iterationRequests: arrayOf(iterationRequestDto),
     iterationReceipts: arrayOf(iterationReceiptDto),
-  }, { streamKind: wireString, sessionId: wireString }) ? value as RunDetailDto : null;
+  }, { streamKind: wireString, sessionId: wireString, outputs: arrayOf(outputRefDto) }) ? value as RunDetailDto : null;
 }
 
 export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailDto> {

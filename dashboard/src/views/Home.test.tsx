@@ -28,7 +28,7 @@ function partialResponse(): HomeResponse {
 
 describe('Home D13 live view', () => {
   it('renders only the ordered D13 surfaces and the exact activation chip', async () => {
-    await renderWithTestSession(<Home response={homeResponseFixture} now={() => new Date('2026-08-21T12:00:00.000Z')} />);
+    await renderWithTestSession(<Home response={homeResponseFixture} />);
 
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
       .toEqual(['Running now', 'Needs you', 'Next schedules', 'Version', 'Recent outcomes']);

@@ -14,7 +14,7 @@ import { openAttestedScheduleSource } from '../schedules/attestedSource.ts';
 import type { ScheduleService } from '../schedules/service.ts';
 import { projectHome, type ActivationReaderPort, type HomeProjectionPorts } from './project.ts';
 
-export type HomeRoutePorts = HomeProjectionPorts & { sessionConfig: SessionConfig };
+export type HomeRoutePorts = HomeProjectionPorts & { sessionConfig: SessionConfig; now?: () => Date };
 
 export interface ActivationReaderOptions {
   openSource?: typeof openAttestedScheduleSource;
@@ -74,6 +74,7 @@ export function createHomeRoutePorts(
 ): HomeRoutePorts {
   return {
     sessionConfig: ctx.sessionConfig,
+    now: ctx.now,
     runningNow: {
       async read() {
         const projected = runProjection(ctx);
@@ -132,5 +133,5 @@ function sendRevisioned(reply: FastifyReply, requestEtag: string | string[] | un
 
 export function registerHomeRoutes(scope: FastifyInstance, ports: HomeRoutePorts): void {
   scope.get('/api/home', { preHandler: requireSession(ports.sessionConfig) }, async (request, reply) =>
-    sendRevisioned(reply, request.headers['if-none-match'], await projectHome(ports)));
+    sendRevisioned(reply, request.headers['if-none-match'], await projectHome(ports, (ports.now?.() ?? new Date()).toISOString())));
 }

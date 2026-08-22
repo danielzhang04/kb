@@ -124,7 +124,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
   const liveLifecycle = detail !== null && LIVE_RUN_STATES.has(detail.run.state);
   const liveTranscript = liveLifecycle && streamKind === 'transcript';
   const stream = useRunEventStream(props.runRef, replay, attached && liveTranscript && replayReady);
-  const outputs = props.outputs ?? [];
+  const outputs = props.outputs ?? detail?.outputs ?? [];
   const graph = useMemo(
     () => detail === null ? null : stepDagFromRun(detail, stream.events),
     [detail, stream.events],

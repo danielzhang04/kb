@@ -12,7 +12,6 @@ export interface HomeProps {
   response?: HomeResponse;
   onNavigateTarget?: (target: NavTarget) => void;
   onRetry?: (target: D13RetryTarget) => void;
-  now?: () => Date;
   fetchImpl?: HomeFetch;
 }
 
@@ -21,7 +20,6 @@ export function Home({
   response,
   onNavigateTarget,
   onRetry,
-  now,
   fetchImpl = fetch,
 }: HomeProps = {}): React.JSX.Element {
   const { session } = useSession();
@@ -68,7 +66,6 @@ export function Home({
       }}
       onOpenSchedule={(owner) => onNavigateTarget?.(focusTarget({ kind: owner.type, id: owner.id }))}
       onRetry={retry}
-      now={now}
     />
   );
 }

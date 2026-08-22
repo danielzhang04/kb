@@ -5,7 +5,6 @@
  */
 import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 /** Matches the declared-agent identifier boundary used by the roster reader. */
 export const SAFE_AGENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -205,14 +204,4 @@ export function buildGradesHistory(repoRoot: string, agent: string): GradesHisto
     rows,
     skipped,
   };
-}
-
-/** Register the one grades-history GET. Authentication is supplied by the shared governed panel scope. */
-export function registerGradesHistoryPanel(app: FastifyInstance, repoRoot: string): void {
-  app.get('/api/panels/grades-history', async (req: FastifyRequest, reply: FastifyReply) => {
-    const query = (req.query && typeof req.query === 'object' ? req.query : {}) as { agent?: unknown };
-    const agent = typeof query.agent === 'string' ? query.agent.trim() : '';
-    if (!SAFE_AGENT_ID.test(agent)) return reply.code(400).send({ error: 'invalid-agent' });
-    return buildGradesHistory(repoRoot, agent);
-  });
 }

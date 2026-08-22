@@ -10,7 +10,7 @@ const STATUS_LABEL: Record<EntitySummary['status'], string> = {
 };
 
 export function EntityCard({ summary, onOpen }: { summary: EntitySummary; onOpen: () => void }): React.JSX.Element {
-  return <button type="button" className="entity-card" data-testid="entity-card" onClick={onOpen}>
+  return <button type="button" className="entity-card" data-testid="entity-card" data-entity-kind={summary.ref.type} data-entity-id={summary.ref.id} onClick={onOpen}>
     <span className="entity-card__name">{humanizeEntityId(summary.ref.id)}</span>
     <span className={`entity-card__status entity-card__status--${summary.status}`}>{STATUS_LABEL[summary.status]}</span>
     <span className="entity-card__model">{summary.modelLabel}</span>

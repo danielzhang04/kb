@@ -10,6 +10,6 @@ describe('P2 Home contracts', () => {
       import('./contracts.ts').VersionSectionResult,
       import('./contracts.ts').RecentOutcomesSectionResult,
     ]>();
-    expectTypeOf<HomeResponse>().toMatchTypeOf<{ revision: string; sections: HomeSections }>();
+    expectTypeOf<HomeResponse>().toMatchTypeOf<{ revision: string; generatedAt: string; sections: HomeSections }>();
   });
 });

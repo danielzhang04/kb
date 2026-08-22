@@ -12,6 +12,7 @@ describe('Home routes module', () => {
   const app = Fastify();
   registerHomeRoutes(app, {
     sessionConfig,
+    now: () => new Date('2026-08-21T12:00:00.000Z'),
     runningNow: { read: async () => ({ revision: 'runs', data: [] }) },
     attention: { read: async () => ({ revision: 'attention', data: { revision: 'attention', pairs: [], agents: {}, workflows: {} } }) },
     inboxCount: { read: async () => ({ revision: 'inbox', data: 0 }) },
@@ -28,6 +29,7 @@ describe('Home routes module', () => {
     const response = await app.inject({ method: 'GET', url: '/api/home', headers: { authorization: `Bearer ${token}` } });
 
     expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).generatedAt).toBe('2026-08-21T12:00:00.000Z');
     expect(JSON.parse(response.body).sections.map((section: { data?: { section?: string } }) => section.data?.section))
       .toEqual(['running-now', 'attention-counts', 'next-schedules', 'version', 'recent-outcomes']);
     expect(response.headers.etag).toBe('"home:runs:attention:inbox:schedules:release:outcomes"');

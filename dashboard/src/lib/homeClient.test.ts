@@ -20,6 +20,10 @@ describe('Home client', () => {
   });
 
   it('rejects extra keys, reordered sections, invalid run fields, and unknown failure codes', () => {
+    const missingGeneratedAt = structuredClone(homeResponseFixture) as unknown as { generatedAt?: string };
+    delete missingGeneratedAt.generatedAt;
+    expect(() => decodeHomeResponse(missingGeneratedAt)).toThrow(/invalid home response/i);
+
     const extra = structuredClone(homeResponseFixture) as unknown as { extra: boolean };
     extra.extra = true;
     expect(() => decodeHomeResponse(extra)).toThrow(/invalid home response/i);

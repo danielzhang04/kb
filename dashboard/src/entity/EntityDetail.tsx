@@ -116,7 +116,9 @@ export function EntityDetail({
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
+  const entityRef = useRef(entity);
   onCloseRef.current = onClose;
+  entityRef.current = entity;
   const allSections: DetailSection[] = sections.some((section) => section.id === 'details') ? sections : [...sections, {
     id: 'details', label: 'Details', render: () => <details data-testid="entity-detail-disclosure"><summary>Details</summary>{detailsContent ?? 'No additional loaded details.'}</details>,
   }];
@@ -156,7 +158,23 @@ export function EntityDetail({
     document.addEventListener('keydown', trapFocus);
     return () => {
       document.removeEventListener('keydown', trapFocus);
-      restoreFocus.current?.focus();
+      const opener = restoreFocus.current;
+      if (opener && opener !== document.body && opener.isConnected) {
+        opener.focus();
+        return;
+      }
+      const closingEntity = entityRef.current;
+      const matchingCard = Array.from(document.querySelectorAll<HTMLElement>('[data-entity-kind][data-entity-id]'))
+        .find((candidate) => candidate.dataset.entityKind === closingEntity.kind && candidate.dataset.entityId === closingEntity.id);
+      if (matchingCard) {
+        matchingCard.focus();
+        return;
+      }
+      const viewHeading = document.querySelector<HTMLElement>('.entity-roster h2');
+      if (viewHeading) {
+        viewHeading.tabIndex = -1;
+        viewHeading.focus();
+      }
     };
   }, [overlay]);
 

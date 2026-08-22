@@ -113,7 +113,7 @@ function validOutcomes(value: unknown): boolean {
 
 export function decodeHomeResponse(value: unknown): HomeResponse {
   const body = record(value);
-  if (!body || !exactKeys(body, ['revision', 'sections']) || !text(body.revision)
+  if (!body || !exactKeys(body, ['revision', 'generatedAt', 'sections']) || !text(body.revision) || !timestamp(body.generatedAt)
     || !Array.isArray(body.sections) || body.sections.length !== 5
     || !validRunning(body.sections[0]) || !validAttention(body.sections[1])
     || !validSchedules(body.sections[2]) || !validVersion(body.sections[3]) || !validOutcomes(body.sections[4])) {

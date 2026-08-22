@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import type { EntityDetail, EntityList } from '../../server/entities/contracts.ts';
+import { SYSTEM_ENTITY_GROUP_ID, type EntityDetail, type EntityList } from '../../server/entities/contracts.ts';
 import type { EntitySummary } from '../../server/control/p2Contracts.ts';
 import { renderWithTestSession } from '../test/session';
 import { Agents } from './Agents';
@@ -21,6 +21,30 @@ const detail: EntityDetail = {
 };
 
 describe('Agents P2 roster', () => {
+  it('starts only the System group collapsed and keeps it last', async () => {
+    const systemSummary = {
+      ...summary,
+      ref: { type: 'agent' as const, id: 'ops-daemon', sourcePath: 'agents/ops-daemon.md' as const },
+      humanName: 'Ops Daemon',
+    };
+    const groupedList: EntityList = {
+      revision: 'agents-groups',
+      groups: [
+        { id: SYSTEM_ENTITY_GROUP_ID, label: 'System', collapsed: false, items: [systemSummary] },
+        { id: 'fyt', label: 'FYT', collapsed: false, items: [summary] },
+      ],
+      items: [systemSummary, summary],
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(groupedList), { status: 200 })));
+
+    await renderWithTestSession(<Agents />);
+
+    const toggles = await screen.findAllByRole('button', { expanded: true });
+    expect(toggles.map((toggle) => toggle.textContent)).toEqual(['FYT 1']);
+    expect(screen.getByRole('button', { name: 'System 1' }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getAllByRole('button').filter((button) => button.className === 'entity-card-group__toggle').map((button) => button.textContent)).toEqual(['FYT 1', 'System 1']);
+  });
+
   it('retains only summaries with gated runs for the closed attention filter', async () => {
     const gated = { ...summary, ref: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const }, humanName: 'Grader', gatedRunCount: 2 };
     const filteredList: EntityList = {
@@ -47,6 +71,21 @@ describe('Agents P2 roster', () => {
     expect(screen.getByTestId('entity-card')).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(['/api/agents', '/api/agents/fyt-checker']);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.activeElement).toBe(card);
+  });
+
+  it('restores focus to the matching card when Escape closes a deep-linked detail', async () => {
+    const back = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? detail : list), { status: 200 })));
+    const rendered = await renderWithTestSession(<Agents focusAgentId="fyt-checker" onBack={back} />);
+    await screen.findByTestId('entity-detail-agent');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    rendered.rerender(<Agents focusAgentId={null} onBack={back} />);
+
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(screen.getByTestId('entity-card'));
   });
 
   it('keeps search chrome on failure and retries the list', async () => {

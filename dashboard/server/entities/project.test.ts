@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, selectEntityHostRun } from './project.ts';
+import { SYSTEM_ENTITY_GROUP_ID } from './contracts.ts';
 import type { RunRow } from '../control/p2Contracts.ts';
 import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
 
@@ -53,6 +54,7 @@ describe('entity projectors', () => {
     ]);
     expect(result.groups.map((group) => [group.label, group.collapsed, group.items[0]?.humanName]))
       .toEqual([['Atlas Prep', false, 'FYT Checker'], ['System', true, 'Grader']]);
+    expect(result.groups.at(-1)?.id).toBe(SYSTEM_ENTITY_GROUP_ID);
     expect(result.revision).toBe(summaryFixture.revision);
     expect(result.groups.map((group) => group.id)).toEqual(summaryFixture.groups);
     expect(result.items.map((item) => item.ref.id)).toEqual(['fyt-checker', 'grader']);

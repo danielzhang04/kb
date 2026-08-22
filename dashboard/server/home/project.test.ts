@@ -56,7 +56,7 @@ describe('projectHome', () => {
       nextSchedules: { read: async () => ({ revision: 'schedules', data: [occurrence] }) },
       activation: { readActivation: async () => ({ revision: 'release', label: 'VM', sha: '64fb3d02', activatedAt: '2026-08-21T10:00:00.000Z' }) },
       recentRuns: { read: async () => ({ revision: 'outcomes', data: [outcome] }) },
-    }));
+    }), '2026-08-21T12:00:00.000Z');
 
     expect(response).toEqual(homeGolden as unknown as HomeResponse);
   });

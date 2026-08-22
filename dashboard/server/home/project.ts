@@ -41,7 +41,7 @@ function recentOutcomes(runs: readonly RunRow[]): RecentOutcomes {
 }
 
 /** Projects only source-owned Home data into the closed, ordered D13 response. */
-export async function projectHome(ports: HomeProjectionPorts): Promise<HomeResponse> {
+export async function projectHome(ports: HomeProjectionPorts, generatedAt = new Date().toISOString()): Promise<HomeResponse> {
   const [running, attention, inbox, schedules, outcomes] = await Promise.all([
     read(ports.runningNow), read(ports.attention), read(ports.inboxCount), read(ports.nextSchedules), read(ports.recentRuns),
   ]);
@@ -88,5 +88,5 @@ export async function projectHome(ports: HomeProjectionPorts): Promise<HomeRespo
     outcomes.ok ? outcomes.revision : 'unavailable:outcomes',
   ];
 
-  return { revision: `home:${revisions.join(':')}`, sections };
+  return { revision: `home:${revisions.join(':')}`, generatedAt, sections };
 }

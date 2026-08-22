@@ -28,6 +28,7 @@ export type HomeSections = readonly [
 
 export interface HomeResponse {
   revision: string;
+  generatedAt: string;
   sections: HomeSections;
 }
 

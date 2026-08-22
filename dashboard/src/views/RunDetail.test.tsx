@@ -59,6 +59,7 @@ function event(cursor: number, summary: string, stageRef: string | null): Operat
 const events = [event(1, 'research complete', 'stage-research'), event(2, 'drafting now', 'stage-write')];
 const outputs: OutputRef[] = [
   { kind: 'repository-file', label: 'Report', path: 'reports/release.md' },
+  { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123' },
   { kind: 'external-pr', label: 'Pull request', owner: 'openai', repository: 'kb', number: 42 },
 ];
 
@@ -174,8 +175,23 @@ describe('Dashboard v3 Run view', () => {
     const copyText = vi.fn(async () => undefined);
     render(unlocked(<RunDetail runRef="run-1" detail={detail()} events={events} outputs={outputs} copyText={copyText} />));
     expect(screen.queryByRole('button', { name: 'Copy Report link' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy Fixture value link' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Copy Pull request link' }));
     await waitFor(() => expect(copyText).toHaveBeenCalledWith('https://github.com/openai/kb/pull/42'));
+    expect(copyText.mock.calls.flat().join('\n')).not.toContain('ghp_fixture_secret_123');
+  });
+
+  it('falls back to detail outputs without copying a secret-looking output', async () => {
+    const copyText = vi.fn(async () => undefined);
+    render(unlocked(<RunDetail runRef="run-1" detail={detail({ outputs })} events={events} copyText={copyText} />));
+
+    expect(screen.getByRole('heading', { name: 'Output links' })).toBeTruthy();
+    expect(screen.getByText('Pull request')).toBeTruthy();
+    expect(screen.getByText('Fixture value')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Copy Fixture value link' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Pull request link' }));
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith('https://github.com/openai/kb/pull/42'));
+    expect(copyText.mock.calls.flat().join('\n')).not.toContain('ghp_fixture_secret_123');
   });
 
   it('refetches after a stop CAS conflict and retries with fresh version, generation, and key', async () => {

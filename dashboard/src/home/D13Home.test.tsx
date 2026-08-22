@@ -5,21 +5,23 @@ import type { HomeResponse } from '../../server/home/contracts.ts';
 import { D13Home } from './D13Home.tsx';
 import { renderWithTestSession } from '../test/session.tsx';
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const response: HomeResponse = {
   revision: 'home-1',
+  generatedAt: '2026-08-21T12:00:00.000Z',
   sections: [
     { state: 'ready', data: { section: 'running-now', runs: [{ runRef: 'run-1', title: 'Hygiene', owner: { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' }, lifecycle: 'running', streamKind: 'transcript', outcome: null, createdAt: '2026-08-21T10:00:00.000Z', completedAt: null }] } },
     { state: 'ready', data: { section: 'attention-counts', agents: 2, workflows: 1, inbox: 3 } },
     { state: 'ready', data: { section: 'next-schedules', occurrences: [{ scheduleId: 'schedule-1', scheduledFor: '2026-08-21T14:00:00.000Z', nextAt: '2026-08-21T14:00:00.000Z', owner: { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' } }] } },
-    { state: 'ready', data: { section: 'version', label: 'VM', sha: '64fb3d02', activatedAt: '2h ago' } },
+    { state: 'ready', data: { section: 'version', label: 'VM', sha: '64fb3d02', activatedAt: '2026-08-21T10:00:00.000Z' } },
     { state: 'ready', data: { section: 'recent-outcomes', outcomes: [{ runRef: 'run-0', title: 'Grader', completedAt: '2026-08-21T09:00:00.000Z', outcome: 'ok' }] } },
   ],
 };
 
 describe('D13Home', () => {
-  it('renders only D13 sections in order, including the exact version chip', async () => {
+  it('renders the exact version chip from the response reference time regardless of wall clock', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-08-22T12:00:00.000Z').getTime());
     await renderWithTestSession(<D13Home response={response} />);
 
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))

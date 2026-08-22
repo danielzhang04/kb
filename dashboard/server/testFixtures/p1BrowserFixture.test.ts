@@ -11,7 +11,9 @@ import {
 import { decodeEntityDetail, decodeEntityList } from '../../src/lib/entityClient.ts';
 import { decodeHomeResponse } from '../../src/lib/homeClient.ts';
 import { decodeScheduleCollection } from '../../src/lib/scheduleClient.ts';
-import { decodeOperationalEvent, getRun } from '../../src/control/controlClient.ts';
+import { decodeOperationalEvent, getRun, type OperationalEventDto } from '../../src/control/controlClient.ts';
+import { serializeRunEventFold } from '../../src/control/runEventRecords.ts';
+import { SYSTEM_ENTITY_GROUP_ID } from '../entities/contracts.ts';
 
 const fixtures: P1BrowserFixture[] = [];
 const roots: string[] = [];
@@ -126,7 +128,7 @@ describe('P1 browser fixture', () => {
     const entities = await startP1BrowserFixture({ scenario: 'p2-entity-groups-overlay' as never, distDir, port: 0 });
     fixtures.push(entities);
     const agents = decodeEntityList(await (await fetch(`${entities.origin}/api/agents`)).json());
-    expect(agents.groups.map((group) => group.id)).toEqual(['atlas-prep', 'faceless-youtube', 'kb-ops', 'system']);
+    expect(agents.groups.map((group) => group.id)).toEqual(['atlas-prep', 'faceless-youtube', 'kb-ops', SYSTEM_ENTITY_GROUP_ID]);
     const workflow = decodeEntityDetail(await (await fetch(`${entities.origin}/api/workflows/research-brief`)).json());
     expect(workflow.details.workflow?.stepDag.nodes.map((node) => node.stageRef)).toEqual(['research', 'write']);
 
@@ -168,14 +170,20 @@ describe('P1 browser fixture', () => {
     const resolvedDetail = await getRun('run-fixture', 'bearer', gateFetch);
     expect(resolvedDetail.humanRequests.find((request) => request.requestRef === 'request-ordinary'))
       .toMatchObject({ state: 'resolved', revision: 2, response: { decision: 'responded' } });
+    expect(resolvedDetail.humanRequests.filter((request) => request.state === 'open').map((request) => request.requestRef))
+      .toEqual(['request-t3']);
+    expect(await (await fetch(`${gates.origin}/api/attention`)).json()).toMatchObject({ agents: { 'fyt-checker': 1 } });
     const ceremony = await fetch(`${gates.origin}/api/control/human-requests/request-t3/respond`, { method: 'POST' });
     expect(ceremony.status).toBe(403);
     expect(await ceremony.json()).toEqual({ error: 'ceremony-unavailable' });
+    expect(await (await fetch(`${gates.origin}/api/attention`)).json()).toMatchObject({ agents: { 'fyt-checker': 1 } });
 
     const stream = await startP1BrowserFixture({ scenario: 'p2-stream-reconnect-goldens' as never, distDir, port: 0 });
     fixtures.push(stream);
-    const replay = await (await fetch(`${stream.origin}/api/control/runs/run-fixture/events?after=0&limit=250`)).json() as { items: unknown[] };
+    const replay = await (await fetch(`${stream.origin}/api/control/runs/run-fixture/events?after=0&limit=250`)).json() as { items: OperationalEventDto[] };
     expect(replay.items.length).toBeGreaterThan(2);
+    expect(replay.items.map((event) => event.summary).join('\n')).toContain('"provider":"future-cli"');
+    expect(replay.items.map((event) => event.summary).join('\n')).toContain('<b>future output</b>');
     const live = await fetch(`${stream.origin}/api/control/runs/run-fixture/events/stream?after=2`);
     expect(live.headers.get('content-type')).toContain('text/event-stream');
     const queryReconnect = await live.text();
@@ -184,6 +192,13 @@ describe('P1 browser fixture', () => {
     })).text();
     expect(headerReconnect).toBe(queryReconnect);
     expect(queryReconnect).not.toContain('id: 2\n');
+    expect(queryReconnect).toContain('<b>future output</b>');
+    const streamedEvents = queryReconnect.split('\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => JSON.parse(line.slice(6)) as OperationalEventDto);
+    expect(streamedEvents.map((event) => event.summary).join('\n')).toContain('"provider":"future-cli"');
+    expect(serializeRunEventFold(streamedEvents))
+      .toBe(serializeRunEventFold(replay.items.filter((event) => event.cursor > 2)));
 
     const schedule = await startP1BrowserFixture({ scenario: 'p2-schedule-cas-invalid' as never, distDir, port: 0 });
     fixtures.push(schedule);
@@ -245,6 +260,14 @@ describe('P1 browser fixture', () => {
 
     const actions = await startP1BrowserFixture({ scenario: 'p2-run-actions' as never, distDir, port: 0 });
     fixtures.push(actions);
+    const actionFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(new URL(String(input), actions.origin), init)) as typeof fetch;
+    const actionDetail = await getRun('run-fixture', 'bearer', actionFetch);
+    expect(actionDetail.outputs).toEqual([
+      { kind: 'repository-file', label: 'Built', path: 'output/p2-browser-report.md' },
+      { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123' },
+      { kind: 'external-pr', label: 'Review', owner: 'openai', repository: 'kb', number: 42 },
+    ]);
     const runAction = async (action: string, version: number, key: string) => {
       const response = await fetch(`${actions.origin}/api/control/runs/run-fixture/manager/${action}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },

@@ -9,7 +9,6 @@ export interface D13HomeProps {
   onOpenAttention?: (target: 'agents' | 'workflows' | 'inbox') => void;
   onOpenSchedule?: (owner: RunnableRef) => void;
   onRetry?: (target: D13RetryTarget) => void;
-  now?: () => Date;
 }
 
 function relativeTime(value: string, now: Date): string {
@@ -35,7 +34,7 @@ function Unavailable({ label, reason, retryTarget, onRetry }: {
 }
 
 /** Presentational D13 Home. The shell continues to own fetching and navigation wiring. */
-export function D13Home({ response, onOpenRun, onOpenAttention, onOpenSchedule, onRetry, now = () => new Date() }: D13HomeProps): React.JSX.Element {
+export function D13Home({ response, onOpenRun, onOpenAttention, onOpenSchedule, onRetry }: D13HomeProps): React.JSX.Element {
   const [running, attention, schedules, version, outcomes] = response.sections;
   return (
     <main aria-label="Home" className="d13-home">
@@ -57,7 +56,7 @@ export function D13Home({ response, onOpenRun, onOpenAttention, onOpenSchedule, 
         </section>
       )}
       {version.state === 'unavailable' ? <Unavailable label="Version" reason={version.reason} retryTarget="version" onRetry={onRetry} /> : (
-        <section aria-label="Version" className="d13-home__section"><h2>Version</h2><span>{`${version.data.label} \u00b7 ${version.data.sha.slice(0, 8)} \u00b7 ${relativeTime(version.data.activatedAt, now())}`}</span></section>
+        <section aria-label="Version" className="d13-home__section"><h2>Version</h2><span>{`${version.data.label} \u00b7 ${version.data.sha.slice(0, 8)} \u00b7 ${relativeTime(version.data.activatedAt, new Date(response.generatedAt))}`}</span></section>
       )}
       {outcomes.state === 'unavailable' ? <Unavailable label="Recent outcomes" reason={outcomes.reason} retryTarget="recent-outcomes" onRetry={onRetry} /> : (
         <section aria-label="Recent outcomes" className="d13-home__section"><h2>Recent outcomes</h2>

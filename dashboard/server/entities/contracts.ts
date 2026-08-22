@@ -2,6 +2,8 @@ import type { EntitySummary, OutputRef, RunRow, RunnableRef, ScheduleOccurrence 
 
 export type { EntitySummary } from '../control/p2Contracts.ts';
 
+export const SYSTEM_ENTITY_GROUP_ID = 'System' as const;
+
 /** Client-supplied identifier: declaration provenance is never trusted from this shape. */
 export type RunnableSelector = { type: 'agent' | 'workflow'; id: string };
 

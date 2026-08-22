@@ -1,4 +1,4 @@
-import type { EntityBrief, EntityGroup, EntityList } from './contracts.ts';
+import { SYSTEM_ENTITY_GROUP_ID, type EntityBrief, type EntityGroup, type EntityList } from './contracts.ts';
 import type { EntityStatus, EntitySummary, OutputRef, RunRow, RunnableRef, ScheduleOccurrence } from '../control/p2Contracts.ts';
 import type { HostKind } from '../control/p2Contracts.ts';
 import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
@@ -122,7 +122,7 @@ export function projectEntityBrief(input: EntityBriefProjectionInput): EntityBri
 }
 
 function groupFor(kind: 'agent' | 'workflow', input: EntityGroupProjectionInput): string {
-  if (kind === 'agent' && input.group === 'system') return 'System';
+  if (kind === 'agent' && input.group === 'system') return SYSTEM_ENTITY_GROUP_ID;
   if (kind === 'workflow' && input.ref.type === 'workflow') return input.ref.project;
   const normalized = input.projects.map((project) => project.trim().toLowerCase());
   if (normalized.some((project) => !/^[a-z0-9][a-z0-9-]*$/.test(project))) throw new Error('invalid-project');
@@ -132,7 +132,7 @@ function groupFor(kind: 'agent' | 'workflow', input: EntityGroupProjectionInput)
 }
 
 function groupLabel(group: string): string {
-  return group === 'System' ? group : humanizeEntityId(group);
+  return group === SYSTEM_ENTITY_GROUP_ID ? group : humanizeEntityId(group);
 }
 
 export function projectEntityList(revision: string, kind: 'agent' | 'workflow', inputs: EntityGroupProjectionInput[]): EntityList {
@@ -145,11 +145,11 @@ export function projectEntityList(revision: string, kind: 'agent' | 'workflow', 
     byGroup.set(group, items);
   }
   const groups: EntityGroup[] = [...byGroup.entries()]
-    .sort(([left], [right]) => left === 'System' ? 1 : right === 'System' ? -1 : left.localeCompare(right))
+    .sort(([left], [right]) => left === SYSTEM_ENTITY_GROUP_ID ? 1 : right === SYSTEM_ENTITY_GROUP_ID ? -1 : left.localeCompare(right))
     .map(([id, items]) => ({
       id,
       label: groupLabel(id),
-      collapsed: id === 'System',
+      collapsed: id === SYSTEM_ENTITY_GROUP_ID,
       items: items.sort((left, right) => left.humanName.localeCompare(right.humanName) || left.ref.id.localeCompare(right.ref.id)),
     }));
   return { revision, groups, items: groups.flatMap((group) => group.items) };

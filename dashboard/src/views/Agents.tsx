@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { EntityDetail as EntityDetailDto, EntityGroup } from '../../server/entities/contracts.ts';
+import { SYSTEM_ENTITY_GROUP_ID, type EntityDetail as EntityDetailDto, type EntityGroup } from '../../server/entities/contracts.ts';
 import { EntityCard } from '../entity/EntityCard';
 import { EntityDetail } from '../entity/EntityDetail';
 import { EntityBuilderForm } from '../entity/EntityBuilderForm';
@@ -59,7 +59,7 @@ export function Agents({
   const [localOpen, setLocalOpen] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('agents'));
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(['System']));
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set([SYSTEM_ENTITY_GROUP_ID]));
   const [launching, setLaunching] = useState(false);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -84,7 +84,7 @@ export function Agents({
       ...group,
       items: group.items.filter((item) => (rosterFilter !== 'attention' || item.gatedRunCount > 0)
         && (item.humanName.toLowerCase().includes(needle) || item.ref.id.toLowerCase().includes(needle))),
-    })).filter((group) => group.items.length > 0);
+    })).filter((group) => group.items.length > 0).sort((left, right) => Number(left.id === SYSTEM_ENTITY_GROUP_ID) - Number(right.id === SYSTEM_ENTITY_GROUP_ID));
   }, [list, rosterFilter, search]);
 
   const open = (id: string): void => {

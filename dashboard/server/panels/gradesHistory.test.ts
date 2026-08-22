@@ -1,15 +1,12 @@
-import { mkdtempSync, mkdirSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import Fastify from 'fastify';
 import {
   buildGradesHistory,
   GRADES_HISTORY_LIMIT,
   GRADES_HISTORY_MAX_SHARD_BYTES,
   GRADES_HISTORY_SHARD_LIMIT,
-  registerGradesHistoryPanel,
-  SAFE_AGENT_ID,
   selectGradesHistoryShards,
 } from './gradesHistory.ts';
 
@@ -141,22 +138,4 @@ describe('grades history panel server projection', () => {
     expect(buildGradesHistory(root, 'codex-worker').rows.map((row) => row.cardId)).toEqual(['trusted']);
   });
 
-  it('rejects unsafe or missing query ids and leaves the grade shard untouched', async () => {
-    const root = repo([[grade()]]);
-    const shard = join(root, 'ledgers', 'grades', 'inspector-2026-08-01.tsv');
-    const before = statSync(shard).mtimeMs;
-    const app = Fastify({ logger: false });
-    registerGradesHistoryPanel(app, root);
-    await app.ready();
-    try {
-      expect((await app.inject({ method: 'GET', url: '/api/panels/grades-history?agent=codex-worker' })).statusCode).toBe(200);
-      expect((await app.inject({ method: 'GET', url: '/api/panels/grades-history?agent=../../ledgers' })).json()).toEqual({ error: 'invalid-agent' });
-      expect((await app.inject({ method: 'GET', url: '/api/panels/grades-history' })).statusCode).toBe(400);
-    } finally {
-      await app.close();
-    }
-    expect(statSync(shard).mtimeMs).toBe(before);
-    expect(SAFE_AGENT_ID.test('codex-worker')).toBe(true);
-    expect(SAFE_AGENT_ID.test('codex_worker')).toBe(false);
-  });
 });

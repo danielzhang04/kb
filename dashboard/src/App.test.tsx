@@ -250,6 +250,7 @@ describe('App P1 shell', () => {
     const rawHome = 'publish_daily-brief';
     const homeResponse: HomeResponse = {
       revision: 'home-humanized',
+      generatedAt: '2026-08-22T00:00:00.000Z',
       sections: [
         { state: 'ready', data: { section: 'running-now', runs: [{
           runRef: 'run-home', title: 'Publish Daily Brief', owner: { type: 'agent', id: rawHome, sourcePath: `agents/${rawHome}.md` },
