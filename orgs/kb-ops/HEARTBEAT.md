@@ -8,6 +8,7 @@ cadences:
   - name: self-lint-report
     schedule: daily
     tier: desktop
+    agent: hygiene
     risk-tier: T1
     prompt: |
       1. Read orgs/kb-ops/STATE.md and raw/ for anything new to file.

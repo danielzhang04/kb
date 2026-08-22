@@ -198,8 +198,8 @@ phase agent as a rework request, never as a silent edit you make yourself.
 Each stage is ONE queue card filed per `governance/card-schema.md` on the `ops` branch. Copy the
 workflow definition's stage row into the card frontmatter: `owner: dashboard-engine`,
 `execution-controller: dashboard`, `state: inbox`, plus its `project`, `action`, `target`, and
-`risk-tier`, and `profile: <the stage's workflow profile id>` from the workflow definition; place the
-stage's `workOrder` verbatim under `## Work order`. The mechanics live in
+`risk-tier`, `workflow-def: video-run`, and `profile: <the stage's workflow profile id>` from the
+workflow definition; place the stage's `workOrder` verbatim under `## Work order`. The mechanics live in
 `governance/card-schema.md` — do not improvise a second card format here.
 
 File cards in dependency order, one at a time, and watch the run on the platform: the trigger card

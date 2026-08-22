@@ -12,6 +12,7 @@ Pins (plan `docs/superpowers/plans/2026-08-18-agent-infra.md` §Task 7, spec §5
   * the six live cadence blocks stay byte-unchanged.
 """
 import datetime as dt
+import json
 import subprocess
 from pathlib import Path
 
@@ -418,24 +419,24 @@ LIVE_HEARTBEATS = ("HEARTBEAT.md", "orgs/atlas-prep/HEARTBEAT.md",
                    "orgs/kb-ops/HEARTBEAT.md", "orgs/faceless-youtube/HEARTBEAT.md")
 
 
-def test_six_live_blocks_byte_unchanged():
-    diff = subprocess.run(["git", "diff", "--", *LIVE_HEARTBEATS],
-                          cwd=REPO_ROOT, capture_output=True, text=True).stdout
-    assert diff == ""
-
-
-def test_six_live_cadences_parse_unchanged_and_bare_weekly_stays_dead():
+def test_thirteen_live_cadences_parse_with_explicit_declared_owners():
     live = [(project, c)
             for project, hb in dispatch._heartbeats(REPO_ROOT)
             for c in dispatch.parse_heartbeat(hb)]
-    assert len(live) == 6
+    assert len(live) == 13
     assert {c["name"] for _, c in live} == {
         "nightly-review", "weekly-audit", "grades-reconcile", "branch-hygiene",
-        "research-draft-gate", "self-lint-report"}
-    # None of the live blocks is cron today: every one still parses as legacy.
-    for _, c in live:
-        assert dispatch.parse_cron(c.get("schedule", "")) is None
+        "research-draft-gate", "self-lint-report", "context-lifecycle", "lessons-miner",
+        "grader", "model-audit", "hygiene", "learnings-implementer", "system-sweeper"}
     by_name = {c["name"]: c for _, c in live}
+    assert {name: cadence.get("agent") for name, cadence in by_name.items()} == {
+        "nightly-review": "dispatcher-cloud", "weekly-audit": "dispatcher-cloud",
+        "grades-reconcile": "grader", "branch-hygiene": "hygiene",
+        "research-draft-gate": "dispatcher-cloud", "self-lint-report": "hygiene",
+        "context-lifecycle": "context-lifecycle", "lessons-miner": "lessons-miner",
+        "grader": "grader", "model-audit": "model-audit", "hygiene": "hygiene",
+        "learnings-implementer": "learnings-implementer", "system-sweeper": "system-sweeper",
+    }
     sat, sun, tue = dt.date(2026, 8, 22), dt.date(2026, 8, 23), dt.date(2026, 8, 18)
     assert due_bool(by_name["nightly-review"], tue) is True
     assert due_bool(by_name["weekly-audit"], sat) is True
@@ -443,6 +444,28 @@ def test_six_live_cadences_parse_unchanged_and_bare_weekly_stays_dead():
     assert due_bool(by_name["grades-reconcile"], sat) is True
     assert due_bool(by_name["branch-hygiene"], sun) is True
     assert due_bool(by_name["self-lint-report"], tue) is True
+    assert {name: by_name[name]["schedule"] for name in (
+        "context-lifecycle", "lessons-miner", "grader", "model-audit",
+        "hygiene", "learnings-implementer", "system-sweeper",
+    )} == {
+        "context-lifecycle": "15 1 * * *",
+        "lessons-miner": "45 1 * * *",
+        "grader": "15 2 * * *",
+        "model-audit": "45 2 * * 1",
+        "hygiene": "15 3 * * 0",
+        "learnings-implementer": "30 3 * * *",
+        "system-sweeper": "*/15 * * * *",
+    }
     # bare `schedule: weekly` (orgs/atlas-prep) stays NON-firing on every day
     assert not any(due_bool(by_name["research-draft-gate"], sat + dt.timedelta(days=n))
                    for n in range(7))
+
+
+def test_shared_eastern_clock_vectors_pin_latest_and_next_occurrences():
+    vectors = json.loads((REPO_ROOT / "tests" / "fixtures" / "schedule-clock-vectors.json").read_text(encoding="utf-8"))
+    for vector in vectors:
+        now = dt.datetime.fromisoformat(vector["now"])
+        latest = dispatch.latest_occurrence(dispatch.parse_cron(vector["cron"]), now)
+        next_fire = dispatch.next_occurrence(dispatch.parse_cron(vector["cron"]), now)
+        assert (latest.astimezone(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z") if latest else None) == vector["latest"], vector["id"]
+        assert next_fire.astimezone(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z") == vector["next"], vector["id"]

@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -1102,3 +1103,15 @@ def test_release_does_not_thread_into_a_non_depends_on_card(tmp_path):
     reread = cards.parse(plain.path)
     assert reread.meta["state"] == "inbox"
     assert reread.body == plain.body
+
+
+def test_cards_render_is_the_exact_byte_source_used_by_save(tmp_path):
+    import cards
+
+    card = cards.new_card(project="kb", action="cadence:hygiene", target="agents/hygiene.md",
+                          risk_tier="T1", body="## Work order\n\nRun Hygiene.\n")
+    card.meta["id"] = "01234567-89abcdef"
+    expected = cards.render(card)
+    path = cards.save(card, tmp_path / "queue")
+    assert path.read_bytes() == expected
+    assert hashlib.sha256(expected).hexdigest() == hashlib.sha256(path.read_bytes()).hexdigest()

@@ -57,6 +57,7 @@ export interface ScheduleOccurrenceClaim {
 
 export interface ClaimScheduleOccurrenceInput {
   occurrence: ScheduleOccurrence;
+  expectedVersion: number;
   idempotencyKey: string;
 }
 

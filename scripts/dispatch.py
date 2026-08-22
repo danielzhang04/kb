@@ -6,8 +6,10 @@ The repo is the source of truth for cadences; Routines/Task Scheduler are just t
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime
 import fnmatch
+import hashlib
 import re
 import sys
 from dataclasses import dataclass
@@ -19,6 +21,65 @@ import cards
 import ledger
 import promotion
 import routing
+
+_ZERO = datetime.timedelta(0)
+_HOUR = datetime.timedelta(hours=1)
+
+
+def _first_sunday_on_or_after(value: datetime.datetime) -> datetime.datetime:
+    return value + datetime.timedelta(days=(6 - value.weekday()) % 7)
+
+
+def _eastern_dst_range(year: int) -> tuple[datetime.datetime, datetime.datetime]:
+    """US Eastern DST boundaries under the post-2007 rule used by the platform."""
+    start = _first_sunday_on_or_after(datetime.datetime(year, 3, 8, 2))
+    end = _first_sunday_on_or_after(datetime.datetime(year, 11, 1, 2))
+    return start, end
+
+
+class _EasternTimezone(datetime.tzinfo):
+    """Dependency-free America/New_York clock, including gaps and repeated hours.
+
+    Windows Python does not ship the IANA database and the dispatcher must not
+    silently fall back to the host timezone. kb supports current-era schedules,
+    whose US Eastern rules have been stable since 2007.
+    """
+
+    def tzname(self, value: datetime.datetime | None) -> str:
+        return "EDT" if self.dst(value) else "EST"
+
+    def utcoffset(self, value: datetime.datetime | None) -> datetime.timedelta:
+        return datetime.timedelta(hours=-5) + self.dst(value)
+
+    def dst(self, value: datetime.datetime | None) -> datetime.timedelta:
+        if value is None:
+            return _ZERO
+        start, end = _eastern_dst_range(value.year)
+        wall = value.replace(tzinfo=None)
+        if start + _HOUR <= wall < end - _HOUR:
+            return _HOUR
+        if end - _HOUR <= wall < end:
+            return _ZERO if value.fold else _HOUR
+        if start <= wall < start + _HOUR:
+            return _HOUR if value.fold else _ZERO
+        return _ZERO
+
+    def fromutc(self, value: datetime.datetime) -> datetime.datetime:
+        if value.tzinfo is not self:
+            raise ValueError("fromutc requires the Eastern timezone")
+        start, end = _eastern_dst_range(value.year)
+        standard = value.replace(tzinfo=None) + datetime.timedelta(hours=-5)
+        daylight = standard + _HOUR
+        if end <= daylight < end + _HOUR:
+            return standard.replace(tzinfo=self, fold=1)
+        if standard < start or daylight >= end:
+            return standard.replace(tzinfo=self)
+        if start <= standard < end - _HOUR:
+            return daylight.replace(tzinfo=self)
+        return standard.replace(tzinfo=self)
+
+
+OPERATOR_TIMEZONE = _EasternTimezone()
 
 WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 FENCE = re.compile(r"```yaml\s*\n(.*?)\n```", re.DOTALL)
@@ -648,6 +709,8 @@ def cron_matches(spec: CronSpec | None, when: datetime.datetime) -> bool:
     """True iff `when` (to the minute, local time) is an occurrence of `spec`."""
     if spec is None:
         return False
+    if when.tzinfo is not None:
+        when = when.astimezone(OPERATOR_TIMEZONE)
     return (when.minute in spec.minutes and when.hour in spec.hours
             and _cron_day_matches(spec, when.date()))
 
@@ -659,7 +722,24 @@ def latest_occurrence(spec: CronSpec | None, now: datetime.datetime) -> datetime
     never replays past days, so an occurrence that did not happen today simply
     never happened.
     """
-    if spec is None or not _cron_day_matches(spec, now.date()):
+    if spec is None:
+        return None
+    if now.tzinfo is not None:
+        eastern = now.astimezone(OPERATOR_TIMEZONE).replace(second=0, microsecond=0)
+        if not _cron_day_matches(spec, eastern.date()):
+            return None
+        # Walk real elapsed minutes, not wall-clock replacements. This makes a
+        # nonexistent spring-forward hour non-firing and distinguishes both
+        # fall-back occurrences while retaining the same-day skip-not-replay rule.
+        for offset in range(27 * 60):
+            candidate = (eastern.astimezone(datetime.timezone.utc)
+                         - datetime.timedelta(minutes=offset)).astimezone(OPERATOR_TIMEZONE)
+            if candidate.date() != eastern.date():
+                break
+            if cron_matches(spec, candidate):
+                return candidate
+        return None
+    if not _cron_day_matches(spec, now.date()):
         return None
     for hour in sorted(spec.hours, reverse=True):
         if hour > now.hour:
@@ -668,6 +748,30 @@ def latest_occurrence(spec: CronSpec | None, now: datetime.datetime) -> datetime
             if hour == now.hour and minute > now.minute:
                 continue
             return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return None
+
+
+def next_occurrence(spec: CronSpec | None, now: datetime.datetime) -> datetime.datetime | None:
+    """First occurrence strictly after ``now`` for display/vector parity.
+
+    Dispatch never calls this helper to decide due work; ``latest_occurrence``
+    remains the firing oracle. Aware inputs walk real minutes in Eastern time so
+    DST gaps and folds match the TypeScript preview vectors.
+    """
+    if spec is None:
+        return None
+    if now.tzinfo is not None:
+        start = now.astimezone(datetime.timezone.utc).replace(second=0, microsecond=0)
+        for offset in range(1, 370 * 24 * 60 + 1):
+            candidate = (start + datetime.timedelta(minutes=offset)).astimezone(OPERATOR_TIMEZONE)
+            if cron_matches(spec, candidate):
+                return candidate
+        return None
+    start = now.replace(second=0, microsecond=0)
+    for offset in range(1, 370 * 24 * 60 + 1):
+        candidate = start + datetime.timedelta(minutes=offset)
+        if cron_matches(spec, candidate):
+            return candidate
     return None
 
 
@@ -696,10 +800,11 @@ def due(cadence: dict, today: datetime.date, repo_root: Path | None = None,
     schedule = cadence.get("schedule", "")
     spec = parse_cron(schedule)
     if spec is not None:
-        when = now or datetime.datetime.now()
-        if when.date() != today:
+        when = now or datetime.datetime.now(OPERATOR_TIMEZONE)
+        operator_when = when.astimezone(OPERATOR_TIMEZONE) if when.tzinfo is not None else when
+        if operator_when.date() != today:
             return False
-        return latest_occurrence(spec, when) is not None
+        return latest_occurrence(spec, operator_when) is not None
     if schedule == "daily":
         return True
     if schedule.startswith("weekly:"):
@@ -724,11 +829,12 @@ def _heartbeats(repo_root: Path):
 def run(repo_root: Path, tier: str, agent_id: str,
         today: datetime.date | None = None, session_id: str | None = None,
         now: datetime.datetime | None = None) -> list[Path]:
-    today = today or datetime.date.today()
     # Task 7: one clock reading per run, shared by due()'s cron branch, the
     # occurrence dedup key and the `dispatched_at` stamp, so a run that straddles
     # a minute boundary cannot fire for one occurrence and record another.
-    now = now or datetime.datetime.now()
+    now = now or datetime.datetime.now(OPERATOR_TIMEZONE)
+    operator_now = now.astimezone(OPERATOR_TIMEZONE) if now.tzinfo is not None else now
+    today = today or operator_now.date()
     # ledger.append shards by wall-clock day (ledger._shard); read the same shard so
     # idempotency holds even when `today` is injected for scheduling (tests, backfill).
     ledger_day = datetime.date.today().isoformat()
@@ -947,6 +1053,160 @@ def run(repo_root: Path, tier: str, agent_id: str,
                     # self-execution gets stamped here.
                     emitted.append(cards.save(sibling, Path(repo_root) / "queue"))
     return emitted
+
+
+class ScheduleDispatchError(RuntimeError):
+    pass
+
+
+def _occurrence_card_id(schedule_id: str, scheduled_for: str) -> str:
+    digest = hashlib.sha256(
+        f"schedule-card\0{schedule_id}\0{scheduled_for}".encode("utf-8")
+    ).hexdigest()
+    return f"{digest[:8]}-{digest[8:16]}"
+
+
+def _claim_card(receipt: dict, schedule_id: str, scheduled_for: str) -> cards.Card:
+    if (receipt.get("scheduleId") != schedule_id
+            or receipt.get("scheduledFor") != scheduled_for
+            or receipt.get("phase") not in ("claimed", "card-saved", "ledger-appended")):
+        raise ScheduleDispatchError("schedule-claim-receipt-invalid")
+    encoded = receipt.get("card")
+    if not isinstance(encoded, dict) or not isinstance(encoded.get("meta"), dict) or not isinstance(encoded.get("body"), str):
+        raise ScheduleDispatchError("schedule-claim-card-invalid")
+    card = cards.Card(meta=dict(encoded["meta"]), body=encoded["body"])
+    if card.meta.get("id") != _occurrence_card_id(schedule_id, scheduled_for):
+        raise ScheduleDispatchError("schedule-card-id-conflict")
+    payload = cards.render(card)
+    if receipt.get("cardBytesSha256") != hashlib.sha256(payload).hexdigest():
+        raise ScheduleDispatchError("schedule-card-digest-conflict")
+    return card
+
+
+def _schedule_ledger_row(schedule_id: str, scheduled_for: str,
+                         card_id: str) -> dict:
+    return {
+        "date": datetime.date.today().isoformat(),
+        "cadence": f"schedule:{schedule_id}",
+        "project": "kb",
+        "card": card_id,
+        "schedule_id": schedule_id,
+        "scheduled_for": scheduled_for,
+    }
+
+
+def _schedule_occurrence_ledger_rows(repo_root: Path, schedule_id: str,
+                                     scheduled_for: str) -> list[dict]:
+    """Find an occurrence across every dispatch shard so midnight replay is safe."""
+    directory = Path(repo_root) / "ledgers" / "dispatch"
+    if not directory.exists():
+        return []
+    matches = []
+    for shard in sorted(directory.glob("*.tsv")):
+        try:
+            with shard.open(encoding="utf-8", newline="") as stream:
+                for row in csv.DictReader(stream, delimiter="\t"):
+                    if (row.get("schedule_id") == schedule_id
+                            and row.get("scheduled_for") == scheduled_for):
+                        matches.append(row)
+        except (OSError, csv.Error) as error:
+            raise ScheduleDispatchError("schedule-ledger-read-failed") from error
+    return matches
+
+
+def dispatch_claimed_occurrence(repo_root: Path, client, *, schedule_id: str,
+                                scheduled_for: str, next_at: str,
+                                expected_version: int, agent_id: str) -> dict:
+    """Replay-safe claim → exact card → exact ledger state machine.
+
+    ``client`` is the Unix client port. The daemon owns claim/phase CAS; this
+    function owns filesystem/ledger effects and compares them byte-for-byte on
+    every replay before advancing a receipt.
+    """
+    repo_root = Path(repo_root)
+    claim_key = f"schedule-claim:{schedule_id}:{scheduled_for}"
+    receipt = client.claim(schedule_id=schedule_id, scheduled_for=scheduled_for,
+                           next_at=next_at, expected_version=expected_version,
+                           idempotency_key=claim_key)
+    card = _claim_card(receipt, schedule_id, scheduled_for)
+    payload = cards.render(card)
+    card_path = (repo_root / "queue" / cards.STATE_DIR[card.meta["state"]]
+                 / f"{card.meta['id']}.md")
+
+    if receipt["phase"] == "claimed":
+        if card_path.exists():
+            if card_path.read_bytes() != payload:
+                raise ScheduleDispatchError("schedule-card-bytes-conflict")
+        else:
+            cards.save(card, repo_root / "queue")
+        receipt = client.advance(
+            schedule_id=schedule_id, scheduled_for=scheduled_for,
+            next_at=next_at,
+            phase="card-saved", idempotency_key=f"{claim_key}:card-saved",
+        )
+        _claim_card(receipt, schedule_id, scheduled_for)
+
+    if receipt["phase"] == "card-saved":
+        matches = _schedule_occurrence_ledger_rows(repo_root, schedule_id, scheduled_for)
+        expected = _schedule_ledger_row(schedule_id, scheduled_for, card.meta["id"])
+        if matches:
+            stable = {key: value for key, value in expected.items() if key != "date"}
+            if len(matches) != 1 or any(matches[0].get(key) != str(value)
+                                        for key, value in stable.items()):
+                raise ScheduleDispatchError("schedule-ledger-row-conflict")
+        else:
+            ledger.append(repo_root, "dispatch", agent_id, expected)
+        receipt = client.advance(
+            schedule_id=schedule_id, scheduled_for=scheduled_for,
+            next_at=next_at,
+            phase="ledger-appended", idempotency_key=f"{claim_key}:ledger-appended",
+        )
+        _claim_card(receipt, schedule_id, scheduled_for)
+
+    return {
+        "phase": receipt["phase"],
+        "card_id": card.meta["id"],
+        "card_bytes_sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def dispatch_stored_schedules(repo_root: Path, client, agent_id: str,
+                              now: datetime.datetime | None = None) -> list[dict]:
+    """Fire due raw store rows through the claim protocol without a second clock.
+
+    This is an unregistered W4 seam. W6 wires it after the live socket/store
+    route exists; the existing HEARTBEAT caller remains untouched here.
+    """
+    now = now or datetime.datetime.now(OPERATOR_TIMEZONE)
+    eastern = now.astimezone(OPERATOR_TIMEZONE) if now.tzinfo else now
+    snapshot = client.snapshot()
+    results = []
+    for schedule in snapshot.get("schedules", []):
+        if not isinstance(schedule, dict) or schedule.get("armed") is not True:
+            continue
+        cadence = schedule.get("cadence")
+        source = cadence.get("source") if isinstance(cadence, dict) else None
+        schedule_id = schedule.get("id")
+        expected_version = schedule.get("version")
+        if (not isinstance(source, str) or not isinstance(schedule_id, str)
+                or isinstance(expected_version, bool) or not isinstance(expected_version, int)
+                or expected_version < 1):
+            raise ScheduleDispatchError("schedule-snapshot-invalid")
+        spec = parse_cron(source)
+        occurrence = latest_occurrence(spec, eastern) if spec else None
+        if occurrence is None:
+            continue
+        next_fire = next_occurrence(spec, occurrence)
+        if next_fire is None:
+            raise ScheduleDispatchError("schedule-next-occurrence-unavailable")
+        # The socket adapter binds nextAt during claim; the fake W4 port only
+        # needs the immutable occurrence identity for crash-replay tests.
+        results.append(dispatch_claimed_occurrence(
+            repo_root, client, schedule_id=schedule_id,
+            scheduled_for=occurrence.isoformat(), next_at=next_fire.isoformat(),
+            expected_version=expected_version, agent_id=agent_id,
+        ))
+    return results
 
 
 def main() -> int:

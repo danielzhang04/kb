@@ -174,14 +174,22 @@ def parse(path: Path) -> Card:
     return parse_text(Path(path).read_text(encoding="utf-8"), Path(path))
 
 
-def save(card: Card, queue_root: Path) -> Path:
+def render(card: Card) -> bytes:
+    """Canonical UTF-8 bytes for a legal card.
+
+    Occurrence claims digest this exact payload before any filesystem write;
+    ``save`` delegates here so replay can compare bytes without maintaining a
+    second renderer.
+    """
     _validate(card.meta)
+    fm = yaml.safe_dump(card.meta, sort_keys=False, allow_unicode=True)
+    return f"---\n{fm}---\n\n{card.body}".encode("utf-8")
+
+
+def save(card: Card, queue_root: Path) -> Path:
     dest = Path(queue_root) / STATE_DIR[card.meta["state"]] / f"{card.meta['id']}.md"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    fm = yaml.safe_dump(card.meta, sort_keys=False, allow_unicode=True)
-    # newline="\n" pins the canonical byte form on every platform; the default would
-    # translate to CRLF on Windows and break byte-for-byte origin-blob validation.
-    dest.write_text(f"---\n{fm}---\n\n{card.body}", encoding="utf-8", newline="\n")
+    dest.write_bytes(render(card))
     card.path = dest
     return dest
 

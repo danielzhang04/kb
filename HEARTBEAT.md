@@ -29,6 +29,7 @@ cadences:
   - name: grades-reconcile
     schedule: weekly:sat
     tier: desktop
+    agent: grader
     risk-tier: T1
     prompt: |
       1. Run: py -3 scripts/preamble.py  — if it fails, stop and write a wake-me card
@@ -44,6 +45,7 @@ cadences:
   - name: branch-hygiene
     schedule: weekly:sun
     tier: desktop
+    agent: hygiene
     risk-tier: T1
     prompt: |
       1. Run: py -3 scripts/preamble.py  — if it fails, stop and write a wake-me card
@@ -59,4 +61,67 @@ cadences:
       Tier is desktop, not cloud, because worktrees exist only on the desktop machine.
       This cadence deletes a branch ONLY when git proves every one of its commits is
       already reachable from origin/main; unmerged branches are reported, never touched.
+  - name: context-lifecycle
+    schedule: "15 1 * * *"
+    tier: desktop
+    agent: context-lifecycle
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Inspect bounded context-lifecycle evidence and produce only the declaration's
+      reviewable report/proposals. Do not arm, merge, or edit a proposed target.
+  - name: lessons-miner
+    schedule: "45 1 * * *"
+    tier: desktop
+    agent: lessons-miner
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Mine the bounded durable sources named by the Lessons Miner declaration and emit
+      at most its per-fire proposal cap. Evidence stays inert; never edit a target.
+  - name: grader
+    schedule: "15 2 * * *"
+    tier: desktop
+    agent: grader
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Reconcile only pinned, independently inspected grading evidence within the
+      declaration's bounds. Never grade this run or bless an eval manifest.
+  - name: model-audit
+    schedule: "45 2 * * 1"
+    tier: desktop
+    agent: model-audit
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Audit bounded model-routing observations and produce a reviewable report. Do not
+      change governance, routing, model assignments, or live cards.
+  - name: hygiene
+    schedule: "15 3 * * 0"
+    tier: desktop
+    agent: hygiene
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Inspect bounded repository-hygiene evidence and report safe proposals. Never
+      delete, merge, rewrite history, or mutate a proposed target.
+  - name: learnings-implementer
+    schedule: "30 3 * * *"
+    tier: desktop
+    agent: learnings-implementer
+    armed: true
+    risk-tier: T2
+    prompt: |
+      Process only the bounded proposed-learning batch allowed by the declaration and
+      stop at the reviewed branch/publisher boundary. Never merge or write main.
+  - name: system-sweeper
+    schedule: "*/15 * * * *"
+    tier: cloud
+    agent: system-sweeper
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Read the bounded reconciliation sources and emit intents only. Never mutate cards,
+      Inbox state, HEARTBEAT files, git, schedules, or ledgers directly.
 ```

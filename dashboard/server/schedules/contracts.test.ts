@@ -1,5 +1,12 @@
 import { describe, expectTypeOf, it } from 'vitest';
-import type { CadenceInput, CreateScheduleInput, Schedule, ScheduleStorePort, SetScheduleArmedInput } from './contracts.ts';
+import type {
+  CadenceInput,
+  ClaimScheduleOccurrenceInput,
+  CreateScheduleInput,
+  Schedule,
+  ScheduleStorePort,
+  SetScheduleArmedInput,
+} from './contracts.ts';
 
 describe('P2 schedule contracts', () => {
   it('keeps the public schedule and mutation DTOs closed', () => {
@@ -10,6 +17,11 @@ describe('P2 schedule contracts', () => {
     >();
     expectTypeOf<CreateScheduleInput>().toMatchTypeOf<{ owner: { type: 'agent' | 'workflow'; id: string }; expectedCollectionRevision: number; idempotencyKey: string }>();
     expectTypeOf<SetScheduleArmedInput>().toMatchTypeOf<{ expectedVersion: number; idempotencyKey: string; armed: boolean }>();
+    expectTypeOf<ClaimScheduleOccurrenceInput>().toMatchTypeOf<{
+      occurrence: { scheduleId: string; scheduledFor: string; nextAt: string };
+      expectedVersion: number;
+      idempotencyKey: string;
+    }>();
   });
 
   it('exposes the complete atomic schedule port', () => {
