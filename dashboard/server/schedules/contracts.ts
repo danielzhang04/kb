@@ -85,7 +85,8 @@ export interface ScheduleOccurrenceClaim {
 }
 
 export interface ClaimScheduleOccurrenceInput {
-  occurrence: ScheduleOccurrence;
+  /** The dispatcher supplies clock identity only; the server reattaches the trusted stored owner. */
+  occurrence: Omit<ScheduleOccurrence, 'owner'>;
   expectedVersion: number;
   idempotencyKey: string;
 }

@@ -21,6 +21,21 @@ const detail: EntityDetail = {
 };
 
 describe('Agents P2 roster', () => {
+  it('retains only summaries with gated runs for the closed attention filter', async () => {
+    const gated = { ...summary, ref: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const }, humanName: 'Grader', gatedRunCount: 2 };
+    const filteredList: EntityList = {
+      revision: 'agents-attention',
+      groups: [{ id: 'fyt', label: 'FYT', collapsed: false, items: [summary, gated] }],
+      items: [summary, gated],
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(filteredList), { status: 200 })));
+
+    await renderWithTestSession(<Agents filter="attention" />);
+
+    expect((await screen.findAllByTestId('entity-card')).map((card) => card.textContent)).toEqual([expect.stringContaining('Grader')]);
+    expect(screen.queryByText('FYT Checker')).toBeNull();
+  });
+
   it('uses one EntitySummary request, keeps the roster mounted, and opens one EntityDetail request', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? detail : list), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

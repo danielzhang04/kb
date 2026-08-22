@@ -24,6 +24,26 @@ const detail: EntityDetail = {
 };
 
 describe('Workflows P2 roster', () => {
+  it('retains only summaries with gated runs for the closed attention filter', async () => {
+    const gated: EntitySummary = {
+      ...summary,
+      ref: { type: 'workflow', id: 'release', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/release.md' },
+      humanName: 'Release',
+      gatedRunCount: 1,
+    };
+    const filteredList: EntityList = {
+      revision: 'workflows-attention',
+      groups: [{ id: 'kb-ops', label: 'KB Ops', collapsed: false, items: [summary, gated] }],
+      items: [summary, gated],
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(filteredList), { status: 200 })));
+
+    await renderWithTestSession(<Workflows filter="attention" />);
+
+    expect((await screen.findAllByTestId('entity-card')).map((card) => card.textContent)).toEqual([expect.stringContaining('Release')]);
+    expect(screen.queryByText('Research Brief')).toBeNull();
+  });
+
   it('uses one EntitySummary request and one EntityDetail request without client joins', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith('/research-brief') ? detail : list), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

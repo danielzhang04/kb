@@ -31,6 +31,7 @@ function DetailValues({ detail }: { detail: EntityDetailDto }): React.JSX.Elemen
 }
 
 export interface AgentsProps {
+  filter?: 'attention';
   focusAgentId?: string | null;
   onOpenAgent?: (id: string) => void;
   onBack?: () => void;
@@ -41,6 +42,7 @@ export interface AgentsProps {
 }
 
 export function Agents({
+  filter: rosterFilter,
   focusAgentId = null,
   onOpenAgent,
   onBack,
@@ -55,7 +57,7 @@ export function Agents({
   const [detail, setDetail] = useState<EntityDetailDto | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [localOpen, setLocalOpen] = useState<string | null>(null);
-  const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('agents'));
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(['System']));
   const [launching, setLaunching] = useState(false);
@@ -77,12 +79,13 @@ export function Agents({
   useEffect(() => { if (openId) loadDetail(openId); else setDetail(null); }, [loadDetail, openId]);
 
   const groups = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
+    const needle = search.trim().toLowerCase();
     return (list?.groups ?? []).map((group): EntityGroup => ({
       ...group,
-      items: group.items.filter((item) => item.humanName.toLowerCase().includes(needle) || item.ref.id.toLowerCase().includes(needle)),
+      items: group.items.filter((item) => (rosterFilter !== 'attention' || item.gatedRunCount > 0)
+        && (item.humanName.toLowerCase().includes(needle) || item.ref.id.toLowerCase().includes(needle))),
     })).filter((group) => group.items.length > 0);
-  }, [filter, list]);
+  }, [list, rosterFilter, search]);
 
   const open = (id: string): void => {
     setLocalOpen(id);
@@ -124,7 +127,7 @@ export function Agents({
   return <section className="code-view entity-roster" aria-label="Agents">
     <header className="page-header"><div><p className="page-eyebrow">Fleet</p><h2>Agents</h2></div></header>
     <div className="entity-roster-controls">
-      <input aria-label="Search agents" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search agents" />
+      <input aria-label="Search agents" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search agents" />
       <button type="button" aria-pressed={layout === 'grid'} onClick={() => changeLayout('grid')}>Grid</button>
       <button type="button" aria-pressed={layout === 'list'} onClick={() => changeLayout('list')}>List</button>
     </div>

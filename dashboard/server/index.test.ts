@@ -298,7 +298,7 @@ describe('server', () => {
 
   it.each([
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
-    '/api/index', '/api/inbox', '/api/health', '/api/dag', '/api/routing',
+    '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/dag', '/api/routing',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
     '/api/schedules',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
@@ -540,12 +540,17 @@ describe('Human Request orphan-sweep wiring — ON BY DEFAULT (data-only, no fil
 });
 
 describe('P1 route matrix', () => {
-  it('serves Inbox and Health only behind a session', async () => {
+  it('serves Inbox, Home, and Health only behind a session', async () => {
     app = matrixApp();
-    for (const url of ['/api/inbox', '/api/health']) {
+    for (const url of ['/api/inbox', '/api/home', '/api/health']) {
       expect((await app.inject({ method: 'GET', url, headers: matrixHeaders })).statusCode, url).toBe(401);
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(200);
     }
+    const home = await app.inject({ method: 'GET', url: '/api/home', headers: sessionHeaders() });
+    expect(home.headers.etag).toMatch(/^"home:/);
+    expect(home.json().sections.map((section: { state: string; data?: { section: string }; reason?: string }) =>
+      section.state === 'ready' ? section.data?.section : section.reason))
+      .toEqual(['running-now', 'attention-counts', 'next-schedules', 'release-unavailable', 'recent-outcomes']);
   });
 
   it('returns authenticated 404 for retired read routes and keeps retained projections', async () => {

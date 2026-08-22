@@ -159,9 +159,8 @@ function Sidebar({ active, onSelect, rail, onToggleRail, badges }: {
   );
 }
 
-function ViewBody({ entry, onNavigate, onPush, onBack, onSectionChange, onNavigateTarget, onOpenAgentTerminal, onOpenWorkflowTerminal }: {
+function ViewBody({ entry, onPush, onBack, onSectionChange, onNavigateTarget, onOpenAgentTerminal, onOpenWorkflowTerminal }: {
   entry: NavEntry;
-  onNavigate: (id: DestinationId) => void;
   onPush: (target: NavTarget) => void;
   onBack: () => void;
   onSectionChange: (section: string) => void;
@@ -170,12 +169,12 @@ function ViewBody({ entry, onNavigate, onPush, onBack, onSectionChange, onNaviga
   onOpenWorkflowTerminal: (workflow: { id: string }) => void;
 }): React.JSX.Element {
   switch (entry.view) {
-    case 'home': return <Home onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />;
+    case 'home': return <Home onNavigateTarget={onNavigateTarget} />;
     case 'inbox': return <Inbox onNavigate={onNavigateTarget} />;
     case 'schedules': return <Schedules scheduleOwner={entry.scheduleOwner} />;
     case 'terminal': return <></>;
-    case 'agents': return <Agents focusAgentId={entry.focus?.kind === 'agent' ? entry.focus.id : null} onOpenAgent={(id) => onPush(focusTarget({ kind: 'agent', id }))} onBack={onBack} activeSectionId={entry.section} onSectionChange={onSectionChange} onNavigate={onNavigateTarget} onOpenTerminal={onOpenAgentTerminal} />;
-    case 'workflows': return <Workflows focusWorkflowId={entry.focus?.kind === 'workflow' ? entry.focus.id : null} focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null} onOpenWorkflow={(id) => onPush(focusTarget({ kind: 'workflow', id }))} onOpenRun={(id) => onPush(focusTarget({ kind: 'run', id }))} onBack={onBack} onNavigate={onNavigateTarget} activeSectionId={entry.section} onSectionChange={onSectionChange} onOpenTerminal={onOpenWorkflowTerminal} />;
+    case 'agents': return <Agents filter={entry.filter} focusAgentId={entry.focus?.kind === 'agent' ? entry.focus.id : null} onOpenAgent={(id) => onPush({ ...focusTarget({ kind: 'agent', id }), ...(entry.filter ? { filter: entry.filter } : {}) })} onBack={onBack} activeSectionId={entry.section} onSectionChange={onSectionChange} onNavigate={onNavigateTarget} onOpenTerminal={onOpenAgentTerminal} />;
+    case 'workflows': return <Workflows filter={entry.filter} focusWorkflowId={entry.focus?.kind === 'workflow' ? entry.focus.id : null} focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null} onOpenWorkflow={(id) => onPush({ ...focusTarget({ kind: 'workflow', id }), ...(entry.filter ? { filter: entry.filter } : {}) })} onOpenRun={(id) => onPush(focusTarget({ kind: 'run', id }))} onBack={onBack} onNavigate={onNavigateTarget} activeSectionId={entry.section} onSectionChange={onSectionChange} onOpenTerminal={onOpenWorkflowTerminal} />;
     case 'tasks': return <Tasks initialSelectedId={entry.focus?.kind === 'card' ? entry.focus.id : undefined} />;
     case 'projects': return <section aria-label="Projects view"><Projects /></section>;
     case 'files': return <section aria-label="Files view"><Browser /></section>;
@@ -289,7 +288,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
           <div className="persistent-terminal-surface" hidden={!terminalVisible} aria-hidden={!terminalVisible} data-testid="persistent-terminal-surface">
             <Terminal ptyEnabled={runtimeCapabilities.pty} visible={terminalVisible} agentTarget={runAgentId} onAgentTargetConsumed={() => setRunAgentId(null)} workflowTarget={runWorkflowId} onWorkflowTargetConsumed={() => setRunWorkflowId(null)} />
           </div>
-          {view !== 'terminal' ? <ViewBody entry={current} onNavigate={goTo} onPush={push} onBack={() => setStack((value) => backStack(value))} onSectionChange={(section) => setStack((value) => setSectionOnStack(value, section))} onNavigateTarget={navigateTo} onOpenAgentTerminal={runAgent} onOpenWorkflowTerminal={runWorkflow} /> : null}
+          {view !== 'terminal' ? <ViewBody entry={current} onPush={push} onBack={() => setStack((value) => backStack(value))} onSectionChange={(section) => setStack((value) => setSectionOnStack(value, section))} onNavigateTarget={navigateTo} onOpenAgentTerminal={runAgent} onOpenWorkflowTerminal={runWorkflow} /> : null}
         </main>
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runPaletteCommand} />
       </div>

@@ -1,4 +1,5 @@
 import type { HomeResponse, HomeUnavailableReason } from '../../server/home/contracts.ts';
+import type { RunnableRef } from '../../server/control/p2Contracts.ts';
 
 export type D13RetryTarget = 'running-now' | 'attention-counts' | 'next-schedules' | 'version' | 'recent-outcomes';
 
@@ -6,7 +7,7 @@ export interface D13HomeProps {
   response: HomeResponse;
   onOpenRun?: (runRef: string) => void;
   onOpenAttention?: (target: 'agents' | 'workflows' | 'inbox') => void;
-  onOpenSchedule?: (scheduleId: string) => void;
+  onOpenSchedule?: (owner: RunnableRef) => void;
   onRetry?: (target: D13RetryTarget) => void;
   now?: () => Date;
 }
@@ -52,7 +53,7 @@ export function D13Home({ response, onOpenRun, onOpenAttention, onOpenSchedule, 
       )}
       {schedules.state === 'unavailable' ? <Unavailable label="Next schedules" reason={schedules.reason} retryTarget="next-schedules" onRetry={onRetry} /> : (
         <section aria-label="Next schedules" className="d13-home__section"><h2>Next schedules</h2>
-          {schedules.data.occurrences.length === 0 ? <p>No schedules</p> : <div>{schedules.data.occurrences.map((occurrence) => <button key={`${occurrence.scheduleId}:${occurrence.scheduledFor}`} type="button" onClick={() => onOpenSchedule?.(occurrence.scheduleId)}>{occurrence.nextAt}</button>)}</div>}
+          {schedules.data.occurrences.length === 0 ? <p>No schedules</p> : <div>{schedules.data.occurrences.map((occurrence) => <button key={`${occurrence.scheduleId}:${occurrence.scheduledFor}`} type="button" onClick={() => onOpenSchedule?.(occurrence.owner)}>{occurrence.nextAt}</button>)}</div>}
         </section>
       )}
       {version.state === 'unavailable' ? <Unavailable label="Version" reason={version.reason} retryTarget="version" onRetry={onRetry} /> : (

@@ -45,6 +45,14 @@ export interface HealthReaders {
   now: () => string;
 }
 
+export interface HealthFleetInput {
+  scheduleSnapshot: () => { collectionRevision: number; schedules: readonly Schedule[] };
+}
+
+const emptyFleetInput: HealthFleetInput = {
+  scheduleSnapshot: () => ({ collectionRevision: 0, schedules: [] }),
+};
+
 const deferredValue = 'unavailable in P1' as const;
 
 export const defaultHealthReaders: HealthReaders = {
@@ -73,9 +81,10 @@ function fleetRows(
   observedAt: string,
   reader: FleetReader,
   ownerReader: HealthReaders['owners'],
-  schedules: readonly Schedule[],
+  scheduleSnapshot: HealthFleetInput['scheduleSnapshot'],
 ): Array<FleetRow | ScheduleIntegrityRow | UnavailableRow<'fleet'>> {
   try {
+    const schedules = scheduleSnapshot().schedules;
     const fleet: FleetRow[] = reader(repoRoot).agents.map((agent) => ({
       kind: 'fleet', key: `agent:${agent.id}`, label: humanizeEntityId(agent.id),
       value: { status: agent.status, role: agent.role, working: agent.working, lastActive: agent.lastActive },
@@ -150,12 +159,12 @@ function usageRows(repoRoot: string, observedAt: string, reader: UsageReader): A
 export function composeHealth(
   repoRoot: string,
   readers: HealthReaders = defaultHealthReaders,
-  schedules: readonly Schedule[] = [],
+  fleetInput: HealthFleetInput = emptyFleetInput,
 ): HealthResponse {
   const observedAt = readers.now();
   return {
     sections: [
-      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet, readers.owners, schedules) },
+      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet, readers.owners, fleetInput.scheduleSnapshot) },
       { id: 'stop', label: 'STOP', rows: stopRows(repoRoot, observedAt, readers.stop) },
       { id: 'daemon-machine', label: 'Daemon and machine', rows: machineRows(observedAt, readers.platform) },
       { id: 'mcp', label: 'MCP', rows: mcpRows(repoRoot, observedAt, readers.connections) },

@@ -44,6 +44,14 @@ describe('nav stack', () => {
       .toBe('?view=agents&entity=agent%3Afyt+checker%2Fone');
   });
 
+  it('round-trips only the closed attention filter on Agent and Workflow roots', () => {
+    expect(parseNavigationSearch('?view=agents&filter=attention')).toEqual([{ view: 'agents', filter: 'attention' }]);
+    expect(parseNavigationSearch('?view=workflows&filter=attention')).toEqual([{ view: 'workflows', filter: 'attention' }]);
+    expect(navigationSearchFor({ view: 'agents', filter: 'attention' })).toBe('?view=agents&filter=attention');
+    expect(parseNavigationSearch('?view=inbox&filter=attention')).toEqual([{ view: 'home' }]);
+    expect(parseNavigationSearch('?view=agents&filter=all')).toEqual([{ view: 'home' }]);
+  });
+
   it('treats a sidebar click as a fresh root rather than accumulated history', () => {
     // This is the property that preserves today's mental model: browsing the sidebar must never
     // leave a back arrow behind.

@@ -41,7 +41,7 @@ describe('run projections', () => {
     expect(projectRunStatus(source, null)).toBe('needs-you');
     expect(projectRunStatus(source.slice(0, 2), null)).toBe('running');
     expect(projectRunStatus(source.slice(0, 1), null)).toBe('failed');
-    expect(projectRunStatus([], { scheduleId: 'schedule-1', scheduledFor: iso(), nextAt: iso() })).toBe('scheduled');
+    expect(projectRunStatus([], { scheduleId: 'schedule-1', scheduledFor: iso(), nextAt: iso(), owner })).toBe('scheduled');
     expect(projectRunStatus([], null)).toBe('idle');
     expect(source[2].openHumanRequestCount).toBe(2);
   });

@@ -44,9 +44,10 @@ const OUTCOMES = ['ok', 'failed', 'stopped', 'interrupted', 'abandoned'] as cons
 
 function occurrence(value: unknown): ScheduleOccurrence | null {
   const row = record(value);
-  if (!row || !exactKeys(row, ['scheduleId', 'scheduledFor', 'nextAt'])
+  const owner = runnable(row?.owner);
+  if (!row || !owner || !exactKeys(row, ['scheduleId', 'scheduledFor', 'nextAt', 'owner'])
     || typeof row.scheduleId !== 'string' || typeof row.scheduledFor !== 'string' || typeof row.nextAt !== 'string') return null;
-  return { scheduleId: row.scheduleId, scheduledFor: row.scheduledFor, nextAt: row.nextAt };
+  return { scheduleId: row.scheduleId, scheduledFor: row.scheduledFor, nextAt: row.nextAt, owner };
 }
 
 function runRow(value: unknown): RunRow | null {

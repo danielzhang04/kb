@@ -77,7 +77,9 @@ describe('composeHealth', () => {
       cadence: { source: '0 9 * * *', words: 'Daily \u00b7 9:00 AM' }, nextAt: null, lastOutcome: null,
       armed: true, origin: 'operator', mirroredAt: null, mirrorPath: 'HEARTBEAT.md', version: 1,
     };
-    const fleet = composeHealth('repo', source, [schedule]).sections[0];
+    const fleet = composeHealth('repo', source, {
+      scheduleSnapshot: () => ({ collectionRevision: 1, schedules: [schedule] }),
+    }).sections[0];
     expect(fleet.rows).toContainEqual({
       kind: 'integrity', key: `schedule-owner:${schedule.id}`, label: 'Schedule owner',
       value: { status: 'error', code: 'schedule-owner-unresolvable', owner: schedule.owner },

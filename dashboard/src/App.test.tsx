@@ -9,7 +9,7 @@ import { Agents } from './views/Agents';
 import { SchedulesBody } from './views/Schedules';
 import { Inbox } from './views/Inbox';
 import { Home } from './views/Home';
-import type { PlaneAIndex } from '../server/planeA/indexer';
+import type { HomeResponse } from '../server/home/contracts.ts';
 import { RunDetail } from './views/RunDetail';
 import type { RunDetailDto } from './control/controlClient';
 
@@ -44,6 +44,19 @@ function deferred<T>() {
 }
 
 describe('App P1 shell', () => {
+  it('preserves an attention-filtered roster deep link through the shell', async () => {
+    window.history.replaceState(null, '', '/?view=agents&filter=attention');
+    await renderApp();
+    await waitFor(() => expect(window.location.search).toBe('?view=agents&filter=attention'));
+    expect(screen.getByLabelText('Agents')).toBeTruthy();
+  });
+
+  it('loads the registered D13 Home projection instead of the retired index rollup', async () => {
+    await renderApp();
+    await waitFor(() => expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/home')).toBe(true));
+    expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/index')).toBe(false);
+  });
+
   it('renders the exact ten destinations, two dividers, and no retired destination', async () => {
     await renderApp();
     expect([...document.querySelectorAll('.mc-nav-item__label')].map((node) => node.textContent)).toEqual([
@@ -235,16 +248,21 @@ describe('App P1 shell', () => {
 
     clearStoredSession();
     const rawHome = 'publish_daily-brief';
-    const homeSnapshot: PlaneAIndex = {
-      cards: { working: [{
-        meta: { id: rawHome, project: 'kb', action: rawHome, target: '.', 'risk-tier': 'T1', owner: rawAgent, state: 'working' },
-        body: '', displayName: rawHome, shortRef: 1,
-      }] },
-      ledgers: { dispatch: { count: 0, cards: 0, byProject: {} }, cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false }, grades: { count: 0, rows: [] }, activity: { count: 0, rows: [] } },
-      orgStates: [],
+    const homeResponse: HomeResponse = {
+      revision: 'home-humanized',
+      sections: [
+        { state: 'ready', data: { section: 'running-now', runs: [{
+          runRef: 'run-home', title: 'Publish Daily Brief', owner: { type: 'agent', id: rawHome, sourcePath: `agents/${rawHome}.md` },
+          lifecycle: 'running', outcome: null, createdAt: '2026-08-22T00:00:00.000Z', completedAt: null, streamKind: 'transcript',
+        }] } },
+        { state: 'ready', data: { section: 'attention-counts', agents: 0, workflows: 0, inbox: 0 } },
+        { state: 'ready', data: { section: 'next-schedules', occurrences: [] } },
+        { state: 'unavailable', reason: 'release-unavailable' },
+        { state: 'ready', data: { section: 'recent-outcomes', outcomes: [] } },
+      ],
     };
-    render(<SessionProvider><Home snapshot={homeSnapshot} inboxSnapshot={{ items: [] }} /></SessionProvider>);
+    render(<SessionProvider><Home response={homeResponse} /></SessionProvider>);
     expect(screen.getByText('Publish Daily Brief')).toBeTruthy();
-    expect(screen.getByTitle(rawHome).getAttribute('title')).toBe(rawHome);
+    expect(screen.getByLabelText('Home').textContent).not.toContain(rawHome);
   });
 });

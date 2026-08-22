@@ -15,6 +15,8 @@ it('P2 preserves P7-owned banner, Health, and escalation copy byte-for-byte', ()
   expect(healthService).toContain("label: 'Unavailable'");
   expect(healthService).toContain("reason: 'Reader unavailable'");
   expect(healthService).toContain("const deferredValue = 'unavailable in P1' as const;");
-  expect(inbox).toContain('title: text(card.meta.action),\r\n    reason: workOrder(card),');
+  expect(health).toContain('Source: {row.source}');
+  const escalationCopy = inbox.match(/title: text\(card\.meta\.action\),\r?\n    reason: workOrder\(card\),/)?.[0];
+  expect(escalationCopy?.replace(/\r\n/g, '\n')).toBe('title: text(card.meta.action),\n    reason: workOrder(card),');
   expect(inbox).toContain('Project only queued wake-me cards, the persisted escalation record for failed runs and STOP events.');
 });

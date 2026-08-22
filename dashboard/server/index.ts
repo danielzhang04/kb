@@ -10,6 +10,7 @@ import { registerAgents } from './agents/routes.ts';
 import { readDeclaredAgentDetails } from './agents/roster.ts';
 import { registerInboxRoutes } from './inbox/routes.ts';
 import { registerHealthRoutes } from './health/routes.ts';
+import { createHomeRoutePorts, registerHomeRoutes } from './home/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
 import { registerBrainSearch } from './brain/routes.ts';
 import { registerContextLifecycle } from './contextLifecycle/routes.ts';
@@ -236,6 +237,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     const schedules = createScheduleService(repoRoot, surfaceCtx.controlStore);
     registerScheduleRoutes(scope, schedules);
     registerInboxRoutes(scope, surfaceCtx);
+    registerHomeRoutes(scope, createHomeRoutePorts(surfaceCtx, schedules));
     registerHealthRoutes(scope, surfaceCtx);
     if (surfaceCtx.runtimeCapabilities.localTranscripts && surfaceCtx.traceRoot) {
       registerTraceRead(scope, surfaceCtx.traceRoot);

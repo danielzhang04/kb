@@ -406,7 +406,9 @@ export function nextScheduleOccurrence(
   const next = readSide.getScheduleSnapshot().schedules
     .filter((schedule) => schedule.armed && schedule.nextAt !== null && sameRunnable(schedule.owner, owner))
     .sort((left, right) => left.nextAt!.localeCompare(right.nextAt!) || left.id.localeCompare(right.id))[0];
-  return next?.nextAt ? { scheduleId: next.id, scheduledFor: next.nextAt, nextAt: next.nextAt } : null;
+  return next?.nextAt
+    ? { scheduleId: next.id, scheduledFor: next.nextAt, nextAt: next.nextAt, owner: next.owner }
+    : null;
 }
 
 type RecoverySource = 'live' | 'state-snapshot' | 'merged-mirror';

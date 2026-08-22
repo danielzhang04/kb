@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchHealth } from '../lib/healthClient.ts';
+import { fetchHealth, type HealthFetch } from '../lib/healthClient.ts';
 import type { HealthResponse, HealthRow } from '../../server/health/service.ts';
 import { StopControls } from './stopControls.tsx';
 import '../styles/views/health.css';
@@ -13,23 +13,25 @@ function valueFor(row: HealthRow): string {
   return row.value;
 }
 
-export function Health({ response }: { response?: HealthResponse } = {}): React.JSX.Element {
+export function Health({ response, fetchImpl = fetch }: { response?: HealthResponse; fetchImpl?: HealthFetch } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<HealthResponse | null>(null);
   const [error, setError] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     if (response) return;
     let cancelled = false;
-    fetchHealth().then((next) => {
+    setError(false);
+    fetchHealth(fetchImpl).then((next) => {
       if (!cancelled) setFetched(next);
     }).catch(() => {
       if (!cancelled) setError(true);
     });
     return () => { cancelled = true; };
-  }, [response]);
+  }, [fetchImpl, response, retryTick]);
 
   const health = response ?? fetched;
-  if (!health) return <main className="v-health" aria-label="Health"><h1>Health</h1><p>{error ? 'Health is unavailable.' : 'Loading health.'}</p></main>;
+  if (!health) return <main className="v-health" aria-label="Health"><h1>Health</h1><p>{error ? 'Health is unavailable.' : 'Loading health.'}</p>{error ? <button type="button" onClick={() => setRetryTick((value) => value + 1)}>Retry Health</button> : null}</main>;
 
   return (
     <main className="v-health" aria-label="Health">

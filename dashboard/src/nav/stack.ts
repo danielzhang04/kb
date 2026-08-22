@@ -33,6 +33,8 @@ export type Focus =
 export interface NavTarget {
   view: DestinationId;
   focus?: Focus;
+  /** Closed roster filter used only by Home's Agent/Workflow attention links. */
+  filter?: 'attention';
   /** The detail section (tab) to restore. Written back into the top entry as the operator switches tabs. */
   section?: string;
   /** New-schedule intent with immutable server-owned runnable identity prefilled. */
@@ -69,7 +71,7 @@ export const rootStack = (view: DestinationId): NavEntry[] => [{ view }];
 /** True when two entries address the same thing — used to swallow double-click duplicates. */
 export function sameTarget(a: NavEntry | undefined, b: NavTarget): boolean {
   if (!a) return false;
-  return a.view === b.view && a.focus?.kind === b.focus?.kind && a.focus?.id === b.focus?.id;
+  return a.view === b.view && a.focus?.kind === b.focus?.kind && a.focus?.id === b.focus?.id && a.filter === b.filter;
 }
 
 /** A sidebar click: reset to a fresh root. No back arrow, no accumulated history. */
@@ -117,26 +119,32 @@ export function parseNavigationSearch(search: string): NavEntry[] {
   const params = new URLSearchParams(search);
   if ([...params].some(([key, value]) => key.includes('\uFFFD') || value.includes('\uFFFD'))) return fallback;
   const keys = [...params.keys()];
-  if (keys.some((key) => key !== 'view' && key !== 'entity')) return fallback;
-  if (params.getAll('view').length !== 1 || params.getAll('entity').length > 1) return fallback;
+  if (keys.some((key) => key !== 'view' && key !== 'entity' && key !== 'filter')) return fallback;
+  if (params.getAll('view').length !== 1 || params.getAll('entity').length > 1 || params.getAll('filter').length > 1) return fallback;
   const view = params.get('view');
   if (!view || !DESTINATIONS.has(view as DestinationId)) return fallback;
   const destination = view as DestinationId;
+  const filter = params.get('filter');
+  if (filter !== null && (filter !== 'attention' || destination !== 'agents' && destination !== 'workflows')) return fallback;
+  const root = { view: destination, ...(filter === 'attention' ? { filter } : {}) } as NavEntry;
   const encodedEntity = params.get('entity');
-  if (encodedEntity === null) return rootStack(destination);
+  if (encodedEntity === null) return [root];
   const separator = encodedEntity.indexOf(':');
   if (separator <= 0 || separator === encodedEntity.length - 1) return fallback;
   const kind = encodedEntity.slice(0, separator) as Focus['kind'];
   const id = encodedEntity.slice(separator + 1);
   if (!(kind in URL_ENTITY_VIEW) || URL_ENTITY_VIEW[kind] !== destination) return fallback;
   const focus = { kind, id } as Focus;
-  return [{ view: destination }, { view: destination, focus }];
+  return [root, { ...root, focus }];
 }
 
 /** Serialize the top stack entry through URLSearchParams so entity identity is encoded exactly once. */
 export function navigationSearchFor(entry: NavEntry): string {
   const params = new URLSearchParams();
   params.set('view', entry.view);
+  if (entry.filter === 'attention' && (entry.view === 'agents' || entry.view === 'workflows')) {
+    params.set('filter', entry.filter);
+  }
   if (entry.focus && URL_ENTITY_VIEW[entry.focus.kind] === entry.view) {
     params.set('entity', `${entry.focus.kind}:${entry.focus.id}`);
   }

@@ -14,6 +14,7 @@ import '../styles/views/entity.css';
 import '../styles/views/workflows.css';
 
 export interface WorkflowsProps {
+  filter?: 'attention';
   focusWorkflowId?: string | null;
   focusRunRef?: string | null;
   onOpenWorkflow?: (id: string) => void;
@@ -26,6 +27,7 @@ export interface WorkflowsProps {
 }
 
 export function Workflows({
+  filter: rosterFilter,
   focusWorkflowId = null,
   focusRunRef = null,
   onOpenWorkflow,
@@ -42,7 +44,7 @@ export function Workflows({
   const [detail, setDetail] = useState<EntityDetailDto | null>(null);
   const [detailError, setDetailError] = useState(false);
   const [localOpen, setLocalOpen] = useState<string | null>(null);
-  const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('workflows'));
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [parameters, setParameters] = useState<Record<string, string>>({});
@@ -65,9 +67,13 @@ export function Workflows({
   useEffect(() => { if (openId) loadDetail(openId); else setDetail(null); }, [loadDetail, openId]);
 
   const groups = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
-    return (list?.groups ?? []).map((group): EntityGroup => ({ ...group, items: group.items.filter((item) => item.humanName.toLowerCase().includes(needle) || item.ref.id.toLowerCase().includes(needle)) })).filter((group) => group.items.length > 0);
-  }, [filter, list]);
+    const needle = search.trim().toLowerCase();
+    return (list?.groups ?? []).map((group): EntityGroup => ({
+      ...group,
+      items: group.items.filter((item) => (rosterFilter !== 'attention' || item.gatedRunCount > 0)
+        && (item.humanName.toLowerCase().includes(needle) || item.ref.id.toLowerCase().includes(needle))),
+    })).filter((group) => group.items.length > 0);
+  }, [list, rosterFilter, search]);
 
   if (focusRunRef) return <RunDetail runRef={focusRunRef} onBack={onBack} backLabel="Workflows" onNavigate={onNavigate} />;
 
@@ -108,7 +114,7 @@ export function Workflows({
   return <section className="code-view entity-roster" aria-label="Workflows">
     <header className="page-header"><div><p className="page-eyebrow">Automation</p><h2>Workflows</h2></div></header>
     <div className="entity-roster-controls">
-      <input aria-label="Search workflows" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search workflows" />
+      <input aria-label="Search workflows" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search workflows" />
       <button type="button" aria-pressed={layout === 'grid'} onClick={() => changeLayout('grid')}>Grid</button>
       <button type="button" aria-pressed={layout === 'list'} onClick={() => changeLayout('list')}>List</button>
     </div>

@@ -77,6 +77,7 @@ export interface ScheduleOccurrence {
   scheduleId: string;
   scheduledFor: string;
   nextAt: string;
+  owner: RunnableRef;
 }
 
 /** Safe, server-projected output target. */

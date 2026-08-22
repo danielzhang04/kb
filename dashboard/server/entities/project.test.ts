@@ -27,7 +27,7 @@ describe('entity projectors', () => {
   });
 
   it('rejects a non-System agent without a valid project and derives exact status precedence', () => {
-    const schedule = { scheduleId: 'schedule-1', scheduledFor: '2026-08-22T12:00:00.000Z', nextAt: '2026-08-22T12:00:00.000Z' };
+    const schedule = { scheduleId: 'schedule-1', scheduledFor: '2026-08-22T12:00:00.000Z', nextAt: '2026-08-22T12:00:00.000Z', owner: workflow };
     expect(() => projectEntityList('r1', 'agent', [{ ref: agent, projects: [], modelLabel: 'm', temporalLabel: 'x', host: 'vm', activeRuns: [], gatedRunCount: 0, latestRun: null, nextSchedule: null, hasFailure: false }])).toThrow('project-required');
     expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [], gatedRunCount: 1, latestRun: 'failed', nextSchedule: null, hasFailure: true }).status).toBe('needs-you');
     expect(projectEntitySummary({ ref: workflow, modelLabel: 'not-used', temporalLabel: 'next 09:00', host: 'vm', activeRuns: [run('running')], gatedRunCount: 0, latestRun: 'failed', nextSchedule: null, hasFailure: true }).status).toBe('running');

@@ -1,0 +1,77 @@
+{
+  "revision": "home:runs:attention:inbox:schedules:release:outcomes",
+  "sections": [
+    {
+      "state": "ready",
+      "data": {
+        "section": "running-now",
+        "runs": [
+          {
+            "runRef": "run-1",
+            "title": "Hygiene",
+            "owner": {
+              "type": "agent",
+              "id": "hygiene",
+              "sourcePath": "agents/hygiene.md"
+            },
+            "lifecycle": "running",
+            "outcome": null,
+            "createdAt": "2026-08-21T10:00:00.000Z",
+            "completedAt": null,
+            "streamKind": "transcript"
+          }
+        ]
+      }
+    },
+    {
+      "state": "ready",
+      "data": {
+        "section": "attention-counts",
+        "agents": 2,
+        "workflows": 1,
+        "inbox": 3
+      }
+    },
+    {
+      "state": "ready",
+      "data": {
+        "section": "next-schedules",
+        "occurrences": [
+          {
+            "scheduleId": "schedule-1",
+            "scheduledFor": "2026-08-21T14:00:00.000Z",
+            "nextAt": "2026-08-21T14:00:00.000Z",
+            "owner": {
+              "type": "agent",
+              "id": "hygiene",
+              "sourcePath": "agents/hygiene.md"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "state": "ready",
+      "data": {
+        "section": "version",
+        "label": "VM",
+        "sha": "64fb3d02",
+        "activatedAt": "2026-08-21T10:00:00.000Z"
+      }
+    },
+    {
+      "state": "ready",
+      "data": {
+        "section": "recent-outcomes",
+        "outcomes": [
+          {
+            "runRef": "run-0",
+            "title": "Grader",
+            "completedAt": "2026-08-21T09:00:00.000Z",
+            "outcome": "ok"
+          }
+        ]
+      }
+    }
+  ]
+}

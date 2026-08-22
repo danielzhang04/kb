@@ -12,6 +12,7 @@ import type {
   RunRow,
   RunOutcome,
   RunnableRef,
+  ScheduleOccurrence,
 } from './p2Contracts.ts';
 import type { CreateEntityRequest, EntityBuilderRequest } from '../entities/contracts.ts';
 
@@ -72,6 +73,12 @@ describe('P2 control contracts', () => {
       toolsCalled?: number;
       lastLine?: string;
       gateBadge?: string | null;
+    }>();
+    expectTypeOf<ScheduleOccurrence>().toEqualTypeOf<{
+      scheduleId: string;
+      scheduledFor: string;
+      nextAt: string;
+      owner: RunnableRef;
     }>();
   });
 
