@@ -1,0 +1,49 @@
+# Socket-activated PTY broker. The frozen directive set below IS the Linux sandbox contract of plan
+# section 3 ("Launcher and filesystem policy"); tests/test_install_pty_broker.py parses this file and
+# fails on any addition, removal, or value drift.
+#
+# Deliberate ABSENCES, each load-bearing:
+#   * no ListenStream / no listener of any kind - kb-shell-broker.socket owns the single AF_UNIX socket
+#     and hands it over as fd 3.
+#   * no RestrictAddressFamilies - Claude/Codex children must reach the provider network.
+#   * no ProtectProc / ProcSubset - the fd-pinned launcher execs through /proc/self/fd/<n> magic links,
+#     which an invisible or pid-subset /proc breaks.
+#   * no RuntimeDirectory / RuntimeDirectoryMode - kb-shell-broker.socket provisions /run/kb-shell as
+#     kb-shell:kb-dashboard 0750 and preserves it; a service-side RuntimeDirectory would chown it to
+#     kb-shell:kb-shell and lock the dashboard out. ProtectSystem=strict therefore requires
+#     /run/kb-shell to be named in ReadWritePaths - that is the only addition to the section 3 list.
+#   * no [Install] section - this unit is socket-activated ONLY. Neither bootstrap_vm.py nor
+#     install_pty_broker.py ever enables the service, so a WantedBy= here would be dead configuration
+#     inside a set advertised as exact.
+#
+# `yes` is this file's spelling for every boolean (kb-dashboard.service uses `true`); systemd parses
+# both identically, and within-file consistency is what a frozen, set-equality-checked file needs.
+[Unit]
+Description=kb shell broker (PTY host for the kb dashboard)
+Requires=kb-shell-broker.socket
+After=kb-shell-broker.socket
+
+[Service]
+Type=simple
+User=kb-shell
+Group=kb-shell
+WorkingDirectory=/var/lib/kb-shell/home
+ExecStart=/usr/bin/node /opt/kb-shell-broker/current/main.js --socket-fd=3 --protocol-version=kb-shell-broker/v1
+Restart=on-failure
+KillMode=control-group
+TimeoutStopSec=90
+NoNewPrivileges=yes
+# The broker must not inherit the manager environment (DefaultEnvironment, systemctl set-environment):
+# the same list kb-dashboard.service unsets, because the same secrets would otherwise reach a process
+# that spawns agent CLIs.
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
+# ProtectSystem=strict makes /tmp and /var/tmp read-only, and $HOME is in ReadOnlyPaths - node, npm,
+# git and both agent CLIs write to $TMPDIR routinely, so children need a private writable tmp.
+PrivateTmp=yes
+ProtectSystem=strict
+ReadOnlyPaths=/var/lib/kb/ops /var/lib/kb-shell/home
+ReadWritePaths=/var/lib/kb-shell/worktrees /run/kb-shell
+InaccessiblePaths=/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes

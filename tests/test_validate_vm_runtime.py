@@ -1,3 +1,4 @@
+import re
 import subprocess
 from types import SimpleNamespace
 from pathlib import Path, PurePosixPath
@@ -281,6 +282,110 @@ def test_effective_unit_still_refuses_a_ninth_unknown_environment_name():
     text = VALID_UNIT_TEXT + "Environment=UNSANCTIONED_NINTH_NAME=1\n"
     with pytest.raises(RuntimeError, match="assignment set is not closed"):
         validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_broker_units_absent_is_tolerated_but_a_drifted_installed_pair_is_refused(tmp_path):
+    """A VM bootstrapped before the broker existed still starts; a weakened broker unit does not."""
+    repo = Path(__file__).parents[1] / "deploy/systemd"
+    assert validate_vm_runtime.validate_broker_units(tmp_path) is False
+    for name in ("kb-shell-broker.service", "kb-shell-broker.socket"):
+        (tmp_path / name).write_text((repo / name).read_text(encoding="utf-8"), encoding="utf-8")
+    assert validate_vm_runtime.validate_broker_units(tmp_path) is True
+    drifted = (tmp_path / "kb-shell-broker.service")
+    drifted.write_text(drifted.read_text(encoding="utf-8").replace(
+        "ProtectSystem=strict", "ProtectSystem=full"), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="directive set drifted"):
+        validate_vm_runtime.validate_broker_units(tmp_path)
+
+
+REPO = Path(__file__).resolve().parents[1]
+TS_POLICY = REPO / "dashboard/server/pty/fdPinnedPaths.ts"
+
+
+def _typescript_broker_policy() -> dict[str, dict[str, str]]:
+    """Parse `BROKER_SYSTEMD_POLICY` out of the TypeScript source.
+
+    Textual on purpose: a JSON export would need a build step to stay current, and the whole point
+    of this test is to compare what a human edits in each of the three files.
+    """
+    text = TS_POLICY.read_text(encoding="utf-8")
+    constants = dict(re.findall(r"^export const ([A-Z_]+) = '([^']*)';$", text, re.MULTILINE))
+    body = re.search(r"export const BROKER_SYSTEMD_POLICY = \{\n(.*?)\n\} as const;", text, re.S)
+    assert body is not None, "BROKER_SYSTEMD_POLICY literal not found in fdPinnedPaths.ts"
+    sections: dict[str, dict[str, str]] = {}
+    for name, block in re.findall(r"^  (\w+): \{\n(.*?)\n  \},$", body.group(1), re.S | re.MULTILINE):
+        entries: dict[str, str] = {}
+        for key, quoted, identifier in re.findall(
+                r"^    (\w+): (?:'([^']*)'|([A-Za-z_][A-Za-z0-9_]*)),$", block, re.MULTILINE):
+            entries[key] = quoted if not identifier else constants[identifier]
+        entries.pop("", None)
+        sections[name] = entries
+    return sections
+
+
+@pytest.mark.parametrize("unit,section,expected_key", [
+    ("kb-shell-broker.service", "Service", "service"),
+    ("kb-shell-broker.socket", "Socket", "socket"),
+])
+def test_the_frozen_broker_policy_is_identical_in_all_three_copies(unit, section, expected_key):
+    """unit file == validate_vm_runtime BROKER_*_DIRECTIVES == TypeScript BROKER_SYSTEMD_POLICY.
+
+    Three files carry the frozen sandbox contract, and the comment above the Python dicts calls them
+    the single source of truth. That is only true if drift in any one of them is a red test.
+    """
+    text = (REPO / "deploy/systemd" / unit).read_text(encoding="utf-8")
+    from_unit = dict(validate_vm_runtime.parse_unit(text)[section])
+    from_python = (validate_vm_runtime.BROKER_SERVICE_DIRECTIVES if section == "Service"
+                   else validate_vm_runtime.BROKER_SOCKET_DIRECTIVES)
+    from_typescript = _typescript_broker_policy()[expected_key]
+    assert from_unit == dict(from_python)
+    assert from_typescript == dict(from_python)
+    assert from_typescript == from_unit
+
+
+def test_the_broker_units_carry_the_ruled_directive_values():
+    """The values the boss ruled on, pinned by name so a silent revert is visible."""
+    service = validate_vm_runtime.BROKER_SERVICE_DIRECTIVES
+    socket = validate_vm_runtime.BROKER_SOCKET_DIRECTIVES
+    dashboard = (REPO / "deploy/systemd/kb-dashboard.service").read_text(encoding="utf-8")
+    assert service["PrivateTmp"] == "yes"
+    assert service["UnsetEnvironment"] == dict(
+        validate_vm_runtime.parse_unit(dashboard)["Service"])["UnsetEnvironment"]
+    assert service["ReadWritePaths"] == "/var/lib/kb-shell/worktrees /run/kb-shell"
+    assert "RuntimeDirectory" not in service and "RuntimeDirectoryMode" not in service
+    assert (socket["User"], socket["Group"]) == ("kb-shell", "kb-dashboard")
+    assert socket["RuntimeDirectoryMode"] == "0750"
+    assert socket["RuntimeDirectoryPreserve"] == "restart"
+    # Socket-activated only: the service must carry no [Install] section to enable.
+    assert validate_vm_runtime.BROKER_SERVICE_SECTIONS == {"Unit", "Service"}
+    # [C-S4]: the dashboard needs the kb-shell group to reach /var/lib/kb-shell/worktrees.
+    assert "SupplementaryGroups=kb-shell" in dashboard
+
+
+@pytest.mark.parametrize("unit,injected", [
+    ("kb-shell-broker.service", ("[Unit]", "[Unit]\nOnFailure=kb-panic.service")),
+    ("kb-shell-broker.service", ("Requires=kb-shell-broker.socket", "")),
+    ("kb-shell-broker.service", ("RestrictSUIDSGID=yes", "RestrictSUIDSGID=yes\n\n[Install]\nWantedBy=multi-user.target")),
+    ("kb-shell-broker.socket", ("[Unit]", "[Unit]\nConditionPathExists=/tmp/x")),
+    ("kb-shell-broker.socket", ("WantedBy=sockets.target", "WantedBy=sockets.target\nAlias=kb.socket")),
+])
+def test_the_unit_and_install_sections_are_set_equal_too(unit, injected):
+    """Sandbox sections were exact; [Unit] and [Install] were only name-checked."""
+    text = (REPO / "deploy/systemd" / unit).read_text(encoding="utf-8").replace(*injected)
+    validator = (validate_vm_runtime.validate_broker_service if unit.endswith(".service")
+                 else validate_vm_runtime.validate_broker_socket)
+    with pytest.raises(RuntimeError):
+        validator(text)
+
+
+def test_a_comment_may_explain_privilege_escalation_without_failing_the_unit():
+    """The scan reads directives, not prose: `# no sudo here` must not fail a frozen unit."""
+    text = (REPO / "deploy/systemd/kb-shell-broker.service").read_text(encoding="utf-8")
+    validate_vm_runtime.validate_broker_service(
+        "# there is deliberately no sudo, no setuid, and no pkexec in this unit\n" + text)
+    with pytest.raises(RuntimeError, match="privilege-escalation token"):
+        validate_vm_runtime._assert_no_privilege_escalation(
+            text.replace("Restart=on-failure", "Restart=/usr/bin/sudo"), "kb-shell-broker.service")
 
 
 def test_live_phase_requires_service_cgroup_and_current_release_cwd(tmp_path):

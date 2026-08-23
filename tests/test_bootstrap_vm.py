@@ -104,7 +104,7 @@ def test_seed_uses_generated_current_schema(tmp_path):
 
     raw = (tmp_path / "control/control-plane.json").read_bytes()
     assert raw == control_plane_schema.EMPTY_CONTROL_PLANE
-    assert json.loads(raw)["version"] == control_plane_schema.CONTROL_PLANE_SCHEMA_VERSION == 2
+    assert json.loads(raw)["version"] == control_plane_schema.CONTROL_PLANE_SCHEMA_VERSION
 
 
 def test_seed_collection_set_matches_store_document_contract():
@@ -135,7 +135,7 @@ def test_bootstrap_seeds_the_empty_control_plane_document(tmp_path, monkeypatch)
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm.os, "chmod", chmod)
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: commands.append(argv))
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: (commands.append(argv), subprocess.CompletedProcess(argv, 0, "", ""))[1])
 
     assert (state_root / "control/control-plane.json").read_bytes() == control_plane_schema.EMPTY_CONTROL_PLANE
     assert ["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard", "-m", "0700", f"{state_root}/control"] in commands
@@ -150,10 +150,10 @@ def test_bootstrap_does_not_clobber_an_existing_control_plane_document(tmp_path,
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
     control_plane = state_root / "control/control-plane.json"
     control_plane.write_bytes(control_plane_schema.EMPTY_CONTROL_PLANE)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
 
     assert control_plane.read_bytes() == control_plane_schema.EMPTY_CONTROL_PLANE
 
@@ -165,7 +165,7 @@ def test_bootstrap_seed_passes_the_tier_zero_state_validator(tmp_path, monkeypat
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
 
     assert backup_tier0.validate_state_json(target) is True
 
@@ -178,7 +178,7 @@ def test_bootstrap_recovers_from_an_interrupted_control_plane_seed(tmp_path, mon
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
-    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
 
     assert (control / "control-plane.json").read_bytes() == bootstrap_vm.EMPTY_CONTROL_PLANE
     assert list(control.glob(".control-plane.json.*.tmp")) == []
@@ -237,7 +237,7 @@ def test_bootstrap_refuses_an_empty_existing_control_plane_document(tmp_path, mo
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     with pytest.raises(RuntimeError, match="control-plane state is corrupt"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
 
 
 def test_bootstrap_refuses_a_truncated_existing_control_plane_document(tmp_path, monkeypatch):
@@ -248,7 +248,7 @@ def test_bootstrap_refuses_a_truncated_existing_control_plane_document(tmp_path,
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     with pytest.raises(RuntimeError, match="control-plane state is corrupt"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
 
 
 def test_bootstrap_refuses_an_invalid_existing_control_plane_schema(tmp_path, monkeypatch):
@@ -261,7 +261,7 @@ def test_bootstrap_refuses_an_invalid_existing_control_plane_schema(tmp_path, mo
 
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
     with pytest.raises(RuntimeError, match="control-plane state is corrupt"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
 
 
 def test_bootstrap_fails_if_the_installed_state_root_is_missing(tmp_path, monkeypatch):
@@ -269,7 +269,7 @@ def test_bootstrap_fails_if_the_installed_state_root_is_missing(tmp_path, monkey
     monkeypatch.setattr(bootstrap_vm, "STATE_ROOT", str(state_root))
 
     with pytest.raises(RuntimeError, match="state root was not created"):
-        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda *args, **kwargs: None)
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "release.pub", TAILNET_HOST, TAILNET_OPERATOR, run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", ""))
 
 
 def test_data_patterns_are_closed_to_data_only_paths():

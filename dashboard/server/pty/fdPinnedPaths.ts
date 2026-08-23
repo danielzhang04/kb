@@ -31,24 +31,49 @@ export const BROKER_RUNTIME_POLICY = {
   inaccessiblePaths: ['/var/lib/kb/state', '/opt/kb-releases', '/var/lib/kb-activation'],
 } as const;
 
+/**
+ * The [Socket] and [Service] sections of deploy/systemd/kb-shell-broker.*, directive for directive.
+ *
+ * This is one of three copies of the frozen sandbox contract - the unit files, the Python validator
+ * (deploy/validate_vm_runtime.py BROKER_*_DIRECTIVES), and this one. They are held identical by
+ * tests/test_validate_vm_runtime.py, which parses this literal and compares all three pairwise, so a
+ * directive added here without the unit file (or the reverse) is a red test, not silent drift.
+ *
+ * The runtime directory lives on the SOCKET unit: a service-side RuntimeDirectory= is chowned to the
+ * service's own User:Group on every start, which would make /run/kb-shell kb-shell:kb-shell and lock
+ * the dashboard out of broker.sock.
+ */
 export const BROKER_SYSTEMD_POLICY = {
   socket: {
     ListenStream: BROKER_SOCKET_PATH,
+    Accept: 'no',
     SocketUser: 'kb-dashboard',
     SocketGroup: 'kb-dashboard',
     SocketMode: '0600',
     DirectoryMode: '0750',
+    RemoveOnStop: 'yes',
+    User: 'kb-shell',
+    Group: 'kb-dashboard',
+    RuntimeDirectory: 'kb-shell',
+    RuntimeDirectoryMode: '0750',
+    RuntimeDirectoryPreserve: 'restart',
   },
   service: {
+    Type: 'simple',
     User: 'kb-shell',
     Group: 'kb-shell',
-    RuntimeDirectory: 'kb-shell',
-    RuntimeDirectoryMode: '0700',
+    WorkingDirectory: '/var/lib/kb-shell/home',
+    ExecStart: '/usr/bin/node /opt/kb-shell-broker/current/main.js --socket-fd=3 --protocol-version=kb-shell-broker/v1',
+    Restart: 'on-failure',
+    KillMode: 'control-group',
+    TimeoutStopSec: '90',
+    NoNewPrivileges: 'yes',
+    UnsetEnvironment: 'GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION',
+    PrivateTmp: 'yes',
     ProtectSystem: 'strict',
     ReadOnlyPaths: '/var/lib/kb/ops /var/lib/kb-shell/home',
-    ReadWritePaths: '/var/lib/kb-shell/worktrees',
+    ReadWritePaths: '/var/lib/kb-shell/worktrees /run/kb-shell',
     InaccessiblePaths: '/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation',
-    NoNewPrivileges: 'yes',
     CapabilityBoundingSet: '',
     AmbientCapabilities: '',
     RestrictSUIDSGID: 'yes',

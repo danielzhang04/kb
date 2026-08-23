@@ -22,6 +22,7 @@ atlas/.venv/
 # dashboard (Node) — build + deps never committed
 dashboard/node_modules/
 dashboard/dist/
+dashboard/dist-server/
 
 # Dashboard display-name/short-ref ordinals. Daemon-local state, never coordination truth: the
 # production copy lives under DASHBOARD_STATE_ROOT (AppData\Local\kb-dashboard), deliberately outside

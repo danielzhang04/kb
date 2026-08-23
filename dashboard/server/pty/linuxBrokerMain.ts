@@ -137,9 +137,13 @@ export function assertBrokerRuntimeNode(stats: { mode: number; uid: number; gid:
 /**
  * The recovery input's integrity boundary, derived from the declared constants rather than
  * hard-coded: BROKER_RUNTIME_POLICY.stateOwner/stateMode for /run/kb-shell/state.json, and for
- * the runtime directory either the service's RuntimeDirectoryMode (0700) or the socket unit's
- * DirectoryMode (0750) with the kb-dashboard group, which is what lets the dashboard reach
- * broker.sock. P7 owns reconciling the two unit directives.
+ * the runtime directory the socket unit's 0750 with the kb-dashboard group, which is what lets the
+ * dashboard reach broker.sock.
+ *
+ * The units are now reconciled (the socket unit owns /run/kb-shell; the service declares no
+ * RuntimeDirectory at all), so 0700 is accepted only as the tmpfiles/manual-provisioning fallback:
+ * a directory that strict is unreachable by kb-dashboard, which the WSL gate detects by stat-ing
+ * /run/kb-shell rather than by anything this process can see.
  */
 export function brokerRuntimePolicy(identities: ServiceIdentities): BrokerRuntimePolicy {
   const [owner, group] = BROKER_RUNTIME_POLICY.stateOwner.split(':');

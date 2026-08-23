@@ -6,6 +6,10 @@ After=network-online.target
 Type=simple
 User=kb-dashboard
 Group=kb-dashboard
+# The dashboard creates and prunes /var/lib/kb-shell/worktrees/<id> (owner kb-dashboard, group
+# kb-shell, 02770) that the broker's children execute in. Without this it cannot even traverse the
+# worktree root, and the whole PTY execution vertical is dead on the VM.
+SupplementaryGroups=kb-shell
 RuntimeDirectory=kb-dashboard
 RuntimeDirectoryMode=0750
 WorkingDirectory=/opt/kb-releases/current/dashboard

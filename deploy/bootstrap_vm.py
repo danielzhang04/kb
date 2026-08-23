@@ -12,8 +12,20 @@ from pathlib import Path, PurePosixPath
 
 try:
     from .control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
+    from .install_pty_broker import (
+        Layout as BrokerLayout,
+        SOCKET_UNIT,
+        install_units as install_broker_units,
+        provision_account_and_directories as provision_broker_account,
+    )
 except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
     from control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
+    from install_pty_broker import (
+        Layout as BrokerLayout,
+        SOCKET_UNIT,
+        install_units as install_broker_units,
+        provision_account_and_directories as provision_broker_account,
+    )
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
@@ -173,6 +185,20 @@ def install_root_validators(
         generated.unlink(missing_ok=True)
 
 
+def provision_pty_broker(run=subprocess.run, layout: BrokerLayout | None = None) -> None:
+    """Newly provisioned machines get the PTY broker here.
+
+    Only the account, its filesystem, and the two units: no broker code exists until the first
+    release is activated, so the socket is enabled but never started. Existing VMs take the same end
+    state through the bounded deploy/install_pty_broker.py instead.
+    """
+    layout = BrokerLayout() if layout is None else layout
+    provision_broker_account(layout, run)
+    install_broker_units(layout, run, source_root=Path(__file__).resolve().parents[1])
+    run(["systemctl", "daemon-reload"], check=True)
+    run(["systemctl", "enable", SOCKET_UNIT], check=True)
+
+
 def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tailnet_operator: str, run=subprocess.run) -> None:
     # Validated BEFORE any command runs: a bad host/operator must not leave a half-bootstrapped VM behind.
     validate_tailnet_host(tailnet_host)
@@ -200,6 +226,7 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tai
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", STATE_ROOT], check=True)
     install_root_validators(release_public_key, tailnet_host, tailnet_operator, run=run)
+    provision_pty_broker(run=run)
 
 
 def main() -> int:

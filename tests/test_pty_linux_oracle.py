@@ -91,20 +91,19 @@ def _tool(name: str) -> str:
 
 @lru_cache(maxsize=1)
 def _built_main() -> Path:
-    """Reuse the release build when it is present; only build when it is not."""
+    """Reuse the `npm run build:pty-broker` output when it is present; only build when it is not.
+
+    The oracle must exercise the SHIPPED entrypoint, so there is no hand-written fallback here any
+    more: the build script emits main.js, the ESM marker, and the packaged runtime dependencies
+    together, and an oracle running against a synthesized main.js would prove nothing about them.
+    """
     output = DASHBOARD / "dist-server" / "kb-shell-broker"
-    emitted = output / "server" / "pty" / "linuxBrokerMain.js"
-    if not emitted.is_file():
-        subprocess.run([_tool("npx"), "tsc", "-p", "tsconfig.pty-broker.json"], cwd=DASHBOARD,
-                       check=True, timeout=300)
-        assert emitted.is_file(), f"broker compiler did not emit {emitted}"
     main = output / "main.js"
-    if not main.is_file():
-        # Fallback only. W6.2's `build:pty-broker` is expected to emit main.js itself; when it
-        # does, this test reuses that entrypoint and never overwrites it.
-        main.write_text(
-            "import { runLinuxBrokerProcess } from './server/pty/linuxBrokerMain.js';\n"
-            "void runLinuxBrokerProcess();\n", encoding="utf-8")
+    emitted = output / "server" / "pty" / "linuxBrokerMain.js"
+    if not (main.is_file() and emitted.is_file()):
+        subprocess.run([_tool("node"), "scripts/build-pty-broker.mjs"], cwd=DASHBOARD,
+                       check=True, timeout=600)
+    assert main.is_file() and emitted.is_file(), f"build:pty-broker did not emit {main}"
     return main
 
 

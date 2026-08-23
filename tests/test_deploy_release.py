@@ -43,6 +43,26 @@ def test_dashboard_unit_provisions_schedule_socket_runtime_directory():
     assert "RuntimeDirectoryMode=0750" in unit.splitlines()
 
 
+def test_activation_stays_dashboard_only_and_never_installs_the_broker():
+    """W6.2 pins the non-change: the PTY broker is installed by bootstrap_vm/install_pty_broker.
+
+    Release activation owns exactly one unit (kb-dashboard.service) and one release tree. Teaching it
+    about kb-shell would put a second, differently-owned service inside the release-lock's blast
+    radius and inside a rollback it does not model.
+    """
+    source = (Path(__file__).parents[1] / "deploy/activate_release.py").read_text(encoding="utf-8")
+    for token in ("kb-shell", "kb-shell-broker", "install_pty_broker", "broker", "socket-fd"):
+        assert token not in source, token
+    assert "kb-dashboard.service" in source
+
+
+def test_broker_units_are_installed_by_bootstrap_not_by_activation():
+    bootstrap_source = (Path(__file__).parents[1] / "deploy/bootstrap_vm.py").read_text(
+        encoding="utf-8")
+    assert "provision_pty_broker" in bootstrap_source
+    assert "install_pty_broker" in bootstrap_source
+
+
 def canonical_attestation(commit: str = "a" * 40, digest: str = "b" * 64) -> bytes:
     value = {
         "archive": f"kb-platform-{commit}.tar.gz",
