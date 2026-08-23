@@ -1,0 +1,165 @@
+import type { IterationOutcomeContract } from '../control/iterationOutcome.ts';
+import type { ExecutionProfile } from '../control/policy.ts';
+import type { ProposalStage, ResolvedAgentAssignment } from '../control/proposal.ts';
+import type { WorkerExecutionResult } from '../control/execution.ts';
+import type { SessionRunRecord } from './sessionRuns.ts';
+import type {
+  HostRefusalCode,
+  LaunchRecipe,
+  SafeRootId,
+  SessionHostKind,
+  SessionLauncher,
+  SessionSize,
+  SessionSummary,
+} from '../../shared/ptyProtocol.ts';
+
+export type {
+  AttemptSessionPublicRow,
+  BrokerClientFrame,
+  BrokerServerFrame,
+  BrowserClientFrame,
+  BrowserServerFrame,
+  HostRefusalCode,
+  LaunchRecipe,
+  PublicExit,
+  PublicPtyCapability,
+  PtyProbeReason,
+  RecipeSandbox,
+  SafeRootId,
+  SessionHostKind,
+  SessionLauncher,
+  SessionMode,
+  SessionSize,
+  SessionState,
+  SessionSummary,
+} from '../../shared/ptyProtocol.ts';
+
+export type PortResult<T> = { ok: true; value: T }
+  | { ok: false; refusal: HostRefusalCode; detail: string | null };
+export type ObservedExit = { sessionId: string; sequence: number; exitCode: number | null;
+  signal: number | null; reason: 'exited' | 'closed' | 'abandoned'; observedAt: string };
+export type SessionDataFrame = { sessionId: string; sequence: number; encoding: 'base64';
+  data: string; replay: boolean };
+export type SessionSink = { data(frame: SessionDataFrame): void; exit(exit: ObservedExit): void;
+  closed(): boolean };
+export type PtyCapabilityProbe =
+  | { available: true; host: SessionHostKind; transport: 'local-node-pty' | 'unix-broker';
+      launchers: SessionLauncher[]; roots: SafeRootId[]; epochId: string; checkedAt: string }
+  | { available: false; host: SessionHostKind; transport: 'local-node-pty' | 'unix-broker';
+      reason: import('../../shared/ptyProtocol.ts').PtyProbeReason; detail: string | null; checkedAt: string };
+export type BrowserPrincipal = { operator: string; browserSessionRef: string };
+export type BrowserController = BrowserPrincipal;
+export type ApprovedManualCreate = { launcher: SessionLauncher; rootId: SafeRootId;
+  relativeCwd: string; cols: number; rows: number };
+export type AssignmentDeclaration =
+  | { assignment?: never; instructionMarkdown?: never }
+  | { assignment: ResolvedAgentAssignment; instructionMarkdown: string };
+export type IterationDeclaration =
+  | { iterationContract?: never; expectsIterationOutcome?: false }
+  | { iterationContract: IterationOutcomeContract; expectsIterationOutcome: true };
+export type ApprovedAttemptDeclaration = AssignmentDeclaration & IterationDeclaration & {
+  operationKey: string; subject: string; runRef: string; stageRef: string; attemptRef: string;
+  sessionRef: string; rootId: 'worktrees'; relativeCwd: string; cols: number; rows: number;
+  profile: ExecutionProfile & { runtime: 'claude' | 'codex' }; workflowProfile: string | null;
+  skills: readonly string[]; action: string; target: string; workOrder: string;
+  readScope: readonly string[]; writeScope: readonly string[]; checkpoints: readonly string[];
+  proposalStage: ProposalStage; project: string;
+};
+export type AttemptParserContext = {
+  runtime: 'claude' | 'codex'; stdout: string; stderrTail: string; exitCode: number | null;
+  timedOut: boolean; outputLimitExceeded: boolean; cancelled: boolean; resultObserved: boolean;
+  iterationContract?: IterationOutcomeContract;
+};
+export type ParsedAttemptResult = { result: WorkerExecutionResult; resumeRef: string | null };
+export type ApprovedRunInstruction = { operator: string; runRef: string; idempotencyKey: string;
+  message: string };
+export type ApprovedCheckpointInstruction = ApprovedRunInstruction & { checkpoint: string };
+export type AttemptBinding = { operator: string; runRef: string; attemptRef: string;
+  managedSessionRef: string; sessionId: string; createdAt: string };
+export type ClaimRunControllerInput = { runRef: string; sessionId: string;
+  expectedRunVersion: number; expectedSessionRevision: number };
+export type ClaimReceipt = { revision: number; sessionId: string; replayed: boolean };
+export type SessionHostRequest = { operationKey: string; recipe: LaunchRecipe; rootId: SafeRootId;
+  relativeCwd: string; cols: number; rows: number };
+export type HostStartReceipt = { operationKey: string; sessionId: string; epochId: string;
+  revision: number; boundAt: string; replayed: boolean };
+export type HostLaunch = { receipt: Promise<PortResult<HostStartReceipt>>; exit: Promise<ObservedExit> };
+export type AttemptStartReceipt = { operationKey: string; sessionId: string; attemptRef: string;
+  revision: number; boundAt: string; replayed: boolean };
+export type AttemptLaunch = { receipt: Promise<PortResult<AttemptStartReceipt>>;
+  result: Promise<WorkerExecutionResult> };
+export interface SessionHost {
+  probe(): Promise<PtyCapabilityProbe>;
+  create(request: SessionHostRequest, sink: SessionSink): HostLaunch;
+  attach(sessionId: string, sink: SessionSink): Promise<PortResult<{ attachmentId: string }>>;
+  write(sessionId: string, data: Uint8Array): Promise<PortResult<{ accepted: number }>>;
+  resize(sessionId: string, size: SessionSize): Promise<PortResult<SessionSize>>;
+  close(sessionId: string): Promise<PortResult<ObservedExit>>;
+  listEpoch(): Promise<PortResult<{ epochId: string; sessionIds: string[] }>>;
+  drain(epochId: string): Promise<PortResult<{ epochId: string; closed: string[]; alreadyGone: string[] }>>;
+}
+export interface AttemptBindingPort {
+  bind(input: { expectedRevision: number; operator: string; runRef: string; attemptRef: string;
+    managedSessionRef: string; sessionId: string }): Promise<PortResult<{ revision: number }>>;
+  byAttempt(operator: string, attemptRef: string): AttemptBinding | null;
+  bySession(operator: string, sessionId: string): AttemptBinding | null;
+}
+export interface AttemptExecutionPort {
+  begin(input: ApprovedAttemptDeclaration): AttemptLaunch;
+  cancel(input: { operationKey: string; reason: string }): Promise<PortResult<ObservedExit>>;
+  isRunLive(input: { operator: string; runRef: string }): boolean;
+  queueRunInstruction(input: ApprovedRunInstruction): Promise<boolean>;
+  queueRunInstructionAtCheckpoint(input: ApprovedCheckpointInstruction): Promise<boolean>;
+  drain(): Promise<void>;
+}
+export interface SessionRegistryPort {
+  create(principal: BrowserPrincipal, input: ApprovedManualCreate): Promise<PortResult<SessionSummary>>;
+  attach(principal: BrowserPrincipal, sessionId: string, sink: SessionSink): Promise<PortResult<Attachment>>;
+  list(principal: BrowserPrincipal): Promise<SessionSummary[]>;
+  write(principal: BrowserPrincipal, sessionId: string, data: Uint8Array): Promise<PortResult<{accepted:number}>>;
+  resize(principal: BrowserPrincipal, sessionId: string, size: SessionSize): Promise<PortResult<SessionSummary>>;
+  close(principal: BrowserPrincipal, sessionId: string): Promise<PortResult<ObservedExit>>;
+  claimRunController(principal: BrowserPrincipal, input: ClaimRunControllerInput): Promise<PortResult<ClaimReceipt>>;
+}
+export type Attachment = { attachmentId: string; session: SessionSummary; detach(): Promise<void> };
+
+export type SessionRecordBase = {
+  sessionId: string;
+  operationKey: string;
+  requestHash: string;
+  recipeDigest: string;
+  launcher: SessionLauncher;
+  host: SessionHostKind;
+  rootId: SafeRootId;
+  relativeCwd: string;
+  name: string;
+  attachmentIds: string[];
+  transcript: { path: string; bytes: number; truncated: boolean; lastSequence: number };
+  startedAt: string;
+  endedAt: string | null;
+  revision: number;
+};
+export type SessionRecordProvenance =
+  | { provenance: 'manual'; controller: BrowserController; claimRevision?: never;
+      operator?: never; runRef?: never; attemptRef?: never; managedSessionRef?: never }
+  | { provenance: 'run'; controller: null; claimRevision?: never; operator: string;
+      runRef: string; attemptRef: string; managedSessionRef: string }
+  | { provenance: 'run'; controller: BrowserController; claimRevision: number; operator: string;
+      runRef: string; attemptRef: string; managedSessionRef: string };
+export type SessionRecordState =
+  | { state: 'starting'; epochId: string; exit: null }
+  | { state: 'live'; epochId: string; exit: null }
+  | { state: 'closing'; epochId: string; exit: null }
+  | { state: 'exited'; epochId: string; exit: ObservedExit }
+  | { state: 'abandoned'; epochId: string; exit: ObservedExit & { reason: 'abandoned' };
+      abandonReason: 'epoch-lost' | 'daemon-restart' | 'start-recovery' };
+export type SessionRecord = SessionRecordBase & SessionRecordProvenance & SessionRecordState;
+export type OperationReceipt = { operationKey: string; requestHash: string;
+  status: 'pending' | 'bound' | 'failed' | 'cancelled'; sessionId: string | null;
+  attemptRef: string | null; refusal: HostRefusalCode | null; createdAt: string; settledAt: string | null };
+export type ArchiveKeyEntry = { key: string; sessionRunRef: string; reason: string | null };
+export type PtySessionsDocumentV2 = { schema: 'kb.pty-sessions/v2'; revision: number;
+  sessions: SessionRecord[]; attemptBindings: AttemptBinding[]; operationReceipts: OperationReceipt[];
+  legacyRuns: SessionRunRecord[]; legacyArchiveKeys: ArchiveKeyEntry[] };
+export type RawSessionReplay = { sessionId: string; fromSequence: number; nextSequence: number;
+  complete: boolean; frames: { sequence: number; encoding: 'base64'; data: string }[] };

@@ -1,0 +1,27 @@
+{
+  "titles": [
+    "traversal",
+    "denied-root static symlink",
+    "cwd/executable/shim/JS/interpreter/parent swap",
+    "every raw authority field",
+    "arbitrary and duplicate query",
+    "raw WS oversize",
+    "decoded oversize",
+    "high-water",
+    "atomic 16-host/8-principal capacity races",
+    "independent composite-principal list/attach/write/resize/close/eviction",
+    "cookie CSPRNG/name/path/lifetime/renewal/collision",
+    "same-pair multi-tab",
+    "claim first/replay/revision/foreign mask and exact claim envelope",
+    "root uid/mode refusal",
+    "child uid/env deny list",
+    "Unix-only listener",
+    "recipe/policy/parser round-trip/refusal",
+    "awaited durable mutations",
+    "dashboard/broker restart, drain, zero-orphan and old-epoch exit precedence",
+    "false-persistence prevention",
+    "OS-derived-capability source flow",
+    "retained-import/deletion closure",
+    "deployment closer casts"
+  ]
+}

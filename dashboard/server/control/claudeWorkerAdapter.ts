@@ -26,7 +26,19 @@ import { spawn as spawnChildProcess } from 'node:child_process';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from './childEnv.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
-import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles } from './environment.ts';
+import {
+  buildReadScopeSettings,
+  isWellFormedToolName,
+  ToolPolicyRefusal,
+} from './claudeLaunchPolicy.ts';
+import type { ClaudeToolPolicy } from './claudeLaunchPolicy.ts';
+export {
+  buildReadScopeSettings,
+  createWorkflowToolPolicyResolver,
+  READ_SCOPE_SENSITIVE_ROOTS,
+  ToolPolicyRefusal,
+} from './claudeLaunchPolicy.ts';
+export type { ClaudeToolPolicy } from './claudeLaunchPolicy.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
 import type { ProposalIterationGroup, ProposalIterationVerdict, ProposalStage } from './proposal.ts';
 import {
@@ -72,72 +84,17 @@ export const END_INERT_CONTEXT = 'END INERT CONTEXT';
  * (`{id, role, runtime, model, capabilities}`) and no tool fields at all, which is why the pre-fix
  * signature could never do this job.
  */
-export interface ClaudeToolPolicy {
-  /** The `--allowedTools` allowlist for this profile (publish tools never appear in a default profile). */
-  allowedTools: readonly string[];
-  /** The `--permission-mode` value for this profile (e.g. `default`, `plan`, `acceptEdits`). */
-  permissionMode: string;
-}
-
 /**
  * A refusal to launch. Thrown — never returned as a degraded policy — so that no path can turn an
  * unresolved capability cap into a spawn. The engine maps a thrown adapter error to a failed attempt.
  */
-export class ToolPolicyRefusal extends Error {}
-
 /** Rejects anything that would corrupt the comma-joined `--allowedTools` value or smuggle a flag. */
-function isWellFormedToolName(name: unknown): name is string {
-  return typeof name === 'string'
-    && name.length > 0
-    && name.length <= 200
-    && !/[\s,\0"']/.test(name)
-    && !name.startsWith('-');
-}
-
 /**
  * The PRODUCTION tool-policy resolver: the workflow profile id a proposal declares -> that profile's
  * server-owned `allowedTools`. Fail-closed at every branch — an unnamed, unknown, empty, malformed, or
  * forbidden-tool-bearing profile REFUSES. There is deliberately no "default" or "fallback" profile:
  * the absence of a resolvable cap is a reason not to run, never a reason to run uncapped.
  */
-export function createWorkflowToolPolicyResolver(
-  options: { permissionMode?: string; profiles?: readonly { id: string; allowedTools: readonly string[] }[] } = {},
-): (workflowProfileId: string | null) => ClaudeToolPolicy {
-  const permissionMode = options.permissionMode ?? 'default';
-  return (workflowProfileId) => {
-    if (typeof workflowProfileId !== 'string' || workflowProfileId.trim() === '') {
-      throw new ToolPolicyRefusal(
-        'refusing to spawn a worker: the proposal declares no workflow execution profile, so no tool cap can be resolved',
-      );
-    }
-    const profiles = options.profiles ?? loadWorkflowProfiles();
-    const profile = profiles.find((candidate) => candidate.id === workflowProfileId);
-    if (!profile) {
-      throw new ToolPolicyRefusal(
-        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' is not server-owned`,
-      );
-    }
-    if (profile.allowedTools.length === 0) {
-      throw new ToolPolicyRefusal(
-        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' grants no tools`,
-      );
-    }
-    const malformed = profile.allowedTools.find((tool) => !isWellFormedToolName(tool));
-    if (malformed !== undefined) {
-      throw new ToolPolicyRefusal(
-        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' names a malformed tool`,
-      );
-    }
-    const forbidden = profile.allowedTools.find((tool) => FORBIDDEN_WORKFLOW_TOOLS.includes(tool));
-    if (forbidden !== undefined) {
-      throw new ToolPolicyRefusal(
-        `refusing to spawn a worker: workflow execution profile '${workflowProfileId}' names forbidden tool '${forbidden}'`,
-      );
-    }
-    return { allowedTools: [...profile.allowedTools], permissionMode };
-  };
-}
-
 /** A spawn request for one `claude` child. The env is ALREADY allowlist-filtered — never process.env. */
 export interface ClaudeSpawnRequest {
   args: readonly string[];
@@ -399,13 +356,7 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
  * authenticate — and cross-org reads are not expressible here (a blanket `Read(/orgs/**)` deny would also
  * block the worker's own org). See docs/specs/2026-07-21-worker-read-scope-design.md §5.2.
  */
-export const READ_SCOPE_SENSITIVE_ROOTS: readonly string[] = ['dashboard', 'memory', 'scripts'];
-
 /** The distinct top-level path segments of a repo-relative path list. */
-function topLevelSegments(paths: readonly string[]): Set<string> {
-  return new Set(paths.map((path) => path.split('/')[0]).filter((segment) => segment.length > 0));
-}
-
 /**
  * Anchor a denied root as a filesystem-ABSOLUTE Claude Code read rule at the real repo root. Per the
  * permission-rules docs a leading `//` marks a rule pathspec as filesystem-absolute (as opposed to a
@@ -413,11 +364,6 @@ function topLevelSegments(paths: readonly string[]): Set<string> {
  * converted to forward slashes and the drive letter is preserved (NOT stripped), so a repoRoot of
  * `C:\Users\danie\kb-worktrees\dashboard-ops` yields `Read(//C:/Users/danie/kb-worktrees/dashboard-ops/<root>/**)`.
  */
-function absoluteReadDenyRule(repoRoot: string, root: string): string {
-  const forwardSlashed = repoRoot.replace(/\\/g, '/').replace(/\/+$/, '');
-  return `Read(//${forwardSlashed}/${root}/**)`;
-}
-
 /**
  * Build the per-invocation `--settings` JSON value for a no-Bash worker, or `undefined` when none applies
  * (the profile grants Bash, or nothing sensitive is left to deny). Passed inline to `--settings` (the CLI
@@ -438,25 +384,6 @@ function absoluteReadDenyRule(repoRoot: string, root: string): string {
  * (`createWorkers({ repoRoot })`). NOT OS containment regardless: git plumbing (`git show`/`git cat-file`)
  * is why C3 is emitted ONLY for a no-Bash profile. Pure — no filesystem, no process env.
  */
-export function buildReadScopeSettings(input: {
-  allowedTools: readonly string[];
-  readScope: readonly string[];
-  writeScope: readonly string[];
-  repoRoot?: string;
-}): string | undefined {
-  if (input.allowedTools.includes('Bash')) return undefined;
-  const allowed = topLevelSegments([...input.readScope, ...input.writeScope]);
-  const denyRoots = READ_SCOPE_SENSITIVE_ROOTS.filter((root) => !allowed.has(root));
-  if (denyRoots.length === 0) return undefined;
-  const repoRoot = input.repoRoot?.trim();
-  const deny: string[] = [];
-  for (const root of denyRoots) {
-    deny.push(`Read(/${root}/**)`);
-    if (repoRoot) deny.push(absoluteReadDenyRule(repoRoot, root));
-  }
-  return JSON.stringify({ permissions: { deny } });
-}
-
 /**
  * Build the argv after `claude`. Pinned flags first, then routing and the profile's tool cap.
  *
