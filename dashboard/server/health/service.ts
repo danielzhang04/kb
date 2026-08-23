@@ -22,9 +22,19 @@ export type McpAvailabilityRow = { kind: 'deferred'; key: `mcp:${string}:${strin
 export type HealthSectionId = 'fleet' | 'stop' | 'daemon-machine' | 'mcp' | 'usage';
 export type UnavailableRow<S extends HealthSectionId = HealthSectionId> = { kind: 'unavailable'; key: `error:${S}`; label: 'Unavailable'; value: { status: 'unavailable'; reason: string }; observedAt: string; source: 'error' };
 export type ScheduleIntegrityRow = ScheduleOwnerIntegrityRow & { label: 'Schedule owner' };
-export type HealthRow = FleetRow | ScheduleIntegrityRow | StopRow | MachineRow | McpRow | UsageRow | ReleaseRow | McpAvailabilityRow | UnavailableRow;
+/** The v1 -> v2 PTY state migration refused, so every PTY write is fail-closed for this daemon's lifetime.
+ *  Exactly one row, present ONLY on refusal: a healthy or not-yet-attempted migration says nothing. */
+export type PtyMigrationIntegrityRow = {
+  kind: 'integrity';
+  key: 'pty-state-migration';
+  label: 'PTY state';
+  value: { status: 'error'; code: 'pty-state-migration-refused'; detail: string };
+  observedAt: string;
+  source: 'pty-store';
+};
+export type HealthRow = FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | StopRow | MachineRow | McpRow | UsageRow | ReleaseRow | McpAvailabilityRow | UnavailableRow;
 export type HealthResponse = { sections: [
-  { id: 'fleet'; label: 'Fleet'; rows: Array<FleetRow | ScheduleIntegrityRow | UnavailableRow<'fleet'>> },
+  { id: 'fleet'; label: 'Fleet'; rows: Array<FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | UnavailableRow<'fleet'>> },
   { id: 'stop'; label: 'STOP'; rows: Array<StopRow | UnavailableRow<'stop'>> },
   { id: 'daemon-machine'; label: 'Daemon and machine'; rows: Array<MachineRow | ReleaseRow | UnavailableRow<'daemon-machine'>> },
   { id: 'mcp'; label: 'MCP'; rows: Array<McpRow | McpAvailabilityRow | UnavailableRow<'mcp'>> },
@@ -45,13 +55,45 @@ export interface HealthReaders {
   now: () => string;
 }
 
+/** Structural, not imported from `server/pty/`: Health composing this row must not pull the PTY module
+ *  graph (and its host probe) into a read route. `SessionRunStore#migrationState` satisfies it by shape. */
+export type PtyMigrationStateReader = () => 'pending' | 'ok' | { refused: string };
+
 export interface HealthFleetInput {
   scheduleSnapshot: () => { collectionRevision: number; schedules: readonly Schedule[] };
+  /** Absent on a daemon with no PTY stack (probe refused) — which is not a migration refusal, so no row. */
+  ptyMigrationState?: PtyMigrationStateReader;
 }
 
 const emptyFleetInput: HealthFleetInput = {
   scheduleSnapshot: () => ({ collectionRevision: 0, schedules: [] }),
 };
+
+/** ONE row, and only when the migration actually refused. `pending` (nothing has written yet) and `ok` are
+ *  both silent: a row that appeared on every boot would be noise the operator learns to ignore. */
+function ptyMigrationRows(observedAt: string, reader: PtyMigrationStateReader | undefined): PtyMigrationIntegrityRow[] {
+  if (reader === undefined) return [];
+  let state: ReturnType<PtyMigrationStateReader>;
+  try {
+    state = reader();
+  } catch {
+    return [];
+  }
+  if (typeof state !== 'object' || state === null || typeof state.refused !== 'string') return [];
+  return [{
+    kind: 'integrity',
+    key: 'pty-state-migration',
+    label: 'PTY state',
+    value: {
+      status: 'error',
+      code: 'pty-state-migration-refused',
+      // The separator is written as an escape, never a literal middot byte.
+      detail: 'PTY state migration refused \u00b7 terminals and session runs stay unavailable',
+    },
+    observedAt,
+    source: 'pty-store',
+  }];
+}
 
 const deferredValue = 'unavailable in P1' as const;
 
@@ -84,7 +126,11 @@ function fleetRows(
   reader: FleetReader,
   ownerReader: HealthReaders['owners'],
   scheduleSnapshot: HealthFleetInput['scheduleSnapshot'],
-): Array<FleetRow | ScheduleIntegrityRow | UnavailableRow<'fleet'>> {
+  ptyMigrationState: HealthFleetInput['ptyMigrationState'],
+): Array<FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | UnavailableRow<'fleet'>> {
+  // Composed OUTSIDE the fleet try: a PTY migration refusal is exactly the moment the operator needs the
+  // row, and it must not be swallowed by (or swallow) an unrelated fleet-reader failure.
+  const ptyIntegrity = ptyMigrationRows(observedAt, ptyMigrationState);
   try {
     const schedules = scheduleSnapshot().schedules;
     const fleet: FleetRow[] = reader(repoRoot).agents.map((agent) => ({
@@ -94,9 +140,9 @@ function fleetRows(
     }));
     const integrity = projectScheduleOwnerIntegrity(schedules, ownerReader(repoRoot), () => observedAt)
       .map((row) => ({ ...row, label: 'Schedule owner' as const }));
-    return [...fleet, ...integrity];
+    return [...fleet, ...integrity, ...ptyIntegrity];
   } catch {
-    return [unavailable('fleet', observedAt)];
+    return [unavailable('fleet', observedAt), ...ptyIntegrity];
   }
 }
 
@@ -166,7 +212,7 @@ export function composeHealth(
   const observedAt = readers.now();
   return {
     sections: [
-      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet, readers.owners, fleetInput.scheduleSnapshot) },
+      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet, readers.owners, fleetInput.scheduleSnapshot, fleetInput.ptyMigrationState) },
       { id: 'stop', label: 'STOP', rows: stopRows(repoRoot, observedAt, readers.stop) },
       { id: 'daemon-machine', label: 'Daemon and machine', rows: machineRows(observedAt, readers.platform) },
       { id: 'mcp', label: 'MCP', rows: mcpRows(repoRoot, observedAt, readers.connections) },

@@ -13,6 +13,9 @@ import {
   mintSessionFromVerifiedAssertion,
   resolveSessionTtlMs,
   verifySession,
+  createBrowserSessionRefStore,
+  resolveBrowserPrincipal,
+  MAX_LIVE_BROWSER_SESSION_REFS,
 } from './session.ts';
 import type { SessionConfig } from './session.ts';
 import { createInternalServiceCaller } from '../control/activation.ts';
@@ -132,5 +135,152 @@ describe('isInternalServiceCaller (unforgeable in-process principal)', () => {
 
   it('the brand primitive refuses an empty subject (no identity-less caller can exist)', () => {
     expect(() => brandInternalServiceCaller('')).toThrow();
+  });
+});
+
+/**
+ * W6.3b — the browser-session ref table and the principal resolved from it. Before these tests
+ * `resolveBrowserPrincipal` parsed the cookie and trusted it: any authenticated caller could invent a
+ * 43-character base64url string and receive a principal, and the expiry the table stores was never read.
+ */
+describe('browser-session ref store and principal resolution', () => {
+  const THIRTY_ONE_DAYS_MS = 31 * 24 * 60 * 60 * 1_000;
+  /** A syntactically PERFECT ref that no store ever reserved — the forgery the old parse-only path let in. */
+  const forgedRef = (seed: string) => Buffer.alloc(32, seed).toString('base64url');
+  const cookie = (ref: string) => `kb_browser_session=${ref}`;
+  const mintedRef = async (refs: ReturnType<typeof createBrowserSessionRefStore>) => {
+    const result = await refs.mint();
+    if (!result.ok) throw new Error('fixture mint failed');
+    return result.value.browserSessionRef;
+  };
+  /** Deterministic, distinct 32-byte values so a collision/capacity path can be driven exactly. */
+  function counterBytes(): () => Uint8Array {
+    let n = 0;
+    return () => {
+      const bytes = Buffer.alloc(32);
+      n += 1;
+      bytes.writeUInt32BE(n, 0);
+      return bytes;
+    };
+  }
+
+  it('resolves a ref the table actually issued, and refuses a forged one of the same shape', async () => {
+    const refs = createBrowserSessionRefStore();
+    const ref = await mintedRef(refs);
+
+    await expect(resolveBrowserPrincipal('operator', cookie(ref), refs))
+      .resolves.toEqual({ operator: 'operator', browserSessionRef: ref });
+    // RED on a revert to parse-only resolution: this string is well-formed and completely invented.
+    await expect(resolveBrowserPrincipal('operator', cookie(forgedRef('f')), refs)).resolves.toBeNull();
+  });
+
+  it('enforces the stored expiry at use, so a ref outliving its window stops being a principal', async () => {
+    let clock = new Date('2026-08-23T00:00:00.000Z');
+    const refs = createBrowserSessionRefStore({ now: () => clock });
+    const ref = await mintedRef(refs);
+    await expect(resolveBrowserPrincipal('operator', cookie(ref), refs)).resolves.not.toBeNull();
+
+    clock = new Date(clock.getTime() + THIRTY_ONE_DAYS_MS);
+    await expect(resolveBrowserPrincipal('operator', cookie(ref), refs)).resolves.toBeNull();
+  });
+
+  it('refuses a malformed value, duplicate cookies, an empty operator, and an absent store', async () => {
+    const refs = createBrowserSessionRefStore();
+    const ref = await mintedRef(refs);
+
+    await expect(resolveBrowserPrincipal('operator', 'kb_browser_session=not-a-ref', refs)).resolves.toBeNull();
+    await expect(resolveBrowserPrincipal('operator', `${cookie(ref)}; ${cookie(ref)}`, refs)).resolves.toBeNull();
+    await expect(resolveBrowserPrincipal('operator', undefined, refs)).resolves.toBeNull();
+    await expect(resolveBrowserPrincipal('', cookie(ref), refs)).resolves.toBeNull();
+    await expect(resolveBrowserPrincipal('operator', cookie(ref), undefined)).resolves.toBeNull();
+  });
+
+  it('never throws: a store that faults yields no principal', async () => {
+    const exploding = { resolve: () => { throw new Error('store fault'); } } as never;
+    await expect(resolveBrowserPrincipal('operator', cookie(forgedRef('a')), exploding)).resolves.toBeNull();
+  });
+
+  it('never renews as a side effect of resolving', async () => {
+    let clock = new Date('2026-08-23T00:00:00.000Z');
+    const refs = createBrowserSessionRefStore({ now: () => clock });
+    const ref = await mintedRef(refs);
+    // Deep inside the renewal window, where `renew` WOULD issue a fresh 30-day expiry.
+    clock = new Date(clock.getTime() + 29 * 24 * 60 * 60 * 1_000);
+    await expect(resolveBrowserPrincipal('operator', cookie(ref), refs)).resolves.not.toBeNull();
+
+    clock = new Date(clock.getTime() + 2 * 24 * 60 * 60 * 1_000);
+    // Still expired on the ORIGINAL schedule: resolving did not extend anything.
+    await expect(resolveBrowserPrincipal('operator', cookie(ref), refs)).resolves.toBeNull();
+  });
+
+  it('refuses to reserve a ref a persisted session already holds as its controller, across all 8 attempts', async () => {
+    const collidingRef = Buffer.alloc(32, 'c');
+    collidingRef.writeUInt32BE(1, 0);
+    let reads = 0;
+    const persistence = {
+      read: () => {
+        reads += 1;
+        return { sessions: [{ controller: { browserSessionRef: collidingRef.toString('base64url') } }] };
+      },
+    } as never;
+    const refs = createBrowserSessionRefStore({
+      persistence,
+      // Every attempt proposes the ref the persisted controller already owns.
+      randomBytes: () => collidingRef,
+    });
+
+    expect(await refs.mint()).toEqual({ ok: false, status: 503, code: 'browser-session-ref-unavailable' });
+    // Eight attempts, eight atomic checks — never a ninth, and never a silent hand-off of a live
+    // session's controller ref to a different browser.
+    expect(reads).toBe(8);
+  });
+
+  it('retries past a taken ref and succeeds on the next attempt', async () => {
+    const taken = Buffer.alloc(32, 'c');
+    taken.writeUInt32BE(1, 0);
+    const free = Buffer.alloc(32, 'c');
+    free.writeUInt32BE(2, 0);
+    const proposals = [taken, free];
+    const refs = createBrowserSessionRefStore({
+      persistence: { read: () => ({ sessions: [{ controller: { browserSessionRef: taken.toString('base64url') } }] }) } as never,
+      randomBytes: () => proposals.shift() ?? free,
+    });
+
+    const minted = await refs.mint();
+    expect(minted.ok).toBe(true);
+    expect(minted.ok && minted.value.browserSessionRef).toBe(free.toString('base64url'));
+  });
+
+  it('refuses (never allows) on an unreadable or still-v1 document, and reports it exactly once', async () => {
+    const log: string[] = [];
+    const refs = createBrowserSessionRefStore({
+      persistence: { read: () => { throw new Error('C:/state/pty/sessions.json is not readable'); } } as never,
+      randomBytes: counterBytes(),
+      log: (line) => log.push(line),
+    });
+
+    expect(await refs.mint()).toEqual({ ok: false, status: 503, code: 'browser-session-ref-unavailable' });
+    expect(await refs.mint()).toEqual({ ok: false, status: 503, code: 'browser-session-ref-unavailable' });
+    // Sixteen refusals, ONE line — the fault is visible instead of swallowed, without flooding the log.
+    expect(log).toEqual(['browser-session-ref: reserve refused: the pty session document could not be read']);
+    // And the line carries the store's own words only: no path from the underlying error.
+    expect(log[0]).not.toContain('sessions.json');
+  });
+
+  it('bounds the live table: expired refs are reclaimed on reserve, a full LIVE table refuses', async () => {
+    let clock = new Date('2026-08-23T00:00:00.000Z');
+    const log: string[] = [];
+    const refs = createBrowserSessionRefStore({ now: () => clock, randomBytes: counterBytes(), log: (line) => log.push(line) });
+    for (let i = 0; i < MAX_LIVE_BROWSER_SESSION_REFS; i += 1) {
+      expect((await refs.mint()).ok).toBe(true);
+    }
+
+    // Every ref is live, so the cap refuses rather than evicting a working browser's principal.
+    expect(await refs.mint()).toEqual({ ok: false, status: 503, code: 'browser-session-ref-unavailable' });
+    expect(log).toEqual(['browser-session-ref: reserve refused: the live ref table is at capacity']);
+
+    // Past their expiry the whole table is reclaimed on the next reserve and minting works again.
+    clock = new Date(clock.getTime() + THIRTY_ONE_DAYS_MS);
+    expect((await refs.mint()).ok).toBe(true);
   });
 });

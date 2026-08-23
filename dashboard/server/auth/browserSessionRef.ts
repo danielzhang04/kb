@@ -95,6 +95,33 @@ export function createBrowserSessionRefManager(deps: BrowserSessionRefManagerDep
   const now = deps.now ?? (() => new Date());
   const randomBytes = deps.randomBytes ?? nodeRandomBytes;
 
+  type LookedUp =
+    | { ok: true; ref: string; existing: BrowserSessionRefLookup; expiryTime: number; currentTime: Date }
+    | Extract<BrowserSessionRefResult, { ok: false }>;
+
+  /** The ONE parse -> constant-time verify -> expiry path. `resolve` and `renew` both refuse through it,
+   *  so the read path can never become more permissive than the renewal path by drifting apart. */
+  const lookupPresented = async (cookieHeader: string | undefined): Promise<LookedUp> => {
+    // A missing store is a misconfiguration, not a bad credential: it must never log an
+    // operator out (D6). Only the presented cookie itself can produce a 401.
+    if (deps.verify === undefined) {
+      return { ok: false, status: 503, code: 'browser-session-ref-unavailable' };
+    }
+    const ref = parseBrowserSessionCookie(cookieHeader);
+    if (ref === null) return { ok: false, status: 401, code: 'browser-session-ref-invalid' };
+    const existing = await deps.verify((storedRef) => constantTimeBrowserRefEqual(ref, storedRef));
+    if (existing === null) return { ok: false, status: 401, code: 'browser-session-ref-invalid' };
+    const currentTime = now();
+    const expiryTime = Date.parse(existing.expiresAt);
+    if (!Number.isFinite(expiryTime) || new Date(expiryTime).toISOString() !== existing.expiresAt) {
+      return { ok: false, status: 401, code: 'browser-session-ref-invalid' };
+    }
+    if (expiryTime <= currentTime.getTime()) {
+      return { ok: false, status: 401, code: 'browser-session-ref-expired' };
+    }
+    return { ok: true, ref, existing, expiryTime, currentTime };
+  };
+
   return {
     async mint(): Promise<BrowserSessionRefResult> {
       const issuedAt = now();
@@ -116,24 +143,30 @@ export function createBrowserSessionRefManager(deps: BrowserSessionRefManagerDep
       return { ok: false, status: 503, code: 'browser-session-ref-unavailable' };
     },
 
+    /**
+     * READ-ONLY principal resolution: parse the cookie, verify it through the constant-time `verify`
+     * seam, enforce its expiry — and change nothing. This is the one entry point a request handler may
+     * use to turn a presented cookie into a ref it is allowed to trust; it never mints and never renews,
+     * so a GET that resolves a principal cannot extend a credential's life as a side effect.
+     */
+    async resolve(cookieHeader: string | undefined): Promise<BrowserSessionRefResult> {
+      const looked = await lookupPresented(cookieHeader);
+      if (!looked.ok) return looked;
+      return {
+        ok: true,
+        value: {
+          browserSessionRef: looked.ref,
+          cookie: null,
+          expiresAt: looked.existing.expiresAt,
+          renewed: false,
+        },
+      };
+    },
+
     async renew(cookieHeader: string | undefined): Promise<BrowserSessionRefResult> {
-      // A missing store is a misconfiguration, not a bad credential: it must never log an
-      // operator out (D6). Only the presented cookie itself can produce a 401.
-      if (deps.verify === undefined) {
-        return { ok: false, status: 503, code: 'browser-session-ref-unavailable' };
-      }
-      const ref = parseBrowserSessionCookie(cookieHeader);
-      if (ref === null) return { ok: false, status: 401, code: 'browser-session-ref-invalid' };
-      const existing = await deps.verify((storedRef) => constantTimeBrowserRefEqual(ref, storedRef));
-      if (existing === null) return { ok: false, status: 401, code: 'browser-session-ref-invalid' };
-      const currentTime = now();
-      const expiryTime = Date.parse(existing.expiresAt);
-      if (!Number.isFinite(expiryTime) || new Date(expiryTime).toISOString() !== existing.expiresAt) {
-        return { ok: false, status: 401, code: 'browser-session-ref-invalid' };
-      }
-      if (expiryTime <= currentTime.getTime()) {
-        return { ok: false, status: 401, code: 'browser-session-ref-expired' };
-      }
+      const looked = await lookupPresented(cookieHeader);
+      if (!looked.ok) return looked;
+      const { ref, existing, expiryTime, currentTime } = looked;
       const remainingSeconds = (expiryTime - currentTime.getTime()) / 1_000;
       if (remainingSeconds >= BROWSER_SESSION_RENEWAL_WINDOW_SECONDS) {
         return {

@@ -18,6 +18,7 @@ import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { createSessionRunStore } from './sessionRuns.ts';
+import { createSessionPersistence } from './sessionPersistence.ts';
 import type { SessionRunStore } from './sessionRuns.ts';
 import { createTranscriptRecorder, transcriptPath } from './transcripts.ts';
 import { registerSessionRunRoutes } from './sessionRunRoutes.ts';
@@ -58,7 +59,7 @@ async function harness(options: {
   root: string;
 }> {
   const root = options.root ?? stateRoot();
-  const store = options.store ?? createSessionRunStore(root);
+  const store = options.store ?? createSessionRunStore(createSessionPersistence(root));
   const audit = recordingAudit();
   const app = Fastify();
   await registerSessionRunRoutes(app, {
@@ -75,7 +76,7 @@ async function harness(options: {
 describe('GET /api/pty/session-runs', () => {
   it('accepts bearer or session cookie and lists only the caller-owned runs, newest first', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const { app } = await harness({ store, root });
     // Sessions spawn AFTER the daemon boots — a record created before registration would (correctly) be
     // swept to `abandoned` by the boot sweep, which is a different test.
@@ -104,7 +105,7 @@ describe('GET /api/pty/session-runs', () => {
 
   it('excludes archived runs unless includeArchived=1 is asked for', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const record = await store.create({ owner: 'operator-1', kind: 'agent', targetRef: 'a', ptySessionId: null });
     await store.end('operator-1', record.sessionRunRef);
     await store.archive('operator-1', record.sessionRunRef, { idempotencyKey: 'k', reason: null });
@@ -125,7 +126,7 @@ describe('GET /api/pty/session-runs', () => {
 describe('the boot sweep runs at registration', () => {
   it('corrects a live record left by the previous daemon before any request can read it', async () => {
     const root = stateRoot();
-    const previous = createSessionRunStore(root);
+    const previous = createSessionRunStore(createSessionPersistence(root));
     const stale = await previous.create({ owner: 'operator-1', kind: 'agent', targetRef: 'a', ptySessionId: 'pty-x' });
     const { app, store } = await harness({ root });
     try {
@@ -141,7 +142,7 @@ describe('the boot sweep runs at registration', () => {
 describe('GET /api/pty/session-runs/:ref', () => {
   it('returns the record plus its transcript text', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const transcripts = createTranscriptRecorder({ root });
     const record = await store.create({ owner: 'operator-1', kind: 'agent', targetRef: 'a', ptySessionId: 'pty-test-1' });
     // Simulate a taped session by writing through the recorder's own path.
@@ -166,7 +167,7 @@ describe('GET /api/pty/session-runs/:ref', () => {
 
   it('404s a foreign ref, an unknown ref, and a malformed ref alike', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const mine = await store.create({ owner: 'operator-1', kind: 'agent', targetRef: 'a', ptySessionId: null });
     const { app } = await harness({ store, root });
     try {
@@ -195,7 +196,7 @@ describe('POST /api/pty/session-runs/:ref/archive — the copied governed shape'
 
   it('writes the T3 audit row BEFORE the mutation, carrying the operator reason', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const ref = await endedRun(store);
     const { app, audit } = await harness({ store, root });
     try {
@@ -224,7 +225,7 @@ describe('POST /api/pty/session-runs/:ref/archive — the copied governed shape'
 
   it('REFUSES the dismissal when the audit row cannot be written, and does not mutate', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const ref = await endedRun(store);
     const { app } = await harness({
       store,
@@ -246,7 +247,7 @@ describe('POST /api/pty/session-runs/:ref/archive — the copied governed shape'
 
   it('refuses a LIVE session run — it must be killed through the close path first', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const { app, audit } = await harness({ store, root });
     // Spawned after boot, so it is genuinely live rather than a leftover the sweep would have corrected.
     const record = await store.create({ owner: 'operator-1', kind: 'agent', targetRef: 'a', ptySessionId: 'pty-1' });
@@ -267,7 +268,7 @@ describe('POST /api/pty/session-runs/:ref/archive — the copied governed shape'
 
   it('replays an identical key without re-auditing, and 409s a key reused for another record', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const first = await endedRun(store);
     const second = await endedRun(store);
     const { app, audit } = await harness({ store, root });
@@ -291,7 +292,7 @@ describe('POST /api/pty/session-runs/:ref/archive — the copied governed shape'
 
   it('requires a bearer, an idempotency key, and a textual reason', async () => {
     const root = stateRoot();
-    const store = createSessionRunStore(root);
+    const store = createSessionRunStore(createSessionPersistence(root));
     const ref = await endedRun(store);
     const { app } = await harness({ store, root });
     try {
@@ -313,5 +314,67 @@ describe('POST /api/pty/session-runs/:ref/archive — the copied governed shape'
     } finally {
       await app.close();
     }
+  });
+});
+
+/**
+ * W6.3b — a refused v1 -> v2 migration used to vanish: `documentError` flattened the cause, the boot
+ * sweep swallowed it with an empty catch, and no log line or Health row existed. A daemon in that state
+ * booted clean, served an empty session-run list and minted no ref cookies, silently.
+ */
+describe('boot sweep — a refused state migration is surfaced, never swallowed', () => {
+  it('logs one bounded line, keeps booting, refuses every write, and reports the refusal for Health', async () => {
+    const root = stateRoot();
+    const store = createSessionRunStore(createSessionPersistence(root), {
+      // W3's migration refuses on ambiguous v1 input; its message names the document it refused over.
+      migrate: () => Promise.reject(new Error(`${join(root, 'pty', 'session-runs.json')} is ambiguous`)),
+    });
+    const log: string[] = [];
+    const app = Fastify();
+    await registerSessionRunRoutes(app, {
+      repoRoot: '/repo',
+      sessionConfig: SESSION_CONFIG,
+      sessionRuns: store,
+      transcripts: createTranscriptRecorder({ root }),
+      appendAudit: recordingAudit().fn,
+      log: (line) => log.push(line),
+    });
+    await app.ready();
+    try {
+      // Booting is not negotiable on the sweep — but the refusal is now visible.
+      expect(log).toEqual(['pty session-run boot sweep refused: document-unavailable']);
+      // Bounded: only the store's own closed code, never the path the underlying error carried.
+      expect(log[0]).not.toContain(root);
+      expect(log[0]).not.toContain('session-runs.json');
+
+      // The state Health composes its ONE integrity row from.
+      expect(store.migrationState()).toEqual({ refused: 'document-unavailable' });
+
+      // And the store stays fail-closed: no write guesses past a refused migration.
+      await expect(store.create({
+        owner: 'operator-1', kind: 'agent', targetRef: 'fyt-runner', ptySessionId: 'pty-a',
+      })).rejects.toThrow();
+      // One line for the whole boot, not one per refused write.
+      expect(log).toHaveLength(1);
+
+      // Reads deliberately do NOT migrate, so the list route still answers — with nothing. That empty
+      // 200 is precisely why the log line and the Health integrity row have to exist: the read surface
+      // alone cannot tell an operator apart "no sessions yet" from "your state never migrated".
+      const listed = await app.inject({ method: 'GET', url: '/api/pty/session-runs', headers: auth('operator-1') });
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json().sessionRuns).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reports `ok` — and Health therefore stays silent — when the migration resolves', async () => {
+    const root = stateRoot();
+    const store = createSessionRunStore(createSessionPersistence(root), { migrate: () => Promise.resolve() });
+    expect(store.migrationState()).toBe('pending');
+
+    await store.create({ owner: 'operator-1', kind: 'agent', targetRef: 'fyt-runner', ptySessionId: 'pty-a' });
+
+    expect(store.migrationState()).toBe('ok');
   });
 });

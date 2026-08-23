@@ -33,7 +33,7 @@ import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow } from '../audit/log.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { SESSION_ID_RE } from './persistentSessions.ts';
-import { SESSION_RUN_REF_RE } from './sessionRuns.ts';
+import { SESSION_RUN_REF_RE, SessionRunStoreError } from './sessionRuns.ts';
 import type { SessionRunRecord, SessionRunStore } from './sessionRuns.ts';
 import type { TranscriptRecorder } from './transcripts.ts';
 import { requireBearerOwner } from './route.ts';
@@ -54,6 +54,9 @@ export interface SessionRunRouteContext {
    * rather than in `makeSurfaceContext` (tests build contexts freely and must not rewrite live state).
    */
   sweepOnRegister?: boolean;
+  /** One-line sink for a boot-sweep refusal. Injected in tests; production writes to `console.warn`.
+   *  Lines are bounded and carry only the store's own closed error code — never a path, ref or stack. */
+  log?: (line: string) => void;
 }
 
 /** The public projection of a record. Identical to the stored shape today; kept explicit so a future
@@ -103,8 +106,16 @@ export async function registerSessionRunRoutes(
     // Correct it BEFORE the first request can read it. A sweep failure must not stop the daemon booting.
     try {
       await ctx.sessionRuns.sweepAbandoned();
-    } catch {
-      /* the store reports its own unavailability on the next read; booting is not negotiable on it */
+    } catch (error) {
+      // Booting is not negotiable on the sweep — but the refusal must not VANISH. A daemon whose v1 -> v2
+      // migration refused used to boot clean, serve an empty session-run list and mint no ref cookies with
+      // no signal anywhere. One bounded line here, plus the Health integrity row Health composes from
+      // `migrationState()`, is that signal. Only the store's own closed code is printed: the underlying
+      // error's message may name a path, and none of it belongs in a log the operator ships around.
+      const code = error instanceof SessionRunStoreError ? error.code : 'unknown';
+      (ctx.log ?? ((line: string) => { console.warn(line); }))(
+        `pty session-run boot sweep refused: ${code}`,
+      );
     }
   }
 

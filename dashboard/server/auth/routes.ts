@@ -29,6 +29,7 @@ import {
 } from './webauthn.ts';
 import type { WebAuthnUser } from './webauthn.ts';
 import { mintSessionFromVerifiedAssertion } from './session.ts';
+import { BROWSER_SESSION_COOKIE_NAME, parseBrowserSessionCookie } from './browserSessionRef.ts';
 import { OPERATOR_SUBJECT } from './mode.ts';
 import { findCredential, rememberChallenge, consumeChallenge } from './credentialStore.ts';
 import type { SurfaceContext } from '../http/context.ts';
@@ -66,6 +67,86 @@ function isNamespacedChallenge(base64urlChallenge: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** The closed set of things that can happen to a browser-session ref on an authenticated request. Closed
+ *  on purpose: the WebAuthn path and `POST /api/auth/browser-session` must not be able to disagree about
+ *  what "the presented ref was refused" means, which is exactly how an implicit re-mint crept in before. */
+export type BrowserSessionCookieOutcome =
+  | { kind: 'minted'; cookie: string }
+  | { kind: 'renewed'; cookie: string }
+  /** A live ref outside its 7-day renewal window: the browser correctly keeps the cookie it already has. */
+  | { kind: 'unchanged' }
+  /** The request PRESENTED a ref and it did not check out (unknown, expired, malformed, duplicated). */
+  | { kind: 'refused' }
+  /** The ref store could not answer. Never a statement about the credential. */
+  | { kind: 'unavailable' };
+
+/** How many `kb_browser_session` cookies the request carries, counted with the SAME parser the value is
+ *  read with. Non-zero-but-unparseable (malformed value, or two cookies) is a PRESENTED ref that failed —
+ *  never "no cookie", which would mint over it. */
+function browserSessionCookieCount(cookieHeader: string | undefined): number {
+  if (typeof cookieHeader !== 'string' || cookieHeader.length === 0) return 0;
+  let count = 0;
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() === BROWSER_SESSION_COOKIE_NAME) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Renew the presented browser-session ref, or mint one for a browser that has none. Called ONLY behind an
+ * authenticated gate: an unauthenticated caller can never cause a ref to be minted or renewed.
+ *
+ * A presented-but-refused ref is REFUSED, never re-minted. Plan L235: "malformed/expired values never mint
+ * implicitly". The old fall-through meant a browser presenting a forged 43-char string was handed a real
+ * ref, which made the whole ref table decorative on the mint path.
+ */
+async function resolveBrowserSessionCookie(
+  ctx: SurfaceContext,
+  cookieHeader: string | undefined,
+): Promise<BrowserSessionCookieOutcome> {
+  const refs = ctx.browserSessionRefs;
+  if (refs === undefined) return { kind: 'unavailable' };
+  if (browserSessionCookieCount(cookieHeader) > 0) {
+    if (parseBrowserSessionCookie(cookieHeader) === null) return { kind: 'refused' };
+    const renewed = await refs.renew(cookieHeader);
+    if (renewed.ok) {
+      return renewed.value.cookie === null ? { kind: 'unchanged' } : { kind: 'renewed', cookie: renewed.value.cookie };
+    }
+    return renewed.status === 503 ? { kind: 'unavailable' } : { kind: 'refused' };
+  }
+  const minted = await refs.mint();
+  return minted.ok && minted.value.cookie !== null ? { kind: 'minted', cookie: minted.value.cookie } : { kind: 'unavailable' };
+}
+
+/**
+ * `POST /api/auth/browser-session` (plan L235 + route matrix). The ONLY way the always-on tailnet
+ * deployment ever obtains a controller cookie: tailnet auth is ambient, so no assertion is ever verified
+ * there and the WebAuthn mint path never runs. Registered INSIDE the session-gated scope, so its
+ * authorization chain is: scope Origin/Host guard -> rate limiter -> `requireSession`, which in tailnet
+ * mode is the peer-uid + identity-header + same-site operator gate and in webauthn mode is the session
+ * bearer. Either way an anonymous caller reaches no ref.
+ */
+export function registerBrowserSessionRoute(scope: FastifyInstance, ctx: SurfaceContext): void {
+  scope.post('/api/auth/browser-session', async (req, reply) => {
+    const outcome = await resolveBrowserSessionCookie(ctx, req.headers.cookie);
+    switch (outcome.kind) {
+      case 'minted':
+      case 'renewed':
+        reply.header('Set-Cookie', [outcome.cookie]);
+        return reply.code(204).send();
+      case 'unchanged':
+        return reply.code(204).send();
+      case 'refused':
+        // No `Set-Cookie`: a refused ref is not replaced behind the browser's back.
+        return reply.code(401).send({ error: 'browser-session-ref-invalid' });
+      default:
+        return reply.code(503).send({ error: 'browser-session-ref-unavailable' });
+    }
+  });
 }
 
 /** Register the auth ceremony routes on an ALREADY-GUARDED scope (origin + rate-limit hooks applied). */
@@ -183,7 +264,19 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     auditFn(ctx)(ctx.repoRoot, { action: 'auth', owner: OPERATOR.id, result: 'login' }, { runGit: ctx.opsGit, now: ctx.now });
     const maxAge = Math.max(1, Math.floor((claims.exp - (ctx.sessionConfig.now ?? Date.now)()) / 1000));
     const secure = config.origin.startsWith('https://') ? '; Secure' : '';
-    reply.header('Set-Cookie', `kb_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`);
+    const cookies = [`kb_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`];
+    // The 256-bit browser-session ref: the SECOND half of a PTY principal (the first is the operator this
+    // assertion just proved). It is minted here and only here, because this is the one moment a browser is
+    // proven to belong to the operator. A browser that presents a live ref keeps it (renewed inside its
+    // window). A browser presenting an unknown/expired/malformed ref is REFUSED, not silently re-minted
+    // over — plan L235 — so it leaves sign-in with no cookie and calls `POST /api/auth/browser-session`
+    // (which refuses it the same way, 401, telling the client to drop the dead cookie first). A ref store
+    // that cannot answer (503) likewise yields NO cookie: the sign-in still succeeds (a storage fault must
+    // never log the operator out) and the browser simply has no PTY principal, which downstream is a closed
+    // refusal rather than a default principal.
+    const outcome = await resolveBrowserSessionCookie(ctx, req.headers.cookie);
+    if (outcome.kind === 'minted' || outcome.kind === 'renewed') cookies.push(outcome.cookie);
+    reply.header('Set-Cookie', cookies);
     return reply.code(200).send({ token, expiresAt: claims.exp });
   });
 }

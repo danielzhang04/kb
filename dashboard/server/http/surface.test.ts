@@ -8,7 +8,7 @@
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1422,5 +1422,73 @@ describe('P2 production migration evidence wiring', () => {
       rmSync(withheld.repoRoot, { recursive: true, force: true });
       rmSync(withheld.stateRoot, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * W6.3b — the two composition facts W6.3 introduced and nothing pinned: the v2 PTY persistence port and
+ * the browser-session ref table, plus the endpoint that is the ONLY way the tailnet deployment ever gets
+ * a controller cookie.
+ */
+describe('write surface — PTY persistence + browser-session ref composition', () => {
+  it('composes the v2 persistence port and the ref table, and still touches no filesystem', () => {
+    // A state root that does not exist: if composition read or created anything under it, this test
+    // would see the directory afterwards. `createSessionPersistence` validates the path and memoizes
+    // the document LAZILY, and `createSessionRunStore` opens nothing.
+    const absentRoot = join(tmpdir(), `kb-compose-inert-${process.pid}-${Date.now()}`);
+
+    const ctx = makeSurfaceContext(
+      { runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY), stateRoot: absentRoot },
+      { createPtyHost: () => recordingPtyHost().host },
+    );
+
+    expect(ctx.ptyPersistence).toBeDefined();
+    expect(ctx.browserSessionRefs).toBeDefined();
+    expect(ctx.ptySessionRuns).toBeDefined();
+    // The migration is injected as a CLOSURE, never called at compose: `pending` proves it never ran.
+    expect(ctx.ptySessionRuns?.migrationState()).toBe('pending');
+    expect(existsSync(absentRoot)).toBe(false);
+  });
+
+  it('composes a ref table even with no PTY stack, so sign-in never depends on the PTY probe', () => {
+    const ctx = makeSurfaceContext(
+      { runtimeCapabilities: runtimeCapabilities('linux') },
+      { createPtyHost: () => { throw new Error('must not construct'); } },
+    );
+
+    expect(ctx.runtimeCapabilities.pty).toBe(false);
+    expect(ctx.ptyPersistence).toBeUndefined();
+    expect(ctx.browserSessionRefs).toBeDefined();
+  });
+});
+
+describe('write surface — POST /api/auth/browser-session is Origin + operator gated', () => {
+  it('403s a foreign Origin, 401s a session-less caller, and mints for an authenticated operator', async () => {
+    ({ app } = buildApp());
+
+    const foreign = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: { origin: 'https://evil.example', host: GOOD_HOST, 'content-type': 'application/json', authorization: `Bearer ${token()}` },
+      payload: {},
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect(foreign.headers['set-cookie']).toBeUndefined();
+
+    const sessionless = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: headers(false), payload: {},
+    });
+    // Gated, not missing — and no cookie leaks out of a refusal.
+    expect(sessionless.statusCode).toBe(401);
+    expect(sessionless.headers['set-cookie']).toBeUndefined();
+
+    const authenticated = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: headers(true), payload: {},
+    });
+    expect(authenticated.statusCode).toBe(204);
+    expect(authenticated.body).toBe('');
+    const cookies = ([] as string[]).concat(authenticated.headers['set-cookie'] as string | string[]);
+    expect(cookies[0]).toMatch(
+      /^kb_browser_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000$/,
+    );
   });
 });

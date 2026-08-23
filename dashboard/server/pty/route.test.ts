@@ -34,6 +34,7 @@ import {
 import type { PtyRouteContext, PtySocketLike } from './route.ts';
 import { CommandNotFoundError } from './resolveCommand.ts';
 import { createSessionRunStore } from './sessionRuns.ts';
+import { createSessionPersistence } from './sessionPersistence.ts';
 import { createTranscriptRecorder } from './transcripts.ts';
 
 /** The absolute path the tests' claude resolver returns. Hermetic: no test needs the CLI installed, and
@@ -1269,7 +1270,7 @@ describe('registerPtyRoute REST session endpoints', () => {
 describe('session runs — the daemon-driven record of an entity-primed terminal', () => {
   function recordingHarness(options: Parameters<typeof harness>[0] = {}) {
     const root = scratchDir('kb-pty-session-runs-');
-    const sessionRuns = createSessionRunStore(root);
+    const sessionRuns = createSessionRunStore(createSessionPersistence(root));
     const transcripts = createTranscriptRecorder({ root });
     return { ...harness({ ...options, sessionRuns, transcripts }), sessionRuns, transcripts, root };
   }
@@ -1372,6 +1373,7 @@ describe('session runs — the daemon-driven record of an entity-primed terminal
       archive: () => Promise.resolve({ ok: false as const, error: 'not-found' as const }),
       list: () => [],
       get: () => null,
+      migrationState: () => 'ok' as const,
     };
     const { ctx, audit, host, registry } = harness({ resolveAgentFile: agentAllowlist, sessionRuns: failing });
     const socket = fakeSocket();

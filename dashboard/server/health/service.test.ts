@@ -118,3 +118,58 @@ describe('composeHealth', () => {
     expect(JSON.stringify(fleet)).not.toContain('Unknown');
   });
 });
+
+/**
+ * W6.3b — the PTY state migration is the one PTY fact Health reports. It is composed from a state the
+ * store ALREADY reached (`migrationState()`), so the row costs no probe, no host and no filesystem read.
+ */
+describe('composeHealth — PTY state migration integrity row', () => {
+  const fleetInput = (ptyMigrationState?: () => 'pending' | 'ok' | { refused: string }) => ({
+    scheduleSnapshot: () => ({ collectionRevision: 0, schedules: [] as Schedule[] }),
+    ...(ptyMigrationState ? { ptyMigrationState } : {}),
+  });
+
+  it('emits exactly ONE closed integrity row in Fleet when the migration refused', () => {
+    const response = composeHealth('/repo', readers(), fleetInput(() => ({ refused: 'document-unavailable' })));
+
+    const rows = response.sections[0].rows.filter((row) => row.key === 'pty-state-migration');
+    expect(rows).toEqual([{
+      kind: 'integrity',
+      key: 'pty-state-migration',
+      label: 'PTY state',
+      value: {
+        status: 'error',
+        code: 'pty-state-migration-refused',
+        detail: 'PTY state migration refused · terminals and session runs stay unavailable',
+      },
+      observedAt: now(),
+      source: 'pty-store',
+    }]);
+  });
+
+  it('says nothing while the migration is pending, has succeeded, or has no PTY stack at all', () => {
+    for (const input of [fleetInput(() => 'pending'), fleetInput(() => 'ok'), fleetInput()]) {
+      const response = composeHealth('/repo', readers(), input);
+      expect(response.sections[0].rows.some((row) => row.key === 'pty-state-migration')).toBe(false);
+    }
+  });
+
+  it('keeps the refusal visible even when the fleet reader itself fails', () => {
+    const failing = { ...readers(), fleet: vi.fn(() => { throw new Error('fleet reader down'); }) };
+
+    const response = composeHealth('/repo', failing, fleetInput(() => ({ refused: 'document-unavailable' })));
+
+    expect(response.sections[0].rows.map((row) => row.key))
+      .toEqual(['error:fleet', 'pty-state-migration']);
+  });
+
+  it('never probes or composes a PTY capability to answer it', () => {
+    probeSpy.mockClear();
+    composeSpy.mockClear();
+
+    composeHealth('/repo', readers(), fleetInput(() => ({ refused: 'document-unavailable' })));
+
+    expect(probeSpy).not.toHaveBeenCalled();
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+});

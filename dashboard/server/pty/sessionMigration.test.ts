@@ -1,10 +1,15 @@
-import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { migratePtySessionDocument, PtySessionMigrationError } from './sessionMigration.ts';
-import { createSessionRunStore } from './sessionRuns.ts';
+import {
+  PTY_SESSIONS_V1_DOCUMENT,
+  PTY_SESSIONS_V1_ENDED_RUN,
+  PTY_SESSIONS_V1_LIVE_RUN,
+  PTY_SESSIONS_V1_RELATIVE_PATH,
+} from './__fixtures__/ptySessionsV1.ts';
 
 const roots: string[] = [];
 const NOW = '2026-08-23T12:00:00.000Z';
@@ -15,20 +20,18 @@ function root(): string {
   return value;
 }
 
+/**
+ * A literal `kb.pty-session-runs/v1` document — one live row, one ended row with a transcript, one
+ * archived row plus its idempotency key. It is written by hand because the session-run store no longer
+ * produces v1: since W6.3 it writes the `legacyRuns` array of the v2 document this migration creates, so
+ * the only honest source of a v1 fixture is the on-disk shape itself.
+ */
 async function writeV1Fixture(stateRoot: string) {
-  let tick = Date.parse('2026-08-23T11:00:00.000Z');
-  const store = createSessionRunStore(stateRoot, { now: () => tick++ });
-  const live = await store.create({ owner: 'alice', kind: 'agent', targetRef: 'builder-live',
-    ptySessionId: `pty-${'1'.repeat(32)}`, primingPath: 'priming/live.md' });
-  const endedLive = await store.create({ owner: 'alice', kind: 'workflow', targetRef: 'ended-workflow',
-    ptySessionId: `pty-${'2'.repeat(32)}`, primingPath: 'priming/ended.md' });
-  const ended = await store.end('alice', endedLive.sessionRunRef, { exitCode: 7,
-    transcript: { path: 'pty/transcripts/ended.log', bytes: 12, truncated: false } });
-  const archivedLive = await store.create({ owner: 'alice', kind: 'agent', targetRef: 'archived-agent',
-    ptySessionId: null, primingPath: null });
-  await store.end('alice', archivedLive.sessionRunRef);
-  await store.archive('alice', archivedLive.sessionRunRef, { idempotencyKey: 'archive-one', reason: 'done' });
-  const path = join(stateRoot, 'pty', 'session-runs.json');
+  const live = PTY_SESSIONS_V1_LIVE_RUN;
+  const ended = PTY_SESSIONS_V1_ENDED_RUN;
+  const path = join(stateRoot, ...PTY_SESSIONS_V1_RELATIVE_PATH);
+  mkdirSync(join(stateRoot, 'pty'), { recursive: true });
+  writeFileSync(path, JSON.stringify(PTY_SESSIONS_V1_DOCUMENT));
   const original = readFileSync(path);
   const source = JSON.parse(original.toString('utf8')) as { runs: Array<Record<string, unknown>>;
     archiveKeys: Array<Record<string, unknown>> };

@@ -11,6 +11,13 @@
  */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { OperatorAuth } from './operator.ts';
+import {
+  createBrowserSessionRefManager,
+  findStoredBrowserSessionRef,
+} from './browserSessionRef.ts';
+import type { StoredBrowserSessionRef } from './browserSessionRef.ts';
+import type { BrowserPrincipal } from '../pty/contracts.ts';
+import type { SessionPersistence } from '../pty/sessionPersistence.ts';
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes — short-TTL per design (design §3.6).
 
@@ -181,6 +188,122 @@ export function verifySession(token: string, config: SessionConfig): SessionChec
     return { ok: false, reason: 'expired' };
   }
   return { ok: true, claims };
+}
+
+/** The browser-session-ref seam the auth routes mint/renew through, and W6.4's `/api/pty` upgrade reads. */
+export type BrowserSessionRefManager = ReturnType<typeof createBrowserSessionRefManager>;
+
+export interface BrowserSessionRefStoreDeps {
+  /** The v2 PTY document, when the daemon has one. Read-only here: a ref already spent as a session
+   *  controller can never be re-reserved, which is the "atomically reserve across live AND persisted
+   *  controller refs" half of the W3 manager's contract. Absent it, only live refs constrain a mint. */
+  persistence?: SessionPersistence;
+  now?: () => Date;
+  /** Test seam ONLY, passed straight through to the W3 manager so a collision/exhaustion path can be
+   *  driven deterministically. Production never supplies it and gets `crypto.randomBytes`. */
+  randomBytes?: (size: number) => Uint8Array;
+  /** One-line sink for a refusal the HTTP layer flattens to a generic 503. Injected in tests; production
+   *  writes to `console.warn`. Lines are bounded, ASCII, and carry no ref, path, or exception text. */
+  log?: (line: string) => void;
+}
+
+/** Upper bound on the in-process live-ref table. One operator's browsers cannot legitimately approach it;
+ *  the cap exists so a mint loop (or a clock that never advances) cannot grow the map without limit. */
+export const MAX_LIVE_BROWSER_SESSION_REFS = 1_024;
+
+/**
+ * The daemon's browser-session-ref table. Refs live for this process only, exactly like the HMAC secret
+ * a session bearer is signed with when `DASHBOARD_SESSION_SECRET` is unset (`resolveSessionSecret`): a
+ * restart invalidates them, and the browser is issued a fresh one at its next sign-in. That is the same
+ * trade-off, made for the same reason — a durable ref table would be a second credential store to protect,
+ * and this ref only ever names the browser that may drive a PTY, never who the operator is.
+ *
+ * The raw presented cookie never reaches the store: `verify` is handed a comparator (W3's constant-time
+ * `findStoredBrowserSessionRef` body), so no lookup-by-token index can exist here.
+ */
+export function createBrowserSessionRefStore(deps: BrowserSessionRefStoreDeps = {}): BrowserSessionRefManager {
+  const live = new Map<string, string>();
+  const now = deps.now ?? (() => new Date());
+  const write = deps.log ?? ((line: string) => { console.warn(line); });
+  const alreadyLogged = new Set<string>();
+  /** A refusal the caller only ever sees as a generic 503 is reported here EXACTLY once per reason, so an
+   *  unreadable (or still-v1) document that permanently disables PTY principals leaves a signal instead of
+   *  vanishing — without turning a hot mint loop into a log flood. */
+  const logOnce = (reason: string): void => {
+    if (alreadyLogged.has(reason)) return;
+    alreadyLogged.add(reason);
+    write(`browser-session-ref: ${reason}`);
+  };
+  /** True when a persisted session record already carries this ref as its controller. */
+  const spentAsController = (ref: string): boolean => {
+    if (deps.persistence === undefined) return false;
+    try {
+      return deps.persistence.read().sessions.some((record) => record.controller?.browserSessionRef === ref);
+    } catch {
+      // An unreadable document cannot prove the ref is free, so the mint attempt is refused, never allowed.
+      logOnce('reserve refused: the pty session document could not be read');
+      return true;
+    }
+  };
+  /** Drop every ref the stored expiry says is already dead. Unparseable expiries count as dead: a ref the
+   *  table cannot date can never be verified either (`renew`/`resolve` refuse it), so keeping it only leaks. */
+  const evictExpired = (atMs: number): void => {
+    for (const [ref, expiresAt] of live) {
+      const expiry = Date.parse(expiresAt);
+      if (!Number.isFinite(expiry) || expiry <= atMs) live.delete(ref);
+    }
+  };
+  const stored = (): StoredBrowserSessionRef[] =>
+    [...live].map(([ref, expiresAt]) => ({ ref, expiresAt }));
+  return createBrowserSessionRefManager({
+    ...(deps.now ? { now: deps.now } : {}),
+    ...(deps.randomBytes ? { randomBytes: deps.randomBytes } : {}),
+    reserve: async (ref, expiresAt) => {
+      // Expired refs are reclaimed first, so the cap only ever counts refs that are actually alive; a table
+      // that is still full of live refs REFUSES rather than evicting one — evicting a live ref would silently
+      // revoke a working browser's PTY principal, which is a worse failure than a 503 at sign-in.
+      evictExpired(now().getTime());
+      if (live.size >= MAX_LIVE_BROWSER_SESSION_REFS) {
+        logOnce('reserve refused: the live ref table is at capacity');
+        return false;
+      }
+      if (live.has(ref) || spentAsController(ref)) return false;
+      live.set(ref, expiresAt);
+      return true;
+    },
+    verify: (matchesPresentedRef) => findStoredBrowserSessionRef(matchesPresentedRef, stored()),
+    renew: async (ref, expiresAt) => {
+      if (!live.has(ref)) return false;
+      live.set(ref, expiresAt);
+      return true;
+    },
+  });
+}
+
+/**
+ * The PTY principal for one authenticated request: the operator the 401 gate proved, plus the browser
+ * session the `kb_browser_session` cookie names. A request without a well-formed cookie has NO principal
+ * (`null`) — the caller refuses the PTY operation. There is deliberately no default, no fallback ref and
+ * no operator-only principal: a shared or invented ref would let one browser drive another's shell.
+ */
+export async function resolveBrowserPrincipal(
+  operator: string,
+  cookieHeader: string | undefined,
+  refs: BrowserSessionRefManager | undefined,
+): Promise<BrowserPrincipal | null> {
+  if (typeof operator !== 'string' || operator.length === 0) return null;
+  // Syntax is NOT authority. A 43-char base64url string is trivially invented, so the ref is resolved
+  // through W3's constant-time `verify` seam against the store's own table, with the stored expiry
+  // enforced — an unknown, forged, or expired ref yields NO principal, exactly like an absent cookie.
+  // Without a ref store there is no table to prove membership against, so there is no principal either.
+  if (refs === undefined) return null;
+  try {
+    const resolved = await refs.resolve(cookieHeader);
+    return resolved.ok ? { operator, browserSessionRef: resolved.value.browserSessionRef } : null;
+  } catch {
+    // A store fault is not a credential: it refuses closed and never propagates into the request path.
+    return null;
+  }
 }
 
 /**

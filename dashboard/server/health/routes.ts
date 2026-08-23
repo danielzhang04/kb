@@ -14,6 +14,9 @@ export function registerHealthRoutes(scope: FastifyInstance, ctx: SurfaceContext
         scheduleCollectionRevision = snapshot.collectionRevision;
         return snapshot;
       },
+      // Reports the state the PTY store already reached; it starts no migration and opens no file, so a
+      // Health poll stays a pure read. Absent when the daemon composed no PTY stack at all.
+      ...(ctx.ptySessionRuns ? { ptyMigrationState: () => ctx.ptySessionRuns!.migrationState() } : {}),
     });
     const stableSections = response.sections.map((section) => ({
       ...section,

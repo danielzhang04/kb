@@ -35,19 +35,24 @@
  *
  * ── Storage ──
  *
- * One lock-serialized JSON document under the daemon state root, through the same
- * `createAtomicJsonDocument` primitive `server/control/agentSessionChains.ts` uses — the one local
- * persistence primitive in this codebase with a REAL cross-process lock (a SQLite `BEGIN IMMEDIATE`
- * holding an OS file lock), which matters because the daemon and its tests can both be running. The
- * document is created LAZILY, so merely constructing this store touches no filesystem.
+ * These records are the LEGACY arrays of the one v2 PTY document (`kb.pty-sessions/v2`, spec [C-M3]):
+ * `legacyRuns` and `legacyArchiveKeys`. There is exactly one document, one lock and one revision
+ * counter for the whole PTY stack, injected as a {@link SessionPersistence} port — this store no longer
+ * owns a file, a schema, or a validator of its own, so a session run and a v2 session record can never
+ * disagree about the document they both live in. Every mutation goes through `persistence.mutate`, which
+ * validates the whole v2 document and applies the shared retention caps before publishing it.
+ *
+ * A daemon that still has a v1 `kb.pty-session-runs/v1` document on disk migrates it through W3's
+ * `sessionMigration` (byte-for-byte `.v1.bak` first; ambiguity aborts and leaves v1 authoritative). The
+ * composition root injects that as `deps.migrate`; this store awaits it EXACTLY ONCE, lazily, before its
+ * first document write — so constructing the store still touches no filesystem.
  *
  * Every read is owner-scoped. A ref belonging to another operator is reported as `not-found`, never as
  * "forbidden" — an existence oracle across operators would be its own leak.
  */
 import { randomUUID } from 'node:crypto';
-import { isAbsolute, join, resolve } from 'node:path';
-import { createAtomicJsonDocument } from '../control/atomicJsonDocument.ts';
-import type { AtomicJsonDocument } from '../control/atomicJsonDocument.ts';
+import type { PtySessionsDocumentV2 } from './contracts.ts';
+import type { SessionPersistence } from './sessionPersistence.ts';
 
 /** What a session was primed as. A plain shell or an unprimed `claude` is NOT a session run: it belongs
  *  to no entity, so there is no detail surface it could honestly appear on. */
@@ -126,87 +131,6 @@ function fail(code: SessionRunStoreErrorCode, message: string): never {
 /** `srun-` + a v4 UUID. Anchored, so a ref can never carry a path separator into a filename or a URL. */
 export const SESSION_RUN_REF_RE = /^srun-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** Document ceiling. Comfortably above the retention cap below; a document over it is refused, never
- *  silently truncated. */
-const MAX_DOCUMENT_BYTES = 4_000_000;
-
-/** How many records are retained. Oldest TERMINAL records are evicted first; a `live` record is NEVER
- *  evicted, because forgetting a running shell is how orphans happen. */
-export const MAX_RETAINED_SESSION_RUNS = 500;
-
-/** Bounded idempotency memory — the same ceiling philosophy as the retention cap. */
-const MAX_ARCHIVE_KEYS = 512;
-
-interface ArchiveKeyEntry {
-  key: string;
-  sessionRunRef: string;
-  reason: string | null;
-}
-
-interface SessionRunDocument {
-  schema: 'kb.pty-session-runs/v1';
-  /** Oldest first — the natural order for retention eviction. Readers sort for themselves. */
-  runs: SessionRunRecord[];
-  archiveKeys: ArchiveKeyEntry[];
-}
-
-const OUTCOMES: readonly SessionRunOutcome[] = ['live', 'ended', 'abandoned', 'archived'];
-
-function isTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && Number.isFinite(Date.parse(value));
-}
-
-function isTranscript(value: unknown): value is SessionRunTranscript | null {
-  if (value === null) return true;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const t = value as Record<string, unknown>;
-  return typeof t.path === 'string' && typeof t.bytes === 'number' && Number.isFinite(t.bytes)
-    && typeof t.truncated === 'boolean';
-}
-
-function isRecord(value: unknown): value is SessionRunRecord {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const r = value as Record<string, unknown>;
-  return typeof r.sessionRunRef === 'string' && SESSION_RUN_REF_RE.test(r.sessionRunRef)
-    && (r.kind === 'agent' || r.kind === 'workflow')
-    && typeof r.targetRef === 'string' && r.targetRef.length > 0
-    && typeof r.owner === 'string' && r.owner.length > 0
-    && (r.ptySessionId === null || typeof r.ptySessionId === 'string')
-    && (r.primingPath === null || typeof r.primingPath === 'string')
-    && isTimestamp(r.startedAt)
-    && (r.endedAt === null || isTimestamp(r.endedAt))
-    && OUTCOMES.includes(r.outcome as SessionRunOutcome)
-    && (r.exitCode === null || (typeof r.exitCode === 'number' && Number.isFinite(r.exitCode)))
-    && isTranscript(r.transcript)
-    && typeof r.version === 'number' && Number.isSafeInteger(r.version) && r.version >= 1;
-}
-
-/** A malformed document is a REFUSAL, never a silent reset: the alternative is quietly forgetting live
- *  shells the daemon is still responsible for. */
-function assertDocument(value: unknown): asserts value is SessionRunDocument {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    fail('document-unavailable', 'session run document is invalid');
-  }
-  const document = value as Record<string, unknown>;
-  if (document.schema !== 'kb.pty-session-runs/v1') {
-    fail('document-unavailable', 'session run document is invalid');
-  }
-  if (!Array.isArray(document.runs) || document.runs.some((entry) => !isRecord(entry))) {
-    fail('document-unavailable', 'session run document is invalid');
-  }
-  if (!Array.isArray(document.archiveKeys)) fail('document-unavailable', 'session run document is invalid');
-  for (const entry of document.archiveKeys) {
-    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      fail('document-unavailable', 'session run document is invalid');
-    }
-    const key = entry as Record<string, unknown>;
-    if (typeof key.key !== 'string' || typeof key.sessionRunRef !== 'string'
-      || (key.reason !== null && typeof key.reason !== 'string')) {
-      fail('document-unavailable', 'session run document is invalid');
-    }
-  }
-}
-
 function documentError(error: unknown): SessionRunStoreError {
   if (error instanceof SessionRunStoreError) return error;
   return new SessionRunStoreError('document-unavailable', 'session run document is unavailable');
@@ -240,31 +164,59 @@ export interface SessionRunStore {
   /** Newest first. Archived records are excluded unless asked for. */
   list(owner: string, options?: { includeArchived?: boolean }): SessionRunRecord[];
   get(owner: string, sessionRunRef: string): SessionRunRecord | null;
+  /** What the one-shot v1 -> v2 migration did, for Health. Closed and synchronous: it reports the state
+   *  already reached, never starts a migration, and never touches the filesystem. */
+  migrationState(): SessionRunMigrationState;
 }
+
+/** `pending` = not attempted yet (nothing has written); `ok` = migrated, or nothing to migrate; refused =
+ *  W3's migration threw and the store is fail-closed for the rest of the process lifetime. The refusal
+ *  code is a CLOSED literal on purpose: the underlying error's message may name paths, so it never
+ *  reaches a caller — `document-unavailable` is all the store will ever say about why. */
+export type SessionRunMigrationState = 'pending' | 'ok' | { refused: 'document-unavailable' };
 
 export interface SessionRunStoreDeps {
   /** Injectable clock so tests get deterministic timestamps. */
   now?: () => number;
+  /**
+   * W3's v1 -> v2 migration, injected by the composition root (`http/surface.ts`). Awaited EXACTLY ONCE,
+   * lazily, before the first document write — never at construction, so building a surface context still
+   * touches no filesystem. A migration that refuses (ambiguous v1 input) leaves v1 authoritative and the
+   * refusal surfaces here as `document-unavailable`: the store never guesses past a refused migration.
+   */
+  migrate?: () => Promise<unknown>;
 }
 
-/** Build the durable session-run store rooted at the daemon state root. Construction is INERT — no
- *  directory is created and no file is read until the first read or write. */
-export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDeps = {}): SessionRunStore {
-  if (!isAbsolute(stateRoot) || stateRoot.includes('\0')) fail('invalid-input', 'session run state root is invalid');
-  const root = resolve(stateRoot);
+/** Build the durable session-run store over the one injected v2 PTY document port. Construction is
+ *  INERT — no directory is created and no file is read until the first read or write. */
+export function createSessionRunStore(
+  persistence: SessionPersistence,
+  deps: SessionRunStoreDeps = {},
+): SessionRunStore {
   const now = deps.now ?? Date.now;
-  let document: AtomicJsonDocument<SessionRunDocument> | null = null;
+  let migrated: Promise<unknown> | null = null;
+  // No injected migration means there is nothing to migrate — `ok`, not `pending`, so Health does not
+  // report a permanently-unresolved migration on a daemon that never had a v1 document.
+  let migrationOutcome: SessionRunMigrationState = deps.migrate === undefined ? 'ok' : 'pending';
 
-  const doc = (): AtomicJsonDocument<SessionRunDocument> => {
-    if (document) return document;
-    document = createAtomicJsonDocument<SessionRunDocument>({
-      path: join(root, 'pty', 'session-runs.json'),
-      empty: () => ({ schema: 'kb.pty-session-runs/v1', runs: [], archiveKeys: [] }),
-      validate: assertDocument,
-      error: (message) => new SessionRunStoreError('document-unavailable', message),
-      maxBytes: MAX_DOCUMENT_BYTES,
-    });
-    return document;
+  /** One migration per process, awaited before the first write; a failure is re-thrown to every caller. */
+  const ensureMigrated = async (): Promise<void> => {
+    if (deps.migrate === undefined) return;
+    // The outcome is recorded on the memoized promise itself, so the refusal survives for the process
+    // lifetime exactly as long as the cached rejection that keeps refusing every subsequent write.
+    migrated ??= deps.migrate().then(
+      (value) => { migrationOutcome = 'ok'; return value; },
+      (error: unknown) => { migrationOutcome = { refused: 'document-unavailable' }; throw error; },
+    );
+    await migrated;
+  };
+
+  /** Every write is one v2 document revision. `null` = accept whatever revision is current: session runs
+   *  are appended/patched by ref, never compare-and-set against the shared PTY revision counter. */
+  const mutate = async <R>(callback: (document: PtySessionsDocumentV2) => R): Promise<R> => {
+    await ensureMigrated();
+    const { value } = await persistence.mutate(null, callback);
+    return value;
   };
 
   /** Timestamps are monotonic per record: a clock that goes backwards must never make an end precede
@@ -275,37 +227,25 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
     return new Date(Math.max(current, floor + 1)).toISOString();
   };
 
-  const findIndex = (state: SessionRunDocument, owner: string, ref: string): number =>
-    state.runs.findIndex((entry) => entry.sessionRunRef === ref && entry.owner === owner);
-
-  /** Retention: evict oldest TERMINAL records only. A `live` record is never dropped — the daemon is
-   *  still responsible for the shell behind it. */
-  const applyRetention = (state: SessionRunDocument): void => {
-    while (state.runs.length > MAX_RETAINED_SESSION_RUNS) {
-      const index = state.runs.findIndex((entry) => entry.outcome !== 'live');
-      if (index < 0) break; // every retained record is live: keep them all, honestly over the cap
-      const [dropped] = state.runs.splice(index, 1);
-      if (dropped) {
-        state.archiveKeys = state.archiveKeys.filter((entry) => entry.sessionRunRef !== dropped.sessionRunRef);
-      }
-    }
-    while (state.archiveKeys.length > MAX_ARCHIVE_KEYS) state.archiveKeys.shift();
-  };
+  const findIndex = (state: PtySessionsDocumentV2, owner: string, ref: string): number =>
+    state.legacyRuns.findIndex((entry) => entry.sessionRunRef === ref && entry.owner === owner);
 
   const requireOwner = (owner: unknown): string => {
     if (typeof owner !== 'string' || owner.length === 0) fail('invalid-input', 'session run owner is invalid');
     return owner;
   };
 
-  const readState = (): SessionRunDocument => {
+  const readState = (): PtySessionsDocumentV2 => {
     try {
-      return doc().read();
+      return persistence.read();
     } catch (error) {
       throw documentError(error);
     }
   };
 
   return {
+    migrationState: () => migrationOutcome,
+
     async create(input) {
       const owner = requireOwner(input.owner);
       if (input.kind !== 'agent' && input.kind !== 'workflow') {
@@ -332,9 +272,10 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
         version: 1,
       };
       try {
-        await doc().mutate((state) => {
-          state.runs.push(structuredClone(record));
-          applyRetention(state);
+        // Retention (live rows never evicted, orphaned archive keys dropped) is enforced for the whole
+        // v2 document by `enforcePtySessionRetention` inside `persistence.mutate`.
+        await mutate((state) => {
+          state.legacyRuns.push(structuredClone(record));
         });
       } catch (error) {
         throw documentError(error);
@@ -345,10 +286,10 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
     async end(owner, sessionRunRef, input = {}) {
       const subject = requireOwner(owner);
       try {
-        return await doc().mutate((state) => {
+        return await mutate((state) => {
           const index = findIndex(state, subject, sessionRunRef);
           if (index < 0) return null;
-          const entry = state.runs[index] as SessionRunRecord;
+          const entry = state.legacyRuns[index] as SessionRunRecord;
           // Terminal is terminal. A second gone-notification, or an end racing the boot sweep, must not
           // rewrite an outcome that has already been observed and reported.
           if (entry.outcome !== 'live') return structuredClone(entry);
@@ -368,10 +309,10 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
       const subject = requireOwner(owner);
       if (typeof exitCode !== 'number' || !Number.isFinite(exitCode)) return;
       try {
-        await doc().mutate((state) => {
+        await mutate((state) => {
           const index = findIndex(state, subject, sessionRunRef);
           if (index < 0) return;
-          const entry = state.runs[index] as SessionRunRecord;
+          const entry = state.legacyRuns[index] as SessionRunRecord;
           // Only ever fills an UNKNOWN. An exit code already recorded is the observed one and wins.
           if (entry.exitCode !== null) return;
           entry.exitCode = exitCode;
@@ -384,9 +325,9 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
 
     async sweepAbandoned() {
       try {
-        return await doc().mutate((state) => {
+        return await mutate((state) => {
           let corrected = 0;
-          for (const entry of state.runs) {
+          for (const entry of state.legacyRuns) {
             if (entry.outcome !== 'live') continue;
             entry.outcome = 'abandoned';
             entry.endedAt = stampAfter(entry.startedAt);
@@ -411,11 +352,11 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
         fail('invalid-input', 'session run archive reason is invalid');
       }
       try {
-        return await doc().mutate<SessionRunArchiveResult>((state) => {
+        return await mutate<SessionRunArchiveResult>((state) => {
           const index = findIndex(state, subject, sessionRunRef);
           if (index < 0) return { ok: false, error: 'not-found' };
-          const entry = state.runs[index] as SessionRunRecord;
-          const priorKey = state.archiveKeys.find((key) => key.key === request.idempotencyKey);
+          const entry = state.legacyRuns[index] as SessionRunRecord;
+          const priorKey = state.legacyArchiveKeys.find((key) => key.key === request.idempotencyKey);
           if (priorKey) {
             // Same key, same target, same words → a replay. Anything else reused the key for a
             // DIFFERENT decision, which is a conflict, never a silent second archive.
@@ -432,8 +373,7 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
             entry.endedAt = entry.endedAt ?? stampAfter(entry.startedAt);
             entry.version += 1;
           }
-          state.archiveKeys.push({ key: request.idempotencyKey, sessionRunRef, reason });
-          applyRetention(state);
+          state.legacyArchiveKeys.push({ key: request.idempotencyKey, sessionRunRef, reason });
           return { ok: true, value: structuredClone(entry), replayed: false };
         });
       } catch (error) {
@@ -444,7 +384,7 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
     list(owner, options = {}) {
       const subject = requireOwner(owner);
       const includeArchived = options.includeArchived === true;
-      return readState().runs
+      return readState().legacyRuns
         .filter((entry) => entry.owner === subject && (includeArchived || entry.outcome !== 'archived'))
         .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
         .map((entry) => structuredClone(entry));
@@ -452,7 +392,7 @@ export function createSessionRunStore(stateRoot: string, deps: SessionRunStoreDe
 
     get(owner, sessionRunRef) {
       const subject = requireOwner(owner);
-      const entry = readState().runs.find(
+      const entry = readState().legacyRuns.find(
         (candidate) => candidate.sessionRunRef === sessionRunRef && candidate.owner === subject,
       );
       return entry ? structuredClone(entry) : null;

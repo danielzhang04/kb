@@ -11,11 +11,17 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  MAX_RETAINED_SESSION_RUNS,
   SESSION_RUN_REF_RE,
   SessionRunStoreError,
   createSessionRunStore,
 } from './sessionRuns.ts';
+// W6.3: session runs are the `legacyRuns` array of the one v2 PTY document, so the store is built over
+// that document's port and its retention ceiling is the document's own.
+import {
+  MAX_LEGACY_RUNS,
+  PtySessionPersistenceError,
+  createSessionPersistence,
+} from './sessionPersistence.ts';
 import type { SessionRunStore } from './sessionRuns.ts';
 
 const dirs: string[] = [];
@@ -29,7 +35,7 @@ afterEach(() => {
 });
 
 function store(root = stateRoot()): { store: SessionRunStore; root: string } {
-  return { store: createSessionRunStore(root), root };
+  return { store: createSessionRunStore(createSessionPersistence(root)), root };
 }
 
 async function liveRun(s: SessionRunStore, owner = 'operator-1', targetRef = 'fyt-runner') {
@@ -39,13 +45,15 @@ async function liveRun(s: SessionRunStore, owner = 'operator-1', targetRef = 'fy
 describe('createSessionRunStore — construction', () => {
   it('is INERT: building a store touches no filesystem (no state directory is created)', () => {
     const root = stateRoot();
-    createSessionRunStore(root);
+    createSessionRunStore(createSessionPersistence(root));
     expect(existsSync(join(root, 'pty'))).toBe(false);
   });
 
+  // The state root is now validated once, by the document port every PTY store shares, instead of once
+  // per store — so a relative or NUL-bearing root can never be resolved somewhere surprising.
   it('refuses a relative or NUL-bearing state root rather than resolving it somewhere surprising', () => {
-    expect(() => createSessionRunStore('relative/path')).toThrow(SessionRunStoreError);
-    expect(() => createSessionRunStore(`${tmpdir()}\0evil`)).toThrow(SessionRunStoreError);
+    expect(() => createSessionPersistence('relative/path')).toThrow(PtySessionPersistenceError);
+    expect(() => createSessionPersistence(`${tmpdir()}\0evil`)).toThrow(PtySessionPersistenceError);
   });
 });
 
@@ -128,7 +136,7 @@ describe('end — the observed death of a shell', () => {
   it('never lets an end precede its own start, even under a clock that goes backwards', async () => {
     const root = stateRoot();
     let t = 2_000;
-    const s = createSessionRunStore(root, { now: () => t });
+    const s = createSessionRunStore(createSessionPersistence(root), { now: () => t });
     const record = await s.create({ owner: 'operator-1', kind: 'agent', targetRef: 'a', ptySessionId: null });
     t = 1_000; // clock jumps backwards (NTP correction, VM resume)
     const ended = await s.end('operator-1', record.sessionRunRef);
@@ -151,14 +159,14 @@ describe('stampExitCode — filling an UNKNOWN only', () => {
 describe('sweepAbandoned — nothing survives a daemon restart', () => {
   it('turns every surviving live record into abandoned, across ALL owners, and stamps an end', async () => {
     const root = stateRoot();
-    const first = createSessionRunStore(root);
+    const first = createSessionRunStore(createSessionPersistence(root));
     const mine = await first.create({ owner: 'operator-1', kind: 'agent', targetRef: 'a', ptySessionId: 'pty-test-1' });
     const theirs = await first.create({ owner: 'operator-2', kind: 'workflow', targetRef: 'w', ptySessionId: 'pty-test-2' });
     const done = await first.create({ owner: 'operator-1', kind: 'agent', targetRef: 'b', ptySessionId: 'pty-test-3' });
     await first.end('operator-1', done.sessionRunRef);
 
     // A FRESH store over the same root — the next daemon boot reading the last daemon's state.
-    const next = createSessionRunStore(root);
+    const next = createSessionRunStore(createSessionPersistence(root));
     expect(await next.sweepAbandoned()).toBe(2);
     expect(next.get('operator-1', mine.sessionRunRef)).toMatchObject({ outcome: 'abandoned' });
     expect(next.get('operator-2', theirs.sessionRunRef)).toMatchObject({ outcome: 'abandoned' });
@@ -228,11 +236,11 @@ describe('list — newest first, and durable across store instances', () => {
   it('sorts by start time descending and survives a fresh store over the same root', async () => {
     const root = stateRoot();
     let t = 1_000;
-    const first = createSessionRunStore(root, { now: () => t });
+    const first = createSessionRunStore(createSessionPersistence(root), { now: () => t });
     await first.create({ owner: 'operator-1', kind: 'agent', targetRef: 'oldest', ptySessionId: null });
     t = 2_000;
     await first.create({ owner: 'operator-1', kind: 'agent', targetRef: 'newest', ptySessionId: null });
-    const next = createSessionRunStore(root);
+    const next = createSessionRunStore(createSessionPersistence(root));
     expect(next.list('operator-1').map((entry) => entry.targetRef)).toEqual(['newest', 'oldest']);
   });
 });
@@ -241,15 +249,45 @@ describe('retention — a live record is never evicted', () => {
   it('evicts oldest TERMINAL records past the cap and keeps every live one', async () => {
     const root = stateRoot();
     let t = 1_000;
-    const s = createSessionRunStore(root, { now: () => (t += 1) });
+    const s = createSessionRunStore(createSessionPersistence(root), { now: () => (t += 1) });
     const live = await s.create({ owner: 'operator-1', kind: 'agent', targetRef: 'live-one', ptySessionId: null });
-    for (let i = 0; i < MAX_RETAINED_SESSION_RUNS + 5; i += 1) {
+    for (let i = 0; i < MAX_LEGACY_RUNS + 5; i += 1) {
       const record = await s.create({ owner: 'operator-1', kind: 'agent', targetRef: `t-${i}`, ptySessionId: null });
       await s.end('operator-1', record.sessionRunRef);
     }
     const all = s.list('operator-1');
-    expect(all.length).toBeLessThanOrEqual(MAX_RETAINED_SESSION_RUNS);
+    expect(all.length).toBeLessThanOrEqual(MAX_LEGACY_RUNS);
     // The oldest record in the document is the live one, and it is still there.
     expect(s.get('operator-1', live.sessionRunRef)).toMatchObject({ outcome: 'live' });
   }, 60_000);
+});
+
+/**
+ * W6.3b — documenting a real behaviour change the W6.3 diff made silently. Under the deleted v1
+ * `applyRetention`, a document at the cap with EVERY run still `live` was tolerated ("honestly over the
+ * cap"): retention evicted only terminal rows, found none to evict, and the write succeeded. The shared
+ * v2 `enforcePtySessionRetention` instead throws `capacity` and fails the whole write.
+ *
+ * That is the right posture — silently exceeding a declared cap is how a 4 MB document ceiling gets
+ * discovered in production — and it is unreachable in practice, because the PTY host caps live sessions
+ * far below `MAX_LEGACY_RUNS`. It is pinned here so it is a decision, not an accident.
+ */
+describe('retention — an over-cap document of ONLY live records now refuses (W6.3 change)', () => {
+  it('throws instead of quietly exceeding the cap when nothing terminal can be evicted', async () => {
+    const root = stateRoot();
+    let t = 1_000;
+    const store = createSessionRunStore(createSessionPersistence(root), { now: () => (t += 1) });
+    for (let i = 0; i < MAX_LEGACY_RUNS; i += 1) {
+      await store.create({ owner: 'operator-1', kind: 'agent', targetRef: `live-${i}`, ptySessionId: null });
+    }
+    expect(store.list('operator-1')).toHaveLength(MAX_LEGACY_RUNS);
+
+    // The (MAX + 1)-th live record: no terminal row exists to make room, so the write is refused whole.
+    await expect(store.create({
+      owner: 'operator-1', kind: 'agent', targetRef: 'live-over-cap', ptySessionId: null,
+    })).rejects.toThrow();
+
+    // Refused WHOLE: the document is exactly as it was, never left at MAX + 1.
+    expect(store.list('operator-1')).toHaveLength(MAX_LEGACY_RUNS);
+  }, 120_000);
 });

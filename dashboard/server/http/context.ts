@@ -9,7 +9,7 @@
 import { join, resolve } from 'node:path';
 import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
 import { resolveDashboardStateRoot } from '../composer/store.ts';
-import type { SessionConfig } from '../auth/session.ts';
+import type { BrowserSessionRefManager, SessionConfig } from '../auth/session.ts';
 import type { AuthMode } from '../auth/mode.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
@@ -47,6 +47,7 @@ import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import type { SessionRunStore } from '../pty/sessionRuns.ts';
 import type { TranscriptRecorder } from '../pty/transcripts.ts';
+import type { SessionPersistence } from '../pty/sessionPersistence.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
 import type { EventBus } from '../hub/bus.ts';
@@ -156,6 +157,18 @@ export interface SurfaceContext {
    */
   ptySessionRuns?: SessionRunStore;
   ptyTranscripts?: TranscriptRecorder;
+  /**
+   * The one `kb.pty-sessions/v2` document port for the process (spec [C-M3]): session records, attempt
+   * bindings, operation receipts and the legacy session-run rows all live in it, behind one lock and one
+   * revision counter. Built by `makeSurfaceContext`; inert until first use.
+   */
+  ptyPersistence?: SessionPersistence;
+  /**
+   * The browser-session-ref table. `auth/routes.ts` mints/renews the `kb_browser_session` cookie through
+   * it at a verified assertion; the second half of every PTY principal comes from that cookie. Absent, no
+   * cookie is issued and PTY work has no principal at all — a closed refusal, never a default principal.
+   */
+  browserSessionRefs?: BrowserSessionRefManager;
   /** Optional server-owned automatic executor; never supplied by the browser. */
   runAutomatic?: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   /** Optional executor-owned cancellation boundary for Manager and Worker processes. */

@@ -17,7 +17,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
+import { createBrowserSessionRefStore, resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAuthMode, resolveTailnetConfig } from '../auth/mode.ts';
 import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
@@ -25,7 +25,7 @@ import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
-import { registerAuthRoutes } from '../auth/routes.ts';
+import { registerAuthRoutes, registerBrowserSessionRoute } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
@@ -48,6 +48,8 @@ import type { PtyHost } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { createSessionRunStore } from '../pty/sessionRuns.ts';
 import { createTranscriptRecorder } from '../pty/transcripts.ts';
+import { createSessionPersistence } from '../pty/sessionPersistence.ts';
+import { migratePtySessionStateRoot } from '../pty/sessionMigration.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
@@ -184,7 +186,19 @@ export function makeSurfaceContext(
   // lazily and the recorder only touches disk once a session is actually taped, so building a context
   // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
   // REGISTRATION instead, the one moment that happens exactly once per daemon boot.
-  const ptySessionRuns = capabilities.pty ? (overrides.ptySessionRuns ?? createSessionRunStore(stateRoot)) : undefined;
+  // ONE v2 PTY document (`kb.pty-sessions/v2`) for the whole daemon: session records, attempt bindings,
+  // operation receipts AND the legacy session-run rows share its lock and its revision counter. Building
+  // it is inert (the file is opened lazily). A daemon still holding a v1 `kb.pty-session-runs/v1`
+  // document migrates through W3's `sessionMigration` — backup first, ambiguity aborts with v1 left
+  // authoritative — which is awaited exactly once, lazily, before the first write (at boot that is the
+  // session-run routes' `live` -> `abandoned` sweep), so composition itself still touches no filesystem.
+  const ptyPersistence = capabilities.pty
+    ? (overrides.ptyPersistence ?? createSessionPersistence(stateRoot))
+    : undefined;
+  const ptySessionRuns = capabilities.pty && ptyPersistence
+    ? (overrides.ptySessionRuns
+      ?? createSessionRunStore(ptyPersistence, { migrate: () => migratePtySessionStateRoot(stateRoot) }))
+    : undefined;
   const ptyTranscripts = capabilities.pty ? (overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot })) : undefined;
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
@@ -280,6 +294,11 @@ export function makeSurfaceContext(
     controlStore,
     ptyHost,
     ptySessions,
+    ptyPersistence,
+    // One ref table per process, reading the v2 document so a ref already spent as a session controller
+    // can never be re-minted for a second browser.
+    browserSessionRefs: overrides.browserSessionRefs
+      ?? createBrowserSessionRefStore(ptyPersistence ? { persistence: ptyPersistence } : {}),
     ptySessionRuns,
     ptyTranscripts,
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
@@ -422,6 +441,11 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
     registerPaidActionRoute(scope, ctx);
     scope.register(async (authenticated) => {
       authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
+      // The controller-cookie endpoint lives INSIDE the session gate, not beside the public ceremonies:
+      // its authorization is "Origin + operator" (route matrix), and in tailnet mode the operator gate is
+      // the only proof that exists — no assertion is ever verified there, so the WebAuthn mint path never
+      // runs and this is the sole way the always-on deployment gets a `kb_browser_session` ref at all.
+      registerBrowserSessionRoute(authenticated, ctx);
       registerWriteRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);
       registerApprovalsRoutes(authenticated, ctx);
