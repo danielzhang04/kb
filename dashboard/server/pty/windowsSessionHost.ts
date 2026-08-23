@@ -57,6 +57,13 @@ export type WindowsSessionHostOptions = {
   killProcessTree?: (pid: number) => Promise<void>;
   hostCapacity?: number;
   principalCapacity?: number;
+  /**
+   * The machine this host speaks for. Defaults to the running platform; a unit test that simulates
+   * a Windows machine through injected seams (`spawn`, `resolveLaunch`, `pathInspector`) declares
+   * `'win32'`. Any other value makes the host fail closed by construction: every `create` refuses
+   * `unavailable` and `probe` reports no PTY, so no Win32 API is ever reached off win32.
+   */
+  platform?: NodeJS.Platform;
   /** Upper bound on the post-exit sink/transcript drain; the observed exit resolves regardless. */
   drainTimeoutMs?: number;
 };
@@ -220,7 +227,8 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
   const hostCapacity = options.hostCapacity ?? 16;
   const principalCapacity = options.principalCapacity ?? 8;
   const serviceSid = options.serviceSid ?? CURRENT_PROCESS_SERVICE_SID;
-  const pathInspector = options.pathInspector ?? (options.resolveLaunch === undefined
+  const platform = options.platform ?? process.platform;
+  const pathInspector = options.pathInspector ?? (options.resolveLaunch === undefined && platform === 'win32'
     ? createWindowsPathPinInspector(serviceSid)
     : undefined);
   const drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS;
@@ -458,10 +466,15 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
   const host: SessionHost = {
     probe: () => probeWindowsPty({
       epochId: options.epochId, environment, roots: options.roots, pathInspector,
-      serviceSid, launchOptions: options.launchOptions,
+      serviceSid, launchOptions: options.launchOptions, platform,
     }),
 
     create(request, initialSink) {
+      // A Windows host on a non-win32 machine has no PTY to launch: refuse closed, before any
+      // reservation, resolver, pin/ACL inspection or spawn is attempted.
+      if (platform !== 'win32') {
+        return failedLaunch({ ok: false, refusal: 'unavailable', detail: null }, now);
+      }
       if (!OPERATION_KEY_RE.test(request.operationKey) || !validSize(request)
         || !isWellFormedPrincipal(request)
         || !isSafeRelativeWindowsCwd(request.relativeCwd)
@@ -519,7 +532,7 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
           }
           if (pathInspector !== undefined) {
             if (serviceSid.length === 0) throw new Error('service SID is required');
-            const pin = await pinWindowsLauncher(launch.value, pathInspector, serviceSid);
+            const pin = await pinWindowsLauncher(launch.value, pathInspector, serviceSid, platform);
             if (!pin.ok) { finalize(session, null, null); return pin; }
             pinned = pin.value;
             if (!await pinned.recheck()) {

@@ -19,6 +19,12 @@ type LauncherProbeResult =
 export type WindowsPtyProbeOptions = {
   now?: () => Date;
   epochId: string;
+  /**
+   * The host platform this probe speaks for. Defaults to the running platform; a unit test that
+   * simulates a Windows machine through injected seams declares `'win32'` explicitly. Any other
+   * value means there is no local Windows PTY to load, so the probe refuses before touching one.
+   */
+  platform?: NodeJS.Platform;
   environment?: Record<string, string | undefined>;
   roots?: { repo: string; worktrees: string };
   pathInspector?: WindowsPathPinInspector;
@@ -62,7 +68,9 @@ async function defaultProbeLaunchPolicy(
     for (const launcher of launchers) {
       const profile = createWindowsLauncherProbeProfile(launcher, environment, rootPath);
       if (!profile.ok) return { ok: false, reason: 'root-policy-invalid' };
-      const pinned = await pinWindowsLauncher(profile.value, inspector, options.serviceSid);
+      const pinned = await pinWindowsLauncher(
+        profile.value, inspector, options.serviceSid, options.platform ?? process.platform,
+      );
       if (!pinned.ok) {
         return { ok: false, reason: pinned.refusal === 'unsafe-root'
           ? 'root-policy-invalid'
@@ -88,6 +96,11 @@ function unavailable(reason: PtyProbeReason, checkedAt: string): PtyCapabilityPr
 /** A closed Windows capability probe which runs the same pin/ACL/file-id validator as launch. */
 export async function probeWindowsPty(options: WindowsPtyProbeOptions): Promise<PtyCapabilityProbe> {
   const checkedAt = (options.now ?? (() => new Date()))().toISOString();
+  // A Windows PTY cannot exist off win32: refuse closed before loading node-pty or reaching any
+  // Win32 API. `node-pty-unavailable` is the union member for "no local PTY binding here".
+  if ((options.platform ?? process.platform) !== 'win32') {
+    return unavailable('node-pty-unavailable', checkedAt);
+  }
   let nodePty: NodePtySurface | null;
   try {
     nodePty = await (options.loadNodePty ?? defaultLoadNodePty)();

@@ -374,10 +374,18 @@ type KoffiSurface = typeof import('koffi');
  * Native Win32 pins: CreateFileW omits FILE_SHARE_DELETE, rejects reparse components, and keeps
  * every handle alive until the caller completes its post-spawn identity check.
  */
+/** The closed refusal for asking for a Win32-only surface on a machine that has none. */
+export class WindowsPlatformUnsupportedError extends Error {
+  constructor(platform: NodeJS.Platform = process.platform) {
+    super(`Windows path pins require win32, not ${platform}`);
+    this.name = 'WindowsPlatformUnsupportedError';
+  }
+}
+
 export function createWindowsPathPinInspector(
   serviceSid: string = CURRENT_PROCESS_SERVICE_SID,
 ): WindowsPathPinInspector {
-  if (process.platform !== 'win32') throw new Error('Windows path pins require win32');
+  if (process.platform !== 'win32') throw new WindowsPlatformUnsupportedError();
   const nodeRequire = createRequire(import.meta.url);
   const koffi = nodeRequire('koffi') as KoffiSurface;
   const kernel32 = koffi.load('kernel32.dll');
@@ -569,7 +577,12 @@ export async function pinWindowsLauncher(
   launch: WindowsLaunchProfile,
   inspector: WindowsPathPinInspector,
   serviceSid: string,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<PortResult<WindowsPinnedLaunch>> {
+  // Pinning is a Win32-only operation (no-delete-sharing handles, owner SIDs, volume/file ids).
+  // Off win32 there is nothing to pin, so refuse through the closed launcher refusal before the
+  // inspector — and therefore any Win32 API — is touched.
+  if (platform !== 'win32') return { ok: false, refusal: 'launcher-unavailable', detail: null };
   const pins: WindowsPinnedPath[] = [];
   const rootPaths = new Set(launch.rootValidationPaths.map(normalizeComparable));
   let refusalCode: 'unsafe-root' | 'launcher-unavailable' = 'launcher-unavailable';

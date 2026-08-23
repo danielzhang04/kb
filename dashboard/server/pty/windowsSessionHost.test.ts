@@ -77,37 +77,81 @@ function fakeLaunch(environment: Record<string, string> = {}) {
 }
 
 describe('Windows SessionHost', () => {
+  // W1d: this host is deliberately built with no `platform` seam, so it speaks for the real
+  // machine on both platforms. On win32 it must run a real bounded node-pty child; off win32 a
+  // Windows host is unavailable by construction and must refuse the launch closed, never
+  // reaching node-pty. Both branches assert the real outcome.
   it('runs a bounded real node-pty child on this Windows host', async () => {
-    const windowsRoot = process.env.SystemRoot;
-    expect(windowsRoot).toBeTruthy();
+    const onWindows = process.platform === 'win32';
+    const windowsRoot = process.env.SystemRoot ?? 'C:\\Windows';
+    expect(onWindows ? process.env.SystemRoot : windowsRoot).toBeTruthy();
+    const expected = onWindows
+      ? {
+        receipt: { ok: true } as Record<string, unknown>,
+        exit: { exitCode: 0, reason: 'exited' },
+        spawned: [`${windowsRoot}\\System32\\cmd.exe`],
+      }
+      : {
+        receipt: { ok: false, refusal: 'unavailable', detail: null } as Record<string, unknown>,
+        exit: { exitCode: null, reason: 'abandoned' },
+        spawned: [] as string[],
+      };
+    const spawned: string[] = [];
     const host = createWindowsSessionHost({
       epochId: `epoch-${'0'.repeat(32)}`,
       roots: { repo: process.cwd(), worktrees: process.cwd() },
       resolveLaunch: async () => ({
         ok: true,
-        value: { ...fakeLaunch({ SystemRoot: windowsRoot as string }),
+        value: { ...fakeLaunch({ SystemRoot: windowsRoot }),
           file: `${windowsRoot}\\System32\\cmd.exe`, args: ['/d', '/s', '/c', 'exit 0'],
           cwd: process.cwd(),
         },
       }),
-      spawn: nodePty.spawn,
+      spawn: (file, args, spawnOptions) => {
+        spawned.push(file);
+        return nodePty.spawn(file, args, spawnOptions);
+      },
     });
     let sessionId: string | null = null;
     try {
       const launch = host.create(request('0'), sink([]));
       const receipt = await launch.receipt;
-      expect(receipt).toMatchObject({ ok: true });
+      expect(receipt).toMatchObject(expected.receipt);
       if (receipt.ok) sessionId = receipt.value.sessionId;
-      await expect(launch.exit).resolves.toMatchObject({ exitCode: 0, reason: 'exited' });
+      await expect(launch.exit).resolves.toMatchObject(expected.exit);
+      expect(spawned).toEqual(expected.spawned);
     } finally {
       if (sessionId !== null) await host.close(sessionId);
     }
   }, 10_000);
 
+  it('refuses every launch and reports no PTY when the host platform is not win32', async () => {
+    const spawned: string[] = [];
+    const host = createWindowsSessionHost({
+      platform: 'linux',
+      epochId: `epoch-${'0'.repeat(32)}`,
+      roots: { repo: process.cwd(), worktrees: process.cwd() },
+      spawn: (file) => { spawned.push(file); throw new Error('must never spawn off win32'); },
+    });
+    const launch = host.create(request('0'), sink([]));
+    await expect(launch.receipt).resolves.toEqual({
+      ok: false, refusal: 'unavailable', detail: null,
+    });
+    await expect(launch.exit).resolves.toMatchObject({ exitCode: null, reason: 'abandoned' });
+    await expect(host.probe()).resolves.toMatchObject({
+      available: false, reason: 'node-pty-unavailable', detail: null,
+    });
+    expect(spawned).toEqual([]);
+    expect(inspectWindowsSessionHostResources(host)).toEqual({
+      sessions: 0, childRefs: 0, listeners: 0, sinks: 0, operations: 0,
+    });
+  });
+
   it('records transcript data before ordered additive sink fan-out and observes exit', async () => {
     const child = new FakePty(101);
     const events: string[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'1'.repeat(32)}`,
       now: () => new Date('2026-08-23T12:00:00.000Z'),
       randomId: () => 'a'.repeat(32),
@@ -139,6 +183,7 @@ describe('Windows SessionHost', () => {
   it('reserves the final host and principal slots atomically without leaks', async () => {
     const children: FakePty[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'2'.repeat(32)}`,
       randomId: (() => { let id = 0; return () => (++id).toString(16).padStart(32, '0'); })(),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -165,6 +210,7 @@ describe('Windows SessionHost', () => {
   it('refuses a ninth session for one composite principal while another principal still succeeds', async () => {
     const children: FakePty[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'3'.repeat(32)}`,
       randomId: (() => { let id = 100; return () => (++id).toString(16).padStart(32, '0'); })(),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -199,6 +245,7 @@ describe('Windows SessionHost', () => {
   it('refuses a malformed principal or an unknown root id before spawning', async () => {
     let spawnCount = 0;
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'4'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -222,6 +269,7 @@ describe('Windows SessionHost', () => {
   it('rechecks pinned identities immediately before spawn and never launches a replacement', async () => {
     let spawnCount = 0;
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'a'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       serviceSid: 'S-1-5-21-service',
@@ -259,6 +307,7 @@ describe('Windows SessionHost', () => {
     let releaseProfile = (_value: ReturnType<typeof fakeLaunch>): void => {};
     const profileBarrier = new Promise<ReturnType<typeof fakeLaunch>>((resolve) => { releaseProfile = resolve; });
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'5'.repeat(32)}`,
       randomId: () => '5'.repeat(32),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -289,6 +338,7 @@ describe('Windows SessionHost', () => {
     const profileBarrier = new Promise<ReturnType<typeof fakeLaunch>>((resolve) => { releaseProfile = resolve; });
     let spawnCount = 0;
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'6'.repeat(32)}`,
       randomId: (() => { let id = 30; return () => (++id).toString(16).padStart(32, '0'); })(),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -310,6 +360,7 @@ describe('Windows SessionHost', () => {
   it('bounds input and resize before invoking the live PTY', async () => {
     const child = new FakePty(170);
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'7'.repeat(32)}`,
       randomId: () => '7'.repeat(32),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -340,6 +391,7 @@ describe('Windows SessionHost', () => {
   it('refuses the seventeenth concurrent session on the host ceiling alone', async () => {
     const hostChildren: FakePty[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'9'.repeat(32)}`,
       randomId: (() => { let id = 200; return () => (++id).toString(16).padStart(32, '0'); })(),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -366,6 +418,7 @@ describe('Windows SessionHost', () => {
     const children: FakePty[] = [];
     const killed: number[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'3'.repeat(32)}`,
       randomId: (() => { let id = 10; return () => (++id).toString(16).padStart(32, '0'); })(),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -420,6 +473,7 @@ describe('Windows SessionHost', () => {
   it('reports tree-close failure without falling back to direct child kill', async () => {
     const child = new FakePty(4250);
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'b'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -443,6 +497,7 @@ describe('Windows SessionHost', () => {
     let drainPromise: ReturnType<ReturnType<typeof createWindowsSessionHost>['drain']> | undefined;
     let host!: ReturnType<typeof createWindowsSessionHost>;
     host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'c'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -476,6 +531,7 @@ describe('Windows SessionHost', () => {
     child.onData = () => { throw new Error('listener wiring failed'); };
     const treeClosed: number[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'1'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -506,6 +562,7 @@ describe('Windows SessionHost', () => {
       closed() { return false; },
     };
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'d'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -533,6 +590,7 @@ describe('Windows SessionHost', () => {
     let treeCloses = 0;
     const transcriptBarrier = new Promise<void>(() => {});
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'e'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -551,6 +609,7 @@ describe('Windows SessionHost', () => {
   it('releases child, listener, session, and sink resources after observed exit', async () => {
     const child = new FakePty(4290);
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'f'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -568,9 +627,22 @@ describe('Windows SessionHost', () => {
   });
 
   it('spawns through the uninjected resolver with the pin/ACL block active', async () => {
-    const windowsRoot = process.env.SystemRoot;
-    expect(windowsRoot).toBeTruthy();
-    const systemRoot = windowsRoot as string;
+    const onWindows = process.platform === 'win32';
+    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+    expect(onWindows ? process.env.SystemRoot : systemRoot).toBeTruthy();
+    // W1d: on win32 the uninjected resolver pins and spawns the server-derived cmd.exe; off win32
+    // the same uninjected host is unavailable by construction — no resolver, no pin, no spawn.
+    const expected = onWindows
+      ? {
+        receipt: { ok: true } as Record<string, unknown>,
+        spawned: [{ file: `${systemRoot}\\System32\\cmd.exe`, cwd: systemRoot }],
+        exit: { exitCode: 0, reason: 'exited' },
+      }
+      : {
+        receipt: { ok: false, refusal: 'unavailable', detail: null } as Record<string, unknown>,
+        spawned: [] as Array<{ file: string; cwd: string | undefined }>,
+        exit: { exitCode: null, reason: 'abandoned' },
+      };
     const spawned: Array<{ file: string; cwd: string | undefined }> = [];
     // `resolveLaunch` is NOT injected: the real mapWindowsLaunchRecipe runs and the host therefore
     // builds a real createWindowsPathPinInspector, so the pin/ACL/file-id recheck block executes.
@@ -587,25 +659,40 @@ describe('Windows SessionHost', () => {
     try {
       const launch = host.create(request('2'), sink([]));
       const receipt = await launch.receipt;
-      expect(receipt).toMatchObject({ ok: true });
+      expect(receipt).toMatchObject(expected.receipt);
       if (receipt.ok) sessionId = receipt.value.sessionId;
-      // The pinned executable is the server-derived cmd.exe, never a PATH lookup.
-      expect(spawned).toEqual([{ file: `${systemRoot}\\System32\\cmd.exe`, cwd: systemRoot }]);
-      await expect(launch.exit).resolves.toMatchObject({ exitCode: 0, reason: 'exited' });
+      // The pinned executable is the server-derived cmd.exe, never a PATH lookup; off win32 the
+      // refusal lands before any spawner is consulted at all.
+      expect(spawned).toEqual(expected.spawned);
+      await expect(launch.exit).resolves.toMatchObject(expected.exit);
       // D8: a host built on the real resolver has a wired pathInspector. An unwired one short-circuits
       // every probe to `root-policy-invalid`, so reaching any other outcome proves the wiring. Which
       // optional launchers pass their ACL check is machine-dependent, so only the wiring is asserted.
+      // Off win32 the probe refuses earlier still, with `node-pty-unavailable` — also not that code.
       const probe = await host.probe();
-      expect(probe.available ? 'wired' : probe.reason).not.toBe('root-policy-invalid');
-      // Contrast: injecting resolveLaunch turns the inspector off, and the probe says so.
+      const probeOutcome = probe.available ? 'wired' : probe.reason;
+      expect(probeOutcome).not.toBe('root-policy-invalid');
+      // node-pty is installed here, so on win32 that reason is impossible; off win32 it is the only
+      // reason, because the probe refuses before it would load a Windows PTY binding.
+      expect(onWindows
+        ? ['wired', 'shell-unavailable', 'launcher-unavailable']
+        : ['node-pty-unavailable']).toContain(probeOutcome);
+      // Contrast: injecting resolveLaunch turns the inspector off, and the probe says so. This host
+      // declares win32, so the contrast holds on both platforms — except that off win32 the default
+      // node-pty loader may find no local binding and refuse one step earlier; either refusal proves
+      // the unwired host never reports a usable PTY.
       const unpinned = createWindowsSessionHost({
+        platform: 'win32',
         epochId: `epoch-${'2'.repeat(32)}`,
         roots: { repo: systemRoot, worktrees: systemRoot },
         resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
       });
-      await expect(unpinned.probe()).resolves.toMatchObject({
-        available: false, reason: 'root-policy-invalid',
-      });
+      const unpinnedProbe = await unpinned.probe();
+      expect(unpinnedProbe.available).toBe(false);
+      expect(onWindows
+        ? ['root-policy-invalid']
+        : ['root-policy-invalid', 'node-pty-unavailable'])
+        .toContain(unpinnedProbe.available ? 'wired' : unpinnedProbe.reason);
     } finally {
       if (sessionId !== null) await host.close(sessionId);
     }
@@ -619,6 +706,7 @@ describe('Windows SessionHost', () => {
       closed() { return false; },
     };
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'2'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       drainTimeoutMs: 20,
@@ -642,6 +730,7 @@ describe('Windows SessionHost', () => {
   it('reports a clean close when the child already exited despite a failed tree close', async () => {
     const child = new FakePty(4310);
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'3'.repeat(32)}`,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
       resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
@@ -676,6 +765,7 @@ describe('Windows SessionHost', () => {
   it('releases host and principal reservations when a close is unrecoverable', async () => {
     const children: FakePty[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'4'.repeat(32)}`,
       randomId: (() => { let id = 400; return () => (++id).toString(16).padStart(32, '0'); })(),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -706,6 +796,7 @@ describe('Windows SessionHost', () => {
   it('evicts terminal operations beyond the retention bound and keeps live ones', async () => {
     const children: FakePty[] = [];
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'5'.repeat(32)}`,
       randomId: (() => { let id = 500; return () => (++id).toString(16).padStart(32, '0'); })(),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -738,6 +829,7 @@ describe('Windows SessionHost', () => {
   it('replays a receipt for an identical request written with a different key order', async () => {
     const child = new FakePty(4500);
     const host = createWindowsSessionHost({
+      platform: 'win32',
       epochId: `epoch-${'6'.repeat(32)}`,
       randomId: () => '6'.repeat(32),
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },

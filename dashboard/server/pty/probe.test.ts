@@ -36,6 +36,7 @@ function inspector(
 describe('Windows PTY probe', () => {
   it('returns the closed available probe and strips the epoch from the public capability', async () => {
     const result = await probeWindowsPty({
+      platform: 'win32',
       now: () => new Date('2026-08-23T12:00:00.000Z'),
       epochId: `epoch-${'a'.repeat(32)}`,
       loadNodePty: async () => ({ spawn() {} }),
@@ -64,6 +65,7 @@ describe('Windows PTY probe', () => {
     ['shell-unavailable', async () => ({ spawn() {} }), async () => ({ ok: false as const, detail: 'private path' })],
   ])('fails closed as %s with sanitized diagnostics', async (reason, loadNodePty, probeLaunchers) => {
     const result = await probeWindowsPty({
+      platform: 'win32',
       now: () => new Date('2026-08-23T12:00:00.000Z'),
       epochId: `epoch-${'b'.repeat(32)}`,
       loadNodePty,
@@ -81,6 +83,7 @@ describe('Windows PTY probe', () => {
 
   it('maps an unsafe ACL beneath an approved root to root-policy-invalid', async () => {
     const result = await probeWindowsPty({
+      platform: 'win32',
       epochId: `epoch-${'c'.repeat(32)}`,
       environment,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -99,6 +102,7 @@ describe('Windows PTY probe', () => {
       return inspector().pin(path);
     };
     const result = await probeWindowsPty({
+      platform: 'win32',
       epochId: `epoch-${'d'.repeat(32)}`,
       environment,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -114,6 +118,7 @@ describe('Windows PTY probe', () => {
     const badShimInspector = inspector();
     badShimInspector.readText = async () => 'node C:\\replacement\\codex.js';
     const result = await probeWindowsPty({
+      platform: 'win32',
       epochId: `epoch-${'e'.repeat(32)}`,
       environment,
       roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
@@ -127,8 +132,33 @@ describe('Windows PTY probe', () => {
     expect(result).toMatchObject({ available: false, reason: 'launcher-unavailable', detail: null });
   });
 
+  it('refuses on a non-win32 platform before loading node-pty', async () => {
+    let loads = 0;
+    const result = await probeWindowsPty({
+      platform: 'linux',
+      now: () => new Date('2026-08-23T12:00:00.000Z'),
+      epochId: `epoch-${'0'.repeat(32)}`,
+      loadNodePty: async () => { loads += 1; return { spawn() {} }; },
+      probeLaunchers: async () => ({ ok: true, launchers: ['shell'] }),
+    });
+    expect(result).toEqual({
+      available: false,
+      host: 'desktop',
+      transport: 'local-node-pty',
+      reason: 'node-pty-unavailable',
+      detail: null,
+      checkedAt: '2026-08-23T12:00:00.000Z',
+    });
+    expect(toPublicPtyCapability(result)).toEqual({
+      pty: false,
+      diagnostic: { reason: 'node-pty-unavailable', detail: null, checkedAt: '2026-08-23T12:00:00.000Z' },
+    });
+    expect(loads).toBe(0);
+  });
+
   it('maps a throwing launcher-policy callback to launcher-unavailable', async () => {
     const result = await probeWindowsPty({
+      platform: 'win32',
       epochId: `epoch-${'f'.repeat(32)}`,
       loadNodePty: async () => ({ spawn() {} }),
       probeLaunchers: async () => { throw new Error('private path'); },

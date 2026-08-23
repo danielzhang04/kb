@@ -9,6 +9,9 @@ import {
   deriveWindowsLauncherPaths,
   mapWindowsLaunchRecipe,
   pinWindowsLauncher,
+  WindowsPlatformUnsupportedError,
+  type WindowsPathPinInspector,
+  type WindowsPinnedPath,
 } from './launcherProfiles.ts';
 
 const environment = {
@@ -150,7 +153,7 @@ describe('Windows launcher profiles', () => {
         };
       },
       async readText() { return '"%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*'; },
-    }, 'S-1-5-21-service');
+    }, 'S-1-5-21-service', 'win32');
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(pinned).toContain('C:\\Program Files\\nodejs\\node.exe');
@@ -187,7 +190,7 @@ describe('Windows launcher profiles', () => {
         };
       },
       async readText() { return ''; },
-    }, 'S-1-5-21-service');
+    }, 'S-1-5-21-service', 'win32');
     expect(result).toEqual({ ok: false, refusal: 'launcher-unavailable', detail: null });
     expect(released).toContain(launch.value.file);
   });
@@ -221,7 +224,7 @@ describe('Windows launcher profiles', () => {
         };
       },
       async readText() { return ''; },
-    }, 'S-1-5-21-service');
+    }, 'S-1-5-21-service', 'win32');
     expect(result).toEqual({ ok: false, refusal: 'unsafe-root', detail: null });
   });
 
@@ -246,41 +249,78 @@ describe('Windows launcher profiles', () => {
         };
       },
       async readText() { return ''; },
-    }, 'S-1-5-21-service');
+    }, 'S-1-5-21-service', 'win32');
     expect(result).toEqual({ ok: false, refusal: 'unsafe-root', detail: null });
   });
 
+  // W1d: no `platform` argument is passed here, so the pin speaks for the real machine on both
+  // platforms. On win32 the real Win32 inspector pins the live cmd chain; off win32 the inspector
+  // cannot be constructed at all and the pin refuses closed without consulting one.
   it('pins the real cmd chain with no-delete-sharing handles and native ACL checks', async () => {
+    const onWindows = process.platform === 'win32';
     const liveEnvironment = process.env as Record<string, string | undefined>;
     const launch = mapWindowsLaunchRecipe({ ...baseRequest(shellRecipe()), relativeCwd: '' }, {
-      environment: liveEnvironment,
-      rootPath: process.cwd(),
+      environment: onWindows ? liveEnvironment : environment,
+      rootPath: onWindows ? process.cwd() : 'C:\\worktrees',
     });
     expect(launch.ok).toBe(true);
-    if (!launch.ok) return;
-    const systemRoot = liveEnvironment.SystemRoot as string;
+    if (!launch.ok) throw new Error('the shell recipe must map on both platforms');
+    const systemRoot = (onWindows ? liveEnvironment.SystemRoot : environment.SystemRoot) as string;
     const cmdChain = {
       ...launch.value,
       validationPaths: launch.value.validationPaths.filter((path) =>
         path.toLocaleLowerCase('en-US').startsWith(systemRoot.toLocaleLowerCase('en-US'))),
     };
-    const inspector = createWindowsPathPinInspector();
-    const inspected = [];
-    for (const path of cmdChain.validationPaths) {
+    expect(cmdChain.validationPaths.length).toBeGreaterThan(0);
+
+    const touched: string[] = [];
+    const unreachable: WindowsPathPinInspector = {
+      async pin(path) { touched.push(path); throw new Error('off win32 nothing may be pinned'); },
+      async readText(path) { touched.push(path); return ''; },
+    };
+    const construct = (): WindowsPathPinInspector => createWindowsPathPinInspector();
+    if (onWindows) expect(construct()).toMatchObject({ pin: expect.any(Function) });
+    else expect(construct).toThrow(WindowsPlatformUnsupportedError);
+    const inspector = onWindows ? construct() : unreachable;
+
+    const inspected: WindowsPinnedPath[] = [];
+    for (const path of onWindows ? cmdChain.validationPaths : []) {
       const pin = await inspector.pin(path);
       inspected.push(pin);
       expect(pin).toMatchObject({ path, unsafeWriteAce: false });
     }
+    expect(inspected.length).toBe(onWindows ? cmdChain.validationPaths.length : 0);
     for (const pin of inspected.reverse()) await pin.close();
+
     const pinned = await pinWindowsLauncher(
       cmdChain,
       inspector,
       CURRENT_PROCESS_SERVICE_SID,
     );
-    expect(pinned.ok).toBe(true);
-    if (!pinned.ok) return;
-    await expect(pinned.value.recheck()).resolves.toBe(true);
-    await pinned.value.release();
+    expect(pinned).toMatchObject(onWindows
+      ? { ok: true }
+      : { ok: false, refusal: 'launcher-unavailable', detail: null });
+    if (pinned.ok) {
+      await expect(pinned.value.recheck()).resolves.toBe(true);
+      await pinned.value.release();
+    }
+    // Off win32 the refusal precedes the inspector entirely: no path was pinned or read.
+    expect(touched).toEqual([]);
+  });
+
+  it('refuses to pin on a non-win32 platform without touching the inspector', async () => {
+    const touched: string[] = [];
+    const launch = mapWindowsLaunchRecipe(baseRequest(shellRecipe()), {
+      environment, rootPath: 'C:\\worktrees',
+    });
+    expect(launch.ok).toBe(true);
+    if (!launch.ok) throw new Error('the shell recipe must map');
+    const result = await pinWindowsLauncher(launch.value, {
+      async pin(path) { touched.push(path); throw new Error('unreachable'); },
+      async readText(path) { touched.push(path); return ''; },
+    }, 'S-1-5-21-service', 'linux');
+    expect(result).toEqual({ ok: false, refusal: 'launcher-unavailable', detail: null });
+    expect(touched).toEqual([]);
   });
 });
 
