@@ -1,248 +1,155 @@
 /**
- * Browser glue for PERSISTENT terminal sessions. The `/api/pty` shells now outlive their WebSocket (the
- * server buffers output and keeps the PTY alive across a reload), so on mount the Terminal view reconciles
- * its locally-remembered tabs against the server's live-session list and reattaches. This module owns:
+ * P3 W6.4 — the ONE browser transport for the v2 PTY surface.
  *
- *  - `listPtySessions` — GET the caller's live sessions (bearer-verified server-side) to reconcile against.
- *  - `deletePtySession` — DELETE one session (used to kill a shell whose socket is already gone).
- *  - localStorage read/write for the remembered tab order (`kb-terminal-tabs-v1`, `[{sessionId}]`).
+ * This module speaks exactly the frames in `shared/ptyProtocol.ts` and nothing else. There is no raw
+ * string protocol any more (a keystroke is a typed `input` frame carrying base64, never a bare text
+ * frame), no upgrade query at all (the route 400s on any query key — a session is named in a frame
+ * AFTER the socket exists), and no localStorage: the SERVER's session list is the only source of truth
+ * for what a browser may reattach to, so a tab order remembered in the browser could only ever lie.
  *
- * `fetch` and `Storage` are injected so this is unit-testable with no network and no real localStorage.
- * Every failure is swallowed into a safe empty/no-op result — a persistence hiccup must never crash the
- * terminal or, worse, kill a live shell.
+ * Reconnect uses the route's cursor semantics, and that cursor is a BYTE OFFSET ([C-R6], W0 amendment
+ * #3): a `data` frame's `sequence` is the offset of its first byte in the session's output stream, so
+ * the caller's cursor is `sequence + byteLength(data)` and a reattach sends that as `fromSequence`. The
+ * `attached` frame answers with the `replayFrom` the server could honour and the `nextSequence` to hold.
+ * That is the `Last-Event-ID` of this transport; replayed bytes arrive flagged `replay: true` so a
+ * read-only surface can render scrollback without pretending it is live.
+ *
+ * Every server frame is validated by W4's closed decoder (`decodeBrowserServerFrame`) before it reaches
+ * a caller. An undecodable frame is a protocol violation, reported as such — never written to a grid.
  */
+import { decodeBrowserServerFrame, decodeSessionSummary } from '../console/sessionWorkspaceModel';
+import { decodePtyCloseReason } from '../../shared/ptyProtocol.ts';
+import type {
+  BrowserClientFrame,
+  BrowserServerFrame,
+  HostRefusalCode,
+  PtyCloseReason,
+  SafeRootId,
+  SessionLauncher,
+  SessionSummary,
+} from '../../shared/ptyProtocol.ts';
+
 export type FetchLike = typeof fetch;
 
+/** The negotiated subprotocol; the bearer rides beside it, never in the URL (which would be logged). */
+export const PTY_SUBPROTOCOL = 'kb-pty.v1';
+
 /**
- * What a session RUNS. Absent = the login shell (the historical default, unchanged).
- *   `claude`   — a plain interactive Claude Code session in the repo the daemon serves.
- *   `agent`    — the same session primed with `agentId`'s own declaration file.
- *   `workflow` — the same session primed as the agent that runs `workflowRef`'s definition.
- *
- * `agentId`/`workflowRef` are retained even in `claude` mode so a mode toggle can switch back without
- * the operator re-picking anything. The SERVER resolves either reference to a file; the browser only
- * ever names it.
+ * Opens the PTY WebSocket. The URL carries NO query — not a session, not a spawn, not a launcher. The
+ * factory is injectable so a component test can drive a console through a fake socket.
  */
-export interface PtySpawnTarget {
-  mode: 'claude' | 'agent' | 'workflow';
-  agentId?: string;
-  workflowRef?: string;
-}
+export type PtySocketFactory = (sessionToken: string) => WebSocket;
 
-/** Opens the PTY WebSocket to the governed endpoint, bearer token carried as a subprotocol (never the
- *  URL). An optional `attachSessionId` reattaches to an existing persistent shell via `?session=<id>`
- *  (a non-secret reference; ownership is enforced server-side); an optional `spawn` asks the server to
- *  open something other than the login shell. Injectable so a component test can drive a console
- *  through a fake socket. */
-export type PtySocketFactory = (
-  sessionToken: string,
-  attachSessionId?: string,
-  spawn?: PtySpawnTarget,
-) => WebSocket;
-
-/** The upgrade query for one console. An attach and a spawn are mutually exclusive (the server refuses
- *  the combination): reattaching reuses a live shell, so there is nothing left to spawn. Callers express
- *  that exclusivity in their own types now (see `ConsoleTarget`); this stays defensive. */
-export function ptyQuery(attachSessionId?: string, spawn?: PtySpawnTarget): string {
-  if (attachSessionId) return `?${new URLSearchParams({ session: attachSessionId }).toString()}`;
-  if (!spawn) return '';
-  const params =
-    spawn.mode === 'agent' && spawn.agentId
-      ? new URLSearchParams({ spawn: 'agent', agent: spawn.agentId })
-      : spawn.mode === 'workflow' && spawn.workflowRef
-        ? new URLSearchParams({ spawn: 'workflow', workflow: spawn.workflowRef })
-        : new URLSearchParams({ spawn: 'claude' });
-  return `?${params.toString()}`;
-}
-
-export const defaultPtySocketFactory: PtySocketFactory = (sessionToken, attachSessionId, spawn) => {
+export const defaultPtySocketFactory: PtySocketFactory = (sessionToken) => {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // The token rides as a subprotocol value, not a query param — keeps it out of access logs / history.
-  return new WebSocket(
-    `${proto}//${window.location.host}/api/pty${ptyQuery(attachSessionId, spawn)}`,
-    ['kb-pty.v1', sessionToken],
-  );
+  return new WebSocket(`${proto}//${window.location.host}/api/pty`, [PTY_SUBPROTOCOL, sessionToken]);
 };
 
-/** What a live session was OPENED as, as the server records it at create time. `shell` is the login
- *  shell (no spawn parameters); the other three mirror {@link PtySpawnTarget.mode}. */
-export type PtySessionKind = 'shell' | 'claude' | 'agent' | 'workflow';
-
-/** One live session as the server reports it. `kind`/`targetRef` are what let a surface find the session
- *  ALREADY bound to the entity it is showing, instead of opening a second one beside it. */
-export interface PtySessionSummary {
-  sessionId: string;
-  createdAt: number;
-  attached: boolean;
-  /** What this session runs. Older daemons omit it; readers treat a missing value as `shell`. */
-  kind?: PtySessionKind;
-  /** The agent id / workflow ref this session was primed for, or null for a shell or plain claude. */
-  targetRef?: string | null;
+/** Request ids must satisfy the decoder's `req-<32 hex>` shape on the way back. */
+export function newRequestId(): string {
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  }
+  let hex = '';
+  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
+  return `req-${hex}`;
 }
 
-/** GET the caller's live sessions. Any non-2xx (e.g. an expired session → 401) yields `[]` so the view
- *  simply opens a fresh tab rather than surfacing an error. */
-export async function listPtySessions(token: string, fetchImpl: FetchLike = fetch): Promise<PtySessionSummary[]> {
+/** UTF-8 → canonical base64, the only encoding an `input` frame may carry. */
+export function encodeInput(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/**
+ * How many BYTES a `data` frame carries — the amount its `sequence` advances the [C-R6] cursor by.
+ * Counted from the base64, never from the decoded text: one character can be several bytes, and the
+ * cursor is a byte offset. Invalid base64 counts as zero, exactly as {@link decodeOutput} renders it.
+ */
+export function outputByteLength(data: string): number {
+  try {
+    return atob(data).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Canonical base64 → the text a terminal grid renders. Invalid base64 yields an empty string. */
+export function decodeOutput(data: string): string {
+  try {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return '';
+  }
+}
+
+/** The v2 REST list envelope, exactly as `GET /api/pty/sessions` sends it. */
+export interface PtySessionListing {
+  revision: number;
+  sessions: SessionSummary[];
+}
+
+/**
+ * GET the caller's live sessions. A non-2xx (401 relock, 428 no browser session) yields `null` — the
+ * caller shows the closed state rather than an empty list, because "you have no sessions" and "we could
+ * not ask" are different truths and only one of them permits opening a fresh one.
+ */
+export async function listPtySessions(
+  token: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<PtySessionListing | null> {
   try {
     const res = await fetchImpl('/api/pty/sessions', {
       headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
     });
-    if (!res.ok) return [];
-    const body = (await res.json()) as { sessions?: PtySessionSummary[] };
-    return Array.isArray(body.sessions) ? body.sessions : [];
-  } catch {
-    return [];
-  }
-}
-
-/** DELETE (kill) one session by id. Best-effort — the caller has already dropped the tab locally. */
-export async function deletePtySession(sessionId: string, token: string, fetchImpl: FetchLike = fetch): Promise<void> {
-  try {
-    await fetchImpl(`/api/pty/sessions/${encodeURIComponent(sessionId)}`, {
-      method: 'DELETE',
-      headers: { authorization: `Bearer ${token}` },
-    });
-  } catch {
-    /* best-effort: the shell will also die on daemon shutdown */
-  }
-}
-
-/**
- * ── SESSION RUNS ──────────────────────────────────────────────────────────────────────────────────────
- *
- * A session run is the daemon's durable record of one entity-primed terminal session: "someone sat down
- * with this agent / this workflow's governing agent and talked to it". It is a DIFFERENT KIND OF RECORD
- * from a governed control-plane run, and the UI must never blur the two — a governed run is launched
- * from a compiled, hash-pinned plan and driven by the executor; a session run is a chat in a shell.
- * Two vocabularies, everywhere: "governed run" vs "chat session".
- *
- * Everything below is owner-scoped server-side by the same bearer the PTY endpoints verify.
- */
-export type SessionRunKind = 'agent' | 'workflow';
-
-/**
- *   live      — the shell is still running (closing the browser tab does NOT end it).
- *   ended     — the shell exited, or the operator ended the session.
- *   abandoned — it was live when the daemon restarted; the transcript stops there.
- *   archived  — the operator dismissed the record. Hidden from the default list.
- */
-export type SessionRunOutcome = 'live' | 'ended' | 'abandoned' | 'archived';
-
-export interface SessionRunDto {
-  sessionRunRef: string;
-  kind: SessionRunKind;
-  targetRef: string;
-  ptySessionId: string | null;
-  startedAt: string;
-  endedAt: string | null;
-  outcome: SessionRunOutcome;
-  exitCode: number | null;
-  /** `truncated` is a truth label the UI must render, not a detail to hide. */
-  transcript: { bytes: number; truncated: boolean } | null;
-  version: number;
-}
-
-export interface SessionRunDetail {
-  sessionRun: SessionRunDto;
-  transcript: { text: string; bytes: number; truncated: boolean } | null;
-}
-
-/** GET my session runs. Any non-2xx (e.g. an expired session) yields `[]` — a detail view degrades to
- *  "no past sessions" rather than surfacing a transport error the operator cannot act on. */
-export async function listSessionRuns(
-  token: string,
-  options: { includeArchived?: boolean } = {},
-  fetchImpl: FetchLike = fetch,
-): Promise<SessionRunDto[]> {
-  try {
-    const query = options.includeArchived ? '?includeArchived=1' : '';
-    const res = await fetchImpl(`/api/pty/session-runs${query}`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-    });
-    if (!res.ok) return [];
-    const body = (await res.json()) as { sessionRuns?: SessionRunDto[] };
-    return Array.isArray(body.sessionRuns) ? body.sessionRuns : [];
-  } catch {
-    return [];
-  }
-}
-
-/** GET one session run plus its transcript text (server-bounded). `null` on any failure. */
-export async function fetchSessionRun(
-  ref: string,
-  token: string,
-  fetchImpl: FetchLike = fetch,
-): Promise<SessionRunDetail | null> {
-  try {
-    const res = await fetchImpl(`/api/pty/session-runs/${encodeURIComponent(ref)}`, {
-      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-    });
     if (!res.ok) return null;
-    const body = (await res.json()) as SessionRunDetail;
-    return body?.sessionRun ? body : null;
+    const body = (await res.json()) as { revision?: unknown; sessions?: unknown };
+    if (typeof body?.revision !== 'number' || !Array.isArray(body.sessions)) return null;
+    // A row that fails the strict decoder is a PROTOCOL VIOLATION, not a row to hide: filtering it out
+    // would render a shorter list that looks authoritative. The whole listing is refused instead.
+    if (!body.sessions.every(decodeSessionSummary)) return null;
+    return { revision: body.revision, sessions: body.sessions };
   } catch {
     return null;
   }
 }
 
-/** The archive outcome, in the words the surface shows. A refusal is REPORTED, never swallowed: an
- *  operator who pressed Dismiss and saw nothing happen would reasonably assume it worked. */
-export type ArchiveSessionRunResult =
-  | { ok: true; sessionRun: SessionRunDto; replayed: boolean }
-  | { ok: false; reason: string };
+/** DELETE (close) one session. `exit-unconfirmed` is the route's 409: the kill was asked, not observed. */
+export type DeletePtySessionResult =
+  | { ok: true }
+  | { ok: false; reason: 'not-found' | 'exit-unconfirmed' | 'unreachable' };
 
-export async function archiveSessionRun(
-  ref: string,
+export async function deletePtySession(
+  sessionId: string,
   token: string,
-  request: { idempotencyKey: string; reason?: string | null },
   fetchImpl: FetchLike = fetch,
-): Promise<ArchiveSessionRunResult> {
+): Promise<DeletePtySessionResult> {
   try {
-    const res = await fetchImpl(`/api/pty/session-runs/${encodeURIComponent(ref)}/archive`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({
-        idempotencyKey: request.idempotencyKey,
-        ...(request.reason == null ? {} : { reason: request.reason }),
-      }),
+    const res = await fetchImpl(`/api/pty/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
     });
-    const body = (await res.json().catch(() => null)) as
-      | { ok?: boolean; sessionRun?: SessionRunDto; replayed?: boolean; error?: string }
-      | null;
-    if (res.ok && body?.sessionRun) {
-      return { ok: true, sessionRun: body.sessionRun, replayed: body.replayed === true };
-    }
-    if (res.status === 409 && body?.error === 'session-run-live') {
-      return { ok: false, reason: 'This session is still running. End it first, then dismiss it.' };
-    }
-    if (res.status === 401) return { ok: false, reason: 'Unlock the dashboard to dismiss a session.' };
-    return { ok: false, reason: 'The session could not be dismissed.' };
+    if (res.ok) return { ok: true };
+    if (res.status === 409) return { ok: false, reason: 'exit-unconfirmed' };
+    if (res.status === 404) return { ok: false, reason: 'not-found' };
+    return { ok: false, reason: 'unreachable' };
   } catch {
-    return { ok: false, reason: 'The session could not be dismissed.' };
+    return { ok: false, reason: 'unreachable' };
   }
 }
 
-/** The session-run contract a detail view depends on; injected in tests as a fake. */
-export interface SessionRunsClient {
-  list(token: string, options?: { includeArchived?: boolean }): Promise<SessionRunDto[]>;
-  get(ref: string, token: string): Promise<SessionRunDetail | null>;
-  archive(
-    ref: string,
-    token: string,
-    request: { idempotencyKey: string; reason?: string | null },
-  ): Promise<ArchiveSessionRunResult>;
-}
-
-export const defaultSessionRunsClient: SessionRunsClient = {
-  list: (token, options) => listSessionRuns(token, options),
-  get: (ref, token) => fetchSessionRun(ref, token),
-  archive: (ref, token, request) => archiveSessionRun(ref, token, request),
-};
-
-/** The persistence contract the Terminal view depends on; injected in tests as a fake. */
+/** The REST contract the Terminal workspace depends on; injected in tests as a fake. */
 export interface TerminalSessionsClient {
-  list(token: string): Promise<PtySessionSummary[]>;
-  remove(sessionId: string, token: string): Promise<void>;
+  list(token: string): Promise<PtySessionListing | null>;
+  remove(sessionId: string, token: string): Promise<DeletePtySessionResult>;
 }
 
 export const defaultTerminalSessionsClient: TerminalSessionsClient = {
@@ -250,66 +157,151 @@ export const defaultTerminalSessionsClient: TerminalSessionsClient = {
   remove: (sessionId, token) => deletePtySession(sessionId, token),
 };
 
-const STORAGE_KEY = 'kb-terminal-tabs-v1';
+/**
+ * Why a connection ended: a transport `error`, or the decoded close reason. A surface renders one
+ * sentence per member — the whole point of carrying the code this far.
+ */
+export type PtyConnectionClosure = 'error' | PtyCloseReason;
 
-/** One remembered tab — only its (confirmed) sessionId is persisted; nothing else survives a reload. */
-export interface StoredTab {
-  sessionId: string;
+export interface PtyConnectionHandlers {
+  /** A decoded, schema-valid server frame. */
+  onFrame(frame: BrowserServerFrame): void;
+  onOpen?(): void;
+  /** The socket ended. `error` distinguishes a transport failure from an ordinary close. */
+  onClose?(closure: PtyConnectionClosure): void;
+  /** A frame the closed decoder refused. Diagnostics only — the bytes are dropped, never rendered. */
+  onProtocolViolation?(): void;
 }
 
-function getStore(store?: Storage): Storage | null {
-  if (store) return store;
-  try {
-    return typeof localStorage === 'undefined' ? null : localStorage;
-  } catch {
-    return null; // localStorage can throw in a locked-down context
-  }
-}
-
-/** Read the remembered tab order; `[]` on absence or any parse error. */
-export function loadStoredTabs(store?: Storage): StoredTab[] {
-  const s = getStore(store);
-  if (!s) return [];
-  try {
-    const raw = s.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    const out: StoredTab[] = [];
-    for (const item of parsed) {
-      const id = (item as { sessionId?: unknown } | null)?.sessionId;
-      if (typeof id === 'string' && id.length > 0) out.push({ sessionId: id });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-/** Persist the remembered tab order (only tabs that have a confirmed sessionId). Best-effort. */
-export function saveStoredTabs(tabs: StoredTab[], store?: Storage): void {
-  const s = getStore(store);
-  if (!s) return;
-  try {
-    s.setItem(STORAGE_KEY, JSON.stringify(tabs.map((t) => ({ sessionId: t.sessionId }))));
-  } catch {
-    /* quota / disabled storage — persistence is a convenience, never load-bearing */
-  }
+export interface PtyConnection {
+  send(frame: BrowserClientFrame): boolean;
+  close(): void;
+  readonly isOpen: boolean;
 }
 
 /**
- * Reconcile the remembered tab order against the server's live sessions: keep remembered ids that are
- * still live (in their stored order), then append any live sessions not yet remembered (adopted, e.g.
- * opened in another window). Dead remembered ids are dropped. Returns the ordered, de-duplicated id list.
+ * Open one `/api/pty` socket and pump typed frames across it. This is the only place in the browser that
+ * touches a WebSocket for a terminal; every surface goes through the returned {@link PtyConnection}.
  */
-export function reconcileSessions(stored: StoredTab[], live: PtySessionSummary[]): string[] {
-  const liveIds = new Set(live.map((s) => s.sessionId));
-  const ordered: string[] = [];
-  for (const tab of stored) {
-    if (liveIds.has(tab.sessionId) && !ordered.includes(tab.sessionId)) ordered.push(tab.sessionId);
+export function openPtyConnection(
+  sessionToken: string,
+  handlers: PtyConnectionHandlers,
+  socketFactory: PtySocketFactory = defaultPtySocketFactory,
+): PtyConnection {
+  const socket = socketFactory(sessionToken);
+  let ended = false;
+  const end = (closure: PtyConnectionClosure): void => {
+    if (ended) return;
+    ended = true;
+    handlers.onClose?.(closure);
+  };
+  socket.onopen = () => handlers.onOpen?.();
+  socket.onmessage = (event: MessageEvent) => {
+    const raw = typeof event.data === 'string' ? event.data : '';
+    if (raw.length === 0) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      handlers.onProtocolViolation?.();
+      return;
+    }
+    const frame = decodeBrowserServerFrame(parsed);
+    if (frame === null) {
+      handlers.onProtocolViolation?.();
+      return;
+    }
+    handlers.onFrame(frame);
+  };
+  socket.onerror = () => end('error');
+  // The close CODE is the only thing that distinguishes "the daemon shed this reader" from "the socket
+  // ended", and the operator is owed different words for each. A close event with no code is `other`.
+  socket.onclose = (event?: { code?: unknown }) => end(decodePtyCloseReason(event?.code));
+  return {
+    send(frame: BrowserClientFrame): boolean {
+      if (socket.readyState !== socket.OPEN) return false;
+      socket.send(JSON.stringify(frame));
+      return true;
+    },
+    close(): void {
+      try {
+        socket.close();
+      } catch {
+        /* a socket that never opened has nothing to close */
+      }
+    },
+    get isOpen(): boolean {
+      return socket.readyState === socket.OPEN;
+    },
+  };
+}
+
+/** A `create` request, in the only vocabulary the route accepts: enums, a root id, a relative path. */
+export interface CreateSessionRequest {
+  launcher: SessionLauncher;
+  rootId: SafeRootId;
+  relativeCwd: string;
+  cols: number;
+  rows: number;
+}
+
+export function createFrame(request: CreateSessionRequest, requestId = newRequestId()): BrowserClientFrame {
+  return { type: 'create', requestId, ...request };
+}
+
+export function attachFrame(sessionId: string, fromSequence: number, requestId = newRequestId()): BrowserClientFrame {
+  return { type: 'attach', requestId, sessionId, fromSequence };
+}
+
+export function inputFrame(
+  sessionId: string,
+  attachmentId: string,
+  text: string,
+  requestId = newRequestId(),
+): BrowserClientFrame {
+  return { type: 'input', requestId, sessionId, attachmentId, encoding: 'base64', data: encodeInput(text) };
+}
+
+export function resizeFrame(
+  sessionId: string,
+  attachmentId: string,
+  cols: number,
+  rows: number,
+  requestId = newRequestId(),
+): BrowserClientFrame {
+  return { type: 'resize', requestId, sessionId, attachmentId, cols, rows };
+}
+
+export function closeFrame(sessionId: string, requestId = newRequestId()): BrowserClientFrame {
+  return { type: 'close', requestId, sessionId };
+}
+
+export function detachFrame(
+  sessionId: string,
+  attachmentId: string,
+  requestId = newRequestId(),
+): BrowserClientFrame {
+  return { type: 'detach', requestId, sessionId, attachmentId };
+}
+
+/**
+ * The operator-facing sentence for one refusal code. A refusal is always SHOWN: a console that silently
+ * did nothing is the failure mode this table exists to prevent.
+ */
+export function refusalMessage(code: HostRefusalCode): string {
+  switch (code) {
+    case 'capacity': return 'The host already has the maximum number of sessions open. Close one and try again.';
+    case 'unavailable': return 'Terminal is unavailable on this host right now.';
+    case 'launcher-unavailable': return 'That launcher is not available on this host.';
+    case 'unsafe-root':
+    case 'unsafe-cwd': return 'That working directory is outside the allowed roots.';
+    case 'input-too-large': return 'That input was too large to send.';
+    case 'size-out-of-range': return 'That terminal size is out of range.';
+    case 'not-found': return 'That session is no longer available.';
+    case 'binding-conflict': return 'Another controller already holds this session.';
+    case 'epoch-lost': return 'The session host restarted; this session cannot be resumed.';
+    case 'cancelled': return 'The request was cancelled.';
+    case 'invalid-request': return 'The dashboard sent a request this host refused.';
+    default: return 'The session host refused the request.';
   }
-  for (const s of live) {
-    if (!ordered.includes(s.sessionId)) ordered.push(s.sessionId);
-  }
-  return ordered;
 }

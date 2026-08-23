@@ -6,7 +6,7 @@ import {
   type ClaudeSessionLaunch,
 } from './claudeSessionAdapter.ts';
 import type { ClaudeProcess, ClaudeSpawnRequest } from './claudeWorkerAdapter.ts';
-import { DENIED_ENV_FRAGMENTS } from '../pty/host.ts';
+import { DENIED_ENV_FRAGMENTS } from './childEnv.ts';
 import type { ManagedStartSpec } from './broker.ts';
 import type { PublicOperationalEvent } from './publicEvents.ts';
 

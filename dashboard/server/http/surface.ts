@@ -16,7 +16,11 @@
  * gate falls back to its real default.
  */
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { resolve as resolvePath } from 'node:path';
+import { connect as connectSocket } from 'node:net';
 import type { FastifyInstance } from 'fastify';
+import { BROKER_SOCKET_PATH } from '../pty/fdPinnedPaths.ts';
 import { createBrowserSessionRefStore, resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAuthMode, resolveTailnetConfig } from '../auth/mode.ts';
 import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
@@ -43,12 +47,13 @@ import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
-import { createPtyHost } from '../pty/host.ts';
-import type { PtyHost } from '../pty/host.ts';
-import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { createSessionRunStore } from '../pty/sessionRuns.ts';
-import { createTranscriptRecorder } from '../pty/transcripts.ts';
-import { createSessionPersistence } from '../pty/sessionPersistence.ts';
+import { createSessionPersistence, createTranscriptRetention } from '../pty/sessionPersistence.ts';
+import { createWindowsSessionHost } from '../pty/windowsSessionHost.ts';
+import { LinuxBrokerClient } from '../pty/linuxBrokerClient.ts';
+import { createSessionRecordRegistry } from '../pty/sessionRecord.ts';
+import type { DeploymentSessionCloser } from '../pty/sessionRecord.ts';
+import type { SessionHost } from '../pty/contracts.ts';
 import { migratePtySessionStateRoot } from '../pty/sessionMigration.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
@@ -83,7 +88,6 @@ export interface SurfaceActivationSeam {
   env?: Record<string, string | undefined>;
   createQueueBridge?: typeof createQueueBridge;
   dispatchClaimedCard?: typeof dispatchClaimedCard;
-  createPtyHost?: typeof createPtyHost;
 }
 
 export type SurfaceContextOverrides = Partial<SurfaceContext> & {
@@ -96,32 +100,51 @@ const QUEUE_BRIDGE_INTERVAL_MS = 15_000;
 export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
 
 /**
- * Put the fleet preamble on the shared host itself, not only on one HTTP route. The browser route may
- * deliberately check twice; the second check closes the gap for session-registry callers that
- * reach `PtyHost.open` without traversing that route. Construction stays inert: no preamble runs and no
- * shell opens until `open` is actually invoked.
+ * Put the fleet preamble on the platform {@link SessionHost} itself, not only on one HTTP route. The
+ * browser route may deliberately check twice; the second check closes the gap for every registry caller
+ * that reaches `SessionHost.create` without traversing that route (the Run-scoped attempt path included).
+ * Construction stays inert: no preamble runs and no child spawns until `create` is actually invoked.
+ *
+ * A frozen fleet is a typed refusal, never a throw: `create` is the one host method that returns a
+ * `HostLaunch` synchronously, so refusing it means handing back an already-refused receipt plus a
+ * settled `abandoned` exit — the registry's normal failure path — instead of an exception the WebSocket
+ * route would have to catch. The detail is the fixed {@link PTY_OPEN_FLEET_FROZEN} string: preamble
+ * stdout/stderr can name environment or credential problems, and none of it may reach a browser frame,
+ * an audit row, or a close reason.
+ *
+ * Only `create` is gated. `attach`/`write`/`resize`/`close`/`drain` act on sessions that already exist,
+ * and a freeze must never strand a live child or block reaping one.
  */
-function fleetGatedPtyHost(host: PtyHost, repoRoot: string, runPreamble: PreambleRunner): PtyHost {
+function fleetGatedSessionHost(host: SessionHost, repoRoot: string, runPreamble: PreambleRunner): SessionHost {
+  const fleetRunnable = (): boolean => {
+    try {
+      return assertFleetRunnable(repoRoot, runPreamble).ok;
+    } catch {
+      return false;
+    }
+  };
   return {
-    open(request) {
-      try {
-        if (!assertFleetRunnable(repoRoot, runPreamble).ok) throw new Error(PTY_OPEN_FLEET_FROZEN);
-      } catch {
-        // Preamble stdout/stderr can name environment or credential problems. Never surface those details
-        // through a PTY spawn error, audit row, or WebSocket close reason.
-        throw new Error(PTY_OPEN_FLEET_FROZEN);
-      }
-      return host.open(request);
+    probe: () => host.probe(),
+    create(request, sink) {
+      if (fleetRunnable()) return host.create(request, sink);
+      return {
+        receipt: Promise.resolve({ ok: false, refusal: 'unavailable', detail: PTY_OPEN_FLEET_FROZEN }),
+        exit: Promise.resolve({
+          sessionId: '',
+          sequence: 0,
+          exitCode: null,
+          signal: null,
+          reason: 'abandoned',
+          observedAt: new Date().toISOString(),
+        }),
+      };
     },
-    stop(sessionId) {
-      return host.stop(sessionId);
-    },
-    stopAll() {
-      host.stopAll();
-    },
-    sessions() {
-      return host.sessions();
-    },
+    attach: (sessionId, sink) => host.attach(sessionId, sink),
+    write: (sessionId, data) => host.write(sessionId, data),
+    resize: (sessionId, size) => host.resize(sessionId, size),
+    close: (sessionId) => host.close(sessionId),
+    listEpoch: () => host.listEpoch(),
+    drain: (epochId) => host.drain(epochId),
   };
 }
 
@@ -173,15 +196,26 @@ export function makeSurfaceContext(
     overrides.runtimeCapabilities ?? runtimeCapabilities(),
     { coordinationPublication, openPr, transcriptRoot: traceRoot },
   );
-  // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
-  // spawns nothing; only `open` does.
-  const underlyingPtyHost = capabilities.pty
-    ? (overrides.ptyHost ?? (activation.createPtyHost ?? createPtyHost)({ shell: 'powershell.exe' }))
+  // W6.4 - the ONE PTY host for `/api/pty`, composed here and nowhere else: Windows drives `node-pty`
+  // in-process, Linux speaks the socket-activated broker protocol as an unprivileged client. The fleet
+  // preamble wraps it, so every `create` — browser terminal or Run-scoped attempt — passes the gate.
+  // Construction spawns nothing, connects to nothing, and runs no preamble; only `create` does.
+  const underlyingPtySessionHost: SessionHost | undefined = capabilities.pty
+    ? (overrides.ptySessionHost
+      ?? (process.platform === 'win32'
+        ? createWindowsSessionHost({
+          epochId: randomUUID(),
+          roots: { repo: repoRoot, worktrees: resolvePath(stateRoot, 'worktrees') },
+        })
+        : new LinuxBrokerClient({
+          connect: async () => connectSocket(BROKER_SOCKET_PATH),
+          dashboardEpochId: randomUUID(),
+          makeRequestId: () => randomUUID(),
+        })))
     : undefined;
-  const ptyHost = underlyingPtyHost
-    ? fleetGatedPtyHost(underlyingPtyHost, repoRoot, overrides.runPreamble ?? defaultPreambleRunner)
+  const ptySessionHost = underlyingPtySessionHost
+    ? fleetGatedSessionHost(underlyingPtySessionHost, repoRoot, overrides.runPreamble ?? defaultPreambleRunner)
     : undefined;
-  const ptySessions = capabilities.pty ? (overrides.ptySessions ?? createPersistentSessionRegistry()) : undefined;
   // Session runs + transcripts (leg 2). Construction is INERT: the store's JSON document is created
   // lazily and the recorder only touches disk once a session is actually taped, so building a context
   // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
@@ -199,7 +233,18 @@ export function makeSurfaceContext(
     ? (overrides.ptySessionRuns
       ?? createSessionRunStore(ptyPersistence, { migrate: () => migratePtySessionStateRoot(stateRoot) }))
     : undefined;
-  const ptyTranscripts = capabilities.pty ? (overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot })) : undefined;
+  // The ONE v2 session registry. It is the only holder of the cross-controller close port: the closer is
+  // handed OUT through `installDeploymentCloser` (Daniel's `close-ptys-and-continue` deployment action)
+  // and is deliberately absent from the registry object every route sees.
+  let deploymentSessionCloser: DeploymentSessionCloser | null = null;
+  const ptySessionRegistry = capabilities.pty && ptySessionHost && ptyPersistence
+    ? (overrides.ptySessionRegistry ?? createSessionRecordRegistry({
+      host: ptySessionHost,
+      persistence: ptyPersistence,
+      transcript: createTranscriptRetention(stateRoot),
+      installDeploymentCloser: (closer) => { deploymentSessionCloser = closer; },
+    }))
+    : undefined;
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
@@ -244,6 +289,18 @@ export function makeSurfaceContext(
           blockers: [...recoveryBlockers, 'service-cgroup-unknown'],
         };
       }
+      // Live PTYs come from the platform host's own epoch listing — the only thing that knows what
+      // children this daemon epoch still owns. An unreadable/refusing host counts as one live session:
+      // quiescence must never be claimed off a count we could not take (same rule as the cgroup probe).
+      let activePty = 0;
+      if (ctx.ptySessionHost) {
+        try {
+          const listed = await ctx.ptySessionHost.listEpoch();
+          activePty = listed.ok ? listed.value.sessionIds.length : 1;
+        } catch {
+          activePty = 1;
+        }
+      }
       const result = quiescence({
         executionState: activation?.state ?? 'locked',
         bridgeStopped: ctx.stopQueueBridge === undefined,
@@ -253,7 +310,7 @@ export function makeSurfaceContext(
         // locked/locking state already prevents readiness through executionState.
         activeWorkers: activation?.state === 'unlocked' ? 1 : 0,
         activeGit: activeAsyncGitCount(),
-        activePty: ctx.ptySessions?.liveCount() ?? 0,
+        activePty,
         activeComposer: activeVibeProcessCount(),
         serviceCgroupChildren: serviceCgroupCache.children,
       });
@@ -292,15 +349,18 @@ export function makeSurfaceContext(
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
     controlStore,
-    ptyHost,
-    ptySessions,
+    ptySessionHost,
+    ptySessionRegistry,
+    closeDeploymentPtySessions: async (sessionIds) =>
+      deploymentSessionCloser === null
+        ? { ok: false, refusal: 'unavailable', detail: 'no session host' }
+        : deploymentSessionCloser(sessionIds),
     ptyPersistence,
     // One ref table per process, reading the v2 document so a ref already spent as a session controller
     // can never be re-minted for a second browser.
     browserSessionRefs: overrides.browserSessionRefs
       ?? createBrowserSessionRefStore(ptyPersistence ? { persistence: ptyPersistence } : {}),
     ptySessionRuns,
-    ptyTranscripts,
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
     // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
     // place on unlock and clears them on lock.

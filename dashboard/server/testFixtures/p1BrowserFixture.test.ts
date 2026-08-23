@@ -10,7 +10,16 @@ import {
 } from './p1BrowserFixture.ts';
 import { decodeEntityDetail, decodeEntityList } from '../../src/lib/entityClient.ts';
 import { decodeHomeResponse } from '../../src/lib/homeClient.ts';
-import { decodeRuntimeCapabilities } from '../../src/lib/runtimeCapabilities.tsx';
+import {
+  decodeRuntimeCapabilities,
+  type ClientRuntimeCapabilities,
+} from '../../src/lib/runtimeCapabilities.tsx';
+import { listPtySessions } from '../../src/lib/terminalClient.ts';
+import {
+  createSessionWorkspaceModel,
+  projectRunSessionWorkspace,
+} from '../../src/console/sessionWorkspaceModel.ts';
+import type { AttemptSessionPublicRow } from '../../shared/ptyProtocol.ts';
 import { decodeScheduleCollection } from '../../src/lib/scheduleClient.ts';
 import { decodeOperationalEvent, getRun, type OperationalEventDto } from '../../src/control/controlClient.ts';
 import { serializeRunEventFold } from '../../src/control/runEventRecords.ts';
@@ -300,3 +309,102 @@ describe('P1 browser fixture', () => {
     }
   });
 });
+
+/**
+ * P3 section 8 — the four `p3-*` scenarios are only useful if the payloads they serve are the ones the
+ * real client decoders accept. A fixture that served a nearly-right shape would make the browser matrix
+ * green against data production could never produce, so each scenario is round-tripped through the
+ * SHIPPING decoders and projectors, and a one-field mutation of each payload is required to be refused.
+ */
+describe('p1BrowserFixture p3 scenarios decode with the shipping client decoders', () => {
+  const P3_SCENARIOS = [
+    'p3-terminal-empty-unavailable',
+    'p3-terminal-named-sessions',
+    'p3-run-attempt-sessions',
+    'p3-controller-isolation',
+  ] as const;
+
+  async function p3Payloads(scenario: (typeof P3_SCENARIOS)[number]) {
+    const fixture = await start(scenario, await dist());
+    const entry = await fetch(`${fixture.origin}/fixture/context-a`, { redirect: 'manual' });
+    const cookie = (entry.headers.get('set-cookie') ?? '').split(';')[0];
+    const capability = await (await fetch(`${fixture.origin}/api/runtime/capabilities`)).json();
+    const sessions = await (await fetch(`${fixture.origin}/api/pty/sessions`, { headers: { cookie } })).json();
+    const attempts = await (await fetch(`${fixture.origin}/api/control/runs/run-fixture/sessions`, {
+      headers: { cookie },
+    })).json();
+    return { fixture, cookie, capability, sessions, attempts };
+  }
+
+  it.each(P3_SCENARIOS)('%s decodes into a workspace model without error', async (scenario) => {
+    const { cookie, capability, sessions, attempts } = await p3Payloads(scenario);
+    expect(cookie).not.toBe('');
+
+    const decodedCapability = decodeRuntimeCapabilities(capability);
+    expect(decodedCapability, 'capability payload').not.toBeNull();
+    const workspace = createSessionWorkspaceModel(decodedCapability as ClientRuntimeCapabilities);
+    expect(workspace.availability.kind)
+      .toBe(scenario === 'p3-terminal-empty-unavailable' ? 'unavailable' : 'available');
+
+    // `listPtySessions` is the shipping REST decoder; giving it the fixture's own body proves the
+    // fixture speaks the listing contract rather than a lookalike.
+    const listing = await listPtySessions('bearer', (async () => new Response(JSON.stringify(sessions), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch);
+    expect(listing, 'session listing').not.toBeNull();
+    expect(listing?.sessions.length).toBe((sessions as { sessions: unknown[] }).sessions.length);
+
+    const rows = (attempts as { sessions: AttemptSessionPublicRow[] }).sessions;
+    const projected = projectRunSessionWorkspace(rows);
+    expect(projected.sessions).toHaveLength(rows.length);
+    if (rows.length > 0) expect(projected.selectedSessionId).not.toBeNull();
+    // Exactly one row may hold live control; every other row is replay-only.
+    expect(projected.sessions.filter((row) => row.mode !== 'replay')).toHaveLength(rows.length > 0 ? 1 : 0);
+  });
+
+  it('refuses a capability payload with one wrong type and one extra key', async () => {
+    const { capability } = await p3Payloads('p3-terminal-named-sessions');
+    expect(decodeRuntimeCapabilities(capability)).not.toBeNull();
+    expect(decodeRuntimeCapabilities({ ...(capability as object), checkedAt: 17 })).toBeNull();
+
+    const { capability: closed } = await p3Payloads('p3-terminal-empty-unavailable');
+    expect(decodeRuntimeCapabilities(closed)).not.toBeNull();
+    const diagnostic = (closed as { diagnostic: Record<string, unknown> }).diagnostic;
+    expect(decodeRuntimeCapabilities({
+      ...(closed as object), diagnostic: { ...diagnostic, probeDurationMs: 4 },
+    })).toBeNull();
+  });
+
+  it('refuses a session listing whose revision has the wrong type', async () => {
+    const { sessions } = await p3Payloads('p3-terminal-named-sessions');
+    const decode = async (body: unknown) => listPtySessions('bearer', (async () => new Response(JSON.stringify(body), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch);
+    expect(await decode(sessions)).not.toBeNull();
+    expect(await decode({ ...(sessions as object), revision: '7' })).toBeNull();
+    expect(await decode({ ...(sessions as object), sessions: 'none' })).toBeNull();
+  });
+
+  it('refuses an attempt row whose state has the wrong type before it can be projected', async () => {
+    const { attempts } = await p3Payloads('p3-run-attempt-sessions');
+    const rows = (attempts as { sessions: AttemptSessionPublicRow[] }).sessions;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => isAttemptSessionRow(row))).toBe(true);
+    expect(isAttemptSessionRow({ ...rows[0], state: 7 })).toBe(false);
+    expect(isAttemptSessionRow({ ...rows[0], liveControl: 'yes' })).toBe(false);
+  });
+});
+
+/** The closed shape a Run attempt row must have before `projectRunSessionWorkspace` may see it. */
+function isAttemptSessionRow(value: unknown): value is AttemptSessionPublicRow {
+  if (typeof value !== 'object' || value === null) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.attemptRef === 'string'
+    && typeof row.sessionId === 'string'
+    && (row.launcher === 'claude' || row.launcher === 'codex')
+    && typeof row.state === 'string'
+    && typeof row.startedAt === 'string'
+    && (row.endedAt === null || typeof row.endedAt === 'string')
+    && typeof row.controllerClaimed === 'boolean'
+    && typeof row.liveControl === 'boolean';
+}

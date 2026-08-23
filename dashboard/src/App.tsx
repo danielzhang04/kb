@@ -204,8 +204,6 @@ function AuthenticatedAppShell(): React.JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const [runtimeCapabilities, setRuntimeCapabilities] = useState<ClientRuntimeCapabilities>(UNAVAILABLE_RUNTIME_CAPABILITIES);
-  const [runAgentId, setRunAgentId] = useState<string | null>(null);
-  const [runWorkflowId, setRunWorkflowId] = useState<string | null>(null);
   const { count: controlTick } = useSse('/events', session?.token ? undefined : DISABLED_SSE_FACTORY);
   const inboxCount = useInboxCount(view !== 'inbox', controlTick);
   const attention = useAttentionCounts(session?.token, controlTick);
@@ -262,14 +260,9 @@ function AuthenticatedAppShell(): React.JSX.Element {
     setRail(target.view === 'terminal');
   };
   const navigateTo = (target: NavTarget): void => push(target);
-  const runAgent = (agent: { id: string }): void => {
-    setRunAgentId(agent.id);
-    goTo('terminal');
-  };
-  const runWorkflow = (workflow: { id: string }): void => {
-    setRunWorkflowId(workflow.id);
-    goTo('terminal');
-  };
+  // "Open terminal" from a roster row is a NAVIGATION, not a spawn: the v2 grammar has no agent- or
+  // workflow-primed launcher, so the workspace opens and the operator picks a launcher there.
+  const openTerminal = (): void => goTo('terminal');
   const runPaletteCommand = (command: PaletteCommand): void => goTo(command.target);
   const toggleTheme = (): void => {
     const next = theme === 'dark' ? 'light' : 'dark';
@@ -292,9 +285,9 @@ function AuthenticatedAppShell(): React.JSX.Element {
         </header>
         <main className={terminalVisible ? 'mc-main mc-main--terminal' : 'mc-main'}>
           <div className="persistent-terminal-surface" hidden={!terminalVisible} aria-hidden={!terminalVisible} data-testid="persistent-terminal-surface">
-            <Terminal ptyEnabled={runtimeCapabilities.pty === true} visible={terminalVisible} agentTarget={runAgentId} onAgentTargetConsumed={() => setRunAgentId(null)} workflowTarget={runWorkflowId} onWorkflowTargetConsumed={() => setRunWorkflowId(null)} />
+            <Terminal ptyEnabled={runtimeCapabilities.pty === true} visible={terminalVisible} onOpenHealth={() => goTo('health')} />
           </div>
-          {view !== 'terminal' ? <ViewBody entry={current} onPush={push} onBack={() => setStack((value) => backStack(value))} onSectionChange={(section) => setStack((value) => setSectionOnStack(value, section))} onNavigateTarget={navigateTo} onOpenAgentTerminal={runAgent} onOpenWorkflowTerminal={runWorkflow} /> : null}
+          {view !== 'terminal' ? <ViewBody entry={current} onPush={push} onBack={() => setStack((value) => backStack(value))} onSectionChange={(section) => setStack((value) => setSectionOnStack(value, section))} onNavigateTarget={navigateTo} onOpenAgentTerminal={openTerminal} onOpenWorkflowTerminal={openTerminal} /> : null}
         </main>
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runPaletteCommand} />
       </div>

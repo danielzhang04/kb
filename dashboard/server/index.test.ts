@@ -7,6 +7,7 @@ import type { SurfaceContext } from './http/context.ts';
 import { makeSurfaceContext as makeProductionSurfaceContext } from './http/surface.ts';
 import { mintSession } from './auth/session.ts';
 import type { SessionConfig } from './auth/session.ts';
+import type { SessionHost } from './pty/contracts.ts';
 import { runtimeCapabilities } from './runtime/capabilities.ts';
 // The browser's own decoder, run against the REAL route body: the cutover rests on this coupling.
 import { decodeRuntimeCapabilities } from '../src/lib/runtimeCapabilities.tsx';
@@ -83,13 +84,23 @@ const ptyMatrixApp = () => buildApp({
   allowedOrigins: [TEST_ORIGIN],
   sessionConfig: TEST_SESSION,
   runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
-  createPtyHost: () => ({
-    open: () => { throw new Error('unauthenticated PTY matrix must not open a session'); },
-    stop: () => false,
-    stopAll: () => undefined,
-    sessions: () => [],
-  }),
+  // Every host method throws: an unauthenticated request must be refused before the route reaches the
+  // host at all, so any call here is the test failing, not the fixture.
+  ptySessionHost: refusingSessionHost(),
 });
+
+/** A platform {@link SessionHost} that refuses to be touched. Nothing in an unauthenticated matrix may
+ *  reach a real host, so every method is a tripwire rather than a stub. */
+function refusingSessionHost(touches?: { count: number }): SessionHost {
+  const boom = (): never => {
+    if (touches) touches.count += 1;
+    throw new Error('unauthenticated PTY matrix must not reach the host');
+  };
+  return {
+    probe: boom, create: boom, attach: boom, write: boom,
+    resize: boom, close: boom, listEpoch: boom, drain: boom,
+  };
+}
 
 beforeEach(() => {
   testStateRoot = mkdtempSync(join(tmpdir(), 'kb-index-test-state-'));
@@ -194,7 +205,7 @@ describe('server', () => {
     app = buildApp({
       validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
       runtimeCapabilities: composed?.runtimeCapabilities, traceRoot: null,
-      createPtyHost: () => { throw new Error('must not construct'); },
+      ptySessionHost: refusingSessionHost(),
     });
     const answered = await app.inject({
       method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
@@ -246,13 +257,15 @@ describe('server', () => {
   });
 
   it('omits PTY routes on Linux and reports the governed bridge capability', async () => {
-    const createPty = vi.fn(() => { throw new Error('must not construct'); });
+    // Tripwire: a closed capability must not CONSTRUCT or touch a session host at all.
+    const touches = { count: 0 };
     app = buildApp({
       validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
       runtimeCapabilities: runtimeCapabilities('linux'),
       coordinationPublication: 'outbox',
       traceRoot: null,
-      createPtyHost: createPty,
+      // Injected and still unused: a probe-refused capability drops the host before composition.
+      ptySessionHost: refusingSessionHost(touches),
     });
     const capabilities = await app.inject({
       method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
@@ -269,7 +282,8 @@ describe('server', () => {
     expect(capabilities.json()).not.toHaveProperty('launchers');
     expect((await app.inject({ method: 'GET', url: '/api/pty/sessions', headers: sessionHeaders() })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/trace', headers: sessionHeaders() })).statusCode).toBe(404);
-    expect(createPty).not.toHaveBeenCalled();
+    // No host method was ever reached on the closed path.
+    expect(touches.count).toBe(0);
   });
 
   it('registers trace routes only when a readable transcript root was composed', async () => {
@@ -421,11 +435,24 @@ describe('server', () => {
   });
 
   it.each([
-    '/api/pty/sessions', '/api/pty/session-runs', '/api/pty/session-runs/example',
+    '/api/pty/sessions',
   ])('rejects unauthenticated read %s', async (url) => {
     app = ptyMatrixApp();
     const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
     expect(response.statusCode).toBe(401);
+  });
+
+  // W6.4 removed the v1 session-run REST surface outright (plan section 6). These three paths are not
+  // "unauthorized" any more — they do not exist, and a 401 here would mean a v1 route was quietly kept.
+  it.each([
+    '/api/pty/session-runs', '/api/pty/session-runs/example', '/api/pty/session-runs/example/transcript',
+  ])('404s the removed v1 session-run route %s', async (url) => {
+    app = ptyMatrixApp();
+    const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
+    expect(response.statusCode).toBe(404);
+    // Authenticated too: the paths are GONE, not merely guarded.
+    const authenticated = await app.inject({ method: 'GET', url, headers: sessionHeaders() });
+    expect(authenticated.statusCode).toBe(404);
   });
 
   // Governed writes composed OUTSIDE the write surface (`registerWriteSurface`) — so `surface.test.ts`'s

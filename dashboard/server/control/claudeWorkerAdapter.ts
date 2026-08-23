@@ -13,7 +13,7 @@
  *
  * Invariants held unchanged:
  *   - Billing/preamble: the child env is built by the SAME allowlist+denylist the PTY host established
- *     (`pty/host.ts`), so `ANTHROPIC_API_KEY` and every credential-named var are stripped. Subscription
+ *     (`control/childEnv.ts`), so `ANTHROPIC_API_KEY` and every credential-named var are stripped. Subscription
  *     auth flows through the on-disk credential store reached via the allowlisted HOME/USERPROFILE.
  *   - Prompt discipline: the work order is authoritative; dependency results / operator feedback appear
  *     only inside an explicit INERT CONTEXT BOUNDARY (mirroring scripts/agent_runner.ps1:330-343); card

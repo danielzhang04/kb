@@ -131,7 +131,8 @@ function isSafeName(value: unknown): value is string {
     && !WINDOWS_DEVICE.test(normalized);
 }
 
-function decodeSessionSummary(value: unknown): value is SessionSummary {
+/** The one strict summary decoder: every inbound row, frame or REST body, is judged by exactly this. */
+export function decodeSessionSummary(value: unknown): value is SessionSummary {
   if (!isRecord(value) || !hasExactKeys(value, [
     'sessionId',
     'name',

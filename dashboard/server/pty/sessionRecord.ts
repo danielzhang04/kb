@@ -201,22 +201,81 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
     void work.catch((error) => deps.onBackgroundError?.(error));
   };
 
+  /**
+   * [C-R6] cursor minting (W0 amendment #3). A host numbers its output frames 1, 2, 3 …; the wire
+   * numbers BYTES. This is the one place the translation happens, so the offset a browser holds, the
+   * offset the retention writer is handed, and the offset the replay reader serves are the same number.
+   *
+   * The same host frame reaches every sink of a session (the registry's own transcript sink and one per
+   * attachment), and the hosts differ in how: the Windows host hands the SAME object to each attachment
+   * from independent async queues, the Linux broker builds a fresh object per sink inside one
+   * synchronous loop. Minting is therefore idempotent twice over — by frame identity (`minted`) and by
+   * host sequence (`lastHostSequence`) — because counting one frame's bytes twice would shift every
+   * later offset off the transcript for good.
+   */
+  const offsets = new Map<string, { total: number; lastHostSequence: number; lastOffset: number }>();
+  const minted = new WeakMap<SessionDataFrame, number>();
+
+  const mintOffset = (frame: SessionDataFrame): number => {
+    const known = minted.get(frame);
+    if (known !== undefined) return known;
+    let state = offsets.get(frame.sessionId);
+    if (state === undefined) {
+      // A record that already holds bytes (a re-created registry over live persistence) resumes its
+      // stream where the transcript ends; a fresh session starts at offset 0. `lastSequence` is trusted
+      // as a byte total, but a record written by an earlier build may have stored a FRAME COUNTER there
+      // instead — a cumulative byte total can never be smaller than what is still retained on disk, so
+      // the baseline is whichever of the two is larger.
+      const record = deps.persistence.read().sessions.find((item) => item.sessionId === frame.sessionId);
+      const stored = record !== undefined && Number.isSafeInteger(record.transcript.lastSequence)
+        ? Math.max(0, record.transcript.lastSequence) : 0;
+      let retained = 0;
+      try {
+        retained = deps.transcript?.retainedBytes?.(frame.sessionId) ?? 0;
+      } catch (error) {
+        deps.onBackgroundError?.(error);
+        retained = 0;
+      }
+      const resume = Number.isSafeInteger(retained) && retained > stored ? retained : stored;
+      state = { total: resume, lastHostSequence: -1, lastOffset: resume };
+      offsets.set(frame.sessionId, state);
+    }
+    if (frame.sequence <= state.lastHostSequence) {
+      minted.set(frame, state.lastOffset);
+      return state.lastOffset;
+    }
+    const offset = state.total;
+    state.total = Math.min(Number.MAX_SAFE_INTEGER, offset + Buffer.byteLength(frame.data, 'base64'));
+    state.lastHostSequence = frame.sequence;
+    state.lastOffset = offset;
+    minted.set(frame, offset);
+    return offset;
+  };
+
+  /** The frame every sink sees: the host's own frame counter is never forwarded past this point. */
+  const inCursorSpace = (frame: SessionDataFrame): SessionDataFrame => {
+    const offset = mintOffset(frame);
+    return frame.sequence === offset ? frame : { ...frame, sequence: offset };
+  };
+
   const updateTranscript = (frame: SessionDataFrame): Promise<void> => {
     const prior = transcriptQueues.get(frame.sessionId) ?? Promise.resolve();
     const next = prior.catch(() => undefined).then(async () => {
       if (!SESSION_ID.test(frame.sessionId)) return;
       const before = deps.persistence.read().sessions.find((item) => item.sessionId === frame.sessionId);
-      if (before === undefined || !live(before) || frame.sequence <= before.transcript.lastSequence) return;
+      // `lastSequence` is the cumulative byte total, so a frame that STARTS before it was already
+      // recorded. A new frame starts exactly at it.
+      if (before === undefined || !live(before) || frame.sequence < before.transcript.lastSequence) return;
       const decoded = Buffer.from(frame.data, 'base64');
       const retained = deps.transcript?.append(frame.sessionId, frame.sequence, decoded);
       await deps.persistence.mutate(null, (document) => {
         const record = document.sessions.find((item) => item.sessionId === frame.sessionId);
-        if (record === undefined || !live(record) || frame.sequence <= record.transcript.lastSequence) return;
+        if (record === undefined || !live(record) || frame.sequence < record.transcript.lastSequence) return;
         if (record.revision >= Number.MAX_SAFE_INTEGER) return;
         record.transcript = retained ?? {
           ...record.transcript,
           bytes: Math.min(1_073_741_824, record.transcript.bytes + decoded.byteLength),
-          lastSequence: frame.sequence,
+          lastSequence: frame.sequence + decoded.byteLength,
         };
         record.revision += 1;
       });
@@ -230,6 +289,8 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
   };
 
   const observeExit = async (exit: ObservedExit, epochId: string): Promise<void> => {
+    // The cursor state dies with the session; the record keeps the byte total for the replay reader.
+    offsets.delete(exit.sessionId);
     await deps.persistence.mutate(null, (document) => applyObservedSessionExit(document, exit, epochId));
   };
 
@@ -271,8 +332,11 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
         const sink: SessionSink = {
           data: (frame) => {
             if (discardFrames) return;
-            if (recordReady) background(updateTranscript(frame));
-            else pendingFrames.push(structuredClone(frame));
+            // Minting happens HERE, before the frame is queued or persisted: a frame that waits for the
+            // record must still hold the offset of the moment it was produced.
+            const stamped = inCursorSpace(frame);
+            if (recordReady) background(updateTranscript(stamped));
+            else pendingFrames.push(structuredClone(stamped));
           },
           exit: (exit) => { if (!discardFrames && receiptEpoch !== null) background(observeExit(exit, receiptEpoch)); },
           closed: () => false,
@@ -397,7 +461,7 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
         }
         let detached = false;
         const guardedSink: SessionSink = {
-          data: (frame) => { if (!detached) sink.data(frame); },
+          data: (frame) => { if (!detached) sink.data(inCursorSpace(frame)); },
           exit: (exit) => { if (!detached) sink.exit(exit); },
           closed: () => detached || sink.closed(),
         };

@@ -23,8 +23,8 @@
  *
  *   spawn accepted     → `create` writes `live` BEFORE any byte reaches the operator (the same
  *                        fail-closed point as the `opened` audit row in `route.ts`).
- *   shell exit / kill  → `end` writes `ended` and attaches the flushed transcript, driven by
- *                        `persistentSessions`' `observe()` gone-notification, which fires exactly once.
+ *   shell exit / kill  → `end` writes `ended` and attaches the flushed transcript, driven by the
+ *                        registry's OBSERVED exit, which fires exactly once.
  *   daemon boot        → `sweepAbandoned` turns every surviving `live` into `abandoned`. Nothing
  *                        survives a restart, so a `live` record that outlived the process is a lie and
  *                        is corrected before anything can read it.

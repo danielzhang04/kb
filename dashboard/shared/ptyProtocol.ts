@@ -1,3 +1,12 @@
+/**
+ * Outbound (server -> browser) high-water mark, in bytes of socket send buffer. A PTY can produce faster
+ * than a browser drains; without a ceiling the daemon buffers the difference forever. When a socket's
+ * `bufferedAmount` crosses this, the connection's attachments are dropped rather than queued: the session
+ * itself survives for reattach, and the reader that could not keep up pays with a reconnect instead of
+ * the daemon paying with unbounded memory.
+ */
+export const PTY_OUTBOUND_HIGH_WATER_BYTES = 1_048_576;
+
 export type SessionLauncher = 'shell' | 'claude' | 'codex';
 export type SafeRootId = 'repo' | 'worktrees';
 export type SessionHostKind = 'desktop' | 'vm';
@@ -9,6 +18,27 @@ export type HostRefusalCode = 'unavailable' | 'capacity' | 'invalid-request' | '
   | 'unsafe-cwd' | 'launcher-unavailable' | 'input-too-large' | 'size-out-of-range'
   | 'not-found' | 'binding-conflict' | 'epoch-lost' | 'cancelled' | 'internal';
 export type SessionSize = { cols: number; rows: number };
+
+/**
+ * Why the PTY socket closed, as a CLOSED set. The route uses exactly four codes and the browser must be
+ * able to tell them apart: "the daemon shed you because you could not keep up" and "the session ended"
+ * are different truths and only one of them is worth reattaching after. Anything else — including a
+ * close with no code at all — is `other`.
+ */
+export const PTY_CLOSE_CODES = {
+  normal: 1000,
+  policy: 1008,
+  tooLarge: 1009,
+  backpressure: 1013,
+} as const;
+export type PtyCloseReason = keyof typeof PTY_CLOSE_CODES | 'other';
+
+export function decodePtyCloseReason(code: unknown): PtyCloseReason {
+  for (const [reason, value] of Object.entries(PTY_CLOSE_CODES)) {
+    if (code === value) return reason as PtyCloseReason;
+  }
+  return 'other';
+}
 export type RecipeSandbox = 'interactive' | 'claude-policy' | 'codex-workspace-write';
 export type LaunchRecipe = { launcher: SessionLauncher; mode: SessionMode; model: string | null;
   toolPolicyId: string; sandbox: RecipeSandbox; resumeRef?: string };
@@ -43,6 +73,16 @@ export type AttemptSessionPublicRow = {
   liveControl: boolean;
 };
 
+/**
+ * THE CURSOR CONTRACT ([C-R6], W0 amendment #3). Every `sequence` in this grammar — `data.sequence`,
+ * `attach.fromSequence`, `attached.replayFrom`, `attached.nextSequence` — is a BYTE OFFSET into the
+ * session's output stream: the offset of a frame's first byte, counted from the first byte the session
+ * ever produced. It is NOT a frame counter, and frame boundaries carry no meaning: a replayed frame is
+ * any slice of the retained transcript. A client's cursor is therefore always
+ * `frame.sequence + byteLength(frame.data)`, which it sends back as `attach.fromSequence`; the server
+ * answers with the `replayFrom` it could actually honour, so a cursor whose bytes are gone is visible
+ * rather than silently skipped.
+ */
 export type BrowserClientFrame =
   | { type: 'create'; requestId: string; launcher: SessionLauncher; rootId: SafeRootId;
       relativeCwd: string; cols: number; rows: number }

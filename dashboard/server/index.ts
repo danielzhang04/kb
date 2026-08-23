@@ -25,7 +25,7 @@ import { ScheduleService, registerScheduleRoutes } from './schedules/service.ts'
 import { resolveScheduleOwner } from './schedules/owners.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
-import { registerSessionRunRoutes } from './pty/sessionRunRoutes.ts';
+import { createRawSessionReplayReader } from './pty/replayReader.ts';
 import { originPlugin } from './security/origin.ts';
 import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
@@ -40,7 +40,6 @@ import {
 } from './runtime/capabilities.ts';
 import type { PublicPtyCapability } from './pty/contracts.ts';
 import type { VibeSpawner } from './vibe/session.ts';
-import { createPtyHost } from './pty/host.ts';
 import { resolveDashboardStateRoot } from './composer/store.ts';
 import { acquireWriterLease } from './control/writerLease.ts';
 import type { FileControlPlaneAccess, WriterLease } from './control/writerLease.ts';
@@ -158,7 +157,12 @@ export interface BuildAppOptions {
   openPr?: SurfaceContext['openPr'];
   traceRoot?: string | null;
   spawn?: VibeSpawner;
-  createPtyHost?: typeof createPtyHost;
+  /** The platform PTY host, injected UNGATED: `makeSurfaceContext` wraps it in the fleet-preamble gate
+   *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
+  ptySessionHost?: SurfaceContext['ptySessionHost'];
+  /** The browser-session ref table, injected so a fixture can mint two independent browser identities
+   *  against the same daemon without touching the real v2 document. */
+  browserSessionRefs?: SurfaceContext['browserSessionRefs'];
   controlStore?: ControlPlaneStore;
   fileControlAccess?: FileControlPlaneAccess;
 }
@@ -194,9 +198,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     openPr: options.openPr,
     traceRoot: options.traceRoot,
     spawn: options.spawn,
+    ...(options.ptySessionHost ? { ptySessionHost: options.ptySessionHost } : {}),
+    ...(options.browserSessionRefs ? { browserSessionRefs: options.browserSessionRefs } : {}),
     controlStore: options.controlStore,
     fileControlAccess: options.fileControlAccess,
-  }, { createPtyHost: options.createPtyHost });
+  });
 
   app.get('/healthz', async () => {
     return { ok: true };
@@ -214,7 +220,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       const watcher = await controlStoreWatcher;
       await watcher.close();
     } catch {
-      // ignore â€” best-effort teardown
+      // ignore - best-effort teardown
     }
   });
   // Loopback-only readiness for repair/export tooling. It is registered OUTSIDE the origin-guarded scope
@@ -261,37 +267,46 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
   // cross-user host/Factor-C path is a future hardening milestone, not an active control.
   if (surfaceCtx.runtimeCapabilities.pty) {
-    // ONE pty host + session registry for the whole daemon, resolved on the surface context. Manual
-    // Terminal sessions persist across browser reconnects without coupling them to worker execution.
-    // N4 (fail-closed host, 2026-08-03): the host is passed UNCONDITIONALLY. `makeSurfaceContext` always
-    // builds the fleet-gated host, so `surfaceCtx.ptyHost` is present in production; if it were ever absent,
-    // `makePtyRouteContext` THROWS (no ungated fallback) and the daemon refuses to start — the old
-    // conditional spread would instead have let the route fabricate a raw, ungated shell host.
-    const ptyCtx = makePtyRouteContext({
-      sessionConfig: surfaceCtx.sessionConfig,
-      allowedOrigins: surfaceCtx.allowedOrigins,
-      ptyHost: surfaceCtx.ptyHost,
-      ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
-      // Leg 2: the daemon records the entity-primed sessions it spawns (agent / workflow), and tapes
-      // their output. Both are owned by the surface context so there is exactly one of each per process.
-      ...(surfaceCtx.ptySessionRuns ? { sessionRuns: surfaceCtx.ptySessionRuns } : {}),
-      ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
-    });
-    app.register(async (scope) => {
-      await registerPtyRoute(scope, ptyCtx);
-      // The session-run REST surface sits BESIDE /api/pty inside the same origin-guarded scope, and is
-      // registered here rather than from the pty route so neither module has to import the other. Its
-      // registration also runs the boot sweep that corrects any `live` record left by the last process.
-      if (surfaceCtx.ptySessionRuns) {
-        await registerSessionRunRoutes(scope, {
-          repoRoot: ptyCtx.repoRoot,
-          sessionConfig: ptyCtx.sessionConfig,
-          sessionRuns: surfaceCtx.ptySessionRuns,
-          ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
-        });
-      }
-      originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });
-    });
+    // ONE session registry over ONE fleet-gated platform host for the whole daemon, both composed in
+    // `makeSurfaceContext` and resolved off the surface context. Manual Terminal sessions persist across
+    // browser reconnects without coupling them to worker execution. The route is a pure consumer of the
+    // registry port: it never constructs a host, so it cannot fabricate a raw, ungated one. Without a
+    // registry (no persistence, no host) nothing is registered at all — the capability is already
+    // published as closed, and a half-wired PTY surface is worse than none.
+    if (surfaceCtx.ptySessionRegistry && surfaceCtx.ptyPersistence) {
+      const ptyCtx = makePtyRouteContext({
+        repoRoot,
+        sessionConfig: surfaceCtx.sessionConfig,
+        allowedOrigins: surfaceCtx.allowedOrigins,
+        registry: surfaceCtx.ptySessionRegistry,
+        persistence: surfaceCtx.ptyPersistence,
+        rateLimitHook: surfaceRateLimitHook(surfaceCtx.readRateGuard, surfaceCtx.rateGuard),
+        // Read-only scrollback for a reattach ([C-R6]). Composed over the SAME `stateRoot` the
+        // registry's `createTranscriptRetention` writes into, so the reader and the writer can never
+        // disagree about where a `.raw` transcript lives. It is a pure read port: it cannot spawn,
+        // write, or close anything, which is why it is safe to hand to every attaching principal the
+        // registry already authorized.
+        replay: createRawSessionReplayReader({
+          stateRoot: surfaceCtx.stateRoot,
+          // The record is the only honest source of the RETAINED WINDOW: the file says how many bytes
+          // survive, the record says how many were ever written, and the difference is the floor a
+          // replay must not claim to have served.
+          extent: (sessionId) => {
+            const record = surfaceCtx.ptyPersistence?.read().sessions
+              .find((item) => item.sessionId === sessionId);
+            return record === undefined
+              ? null
+              : { total: record.transcript.lastSequence, bytes: record.transcript.bytes };
+          },
+        }),
+        ...(surfaceCtx.browserSessionRefs ? { browserSessionRefs: surfaceCtx.browserSessionRefs } : {}),
+      });
+      // `registerPtyRoute` installs this scope's own hooks in the pinned order
+      // (origin -> rate limit -> session -> browser principal), so nothing else is added here.
+      app.register(async (scope) => {
+        await registerPtyRoute(scope, ptyCtx);
+      });
+    }
   }
   // G1 — daemon-side merge-gate reconciler (inbox-gates). Wired here but only ticks AFTER Daniel's
   // deliberate daemon restart (nothing in this wave restarts the live daemon). It reads the canonical ops

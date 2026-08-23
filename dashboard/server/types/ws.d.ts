@@ -6,6 +6,8 @@
 declare module 'ws' {
   class WebSocket {
     constructor(address: string, options?: Record<string, unknown>);
+    // The subprotocol overload: `/api/pty` carries its bearer token in `Sec-WebSocket-Protocol`.
+    constructor(address: string, protocols: string[], options?: Record<string, unknown>);
     readonly readyState: number;
     readonly OPEN: number;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { SYSTEM_ENTITY_GROUP_ID } from '../entities/contracts.ts';
+import type {
+  AttemptSessionPublicRow, PublicPtyCapability, SessionSummary,
+} from '../../shared/ptyProtocol.ts';
 
 export const P2_BROWSER_SCENARIOS = [
   'p2-entity-groups-overlay',
@@ -273,4 +276,177 @@ export function p2Home(partial: boolean) {
   const fixture = structuredClone(HOME_FULL);
   if (partial) fixture.sections[2] = { state: 'unavailable', reason: 'schedules-unavailable' } as never;
   return fixture;
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * P3 — Terminal / PTY browser scenarios (plan §8 lines 536-539).
+ *
+ * These payloads are the ONLY thing the §8 browser matrix reads, so every one of them must survive the
+ * strict client decoders unchanged: `decodeRuntimeCapabilities` (the closed capability, never a bare
+ * boolean), `listPtySessions`'s `{revision, sessions}` envelope, and W4's `createSessionWorkspaceModel`
+ * /`projectRunSessionWorkspace`. A payload that only "looks right" but decodes to null would green the
+ * fixture suite and blank the real page.
+ * ---------------------------------------------------------------------------------------------- */
+
+export const P3_BROWSER_SCENARIOS = [
+  'p3-terminal-empty-unavailable',
+  'p3-terminal-named-sessions',
+  'p3-run-attempt-sessions',
+  'p3-controller-isolation',
+] as const;
+
+export type P3BrowserScenario = (typeof P3_BROWSER_SCENARIOS)[number];
+
+export function isP3BrowserScenario(value: string): value is P3BrowserScenario {
+  return P3_BROWSER_SCENARIOS.includes(value as P3BrowserScenario);
+}
+
+/**
+ * The two browser identities the isolation scenario needs. `a`/`b` are DIFFERENT operators holding
+ * different refs; `aSecondTab` is the same operator AND the same ref as `a` — the pair that is allowed
+ * to control A's sessions, which is what makes the refusal of `b` a statement about the ref and not
+ * merely about the operator name.
+ */
+export const P3_BROWSER_PRINCIPALS = {
+  a: { operator: 'operator-a', browserSessionRef: 'bsr-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+  aSecondTab: { operator: 'operator-a', browserSessionRef: 'bsr-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+  b: { operator: 'operator-b', browserSessionRef: 'bsr-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+} as const;
+
+const P3_CHECKED_AT = '2026-08-22T00:00:00.000Z';
+
+/** `pty:false` stays LITERAL for the unavailable scenario — the Terminal empty state renders that word. */
+export function p3PtyCapability(scenario: P3BrowserScenario): PublicPtyCapability {
+  if (scenario === 'p3-terminal-empty-unavailable') {
+    return {
+      pty: false,
+      diagnostic: {
+        reason: 'broker-unavailable',
+        detail: 'kb-shell-broker socket is not listening',
+        checkedAt: P3_CHECKED_AT,
+      },
+    };
+  }
+  return {
+    pty: true,
+    host: 'desktop',
+    launchers: ['shell', 'claude', 'codex'],
+    roots: ['repo', 'worktrees'],
+    checkedAt: P3_CHECKED_AT,
+  };
+}
+
+function p3Session(overrides: Partial<SessionSummary> & Pick<SessionSummary, 'sessionId' | 'name'>): SessionSummary {
+  return {
+    host: 'desktop',
+    launcher: 'shell',
+    rootId: 'repo',
+    cwd: '',
+    state: 'live',
+    attachmentCount: 0,
+    attachmentState: 'detached',
+    startedAt: P3_CHECKED_AT,
+    endedAt: null,
+    exit: null,
+    ...overrides,
+  };
+}
+
+/**
+ * Named sessions across all three launchers, in the three attachment states the header renders. Names
+ * and relative cwds are SERVER-DERIVED here exactly as the registry derives them: nothing in this data
+ * is browser-supplied, so the browser matrix can assert that an unsafe name never appears.
+ */
+const P3_NAMED_SESSIONS: SessionSummary[] = [
+  p3Session({
+    sessionId: 'pty-1111111111111111111111111111aaaa',
+    name: 'shell · kb',
+    launcher: 'shell',
+    rootId: 'repo',
+    cwd: '',
+    attachmentCount: 1,
+    attachmentState: 'attached',
+  }),
+  p3Session({
+    sessionId: 'pty-2222222222222222222222222222bbbb',
+    name: 'claude · dashboard',
+    launcher: 'claude',
+    rootId: 'repo',
+    cwd: 'dashboard',
+  }),
+  p3Session({
+    sessionId: 'pty-3333333333333333333333333333cccc',
+    name: 'codex · p3-w64',
+    launcher: 'codex',
+    rootId: 'worktrees',
+    cwd: 'p3-w64/dashboard',
+  }),
+  p3Session({
+    sessionId: 'pty-4444444444444444444444444444dddd',
+    name: 'shell · kb (ended)',
+    launcher: 'shell',
+    state: 'exited',
+    endedAt: '2026-08-22T00:05:00.000Z',
+    exit: { exitCode: 0, reason: 'exited', observedAt: '2026-08-22T00:05:00.000Z' },
+  }),
+];
+
+/** Context A's sessions. Context B owns none, and must never be shown A's. */
+export function p3SessionListing(
+  scenario: P3BrowserScenario,
+  browserSessionRef: string | null,
+): { revision: number; sessions: SessionSummary[] } {
+  if (scenario === 'p3-terminal-empty-unavailable') return { revision: 0, sessions: [] };
+  const ownedByA = browserSessionRef === P3_BROWSER_PRINCIPALS.a.browserSessionRef;
+  // A stranger sees an EMPTY list, never a 403 naming a session: the refusal must not leak that A's
+  // sessions exist at all.
+  return { revision: 7, sessions: ownedByA ? structuredClone(P3_NAMED_SESSIONS) : [] };
+}
+
+/** True when this ref may control (attach/write/resize/close) the given session. */
+export function p3ControlsSession(sessionId: string, browserSessionRef: string | null): boolean {
+  if (browserSessionRef !== P3_BROWSER_PRINCIPALS.a.browserSessionRef) return false;
+  return P3_NAMED_SESSIONS.some((session) => session.sessionId === sessionId);
+}
+
+/**
+ * The Run's attempt sessions: exactly one live attempt the operator may claim, plus an earlier attempt
+ * and a terminal one that are replay-only. W4's projector turns these into `live-control`/`replay`.
+ */
+export function p3AttemptSessions(): AttemptSessionPublicRow[] {
+  return [
+    {
+      attemptRef: 'attempt-3',
+      sessionId: 'pty-5555555555555555555555555555eeee',
+      launcher: 'claude',
+      state: 'live',
+      startedAt: '2026-08-22T00:10:00.000Z',
+      endedAt: null,
+      exit: null,
+      controllerClaimed: false,
+      liveControl: true,
+    },
+    {
+      attemptRef: 'attempt-2',
+      sessionId: 'pty-6666666666666666666666666666ffff',
+      launcher: 'codex',
+      state: 'exited',
+      startedAt: '2026-08-22T00:08:00.000Z',
+      endedAt: '2026-08-22T00:09:00.000Z',
+      exit: { exitCode: 0, reason: 'exited', observedAt: '2026-08-22T00:09:00.000Z' },
+      controllerClaimed: false,
+      liveControl: false,
+    },
+    {
+      attemptRef: 'attempt-1',
+      sessionId: 'pty-7777777777777777777777777777aaaa',
+      launcher: 'claude',
+      state: 'abandoned',
+      startedAt: '2026-08-22T00:06:00.000Z',
+      endedAt: '2026-08-22T00:07:00.000Z',
+      exit: { exitCode: null, reason: 'abandoned', observedAt: '2026-08-22T00:07:00.000Z' },
+      controllerClaimed: false,
+      liveControl: false,
+    },
+  ];
 }

@@ -327,11 +327,14 @@ describe('strict PTY v2 persistence', () => {
     const root = mkdtempSync(join(tmpdir(), 'kb-pty-transcript-'));
     try {
       const retention = createTranscriptRetention(root, 4);
-      expect(retention.append(SESSION_ID, 1, new Uint8Array([1, 2, 3]))).toMatchObject({
-        bytes: 3, truncated: false, lastSequence: 1,
+      // [C-R6]: the caller passes the frame's BYTE OFFSET and gets back the cumulative byte total, so
+      // the retained window is always `[lastSequence - bytes, lastSequence)` — here [2, 6) after the
+      // second append, which is exactly the four bytes left on disk.
+      expect(retention.append(SESSION_ID, 0, new Uint8Array([1, 2, 3]))).toMatchObject({
+        bytes: 3, truncated: false, lastSequence: 3,
       });
-      expect(retention.append(SESSION_ID, 2, new Uint8Array([4, 5, 6]))).toMatchObject({
-        bytes: 4, truncated: true, lastSequence: 2,
+      expect(retention.append(SESSION_ID, 3, new Uint8Array([4, 5, 6]))).toMatchObject({
+        bytes: 4, truncated: true, lastSequence: 6,
       });
       expect([...readFileSync(join(root, 'pty', 'transcripts', `${SESSION_ID}.raw`))]).toEqual([3, 4, 5, 6]);
     } finally {
@@ -344,16 +347,16 @@ describe('strict PTY v2 persistence', () => {
     try {
       const rename = vi.fn(renameSync);
       const retention = createTranscriptRetention(root, 16, { rename });
-      for (let sequence = 1; sequence <= 5; sequence += 1) {
-        expect(retention.append(SESSION_ID, sequence, new Uint8Array([sequence, sequence, sequence])))
-          .toMatchObject({ bytes: sequence * 3, truncated: false, lastSequence: sequence });
+      for (let frame = 1; frame <= 5; frame += 1) {
+        expect(retention.append(SESSION_ID, (frame - 1) * 3, new Uint8Array([frame, frame, frame])))
+          .toMatchObject({ bytes: frame * 3, truncated: false, lastSequence: frame * 3 });
       }
       // Five frames, zero atomic rewrites: an append is an fsync'd append, not a full-file rewrite.
       expect(rename).toHaveBeenCalledTimes(0);
       expect(readFileSync(join(root, 'pty', 'transcripts', `${SESSION_ID}.raw`))).toHaveLength(15);
 
-      expect(retention.append(SESSION_ID, 6, new Uint8Array([6, 6, 6])))
-        .toMatchObject({ bytes: 16, truncated: true, lastSequence: 6 });
+      expect(retention.append(SESSION_ID, 15, new Uint8Array([6, 6, 6])))
+        .toMatchObject({ bytes: 16, truncated: true, lastSequence: 18 });
       // Exactly one rename across all six appends: compaction happens on truncation only.
       expect(rename).toHaveBeenCalledTimes(1);
       expect([...readFileSync(join(root, 'pty', 'transcripts', `${SESSION_ID}.raw`))])

@@ -44,7 +44,9 @@ function deferred<T>() {
 }
 
 describe('App runtime capability wiring', () => {
-  const DISABLED_COPY = 'Terminal is disabled on this host.';
+  // W6.4 replaced the flat "disabled" line with the workspace's unavailable state (W4's
+  // `TerminalSessionEmpty`), which names the condition and offers the Health path.
+  const DISABLED_COPY = 'Terminal unavailable';
   const AVAILABLE_CAPABILITIES = {
     pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'],
     checkedAt: '2026-08-22T09:00:00.000Z', localTranscripts: true, platform: 'win32',

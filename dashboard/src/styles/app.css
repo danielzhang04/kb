@@ -738,13 +738,17 @@ select option {
   display: none;
 }
 
-/* Terminal destination: the main area becomes a flex column so the tab strip, notices, and the
- * terminal SHARE the viewport-bounded box — the terminal flexes to the remainder and can never push
- * past the fold (no page scroll at any zoom; browser zoom fires resize → FitAddon refits). */
+/* Terminal destination: the workspace OWNS the main viewport. The main area drops its page padding and
+ * its own scroll entirely and becomes a viewport-bounded flex column, so the only scrollable region on
+ * this destination is the xterm viewport inside the selected console. Nothing here may scroll: a second
+ * scrollbar beside the terminal's own is the exact defect this rule exists to prevent (browser zoom
+ * fires resize → FitAddon refits, so the grid re-fits instead of overflowing). */
 .mc-main--terminal {
   display: flex;
   flex-direction: column;
+  padding: 0;
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 /* ============================================================================

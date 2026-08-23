@@ -26,7 +26,9 @@ import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
-import type { HostOpenRequest, PtyHost, PtySession } from '../pty/host.ts';
+import type {
+  HostLaunch, ObservedExit, PtyCapabilityProbe, SessionHost, SessionHostRequest, SessionSink,
+} from '../pty/contracts.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { AttemptIoAppend } from '../control/attemptIo.ts';
 import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
@@ -90,20 +92,59 @@ const noRunnerSignal: NonNullable<SurfaceContext['triggerRunner']> = (owner) => 
 });
 const frozenPreamble: PreambleRunner = () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP file present — fleet frozen', stderr: '' });
 
-function recordingPtyHost(): {
-  host: PtyHost;
-  open: ReturnType<typeof vi.fn>;
-  stop: ReturnType<typeof vi.fn>;
-  stopAll: ReturnType<typeof vi.fn>;
-  sessions: ReturnType<typeof vi.fn>;
-  session: PtySession;
+/** A v2 session id: `pty-` plus 32 lowercase hex digits, the only grammar the registry mints. */
+const HOST_SESSION_ID = 'pty-0123456789abcdef0123456789abcdef';
+
+/** A fake platform {@link SessionHost} recording every method the fleet gate is supposed to pass through
+ *  untouched, and the one method (`create`) it is supposed to refuse while the fleet is frozen. */
+function recordingSessionHost(): {
+  host: SessionHost;
+  launch: HostLaunch;
+  exit: ObservedExit;
+  probe: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  attach: ReturnType<typeof vi.fn>;
+  write: ReturnType<typeof vi.fn>;
+  resize: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  listEpoch: ReturnType<typeof vi.fn>;
+  drain: ReturnType<typeof vi.fn>;
 } {
-  const session = { sessionId: 'pty-surface-test', handle: {} } as PtySession;
-  const open = vi.fn((_request: HostOpenRequest) => session);
-  const stop = vi.fn((_sessionId: string) => true);
-  const stopAll = vi.fn();
-  const sessions = vi.fn(() => [session.sessionId]);
-  return { host: { open, stop, stopAll, sessions }, open, stop, stopAll, sessions, session };
+  const exit: ObservedExit = {
+    sessionId: HOST_SESSION_ID, sequence: 1, exitCode: 0, signal: null,
+    reason: 'exited', observedAt: '2026-08-22T00:00:00.000Z',
+  };
+  const launch: HostLaunch = {
+    receipt: Promise.resolve({
+      ok: true,
+      value: {
+        operationKey: 'op-surface-test', sessionId: HOST_SESSION_ID, epochId: 'epoch-surface-test',
+        revision: 1, boundAt: '2026-08-22T00:00:00.000Z', replayed: false,
+      },
+    }),
+    exit: Promise.resolve(exit),
+  };
+  const probe = vi.fn(async (): Promise<PtyCapabilityProbe> => ({
+    available: true, host: 'desktop', transport: 'local-node-pty',
+    launchers: ['shell'], roots: ['repo'], epochId: 'epoch-surface-test',
+    checkedAt: '2026-08-22T00:00:00.000Z',
+  }));
+  const create = vi.fn((_request: SessionHostRequest, _sink: SessionSink) => launch);
+  const attach = vi.fn(async (_sessionId: string, _sink: SessionSink) =>
+    ({ ok: true as const, value: { attachmentId: 'att-0123456789abcdef0123456789abcdef' } }));
+  const write = vi.fn(async (_sessionId: string, _data: Uint8Array) =>
+    ({ ok: true as const, value: { accepted: 3 } }));
+  const resize = vi.fn(async (_sessionId: string, size: { cols: number; rows: number }) =>
+    ({ ok: true as const, value: size }));
+  const close = vi.fn(async (_sessionId: string) => ({ ok: true as const, value: exit }));
+  const listEpoch = vi.fn(async () =>
+    ({ ok: true as const, value: { epochId: 'epoch-surface-test', sessionIds: [HOST_SESSION_ID] } }));
+  const drain = vi.fn(async (epochId: string) =>
+    ({ ok: true as const, value: { epochId, closed: [HOST_SESSION_ID], alreadyGone: [] } }));
+  return {
+    host: { probe, create, attach, write, resize, close, listEpoch, drain },
+    launch, exit, probe, create, attach, write, resize, close, listEpoch, drain,
+  };
 }
 
 function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstance; ctx: SurfaceContext } {
@@ -154,45 +195,44 @@ afterEach(async () => {
 });
 
 describe('write surface — composition chain', () => {
-  it('constructs no PTY host, registry, store, or recorder when the probe refused', () => {
-    const createPty = vi.fn(() => { throw new Error('must not construct'); });
-    const ctx = makeSurfaceContext(
-      { runtimeCapabilities: runtimeCapabilities('linux') },
-      { createPtyHost: createPty },
-    );
+  it('constructs no PTY host, registry, or run store when the probe refused', () => {
+    // An injected host is still refused: the capability decides, not the override. If composition ever
+    // took the override before checking `capabilities.pty`, a probe-refused daemon would expose a host.
+    const injected = recordingSessionHost();
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('linux'),
+      ptySessionHost: injected.host,
+    });
     expect(ctx.runtimeCapabilities.pty).toBe(false);
-    expect(createPty).not.toHaveBeenCalled();
-    expect(ctx.ptyHost).toBeUndefined();
-    expect(ctx.ptySessions).toBeUndefined();
+    expect(ctx.ptySessionHost).toBeUndefined();
+    expect(ctx.ptySessionRegistry).toBeUndefined();
     expect(ctx.ptySessionRuns).toBeUndefined();
-    expect(ctx.ptyTranscripts).toBeUndefined();
+    expect(injected.create).not.toHaveBeenCalled();
+    expect(injected.probe).not.toHaveBeenCalled();
   });
 
   it('refuses the same way on Windows until composition supplies a probe result', () => {
-    const createPty = vi.fn(() => { throw new Error('must not construct'); });
-    const ctx = makeSurfaceContext(
-      { runtimeCapabilities: runtimeCapabilities('win32') },
-      { createPtyHost: createPty },
-    );
+    const injected = recordingSessionHost();
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32'),
+      ptySessionHost: injected.host,
+    });
     expect(ctx.runtimeCapabilities).toMatchObject({
       pty: false, diagnostic: { reason: 'node-pty-unavailable', detail: null },
     });
-    expect(createPty).not.toHaveBeenCalled();
-    expect(ctx.ptyHost).toBeUndefined();
-    expect(ctx.ptySessions).toBeUndefined();
+    expect(ctx.ptySessionHost).toBeUndefined();
+    expect(ctx.ptySessionRegistry).toBeUndefined();
+    expect(injected.probe).not.toHaveBeenCalled();
   });
 
   it('constructs the whole PTY stack once the probe advertised the closed capability', () => {
-    const createPty = vi.fn(() => recordingPtyHost().host);
-    const ctx = makeSurfaceContext(
-      { runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY) },
-      { createPtyHost: createPty },
-    );
-    expect(createPty).toHaveBeenCalledOnce();
-    expect(ctx.ptyHost).toBeDefined();
-    expect(ctx.ptySessions).toBeDefined();
+    const ctx = makeSurfaceContext({ runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY) });
+    // No override: the REAL platform host is built here, and building it must stay inert — no probe, no
+    // spawn, no socket. `probe()` is the explicit, separately-invoked capability check.
+    expect(ctx.ptySessionHost).toBeDefined();
+    expect(ctx.ptySessionRegistry).toBeDefined();
     expect(ctx.ptySessionRuns).toBeDefined();
-    expect(ctx.ptyTranscripts).toBeDefined();
+    expect(ctx.closeDeploymentPtySessions).toBeDefined();
   });
 
   it('resolves outbox publication once and recovers the anchor before readiness', async () => {
@@ -1068,9 +1108,9 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
   it('gate set ⇒ the three executor fields are populated from the builder result', () => {
     const triple = activatedTriple();
     const build = vi.fn().mockReturnValue(triple);
-    const underlying = recordingPtyHost();
+    const underlying = recordingSessionHost();
     const ctx = makeSurfaceContext(
-      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], ptyHost: underlying.host },
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], ptySessionHost: underlying.host },
       { build: build as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' } },
     );
     expect(build).toHaveBeenCalledTimes(1);
@@ -1079,9 +1119,9 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
       env: { DASHBOARD_EXECUTION_ACTIVATED: '1' },
       repoRoot: REPO_A,
     }));
-    expect(build.mock.calls[0][0]).not.toHaveProperty('ptyHost');
-    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessions');
-    expect(ctx.ptyHost).not.toBe(underlying.host);
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessionHost');
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessionRegistry');
+    expect(ctx.ptySessionHost).not.toBe(underlying.host);
     expect(ctx.controlBroker).toBe(triple.controlBroker);
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);
     expect(ctx.cancelAutomatic).toBe(triple.cancelAutomatic);
@@ -1269,67 +1309,126 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
   });
 });
 
-describe('surface — shared PTY host fleet gate', () => {
-  const request: HostOpenRequest = { requestId: 'req-1', cwd: REPO_A, cols: 80, rows: 24 };
+describe('surface — the platform session host carries the fleet gate', () => {
+  const request: SessionHostRequest = {
+    operationKey: 'op-fleet-gate',
+    principal: { operator: 'op-1', browserSessionRef: 'bsr-1' },
+    recipe: { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'none', sandbox: 'interactive' },
+    rootId: 'repo',
+    relativeCwd: '',
+    cols: 80,
+    rows: 24,
+  };
+  const sink: SessionSink = { data() {}, exit() {}, closed: () => false };
 
-  it('fails closed before the underlying open and redacts all preamble failure details', () => {
-    const underlying = recordingPtyHost();
+  function gated(underlying: ReturnType<typeof recordingSessionHost>, runPreamble: PreambleRunner): SessionHost {
+    const ctx = makeSurfaceContext({
+      repoRoot: REPO_A,
+      sessionConfig,
+      allowedOrigins: [GOOD_ORIGIN],
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: underlying.host,
+      runPreamble,
+    });
+    // Composition WRAPS the injected host rather than exposing it: no caller can reach the ungated one.
+    expect(ctx.ptySessionHost).toBeDefined();
+    expect(ctx.ptySessionHost).not.toBe(underlying.host);
+    return ctx.ptySessionHost as SessionHost;
+  }
+
+  it('fails closed before the underlying create and redacts all preamble failure details', async () => {
+    const underlying = recordingSessionHost();
     const sensitive = 'credential=provider-secret-value';
     const runPreamble = vi.fn((_repoRoot: string) => ({
       exitCode: 1,
       stdout: `PREAMBLE FAIL: STOP present; ${sensitive}`,
       stderr: `stderr ${sensitive}`,
     }));
-    const ctx = makeSurfaceContext({
-      repoRoot: REPO_A,
-      sessionConfig,
-      allowedOrigins: [GOOD_ORIGIN],
-      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
-      ptyHost: underlying.host,
-      runPreamble,
-    });
+    const host = gated(underlying, runPreamble);
 
+    // Composition itself never runs the preamble — only an actual `create` does.
     expect(runPreamble).not.toHaveBeenCalled();
-    let thrown: Error | null = null;
-    try {
-      ctx.ptyHost?.open(request);
-    } catch (error) {
-      thrown = error as Error;
-    }
+
+    const launch = host.create(request, sink);
+    const receipt = await launch.receipt;
 
     expect(runPreamble).toHaveBeenCalledTimes(1);
     expect(runPreamble).toHaveBeenCalledWith(REPO_A);
-    expect(underlying.open).not.toHaveBeenCalled();
-    expect(thrown?.message).toBe(PTY_OPEN_FLEET_FROZEN);
-    expect(thrown?.message).not.toContain('STOP');
-    expect(thrown?.message).not.toContain(sensitive);
+    expect(underlying.create).not.toHaveBeenCalled();
+    expect(receipt.ok).toBe(false);
+    if (receipt.ok) throw new Error('a frozen fleet must refuse');
+    expect(receipt.refusal).toBe('unavailable');
+    expect(receipt.detail).toBe(PTY_OPEN_FLEET_FROZEN);
+    expect(receipt.detail).not.toContain('STOP');
+    expect(receipt.detail).not.toContain(sensitive);
+    // The refusal still settles the exit promise, so a caller awaiting teardown never hangs.
+    await expect(launch.exit).resolves.toMatchObject({ reason: 'abandoned', exitCode: null });
   });
 
-  it('delegates exactly one passing open and preserves every lifecycle method', () => {
-    const underlying = recordingPtyHost();
-    const runPreamble = vi.fn((_repoRoot: string) => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }));
-    const ctx = makeSurfaceContext({
-      repoRoot: REPO_A,
-      sessionConfig,
-      allowedOrigins: [GOOD_ORIGIN],
-      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
-      ptyHost: underlying.host,
-      runPreamble,
+  it('a preamble that THROWS is still a redacted refusal, never a propagated error', async () => {
+    const underlying = recordingSessionHost();
+    const runPreamble = vi.fn((_repoRoot: string) => {
+      throw new Error(`spawn failed: credential=provider-secret-value`);
     });
-    const host = ctx.ptyHost as PtyHost;
+    const host = gated(underlying, runPreamble as unknown as PreambleRunner);
 
-    expect(host.open(request)).toBe(underlying.session);
+    const receipt = await host.create(request, sink).receipt;
+
+    expect(underlying.create).not.toHaveBeenCalled();
+    expect(receipt.ok).toBe(false);
+    if (receipt.ok) throw new Error('a throwing preamble must refuse');
+    expect(receipt.detail).toBe(PTY_OPEN_FLEET_FROZEN);
+    expect(receipt.detail).not.toContain('provider-secret-value');
+  });
+
+  it('delegates exactly one passing create and passes every other method straight through', async () => {
+    const underlying = recordingSessionHost();
+    const runPreamble = vi.fn((_repoRoot: string) => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }));
+    const host = gated(underlying, runPreamble);
+
+    expect(host.create(request, sink)).toBe(underlying.launch);
     expect(runPreamble).toHaveBeenCalledOnce();
     expect(runPreamble).toHaveBeenCalledWith(REPO_A);
-    expect(underlying.open).toHaveBeenCalledOnce();
-    expect(underlying.open).toHaveBeenCalledWith(request);
+    expect(underlying.create).toHaveBeenCalledOnce();
+    expect(underlying.create).toHaveBeenCalledWith(request, sink);
 
-    expect(host.stop('pty-surface-test')).toBe(true);
-    host.stopAll();
-    expect(host.sessions()).toEqual(['pty-surface-test']);
-    expect(underlying.stop).toHaveBeenCalledWith('pty-surface-test');
-    expect(underlying.stopAll).toHaveBeenCalledOnce();
-    expect(underlying.sessions).toHaveBeenCalledOnce();
+    // Only `create` is gated: everything else acts on a session that already exists, and a freeze must
+    // never strand a live child or block reaping one. Each of these runs the preamble ZERO extra times.
+    await expect(host.probe()).resolves.toMatchObject({ available: true });
+    await expect(host.attach(HOST_SESSION_ID, sink)).resolves.toMatchObject({ ok: true });
+    await expect(host.write(HOST_SESSION_ID, new Uint8Array([1, 2, 3]))).resolves
+      .toMatchObject({ ok: true, value: { accepted: 3 } });
+    await expect(host.resize(HOST_SESSION_ID, { cols: 100, rows: 40 })).resolves
+      .toMatchObject({ ok: true, value: { cols: 100, rows: 40 } });
+    await expect(host.close(HOST_SESSION_ID)).resolves.toMatchObject({ ok: true, value: underlying.exit });
+    await expect(host.listEpoch()).resolves
+      .toMatchObject({ ok: true, value: { sessionIds: [HOST_SESSION_ID] } });
+    await expect(host.drain('epoch-surface-test')).resolves
+      .toMatchObject({ ok: true, value: { closed: [HOST_SESSION_ID] } });
+
+    expect(runPreamble).toHaveBeenCalledOnce();
+    expect(underlying.probe).toHaveBeenCalledOnce();
+    expect(underlying.attach).toHaveBeenCalledWith(HOST_SESSION_ID, sink);
+    expect(underlying.write).toHaveBeenCalledOnce();
+    expect(underlying.resize).toHaveBeenCalledWith(HOST_SESSION_ID, { cols: 100, rows: 40 });
+    expect(underlying.close).toHaveBeenCalledWith(HOST_SESSION_ID);
+    expect(underlying.listEpoch).toHaveBeenCalledOnce();
+    expect(underlying.drain).toHaveBeenCalledWith('epoch-surface-test');
+  });
+
+  it('re-runs the gate on EVERY create, so a freeze mid-session stops the next one', async () => {
+    const underlying = recordingSessionHost();
+    let exitCode = 0;
+    const runPreamble = vi.fn((_repoRoot: string) => ({ exitCode, stdout: '', stderr: '' }));
+    const host = gated(underlying, runPreamble);
+
+    await expect(host.create(request, sink).receipt).resolves.toMatchObject({ ok: true });
+    exitCode = 1;
+    await expect(host.create(request, sink).receipt).resolves
+      .toMatchObject({ ok: false, refusal: 'unavailable', detail: PTY_OPEN_FLEET_FROZEN });
+
+    expect(runPreamble).toHaveBeenCalledTimes(2);
+    expect(underlying.create).toHaveBeenCalledOnce();
   });
 });
 
@@ -1439,7 +1538,6 @@ describe('write surface — PTY persistence + browser-session ref composition', 
 
     const ctx = makeSurfaceContext(
       { runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY), stateRoot: absentRoot },
-      { createPtyHost: () => recordingPtyHost().host },
     );
 
     expect(ctx.ptyPersistence).toBeDefined();
@@ -1453,7 +1551,6 @@ describe('write surface — PTY persistence + browser-session ref composition', 
   it('composes a ref table even with no PTY stack, so sign-in never depends on the PTY probe', () => {
     const ctx = makeSurfaceContext(
       { runtimeCapabilities: runtimeCapabilities('linux') },
-      { createPtyHost: () => { throw new Error('must not construct'); } },
     );
 
     expect(ctx.runtimeCapabilities.pty).toBe(false);

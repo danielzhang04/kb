@@ -43,10 +43,9 @@ import type { RunControlTransactions } from '../control/runTransactions.ts';
 import type { ExecutionLatch } from '../control/activation.ts';
 import type { PaidActionExecutor } from '../control/paidActionWiring.ts';
 import type { SpendGrant } from '../control/spendGrant.ts';
-import type { PtyHost } from '../pty/host.ts';
-import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
+import type { SessionHost } from '../pty/contracts.ts';
+import type { DeploymentSessionCloser, SessionRecordRegistry } from '../pty/sessionRecord.ts';
 import type { SessionRunStore } from '../pty/sessionRuns.ts';
-import type { TranscriptRecorder } from '../pty/transcripts.ts';
 import type { SessionPersistence } from '../pty/sessionPersistence.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
@@ -146,17 +145,23 @@ export interface SurfaceContext {
   /** The durable spend-grant resolver the paid-action route validates a worker's bearer token against.
    *  Bound with {@link paidActionService}; the raw token never leaves the worker, only its hash is stored. */
   spendGrantStore?: { resolve(token: string, now?: Date): SpendGrant | null };
-  /** The daemon's node-pty host and persistent session registry, owned by the manual Terminal view. */
-  ptyHost?: PtyHost;
-  ptySessions?: PersistentSessionRegistry;
+  /** The one platform PTY host for `/api/pty` (Windows `node-pty`, Linux broker client), already wrapped
+   *  in the fleet-preamble gate. Absent when the runtime reports no PTY capability. */
+  ptySessionHost?: SessionHost;
+  /** The one v2 session registry every registered PTY route goes through. */
+  ptySessionRegistry?: SessionRecordRegistry;
   /**
-   * The durable record of entity-primed terminal sessions, and their transcripts. Deliberately NOT
-   * control-plane objects: a session run has no proposal hash, no executor, and no closed-tab exit (see
-   * `server/pty/sessionRuns.ts`). Both are inert to construct — no file is touched until a session is
-   * actually recorded.
+   * The ONLY cross-controller termination: Daniel's deployment `close-ptys-and-continue` against exact
+   * ids. It is deliberately not a method on the registry, so no ordinary route can reach it.
+   */
+  closeDeploymentPtySessions?: DeploymentSessionCloser;
+  /**
+   * The durable record of entity-primed terminal sessions. Deliberately NOT a control-plane object: a
+   * session run has no proposal hash, no executor, and no closed-tab exit (see `server/pty/sessionRuns.ts`).
+   * Inert to construct — no file is touched until a session is actually recorded. Transcript bytes are
+   * owned by the v2 registry's `createTranscriptRetention` port, never by a context field.
    */
   ptySessionRuns?: SessionRunStore;
-  ptyTranscripts?: TranscriptRecorder;
   /**
    * The one `kb.pty-sessions/v2` document port for the process (spec [C-M3]): session records, attempt
    * bindings, operation receipts and the legacy session-run rows all live in it, behind one lock and one

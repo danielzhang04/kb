@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AttemptOperationRecord, BrowserPrincipal, SessionHost, SessionHostRequest,
-  SessionRecord } from './contracts.ts';
+import type { AttemptOperationRecord, BrowserPrincipal, PtySessionsDocumentV2, SessionHost,
+  SessionHostRequest, SessionRecord, SessionSink } from './contracts.ts';
 import { RUN_CONTROLLER_NULL_BROWSER_SESSION_REF } from './contracts.ts';
 import {
   claimRunController,
@@ -15,6 +18,7 @@ import {
 import {
   assertPtySessionsDocumentV2,
   createEmptyPtySessionsDocument,
+  createTranscriptRetention,
   enforcePtySessionRetention,
 } from './sessionPersistence.ts';
 import type { SessionPersistence } from './sessionPersistence.ts';
@@ -229,6 +233,169 @@ describe('composite-principal session policy', () => {
     await expect(registry.create(ALICE_A, MANUAL_REQUEST)).resolves.toMatchObject({ ok: true });
     expect(requests).toHaveLength(1);
     expect(requests[0]?.principal).toEqual(ALICE_A);
+  });
+
+  it('mints every data sequence as a byte offset, exactly once per host frame across all sinks', async () => {
+    // [C-R6] W0 amendment #3. The host numbers frames 1, 2, 3; the wire numbers BYTES. Two sinks see
+    // every frame (the registry's transcript sink and the attachment's), and the two hosts deliver
+    // differently — Windows hands the SAME object to each sink, the Linux broker builds a fresh one per
+    // sink. Both are exercised here, because counting a frame's bytes twice would shift the transcript
+    // off its own offsets permanently.
+    const { persistence, state } = validatingPersistence();
+    let sessionId = '';
+    let hostSink: SessionSink | null = null;
+    let attachSink: SessionSink | null = null;
+    const host = {
+      probe: async () => ({ available: true as const, host: 'desktop' as const,
+        transport: 'local-node-pty' as const, launchers: ['shell' as const], roots: ['repo' as const],
+        epochId: `epoch-${'e'.repeat(32)}`, checkedAt: NOW }),
+      create: (request: SessionHostRequest, sink: SessionSink) => {
+        hostSink = sink;
+        sessionId = `pty-${'a'.repeat(32)}`;
+        return { receipt: Promise.resolve({ ok: true as const, value: { operationKey: request.operationKey,
+          sessionId, epochId: `epoch-${'e'.repeat(32)}`, revision: 0, boundAt: NOW, replayed: false } }),
+          exit: new Promise<never>(() => undefined) };
+      },
+      attach: async (_id: string, sink: SessionSink) => {
+        attachSink = sink;
+        return { ok: true as const, value: { attachmentId: `att-${'b'.repeat(32)}` } };
+      },
+    } as unknown as SessionHost;
+
+    const appended: { sequence: number; bytes: number }[] = [];
+    let onDisk = 0;
+    const transcript = {
+      append: (_id: string, sequence: number, data: Uint8Array) => {
+        appended.push({ sequence, bytes: data.byteLength });
+        onDisk += data.byteLength;
+        return { path: `pty/transcripts/${sessionId}.raw`, bytes: onDisk, truncated: false,
+          lastSequence: sequence + data.byteLength };
+      },
+    };
+    let operation = 0;
+    const registry = createSessionRecordRegistry({ persistence, host, transcript, now: () => NOW,
+      makeOperationKey: () => `op-${(++operation).toString(16).padStart(64, '0')}` });
+
+    await expect(registry.create(ALICE_A, MANUAL_REQUEST)).resolves.toMatchObject({ ok: true });
+    const observed: number[] = [];
+    await registry.attach(ALICE_A, sessionId, {
+      data: (frame) => { observed.push(frame.sequence); }, exit: () => {}, closed: () => false,
+    });
+
+    // ASCII, a multibyte string whose byte length is not its character length, and raw non-UTF-8 bytes.
+    const payloads = [
+      Buffer.from('ab', 'utf8'),
+      Buffer.from('é€', 'utf8'),
+      Buffer.from([0xff, 0x00, 0xfe, 0x80]),
+    ];
+    payloads.forEach((payload, index) => {
+      const shared = { sessionId, sequence: index + 1, encoding: 'base64' as const,
+        data: payload.toString('base64'), replay: false };
+      // Windows: one object, every sink. Linux: a fresh object per sink, same host sequence.
+      (hostSink as unknown as SessionSink).data(shared);
+      (attachSink as unknown as SessionSink).data({ ...shared });
+    });
+
+    const expectedOffsets = [0, 2, 2 + 5];
+    const total = 2 + 5 + 4;
+    const deadline = Date.now() + 5_000;
+    while (state.document.sessions[0]?.transcript.lastSequence !== total) {
+      if (Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    expect(observed).toEqual(expectedOffsets);
+    expect(appended).toEqual([
+      { sequence: 0, bytes: 2 }, { sequence: 2, bytes: 5 }, { sequence: 7, bytes: 4 },
+    ]);
+    // The record's cumulative total is the reader's `total`, and the retained window is [total-bytes, total).
+    expect(state.document.sessions[0].transcript).toMatchObject({ bytes: total, lastSequence: total });
+  });
+
+  describe('resume baseline over a re-created registry ([C-R6] byte offsets, not frame counts)', () => {
+    let stateRoot: string;
+
+    beforeEach(() => { stateRoot = mkdtempSync(join(tmpdir(), 'kb-sessionrecord-resume-')); });
+    afterEach(() => { rmSync(stateRoot, { recursive: true, force: true }); });
+
+    /** A live, controller-claimed record so `attach` authorizes ALICE_A without a separate claim. */
+    function resumableRecord(lastSequence: number): SessionRecord {
+      return { ...runRecord(), controller: { ...ALICE_A }, claimRevision: 1,
+        transcript: { ...runRecord().transcript, lastSequence } } as SessionRecord;
+    }
+
+    /** Same inline CAS shape as the other registry tests in this file — no strict-validator overhead. */
+    function simplePersistence(seed: PtySessionsDocumentV2): SessionPersistence {
+      let document = seed;
+      let mutation = Promise.resolve();
+      return {
+        read: () => structuredClone(document),
+        mutate: async (expectedRevision, callback) => {
+          let result!: { revision: number; value: unknown };
+          const action = mutation.then(async () => {
+            if (expectedRevision !== null && expectedRevision !== document.revision) throw new Error('revision-conflict');
+            const draft = structuredClone(document);
+            const value = await callback(draft);
+            draft.revision += 1;
+            document = draft;
+            result = { revision: document.revision, value };
+          });
+          mutation = action.then(() => undefined);
+          await action;
+          return result as never;
+        },
+      };
+    }
+
+    /** Attaches and returns the offset minted for exactly one host frame delivered after attach. */
+    async function mintedResumeOffset(
+      persistence: SessionPersistence,
+      transcript: ReturnType<typeof createTranscriptRetention>,
+    ): Promise<number> {
+      const sessionId = runRecord().sessionId;
+      let capturedSink: SessionSink | null = null;
+      const host = { attach: async (_id: string, sink: SessionSink) => {
+        capturedSink = sink;
+        return { ok: true as const, value: { attachmentId: `att-${'c'.repeat(32)}` } };
+      } } as unknown as SessionHost;
+      const registry = createSessionRecordRegistry({ persistence, host, transcript, now: () => NOW });
+      const observed: number[] = [];
+      const attached = await registry.attach(ALICE_A, sessionId,
+        { data: (frame) => observed.push(frame.sequence), exit: () => {}, closed: () => false });
+      expect(attached).toMatchObject({ ok: true });
+      (capturedSink as unknown as SessionSink).data({ sessionId, sequence: 1, encoding: 'base64',
+        data: Buffer.from('x').toString('base64'), replay: false });
+      expect(observed).toHaveLength(1);
+      return observed[0] as number;
+    }
+
+    it('resumes above a stale frame-counter lastSequence when the retained file is larger', async () => {
+      const transcript = createTranscriptRetention(stateRoot);
+      transcript.append(runRecord().sessionId, 0, Buffer.alloc(500, 1)); // 500 real bytes on disk
+      const document = createEmptyPtySessionsDocument();
+      document.sessions.push(resumableRecord(3)); // an earlier build's frame counter, not a byte offset
+      const persistence = simplePersistence(document);
+
+      expect(await mintedResumeOffset(persistence, transcript)).toBe(500);
+    });
+
+    it('leaves the baseline unchanged when lastSequence already covers the retained bytes', async () => {
+      const transcript = createTranscriptRetention(stateRoot);
+      transcript.append(runRecord().sessionId, 0, Buffer.alloc(40, 1)); // 40 bytes retained
+      const document = createEmptyPtySessionsDocument();
+      document.sessions.push(resumableRecord(1000)); // already ahead of the retained file
+      const persistence = simplePersistence(document);
+
+      expect(await mintedResumeOffset(persistence, transcript)).toBe(1000);
+    });
+
+    it('falls back to lastSequence when the transcript file is missing', async () => {
+      const transcript = createTranscriptRetention(stateRoot); // no file ever written for this session
+      const document = createEmptyPtySessionsDocument();
+      document.sessions.push(resumableRecord(42));
+      const persistence = simplePersistence(document);
+
+      expect(await mintedResumeOffset(persistence, transcript)).toBe(42);
+    });
   });
 
   it('surfaces the host capacity refusal instead of counting sessions itself', async () => {

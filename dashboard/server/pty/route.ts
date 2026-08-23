@@ -1,99 +1,90 @@
 /**
- * D3.1 (persistent sessions, 2026-07-19) — the browser↔shell terminal bridge: the governed `/api/pty`
- * WebSocket, now backed by a PERSISTENT session registry so a page reload no longer kills the shell.
+ * P3 W6.4 - the ONE registered browser PTY surface: `WS /api/pty` plus its two REST companions.
  *
- * ARCHITECTURE ("working now, harden later", chosen with Daniel 2026-07-18): the terminal spawns
- * `node-pty` IN-PROCESS in the daemon and pumps bytes over the WebSocket — the standard web-terminal
- * design (VS Code, ttyd, wetty). `createPtyHost` (host.ts) strips every credential/token name from the
- * child, so a terminal here still cannot read the fleet's push token or API keys.
+ * CLOSED BY CONSTRUCTION. The upgrade URL carries NO query at all: no `session`, no `spawn`, no `agent`,
+ * no `workflow`, no `command`, no `host`. Everything a browser may ask for arrives as a typed
+ * {@link BrowserClientFrame} AFTER the socket is established, and the first frame must be `create` or
+ * `attach`. A create names a launcher enum, a registered safe-root id, a normalized relative cwd and a
+ * geometry - never an executable, an argv, an environment blob, a uid, a token, or an address. The
+ * browser never chooses a session id; the registry mints it.
  *
- * PERSISTENCE: the socket no longer OWNS the shell. A `persistentSessions.ts` registry does — buffering
- * all output into a bounded ring and forwarding to at most one attached socket. A socket closing merely
- * DETACHES (shell keeps running, output keeps buffering); revisiting REATTACHES with a scrollback replay.
- * The shell dies only on (a) an explicit `{type:'close'}` from the UI, (b) the shell process exiting, or
- * (c) the daemon-shutdown drain (`ptyHost.stopAll` + `registry.clear`).
+ * AUTH HOOK ORDER (strict, pinned by `route.test.ts`):
+ *   1. `onRequest`     Origin/Host allowlist -> 403. Fail-closed: an empty allowlist refuses everything.
+ *   2. `onRequest`     the surface rate-limit hook -> 429.
+ *   3. `preValidation` operator session (`resolveSession`) -> 401.
+ *   4. `preValidation` browser principal (`resolveBrowserPrincipal`) -> 428 when the `kb_browser_session`
+ *                      cookie is absent, malformed, unknown or expired. There is NO operator-only
+ *                      principal: without the cookie half, the PTY operation is refused.
+ *   5. `preValidation` any query key at all -> 400, before the upgrade.
+ * Every refusal happens before 101, before any frame decode, and before the host or registry is touched.
  *
- * Two entry shapes on one endpoint, chosen by an optional `?session=<id>` on the upgrade URL (the id is a
- * NON-SECRET reference — ownership is enforced server-side; the bearer token still rides ONLY the
- * subprotocol, never the URL):
- *   OPEN  (no param): origin → preamble → session → cap → create → audit 'opened' → attach (replay covers
- *                     the pre-audit startup window).
- *   ATTACH (param):   origin → preamble → session → audit 'pty-attach' → attach+replay (no cap; an attach
- *                     never consumes a slot). Unknown/exited/not-owned → one 'session-not-found' row + refuse.
- * Either way exactly ONE audit row is written per allowed-origin connection, and a `{type:'session'}`
- * control frame is sent to the browser FIRST so the client can bind its tab id before the replay flush.
- *
- * SPAWN MODES (the Agents view's "Run agent" / the Workflows view's "Run workflow"): an OPEN may ask for
- * something other than the login shell via `?spawn=claude`, `?spawn=agent&agent=<id>`, or
- * `?spawn=workflow&workflow=<ref>`. `agent` is validated against the server's DECLARED agent roster
- * (`declaredAgentFilePath`) and `workflow` against the scanned definition registry
- * (`declaredWorkflowDefPath`) — exact-match allowlists — before any path or argv exists; the resolved
- * path is server-side and is passed as its own argv element, never interpolated into a command string.
- * A workflow spawn additionally GENERATES its governing-agent priming file into the daemon state root
- * (never into the repo) and primes claude with that. A bad mode, an unknown id, or an unknown ref is
- * refused twice over: HTTP 400 on the upgrade from the route's `preValidation` hook, and a fail-closed
- * re-check in the handler.
- *
- * SPAWN ROUTING (2026-08-04): a claude spawned with no flags inherits the OPERATOR's personal CLI config —
- * which is how every agent/workflow terminal ended up running Fable at `max` effort, disagreeing with the
- * model the Agents view claims for that agent. Every claude spawn now carries `--effort high`
- * ({@link SPAWN_EFFORT}, a hard cap with no wire override), and an entity-primed spawn additionally
- * carries `--model <effective>` when — and only when — the roster resolves that entity to the CLAUDE
- * runtime. See `spawnRouting.ts` for why a non-claude runtime gets no model flag at all.
- *
- * REST companion (same origin-guarded scope): `GET /api/pty/sessions` lists the caller's live sessions
- * and `DELETE /api/pty/sessions/:id` kills one — both bearer-verified with the SAME `verifySession`, no
- * audit (a read and a not-audited-today close, respectively).
+ * The registry is the W3 `SessionRecordRegistry` behind {@link SessionRegistryPort}; the host is the
+ * platform `SessionHost` composed in `http/surface.ts` (Windows `windowsSessionHost`, Linux
+ * `linuxBrokerClient`). This module owns no process, no spawn decision and no path: it decodes frames,
+ * enforces the principal, and forwards to the port.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { createHash } from 'node:crypto';
 import fastifyWebsocket from '@fastify/websocket';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { assertOrigin, resolveAllowedOrigins } from '../security/origin.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
-import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
-import type { SessionConfig } from '../auth/session.ts';
+import {
+  resolveBrowserPrincipal,
+  resolveSessionSecret,
+  resolveSessionTtlMs,
+} from '../auth/session.ts';
+import type { BrowserSessionRefManager, SessionConfig } from '../auth/session.ts';
 import { resolveSession } from '../http/middleware.ts';
 import type { SessionRequestLike } from '../http/middleware.ts';
-import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
-import type { PreambleRunner } from '../write/preambleGate.ts';
-import { withOpsTransaction } from '../write/asyncGit.ts';
 import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow } from '../audit/log.ts';
 import { resolveRepoRoot } from '../http/surface.ts';
-import { declaredAgentFilePath } from '../agents/roster.ts';
-import { declaredWorkflowDefPath, workflowPrimingText } from '../workflows/routes.ts';
-import { resolveDashboardStateRoot } from '../composer/store.ts';
-import { buildChildEnv } from './host.ts';
-import type { PtyCommand, PtyHost } from './host.ts';
-import { CommandNotFoundError, resolveCommandPath } from './resolveCommand.ts';
-import { createPersistentSessionRegistry, SESSION_ID_RE } from './persistentSessions.ts';
-import type { PersistentSessionRegistry, SessionSink } from './persistentSessions.ts';
-import { claudeModelArg, resolveAgentSpawnRouting } from './spawnRouting.ts';
-import type { AgentRoutingResolver, SpawnRouting } from './spawnRouting.ts';
-import type { SessionRunKind, SessionRunStore } from './sessionRuns.ts';
-import type { TranscriptRecorder, TranscriptSummary } from './transcripts.ts';
+import type {
+  Attachment,
+  BrowserPrincipal,
+  ObservedExit,
+  SessionDataFrame,
+  SessionRegistryPort,
+  SessionSink,
+} from './contracts.ts';
+import type { SessionPersistence } from './sessionPersistence.ts';
+import { PTY_OUTBOUND_HIGH_WATER_BYTES } from '../../shared/ptyProtocol.ts';
+import type {
+  BrowserClientFrame,
+  BrowserServerFrame,
+  PublicExit,
+  SafeRootId,
+  SessionLauncher,
+  SessionSummary,
+} from '../../shared/ptyProtocol.ts';
 
 /** The negotiated subprotocol that carries `['kb-pty.v1', sessionToken]` from the browser. */
 export const PTY_SUBPROTOCOL = 'kb-pty.v1';
 
-/** Max simultaneous LIVE SESSIONS across the whole daemon — a hard backstop, not a per-request limit.
- *  Counted from `registry.liveCount()`; an attach to an existing session never consumes a slot.
- *
- *  Manual shells retain their slot across browser reconnects; attaching to an existing session costs
- *  nothing. */
-export const MAX_CONCURRENT_PTY = 16;
+/**
+ * RAW frame ceiling, applied by `ws` itself BEFORE a byte is parsed (`maxPayload`). A frame above this
+ * closes the socket at the transport, so an oversized payload can never reach `JSON.parse`, the decoder,
+ * or a base64 expansion. It is deliberately the broker's `maxFrameBytes`, so both transports refuse at the
+ * same size and a Windows-only or Linux-only ceiling cannot exist.
+ */
+export const PTY_MAX_PAYLOAD_BYTES = 98_304;
 
-/** Initial shell geometry until the browser sends its first `{type:'resize'}` (matches xterm's default). */
-const DEFAULT_COLS = 80;
-const DEFAULT_ROWS = 24;
+/** Largest single decoded stdin chunk one `input` frame may carry (the broker's `maxInputBytes`). */
+export const PTY_MAX_INPUT_BYTES = 65_536;
 
-/** The minimal WebSocket surface the handler uses — lets tests drive it with a fake (record send/close,
- *  emit message/close/error). Matches the `ws` instance `@fastify/websocket` hands the route. */
+/** How long `DELETE /api/pty/sessions/:sessionId` waits for the host's OBSERVED exit before 409. */
+export const PTY_CLOSE_TIMEOUT_MS = 10_000;
+
+/** v2 session ids are minted by the registry; the route only ever validates the shape it is handed. */
+export const SESSION_ID_RE = /^pty-[0-9a-f]{32}$/;
+const ATTACHMENT_ID_RE = /^att-[0-9a-f]{32}$/;
+const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** The minimal WebSocket surface the handler uses - lets tests drive it with a fake. */
 export interface PtySocketLike {
   readonly OPEN: number;
   readonly readyState: number;
+  /** Bytes queued in the transport but not yet flushed. Absent on a transport that cannot report it. */
+  readonly bufferedAmount?: number;
   send(data: string): void;
   close(code?: number, reason?: string): void;
   on(event: 'message', cb: (data: unknown) => void): void;
@@ -102,330 +93,56 @@ export interface PtySocketLike {
 }
 
 /**
- * The non-default programs a terminal may be opened as (the "Run agent" path). Absent = today's login
- * shell, byte-identical to the pre-existing behaviour.
- *   `claude`   — a plain interactive Claude Code session in the repo the daemon serves.
- *   `agent`    — the same session PRIMED with one declared agent's own `agents/<id>.md`.
- *   `workflow` — the same session PRIMED as the GOVERNING agent for one workflow definition, from a
- *                priming file this server generates into its own state root (never into the repo).
+ * Read-only transcript replay for a reattach. Never a control path: it can only return bytes.
+ * [C-R6]: every number here is a BYTE OFFSET in the session's output stream. `replayFrom` is where the
+ * reader actually started — higher than the requested `fromSequence` when the bytes in between are no
+ * longer retained — and `nextSequence` is the offset one past the last byte returned.
  */
-export type PtySpawnMode = 'claude' | 'agent' | 'workflow';
+export type SessionReplayReader = (
+  sessionId: string,
+  fromSequence: number,
+) => Promise<{ frames: { sequence: number; encoding: 'base64'; data: string }[];
+  replayFrom: number; nextSequence: number }>;
 
-/** A parsed, SYNTACTICALLY valid spawn request. `agentId` is present exactly when `mode` is `agent` and
- *  `workflowRef` exactly when `mode` is `workflow`; neither is yet known to name anything real —
- *  {@link PtyRouteContext.resolveAgentFile} / {@link PtyRouteContext.resolveWorkflowFile} decide that. */
-export interface PtySpawnRequest {
-  mode: PtySpawnMode;
-  agentId?: string;
-  workflowRef?: string;
-}
-
-/** Why a spawn request was refused. Each maps to one HTTP 400 on the upgrade and one audit row. */
-export type SpawnParamRefusal =
-  | 'unknown-spawn-mode'
-  | 'agent-required'
-  | 'agent-not-allowed'
-  | 'workflow-required'
-  | 'workflow-not-allowed'
-  | 'spawn-with-attach';
-
-export type SpawnParamResult =
-  | { ok: true; spawn: PtySpawnRequest | null }
-  | { ok: false; reason: SpawnParamRefusal };
-
-/**
- * The claude CLI as an argv[0]. Same command name the governed worker adapter spawns
- * (`server/control/claudeWorkerAdapter.ts`), resolved through the child's allowlisted PATH.
- *
- * NEVER passed to node-pty as-is. node-pty's ConPTY agent does not PATHEXT-search a bare, extensionless
- * name, so spawning this literally failed with an empty `File not found: ` — the live "Run agent" /
- * "Run workflow" defect. {@link resolveClaudeFile} turns it into an absolute path first.
- */
-export const CLAUDE_COMMAND = 'claude';
-
-/**
- * The effort level EVERY claude this daemon spawns runs at — a HARD CAP, not a default.
- *
- * Daniel, 2026-08-04, on finding spawned terminals running Fable at `max`: "Not max. High is fine."
- * Passing no flags at all meant every spawned terminal silently inherited his personal CLI config, which
- * is `max` — slow and vastly overpriced for a worker terminal. `high` is now stamped on the argv of every
- * spawn mode (plain, agent, workflow), and it is deliberately NOT plumbed to a query parameter: a cap a
- * caller can raise over the wire is not a cap. Changing it is a code change.
- *
- * Verified against the CLI on this machine (2.1.222): `--effort <level>` accepts
- * `low | medium | high | xhigh | max`. Note that an INVALID value does not fail the process — the CLI
- * warns and falls back to the default effort — so a typo here would degrade silently rather than loudly.
- * That is exactly why the value is a single named constant with a live spawn probe pinning it.
- */
-export const SPAWN_EFFORT = 'high';
-
-/** Resolves {@link CLAUDE_COMMAND} to an absolute executable path. Injected in tests. */
-export type ClaudeFileResolver = () => string;
-
-/**
- * The real resolver: look `claude` up on the CHILD's allowlisted PATH — the very environment the spawned
- * process will run with — so what we resolve is exactly what it could itself have found. Throws
- * {@link CommandNotFoundError} when the CLI is absent, which the handler audits as
- * `claude-not-found-on-path`.
- */
-export const resolveClaudeFile: ClaudeFileResolver = () =>
-  resolveCommandPath(CLAUDE_COMMAND, buildChildEnv(process.env));
-
-/**
- * Parse the optional `spawn`/`agent` query parameters off the upgrade URL.
- *
- * Strict and closed by construction: an absent pair is the ordinary shell open; anything present must be
- * an exact known mode with exactly the companion parameter that mode requires, and it may never be
- * combined with `session=` (an ATTACH reuses a live shell and spawns nothing, so a spawn request there
- * would be silently ignored — refusing is the honest reading). No value parsed here is ever used to
- * build a path; `agentId` still has to clear the roster allowlist and `workflowRef` the definition
- * allowlist. A BARE `agent=` or `workflow=` with no `spawn=` is a refusal, never an ordinary shell open:
- * silently ignoring a named target would be the same lie as silently ignoring a spawn on an attach.
- */
-export function parseSpawnParams(url: string | undefined): SpawnParamResult {
-  const q = url === undefined ? -1 : url.indexOf('?');
-  const params = new URLSearchParams(q < 0 ? '' : (url as string).slice(q + 1));
-  const mode = params.get('spawn');
-  const agentId = params.get('agent');
-  const workflowRef = params.get('workflow');
-  if (mode === null && agentId === null && workflowRef === null) return { ok: true, spawn: null };
-  const attach = params.get('session');
-  if (attach !== null && attach !== '') return { ok: false, reason: 'spawn-with-attach' };
-  if (mode !== 'claude' && mode !== 'agent' && mode !== 'workflow') return { ok: false, reason: 'unknown-spawn-mode' };
-  if (mode === 'claude') {
-    if (agentId !== null) return { ok: false, reason: 'agent-not-allowed' };
-    if (workflowRef !== null) return { ok: false, reason: 'workflow-not-allowed' };
-    return { ok: true, spawn: { mode } };
-  }
-  if (mode === 'agent') {
-    if (workflowRef !== null) return { ok: false, reason: 'workflow-not-allowed' };
-    if (agentId === null || agentId === '') return { ok: false, reason: 'agent-required' };
-    return { ok: true, spawn: { mode, agentId } };
-  }
-  if (agentId !== null) return { ok: false, reason: 'agent-not-allowed' };
-  if (workflowRef === null || workflowRef === '') return { ok: false, reason: 'workflow-required' };
-  return { ok: true, spawn: { mode, workflowRef } };
-}
-
-/**
- * Build the child argv for an ALREADY-VALIDATED spawn request. `primingFile` is a SERVER-OWNED absolute
- * path — the agent declaration resolved through the roster allowlist for `agent`, or the priming file
- * this server just generated for `workflow` — never a client string. It lands as its own argv element
- * beside the flag, so a path is a path and can never become extra arguments or a shell fragment.
- *
- * `file` is ALWAYS an ABSOLUTE, resolved executable — never the bare `claude`. node-pty's ConPTY agent
- * does not PATHEXT-search a bare, extensionless name, so the bare form failed every spawn with an empty
- * `File not found: `. `resolveFile` is the injectable seam; it throws {@link CommandNotFoundError} when
- * the CLI is absent from the child's PATH, and the caller fails closed on that.
- *
- * The argv-purity property is unchanged: we resolve a PATH lookup to a path, we do not wrap in a shell.
- *
- * ROUTING (2026-08-04). Two flags now ride every spawn:
- *   `--effort high`   — ALWAYS, in EVERY mode, from {@link SPAWN_EFFORT}. A hard cap; no caller, query
- *                       parameter, or `routing` value can raise it.
- *   `--model <model>` — ONLY when `routing` resolves to a CLAUDE runtime (see {@link claudeModelArg}).
- *                       A non-claude routing (codex, …) stamps no model at all rather than lying about
- *                       what this claude process is.
- * `routing` is server-computed from the roster projection and is never a client string. Plain `claude`
- * mode belongs to no agent, so it has no model to resolve and takes the effort cap alone.
- *
- * The priming flag stays FIRST in the argv so `args[0]`/`args[1]` remain the flag and its path.
- */
-export function buildSpawnCommand(
-  spawn: PtySpawnRequest,
-  primingFile: string | null,
-  resolveFile: ClaudeFileResolver = resolveClaudeFile,
-  routing: SpawnRouting | null = null,
-): PtyCommand {
-  const effort = ['--effort', SPAWN_EFFORT];
-  if (spawn.mode === 'claude') return { file: resolveFile(), args: [...effort] };
-  if (primingFile === null || primingFile === '') {
-    throw new Error(
-      spawn.mode === 'workflow'
-        ? 'buildSpawnCommand: a workflow-primed spawn needs a server-generated priming file path'
-        : 'buildSpawnCommand: an agent-primed spawn needs a server-resolved declaration path',
-    );
-  }
-  const model = claudeModelArg(routing);
-  return {
-    file: resolveFile(),
-    args: ['--append-system-prompt-file', primingFile, ...(model ? ['--model', model] : []), ...effort],
-  };
-}
-
-/** A workflow ref safe to reuse verbatim as a filename stem (the parser's own definition-id grammar). */
-const SAFE_WORKFLOW_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-
-/** A deterministic, per-ref filename inside the priming directory. A ref that already cleared the
- *  definition allowlist always matches the id grammar; the hash branch is a belt-and-braces backstop so
- *  a ref can never contribute a path separator or a `..` to the filename under any future scan change. */
-export function workflowPrimingFileName(ref: string): string {
-  if (SAFE_WORKFLOW_REF.test(ref)) return `workflow-${ref}.md`;
-  return `workflow-${createHash('sha256').update(ref, 'utf8').digest('hex').slice(0, 32)}.md`;
-}
-
-/** What a generated workflow priming file yields the spawn: its own path, plus the agent whose routing
- *  the spawned terminal should run as. */
-export interface WorkflowPriming {
-  path: string;
-  /**
-   * The workflow's RESOLVED DEFAULT MANAGER — read straight off the same `resolveWorkflowDefaults`
-   * projection that produced the priming text, never re-resolved here. The spawned terminal IS that
-   * governing agent, so it must run on that agent's model; resolving the cast a second time could hand
-   * the operator a terminal whose model disagrees with the cast printed inside its own priming file.
-   * `null` when the definition resolves no manager (ambiguity is reported, never guessed).
-   */
-  managerAgentId: string | null;
-}
-
-/**
- * Generate the governing-agent priming file for an ALREADY-ALLOWLISTED workflow ref and return its
- * absolute path together with the resolved manager that names its routing.
- *
- * It is written into the DAEMON STATE ROOT (`resolveDashboardStateRoot`, the same directory the composer
- * and control stores use), never into the repo: the repo is the operator's working tree and a terminal
- * spawn must not litter it or make it dirty. Regenerated on every spawn under a deterministic per-ref
- * name, so the file always describes the definition as it is RIGHT NOW and an overwrite is expected.
- *
- * The content is built from the definition's own declared text (`workflowPrimingText`). If the priming
- * text cannot be built — which should be unreachable, since the ref already cleared the allowlist — a
- * minimal but honest preamble naming the ref and its path is written instead: the operator still gets a
- * governing terminal rather than a refused spawn. No credential, token, or environment value is ever
- * rendered into this file.
- */
-export function writeWorkflowPrimingFile(
-  repoRoot: string,
-  ref: string,
-  primingRoot: string,
-  defFile: string,
-): WorkflowPriming {
-  const primed = workflowPrimingText(repoRoot, ref);
-  const text = primed?.text ?? [
-    `# Governing agent — workflow: ${ref}`,
-    '',
-    'You are the HEAD, GOVERNING agent for this workflow. This session is not a stage worker.',
-    '',
-    `- workflow ref: ${ref}`,
-    `- definition: ${defFile}`,
-    '',
-    'The server could not summarise this definition. READ the definition file first, gather any declared',
-    'parameters CONVERSATIONALLY from the operator, then drive the stages through the platform\'s normal',
-    'mechanisms. Do not invent an agent for a stage that names none — ask the operator.',
-    '',
-  ].join('\n');
-  mkdirSync(primingRoot, { recursive: true });
-  const path = join(primingRoot, workflowPrimingFileName(ref));
-  writeFileSync(path, text, 'utf8');
-  return { path, managerAgentId: primed?.defaults.manager?.agentId ?? null };
-}
-
-/** Everything a PTY connection needs, all hermetic-test-injectable. */
+/** Everything one registered PTY surface needs, all hermetic-test-injectable. */
 export interface PtyRouteContext {
   repoRoot: string;
   sessionConfig: SessionConfig;
-  /** The Origin/Host allowlist; enforced by the scope guard AND re-checked defensively in-handler. */
-  allowedOrigins?: AllowedOrigins;
-  /** The in-process node-pty host (shared; the registry spawns/kills through it). Tests inject a fake. */
-  ptyHost: PtyHost;
-  /** The persistent session registry (shared by the WS route, the REST endpoints, and the drain). */
-  registry: PersistentSessionRegistry;
-  /** Fleet preamble runner. It is always invoked before session validation or spawn. */
-  runPreamble: PreambleRunner;
-  /** Independent audit sink. Tests inject a recorder, so no test writes `ledgers/audit/**`. Widened to
-   *  allow a `Promise` — the real `appendAudit` now runs its git commit off the event loop. */
+  /** The Origin/Host allowlist. Installed as this scope's FIRST `onRequest` hook. */
+  allowedOrigins: AllowedOrigins;
+  /** Installed as the SECOND `onRequest` hook, so a refused origin is never rate-accounted. */
+  rateLimitHook?: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+  /** The one v2 session registry (W3 `createSessionRecordRegistry`) for the process. */
+  registry: SessionRegistryPort;
+  /** The one v2 document port - read for the exact composite `revision` every reply carries. */
+  persistence: SessionPersistence;
+  /** The browser-session-ref store; the second half of every principal comes from it. */
+  browserSessionRefs?: BrowserSessionRefManager;
+  /** Read-only replay used on reattach. Absent = attach without scrollback, never a control fallback. */
+  replay?: SessionReplayReader;
   appendAudit: (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow | Promise<AuditRow>;
-  /** Optional git/time seams forwarded to the real audit implementation. */
   auditOptions?: AppendAuditOptions;
-  /** The concurrency cap ceiling. Defaults to {@link MAX_CONCURRENT_PTY}. */
-  maxConcurrent?: number;
-  /**
-   * The agent ALLOWLIST behind "Run agent": resolve one declared agent id to its authoritative
-   * `agents/<id>.md` inside the repo THIS daemon serves, or null when the id is not on the roster.
-   * Defaults to `declaredAgentFilePath`; injected in tests so no declaration filesystem is read.
-   */
-  resolveAgentFile: (repoRoot: string, agentId: string) => string | null;
-  /**
-   * The workflow ALLOWLIST behind "Run workflow": resolve one workflow ref to its authoritative
-   * definition file inside the repo THIS daemon serves, or null when the ref names no valid, uniquely
-   * identified definition. Defaults to `declaredWorkflowDefPath`; injected in tests exactly like
-   * {@link resolveAgentFile}, so no test depends on this checkout's real workflow-definition tree.
-   */
-  resolveWorkflowFile: (repoRoot: string, ref: string) => string | null;
-  /**
-   * Where generated workflow priming files are written. ALWAYS outside the repo — it defaults to a
-   * `pty-priming` directory under the daemon state root (`resolveDashboardStateRoot`). Tests point it
-   * at a temp directory.
-   */
-  workflowPrimingRoot: string;
-  /**
-   * Resolves the claude CLI to an ABSOLUTE path against the child's own allowlisted PATH. Defaults to
-   * {@link resolveClaudeFile}; injected in tests so no test depends on this machine having the CLI
-   * installed, and so the not-found branch is exercisable.
-   */
-  resolveClaudeFile: ClaudeFileResolver;
-  /**
-   * Resolves ONE agent id to the EFFECTIVE runtime+model the roster already computes for it, so an
-   * entity-primed terminal runs as the model the Agents view says that agent runs on. Defaults to
-   * {@link resolveAgentSpawnRouting} (the real `buildRoster` projection); injected in tests so no test
-   * builds this checkout's roster. It never throws and may return null — a spawn whose routing cannot be
-   * resolved still opens, capped at {@link SPAWN_EFFORT}, simply without a `--model` flag.
-   */
-  resolveAgentRouting: AgentRoutingResolver;
-  /**
-   * The durable SESSION RUN record store (`sessionRuns.ts`). Optional: when absent this route behaves
-   * exactly as it did before — sessions still spawn, attach and die, they are simply not recorded. It is
-   * wired in `server/http/surface.ts` for the daemon; tests inject a store over a temp state root.
-   *
-   * A session run is written for an `agent`- or `workflow`-primed spawn ONLY. A login shell and a plain
-   * `claude` belong to no entity, so there is no detail surface a record for them could honestly appear
-   * on, and inventing one would put un-entity-bound shells in a list titled "this workflow's runs".
-   */
-  sessionRuns?: SessionRunStore;
-  /** The transcript recorder (`transcripts.ts`). Optional for the same reason as {@link sessionRuns}. */
-  transcripts?: TranscriptRecorder;
 }
 
-/** Build a full {@link PtyRouteContext}, filling every unset field with its real default. The session
- *  secret is resolved ONCE here so the token this route verifies matches the one the write surface mints.
- *
- *  N4 (fail-closed host, 2026-08-03): `ptyHost` has NO default. The daemon's ONE pty host is the
- *  `fleetGatedPtyHost` built in `makeSurfaceContext`; every caller MUST pass it in. If none is supplied we
- *  THROW rather than fabricate a raw `createPtyHost` here — an ungated fallback would silently spawn a shell
- *  that bypasses the fleet gate (STOP/API-key/budget), so the safe failure is no context at all. Tests inject
- *  a fake host, so they are unaffected. */
-export function makePtyRouteContext(overrides: Partial<PtyRouteContext> = {}): PtyRouteContext {
-  if (overrides.ptyHost === undefined) {
-    throw new Error(
-      'makePtyRouteContext: ptyHost is required (fail-closed) — pass the fleet-gated host; ' +
-        'no ungated fallback is created here',
-    );
-  }
+export function makePtyRouteContext(
+  overrides: Partial<PtyRouteContext> & Pick<PtyRouteContext, 'registry' | 'persistence'>,
+): PtyRouteContext {
   return {
     repoRoot: overrides.repoRoot ?? resolveRepoRoot(),
     sessionConfig:
       overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() },
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
-    ptyHost: overrides.ptyHost,
-    registry: overrides.registry ?? createPersistentSessionRegistry(),
-    runPreamble: overrides.runPreamble ?? defaultPreambleRunner,
+    registry: overrides.registry,
+    persistence: overrides.persistence,
     appendAudit: overrides.appendAudit ?? defaultAppendAudit,
-    auditOptions: overrides.auditOptions,
-    maxConcurrent: overrides.maxConcurrent ?? MAX_CONCURRENT_PTY,
-    resolveAgentFile: overrides.resolveAgentFile ?? declaredAgentFilePath,
-    resolveWorkflowFile: overrides.resolveWorkflowFile ?? declaredWorkflowDefPath,
-    workflowPrimingRoot: overrides.workflowPrimingRoot ?? join(resolveDashboardStateRoot(), 'pty-priming'),
-    resolveClaudeFile: overrides.resolveClaudeFile ?? resolveClaudeFile,
-    resolveAgentRouting: overrides.resolveAgentRouting ?? resolveAgentSpawnRouting,
-    // No defaults are fabricated for these two. Constructing a file-backed store here would make every
-    // context construction (tests included) touch the daemon's real state root; the composition root
-    // owns them instead, exactly as it owns the fleet-gated host.
-    ...(overrides.sessionRuns ? { sessionRuns: overrides.sessionRuns } : {}),
-    ...(overrides.transcripts ? { transcripts: overrides.transcripts } : {}),
+    ...(overrides.rateLimitHook ? { rateLimitHook: overrides.rateLimitHook } : {}),
+    ...(overrides.browserSessionRefs ? { browserSessionRefs: overrides.browserSessionRefs } : {}),
+    ...(overrides.replay ? { replay: overrides.replay } : {}),
+    ...(overrides.auditOptions ? { auditOptions: overrides.auditOptions } : {}),
   };
 }
 
-/** Read the bearer session token from the offered subprotocols — NEVER from the URL. The browser offers
- *  `['kb-pty.v1', sessionToken]`, which arrives comma-joined in `sec-websocket-protocol`. */
+/** Read the bearer session token from the offered subprotocols - NEVER from the URL. */
 export function tokenFromSubprotocol(req: Pick<FastifyRequest, 'headers'>): string | undefined {
   const offered = String(req.headers['sec-websocket-protocol'] ?? '')
     .split(',')
@@ -433,527 +150,490 @@ export function tokenFromSubprotocol(req: Pick<FastifyRequest, 'headers'>): stri
   return offered[0] === PTY_SUBPROTOCOL ? offered[1] || undefined : undefined;
 }
 
-/** Parse the optional `session` attach reference off the upgrade URL's query string. The value is a
- *  non-secret sessionId (ownership enforced server-side); the token never appears here. */
-export function sessionParamFromUrl(url: string | undefined): string | undefined {
-  if (!url) return undefined;
+/**
+ * `/api/pty` accepts NO query string. Generic unknown keys and duplicates are refused identically, and
+ * every historically meaningful key (`spawn`, `agent`, `workflow`, `session`, `command`, `host`, ...) is
+ * refused by the same rule rather than by an allowlist that could grow a hole.
+ */
+export function hasAnyQuery(url: string | undefined): boolean {
+  if (url === undefined) return false;
   const q = url.indexOf('?');
-  if (q < 0) return undefined;
-  const value = new URLSearchParams(url.slice(q + 1)).get('session');
-  return value && value.length > 0 ? value : undefined;
+  if (q < 0) return false;
+  return url.slice(q + 1).length > 0;
 }
 
-/** Parse one inbound client message as a control frame (`resize` or `close`), or null if it is raw stdin.
- *  Keystrokes are never JSON objects (they never start with `{`), so the fast-path reject keeps typing cheap. */
-function parseControlFrame(raw: string): { type: 'resize'; cols: number; rows: number } | { type: 'close' } | null {
-  if (raw.length === 0 || raw[0] !== '{') return null;
+const LAUNCHERS: readonly SessionLauncher[] = ['shell', 'claude', 'codex'];
+const ROOTS: readonly SafeRootId[] = ['repo', 'worktrees'];
+
+function str(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function geometry(cols: unknown, rows: unknown): boolean {
+  return Number.isSafeInteger(cols) && (cols as number) >= 20 && (cols as number) <= 500
+    && Number.isSafeInteger(rows) && (rows as number) >= 5 && (rows as number) <= 200;
+}
+
+/**
+ * Strict decode of ONE inbound browser frame. Unknown types, missing members, extra-typed members with
+ * the wrong shape, and out-of-range geometry all yield `null` - there is no coercion and no default. A
+ * `null` costs the connection one `error` frame, never a partially-honoured request.
+ */
+export function decodeBrowserClientFrame(raw: string): BrowserClientFrame | null {
+  if (raw.length === 0 || raw.charCodeAt(0) !== 0x7b) return null;
+  let value: unknown;
   try {
-    const m = JSON.parse(raw) as Record<string, unknown>;
-    if (m && m.type === 'close') return { type: 'close' };
-    if (
-      m &&
-      m.type === 'resize' &&
-      typeof m.cols === 'number' &&
-      typeof m.rows === 'number' &&
-      m.cols > 0 &&
-      m.rows > 0
-    ) {
-      return { type: 'resize', cols: Math.floor(m.cols), rows: Math.floor(m.rows) };
-    }
+    value = JSON.parse(raw);
   } catch {
-    /* not JSON → raw stdin */
+    return null;
   }
-  return null;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const frame = value as Record<string, unknown>;
+  const requestId = frame.requestId;
+  if (!str(requestId) || !REQUEST_ID_RE.test(requestId)) return null;
+  switch (frame.type) {
+    case 'create': {
+      const { launcher, rootId, relativeCwd, cols, rows } = frame;
+      if (!str(launcher) || !LAUNCHERS.includes(launcher as SessionLauncher)) return null;
+      if (!str(rootId) || !ROOTS.includes(rootId as SafeRootId)) return null;
+      if (!str(relativeCwd) || Buffer.byteLength(relativeCwd, 'utf8') > 240) return null;
+      if (!geometry(cols, rows)) return null;
+      return {
+        type: 'create',
+        requestId,
+        launcher: launcher as SessionLauncher,
+        rootId: rootId as SafeRootId,
+        relativeCwd,
+        cols: cols as number,
+        rows: rows as number,
+      };
+    }
+    case 'attach': {
+      const { sessionId, fromSequence } = frame;
+      if (!str(sessionId) || !SESSION_ID_RE.test(sessionId)) return null;
+      if (!Number.isSafeInteger(fromSequence) || (fromSequence as number) < 0) return null;
+      return { type: 'attach', requestId, sessionId, fromSequence: fromSequence as number };
+    }
+    case 'input': {
+      const { sessionId, attachmentId, encoding, data } = frame;
+      if (!str(sessionId) || !SESSION_ID_RE.test(sessionId)) return null;
+      if (!str(attachmentId) || !ATTACHMENT_ID_RE.test(attachmentId)) return null;
+      if (encoding !== 'base64' || !str(data)) return null;
+      if (Buffer.byteLength(data, 'utf8') > PTY_MAX_INPUT_BYTES * 2) return null;
+      return { type: 'input', requestId, sessionId, attachmentId, encoding: 'base64', data };
+    }
+    case 'resize': {
+      const { sessionId, attachmentId, cols, rows } = frame;
+      if (!str(sessionId) || !SESSION_ID_RE.test(sessionId)) return null;
+      if (!str(attachmentId) || !ATTACHMENT_ID_RE.test(attachmentId)) return null;
+      if (!geometry(cols, rows)) return null;
+      return { type: 'resize', requestId, sessionId, attachmentId, cols: cols as number, rows: rows as number };
+    }
+    case 'close': {
+      const { sessionId } = frame;
+      if (!str(sessionId) || !SESSION_ID_RE.test(sessionId)) return null;
+      return { type: 'close', requestId, sessionId };
+    }
+    case 'detach': {
+      const { sessionId, attachmentId } = frame;
+      if (!str(sessionId) || !SESSION_ID_RE.test(sessionId)) return null;
+      if (!str(attachmentId) || !ATTACHMENT_ID_RE.test(attachmentId)) return null;
+      return { type: 'detach', requestId, sessionId, attachmentId };
+    }
+    default:
+      return null;
+  }
+}
+
+export function publicExit(exit: ObservedExit): PublicExit {
+  return { exitCode: exit.exitCode, reason: exit.reason, observedAt: exit.observedAt };
 }
 
 const isOpen = (socket: PtySocketLike): boolean => socket.readyState === socket.OPEN;
 
 /**
- * Drive one `/api/pty` WebSocket end to end: gate it (origin → preamble → session, plus the cap on the
- * OPEN path), then either create a fresh persistent session or reattach to an existing one, multiplexing
- * bytes both ways through the registry. Exported so the whole path is hermetically testable with a fake
- * socket, preamble, audit sink, `ptyHost`, and registry.
+ * The composite document revision every reply carries. An unreadable document is reported as `0` rather
+ * than failing the reply: the revision is a cache/ordering hint, never authority.
  */
-export async function handlePtyConnection(
-  socket: PtySocketLike,
-  // `socket` is carried (optionally) because `tailnet` mode proves the operator from the connection's
-  // loopback peer rather than from a bearer. A real Fastify request always has it; the hermetic fake
-  // ones in tests may omit it, and an absent socket simply fails the peer proof closed.
-  req: Pick<FastifyRequest, 'headers' | 'url'> & { socket?: SessionRequestLike['socket'] },
-  ctx: PtyRouteContext,
-): Promise<void> {
-  const maxConcurrent = ctx.maxConcurrent ?? MAX_CONCURRENT_PTY;
-  const registry = ctx.registry;
-  const requestedSession = sessionParamFromUrl(req.url);
-  const auditAction = requestedSession ? 'pty-attach' : 'pty-open';
-
-  // Exactly one row for every connection that clears the Origin/Host boundary. The action distinguishes
-  // an open attempt from an attach attempt; a socket close/error only reaps resources (no second row).
-  const audit = async (result: string, owner?: string, detail: Record<string, unknown> = {}): Promise<void> => {
-    await ctx.appendAudit(ctx.repoRoot, { action: auditAction, owner, result, detail }, ctx.auditOptions);
-  };
-
-  // 1. Defensive Origin/Host re-check (the scope guard already 403s a bad upgrade; this only bites if the
-  //    route is ever mounted without the guard — mirrors `hub/ws.ts`).
-  if (ctx.allowedOrigins !== undefined) {
-    const result = assertOrigin(req as { headers: FastifyRequest['headers'] }, ctx.allowedOrigins);
-    if (!result.ok) {
-      socket.close(1008, result.reason ?? 'forbidden');
-      return;
-    }
-  }
-
-  // 2. Fleet preamble FIRST — STOP/API-key/budget refusal wins even for an invalid session. The check
-  //    READS the shared ops checkout (budget/ledger/STOP), so it runs under the ops-transaction lock:
-  //    a concurrent transaction's pull --rebase shifts those files mid-read and yields a FALSE
-  //    fleet-frozen (observed live on a terminal reattach). Reentrant, so callers already holding
-  //    the lock are unaffected.
-  const preamble = await withOpsTransaction(async () => assertFleetRunnable(ctx.repoRoot, ctx.runPreamble));
-  if (!preamble.ok) {
-    await audit('fleet-frozen', undefined, { problems: preamble.problems });
-    if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'fleet-frozen' }));
-    socket.close(1008, 'fleet-frozen');
-    return;
-  }
-
-  // 3. Session gate — the bearer rides the subprotocol, never the URL; same-origin clients may use the
-  //    HttpOnly cookie. In `tailnet` mode `resolveSession` proves the operator from the connection
-  //    itself instead, so a browser with no session still reaches its terminal.
-  const session = resolveSession(req, ctx.sessionConfig, tokenFromSubprotocol(req));
-  if (!session.ok) {
-    await audit('unauthenticated');
-    if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'unauthenticated' }));
-    socket.close(1008, 'unauthenticated');
-    return;
-  }
-  const owner = session.claims.sub;
-
-  /**
-   * The SESSION RUN this connection opens, once it exists. Declared here because the sink below closes
-   * over it: the shell's exit code is only ever seen by an ATTACHED sink, and it is the one lifecycle
-   * fact the registry's gone-notification cannot carry.
-   */
-  let sessionRunRef: string | null = null;
-
-  // 3b. Spawn-mode gate. Parsed AFTER authentication and BEFORE anything touches a path, an argv, or the
-  //     concurrency cap, so an unknown mode or an unknown agent id costs a refusal and nothing else. The
-  //     route's `preValidation` hook already 400s these on the upgrade; this is the fail-closed backstop
-  //     for any future mounting of the handler without that hook.
-  const spawnParams = parseSpawnParams(req.url);
-  if (!spawnParams.ok) {
-    await audit('bad-spawn-request', owner, { reason: spawnParams.reason });
-    if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'bad-spawn-request' }));
-    socket.close(1008, 'bad-spawn-request');
-    return;
-  }
-
-  // A sink over this socket. `send`/`closed` relay bytes; `onExit` closes the socket when the shell dies;
-  // `onEvicted` closes it (with an error frame) when a newer socket supersedes this attach.
-  const makeSink = (): SessionSink => ({
-    send: (chunk) => {
-      if (isOpen(socket)) socket.send(chunk);
-    },
-    closed: () => !isOpen(socket),
-    onExit: (info) => {
-      // Best-effort exit code. `observe()`'s gone-notification (which ends the record) carries no exit
-      // info, so this fills an UNKNOWN when — and only when — a socket was still attached to see it.
-      if (sessionRunRef && ctx.sessionRuns) {
-        void Promise.resolve(ctx.sessionRuns.stampExitCode(owner, sessionRunRef, info.exitCode)).catch(() => {});
-      }
-      if (isOpen(socket)) socket.close(1000, 'shell exited');
-    },
-    onEvicted: () => {
-      if (isOpen(socket)) {
-        socket.send(JSON.stringify({ type: 'error', reason: 'session-superseded' }));
-        socket.close(1008, 'superseded');
-      }
-    },
-  });
-
-  // Browser → shell: `{type:'resize'}` resizes, `{type:'close'}` kills the session (explicit operator
-  // close — the ONE UI-driven death), everything else is raw stdin. Closes are NOT audited.
-  const wireInput = (sessionId: string): void => {
-    socket.on('message', (data: unknown) => {
-      const raw = typeof data === 'string' ? data : String(data);
-      const control = parseControlFrame(raw);
-      if (control?.type === 'resize') {
-        registry.resize(owner, sessionId, control.cols, control.rows);
-        return;
-      }
-      if (control?.type === 'close') {
-        registry.close(owner, sessionId);
-        if (isOpen(socket)) socket.close(1000, 'closed by operator');
-        return;
-      }
-      registry.write(owner, sessionId, raw);
-    });
-  };
-
-  // ── ATTACH PATH ────────────────────────────────────────────────────────────────────────────────────
-  if (requestedSession) {
-    const check = registry.canAttach(owner, requestedSession);
-    if (!check.ok) {
-      // Unknown / exited / not-owned all collapse to one browser-facing refusal + one audit row.
-      await audit('session-not-found', owner, { sessionId: requestedSession, reason: check.reason });
-      if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'session-not-found' }));
-      socket.close(1008, 'session-not-found');
-      return;
-    }
-    // Audit BEFORE attach/replay: no shell byte reaches the browser until the attach is durably recorded
-    // (fail-closed). If the audit throws, nothing was attached, so there is nothing to detach.
-    try {
-      await audit('attached', owner, { sessionId: requestedSession });
-    } catch {
-      if (isOpen(socket)) {
-        socket.send(JSON.stringify({ type: 'error', reason: 'audit-failed' }));
-        socket.close(1011, 'audit-failed');
-      }
-      return;
-    }
-    const sink = makeSink();
-    socket.on('close', () => registry.detach(requestedSession, sink));
-    socket.on('error', () => registry.detach(requestedSession, sink));
-    wireInput(requestedSession);
-    // Bind frame first, then the replay flush lands after it.
-    if (isOpen(socket)) socket.send(JSON.stringify({ type: 'session', sessionId: requestedSession }));
-    const attached = registry.attach(owner, requestedSession, sink);
-    if (!attached.ok) {
-      // Rare race: the shell exited between canAttach and attach. Refuse without a second audit row.
-      if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'session-not-found' }));
-      socket.close(1008, 'session-not-found');
-    }
-    return;
-  }
-
-  // ── OPEN PATH ──────────────────────────────────────────────────────────────────────────────────────
-  // 4a. Resolve the child program. `null` spawn = the login shell (unchanged). An agent-primed spawn
-  //     resolves its declaration path SERVER-SIDE from the validated id; a workflow-primed spawn
-  //     resolves its DEFINITION path the same way and then generates its priming file outside the repo.
-  //     An id or ref that is not on its allowlist is refused here (fail-closed backstop for the route's
-  //     `preValidation` 400) and never reaches a path join, an argv, or a process.
-  let command: PtyCommand | undefined;
-  // Hoisted out of the spawn block: the session-run record keeps the priming file this session was
-  // actually started with, which is the only durable answer to "what was this shell told to be?".
-  let primingFile: string | null = null;
-  // The agent whose EFFECTIVE routing this terminal should run as: itself for an `agent` spawn, the
-  // workflow's resolved default MANAGER for a `workflow` spawn (the session IS that governing agent), and
-  // nobody for a plain `claude` — which belongs to no entity and so has no model to inherit.
-  let routingAgentId: string | null = null;
-  // The routing actually applied, kept for the audit row so "what we ran" is recorded, not assumed.
-  let routing: SpawnRouting | null = null;
-  if (spawnParams.spawn) {
-    if (spawnParams.spawn.mode === 'agent') {
-      routingAgentId = spawnParams.spawn.agentId as string;
-      primingFile = ctx.resolveAgentFile(ctx.repoRoot, spawnParams.spawn.agentId as string);
-      if (primingFile === null) {
-        await audit('unknown-agent', owner, { agentId: spawnParams.spawn.agentId });
-        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'unknown-agent' }));
-        socket.close(1008, 'unknown-agent');
-        return;
-      }
-    }
-    if (spawnParams.spawn.mode === 'workflow') {
-      const workflowRef = spawnParams.spawn.workflowRef as string;
-      const defFile = ctx.resolveWorkflowFile(ctx.repoRoot, workflowRef);
-      if (defFile === null) {
-        await audit('unknown-workflow', owner, { workflowRef });
-        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'unknown-workflow' }));
-        socket.close(1008, 'unknown-workflow');
-        return;
-      }
-      try {
-        const primed = writeWorkflowPrimingFile(ctx.repoRoot, workflowRef, ctx.workflowPrimingRoot, defFile);
-        primingFile = primed.path;
-        routingAgentId = primed.managerAgentId;
-      } catch (err) {
-        await audit('spawn-failed', owner, { workflowRef, error: (err as Error).message });
-        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'spawn-failed' }));
-        socket.close(1011, 'priming-write-failed');
-        return;
-      }
-    }
-    // Routing is an ENRICHMENT of the spawn, never a precondition for it: a roster this daemon cannot
-    // build must cost the terminal its `--model` flag, not its existence. So it is resolved outside the
-    // fail-closed block below and swallowed to null. The effort cap does not depend on it.
-    if (routingAgentId) {
-      try {
-        routing = ctx.resolveAgentRouting(ctx.repoRoot, routingAgentId);
-      } catch {
-        routing = null;
-      }
-    }
-    // Resolving `claude` to an absolute path is the LAST thing before the spawn, and it can fail: the
-    // CLI may not be on the child's PATH at all. Fail CLOSED and NAMED — one `claude-not-found-on-path`
-    // row an operator can act on, never node-pty's empty `File not found: `.
-    try {
-      command = buildSpawnCommand(spawnParams.spawn, primingFile, ctx.resolveClaudeFile, routing);
-    } catch (err) {
-      if (err instanceof CommandNotFoundError) {
-        await audit('claude-not-found-on-path', owner, { command: err.command, searchedDirs: err.searchedDirs });
-        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'claude-not-found-on-path' }));
-        socket.close(1011, 'claude-not-found-on-path');
-        return;
-      }
-      await audit('spawn-failed', owner, { error: (err as Error).message });
-      if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'spawn-failed' }));
-      socket.close(1011, (err as Error).message);
-      return;
-    }
-  }
-
-  // 4b. Concurrency cap — count LIVE SESSIONS, refuse over the ceiling BEFORE spawning anything.
-  if (registry.liveCount() >= maxConcurrent) {
-    await audit('too-many-terminals', owner, { maxConcurrent });
-    if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'too-many-terminals' }));
-    socket.close(1013, 'too many terminals');
-    return;
-  }
-
-  // 5. Create the persistent session. `create` spawns via the host and starts buffering IMMEDIATELY, so
-  //    the shell's banner/first prompt emitted during the async audit below is captured, never dropped.
-  let created: { sessionId: string; createdAt: number };
+function compositeRevision(ctx: PtyRouteContext): number {
   try {
-    created = registry.create(
-      owner,
-      ctx.ptyHost,
-      {
-        requestId: '',
-        // Always the repo THIS daemon serves — resolved from the server's own config, never from the
-        // request. An agent-primed claude therefore starts in the same checkout the agent file came from.
-        cwd: ctx.repoRoot,
-        cols: DEFAULT_COLS,
-        rows: DEFAULT_ROWS,
-        ...(command ? { command } : {}),
-      },
-      // What this session IS, recorded alongside it. The same facts the `opened` audit row carries, kept
-      // where a later `GET /api/pty/sessions` can return them: a surface showing one agent has to be able
-      // to find the session already primed for THAT agent and reattach, instead of spawning a second one
-      // every time it is re-rendered. Descriptive only — ownership still gates every operation.
-      {
-        kind: spawnParams.spawn?.mode ?? 'shell',
-        targetRef: spawnParams.spawn?.agentId ?? spawnParams.spawn?.workflowRef ?? null,
-      },
-    );
-  } catch (err) {
-    await audit('spawn-failed', owner, { error: (err as Error).message });
-    if (isOpen(socket)) {
-      socket.send(JSON.stringify({ type: 'error', reason: 'spawn-failed' }));
-      socket.close(1011, (err as Error).message);
-    }
-    return;
-  }
-  const sessionId = created.sessionId;
-
-  // ── SESSION RUN + TRANSCRIPT ───────────────────────────────────────────────────────────────────────
-  // Recorded for an entity-primed spawn only (see PtyRouteContext.sessionRuns). Two orderings matter:
-  //
-  //  1. The transcript tap goes on FIRST, before any await. Observers get no replay of the ring, so a
-  //     banner emitted while the record write or the audit is in flight would otherwise be lost from the
-  //     transcript forever.
-  //  2. The record is written BEFORE the `opened` audit — i.e. before any byte reaches the operator —
-  //     and a failure to write it fails the spawn CLOSED (kill the shell, refuse the socket), exactly as
-  //     an unwritable audit row does. A session the daemon could not record is a session nothing can
-  //     later account for.
-  //
-  // The id is already minted by `registry.create` above, so the record is born complete rather than
-  // stamped in a second write: there is no window in which a record exists without its `ptySessionId`.
-  const runKind: SessionRunKind | null =
-    spawnParams.spawn?.mode === 'agent' ? 'agent' : spawnParams.spawn?.mode === 'workflow' ? 'workflow' : null;
-  const runTargetRef = spawnParams.spawn?.agentId ?? spawnParams.spawn?.workflowRef ?? null;
-  const recordable = Boolean(ctx.sessionRuns && runKind && runTargetRef);
-  // Mutable state read across the async boundary below. A plain `let` would be narrowed by the compiler
-  // to its initializer; a container is honest about being written from a callback.
-  const goneState: { fired: boolean; summary: TranscriptSummary | null } = { fired: false, summary: null };
-
-  const endSessionRun = (summary: TranscriptSummary | null): void => {
-    if (!ctx.sessionRuns || !sessionRunRef) return;
-    // Record-keeping never breaks teardown: a store failure here leaves the record `live`, and the boot
-    // sweep corrects it to `abandoned` on the next daemon start.
-    void Promise.resolve(ctx.sessionRuns.end(owner, sessionRunRef, { transcript: summary })).catch(() => {});
-  };
-
-  // The registry's gone-notification fires EXACTLY ONCE — on shell exit or on an explicit close — which
-  // is precisely the "this session ended" edge. Closing the browser tab is NOT that edge: it detaches a
-  // socket, the shell keeps running, and the record stays `live` because it still is.
-  const onSessionGone = (summary: TranscriptSummary | null): void => {
-    goneState.fired = true;
-    goneState.summary = summary;
-    endSessionRun(summary);
-  };
-  if (recordable) {
-    if (ctx.transcripts) {
-      ctx.transcripts.record(registry, owner, sessionId, onSessionGone);
-    } else {
-      registry.observe(owner, sessionId, () => {}, () => onSessionGone(null));
-    }
-  }
-
-  if (recordable && ctx.sessionRuns) {
-    try {
-      const record = await ctx.sessionRuns.create({
-        owner,
-        kind: runKind as SessionRunKind,
-        targetRef: runTargetRef as string,
-        ptySessionId: sessionId,
-        primingPath: primingFile,
-      });
-      sessionRunRef = record.sessionRunRef;
-    } catch {
-      registry.close(owner, sessionId);
-      // Still exactly ONE audit row for this connection: the spawn was rolled back, so it is reported as
-      // the spawn failure it now is rather than as an `opened` that did not happen.
-      await audit('spawn-failed', owner, { error: 'session-run-record-failed' });
-      if (isOpen(socket)) {
-        socket.send(JSON.stringify({ type: 'error', reason: 'session-run-record-failed' }));
-        socket.close(1011, 'session-run-record-failed');
-      }
-      return;
-    }
-    // A shell can die inside that await (a bad priming file, an instant exit). The gone-notification
-    // then fired before the ref existed, so settle the record now instead of leaving it `live` forever.
-    if (goneState.fired) endSessionRun(goneState.summary);
-  }
-
-  // Opening the shell is the consequential action. If its audit cannot be recorded, fail closed: kill the
-  // just-created session, close the WS, and contain the exception here.
-  try {
-    await audit('opened', owner, {
-      sessionId,
-      // What was actually spawned is part of the record: a shell and an agent-primed claude are not the
-      // same action, and an audit that could not tell them apart would be a hole.
-      spawn: spawnParams.spawn?.mode ?? 'shell',
-      ...(spawnParams.spawn?.agentId ? { agentId: spawnParams.spawn.agentId } : {}),
-      ...(spawnParams.spawn?.workflowRef ? { workflowRef: spawnParams.spawn.workflowRef } : {}),
-      // WHAT WE ACTUALLY RAN. Recorded for claude spawns only (a login shell takes no such flags), and
-      // computed from the same rule the argv was built with — never re-derived, so the row cannot claim a
-      // model the process was not given. `model` is absent exactly when no `--model` rode the argv: an
-      // unresolved routing, or a resolved NON-CLAUDE runtime, which is also worth recording as such.
-      ...(spawnParams.spawn
-        ? {
-            effort: SPAWN_EFFORT,
-            ...(claudeModelArg(routing) ? { model: claudeModelArg(routing) } : {}),
-            ...(routing && !claudeModelArg(routing) ? { modelSkippedForRuntime: routing.runtime } : {}),
-          }
-        : {}),
-      // Ties this row to the durable record it opened, so the audit log and the session-run list can be
-      // read against each other without guessing from timestamps.
-      ...(sessionRunRef ? { sessionRunRef } : {}),
-    });
+    return ctx.persistence.read().revision;
   } catch {
-    registry.close(owner, sessionId);
-    if (isOpen(socket)) {
-      socket.send(JSON.stringify({ type: 'error', reason: 'audit-failed' }));
-      socket.close(1011, 'audit-failed');
-    }
-    return;
+    return 0;
   }
-
-  const sink = makeSink();
-  // Socket close/error DETACHES only — the shell survives a reload and keeps buffering.
-  socket.on('close', () => registry.detach(sessionId, sink));
-  socket.on('error', () => registry.detach(sessionId, sink));
-  wireInput(sessionId);
-  // Bind frame first, then attach replays the buffered pre-audit startup output after it.
-  if (isOpen(socket)) socket.send(JSON.stringify({ type: 'session', sessionId }));
-  registry.attach(owner, sessionId, sink);
-}
-
-/** Verify the bearer on a REST request the same way the WS verifies its subprotocol token. Returns the
- *  owner `sub` on success, or replies 401 and returns undefined. Exported so the session-run routes
- *  registered beside this one authenticate through the exact same check, not a second copy of it. */
-export function requireBearerOwner(
-  req: FastifyRequest,
-  reply: FastifyReply,
-  sessionConfig: SessionConfig,
-): string | undefined {
-  const check = resolveSession(req, sessionConfig);
-  if (!check.ok) {
-    void reply.code(check.status).send({ error: check.error, reason: check.reason });
-    return undefined;
-  }
-  return check.claims.sub;
 }
 
 /**
- * Register `/api/pty` (WS) plus the `/api/pty/sessions` REST endpoints on `app`. Register the WS plugin
- * FIRST, then the caller wraps this in an origin-guarded child scope (see `server/index.ts`) — the
- * scope's Origin/Host hook covers the REST routes too. One shared registry per registration; a shutdown
- * `onClose` drains it (kill every PTY, forget every entry).
+ * Drive one `/api/pty` WebSocket end to end. The principal is ALREADY proven by `preValidation`; this
+ * function never re-derives one and never accepts an operator-only caller.
  */
-export async function registerPtyRoute(
-  app: FastifyInstance,
-  ctx: PtyRouteContext = makePtyRouteContext(),
+export async function handlePtyConnection(
+  socket: PtySocketLike,
+  principal: BrowserPrincipal,
+  ctx: PtyRouteContext,
 ): Promise<void> {
-  await app.register(fastifyWebsocket);
+  const attachments = new Map<string, Attachment>();
+  /** Sessions whose exit THIS connection has observed. A settled session is read-only, server-side. */
+  const ended = new Set<string>();
+  let disposed = false;
+
+  const currentAttachmentId = (sessionId: string): string =>
+    attachments.get(sessionId)?.attachmentId ?? '';
+
+  // A socket close DETACHES every attachment it holds; the session itself survives for reattach.
+  const teardown = (): void => {
+    if (disposed) return;
+    disposed = true;
+    for (const attachment of attachments.values()) void attachment.detach().catch(() => {});
+    attachments.clear();
+  };
 
   /**
-   * Spawn-mode admission control, run on the UPGRADE request itself so a bad or unknown target is a
-   * plain HTTP 400 and the WebSocket is never established. The check is exact-match against the server's
-   * declared-agent roster and happens before any path is built; the handler re-checks fail-closed.
+   * Outbound backpressure. A PTY can produce faster than a browser drains, and `SessionSink` offers no
+   * pause/resume seam (a sink can only answer `closed()`), so a reader that lets the transport buffer
+   * cross {@link PTY_OUTBOUND_HIGH_WATER_BYTES} loses its attachments and its socket instead of the
+   * daemon losing its memory. The frame in hand IS dropped — but not silently: the close carries code
+   * 1013, the browser says output outpaced the connection, and the reattach replays the retained tail
+   * from the client's byte cursor, so the operator both hears about it and gets the bytes back.
    */
-  app.get(
-    '/api/pty',
-    {
-      websocket: true,
-      preValidation: async (req: FastifyRequest, reply: FastifyReply) => {
-        const check = resolveSession(req, ctx.sessionConfig, tokenFromSubprotocol(req));
-        if (!check.ok) {
-          await reply.code(check.status).send({ error: check.error, reason: check.reason });
-          return;
-        }
-        const parsed = parseSpawnParams(req.url);
-        if (!parsed.ok) {
-          await reply.code(400).send({ error: 'bad-spawn-request', reason: parsed.reason });
-          return;
-        }
-        if (parsed.spawn?.mode === 'agent' && ctx.resolveAgentFile(ctx.repoRoot, parsed.spawn.agentId as string) === null) {
-          await reply.code(400).send({ error: 'unknown-agent' });
-          return;
-        }
-        if (parsed.spawn?.mode === 'workflow' && ctx.resolveWorkflowFile(ctx.repoRoot, parsed.spawn.workflowRef as string) === null) {
-          await reply.code(400).send({ error: 'unknown-workflow' });
-        }
-      },
-    },
-    (socket, req) => {
-      void handlePtyConnection(socket as unknown as PtySocketLike, req, ctx);
-    },
-  );
+  const dropForBackpressure = (): void => {
+    teardown();
+    socket.close(1013, 'backpressure');
+  };
+  const overHighWater = (): boolean =>
+    typeof socket.bufferedAmount === 'number' && socket.bufferedAmount > PTY_OUTBOUND_HIGH_WATER_BYTES;
 
-  // REST: list my live sessions (read — no audit). Bearer verified exactly like the WS.
-  app.get('/api/pty/sessions', async (req: FastifyRequest, reply: FastifyReply) => {
-    const owner = requireBearerOwner(req, reply, ctx.sessionConfig);
-    if (owner === undefined) return reply;
-    return reply.code(200).send({ sessions: ctx.registry.list(owner) });
+  const send = (frame: BrowserServerFrame): void => {
+    // A connection that has been torn down writes nothing more — not the tail of a replay it was in the
+    // middle of, and not the output that shed it. `disposed` is set before the close code goes out.
+    if (disposed || !isOpen(socket)) return;
+    if (overHighWater()) {
+      dropForBackpressure();
+      return;
+    }
+    socket.send(JSON.stringify(frame));
+  };
+  const fail = (
+    requestId: string | null,
+    sessionId: string | null,
+    code: Extract<BrowserServerFrame, { type: 'error' }>['code'],
+    detail: string | null,
+  ): void => {
+    send({ type: 'error', requestId, sessionId, code, detail });
+  };
+
+  const revision = (): number => compositeRevision(ctx);
+
+  /**
+   * An attach installs its sink BEFORE the scrollback has been read off disk, so between those two
+   * moments the host can produce output that belongs strictly AFTER the replay. A hold buffers exactly
+   * that window: while `frames` is an array the sink queues instead of sending, and the attach drains it
+   * as soon as the last replayed frame is on the wire. The client therefore sees one possible order —
+   * `attached`, replay, buffered live, live — and never has to sort by sequence to recover it.
+   *
+   * The buffer is bounded by the SAME high-water mark as the socket: a session that produces a megabyte
+   * while its scrollback is being read is shedding a reader either way, so it sheds it the same way.
+   */
+  type OutboundHold = { frames: BrowserServerFrame[] | null; bytes: number };
+
+  const sinkFor = (hold?: OutboundHold): SessionSink => {
+    const emit = (frame: BrowserServerFrame, bytes: number): void => {
+      if (hold?.frames == null) {
+        send(frame);
+        return;
+      }
+      hold.bytes += bytes;
+      if (hold.bytes > PTY_OUTBOUND_HIGH_WATER_BYTES) {
+        hold.frames = null;
+        dropForBackpressure();
+        return;
+      }
+      hold.frames.push(frame);
+    };
+    return {
+      data: (frame: SessionDataFrame) => {
+        emit({
+          type: 'data',
+          requestId: null,
+          sessionId: frame.sessionId,
+          attachmentId: currentAttachmentId(frame.sessionId),
+          sequence: frame.sequence,
+          encoding: 'base64',
+          data: frame.data,
+          replay: frame.replay,
+        }, frame.data.length);
+      },
+      exit: (exit: ObservedExit) => {
+        ended.add(exit.sessionId);
+        emit({ type: 'exit', requestId: null, sessionId: exit.sessionId, sequence: exit.sequence, exit: publicExit(exit) }, 0);
+      },
+      closed: () => disposed || !isOpen(socket),
+    };
+  };
+
+  const onCreate = async (frame: Extract<BrowserClientFrame, { type: 'create' }>): Promise<void> => {
+    const created = await ctx.registry.create(principal, {
+      launcher: frame.launcher,
+      rootId: frame.rootId,
+      relativeCwd: frame.relativeCwd,
+      cols: frame.cols,
+      rows: frame.rows,
+    });
+    if (!created.ok) {
+      fail(frame.requestId, null, created.refusal, created.detail);
+      return;
+    }
+    const attached = await ctx.registry.attach(principal, created.value.sessionId, sinkFor());
+    if (!attached.ok) {
+      fail(frame.requestId, created.value.sessionId, attached.refusal, attached.detail);
+      return;
+    }
+    attachments.set(created.value.sessionId, attached.value);
+    send({
+      type: 'created',
+      requestId: frame.requestId,
+      revision: revision(),
+      session: attached.value.session,
+      attachmentId: attached.value.attachmentId,
+    });
+  };
+
+  const onAttach = async (frame: Extract<BrowserClientFrame, { type: 'attach' }>): Promise<void> => {
+    // Held from the instant the sink exists until the scrollback has been flushed. Nothing the host
+    // produces in that window may overtake the bytes it comes after.
+    const hold: OutboundHold = { frames: [], bytes: 0 };
+    const attached = await ctx.registry.attach(principal, frame.sessionId, sinkFor(hold));
+    if (!attached.ok) {
+      hold.frames = null;
+      fail(frame.requestId, frame.sessionId, attached.refusal, attached.detail);
+      return;
+    }
+    attachments.set(frame.sessionId, attached.value);
+    const replayed = ctx.replay
+      ? await ctx.replay(frame.sessionId, frame.fromSequence)
+      : { frames: [], replayFrom: frame.fromSequence, nextSequence: frame.fromSequence };
+    send({
+      type: 'attached',
+      requestId: frame.requestId,
+      revision: revision(),
+      session: attached.value.session,
+      attachmentId: attached.value.attachmentId,
+      replayFrom: replayed.replayFrom,
+      nextSequence: replayed.nextSequence,
+    });
+    for (const entry of replayed.frames) {
+      send({
+        type: 'data',
+        requestId: null,
+        sessionId: frame.sessionId,
+        attachmentId: attached.value.attachmentId,
+        sequence: entry.sequence,
+        encoding: 'base64',
+        data: entry.data,
+        replay: true,
+      });
+    }
+    const held = hold.frames;
+    hold.frames = null;
+    for (const queued of held ?? []) {
+      // A frame queued before `attachments.set` could not know its attachment id; it does now.
+      send(queued.type === 'data' && queued.attachmentId === ''
+        ? { ...queued, attachmentId: attached.value.attachmentId }
+        : queued);
+    }
+  };
+
+  const owns = (sessionId: string, attachmentId: string): boolean =>
+    attachments.get(sessionId)?.attachmentId === attachmentId;
+
+  const onFrame = async (frame: BrowserClientFrame): Promise<void> => {
+    switch (frame.type) {
+      case 'create':
+        return onCreate(frame);
+      case 'attach':
+        return onAttach(frame);
+      case 'input': {
+        // Server-side read-only. Once an exit has settled, this session accepts no more control traffic —
+        // the browser's `replay` mode is defence in depth on top of this, never the enforcement.
+        if (ended.has(frame.sessionId)) {
+          fail(frame.requestId, frame.sessionId, 'invalid-request', 'session-ended');
+          return;
+        }
+        if (!owns(frame.sessionId, frame.attachmentId)) {
+          fail(frame.requestId, frame.sessionId, 'not-found', null);
+          return;
+        }
+        const bytes = Buffer.from(frame.data, 'base64');
+        if (bytes.byteLength > PTY_MAX_INPUT_BYTES) {
+          fail(frame.requestId, frame.sessionId, 'input-too-large', null);
+          return;
+        }
+        const written = await ctx.registry.write(principal, frame.sessionId, new Uint8Array(bytes));
+        if (!written.ok) {
+          fail(frame.requestId, frame.sessionId, written.refusal, written.detail);
+          return;
+        }
+        send({
+          type: 'ack',
+          requestId: frame.requestId,
+          action: 'input',
+          sessionId: frame.sessionId,
+          revision: revision(),
+          accepted: written.value.accepted,
+        });
+        return;
+      }
+      case 'resize': {
+        if (ended.has(frame.sessionId)) {
+          fail(frame.requestId, frame.sessionId, 'invalid-request', 'session-ended');
+          return;
+        }
+        if (!owns(frame.sessionId, frame.attachmentId)) {
+          fail(frame.requestId, frame.sessionId, 'not-found', null);
+          return;
+        }
+        const resized = await ctx.registry.resize(principal, frame.sessionId, { cols: frame.cols, rows: frame.rows });
+        if (!resized.ok) {
+          fail(frame.requestId, frame.sessionId, resized.refusal, resized.detail);
+          return;
+        }
+        send({
+          type: 'ack',
+          requestId: frame.requestId,
+          action: 'resize',
+          sessionId: frame.sessionId,
+          revision: revision(),
+          size: { cols: frame.cols, rows: frame.rows },
+        });
+        return;
+      }
+      case 'close': {
+        const closed = await ctx.registry.close(principal, frame.sessionId);
+        if (!closed.ok) {
+          fail(frame.requestId, frame.sessionId, closed.refusal, closed.detail);
+          return;
+        }
+        attachments.delete(frame.sessionId);
+        ended.add(frame.sessionId);
+        send({
+          type: 'ack',
+          requestId: frame.requestId,
+          action: 'close',
+          sessionId: frame.sessionId,
+          revision: revision(),
+          exit: publicExit(closed.value),
+        });
+        return;
+      }
+      case 'detach': {
+        const attachment = attachments.get(frame.sessionId);
+        if (!attachment || attachment.attachmentId !== frame.attachmentId) {
+          fail(frame.requestId, frame.sessionId, 'not-found', null);
+          return;
+        }
+        await attachment.detach();
+        attachments.delete(frame.sessionId);
+        send({
+          type: 'ack',
+          requestId: frame.requestId,
+          action: 'detach',
+          sessionId: frame.sessionId,
+          revision: revision(),
+          attachmentId: frame.attachmentId,
+        });
+        return;
+      }
+    }
+  };
+
+  // Frames are serialized: one in-flight registry call at a time, so an `input` can never overtake the
+  // `create` that mints the session it names.
+  let queue: Promise<void> = Promise.resolve();
+  socket.on('message', (data: unknown) => {
+    const raw = typeof data === 'string' ? data : String(data);
+    const frame = decodeBrowserClientFrame(raw);
+    if (frame === null) {
+      send({ type: 'error', requestId: null, sessionId: null, code: 'invalid-request', detail: null });
+      return;
+    }
+    queue = queue.then(() => onFrame(frame)).catch(() => {
+      send({ type: 'error', requestId: frame.requestId, sessionId: null, code: 'internal', detail: null });
+    });
   });
 
-  // REST: kill one of my sessions (close is not audited today either). 404 unknown/not-owned/malformed.
-  app.delete('/api/pty/sessions/:sessionId', async (req: FastifyRequest, reply: FastifyReply) => {
-    const owner = requireBearerOwner(req, reply, ctx.sessionConfig);
-    if (owner === undefined) return reply;
+  socket.on('close', teardown);
+  socket.on('error', teardown);
+}
+
+/**
+ * Register the PTY surface on `app`, installing this scope's hooks in the exact order the spec pins.
+ * The caller passes an ALREADY-ISOLATED child scope; nothing else may be registered on it.
+ */
+export async function registerPtyRoute(app: FastifyInstance, ctx: PtyRouteContext): Promise<void> {
+  // 1. Origin/Host, fail-closed on an empty allowlist.
+  app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
+    const result = assertOrigin(req as { headers: FastifyRequest['headers'] }, ctx.allowedOrigins);
+    if (!result.ok) {
+      await reply.code(403).send({ error: 'forbidden', reason: result.reason ?? 'origin' });
+    }
+  });
+  // 2. Rate limit - never reached by a refused origin. Installed DIRECTLY, so whatever the hook returns
+  // (a promise, a refusal) is Fastify's to await, not a wrapper's to swallow.
+  if (ctx.rateLimitHook) app.addHook('onRequest', ctx.rateLimitHook);
+
+  await app.register(fastifyWebsocket, { options: { maxPayload: PTY_MAX_PAYLOAD_BYTES } });
+
+  /** 3./4./5. operator -> browser principal -> query. Every refusal precedes 101 and the decoder. */
+  const preValidation = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const check = resolveSession(req as unknown as SessionRequestLike, ctx.sessionConfig, tokenFromSubprotocol(req));
+    if (!check.ok) {
+      await reply.code(check.status).send({ error: check.error, reason: check.reason });
+      return;
+    }
+    const principal = await resolveBrowserPrincipal(
+      check.claims.sub,
+      req.headers.cookie,
+      ctx.browserSessionRefs,
+    );
+    if (principal === null) {
+      await reply.code(428).send({ error: 'browser-session-required' });
+      return;
+    }
+    if (hasAnyQuery(req.url)) {
+      await reply.code(400).send({ error: 'bad-request', reason: 'query-not-accepted' });
+      return;
+    }
+    (req as FastifyRequest & { ptyPrincipal?: BrowserPrincipal }).ptyPrincipal = principal;
+  };
+
+  app.get('/api/pty', { websocket: true, preValidation }, (socket, req) => {
+    const principal = (req as FastifyRequest & { ptyPrincipal?: BrowserPrincipal }).ptyPrincipal;
+    if (principal === undefined) {
+      (socket as unknown as PtySocketLike).close(1008, 'browser-session-required');
+      return;
+    }
+    void handlePtyConnection(socket as unknown as PtySocketLike, principal, ctx);
+  });
+
+  app.get('/api/pty/sessions', { preValidation }, async (req: FastifyRequest, reply: FastifyReply) => {
+    const principal = (req as FastifyRequest & { ptyPrincipal?: BrowserPrincipal }).ptyPrincipal as BrowserPrincipal;
+    const sessions: SessionSummary[] = await ctx.registry.list(principal);
+    return reply.code(200).send({ revision: compositeRevision(ctx), sessions });
+  });
+
+  app.delete('/api/pty/sessions/:sessionId', { preValidation }, async (req: FastifyRequest, reply: FastifyReply) => {
+    const principal = (req as FastifyRequest & { ptyPrincipal?: BrowserPrincipal }).ptyPrincipal as BrowserPrincipal;
     const sessionId = (req.params as { sessionId?: unknown }).sessionId;
     if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) {
       return reply.code(404).send({ error: 'not-found' });
     }
-    const result = ctx.registry.close(owner, sessionId);
-    if (!result.ok) return reply.code(404).send({ error: 'not-found', reason: result.reason });
-    return reply.code(200).send({ ok: true });
-  });
-
-  // Daemon shutdown drain: kill every live PTY and forget every registry entry so no shell is orphaned.
-  // `clear()` fires each session's gone-notification, so transcripts flush and their records settle on
-  // the way out; whatever does not complete before the process exits is corrected by the boot sweep.
-  app.addHook('onClose', async () => {
-    try {
-      ctx.ptyHost.stopAll();
-    } catch {
-      /* best-effort */
+    const closed = await ctx.registry.close(principal, sessionId);
+    if (!closed.ok) {
+      // An absent or foreign session is 404 (never leaking another controller's ids); an unobserved exit
+      // inside the deadline is 409 - a kill request is not proof the process group is gone.
+      if (closed.refusal === 'internal') return reply.code(409).send({ error: 'exit-unconfirmed' });
+      return reply.code(404).send({ error: 'not-found', reason: closed.refusal });
     }
-    ctx.registry.clear();
-    try {
-      ctx.transcripts?.dispose();
-    } catch {
-      /* best-effort */
-    }
+    return reply.code(200).send({ ok: true, exit: publicExit(closed.value) });
   });
 }

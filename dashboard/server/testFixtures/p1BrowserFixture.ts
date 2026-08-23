@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createSecureServer } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,16 +9,27 @@ import type { HealthResponse } from '../health/service.ts';
 import { inboxFixtureData, type InboxFixtureScenario } from '../inbox/fixture.ts';
 import {
   isP2BrowserScenario,
+  isP3BrowserScenario,
   P2_ATTENTION,
   P2_BROWSER_SCENARIOS,
   P2_SCHEDULE,
   P2_SCHEDULE_COLLECTION,
+  P3_BROWSER_PRINCIPALS,
+  P3_BROWSER_SCENARIOS,
   p2EntityDetail,
   p2EntityList,
   p2Home,
   p2RunDetail,
   p2RunEvents,
+  p3AttemptSessions,
+  p3ControlsSession,
+  p3PtyCapability,
+  p3SessionListing,
 } from './p2BrowserFixtureData.ts';
+import { BROWSER_SESSION_COOKIE_NAME, parseBrowserSessionCookie } from '../auth/browserSessionRef.ts';
+import {
+  createLoopbackTlsMaterial, publishLoopbackCertificate, revokeLoopbackCertificate,
+} from './p3LoopbackTls.ts';
 
 export const P1_BROWSER_SCENARIOS = [
   'inbox-populated',
@@ -26,6 +38,7 @@ export const P1_BROWSER_SCENARIOS = [
   'events-reconnect-unknown',
   'health-reader-error',
   ...P2_BROWSER_SCENARIOS,
+  ...P3_BROWSER_SCENARIOS,
 ] as const;
 
 export type P1BrowserScenario = (typeof P1_BROWSER_SCENARIOS)[number];
@@ -44,6 +57,14 @@ export interface P1BrowserFixture {
   address: { host: '127.0.0.1'; port: number };
   origin: string;
   state: P1BrowserFixtureState;
+  /** The PEM a client pins to reach an HTTPS fixture; null when serving plain HTTP. */
+  certificate: string | null;
+  /**
+   * The two URLs the §8 controller-isolation matrix opens, each carrying the ref that context should
+   * hold. Visiting one sets that context's `Secure` cookie and nothing else — there is no way to hand a
+   * browser a ref other than by visiting its own URL.
+   */
+  contextUrls: { a: string; b: string };
   releaseInbox(): void;
   close(): Promise<void>;
 }
@@ -66,6 +87,8 @@ export interface P1BrowserFixtureOptions {
   distDir?: string;
   host?: string;
   port?: number;
+  /** Serve TLS with a per-process self-signed loopback certificate (see `p3LoopbackTls.ts`). */
+  https?: boolean;
 }
 
 /**
@@ -150,9 +173,11 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     unknownEventFrames: 0,
     runStopRequests: 0,
   };
-  const inboxScenario: InboxFixtureScenario = isP2BrowserScenario(options.scenario)
-    ? 'inbox-empty'
-    : options.scenario === 'health-reader-error' ? 'inbox-populated' : options.scenario;
+  // The P2 and P3 scenarios drive their own surfaces; the inbox is background for them.
+  const inboxScenario: InboxFixtureScenario =
+    isP2BrowserScenario(options.scenario) || isP3BrowserScenario(options.scenario)
+      ? 'inbox-empty'
+      : options.scenario === 'health-reader-error' ? 'inbox-populated' : options.scenario;
   const inboxData = inboxFixtureData(inboxScenario);
   const pendingInbox = new Set<() => void>();
   const streams = new Set<ServerResponse>();
@@ -189,8 +214,86 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     pendingInbox.clear();
   };
 
-  const server = createServer(async (request, reply) => {
+  const p3Scenario = isP3BrowserScenario(options.scenario) ? options.scenario : null;
+  const attemptSessions = p3AttemptSessions();
+  let claimedAttemptRef: string | null = null;
+  let runVersion = 3;
+
+  const handler = async (request: IncomingMessage, reply: ServerResponse): Promise<void> => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+
+    // The bounded lifecycle wrapper polls this before it starts any client. It is deliberately the
+    // cheapest possible answer: a fixture that can route at all is ready.
+    if (url.pathname === '/readyz') {
+      reply.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      reply.end(JSON.stringify({ ok: true, scenario: options.scenario }));
+      return;
+    }
+
+    if (p3Scenario) {
+      const presented = parseBrowserSessionCookie(
+        Array.isArray(request.headers.cookie) ? request.headers.cookie[0] : request.headers.cookie,
+      );
+
+      // Two entry points, one per browser context. Each sets ONLY its own ref, so the matrix cannot
+      // accidentally give both tabs the same identity.
+      const contextEntry = url.pathname.match(/^\/fixture\/context-(a|b)$/);
+      if (request.method === 'GET' && contextEntry) {
+        const ref = contextEntry[1] === 'a'
+          ? P3_BROWSER_PRINCIPALS.a.browserSessionRef
+          : P3_BROWSER_PRINCIPALS.b.browserSessionRef;
+        reply.writeHead(302, {
+          location: '/',
+          'set-cookie': `${BROWSER_SESSION_COOKIE_NAME}=${ref}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=3600`,
+          'cache-control': 'no-store',
+        });
+        reply.end();
+        return;
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/pty/sessions') {
+        json(reply, 200, p3SessionListing(p3Scenario, presented));
+        return;
+      }
+      const sessionPath = url.pathname.match(/^\/api\/pty\/sessions\/([^/]+)$/);
+      if (request.method === 'DELETE' && sessionPath) {
+        const sessionId = decodeURIComponent(sessionPath[1]);
+        // A stranger gets 404, never 403: the refusal must not confirm that the session exists.
+        json(reply, p3ControlsSession(sessionId, presented) ? 200 : 404,
+          p3ControlsSession(sessionId, presented) ? { ok: true } : { error: 'not-found' });
+        return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture/sessions') {
+        json(reply, 200, {
+          runVersion,
+          sessions: attemptSessions.map((row) => ({
+            ...row,
+            controllerClaimed: row.attemptRef === claimedAttemptRef,
+          })),
+        });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/control/runs/run-fixture/claim') {
+        const body = await requestJson(request);
+        const live = attemptSessions.find((row) => row.liveControl);
+        if (!live || body.sessionId !== live.sessionId) {
+          json(reply, 404, { error: 'not-found' });
+          return;
+        }
+        if (body.expectedRunVersion !== runVersion) {
+          json(reply, 409, { error: 'stale-run-version' });
+          return;
+        }
+        claimedAttemptRef = live.attemptRef;
+        runVersion += 1;
+        json(reply, 200, { revision: runVersion, sessionId: live.sessionId, replayed: false });
+        return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/runtime/capabilities') {
+        json(reply, 200, { ...p3PtyCapability(p3Scenario), localTranscripts: false });
+        return;
+      }
+    }
 
     if (isP2BrowserScenario(options.scenario)) {
       if (request.method === 'GET' && url.pathname === '/api/agents') return json(reply, 200, p2EntityList('agents'));
@@ -333,7 +436,8 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
         for (const event of page.items) {
           reply.write(`id: ${event.cursor}\nevent: run-event\ndata: ${JSON.stringify(event)}\n\n`);
         }
-        return reply.end();
+        reply.end();
+        return;
       }
       if (request.method === 'GET' && url.pathname === '/api/control/runs/run-fixture/events') {
         const after = Number(url.searchParams.get('after') ?? 0);
@@ -429,7 +533,15 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
       return;
     }
     return json(reply, 404, { error: 'not found' });
-  });
+  };
+
+  const wrapped = (request: IncomingMessage, reply: ServerResponse): void => {
+    void handler(request, reply);
+  };
+  const tls = options.https === true ? await createLoopbackTlsMaterial() : null;
+  const server = tls === null
+    ? createServer(wrapped)
+    : createSecureServer({ cert: tls.cert, key: tls.key }, wrapped);
 
   await new Promise<void>((resolveListen, rejectListen) => {
     const fail = (error: Error): void => rejectListen(error);
@@ -441,16 +553,23 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
   });
   const address = server.address() as AddressInfo;
 
+  const origin = `${tls === null ? 'http' : 'https'}://127.0.0.1:${address.port}`;
+  // Publish the PUBLIC certificate so the lifecycle probe and the browser/smoke clients can pin it.
+  if (tls !== null) publishLoopbackCertificate(address.port, tls.cert);
+
   return {
     address: { host: '127.0.0.1', port: address.port },
-    origin: `http://127.0.0.1:${address.port}`,
+    origin,
     state,
+    certificate: tls === null ? null : tls.cert,
+    contextUrls: { a: `${origin}/fixture/context-a`, b: `${origin}/fixture/context-b` },
     releaseInbox(): void {
       releasePendingInbox();
     },
     async close(): Promise<void> {
       if (closed) return;
       closed = true;
+      if (tls !== null) revokeLoopbackCertificate(address.port);
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
       releasePendingInbox();
@@ -461,9 +580,12 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
   };
 }
 
-function parseArgs(args: string[]): { scenario: P1BrowserScenario; port: number } {
+export function parseP1FixtureArgs(
+  args: string[],
+): { scenario: P1BrowserScenario; port: number; https: boolean } {
   let scenario: string | null = null;
   let port = 4317;
+  let https = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const value = args[index + 1];
@@ -473,17 +595,23 @@ function parseArgs(args: string[]): { scenario: P1BrowserScenario; port: number 
     } else if (arg === '--port' && value) {
       port = Number(value);
       index += 1;
+    } else if (arg === '--https') {
+      https = true;
     } else {
       throw new Error(`Unknown or incomplete argument: ${String(arg)}`);
     }
   }
   if (!scenario || !isScenario(scenario)) throw new Error(`Unknown scenario: ${String(scenario)}`);
-  return { scenario, port };
+  return { scenario, port, https };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  startP1BrowserFixture(parseArgs(process.argv.slice(2)))
-    .then((fixture) => console.log(`[p1-browser-fixture] ${fixture.address.host}:${fixture.address.port}`))
+  startP1BrowserFixture(parseP1FixtureArgs(process.argv.slice(2)))
+    .then((fixture) => {
+      console.log(`[p1-browser-fixture] ${fixture.origin}`);
+      console.log(`[p1-browser-fixture] context A ${fixture.contextUrls.a}`);
+      console.log(`[p1-browser-fixture] context B ${fixture.contextUrls.b}`);
+    })
     .catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;

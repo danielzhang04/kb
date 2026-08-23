@@ -45,6 +45,10 @@ export type PortResult<T> = { ok: true; value: T }
   | { ok: false; refusal: HostRefusalCode; detail: string | null };
 export type ObservedExit = { sessionId: string; sequence: number; exitCode: number | null;
   signal: number | null; reason: 'exited' | 'closed' | 'abandoned'; observedAt: string };
+/** A host output frame. As a HOST frame `sequence` is that host's own frame counter; the registry
+ *  re-mints it into the [C-R6] cursor space before any sink sees it, so every frame that leaves
+ *  `createSessionRecordRegistry` carries the BYTE OFFSET of its first byte in the session's output
+ *  stream. Sinks, the retention writer, and the browser all read it that way. */
 export type SessionDataFrame = { sessionId: string; sequence: number; encoding: 'base64';
   data: string; replay: boolean };
 export type SessionSink = { data(frame: SessionDataFrame): void; exit(exit: ObservedExit): void;
@@ -155,6 +159,9 @@ export type SessionRecordBase = {
   relativeCwd: string;
   name: string;
   attachmentIds: string[];
+  /** `bytes` is what is still on disk; `lastSequence` is the CUMULATIVE BYTE TOTAL the session has
+   *  produced (the offset one past its last byte), so the retained window is
+   *  `[lastSequence - bytes, lastSequence)`. `truncated` records that compaction dropped a head. */
   transcript: { path: string; bytes: number; truncated: boolean; lastSequence: number };
   startedAt: string;
   endedAt: string | null;
@@ -195,5 +202,12 @@ export type PtySessionsDocumentV2 = { schema: 'kb.pty-sessions/v2'; revision: nu
   sessions: SessionRecord[]; attemptBindings: AttemptBinding[]; operationReceipts: OperationReceipt[];
   attemptOperations: Record<string, AttemptOperationRecord>;
   legacyRuns: SessionRunRecord[]; legacyArchiveKeys: ArchiveKeyEntry[] };
-export type RawSessionReplay = { sessionId: string; fromSequence: number; nextSequence: number;
-  complete: boolean; frames: { sequence: number; encoding: 'base64'; data: string }[] };
+/** CONTRACT ([C-R6], W0 amendment #3) — every `sequence` here is a BYTE OFFSET into the session's
+ *  output stream, not a frame counter: a frame's `sequence` is the offset of its first byte, counted
+ *  from the first byte the session ever produced. `fromSequence` is the offset the caller asked for,
+ *  `replayFrom` the offset the reader actually started at (higher when compaction or the 64 KiB window
+ *  moved it forward — earlier output was not kept), and `nextSequence` the offset one past the last
+ *  byte returned, which is the cursor the caller holds next. */
+export type RawSessionReplay = { sessionId: string; fromSequence: number; replayFrom: number;
+  nextSequence: number; complete: boolean;
+  frames: { sequence: number; encoding: 'base64'; data: string }[] };

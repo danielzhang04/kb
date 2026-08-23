@@ -566,7 +566,19 @@ export function createSessionPersistence(stateRoot: string): SessionPersistence 
 }
 
 export interface TranscriptRetention {
+  /**
+   * Append one frame. [C-R6]: `sequence` is the BYTE OFFSET of `data`'s first byte in the session's
+   * output stream (the registry mints it), and the returned `lastSequence` is the cumulative byte total
+   * that offset advances to — so the retained window on disk is always `[lastSequence - bytes, lastSequence)`.
+   */
   append(sessionId: string, sequence: number, data: Uint8Array): SessionRecordBase['transcript'];
+  /**
+   * Read-only: the current size in bytes of the session's `.raw` file on disk, or `0` if it does not
+   * exist. A cumulative byte total can never be smaller than what is still retained, so a resume that
+   * only trusts a stored `lastSequence` can under-mint when that value predates this file (e.g. a record
+   * written by an earlier build that stored a frame counter there instead). No writes.
+   */
+  retainedBytes?(sessionId: string): number;
 }
 
 export interface TranscriptRetentionFs {
@@ -583,16 +595,23 @@ export function createTranscriptRetention(
     throw new PtySessionPersistenceError('invalid-input', 'PTY transcript retention configuration is invalid');
   }
   const directory = resolve(stateRoot, 'pty', 'transcripts');
+  const pathFor = (sessionId: string): string => {
+    if (!SESSION_ID_RE.test(sessionId)) {
+      throw new PtySessionPersistenceError('invalid-input', 'PTY transcript session id is invalid');
+    }
+    const path = resolve(directory, `${sessionId}.raw`);
+    if (relative(directory, path).startsWith('..')) {
+      throw new PtySessionPersistenceError('invalid-input', 'PTY transcript path is invalid');
+    }
+    return path;
+  };
   return {
     append(sessionId, sequence, data) {
       if (!SESSION_ID_RE.test(sessionId) || !safeInteger(sequence) || data.byteLength > 65_536) {
         throw new PtySessionPersistenceError('invalid-input', 'PTY transcript frame is invalid');
       }
       mkdirSync(directory, { recursive: true, mode: 0o700 });
-      const path = resolve(directory, `${sessionId}.raw`);
-      if (relative(directory, path).startsWith('..')) {
-        throw new PtySessionPersistenceError('invalid-input', 'PTY transcript path is invalid');
-      }
+      const path = pathFor(sessionId);
       const currentBytes = existsSync(path) ? statSync(path).size : 0;
       // Common case: the frame fits under the cap, so it is an fsync'd append — no full rewrite
       // and no rename per frame. Compaction is reserved for the truncating append below.
@@ -608,7 +627,7 @@ export function createTranscriptRetention(
           path: `pty/transcripts/${sessionId}.raw`,
           bytes: currentBytes + data.byteLength,
           truncated: false,
-          lastSequence: sequence,
+          lastSequence: sequence + data.byteLength,
         };
       }
       const current = currentBytes > 0 ? readFileSync(path) : Buffer.alloc(0);
@@ -631,8 +650,12 @@ export function createTranscriptRetention(
         path: `pty/transcripts/${sessionId}.raw`,
         bytes: retained.byteLength,
         truncated: true,
-        lastSequence: sequence,
+        lastSequence: sequence + data.byteLength,
       };
+    },
+    retainedBytes(sessionId) {
+      const path = pathFor(sessionId);
+      return existsSync(path) ? statSync(path).size : 0;
     },
   };
 }

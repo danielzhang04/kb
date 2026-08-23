@@ -1,43 +1,26 @@
 // @vitest-environment jsdom
 /**
- * Component tests for `<ConsolePane>` — the reusable live-shell pane extracted out of the Terminal view.
- * The socket is injected (fake `socketFactory`) and xterm/fit are mocked, so nothing here opens a real
- * WebSocket or touches a canvas.
- *
- * The load-bearing test in this file is the LAST one: a pane must not reconnect when its props are
- * rebuilt. Everything else here is behaviour the old `TerminalTab` already had; that one is the property
- * the extraction had to ADD, because an embedded console is rendered with inline object/arrow props and
- * a reconnect on a spawn target is a second shell against the daemon's 8-terminal cap.
+ * P3 W6.4 — `<ConsolePane>` against the v2 frame protocol. The socket is injected and xterm is mocked,
+ * so nothing here opens a real WebSocket or measures a real grid. What is pinned: the first frame is a
+ * `create` or an `attach` (never a query), keystrokes leave as base64 `input` frames, output arrives
+ * base64-decoded, a read-only replay wires no keystroke path at all, a lost socket keeps the scrollback
+ * and offers Reattach from the cursor, and every refusal is SHOWN.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 beforeAll(() => {
-  // jsdom ships no ResizeObserver, and the pane's reflow effect (which also installs the window-resize
-  // listener) bails out entirely without one. Stub it so the fit path is reachable from a test at all.
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-  }
   if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
     window.matchMedia = ((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
+      matches: false, media: query, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
     })) as unknown as typeof window.matchMedia;
   }
 });
 
 const xtermReg = vi.hoisted(() => ({
-  instances: [] as Array<{ writes: string[]; dataCb: ((d: string) => void) | null; disposed: boolean }>,
+  instances: [] as Array<{ writes: string[]; dataCb: ((d: string) => void) | null; options: Record<string, unknown> }>,
 }));
 
 vi.mock('@xterm/xterm', () => {
@@ -46,42 +29,41 @@ vi.mock('@xterm/xterm', () => {
     rows = 24;
     writes: string[] = [];
     dataCb: ((d: string) => void) | null = null;
-    disposed = false;
-    constructor() {
+    options: Record<string, unknown>;
+    constructor(options: Record<string, unknown>) {
+      this.options = options;
       xtermReg.instances.push(this);
     }
     loadAddon() {}
     open() {}
-    write(d: string) {
-      this.writes.push(d);
-    }
-    onData(cb: (d: string) => void) {
-      this.dataCb = cb;
-    }
-    dispose() {
-      this.disposed = true;
-    }
+    write(d: string) { this.writes.push(d); }
+    onData(cb: (d: string) => void) { this.dataCb = cb; }
+    dispose() {}
   }
   return { Terminal: FakeXTerm };
 });
 vi.mock('@xterm/addon-fit', () => {
-  class FakeFitAddon {
-    fit() {}
-  }
+  class FakeFitAddon { fit() {} }
   return { FitAddon: FakeFitAddon };
 });
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
-import { ConsolePane, consoleTargetKey, parseControlFrame } from './ConsolePane';
-import type { ConsoleControl, ConsoleTarget } from './ConsolePane';
-import type { PtySpawnTarget, TerminalSessionsClient } from '../lib/terminalClient';
+import { ConsolePane, LOST_OUTPUT_NOTICE, closureMessage, consoleTargetKey } from './ConsolePane';
+import { encodeInput } from '../lib/terminalClient';
+import type { TerminalSessionsClient } from '../lib/terminalClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
-import { renderWithTestSession } from '../test/session';
+import type { SessionSummary } from '../../shared/ptyProtocol.ts';
 
-function unlocked(ui: React.ReactElement, token = 'tok-abc'): React.ReactElement {
-  persistSession({ token, expiresAt: Date.now() + 60_000 });
-  return <SessionProvider>{ui}</SessionProvider>;
+const SESSION_ID = `pty-${'a'.repeat(32)}`;
+const ATTACHMENT_ID = `att-${'b'.repeat(32)}`;
+
+function summary(overrides: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    sessionId: SESSION_ID, name: 'shell 1', host: 'desktop', launcher: 'shell', rootId: 'repo',
+    cwd: 'ops', state: 'live', attachmentCount: 1, attachmentState: 'attached',
+    startedAt: '2026-08-22T10:00:00.000Z', endedAt: null, exit: null, ...overrides,
+  };
 }
 
 class FakeWS {
@@ -89,353 +71,364 @@ class FakeWS {
   readyState = 1;
   sent: string[] = [];
   closed = false;
-  protocols: string[] | undefined;
-  attachSessionId: string | undefined;
-  spawn: PtySpawnTarget | undefined;
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
-  onclose: ((ev?: { reason?: string }) => void) | null = null;
+  onclose: ((event?: { code?: number }) => void) | null = null;
   onerror: (() => void) | null = null;
-  send(d: string) {
-    this.sent.push(d);
-  }
-  close() {
-    this.readyState = 3;
-    this.closed = true;
-  }
-  controls(): Array<Record<string, unknown>> {
-    return this.sent.flatMap((s) => {
-      try {
-        return [JSON.parse(s) as Record<string, unknown>];
-      } catch {
-        return [];
-      }
-    });
+  send(d: string) { this.sent.push(d); }
+  close(code?: number) { this.readyState = 3; this.closed = true; this.onclose?.({ code }); }
+  frames(): Array<Record<string, unknown>> {
+    return this.sent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
   }
 }
 
 function makeFactory() {
   const sockets: FakeWS[] = [];
-  const factory = vi.fn((token: string, attachSessionId?: string, spawn?: PtySpawnTarget) => {
-    const ws = new FakeWS();
-    ws.protocols = ['kb-pty.v1', token];
-    ws.attachSessionId = attachSessionId;
-    ws.spawn = spawn;
-    sockets.push(ws);
-    return ws as unknown as WebSocket;
+  const factory = vi.fn(() => {
+    const socket = new FakeWS();
+    sockets.push(socket);
+    return socket as unknown as WebSocket;
   });
-  return { factory, sockets };
+  return { sockets, factory: factory as unknown as (token: string) => WebSocket };
 }
 
-function makeSessionsClient(): TerminalSessionsClient & { remove: ReturnType<typeof vi.fn> } {
-  return { list: vi.fn(async () => []), remove: vi.fn(async () => {}) };
+function stubSessionsClient(): TerminalSessionsClient {
+  return {
+    list: vi.fn(async () => ({ revision: 1, sessions: [] })),
+    remove: vi.fn(async () => ({ ok: true as const })),
+  };
+}
+
+function unlocked(ui: React.ReactElement, token = 'tok-abc'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
+
+/** Wait until the pane's lazy xterm import has resolved and its socket exists. */
+async function openedSocket(sockets: FakeWS[]): Promise<FakeWS> {
+  await waitFor(() => expect(sockets.length).toBeGreaterThan(0));
+  await act(async () => { sockets[0].onopen?.(); });
+  return sockets[0];
 }
 
 afterEach(() => {
   clearStoredSession();
   cleanup();
   xtermReg.instances.length = 0;
-  localStorage.clear();
   vi.clearAllMocks();
 });
 
-describe('ConsolePane — target grammar', () => {
-  it('keys attach and spawn targets distinctly, and by VALUE not identity', () => {
-    // Two literals describing the same spawn are the same connection. This is the whole reason the
-    // connection effect keys on a string: object identity churns on every parent render.
-    expect(consoleTargetKey({ mode: 'spawn', spawn: { mode: 'agent', agentId: 'fyt-runner' } })).toBe(
-      consoleTargetKey({ mode: 'spawn', spawn: { mode: 'agent', agentId: 'fyt-runner' } }),
-    );
-    expect(consoleTargetKey({ mode: 'spawn' })).toBe('spawn:');
-    expect(consoleTargetKey({ mode: 'attach', sessionId: 'pty-9' })).toBe('attach:pty-9');
-    expect(consoleTargetKey({ mode: 'spawn', spawn: { mode: 'claude' } })).not.toBe(
-      consoleTargetKey({ mode: 'spawn', spawn: { mode: 'agent', agentId: 'claude' } }),
-    );
-  });
-
-  it('parses only exact control frames; shell output that merely looks like JSON still streams', () => {
-    expect(parseControlFrame('{"type":"error","reason":"too-many-terminals"}')).toEqual({
-      type: 'error',
-      reason: 'too-many-terminals',
-    });
-    expect(parseControlFrame('{"type":"session","sessionId":"pty-1"}')).toEqual({
-      type: 'session',
-      sessionId: 'pty-1',
-    });
-    expect(parseControlFrame('{"type":"resize"}')).toBeNull();
-    expect(parseControlFrame('{ not json')).toBeNull();
-    expect(parseControlFrame('$ ls')).toBeNull();
+describe('consoleTargetKey', () => {
+  it('separates the three modes and every create shape', () => {
+    expect(consoleTargetKey({ mode: 'attach', sessionId: SESSION_ID }))
+      .not.toBe(consoleTargetKey({ mode: 'replay', sessionId: SESSION_ID }));
+    expect(consoleTargetKey({ mode: 'create', launcher: 'shell', rootId: 'repo', relativeCwd: '.' }))
+      .not.toBe(consoleTargetKey({ mode: 'create', launcher: 'claude', rootId: 'repo', relativeCwd: '.' }));
+    // Rebuilding the same literal is the SAME key — a parent re-render may never mint a second session.
+    expect(consoleTargetKey({ mode: 'create', launcher: 'shell', rootId: 'repo', relativeCwd: 'a' }))
+      .toBe(consoleTargetKey({ mode: 'create', launcher: 'shell', rootId: 'repo', relativeCwd: 'a' }));
   });
 });
 
-describe('ConsolePane — connection', () => {
-  it('opens nothing while locked', async () => {
-    const { factory } = makeFactory();
-    render(
-      <SessionProvider>
-        <ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} />
-      </SessionProvider>,
-    );
-    await act(async () => Promise.resolve());
-    expect(factory).not.toHaveBeenCalled();
-  });
-
-  it('renders its locked-safe empty state with NO session provider at all', async () => {
-    // An embedded console lives inside presentational surfaces that are legitimately rendered from a
-    // literal fixture. Missing context must degrade, not throw and take the whole surface down.
-    const { factory } = makeFactory();
-    render(<ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} />);
-    await act(async () => Promise.resolve());
-    expect(factory).not.toHaveBeenCalled();
-    expect(screen.getByTestId('console-panel')).toBeTruthy();
-  });
-
-  it('spawns with the requested target and carries the bearer in the subprotocol', async () => {
-    const { factory, sockets } = makeFactory();
-    render(
-      unlocked(
-        <ConsolePane
-          target={{ mode: 'spawn', spawn: { mode: 'agent', agentId: 'fyt-runner' } }}
-          visible
-          socketFactory={factory}
-        />,
-      ),
-    );
-    await waitFor(() => expect(sockets.length).toBe(1));
-    expect(factory).toHaveBeenCalledWith('tok-abc', undefined, { mode: 'agent', agentId: 'fyt-runner' });
-    expect(sockets[0].protocols).toEqual(['kb-pty.v1', 'tok-abc']);
-  });
-
-  it('attaches to an existing session and NEVER passes a spawn alongside it', async () => {
-    const { factory, sockets } = makeFactory();
-    render(unlocked(<ConsolePane target={{ mode: 'attach', sessionId: 'pty-7' }} visible socketFactory={factory} />));
-    await waitFor(() => expect(sockets.length).toBe(1));
-    expect(factory).toHaveBeenCalledWith('tok-abc', 'pty-7', undefined);
-  });
-
-  it('streams raw bytes into xterm, keystrokes back, and reports bind/error/exit', async () => {
-    const { factory, sockets } = makeFactory();
-    const onSession = vi.fn();
-    const onError = vi.fn();
-    const onExit = vi.fn();
-    render(
-      unlocked(
-        <ConsolePane
-          target={{ mode: 'spawn' }}
-          visible
-          socketFactory={factory}
-          onSession={onSession}
-          onError={onError}
-          onExit={onExit}
-        />,
-      ),
-    );
-    await waitFor(() => expect(sockets[0]?.onmessage).toBeTruthy());
-    const ws = sockets[0];
-
-    await act(async () => {
-      ws.onopen?.();
-      ws.onmessage?.({ data: JSON.stringify({ type: 'session', sessionId: 'pty-bound' }) });
-      ws.onmessage?.({ data: 'hello from the shell' });
-    });
-    expect(onSession).toHaveBeenCalledWith('pty-bound');
-    expect(xtermReg.instances[0].writes).toContain('hello from the shell');
-    // The bind frame is control, not output: it must never reach the grid.
-    expect(xtermReg.instances[0].writes.join('')).not.toContain('pty-bound');
-
-    act(() => {
-      xtermReg.instances[0].dataCb?.('ls -la\r');
-    });
-    expect(ws.sent).toContain('ls -la\r');
-
-    await act(async () => {
-      ws.onmessage?.({ data: JSON.stringify({ type: 'error', reason: 'too-many-terminals' }) });
-    });
-    expect(onError).toHaveBeenCalledWith('too-many-terminals');
-    // The refusal renders IN the pane — an operator must be able to read it where they are.
-    expect(screen.getByTestId('console-panel-error').textContent).toContain('too-many-terminals');
-
-    await act(async () => {
-      ws.onclose?.({ reason: 'shell exited' });
-    });
-    expect(onExit).toHaveBeenCalledWith('shell exited');
-  });
-
-  it('does NOT report an exit on an unexpected disconnect (a daemon restart is not a dead shell)', async () => {
-    const { factory, sockets } = makeFactory();
-    const onExit = vi.fn();
-    render(unlocked(<ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} onExit={onExit} />));
-    await waitFor(() => expect(sockets[0]?.onclose).toBeTruthy());
-    await act(async () => {
-      sockets[0].onclose?.({});
-    });
-    expect(onExit).not.toHaveBeenCalled();
-  });
-
-  it('publishes a close control that kills the shell gracefully over a live socket', async () => {
-    const { factory, sockets } = makeFactory();
-    let control: ConsoleControl | null = null;
-    render(
-      unlocked(
-        <ConsolePane
-          target={{ mode: 'spawn' }}
-          visible
-          socketFactory={factory}
-          registerControl={(c) => {
-            control = c;
-          }}
-        />,
-      ),
-    );
-    await waitFor(() => expect(sockets[0]?.onmessage).toBeTruthy());
-    await act(async () => {
-      sockets[0].onopen?.();
-    });
-    await waitFor(() => expect(control).not.toBeNull());
-    act(() => (control as unknown as ConsoleControl).requestClose());
-    expect(sockets[0].controls()).toContainEqual({ type: 'close' });
-  });
-
-  it('falls back to the REST kill when the socket is already gone', async () => {
-    const { factory, sockets } = makeFactory();
-    const client = makeSessionsClient();
-    let control: ConsoleControl | null = null;
-    const onExit = vi.fn();
-    persistSession({ token: 'tok-abc', expiresAt: Date.now() + 60_000 });
-    await renderWithTestSession(
+describe('opening', () => {
+  it('sends a create frame naming a launcher, a root id and a relative cwd — never a command', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
       <ConsolePane
-        target={{ mode: 'attach', sessionId: 'pty-dead' }}
+        target={{ mode: 'create', launcher: 'claude', rootId: 'worktrees', relativeCwd: 'feature' }}
         visible
         socketFactory={factory}
-        sessionsClient={client}
-        onExit={onExit}
-        registerControl={(c) => {
-          control = c;
-        }}
+        sessionsClient={stubSessionsClient()}
       />,
-    );
-    await waitFor(() => expect(control).not.toBeNull());
-    sockets[0].readyState = 3; // socket died without a close frame
-    act(() => (control as unknown as ConsoleControl).requestClose());
-    expect(client.remove).toHaveBeenCalledWith('pty-dead', 'tok-abc');
-    expect(onExit).toHaveBeenCalled();
+    ));
+    const socket = await openedSocket(sockets);
+    expect(socket.frames()).toHaveLength(1);
+    const frame = socket.frames()[0];
+    expect(frame.type).toBe('create');
+    expect(frame.launcher).toBe('claude');
+    expect(frame.rootId).toBe('worktrees');
+    expect(frame.relativeCwd).toBe('feature');
+    expect(Object.keys(frame)).not.toContain('command');
+  });
+
+  it('attaches an existing session from sequence zero', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane target={{ mode: 'attach', sessionId: SESSION_ID }} visible socketFactory={factory} sessionsClient={stubSessionsClient()} />,
+    ));
+    const socket = await openedSocket(sockets);
+    expect(socket.frames()[0]).toMatchObject({ type: 'attach', sessionId: SESSION_ID, fromSequence: 0 });
+  });
+
+  it('opens nothing without a session bearer', async () => {
+    const { sockets, factory } = makeFactory();
+    render(<SessionProvider><ConsolePane target={{ mode: 'attach', sessionId: SESSION_ID }} visible socketFactory={factory} sessionsClient={stubSessionsClient()} /></SessionProvider>);
+    await act(async () => {});
+    expect(sockets).toHaveLength(0);
   });
 });
 
-/**
- * The property the extraction exists to guarantee. `TerminalTab` keyed its connection on the `spawn`
- * OBJECT and on every callback prop; that was only safe because the tab manager fed it state-held objects
- * and `useCallback` sinks. Any embedded caller passes literals, so under those deps a parent re-render
- * would tear the socket down and open ANOTHER shell.
- */
-describe('ConsolePane — a re-render is never a reconnect', () => {
-  it('keeps ONE socket across re-renders that rebuild every object and callback prop', async () => {
-    const { factory, sockets } = makeFactory();
-    const Wrapper = ({ n }: { n: number }): React.JSX.Element => (
+describe('the live stream', () => {
+  it('writes base64-decoded output and sends keystrokes as base64 input frames', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane target={{ mode: 'attach', sessionId: SESSION_ID }} visible socketFactory={factory} sessionsClient={stubSessionsClient()} />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'attached', requestId: 'req-00000000000000000000000000000001', revision: 3,
+        session: summary(), attachmentId: ATTACHMENT_ID, replayFrom: 0, nextSequence: 0,
+      }) });
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'data', requestId: null, sessionId: SESSION_ID, attachmentId: ATTACHMENT_ID,
+        sequence: 0, encoding: 'base64', data: encodeInput('hello\r\n'), replay: false,
+      }) });
+    });
+    expect(xtermReg.instances[0].writes).toEqual(['hello\r\n']);
+    await act(async () => { xtermReg.instances[0].dataCb?.('ls'); });
+    const input = socket.frames().find((frame) => frame.type === 'input');
+    expect(input).toMatchObject({
+      sessionId: SESSION_ID, attachmentId: ATTACHMENT_ID, encoding: 'base64', data: encodeInput('ls'),
+    });
+  });
+
+  it('shows a refusal instead of swallowing it', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane target={{ mode: 'attach', sessionId: SESSION_ID }} visible socketFactory={factory} sessionsClient={stubSessionsClient()} />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'error', requestId: null, sessionId: SESSION_ID, code: 'capacity', detail: null,
+      }) });
+    });
+    expect(screen.getByTestId('console-panel-diagnostic').textContent).toMatch(/maximum number of sessions/i);
+    expect(screen.getByTestId('console-panel').getAttribute('data-state')).toBe('error');
+  });
+
+  it('refuses to render a frame the decoder cannot verify', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane target={{ mode: 'attach', sessionId: SESSION_ID }} visible socketFactory={factory} sessionsClient={stubSessionsClient()} />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => { socket.onmessage?.({ data: 'raw pty output that used to be written straight to the grid' }); });
+    expect(xtermReg.instances[0].writes).toEqual([]);
+    expect(screen.getByTestId('console-panel-diagnostic').textContent).toMatch(/could not verify/i);
+  });
+});
+
+describe('detach, close and reattach', () => {
+  it('detaches without ending the session, then reattaches from the cursor', async () => {
+    const { sockets, factory } = makeFactory();
+    let control: { requestDetach(): void } | null = null;
+    render(unlocked(
       <ConsolePane
-        // Every one of these is a FRESH identity on each render — exactly how an embedded caller writes it.
-        target={{ mode: 'spawn', spawn: { mode: 'agent', agentId: 'fyt-runner' } }}
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
         visible
         socketFactory={factory}
-        sessionsClient={makeSessionsClient()}
-        onSession={() => {}}
-        onError={() => {}}
-        onExit={() => {}}
-        registerControl={() => {}}
-        ariaLabel={`render ${n}`}
-      />
-    );
-    const { rerender } = render(unlocked(<Wrapper n={1} />));
-    await waitFor(() => expect(sockets.length).toBe(1));
+        sessionsClient={stubSessionsClient()}
+        registerControl={(value) => { control = value; }}
+      />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'attached', requestId: 'req-00000000000000000000000000000001', revision: 1,
+        session: summary(), attachmentId: ATTACHMENT_ID, replayFrom: 0, nextSequence: 0,
+      }) });
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'data', requestId: null, sessionId: SESSION_ID, attachmentId: ATTACHMENT_ID,
+        sequence: 4, encoding: 'base64', data: encodeInput('x'), replay: false,
+      }) });
+    });
+    await act(async () => { control?.requestDetach(); });
+    expect(socket.frames().at(-1)).toMatchObject({ type: 'detach', sessionId: SESSION_ID, attachmentId: ATTACHMENT_ID });
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'ack', requestId: 'req-00000000000000000000000000000002', action: 'detach',
+        sessionId: SESSION_ID, revision: 2, attachmentId: ATTACHMENT_ID,
+      }) });
+    });
+    expect(screen.getByTestId('console-panel').getAttribute('data-state')).toBe('detached');
 
-    for (let n = 2; n <= 5; n++) {
-      rerender(unlocked(<Wrapper n={n} />));
-      await act(async () => Promise.resolve());
-    }
-
-    expect(factory).toHaveBeenCalledTimes(1);
-    expect(sockets).toHaveLength(1);
-    expect(sockets[0].closed).toBe(false);
-    expect(xtermReg.instances).toHaveLength(1); // and no orphaned xterm instances either
-  });
-
-  it('DOES reconnect when the target genuinely changes', async () => {
-    const { factory, sockets } = makeFactory();
-    const Wrapper = ({ target }: { target: ConsoleTarget }): React.JSX.Element => (
-      <ConsolePane target={target} visible socketFactory={factory} />
-    );
-    const { rerender } = render(unlocked(<Wrapper target={{ mode: 'spawn', spawn: { mode: 'claude' } }} />));
-    await waitFor(() => expect(sockets.length).toBe(1));
-
-    rerender(unlocked(<Wrapper target={{ mode: 'attach', sessionId: 'pty-3' }} />));
+    fireEvent.click(screen.getByTestId('console-panel-reattach'));
     await waitFor(() => expect(sockets.length).toBe(2));
-    expect(sockets[0].closed).toBe(true); // the old socket detached
-    expect(sockets[1].attachSessionId).toBe('pty-3');
+    await act(async () => { sockets[1].onopen?.(); });
+    // The cursor is a BYTE offset: the frame started at 4 and carried one byte, so 5 is the next byte
+    // this pane has not seen. The scrollback survives, the bytes resume.
+    expect(sockets[1].frames()[0]).toMatchObject({ type: 'attach', sessionId: SESSION_ID, fromSequence: 5 });
+    expect(xtermReg.instances).toHaveLength(1);
   });
 
-  it('hides by display, never by unmounting — the socket and scrollback survive going invisible', async () => {
-    const { factory, sockets } = makeFactory();
-    const { rerender } = render(unlocked(<ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} />));
-    await waitFor(() => expect(sockets.length).toBe(1));
+  it('advances its cursor by BYTES and then adopts the cursor the server names', async () => {
+    const { sockets, factory } = makeFactory();
+    let control: { requestDetach(): void } | null = null;
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
+        visible
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+        registerControl={(value) => { control = value; }}
+      />,
+    ));
+    const socket = await openedSocket(sockets);
+    expect(socket.frames()[0]).toMatchObject({ type: 'attach', fromSequence: 0 });
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'attached', requestId: 'req-00000000000000000000000000000001', revision: 1,
+        session: summary(), attachmentId: ATTACHMENT_ID, replayFrom: 0, nextSequence: 0,
+      }) });
+      // Five BYTES from offset zero. Four of them are one multibyte character, so a cursor counting
+      // characters or frames would send a different number here and lose or duplicate output.
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'data', requestId: null, sessionId: SESSION_ID, attachmentId: ATTACHMENT_ID,
+        sequence: 0, encoding: 'base64', data: encodeInput('a€a'), replay: false,
+      }) });
+    });
+    await act(async () => { control?.requestDetach(); });
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'ack', requestId: 'req-00000000000000000000000000000002', action: 'detach',
+        sessionId: SESSION_ID, revision: 2, attachmentId: ATTACHMENT_ID,
+      }) });
+    });
+    fireEvent.click(screen.getByTestId('console-panel-reattach'));
+    await waitFor(() => expect(sockets.length).toBe(2));
+    await act(async () => { sockets[1].onopen?.(); });
+    expect(sockets[1].frames()[0]).toMatchObject({ type: 'attach', fromSequence: 5 });
 
-    rerender(unlocked(<ConsolePane target={{ mode: 'spawn' }} visible={false} socketFactory={factory} />));
-    await act(async () => Promise.resolve());
-    const pane = screen.getByTestId('console-panel');
-    expect(pane.className).not.toContain('console-pane--visible');
-    expect(pane.getAttribute('aria-hidden')).toBe('true');
-    expect(sockets).toHaveLength(1);
-    expect(sockets[0].closed).toBe(false);
+    // The server's cursor wins on every attach: it knows what it actually replayed.
+    await act(async () => {
+      sockets[1].onmessage?.({ data: JSON.stringify({
+        type: 'attached', requestId: 'req-00000000000000000000000000000003', revision: 3,
+        session: summary(), attachmentId: ATTACHMENT_ID, replayFrom: 5, nextSequence: 4_096,
+      }) });
+    });
+    await act(async () => { control?.requestDetach(); });
+    await act(async () => {
+      sockets[1].onmessage?.({ data: JSON.stringify({
+        type: 'ack', requestId: 'req-00000000000000000000000000000004', action: 'detach',
+        sessionId: SESSION_ID, revision: 4, attachmentId: ATTACHMENT_ID,
+      }) });
+    });
+    fireEvent.click(screen.getByTestId('console-panel-reattach'));
+    await waitFor(() => expect(sockets.length).toBe(3));
+    await act(async () => { sockets[2].onopen?.(); });
+    expect(sockets[2].frames()[0]).toMatchObject({ type: 'attach', fromSequence: 4_096 });
   });
 
-  it('disposes xterm and detaches the socket on unmount', async () => {
-    const { factory, sockets } = makeFactory();
-    const { unmount } = render(unlocked(<ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} />));
-    await waitFor(() => expect(sockets.length).toBe(1));
-    unmount();
-    expect(sockets[0].closed).toBe(true);
-    expect(xtermReg.instances[0].disposed).toBe(true);
+  it('says so once, in plain words, when the replay could not start where it asked', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
+        visible
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'attached', requestId: 'req-00000000000000000000000000000001', revision: 1,
+        session: summary(), attachmentId: ATTACHMENT_ID, replayFrom: 65_536, nextSequence: 131_072,
+      }) });
+    });
+    const written = xtermReg.instances[0].writes.join('');
+    expect(written).toContain(LOST_OUTPUT_NOTICE);
+    // No numbers, no cursor, no byte counts: none of that is the operator's to reconcile.
+    expect(written).not.toMatch(/65_?536|131_?072/);
+  });
+
+  it('writes no notice when the server replayed everything the pane asked for', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
+        visible
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => {
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'attached', requestId: 'req-00000000000000000000000000000001', revision: 1,
+        session: summary(), attachmentId: ATTACHMENT_ID, replayFrom: 0, nextSequence: 12,
+      }) });
+    });
+    expect(xtermReg.instances[0].writes.join('')).not.toContain(LOST_OUTPUT_NOTICE);
+  });
+
+  it('gives the operator different words for a shed connection than for an ordinary one', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
+        visible
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => { socket.onclose?.({ code: 1013 }); });
+    expect(screen.getByTestId('console-panel').textContent).toContain(closureMessage('backpressure'));
+    expect(closureMessage('backpressure')).not.toBe(closureMessage('normal'));
+    expect(closureMessage('normal')).toBe(closureMessage('other'));
+    for (const reason of ['policy', 'tooLarge', 'error'] as const) {
+      expect(closureMessage(reason)).not.toBe(closureMessage('normal'));
+    }
+  });
+
+  it('closes through the socket while live and through the REST route once it is gone', async () => {
+    const { sockets, factory } = makeFactory();
+    const sessionsClient = stubSessionsClient();
+    let control: { requestClose(): void } | null = null;
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
+        visible
+        socketFactory={factory}
+        sessionsClient={sessionsClient}
+        registerControl={(value) => { control = value; }}
+      />,
+    ));
+    const socket = await openedSocket(sockets);
+    await act(async () => { control?.requestClose(); });
+    expect(socket.frames().at(-1)).toMatchObject({ type: 'close', sessionId: SESSION_ID });
+
+    socket.readyState = 3;
+    await act(async () => { control?.requestClose(); });
+    expect(sessionsClient.remove).toHaveBeenCalledWith(SESSION_ID, 'tok-abc');
   });
 });
 
-describe('ConsolePane — testid addressing', () => {
-  it('suffixes every testid so a manager can address one pane among many', async () => {
-    const { factory } = makeFactory();
-    render(unlocked(<ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} testIdSuffix="-7" />));
-    await waitFor(() => expect(screen.getByTestId('console-panel-7')).toBeTruthy());
-    expect(screen.getByTestId('console-surface-7')).toBeTruthy();
-    expect(screen.getByTestId('console-screen-7')).toBeTruthy();
-  });
-
-  it('marks the pane with its connection state for styling and diagnosis', async () => {
-    const { factory, sockets } = makeFactory();
-    render(unlocked(<ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} />));
-    await waitFor(() => expect(sockets.length).toBe(1));
-    expect(screen.getByTestId('console-panel').getAttribute('data-state')).toBe('connecting');
+describe('read-only replay', () => {
+  it('wires no keystroke path and says so', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane target={{ mode: 'replay', sessionId: SESSION_ID }} visible socketFactory={factory} sessionsClient={stubSessionsClient()} />,
+    ));
+    const socket = await openedSocket(sockets);
     await act(async () => {
-      sockets[0].onopen?.();
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'attached', requestId: 'req-00000000000000000000000000000001', revision: 1,
+        session: summary(), attachmentId: ATTACHMENT_ID, replayFrom: 0, nextSequence: 2,
+      }) });
+      socket.onmessage?.({ data: JSON.stringify({
+        type: 'data', requestId: null, sessionId: SESSION_ID, attachmentId: ATTACHMENT_ID,
+        sequence: 0, encoding: 'base64', data: encodeInput('past output'), replay: true,
+      }) });
     });
-    expect(screen.getByTestId('console-panel').getAttribute('data-state')).toBe('connected');
-  });
-});
-
-describe('ConsolePane — fit guard', () => {
-  it('relays geometry only when the socket is open, and never while hidden', async () => {
-    const { factory, sockets } = makeFactory();
-    render(unlocked(<ConsolePane target={{ mode: 'spawn' }} visible socketFactory={factory} />));
-    await waitFor(() => expect(sockets.length).toBe(1));
-    const host = screen.getByTestId('console-screen');
-
-    // jsdom leaves offsetParent null (the "I am hidden" signal), so no resize frame is sent.
-    await act(async () => {
-      sockets[0].onopen?.();
-    });
-    expect(sockets[0].controls().some((c) => c.type === 'resize')).toBe(false);
-
-    // With a real offsetParent the same path DOES relay the PTY its window size.
-    Object.defineProperty(host, 'offsetParent', { configurable: true, value: document.body });
-    await act(async () => {
-      fireEvent(window, new Event('resize'));
-    });
-    expect(sockets[0].controls()).toContainEqual({ type: 'resize', cols: 80, rows: 24 });
+    expect(xtermReg.instances[0].writes).toEqual(['past output']);
+    expect(xtermReg.instances[0].options.disableStdin).toBe(true);
+    expect(xtermReg.instances[0].dataCb).toBeNull();
+    expect(screen.getByTestId('console-panel-readonly')).toBeTruthy();
+    // Nothing beyond the opening attach was ever sent: no input, no resize.
+    expect(socket.frames().every((frame) => frame.type === 'attach')).toBe(true);
   });
 });
