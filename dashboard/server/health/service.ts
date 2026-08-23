@@ -4,7 +4,7 @@ import { loadOverride, loadPolicy } from '../routing/policy.ts';
 import { indexConnections } from '../registry/connections.ts';
 import { buildHealthPanel } from './fleet.ts';
 import { buildUsagePanel } from './usage.ts';
-import { runtimeCapabilities } from '../runtime/capabilities.ts';
+import { runtimeHostCapabilities } from '../runtime/capabilities.ts';
 import type { LivenessStatus } from './fleet.ts';
 import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
 import type { RunnableRef, Schedule } from '../control/p2Contracts.ts';
@@ -58,7 +58,9 @@ const deferredValue = 'unavailable in P1' as const;
 export const defaultHealthReaders: HealthReaders = {
   fleet: (repoRoot) => buildHealthPanel(repoRoot, loadPolicy(repoRoot), loadOverride(repoRoot)),
   stop: (repoRoot) => existsSync(join(repoRoot, 'STOP')),
-  platform: () => runtimeCapabilities().platform,
+  // Health reads the non-PTY host slice only: reporting the daemon platform must never construct or
+  // probe a PTY capability.
+  platform: () => runtimeHostCapabilities().platform,
   connections: indexConnections,
   usage: buildUsagePanel,
   owners: declaredScheduleOwners,

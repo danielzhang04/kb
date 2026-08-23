@@ -43,6 +43,44 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+describe('App runtime capability wiring', () => {
+  const DISABLED_COPY = 'Terminal is disabled on this host.';
+  const AVAILABLE_CAPABILITIES = {
+    pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'],
+    checkedAt: '2026-08-22T09:00:00.000Z', localTranscripts: true, platform: 'win32',
+  };
+
+  /** Render the shell with `/api/runtime/capabilities` answered by exactly this outcome. */
+  async function renderWithCapabilities(outcome: { reject: true } | { payload: unknown }): Promise<void> {
+    fetchStub = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) !== '/api/runtime/capabilities') return new Promise<Response>(() => undefined);
+      return 'reject' in outcome
+        ? Promise.reject(new Error('capabilities unreachable'))
+        : Promise.resolve(new Response(JSON.stringify(outcome.payload), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchStub);
+    authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
+    await renderApp();
+    await waitFor(() => expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/runtime/capabilities')).toBe(true));
+  }
+
+  it('never advertises a terminal from a payload the decoder refuses', async () => {
+    // The retired bare-boolean payload: `pty: true` with no closed capability behind it.
+    await renderWithCapabilities({ payload: { pty: true, localTranscripts: true } });
+    await waitFor(() => expect(screen.getByText(DISABLED_COPY)).toBeTruthy());
+  });
+
+  it('never advertises a terminal when the capability fetch fails', async () => {
+    await renderWithCapabilities({ reject: true });
+    await waitFor(() => expect(screen.getByText(DISABLED_COPY)).toBeTruthy());
+  });
+
+  it('enables the terminal only for a valid available capability', async () => {
+    await renderWithCapabilities({ payload: AVAILABLE_CAPABILITIES });
+    await waitFor(() => expect(screen.queryByText(DISABLED_COPY)).toBe(null));
+  });
+});
+
 describe('App P1 shell', () => {
   it('preserves an attention-filtered roster deep link through the shell', async () => {
     window.history.replaceState(null, '', '/?view=agents&filter=attention');

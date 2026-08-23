@@ -10,6 +10,7 @@ import {
 } from './p1BrowserFixture.ts';
 import { decodeEntityDetail, decodeEntityList } from '../../src/lib/entityClient.ts';
 import { decodeHomeResponse } from '../../src/lib/homeClient.ts';
+import { decodeRuntimeCapabilities } from '../../src/lib/runtimeCapabilities.tsx';
 import { decodeScheduleCollection } from '../../src/lib/scheduleClient.ts';
 import { decodeOperationalEvent, getRun, type OperationalEventDto } from '../../src/control/controlClient.ts';
 import { serializeRunEventFold } from '../../src/control/runEventRecords.ts';
@@ -66,7 +67,15 @@ describe('P1 browser fixture', () => {
     expect(await (await fetch(`${populated.origin}/assets/app.js`)).text()).toContain('__P1_BROWSER_FIXTURE__');
     expect((await fetch(`${populated.origin}/not-a-fixture-route`)).status).toBe(404);
     expect(await (await fetch(`${populated.origin}/api/auth/context`)).json()).toEqual({ mode: 'tailnet' });
-    expect(await (await fetch(`${populated.origin}/api/runtime/capabilities`)).json()).toEqual({ pty: false, localTranscripts: false });
+    const fixtureCapabilities = await (await fetch(`${populated.origin}/api/runtime/capabilities`)).json();
+    expect(fixtureCapabilities).toEqual({
+      pty: false,
+      diagnostic: { reason: 'broker-unavailable', detail: null, checkedAt: '2026-08-22T00:00:00.000Z' },
+      localTranscripts: false,
+    });
+    // Not a same-belief assertion: the fixture body must survive the browser's own decoder, or the
+    // fixture is advertising a shape the real app would refuse.
+    expect(decodeRuntimeCapabilities(fixtureCapabilities)).toEqual(fixtureCapabilities);
 
     const inbox = await (await fetch(`${populated.origin}/api/inbox`)).json() as { items: Array<{ title: string; reason: string }> };
     expect(inbox.items).toHaveLength(1);

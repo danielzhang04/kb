@@ -1,5 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import { composeHealth } from './service.ts';
+// Health may read the non-PTY host slice and nothing else: these two spies stand over the exact
+// capability entry points a regression would reach for, so the assertion below can actually fail.
+const { probeSpy, composeSpy } = vi.hoisted(() => ({ probeSpy: vi.fn(), composeSpy: vi.fn() }));
+vi.mock('../runtime/capabilities.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../runtime/capabilities.ts')>();
+  return {
+    ...actual,
+    probePublicPtyCapability: (...args: Parameters<typeof actual.probePublicPtyCapability>) => {
+      probeSpy(...args);
+      return actual.probePublicPtyCapability(...args);
+    },
+    runtimeCapabilities: (...args: Parameters<typeof actual.runtimeCapabilities>) => {
+      composeSpy(...args);
+      return actual.runtimeCapabilities(...args);
+    },
+  };
+});
+import { composeHealth, defaultHealthReaders } from './service.ts';
 import type { Schedule } from '../control/p2Contracts.ts';
 
 const now = () => '2026-08-21T12:00:00.000Z';
@@ -15,6 +32,19 @@ function readers() {
     now,
   };
 }
+
+describe('defaultHealthReaders', () => {
+  it('answers the platform row without ever probing or composing a PTY capability', () => {
+    expect(defaultHealthReaders.platform()).toBe(process.platform);
+    // Red on regression: wiring Health to the composed capability instead of the host slice would
+    // drag the composition-time host probe into a read route.
+    expect(probeSpy).not.toHaveBeenCalled();
+    expect(composeSpy).not.toHaveBeenCalled();
+    composeHealth('/repo', { ...readers(), platform: defaultHealthReaders.platform });
+    expect(probeSpy).not.toHaveBeenCalled();
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+});
 
 describe('composeHealth', () => {
   it('composes the exact HealthResponse envelope and isolates reader failure with a closed unavailable row', () => {

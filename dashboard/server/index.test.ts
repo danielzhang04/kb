@@ -8,6 +8,8 @@ import { makeSurfaceContext as makeProductionSurfaceContext } from './http/surfa
 import { mintSession } from './auth/session.ts';
 import type { SessionConfig } from './auth/session.ts';
 import { runtimeCapabilities } from './runtime/capabilities.ts';
+// The browser's own decoder, run against the REAL route body: the cutover rests on this coupling.
+import { decodeRuntimeCapabilities } from '../src/lib/runtimeCapabilities.tsx';
 import { fileURLToPath } from 'node:url';
 import { createInMemoryControlPlaneStore } from './control/store.ts';
 import { request as httpRequest } from 'node:http';
@@ -70,12 +72,17 @@ function makeSurfaceContext(
 ) {
   return makeProductionSurfaceContext({ controlStore: createInMemoryControlPlaneStore(), ...overrides }, activation);
 }
+/** What a successful composition-time host probe publishes; nothing registers a PTY without it. */
+const AVAILABLE_PTY = {
+  pty: true as const, host: 'desktop' as const, launchers: ['shell' as const],
+  roots: ['repo' as const], checkedAt: '2026-08-22T09:00:00.000Z',
+};
 const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
 const ptyMatrixApp = () => buildApp({
   validateData: false,
   allowedOrigins: [TEST_ORIGIN],
   sessionConfig: TEST_SESSION,
-  runtimeCapabilities: runtimeCapabilities('win32'),
+  runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
   createPtyHost: () => ({
     open: () => { throw new Error('unauthenticated PTY matrix must not open a session'); },
     stop: () => false,
@@ -127,6 +134,102 @@ describe('server', () => {
     expect(release).toHaveBeenCalledTimes(1);
   });
 
+  it('probes the host exactly once at composition and hands buildApp the closed capability', async () => {
+    const { lease } = countingLease();
+    const probePtyCapability = vi.fn(async () => AVAILABLE_PTY);
+    let composed: Parameters<typeof buildProductionApp>[0] | undefined;
+    const built = {
+      addHook: () => undefined,
+      listen: async () => undefined,
+      close: async () => undefined,
+    } as unknown as ReturnType<typeof buildProductionApp>;
+    app = await start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      probePtyCapability,
+      buildApplication: (options) => { composed = options; return built; },
+    });
+    app = undefined;
+    expect(probePtyCapability).toHaveBeenCalledOnce();
+    expect(composed?.runtimeCapabilities).toMatchObject({
+      pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'],
+    });
+  });
+
+  it('composes the closed refusal when the one composition probe fails', async () => {
+    const { lease } = countingLease();
+    let composed: Parameters<typeof buildProductionApp>[0] | undefined;
+    const built = {
+      addHook: () => undefined,
+      listen: async () => undefined,
+      close: async () => undefined,
+    } as unknown as ReturnType<typeof buildProductionApp>;
+    await start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      probePtyCapability: async () => ({
+        pty: false as const,
+        diagnostic: { reason: 'broker-unavailable' as const, detail: null, checkedAt: '2026-08-22T09:00:00.000Z' },
+      }),
+      buildApplication: (options) => { composed = options; return built; },
+    });
+    expect(composed?.runtimeCapabilities).toMatchObject({
+      pty: false, diagnostic: { reason: 'broker-unavailable', detail: null },
+    });
+  });
+
+  it('composes the closed refusal and still boots when the one composition probe throws', async () => {
+    const { lease } = countingLease();
+    let composed: Parameters<typeof buildProductionApp>[0] | undefined;
+    const built = {
+      addHook: () => undefined,
+      listen: async () => undefined,
+      close: async () => undefined,
+    } as unknown as ReturnType<typeof buildProductionApp>;
+    await start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      probePtyCapability: async () => { throw new Error('host probe exploded'); },
+      buildApplication: (options) => { composed = options; return built; },
+    });
+    expect(composed?.runtimeCapabilities?.pty).toBe(false);
+    // Boot continued: the refusal composes into a real app that answers and registers no PTY route.
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: composed?.runtimeCapabilities, traceRoot: null,
+      createPtyHost: () => { throw new Error('must not construct'); },
+    });
+    const answered = await app.inject({
+      method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
+    });
+    expect(answered.statusCode).toBe(200);
+    expect(answered.json()).toMatchObject({ pty: false });
+    expect((await app.inject({
+      method: 'GET', url: '/api/pty/sessions', headers: sessionHeaders(),
+    })).statusCode).toBe(404);
+  });
+
+  it('publishes a capability body the browser decoder accepts, on both the available and refused route outcomes', async () => {
+    app = ptyMatrixApp();
+    const available = decodeRuntimeCapabilities((await app.inject({
+      method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
+    })).json());
+    expect(available).not.toBeNull();
+    expect(available).toMatchObject({
+      pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'], checkedAt: AVAILABLE_PTY.checkedAt,
+    });
+    await app.close();
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'), traceRoot: null,
+    });
+    const refused = decodeRuntimeCapabilities((await app.inject({
+      method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
+    })).json());
+    expect(refused).toEqual({
+      pty: false,
+      diagnostic: { reason: 'broker-unavailable', detail: null, checkedAt: '' },
+      localTranscripts: false,
+    });
+  });
+
   it('releases the entrypoint lease once when listen fails', async () => {
     const { lease, release } = countingLease();
     let onClose: (() => Promise<void>) | undefined;
@@ -158,7 +261,12 @@ describe('server', () => {
     expect(capabilities.json()).toMatchObject({
       pty: false, runnerTrigger: false, vibe: false, durablePrWrites: false,
       localTranscripts: false, dashboardBridge: true,
+      diagnostic: { reason: 'broker-unavailable', detail: null },
     });
+    // The refused capability publishes a closed diagnostic and nothing else about the host.
+    expect(capabilities.json()).not.toHaveProperty('host');
+    expect(capabilities.json()).not.toHaveProperty('epochId');
+    expect(capabilities.json()).not.toHaveProperty('launchers');
     expect((await app.inject({ method: 'GET', url: '/api/pty/sessions', headers: sessionHeaders() })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/trace', headers: sessionHeaders() })).statusCode).toBe(404);
     expect(createPty).not.toHaveBeenCalled();

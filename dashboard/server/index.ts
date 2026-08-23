@@ -35,7 +35,10 @@ import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
 import type { SurfaceContext } from './http/context.ts';
-import type { RuntimeCapabilities } from './runtime/capabilities.ts';
+import {
+  probePublicPtyCapability, runtimeCapabilities, unavailablePtyCapability, type RuntimeCapabilities,
+} from './runtime/capabilities.ts';
+import type { PublicPtyCapability } from './pty/contracts.ts';
 import type { VibeSpawner } from './vibe/session.ts';
 import { createPtyHost } from './pty/host.ts';
 import { resolveDashboardStateRoot } from './composer/store.ts';
@@ -388,6 +391,8 @@ export interface StartOptions {
   leaseFactory?: typeof acquireWriterLease;
   /** @internal */
   buildApplication?: typeof buildApp;
+  /** @internal The one composition-time PTY probe; production runs the real host probe. */
+  probePtyCapability?: typeof probePublicPtyCapability;
 }
 
 /** Production Schedule boot unit, exported so crash/restart tests exercise the exact startup path. */
@@ -442,9 +447,23 @@ export async function start(
       });
       await runScheduleBootMigrations(repoRoot, controlStore);
     }
+    // The one and only PTY probe of this process: composition asks the real host once, before any
+    // route/registry/store exists. A refusal is published as the closed `pty:false` capability, and
+    // every PTY construction below is gated on it — an unavailable host builds nothing at all. A
+    // probe that throws is also just a refusal: boot must not die because the terminal stack cannot
+    // be resolved, so the daemon comes up with no terminal instead of not coming up.
+    let ptyCapability: PublicPtyCapability;
+    try {
+      ptyCapability = await (options.probePtyCapability ?? probePublicPtyCapability)({
+        epochId: randomUUID(),
+      });
+    } catch {
+      ptyCapability = unavailablePtyCapability(process.platform, new Date().toISOString());
+    }
     const app = buildApplication({
       repoRoot,
       validateData: true,
+      runtimeCapabilities: runtimeCapabilities(process.platform, ptyCapability),
       ...(controlStore
         ? { controlStore }
         : { fileControlAccess: { mode: 'already-locked' as const, lease } }),

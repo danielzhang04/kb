@@ -51,9 +51,15 @@ describe('Agent P2 routes', () => {
     token = mintSession('operator', SESSION).token;
     store = createInMemoryControlPlaneStore();
     app = Fastify();
-    registerAgents(app, makeSurfaceContext({
+    registerAgents(app, surfaceFor(runtimeCapabilities('linux')));
+    await app.ready();
+  });
+
+  /** One surface builder so a test can mount the same routes over a different composed capability. */
+  function surfaceFor(capabilities: ReturnType<typeof runtimeCapabilities>) {
+    return makeSurfaceContext({
       repoRoot: root, durableRepoRoot: durableRoot, stateRoot: join(root, 'state'), controlStore: store, sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], runtimeCapabilities: runtimeCapabilities('linux'),
+      allowedOrigins: [ORIGIN], runtimeCapabilities: capabilities,
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
       appendAudit: (_repo, event) => ({ ts: 'now', ...event }),
       appendAuditLocal: (_repo, event) => ({ ts: 'now', ...event }),
@@ -65,9 +71,8 @@ describe('Agent P2 routes', () => {
         const op = JSON.parse(jsonArg) as { runId: string; stages: Array<{ id: string }> };
         return { exitCode: 0, stdout: `${JSON.stringify({ runId: op.runId, cards: op.stages.map((stage) => ({ stageId: stage.id, cardId: workflowCardId(op.runId, stage.id), state: 'blocked', cardPath: `queue/inbox/${workflowCardId(op.runId, stage.id)}.md` })) })}\n`, stderr: '' };
       },
-    }));
-    await app.ready();
-  });
+    });
+  }
   afterEach(async () => { await app.close(); rmSync(root, { recursive: true, force: true }); rmSync(durableRoot, { recursive: true, force: true }); });
 
   it('serves grouped EntitySummary and EntityDetail envelopes with ETag replay', async () => {
@@ -144,7 +149,34 @@ describe('Agent P2 routes', () => {
     expect(store.listRuns('operator', 'all-subjects')).toHaveLength(1);
     expect(store.listRuns('operator', 'all-subjects')[0]).toMatchObject({
       owner: { type: 'agent', id: 'research-worker', sourcePath: 'agents/research-worker.md' },
-      executionHost: expect.stringMatching(/^(desktop|vm)$/),
+      executionHost: 'vm',
     });
+  });
+
+  it('stores and previews the executionHost the composed capability advertises, on both platforms', async () => {
+    const headers = { origin: ORIGIN, host: 'localhost:5317', authorization: `Bearer ${token}` };
+    const detail = (await app.inject({ method: 'GET', url: '/api/agents/research-worker' })).json();
+    // Refused capability: the single platform mapper answers 'vm' for the run AND the preview row,
+    // which is what a re-derived `process.platform` on this Windows box would get wrong.
+    expect(JSON.stringify((await app.inject({ method: 'GET', url: '/api/agents' })).json())).toContain('"host":"vm"');
+    expect((await app.inject({
+      method: 'POST', url: '/api/agents/research-worker/launch', headers,
+      payload: { expectedSourceRevision: detail.details.sourceRevision, idempotencyKey: 'host-refused' },
+    })).statusCode).toBe(202);
+    expect(store.listRuns('operator', 'all-subjects')[0]?.executionHost).toBe('vm');
+
+    store = createInMemoryControlPlaneStore();
+    const desktop = Fastify();
+    registerAgents(desktop, surfaceFor(runtimeCapabilities('win32', {
+      pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'], checkedAt: '2026-08-22T09:00:00.000Z',
+    })));
+    await desktop.ready();
+    expect(JSON.stringify((await desktop.inject({ method: 'GET', url: '/api/agents' })).json())).toContain('"host":"desktop"');
+    expect((await desktop.inject({
+      method: 'POST', url: '/api/agents/research-worker/launch', headers,
+      payload: { expectedSourceRevision: detail.details.sourceRevision, idempotencyKey: 'host-advertised' },
+    })).statusCode).toBe(202);
+    expect(store.listRuns('operator', 'all-subjects')[0]?.executionHost).toBe('desktop');
+    await desktop.close();
   });
 });

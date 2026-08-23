@@ -36,6 +36,7 @@ import type { AttentionEnvelope, HostKind, OutputRef, RunOutcome, RunRow, Runnab
 import type { EntityDetail, EntityList } from '../entities/contracts.ts';
 import { patchEntityBuilderSource, renderWorkflowBuilderSource, submitEntityBuilder, type EntityBuilderCatalog, type EntityBuilderPort } from '../entities/builder.ts';
 import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { runtimeExecutionHost } from '../runtime/capabilities.ts';
 import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs, projectOutputRef } from '../entities/outputs.ts';
 import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
@@ -659,8 +660,10 @@ export async function launchDeclaredAgent(
   };
   const owner: RunnableRef = { type: 'agent', id: declaration.id, sourcePath: declaration.source as `agents/${string}.md` };
   return launchDefinition(ctx, sub, sessionToken, definition, idempotencyKey, null, {
+    // The Agent launch records the SAME host the composed capability advertises to the browser, so a
+    // launched run and the agent's preview host can never disagree.
     owner,
-    executionHost: resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud'),
+    executionHost: runtimeExecutionHost(ctx.runtimeCapabilities),
   });
 }
 

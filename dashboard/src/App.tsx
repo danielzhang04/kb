@@ -3,7 +3,10 @@ import { ExecutionArmingProvider } from './control/ExecutionUnlock';
 import { getAttention } from './control/controlClient';
 import { fetchInbox } from './lib/inboxClient';
 import { createInboxRefresher } from './lib/inboxRefresher';
-import { type ClientRuntimeCapabilities, RuntimeCapabilitiesProvider } from './lib/runtimeCapabilities';
+import {
+  type ClientRuntimeCapabilities, decodeRuntimeCapabilities, RuntimeCapabilitiesProvider,
+  UNAVAILABLE_RUNTIME_CAPABILITIES,
+} from './lib/runtimeCapabilities';
 import { SessionProvider, useSession } from './lib/sessionContext';
 import { useSse, type SseFactory } from './lib/sseClient';
 import { applyTheme, persistThemeChoice, readThemeChoice, type ThemeChoice } from './lib/theme';
@@ -200,7 +203,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
   const [rail, setRail] = useState(view === 'terminal');
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
-  const [runtimeCapabilities, setRuntimeCapabilities] = useState<ClientRuntimeCapabilities>({ pty: true, localTranscripts: false });
+  const [runtimeCapabilities, setRuntimeCapabilities] = useState<ClientRuntimeCapabilities>(UNAVAILABLE_RUNTIME_CAPABILITIES);
   const [runAgentId, setRunAgentId] = useState<string | null>(null);
   const [runWorkflowId, setRunWorkflowId] = useState<string | null>(null);
   const { count: controlTick } = useSse('/events', session?.token ? undefined : DISABLED_SSE_FACTORY);
@@ -238,12 +241,15 @@ function AuthenticatedAppShell(): React.JSX.Element {
     void fetch('/api/runtime/capabilities', { headers: { authorization: `Bearer ${session.token}` } })
       .then(async (response) => {
         if (!response.ok) throw new Error('runtime capabilities unavailable');
-        return response.json() as Promise<{ pty?: unknown; localTranscripts?: unknown }>;
+        return response.json() as Promise<unknown>;
       })
-      .then((capabilities) => {
-        if (alive) setRuntimeCapabilities({ pty: capabilities.pty === true, localTranscripts: capabilities.localTranscripts === true });
+      .then((payload) => {
+        // A payload without the closed capability is not a terminal we may advertise: the decoder
+        // refuses it and the app falls back to the same closed unavailable state as a failed fetch.
+        const capabilities = decodeRuntimeCapabilities(payload);
+        if (alive) setRuntimeCapabilities(capabilities ?? UNAVAILABLE_RUNTIME_CAPABILITIES);
       })
-      .catch(() => { if (alive) setRuntimeCapabilities({ pty: false, localTranscripts: false }); });
+      .catch(() => { if (alive) setRuntimeCapabilities(UNAVAILABLE_RUNTIME_CAPABILITIES); });
     return () => { alive = false; };
   }, [session?.token]);
 
@@ -286,7 +292,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
         </header>
         <main className={terminalVisible ? 'mc-main mc-main--terminal' : 'mc-main'}>
           <div className="persistent-terminal-surface" hidden={!terminalVisible} aria-hidden={!terminalVisible} data-testid="persistent-terminal-surface">
-            <Terminal ptyEnabled={runtimeCapabilities.pty} visible={terminalVisible} agentTarget={runAgentId} onAgentTargetConsumed={() => setRunAgentId(null)} workflowTarget={runWorkflowId} onWorkflowTargetConsumed={() => setRunWorkflowId(null)} />
+            <Terminal ptyEnabled={runtimeCapabilities.pty === true} visible={terminalVisible} agentTarget={runAgentId} onAgentTargetConsumed={() => setRunAgentId(null)} workflowTarget={runWorkflowId} onWorkflowTargetConsumed={() => setRunWorkflowId(null)} />
           </div>
           {view !== 'terminal' ? <ViewBody entry={current} onPush={push} onBack={() => setStack((value) => backStack(value))} onSectionChange={(section) => setStack((value) => setSectionOnStack(value, section))} onNavigateTarget={navigateTo} onOpenAgentTerminal={runAgent} onOpenWorkflowTerminal={runWorkflow} /> : null}
         </main>

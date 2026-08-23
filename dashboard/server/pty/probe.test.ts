@@ -166,3 +166,46 @@ describe('Windows PTY probe', () => {
     expect(result).toMatchObject({ available: false, reason: 'launcher-unavailable', detail: null });
   });
 });
+
+describe('toPublicPtyCapability — publish-boundary detail sanitization', () => {
+  const CHECKED_AT = '2026-08-22T09:00:00.000Z';
+  const closed = (detail: string | null) => toPublicPtyCapability({
+    available: false, host: 'desktop', transport: 'local-node-pty',
+    reason: 'launcher-unavailable', detail, checkedAt: CHECKED_AT,
+  });
+  const bytes = (value: string) => new TextEncoder().encode(value).length;
+
+  it('publishes a multi-line 200-byte detail as one line of at most 160 whole-codepoint UTF-8 bytes', () => {
+    const raw = `${'a'.repeat(50)}\r\nC:\Users\service\node_modules\node-pty\n${'é'.repeat(100)}`;
+    expect(bytes(raw)).toBeGreaterThan(200);
+    const published = closed(raw);
+    expect(published.pty).toBe(false);
+    const detail = published.pty === false ? published.diagnostic.detail : null;
+    expect(typeof detail).toBe('string');
+    expect(detail).not.toMatch(/[\r\n]/);
+    expect(bytes(detail ?? '')).toBeLessThanOrEqual(160);
+    // Truncation stopped on a code point: no replacement character, no split two-byte sequence.
+    expect(detail).not.toContain('�');
+    expect(detail?.startsWith('a'.repeat(50))).toBe(true);
+    expect(new TextDecoder('utf-8', { fatal: true }).decode(new TextEncoder().encode(detail ?? ''))).toBe(detail);
+  });
+
+  it('publishes null for a detail that is absent or only whitespace once flattened', () => {
+    const nulled = closed(null);
+    expect(nulled.pty === false && nulled.diagnostic.detail).toBe(null);
+    const blank = closed('\r\n   \n');
+    expect(blank.pty === false && blank.diagnostic.detail).toBe(null);
+  });
+
+  it('passes a short single-line detail through unchanged and never touches the available payload', () => {
+    const short = closed('broker probe refused');
+    expect(short.pty === false && short.diagnostic.detail).toBe('broker probe refused');
+    const available = toPublicPtyCapability({
+      available: true, host: 'desktop', transport: 'local-node-pty',
+      launchers: ['shell'], roots: ['repo'], epochId: 'epoch-1', checkedAt: CHECKED_AT,
+    });
+    expect(available).toEqual({
+      pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'], checkedAt: CHECKED_AT,
+    });
+  });
+});

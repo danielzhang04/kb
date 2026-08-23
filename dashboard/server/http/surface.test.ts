@@ -37,6 +37,11 @@ import { acquireWriterLease } from '../control/writerLease.ts';
 import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
+/** What a successful composition-time host probe publishes; nothing constructs a PTY without it. */
+const AVAILABLE_PTY = {
+  pty: true as const, host: 'desktop' as const, launchers: ['shell' as const],
+  roots: ['repo' as const], checkedAt: '2026-08-22T09:00:00.000Z',
+};
 const KB_REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
 const sessionConfig = { secret: SECRET, ttlMs: 60_000 };
@@ -149,14 +154,45 @@ afterEach(async () => {
 });
 
 describe('write surface — composition chain', () => {
-  it('does not construct the PTY host on Linux', () => {
+  it('constructs no PTY host, registry, store, or recorder when the probe refused', () => {
     const createPty = vi.fn(() => { throw new Error('must not construct'); });
     const ctx = makeSurfaceContext(
       { runtimeCapabilities: runtimeCapabilities('linux') },
       { createPtyHost: createPty },
     );
+    expect(ctx.runtimeCapabilities.pty).toBe(false);
     expect(createPty).not.toHaveBeenCalled();
     expect(ctx.ptyHost).toBeUndefined();
+    expect(ctx.ptySessions).toBeUndefined();
+    expect(ctx.ptySessionRuns).toBeUndefined();
+    expect(ctx.ptyTranscripts).toBeUndefined();
+  });
+
+  it('refuses the same way on Windows until composition supplies a probe result', () => {
+    const createPty = vi.fn(() => { throw new Error('must not construct'); });
+    const ctx = makeSurfaceContext(
+      { runtimeCapabilities: runtimeCapabilities('win32') },
+      { createPtyHost: createPty },
+    );
+    expect(ctx.runtimeCapabilities).toMatchObject({
+      pty: false, diagnostic: { reason: 'node-pty-unavailable', detail: null },
+    });
+    expect(createPty).not.toHaveBeenCalled();
+    expect(ctx.ptyHost).toBeUndefined();
+    expect(ctx.ptySessions).toBeUndefined();
+  });
+
+  it('constructs the whole PTY stack once the probe advertised the closed capability', () => {
+    const createPty = vi.fn(() => recordingPtyHost().host);
+    const ctx = makeSurfaceContext(
+      { runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY) },
+      { createPtyHost: createPty },
+    );
+    expect(createPty).toHaveBeenCalledOnce();
+    expect(ctx.ptyHost).toBeDefined();
+    expect(ctx.ptySessions).toBeDefined();
+    expect(ctx.ptySessionRuns).toBeDefined();
+    expect(ctx.ptyTranscripts).toBeDefined();
   });
 
   it('resolves outbox publication once and recovers the anchor before readiness', async () => {
@@ -1248,7 +1284,7 @@ describe('surface — shared PTY host fleet gate', () => {
       repoRoot: REPO_A,
       sessionConfig,
       allowedOrigins: [GOOD_ORIGIN],
-      runtimeCapabilities: runtimeCapabilities('win32'),
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
       ptyHost: underlying.host,
       runPreamble,
     });
@@ -1276,7 +1312,7 @@ describe('surface — shared PTY host fleet gate', () => {
       repoRoot: REPO_A,
       sessionConfig,
       allowedOrigins: [GOOD_ORIGIN],
-      runtimeCapabilities: runtimeCapabilities('win32'),
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
       ptyHost: underlying.host,
       runPreamble,
     });

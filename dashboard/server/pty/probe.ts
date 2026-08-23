@@ -132,10 +132,35 @@ export async function probeWindowsPty(options: WindowsPtyProbeOptions): Promise<
   };
 }
 
+const PUBLIC_DETAIL_MAX_BYTES = 160;
+const PUBLIC_DETAIL_ENCODER = new TextEncoder();
+
+/**
+ * P3 §3's detail rule is enforced HERE, at the publish boundary, not only in the browser decoder: a
+ * host detail becomes one line of at most 160 UTF-8 bytes or nothing at all, so an oversized or
+ * multi-line detail from a real host probe never crosses the wire into a log or a devtools pane.
+ * Truncation stops on a whole code point, so the published bytes are always valid UTF-8.
+ */
+export function sanitizePublicPtyDetail(detail: string | null): string | null {
+  if (detail === null) return null;
+  const singleLine = detail.replace(/[\r\n]+/g, ' ').trim();
+  if (singleLine === '') return null;
+  if (PUBLIC_DETAIL_ENCODER.encode(singleLine).length <= PUBLIC_DETAIL_MAX_BYTES) return singleLine;
+  let bytes = 0;
+  let truncated = '';
+  for (const character of singleLine) {
+    const size = PUBLIC_DETAIL_ENCODER.encode(character).length;
+    if (bytes + size > PUBLIC_DETAIL_MAX_BYTES) break;
+    bytes += size;
+    truncated += character;
+  }
+  return truncated === '' ? null : truncated;
+}
+
 export function toPublicPtyCapability(probe: PtyCapabilityProbe): PublicPtyCapability {
   if (!probe.available) {
     return { pty: false, diagnostic: {
-      reason: probe.reason, detail: probe.detail, checkedAt: probe.checkedAt,
+      reason: probe.reason, detail: sanitizePublicPtyDetail(probe.detail), checkedAt: probe.checkedAt,
     } };
   }
   return {

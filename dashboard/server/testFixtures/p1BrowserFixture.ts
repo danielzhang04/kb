@@ -68,6 +68,19 @@ export interface P1BrowserFixtureOptions {
   port?: number;
 }
 
+/**
+ * The fixture daemon hosts no PTY, so it publishes the closed unavailable capability with a fixed
+ * `checkedAt` — the browser decoder refuses a bare boolean, and the fixture must not be the one
+ * payload that still ships one.
+ */
+const FIXTURE_RUNTIME_CAPABILITIES = {
+  pty: false as const,
+  diagnostic: {
+    reason: 'broker-unavailable' as const, detail: null, checkedAt: '2026-08-22T00:00:00.000Z',
+  },
+  localTranscripts: false,
+};
+
 const CONTENT_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -336,7 +349,7 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     if (request.method !== 'GET') return json(reply, 404, { error: 'not found' });
 
     if (url.pathname === '/api/auth/context') return json(reply, 200, { mode: 'tailnet' });
-    if (url.pathname === '/api/runtime/capabilities') return json(reply, 200, { pty: false, localTranscripts: false });
+    if (url.pathname === '/api/runtime/capabilities') return json(reply, 200, FIXTURE_RUNTIME_CAPABILITIES);
 
     if (url.pathname === '/api/inbox') {
       state.inboxRequests += 1;

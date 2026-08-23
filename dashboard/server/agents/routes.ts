@@ -7,7 +7,8 @@ import { requireSession, verifiedSession, writeRateLimitHook } from '../http/mid
 import { originPlugin } from '../security/origin.ts';
 import type { EntityDetail, EntityList } from '../entities/contracts.ts';
 import { patchEntityBuilderSource, renderAgentBuilderSource, submitEntityBuilder, type EntityBuilderCatalog, type EntityBuilderPort } from '../entities/builder.ts';
-import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, resolveExecutionHost, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { runtimeExecutionHost } from '../runtime/capabilities.ts';
 import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs } from '../entities/outputs.ts';
 import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
@@ -68,8 +69,13 @@ function latestOutcome(runs: readonly ProjectableRun[]): { outcome: RunOutcome; 
   return completed[0] ? { outcome: completed[0].terminalOutcome, completedAt: completed[0].completedAt } : null;
 }
 
-function previewHost(): HostKind {
-  return resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud');
+/**
+ * The host an agent with no run yet would execute on: the composed runtime capability's own answer,
+ * never a second OS derivation in this file. An advertised terminal names its host; a refusal falls
+ * back to the single platform->host mapper inside `runtimeExecutionHost`.
+ */
+function previewHost(ctx: SurfaceContext): HostKind {
+  return runtimeExecutionHost(ctx.runtimeCapabilities);
 }
 
 function attentionForRuns(ctx: SurfaceContext, runs: readonly RunMetadata[]): AttentionEnvelope {
@@ -102,7 +108,7 @@ function projectionInput(ctx: SurfaceContext, declaration: DeclaredAgentDetail, 
     temporalLabel: latest
       ? `ran ${relativeTime(latest.completedAt, now)} ${BULLET} ${latest.outcome}`
       : projectLiveEmpty(null, nextScheduleOccurrence(ctx.controlStore, ref)?.nextAt ?? null),
-    host: hostRun?.executionHost ?? previewHost(),
+    host: hostRun?.executionHost ?? previewHost(ctx),
     activeRuns,
     gatedRunCount: attention.agents[ref.id] ?? 0,
     latestRun: latest?.outcome ?? null,
