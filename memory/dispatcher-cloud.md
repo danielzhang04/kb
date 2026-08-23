@@ -578,3 +578,16 @@
   documented cloud path). Restore-to-ops still owed (card 6a605ebb).
 - Push path: DIRECT-PUSH (ops written directly; remote reports "Bypassed rule violations"
   -- routine identity has the bypass, so no PR fallback needed this run).
+
+### 2026-08-23 nightly-review
+- Clean checks: preamble OK, pyyaml OK, sync_skills --check EXIT 0 (in sync).
+- Dispatch emitted 0 cards (nothing cloud-tier due); no approved records in queue/approvals/
+  and none on the approvals ref to verify in 4b. Working card 6a6bc3dd is codex-worker's and
+  state=halted (terminal) -- not mine, left untouched.
+- step-2b: naive `python scripts/sync_daemon_dirs.py --check` on ops EXIT 2 (script still
+  absent on ops -- main-authored; cards 6a605ebb + wake-2026-08-15 already own the restore).
+  Ran main's copy in refs-fallback mode (documented cloud path) -> EXIT 1, drift UNCHANGED
+  from 08-22: single ops-only file orgs/kb-ops/workflows/acceptance-run.md. Already fully
+  covered by umbrella card 6a7c0ebf (with a current 08-22 refresh whose output matches today's
+  exactly) -> filed NO new card and did NOT re-refresh (state unchanged; avoid churn).
+- Push path: recorded in the run summary.
