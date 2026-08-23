@@ -2,14 +2,19 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
   ApprovedAttemptDeclaration,
   AssignmentDeclaration,
+  AttemptBindingPort,
   AttemptLaunch,
   AttemptExecutionPort,
+  AttemptOperationRecord,
+  AttemptOperationStatus,
   BrowserController,
+  BrowserPrincipal,
   IterationDeclaration,
   LaunchRecipe,
   HostLaunch,
   ObservedExit,
   SessionHost,
+  SessionHostRequest,
   SessionRecordProvenance,
   SessionRecordState,
 } from './contracts.ts';
@@ -63,6 +68,17 @@ describe('P3 closed contracts', () => {
   it('makes host creation and attempt begin synchronous launch-returning ports', () => {
     expectTypeOf<ReturnType<SessionHost['create']>>().toEqualTypeOf<HostLaunch>();
     expectTypeOf<ReturnType<AttemptExecutionPort['begin']>>().toEqualTypeOf<AttemptLaunch>();
+  });
+
+  it('keeps the durable attempt-operation record closed and its port async (2026-08-23)', () => {
+    expectTypeOf<AttemptOperationStatus>().toEqualTypeOf<
+      'pending' | 'bound' | 'cancelled' | 'failed' | 'completed'
+    >();
+    expectTypeOf<ReturnType<AttemptBindingPort['readOperation']>>()
+      .toEqualTypeOf<Promise<AttemptOperationRecord | null>>();
+    expectTypeOf<Parameters<AttemptBindingPort['writeOperation']>[1]>()
+      .toEqualTypeOf<number | null>();
+    expectTypeOf<SessionHostRequest['principal']>().toEqualTypeOf<BrowserPrincipal>();
   });
 
   it('publishes every wire branch and the recipe/refusal matrices', () => {
@@ -134,6 +150,34 @@ const badAbandonedMissingReason: SessionRecordState = {
   state: 'abandoned', epochId: 'epoch-x', exit: { ...observedExit, reason: 'abandoned' },
 };
 
+// Host-request principal negatives (2026-08-23 ruling).
+const hostRequest = {} as SessionHostRequest;
+// @ts-expect-error every host create must name its principal
+const badRequestMissingPrincipal: SessionHostRequest = {
+  operationKey: 'op-x', recipe: {} as LaunchRecipe, rootId: 'worktrees',
+  relativeCwd: '', cols: 80, rows: 24,
+};
+// @ts-expect-error the principal is exactly {operator,browserSessionRef}
+const badPrincipalExtraKey: SessionHostRequest = { ...hostRequest, principal: { operator: 'o', browserSessionRef: 'b', runRef: 'run-x' } };
+
+// Durable attempt-operation negatives (2026-08-23 ruling).
+const operationRecord: AttemptOperationRecord = {
+  operationKey: 'op-x', requestHash: 'a'.repeat(64), status: 'pending', promptsDelivered: 0,
+  sessionId: null, attemptRef: null, receipt: null, revision: 0,
+  updatedAt: '2026-08-23T00:00:00.000Z',
+};
+// @ts-expect-error the operation status union is closed
+const badOperationStatus: AttemptOperationRecord = { ...operationRecord, status: 'archived' };
+// @ts-expect-error the CAS revision is required on every record
+const badOperationMissingRevision: AttemptOperationRecord = {
+  operationKey: 'op-x', requestHash: 'a'.repeat(64), status: 'pending', promptsDelivered: 0,
+  sessionId: null, attemptRef: null, receipt: null, updatedAt: '2026-08-23T00:00:00.000Z',
+};
+// @ts-expect-error writeOperation is async-only, never a synchronous CAS
+const badSyncWriteOperation: AttemptBindingPort['writeOperation'] = () => ({ ok: true, value: operationRecord });
+// @ts-expect-error expectedRevision is a number or null, never a string
+const badExpectedRevisionType: Parameters<AttemptBindingPort['writeOperation']>[1] = '1';
+
 // Async-port negatives.
 // @ts-expect-error create returns HostLaunch directly, never Promise<HostLaunch>
 const badAsyncCreate: SessionHost['create'] = async () => ({}) as never;
@@ -174,6 +218,12 @@ void [
   badExitedNull,
   badAbandonedExitReason,
   badAbandonedMissingReason,
+  badRequestMissingPrincipal,
+  badPrincipalExtraKey,
+  badOperationStatus,
+  badOperationMissingRevision,
+  badSyncWriteOperation,
+  badExpectedRevisionType,
   badAsyncCreate,
   badAsyncBegin,
   badRecipeLauncher,

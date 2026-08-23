@@ -1,3 +1,10 @@
+// P3 §3 closed contracts. Amendments ruled by P3 re-review, 2026-08-23:
+//   1. `SessionHostRequest.principal` (BrowserPrincipal) is REQUIRED — every host create names the
+//      operator and browser session it is charged to; controller-null Run sessions use the owning
+//      operator with `RUN_CONTROLLER_NULL_BROWSER_SESSION_REF`.
+//   2. Durable attempt-operation state: `AttemptOperationStatus`, `AttemptOperationRecord`,
+//      `AttemptBindingPort.readOperation`/`writeOperation` (CAS), and
+//      `PtySessionsDocumentV2.attemptOperations`. Internal only — no wire vector or manifest changes.
 import type { IterationOutcomeContract } from '../control/iterationOutcome.ts';
 import type { ExecutionProfile } from '../control/policy.ts';
 import type { ProposalStage, ResolvedAgentAssignment } from '../control/proposal.ts';
@@ -79,7 +86,11 @@ export type AttemptBinding = { operator: string; runRef: string; attemptRef: str
 export type ClaimRunControllerInput = { runRef: string; sessionId: string;
   expectedRunVersion: number; expectedSessionRevision: number };
 export type ClaimReceipt = { revision: number; sessionId: string; replayed: boolean };
-export type SessionHostRequest = { operationKey: string; recipe: LaunchRecipe; rootId: SafeRootId;
+/** Controller-null Run sessions carry this fixed `browserSessionRef`; it is deliberately outside the
+ *  43-char base64url minted-ref grammar so it can never collide with a real browser session. */
+export const RUN_CONTROLLER_NULL_BROWSER_SESSION_REF = 'run-controller-null' as const;
+export type SessionHostRequest = { operationKey: string; principal: BrowserPrincipal;
+  recipe: LaunchRecipe; rootId: SafeRootId;
   relativeCwd: string; cols: number; rows: number };
 export type HostStartReceipt = { operationKey: string; sessionId: string; epochId: string;
   revision: number; boundAt: string; replayed: boolean };
@@ -103,6 +114,11 @@ export interface AttemptBindingPort {
     managedSessionRef: string; sessionId: string }): Promise<PortResult<{ revision: number }>>;
   byAttempt(operator: string, attemptRef: string): AttemptBinding | null;
   bySession(operator: string, sessionId: string): AttemptBinding | null;
+  readOperation(operationKey: string): Promise<AttemptOperationRecord | null>;
+  /** Write-ahead CAS. `expectedRevision: null` means "must not exist" (create); any revision
+   *  mismatch (or a create over an existing key) refuses with `'binding-conflict'`. */
+  writeOperation(record: AttemptOperationRecord,
+    expectedRevision: number | null): Promise<PortResult<AttemptOperationRecord>>;
 }
 export interface AttemptExecutionPort {
   begin(input: ApprovedAttemptDeclaration): AttemptLaunch;
@@ -157,9 +173,17 @@ export type SessionRecord = SessionRecordBase & SessionRecordProvenance & Sessio
 export type OperationReceipt = { operationKey: string; requestHash: string;
   status: 'pending' | 'bound' | 'failed' | 'cancelled'; sessionId: string | null;
   attemptRef: string | null; refusal: HostRefusalCode | null; createdAt: string; settledAt: string | null };
+export type AttemptOperationStatus = 'pending' | 'bound' | 'cancelled' | 'failed' | 'completed';
+/** Durable write-ahead state for one attempt operation, keyed by `operationKey`. No optional
+ *  fields: absence is always an explicit `null`. `requestHash` is the sha256 hex of the canonical
+ *  declaration JSON. `revision` is the CAS token carried by `AttemptBindingPort.writeOperation`. */
+export type AttemptOperationRecord = { operationKey: string; requestHash: string;
+  status: AttemptOperationStatus; promptsDelivered: number; sessionId: string | null;
+  attemptRef: string | null; receipt: OperationReceipt | null; revision: number; updatedAt: string };
 export type ArchiveKeyEntry = { key: string; sessionRunRef: string; reason: string | null };
 export type PtySessionsDocumentV2 = { schema: 'kb.pty-sessions/v2'; revision: number;
   sessions: SessionRecord[]; attemptBindings: AttemptBinding[]; operationReceipts: OperationReceipt[];
+  attemptOperations: Record<string, AttemptOperationRecord>;
   legacyRuns: SessionRunRecord[]; legacyArchiveKeys: ArchiveKeyEntry[] };
 export type RawSessionReplay = { sessionId: string; fromSequence: number; nextSequence: number;
   complete: boolean; frames: { sequence: number; encoding: 'base64'; data: string }[] };
