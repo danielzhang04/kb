@@ -33,6 +33,7 @@ export interface RunInspectorProps {
   milestones: readonly string[];
   outputs: readonly OutputRef[];
   gate: RunInspectorGate | null;
+  additionalGates?: readonly RunInspectorGate[];
   ceremonyAvailable: boolean;
   details: RunInspectorDetails;
   busy?: boolean;
@@ -50,29 +51,7 @@ function outputLabel(output: OutputRef): string {
 
 export function RunInspector(props: RunInspectorProps): React.JSX.Element {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [response, setResponse] = useState('');
-  const [submittedGate, setSubmittedGate] = useState<string | null>(null);
-  const [responseError, setResponseError] = useState<string | null>(null);
-  const gate = props.gate;
-  const gateKey = gate ? `${gate.requestRef}:${gate.revision}` : null;
-  const unavailableT3 = gate !== null && isT3(gate) && !props.ceremonyAvailable;
-  const disabled = props.busy === true || gate === null || gate.state !== 'open'
-    || submittedGate === gateKey || unavailableT3;
-
-  const submit = (decision: OperatorDecision): void => {
-    if (!gate || disabled) return;
-    setSubmittedGate(gateKey);
-    setResponseError(null);
-    void Promise.resolve(props.onRespond({
-      requestRef: gate.requestRef,
-      expectedRevision: gate.revision,
-      decision,
-      response: response.trim() || null,
-    })).catch((cause: unknown) => {
-      setSubmittedGate(null);
-      setResponseError(cause instanceof Error ? cause.message : 'Response failed');
-    });
-  };
+  const gates = props.gate === null ? [] : [props.gate, ...(props.additionalGates ?? [])];
 
   return <div className="run-v3__inspector-content">
     <section><h2>Plan</h2><p>{props.plan}</p></section>
@@ -80,7 +59,61 @@ export function RunInspector(props: RunInspectorProps): React.JSX.Element {
     <section><h2>Built</h2><ul>{props.outputs.map((item) => <li key={`${item.kind}:${outputLabel(item)}`}>{outputLabel(item)}</li>)}</ul></section>
     <section>
       <h2>Gate</h2>
-      {gate ? <>
+      {gates.length > 0
+        ? <ul>{gates.map((gate) => <li key={`${gate.requestRef}:${gate.revision}`}>
+            <GateControl
+              gate={gate}
+              ceremonyAvailable={props.ceremonyAvailable}
+              busy={props.busy === true}
+              onRespond={props.onRespond}
+            />
+          </li>)}</ul>
+        : <p>No active gate.</p>}
+    </section>
+    <section>
+      <button type="button" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((value) => !value)}>Details</button>
+      {detailsOpen ? <div>
+        <p>{props.details.stepSkeleton}</p>
+        <p>{props.details.envelope}</p>
+        <ul>{props.details.linkedCards.map((item) => <li key={item}>{item}</li>)}</ul>
+        <ul>{props.details.evidence.map((item) => <li key={item}>{item}</li>)}</ul>
+        <ul>{props.details.ids.map((item) => <li key={item}>{item}</li>)}</ul>
+      </div> : null}
+    </section>
+  </div>;
+}
+
+interface GateControlProps {
+  gate: RunInspectorGate;
+  ceremonyAvailable: boolean;
+  busy: boolean;
+  onRespond(input: RunInspectorResponse): void | Promise<void>;
+}
+
+function GateControl(props: GateControlProps): React.JSX.Element {
+  const [response, setResponse] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [responseError, setResponseError] = useState<string | null>(null);
+  const gate = props.gate;
+  const unavailableT3 = isT3(gate) && !props.ceremonyAvailable;
+  const disabled = props.busy || gate.state !== 'open' || submitted || unavailableT3;
+
+  const submit = (decision: OperatorDecision): void => {
+    if (disabled) return;
+    setSubmitted(true);
+    setResponseError(null);
+    void Promise.resolve(props.onRespond({
+      requestRef: gate.requestRef,
+      expectedRevision: gate.revision,
+      decision,
+      response: response.trim() || null,
+    })).catch((cause: unknown) => {
+      setSubmitted(false);
+      setResponseError(cause instanceof Error ? cause.message : 'Response failed');
+    });
+  };
+
+  return <>
         <h3>{gate.title}</h3>
         <p>{gate.prompt}</p>
         <label>Response<textarea aria-label="Response" value={response} disabled={disabled} onChange={(event) => setResponse(event.target.value)} /></label>
@@ -94,17 +127,5 @@ export function RunInspector(props: RunInspectorProps): React.JSX.Element {
                 {gate.kind === 'review' ? 'Request changes' : 'Reject'}
               </button>
             </>}
-      </> : <p>No active gate.</p>}
-    </section>
-    <section>
-      <button type="button" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((value) => !value)}>Details</button>
-      {detailsOpen ? <div>
-        <p>{props.details.stepSkeleton}</p>
-        <p>{props.details.envelope}</p>
-        <ul>{props.details.linkedCards.map((item) => <li key={item}>{item}</li>)}</ul>
-        <ul>{props.details.evidence.map((item) => <li key={item}>{item}</li>)}</ul>
-        <ul>{props.details.ids.map((item) => <li key={item}>{item}</li>)}</ul>
-      </div> : null}
-    </section>
-  </div>;
+      </>;
 }

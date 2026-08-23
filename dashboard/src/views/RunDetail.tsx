@@ -130,7 +130,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     [detail, stream.events],
   );
   const visibleEvents = graph?.eventsFor(selectedStageRef) as OperationalEventDto[] | undefined;
-  const openGate = detail?.humanRequests.find((request) => request.state === 'open') ?? null;
+  const openGates = detail?.humanRequests.filter((request) => request.state === 'open') ?? [];
 
   const detach = (): void => {
     setAttached(false);
@@ -183,7 +183,8 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
       response: input.response,
       idempotencyKey: `human-response:${input.requestRef}:${input.expectedRevision}:${input.decision}`,
     };
-    const t3 = openGate !== null && ['approval', 'review', 'governance-refusal'].includes(openGate.kind);
+    const gate = openGates.find((request) => request.requestRef === input.requestRef);
+    const t3 = gate !== undefined && ['approval', 'review', 'governance-refusal'].includes(gate.kind);
     await (t3 ? respondToHumanRequestWithCeremony : respondToHumanRequest)(
       input.requestRef, body, active.token, props.fetchImpl,
     );
@@ -226,7 +227,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     {!replayComplete ? <p role="alert">Replay incomplete: the server cursor did not reach the end.</p> : null}
     {stopState === 'failed' ? <p role="alert">Stop failed: {stopError}</p> : null}
     {stopState === 'confirmed' ? <p role="status">Stop confirmed</p> : null}
-    {detail.run.state === 'waiting-human' && openGate === null
+    {detail.run.state === 'waiting-human' && openGates.length === 0
       ? <p role="alert">Run is waiting without an open request. Repair required.</p>
       : null}
 
@@ -265,7 +266,8 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
             plan={detail.run.title}
             milestones={detail.stages.map((stage) => `${stage.title} · ${stage.state}`)}
             outputs={outputs}
-            gate={openGate}
+            gate={openGates[0] ?? null}
+            additionalGates={openGates.slice(1)}
             ceremonyAvailable={session.mode === 'win32-desktop'}
             details={{
               stepSkeleton,

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { SYSTEM_ENTITY_GROUP_ID, type EntityDetail, type EntityList } from '../../server/entities/contracts.ts';
@@ -19,6 +20,23 @@ const detail: EntityDetail = {
   brief: { purpose: 'Checks FYT work.', doingNow: 'Idle.', recentRuns: [], outputs: [], pendingGates: 0, schedule: null, autonomyTier: 'queues-for-me' },
   details: { sourcePath: 'agents/fyt-checker.md', sourceRevision: 'a'.repeat(64), tools: [], declaredCeiling: 'queues-for-me', replaces: [], buildsOn: [], knowledgeSources: [], skills: [], schemas: ['agent-declaration/v1'], lineage: [], grades: [], ids: ['fyt-checker'] },
 };
+
+function HistoryAgents(): React.JSX.Element {
+  const [focusAgentId, setFocusAgentId] = useState<string | null>(() => window.history.state?.agentId ?? null);
+  useEffect(() => {
+    const restore = (event: PopStateEvent): void => setFocusAgentId(event.state?.agentId ?? null);
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+  return <Agents
+    focusAgentId={focusAgentId}
+    onOpenAgent={(id) => {
+      window.history.pushState({ agentId: id }, '', `/agents/${id}`);
+      setFocusAgentId(id);
+    }}
+    onBack={() => window.history.back()}
+  />;
+}
 
 describe('Agents P2 roster', () => {
   it('starts only the System group collapsed and keeps it last', async () => {
@@ -43,6 +61,59 @@ describe('Agents P2 roster', () => {
     expect(toggles.map((toggle) => toggle.textContent)).toEqual(['FYT 1']);
     expect(screen.getByRole('button', { name: 'System 1' }).getAttribute('aria-expanded')).toBe('false');
     expect(screen.getAllByRole('button').filter((button) => button.className === 'entity-card-group__toggle').map((button) => button.textContent)).toEqual(['FYT 1', 'System 1']);
+  });
+
+  it('preserves faceless-youtube and System collapse state across overlay history and Escape', async () => {
+    window.history.replaceState(null, '', '/agents');
+    const systemSummary = {
+      ...summary,
+      ref: { type: 'agent' as const, id: 'ops-daemon', sourcePath: 'agents/ops-daemon.md' as const },
+      humanName: 'Ops Daemon',
+    };
+    const builderSummary = {
+      ...summary,
+      ref: { type: 'agent' as const, id: 'agent-builder', sourcePath: 'agents/agent-builder.md' as const },
+      humanName: 'Agent Builder',
+    };
+    const groupedList: EntityList = {
+      revision: 'agents-history',
+      groups: [
+        { id: 'faceless-youtube', label: 'Faceless YouTube', collapsed: false, items: [summary] },
+        { id: 'builders', label: 'Builders', collapsed: false, items: [builderSummary] },
+        { id: SYSTEM_ENTITY_GROUP_ID, label: 'System', collapsed: false, items: [systemSummary] },
+      ],
+      items: [summary, builderSummary, systemSummary],
+    };
+    const builderDetail: EntityDetail = { ...detail, summary: builderSummary };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
+      String(input).includes('/agent-builder') ? builderDetail : groupedList,
+    ), { status: 200 })));
+
+    await renderWithTestSession(<HistoryAgents />);
+    const facelessToggle = await screen.findByRole('button', { name: 'Faceless YouTube 1' });
+    const systemToggle = screen.getByRole('button', { name: 'System 1' });
+    fireEvent.click(facelessToggle);
+    expect(facelessToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(systemToggle.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(screen.getAllByTestId('entity-card').find((card) => card.textContent?.includes('Agent Builder'))!);
+    expect(await screen.findByTestId('entity-detail-agent')).toBeTruthy();
+
+    window.history.back();
+    await waitFor(() => expect(screen.queryByTestId('entity-detail-agent')).toBeNull());
+    expect(facelessToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(systemToggle.getAttribute('aria-expanded')).toBe('false');
+
+    window.history.forward();
+    expect(await screen.findByTestId('entity-detail-agent')).toBeTruthy();
+    expect(facelessToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(systemToggle.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('entity-detail-agent')).toBeNull());
+    expect(facelessToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(systemToggle.getAttribute('aria-expanded')).toBe('false');
+    window.history.replaceState(null, '', '/');
   });
 
   it('retains only summaries with gated runs for the closed attention filter', async () => {

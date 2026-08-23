@@ -88,8 +88,8 @@ export function Agents({
   }, [list, rosterFilter, search]);
 
   const open = (id: string): void => {
-    setLocalOpen(id);
-    onOpenAgent?.(id);
+    if (onOpenAgent) onOpenAgent(id);
+    else setLocalOpen(id);
   };
   const close = (): void => {
     setLocalOpen(null);

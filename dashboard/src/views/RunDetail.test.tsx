@@ -56,6 +56,30 @@ function event(cursor: number, summary: string, stageRef: string | null): Operat
   };
 }
 
+function humanRequest(
+  requestRef: string,
+  kind: 'input' | 'approval',
+  title: string,
+): RunDetailDto['humanRequests'][number] {
+  return {
+    requestRef,
+    runRef: 'run-1',
+    displayName: 'Release dashboard',
+    shortRef: 1,
+    stageRef: 'stage-write',
+    kind,
+    state: 'open',
+    title,
+    prompt: `${title} prompt`,
+    ask: `${title} ask`,
+    technicalDetail: null,
+    revision: 1,
+    response: null,
+    createdAt: '2026-08-21T00:00:00.000Z',
+    updatedAt: '2026-08-21T00:00:00.000Z',
+  } as RunDetailDto['humanRequests'][number];
+}
+
 const events = [event(1, 'research complete', 'stage-research'), event(2, 'drafting now', 'stage-write')];
 const outputs: OutputRef[] = [
   { kind: 'repository-file', label: 'Report', path: 'reports/release.md' },
@@ -84,6 +108,56 @@ describe('Dashboard v3 Run view', () => {
     expect(screen.queryByRole('complementary', { name: 'Run inspector' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Expand inspector' }));
     expect(screen.getByRole('button', { name: 'Details' }).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('lists two open gates in server order and leaves one run attention after resolving the ordinary gate', async () => {
+    const t3 = humanRequest('request-t3', 'approval', 'Deployment approval');
+    const ordinary = humanRequest('request-ordinary', 'input', 'Operator input');
+    const initial = detail({ humanRequests: [t3, ordinary] });
+    const resolved = detail({
+      humanRequests: [t3, { ...ordinary, state: 'resolved', revision: 2 }],
+    });
+    let currentDetail = initial;
+    vi.stubGlobal('EventSource', class {
+      addEventListener(): void { /* no-op */ }
+      close(): void { /* no-op */ }
+    });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/events?')) return new Response(JSON.stringify({
+        revision: 'a'.repeat(64), items: events, nextCursor: null,
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (url.endsWith('/request-ordinary/respond') && init?.method === 'POST') {
+        currentDetail = resolved;
+        return new Response(JSON.stringify({ value: ordinary, replayed: false }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, value: currentDetail }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
+    render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' }) }}>
+      <RunDetail runRef="run-1" fetchImpl={fetchImpl} />
+    </SessionProvider>);
+    expect(await screen.findByText('Deployment approval')).toBeTruthy();
+    expect(screen.getByText('Operator input')).toBeTruthy();
+    const controls = screen.getAllByRole('textbox', { name: 'Response' });
+    expect(controls).toHaveLength(2);
+    expect((controls[0] as HTMLTextAreaElement).disabled).toBe(true);
+    expect((controls[1] as HTMLTextAreaElement).disabled).toBe(false);
+    expect(screen.getByText('Passkey ceremony unavailable')).toBeTruthy();
+    expect(Number(controls.length > 0)).toBe(1);
+
+    fireEvent.change(controls[1], { target: { value: 'Continue.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Respond' }));
+
+    await waitFor(() => expect(screen.queryByText('Operator input')).toBeNull());
+    expect(screen.getByText('Deployment approval')).toBeTruthy();
+    expect(screen.getAllByRole('textbox', { name: 'Response' })).toHaveLength(1);
+    expect(Number(screen.queryAllByRole('textbox', { name: 'Response' }).length > 0)).toBe(1);
   });
 
   it('pages through nextCursor until more than 250 transcript events are fully replayed', async () => {
@@ -154,17 +228,21 @@ describe('Dashboard v3 Run view', () => {
     expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Replay incomplete'));
   });
 
-  it('detaches without stopping, reattaches, and preserves replayed rows while reconnecting', () => {
+  it('detaches locally without a request or run-version change, then reattaches', () => {
     const onDetach = vi.fn();
     const onReattach = vi.fn();
+    const fetchImpl = vi.fn();
+    const runDetail = detail();
     render(unlocked(<RunDetail
-      runRef="run-1" detail={detail()} events={events} connection="reconnecting"
-      onDetach={onDetach} onReattach={onReattach}
+      runRef="run-1" detail={runDetail} events={events} connection="reconnecting"
+      onDetach={onDetach} onReattach={onReattach} fetchImpl={fetchImpl}
     />));
     expect(screen.getByText('Reconnecting…')).toBeTruthy();
     expect(screen.getByText('drafting now')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Detach' }));
     expect(onDetach).toHaveBeenCalledOnce();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(runDetail.run.version).toBe(4);
     expect(screen.getByRole('button', { name: 'Reattach' })).toBeTruthy();
     expect(screen.getByText('drafting now')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Reattach' }));
