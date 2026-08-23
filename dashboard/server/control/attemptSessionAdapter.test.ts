@@ -1,0 +1,1539 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  attemptDeclarationFingerprint,
+  createAttemptSessionAdapter,
+  parseAttemptResult,
+  type AttemptSessionRecorder,
+  type ResolvedClaudeLaunchPolicy,
+} from './attemptSessionAdapter.ts';
+import {
+  buildClaudeArgs,
+  createClaudeWorkerAdapter,
+  type ClaudeSpawnRequest,
+} from './claudeWorkerAdapter.ts';
+import { createWorkflowToolPolicyResolver } from './claudeLaunchPolicy.ts';
+import { buildCodexExecArgs, createCodexExecAdapter, type CodexExecSpawnRequest } from './codexExecAdapter.ts';
+import { loadExecutionProfiles, loadWorkflowProfiles } from './environment.ts';
+import type { WorkerAdapter, WorkerExecutionResult } from './execution.ts';
+import type { ExecutionProfile } from './policy.ts';
+import type { IterationOutcomeContract } from './iterationOutcome.ts';
+import type { ProposalStage, ResolvedAgentAssignment } from './proposal.ts';
+import {
+  RUN_CONTROLLER_NULL_BROWSER_SESSION_REF,
+  type ApprovedAttemptDeclaration,
+  type AttemptBinding,
+  type AttemptBindingPort,
+  type AttemptOperationRecord,
+  type AttemptParserContext,
+  type HostStartReceipt,
+  type ObservedExit,
+  type PortResult,
+  type PtyCapabilityProbe,
+  type SessionHost,
+  type SessionHostRequest,
+  type SessionSink,
+  type SessionSize,
+} from '../pty/contracts.ts';
+
+/** The host resolves `rootId` + `relativeCwd`; the retained adapters were handed an absolute path. */
+const REPO_ROOT = 'C:/kb';
+
+const CLAUDE_PROFILE: ExecutionProfile & { runtime: 'claude' } = {
+  id: 'claude-worker', role: 'worker', runtime: 'claude', model: 'claude-sonnet',
+  capabilities: ['read', 'write-approved-scope', 'emit-events'],
+};
+const CODEX_PROFILE: ExecutionProfile & { runtime: 'codex' } = {
+  id: 'codex-worker', role: 'worker', runtime: 'codex', model: 'gpt-5.6',
+  capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'],
+};
+const ASSIGNMENT: ResolvedAgentAssignment = {
+  agentId: 'reviewer-agent', declarationPath: '.agents/reviewer.md', declarationHash: 'a'.repeat(64),
+  profileId: CLAUDE_PROFILE.id, runtime: 'claude', model: CLAUDE_PROFILE.model,
+};
+const STAGE: ProposalStage = {
+  id: 'review-stage', title: 'Review stage', action: 'review:code', target: 'dashboard/server/control',
+  workOrder: 'Review the adapter.', riskTier: 'T1', dependsOn: [], worker: { runtime: 'claude', model: 'claude-sonnet' },
+  requiredSkills: ['code-review'], scope: { read: ['dashboard'], write: ['dashboard/server/control'] },
+  artifacts: [{ id: 'review-report', path: 'dashboard/review.md', description: 'Review result.' }],
+  checkpoints: [{ id: 'tests-green', label: 'Focused tests pass.' }], humanGates: [],
+  assignment: ASSIGNMENT, workflowProfile: 'research',
+};
+const ITERATION_CONTRACT: IterationOutcomeContract = {
+  iterationGroup: {
+    iterationGroupId: 'review-loop',
+    participants: [{ participantId: 'reviewer', stageRef: STAGE.id, role: 'judge', perspective: 'Correctness', mandate: 'Judge the change.' }],
+    routes: [{ routeId: 'review-route', senderParticipantId: 'author', recipientParticipantId: 'reviewer', requestKinds: ['review'], baseResolutionStageIds: [] }],
+    activation: { seedParticipantId: 'reviewer', seedArtifactIds: ['review-report'] },
+    initialStepId: 'review-step', schedule: [{ stepId: 'review-step', routeId: 'review-route', cycle: 'current' }],
+    artifacts: ['review-report'], criteria: [{ id: 'correct', description: 'The adapter is correct.' }],
+    maxCycles: 2, cycleUnit: 'review-cycle', terminalAuthorities: [{ participantId: 'reviewer', verdict: 'pass' }],
+  },
+  request: {
+    schema: 'kb.iteration-request/v1', requestRef: 'request-1', iterationLoopRef: 'loop-1',
+    stepId: 'review-step', routeId: 'review-route', senderParticipantId: 'author', recipientParticipantId: 'reviewer',
+    kind: 'review', cycle: 1, inputGenerationRefs: ['generation-1'], baseCommit: 'b'.repeat(40),
+    artifactHashes: { 'review-report': 'c'.repeat(64) }, criteria: [{ id: 'correct', description: 'The adapter is correct.' }],
+    unresolvedFindingRefs: [], preservedInvariants: ['receipt before result'], nextAcceptanceCheck: 'Run focused tests.',
+    instructions: 'Return the review outcome.',
+  },
+  currentPositions: [],
+};
+
+function declaration(
+  runtime: 'claude' | 'codex' = 'claude',
+  overrides: Partial<ApprovedAttemptDeclaration> = {},
+): ApprovedAttemptDeclaration {
+  const profile = runtime === 'claude' ? CLAUDE_PROFILE : CODEX_PROFILE;
+  const assignment: ResolvedAgentAssignment = runtime === 'claude' ? ASSIGNMENT : {
+    ...ASSIGNMENT, profileId: CODEX_PROFILE.id, runtime: 'codex', model: CODEX_PROFILE.model,
+  };
+  const proposalStage: ProposalStage = runtime === 'claude' ? STAGE : {
+    ...STAGE, worker: { runtime: 'codex', model: CODEX_PROFILE.model }, assignment,
+  };
+  return {
+    operationKey: `op-${runtime === 'claude' ? 'a' : 'b'}${'0'.repeat(63)}`,
+    subject: 'operator@example.test', runRef: 'run-11111111-1111-4111-8111-111111111111',
+    stageRef: 'stage-22222222-2222-4222-8222-222222222222',
+    attemptRef: `attempt-${runtime === 'claude' ? '3' : '4'}3333333-3333-4333-8333-333333333333`,
+    sessionRef: `session-${runtime === 'claude' ? '5' : '6'}5555555-5555-4555-8555-555555555555`,
+    rootId: 'worktrees', relativeCwd: 'orgs/example/worktree', cols: 120, rows: 42,
+    profile, workflowProfile: 'research', skills: ['code-review', 'security-review'],
+    action: 'review:code', target: 'dashboard/server/control', workOrder: 'Implement the approved attempt adapter.',
+    readScope: ['dashboard/server/control', 'dashboard/server/pty'], writeScope: ['dashboard/server/control'],
+    checkpoints: ['tests-green', 'typecheck-green'], proposalStage, project: 'dashboard-v3',
+    assignment, instructionMarkdown: '# Reviewer\nStay inside the declared scope.',
+    expectsIterationOutcome: false,
+    ...overrides,
+  } as ApprovedAttemptDeclaration;
+}
+
+function workerInput(input: ApprovedAttemptDeclaration): Parameters<WorkerAdapter['execute']>[0] {
+  return {
+    operationKey: input.operationKey, subject: input.subject, runRef: input.runRef, stageRef: input.stageRef,
+    attemptRef: input.attemptRef, sessionRef: input.sessionRef, worktreePath: `${REPO_ROOT}/${input.relativeCwd}`,
+    profile: input.profile, workflowProfile: input.workflowProfile, skills: input.skills, action: input.action,
+    target: input.target, workOrder: input.workOrder, readScope: input.readScope, writeScope: input.writeScope,
+    checkpoints: input.checkpoints,
+    ...(input.assignment ? { assignment: input.assignment, instructionMarkdown: input.instructionMarkdown } : {}),
+    ...(input.iterationContract ? { iterationContract: input.iterationContract, expectsIterationOutcome: true } : {}),
+    proposalStage: input.proposalStage, project: input.project,
+  };
+}
+
+interface Deferred<T> { promise: Promise<T>; resolve(value: T): void; reject(reason: unknown): void }
+function deferred<T>(): Deferred<T> {
+  let resolvePromise!: (value: T) => void;
+  let rejectPromise!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => { resolvePromise = resolve; rejectPromise = reject; });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
+}
+
+interface HostAttempt {
+  request: SessionHostRequest;
+  sink: SessionSink;
+  receipt: Deferred<PortResult<HostStartReceipt>>;
+  exit: Deferred<ObservedExit>;
+  sessionId: string;
+  finished: boolean;
+}
+
+class MemorySessionHost implements SessionHost {
+  readonly attempts: HostAttempt[] = [];
+  readonly writes: Array<{ sessionId: string; bytes: Uint8Array }> = [];
+  readonly closeCalls: string[] = [];
+  readonly receipts = new Map<string, HostStartReceipt>();
+  readonly writeGates = new Map<number, Deferred<void>>();
+  readonly rejectedWrites = new Set<number>();
+  /** Phase 1 is now write-ahead, so `create` happens after an await: queued outcomes apply on arrival. */
+  private readonly queuedResolve = new Map<number, Partial<HostStartReceipt>>();
+  private readonly queuedRefuse = new Map<number, PortResult<HostStartReceipt>>();
+  finishAfterWrite: number | null = null;
+  rejectClose = false;
+  writeCalls = 0;
+  listEpochCalls = 0;
+  drainCalls: string[] = [];
+
+  constructor(readonly events: string[] = []) {}
+
+  async probe(): Promise<PtyCapabilityProbe> {
+    return { available: true, host: 'desktop', transport: 'local-node-pty', launchers: ['claude', 'codex'], roots: ['worktrees'], epochId: 'epoch-11111111111111111111111111111111', checkedAt: '2026-08-23T00:00:00.000Z' };
+  }
+
+  create(request: SessionHostRequest, sink: SessionSink) {
+    this.events.push(`host.create:${request.operationKey}`);
+    const prior = this.receipts.get(request.operationKey);
+    const index = this.attempts.length;
+    const sessionId = prior?.sessionId ?? `pty-${String(index + 1).padStart(32, '0')}`;
+    const attempt: HostAttempt = { request, sink, receipt: deferred(), exit: deferred(), sessionId, finished: false };
+    this.attempts.push(attempt);
+    if (prior) queueMicrotask(() => attempt.receipt.resolve({ ok: true, value: { ...prior, replayed: true } }));
+    const queuedResolve = this.queuedResolve.get(index);
+    if (queuedResolve) { this.queuedResolve.delete(index); this.resolveCreate(index, queuedResolve); }
+    const queuedRefuse = this.queuedRefuse.get(index);
+    if (queuedRefuse) { this.queuedRefuse.delete(index); attempt.receipt.resolve(queuedRefuse); }
+    return { receipt: attempt.receipt.promise, exit: attempt.exit.promise };
+  }
+
+  resolveCreate(index: number, overrides: Partial<HostStartReceipt> = {}): void {
+    const attempt = this.attempts[index];
+    if (!attempt) { this.queuedResolve.set(index, overrides); return; }
+    const receipt: HostStartReceipt = {
+      operationKey: attempt.request.operationKey, sessionId: attempt.sessionId,
+      epochId: 'epoch-11111111111111111111111111111111', revision: 1,
+      boundAt: '2026-08-23T00:00:01.000Z', replayed: false, ...overrides,
+    };
+    this.receipts.set(attempt.request.operationKey, receipt);
+    attempt.receipt.resolve({ ok: true, value: receipt });
+  }
+
+  refuseCreate(index: number, refusal: PortResult<HostStartReceipt>): void {
+    const attempt = this.attempts[index];
+    if (!attempt) { this.queuedRefuse.set(index, refusal); return; }
+    attempt.receipt.resolve(refusal);
+  }
+
+  emit(index: number, text: string, replay = false): void {
+    this.emitBytes(index, Buffer.from(text, 'utf8'), replay);
+  }
+
+  emitBytes(index: number, bytes: Uint8Array, replay = false): void {
+    const attempt = this.attempts[index];
+    attempt.sink.data({
+      sessionId: attempt.sessionId, sequence: this.writes.length + 1, encoding: 'base64',
+      data: Buffer.from(bytes).toString('base64'), replay,
+    });
+  }
+
+  finish(index: number, exitCode: number | null = 0, reason: ObservedExit['reason'] = 'exited'): ObservedExit {
+    const attempt = this.attempts[index];
+    const exit: ObservedExit = {
+      sessionId: attempt.sessionId, sequence: 99, exitCode, signal: null, reason,
+      observedAt: '2026-08-23T00:00:02.000Z',
+    };
+    if (!attempt.finished) {
+      attempt.finished = true;
+      attempt.sink.exit(exit);
+      attempt.exit.resolve(exit);
+    }
+    return exit;
+  }
+
+  async attach(_sessionId: string, _sink: SessionSink) { return { ok: true as const, value: { attachmentId: 'att-11111111111111111111111111111111' } }; }
+  async write(sessionId: string, data: Uint8Array) {
+    const call = this.writeCalls++;
+    const gate = this.writeGates.get(call);
+    if (gate) await gate.promise;
+    if (this.rejectedWrites.has(call)) throw new Error(`write ${call} rejected`);
+    const live = this.attempts.some((attempt) => attempt.sessionId === sessionId && !attempt.finished);
+    if (!live) {
+      return { ok: false as const, refusal: 'not-found' as const, detail: 'session already finished' };
+    }
+    this.writes.push({ sessionId, bytes: Uint8Array.from(data) });
+    if (this.finishAfterWrite === call) {
+      const index = this.attempts.findIndex((attempt) => attempt.sessionId === sessionId && !attempt.finished);
+      if (index >= 0) this.finish(index, 0);
+    }
+    return { ok: true as const, value: { accepted: data.byteLength } };
+  }
+  async resize(_sessionId: string, size: SessionSize) { return { ok: true as const, value: size }; }
+  async close(sessionId: string) {
+    this.closeCalls.push(sessionId);
+    if (this.rejectClose) throw new Error('close rejected');
+    const index = this.attempts.findIndex((attempt) => attempt.sessionId === sessionId && !attempt.finished);
+    const exit = index >= 0 ? this.finish(index, null, 'closed') : {
+      sessionId, sequence: 99, exitCode: null, signal: null, reason: 'closed' as const,
+      observedAt: '2026-08-23T00:00:02.000Z',
+    };
+    return { ok: true as const, value: exit };
+  }
+  async listEpoch() {
+    this.listEpochCalls += 1;
+    return { ok: true as const, value: {
+      epochId: 'epoch-11111111111111111111111111111111',
+      sessionIds: this.attempts.filter((attempt) => !attempt.finished).map((attempt) => attempt.sessionId),
+    } };
+  }
+  async drain(epochId: string) {
+    this.drainCalls.push(epochId);
+    const closed: string[] = [];
+    for (let index = 0; index < this.attempts.length; index += 1) {
+      const attempt = this.attempts[index];
+      if (attempt.finished) continue;
+      closed.push(attempt.sessionId);
+      this.finish(index, null, 'closed');
+    }
+    return { ok: true as const, value: { epochId, closed, alreadyGone: [] } };
+  }
+}
+
+/**
+ * A deliberately dumb CAS store: revision match or `binding-conflict`, nothing else. Declaration-identity,
+ * cancellation and terminal-status guards belong to the adapter and are asserted through it.
+ */
+class MemoryBindings implements AttemptBindingPort {
+  readonly rows: AttemptBinding[] = [];
+  readonly calls: Parameters<AttemptBindingPort['bind']>[0][] = [];
+  readonly operations = new Map<string, AttemptOperationRecord>();
+  readonly conflictOn = new Set<number>();
+  gate: Deferred<void> | null = null;
+  nextRefusal: PortResult<{ revision: number }> | null = null;
+  rejectBind = false;
+  rejectOperationWrite = false;
+  beforeWrite: ((record: AttemptOperationRecord, expectedRevision: number | null, call: number) => void) | null = null;
+  writeCalls = 0;
+
+  constructor(readonly events: string[] = []) {}
+
+  async bind(input: Parameters<AttemptBindingPort['bind']>[0]): Promise<PortResult<{ revision: number }>> {
+    this.calls.push(input);
+    const gate = this.gate;
+    if (gate) await gate.promise;
+    if (this.rejectBind) throw new Error('bind rejected');
+    if (this.nextRefusal) {
+      const refusal = this.nextRefusal;
+      this.nextRefusal = null;
+      return refusal;
+    }
+    const prior = this.rows.find((row) => row.attemptRef === input.attemptRef || row.sessionId === input.sessionId);
+    if (prior) {
+      const exact = prior.operator === input.operator && prior.runRef === input.runRef
+        && prior.attemptRef === input.attemptRef && prior.managedSessionRef === input.managedSessionRef
+        && prior.sessionId === input.sessionId;
+      return exact
+        ? { ok: true, value: { revision: this.rows.length } }
+        : { ok: false, refusal: 'binding-conflict', detail: 'binding differs' };
+    }
+    this.rows.push({ ...input, createdAt: '2026-08-23T00:00:01.000Z' });
+    return { ok: true, value: { revision: this.rows.length } };
+  }
+  byAttempt(operator: string, attemptRef: string) { return this.rows.find((row) => row.operator === operator && row.attemptRef === attemptRef) ?? null; }
+  bySession(operator: string, sessionId: string) { return this.rows.find((row) => row.operator === operator && row.sessionId === sessionId) ?? null; }
+
+  async readOperation(operationKey: string): Promise<AttemptOperationRecord | null> {
+    const value = this.operations.get(operationKey);
+    return value ? structuredClone(value) : null;
+  }
+
+  async writeOperation(
+    record: AttemptOperationRecord,
+    expectedRevision: number | null,
+  ): Promise<PortResult<AttemptOperationRecord>> {
+    const call = this.writeCalls++;
+    this.beforeWrite?.(record, expectedRevision, call);
+    if (this.rejectOperationWrite) throw new Error('operation write rejected');
+    if (this.conflictOn.delete(call)) {
+      return { ok: false, refusal: 'binding-conflict', detail: 'forced operation conflict' };
+    }
+    const prior = this.operations.get(record.operationKey);
+    if ((prior?.revision ?? null) !== expectedRevision) {
+      return { ok: false, refusal: 'binding-conflict', detail: 'operation revision changed' };
+    }
+    const written: AttemptOperationRecord = { ...structuredClone(record), revision: (prior?.revision ?? 0) + 1 };
+    this.operations.set(record.operationKey, written);
+    this.events.push(`bindings.write:${record.operationKey}:${written.status}:${written.promptsDelivered}`);
+    return { ok: true, value: structuredClone(written) };
+  }
+
+  seed(record: AttemptOperationRecord): void { this.operations.set(record.operationKey, structuredClone(record)); }
+}
+
+function seededRecord(
+  input: ApprovedAttemptDeclaration,
+  overrides: Partial<AttemptOperationRecord> = {},
+): AttemptOperationRecord {
+  const requestHash = attemptDeclarationFingerprint(input);
+  return {
+    operationKey: input.operationKey, requestHash, status: 'pending', promptsDelivered: 0,
+    sessionId: null, attemptRef: input.attemptRef,
+    receipt: {
+      operationKey: input.operationKey, requestHash, status: 'pending', sessionId: null,
+      attemptRef: input.attemptRef, refusal: null, createdAt: '2026-08-23T00:00:00.000Z', settledAt: null,
+    },
+    revision: 1, updatedAt: '2026-08-23T00:00:00.000Z', ...overrides,
+  };
+}
+
+function claudeLine(summary: string, sessionId = 'claude-session-1'): string {
+  return `${JSON.stringify({
+    type: 'result', subtype: 'success', is_error: false, result: summary, session_id: sessionId,
+    usage: { input_tokens: 7, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 5 },
+    total_cost_usd: 0,
+  })}\n`;
+}
+function claudeTranscript(summary: string): string { return claudeLine('declaration accepted') + claudeLine(summary); }
+function codexTranscript(summary: string, threadId = 'thread-1'): string {
+  return [
+    JSON.stringify({ type: 'thread.started', thread_id: threadId }),
+    JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: summary } }),
+    JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 11, output_tokens: 13 } }),
+  ].join('\n') + '\n';
+}
+
+async function existingClaudeResult(input: ApprovedAttemptDeclaration, stdout: string): Promise<WorkerExecutionResult> {
+  let onStdout: (chunk: string) => void = () => {};
+  let onExit: (code: number | null) => void = () => {};
+  let writes = 0;
+  const adapter = createClaudeWorkerAdapter({
+    resolveToolPolicy: createWorkflowToolPolicyResolver(), resolveSession: () => null,
+    spawn: () => ({
+      onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; },
+      writeStdin() { writes += 1; if (writes === 2) queueMicrotask(() => onStdout(stdout)); },
+      endStdin() { queueMicrotask(() => onExit(0)); }, kill() {},
+    }),
+  });
+  return adapter.execute(workerInput(input));
+}
+
+async function existingCodexResult(input: ApprovedAttemptDeclaration, stdout: string): Promise<{ result: WorkerExecutionResult; stdin: string }> {
+  let onStdout: (chunk: string) => void = () => {};
+  let onExit: (code: number | null) => void = () => {};
+  let stdin = '';
+  const adapter = createCodexExecAdapter({
+    resolveThread: () => null,
+    spawner: () => ({
+      onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; }, onError() {},
+      writeStdin(text) { stdin += text; }, endStdin() { queueMicrotask(() => { onStdout(stdout); onExit(0); }); }, kill() {},
+    }),
+  });
+  return { result: await adapter.execute(workerInput(input)), stdin };
+}
+
+/**
+ * ENV is deliberately absent from the round trip: the adapter emits no environment at all — a
+ * `SessionHostRequest` carries `recipe`/`rootId`/`relativeCwd` and the host owns the process env — so an
+ * `env` row could only have compared `buildWorkerEnv()` against itself. `cwd` is compared as the host
+ * would resolve it (`REPO_ROOT` + the emitted `relativeCwd`) against the absolute path the retained path
+ * derived, with `rootId` asserted alongside.
+ */
+interface LaunchObservation {
+  argv: readonly string[];
+  settings: string | undefined;
+  rootId: string;
+  cwd: string;
+  stdin: Uint8Array;
+}
+
+function declarationForProfile(profile: ExecutionProfile, salt: number): ApprovedAttemptDeclaration {
+  const runtime = profile.runtime;
+  const assignment: ResolvedAgentAssignment = {
+    ...ASSIGNMENT, agentId: `agent-${salt}`, profileId: profile.id, runtime, model: profile.model,
+  };
+  const proposalStage: ProposalStage = {
+    ...STAGE, id: `profile-stage-${salt}`, worker: { runtime, model: profile.model }, assignment,
+  };
+  return declaration(runtime, {
+    operationKey: `op-${salt.toString(16).padStart(64, '0')}`,
+    attemptRef: `attempt-profile-${salt}`, sessionRef: `session-profile-${salt}`,
+    profile: { ...profile }, assignment, proposalStage,
+  });
+}
+
+async function retainedLaunchObservation(
+  input: ApprovedAttemptDeclaration,
+  resumeRef: string | null = null,
+): Promise<LaunchObservation> {
+  if (input.profile.runtime === 'claude') {
+    let request: ClaudeSpawnRequest | null = null;
+    let onStdout: (chunk: string) => void = () => {};
+    let onExit: (code: number | null) => void = () => {};
+    let stdin = '';
+    let writes = 0;
+    const expectedWrites = resumeRef || input.instructionMarkdown === undefined ? 1 : 2;
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: createWorkflowToolPolicyResolver(), resolveSession: () => resumeRef,
+      spawn(value) {
+        request = value;
+        return {
+          onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; },
+          writeStdin(text) {
+            stdin += text;
+            writes += 1;
+            if (writes === expectedWrites) queueMicrotask(() => onStdout(claudeTranscript('round trip')));
+          },
+          endStdin() { queueMicrotask(() => onExit(0)); }, kill() {},
+        };
+      },
+    });
+    await adapter.execute(workerInput(input));
+    const args = request!.args;
+    const settingsIndex = args.indexOf('--settings');
+    return {
+      argv: args, settings: settingsIndex < 0 ? undefined : args[settingsIndex + 1],
+      rootId: 'worktrees', cwd: request!.cwd, stdin: Buffer.from(stdin, 'utf8'),
+    };
+  }
+
+  let request: CodexExecSpawnRequest | null = null;
+  let onStdout: (chunk: string) => void = () => {};
+  let onExit: (code: number | null) => void = () => {};
+  let stdin = '';
+  const adapter = createCodexExecAdapter({
+    resolveThread: () => resumeRef,
+    spawner(value) {
+      request = value;
+      return {
+        onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; }, onError() {},
+        writeStdin(text) { stdin += text; },
+        endStdin() { queueMicrotask(() => { onStdout(codexTranscript('round trip')); onExit(0); }); },
+        kill() {},
+      };
+    },
+  });
+  await adapter.execute(workerInput(input));
+  return { argv: request!.args, settings: undefined, rootId: 'worktrees', cwd: request!.cwd, stdin: Buffer.from(stdin, 'utf8') };
+}
+
+async function attemptLaunchObservation(
+  input: ApprovedAttemptDeclaration,
+  resumeRef: string | null = null,
+): Promise<LaunchObservation> {
+  const host = new MemorySessionHost();
+  const policyBox: { value: ResolvedClaudeLaunchPolicy | null } = { value: null };
+  const adapter = createAttemptSessionAdapter({
+    host, bindings: new MemoryBindings(), repoRoot: undefined,
+    resolveResumeRef: () => resumeRef,
+    resolveClaudePolicyId(value) { policyBox.value = value; return 'roundtrip-policy'; },
+  });
+  const launch = adapter.begin(input);
+  host.resolveCreate(0);
+  await launch.receipt;
+  const request = host.attempts[0].request;
+  const cwd = `${REPO_ROOT}/${request.relativeCwd}`;
+  const claudePolicy = policyBox.value;
+  const argv = request.recipe.launcher === 'claude'
+    ? buildClaudeArgs({
+        model: request.recipe.model!, toolPolicy: claudePolicy!.policy,
+        ...(claudePolicy!.settings ? { settings: claudePolicy!.settings } : {}),
+        ...(request.recipe.resumeRef ? { resumeSessionId: request.recipe.resumeRef } : {}),
+      })
+    : buildCodexExecArgs({ model: request.recipe.model!, worktreePath: cwd, threadId: request.recipe.resumeRef ?? null });
+  const bytes = Buffer.concat(host.writes.map((write) => Buffer.from(write.bytes)));
+  const stdin = request.recipe.launcher === 'codex' && bytes.at(-1) === 4 ? bytes.subarray(0, -1) : bytes;
+  const transcript = input.profile.runtime === 'claude' ? claudeTranscript('round trip') : codexTranscript('round trip');
+  host.emit(0, transcript);
+  if (!host.attempts[0].finished) host.finish(0);
+  await launch.result;
+  return { argv, settings: claudePolicy?.settings, rootId: request.rootId, cwd, stdin };
+}
+
+type ParityScenario = 'error exit' | 'timeout' | 'output cap' | 'cancellation'
+  | 'malformed output' | 'iteration failure' | 'single-stream diagnostics';
+
+function scenarioInput(runtime: 'claude' | 'codex', scenario: ParityScenario): ApprovedAttemptDeclaration {
+  return scenario === 'iteration failure'
+    ? declaration(runtime, { iterationContract: ITERATION_CONTRACT, expectsIterationOutcome: true })
+    : declaration(runtime);
+}
+
+function scenarioStdout(runtime: 'claude' | 'codex', scenario: ParityScenario): string {
+  if (scenario === 'timeout' || scenario === 'cancellation') return '';
+  if (scenario === 'output cap') return '0123456789abcdef';
+  if (scenario === 'malformed output') return 'not-json\n';
+  if (scenario === 'error exit' || scenario === 'single-stream diagnostics') {
+    // A PTY interleaves diagnostics into the single stream both sides parse.
+    const prefix = scenario === 'single-stream diagnostics' ? 'diagnostic noise on the one stream\n' : '';
+    return prefix + (runtime === 'claude'
+      ? `${JSON.stringify({ type: 'assistant', message: { content: [] } })}\n`
+      : `${JSON.stringify({ type: 'thread.started', thread_id: 'thread-error' })}\n`);
+  }
+  if (runtime === 'claude') {
+    return scenario === 'iteration failure' ? claudeTranscript('not an iteration outcome') : claudeTranscript('terminal result');
+  }
+  return scenario === 'iteration failure' ? codexTranscript('not an iteration outcome') : codexTranscript('terminal result');
+}
+
+/**
+ * Returns `null` for `codex + cancellation`: the retained `codexExecAdapter` has no cancellation hook at
+ * all (no `registerCancellation`, no kill seam), so there is no retained result to compare against. The
+ * matrix asserts the adapter's own documented cancellation shape for that row instead of pretending parity.
+ */
+async function retainedScenarioResult(
+  runtime: 'claude' | 'codex',
+  scenario: ParityScenario,
+): Promise<WorkerExecutionResult | null> {
+  if (runtime === 'codex' && scenario === 'cancellation') return null;
+  const input = scenarioInput(runtime, scenario);
+  const timeoutMs = 10;
+  const maxOutputBytes = scenario === 'output cap' ? 8 : 64 * 1024 * 1024;
+  let onStdout: (chunk: string) => void = () => {};
+  let onExit: (code: number | null) => void = () => {};
+  let cancel: (() => void) | null = null;
+  const result = runtime === 'claude'
+    ? createClaudeWorkerAdapter({
+        resolveToolPolicy: createWorkflowToolPolicyResolver(), resolveSession: () => null,
+        timeoutMs, maxOutputBytes,
+        registerCancellation(_operationKey, callback) { cancel = callback; },
+        spawn: () => ({
+          onStdout(callback) { onStdout = callback; }, onStderr() {},
+          onExit(callback) { onExit = callback; }, writeStdin() {}, endStdin() {}, kill() {},
+        }),
+      }).execute(workerInput(input))
+    : createCodexExecAdapter({
+        timeoutMs, maxOutputBytes, resolveThread: () => null,
+        spawner: () => ({
+          onStdout(callback) { onStdout = callback; }, onStderr() {},
+          onExit(callback) { onExit = callback; }, onError() {}, writeStdin() {}, endStdin() {}, kill() {},
+        }),
+      }).execute(workerInput(input));
+  const stdout = scenarioStdout(runtime, scenario);
+  if (stdout) onStdout(stdout);
+  if (scenario === 'timeout') await vi.advanceTimersByTimeAsync(timeoutMs + 1);
+  else if (scenario === 'cancellation') cancel!();
+  else if (scenario !== 'output cap') onExit(scenario === 'error exit' || scenario === 'single-stream diagnostics' ? 7 : 0);
+  return result;
+}
+
+async function attemptScenarioResult(
+  runtime: 'claude' | 'codex',
+  scenario: ParityScenario,
+): Promise<{ result: WorkerExecutionResult; stderrTail: string }> {
+  const input = scenarioInput(runtime, scenario);
+  const host = new MemorySessionHost();
+  const maxOutputBytes = scenario === 'output cap' ? 8 : 64 * 1024 * 1024;
+  const contexts: AttemptParserContext[] = [];
+  const adapter = createAttemptSessionAdapter({
+    host, bindings: new MemoryBindings(), timeoutMs: 10, maxOutputBytes,
+    parseResult(context) {
+      contexts.push(context);
+      return parseAttemptResult(context, { timeoutMs: 10, maxOutputBytes });
+    },
+  });
+  const launch = adapter.begin(input);
+  host.resolveCreate(0);
+  await launch.receipt;
+  const stdout = scenarioStdout(runtime, scenario);
+  if (stdout) host.emit(0, stdout);
+  if (scenario === 'timeout') await vi.advanceTimersByTimeAsync(11);
+  else if (scenario === 'cancellation') await adapter.cancel({ operationKey: input.operationKey, reason: 'parity fixture' });
+  else if (scenario !== 'output cap' && !host.attempts[0].finished) {
+    host.finish(0, scenario === 'error exit' || scenario === 'single-stream diagnostics' ? 7 : 0);
+  }
+  const result = await launch.result;
+  return { result, stderrTail: contexts.at(-1)?.stderrTail ?? 'no parse' };
+}
+
+describe('two-phase attempt session adapter', () => {
+  it.each([
+    {
+      row: 'profiles',
+      cases: loadExecutionProfiles('..').map((profile, index) => ({ input: declarationForProfile(profile, 100 + index), resumeRef: null })),
+    },
+    {
+      row: 'workflow profiles',
+      cases: loadWorkflowProfiles().map((profile, index) => ({
+        input: declarationForProfile({ ...CLAUDE_PROFILE, id: `claude-${profile.id}` }, 200 + index),
+        resumeRef: null,
+        workflowProfile: profile.id,
+      })).map(({ input, resumeRef, workflowProfile }) => ({ input: { ...input, workflowProfile }, resumeRef })),
+    },
+    { row: 'skill', cases: [{ input: declaration('claude', { skills: ['code-review', 'humanizer'] }), resumeRef: null }] },
+    {
+      row: 'action / target / work order',
+      cases: [{ input: declaration('claude', { stageRef: 'changed-stage', action: 'review:security', target: 'dashboard/server', workOrder: 'Inspect the security boundary.' }), resumeRef: null }],
+    },
+    { row: 'read / write scope', cases: [{ input: declaration('claude', { readScope: ['dashboard/server'], writeScope: ['dashboard/server/control', 'dashboard/docs'] }), resumeRef: null }] },
+    { row: 'checkpoint', cases: [{ input: declaration('claude', { checkpoints: ['typecheck', 'focused-tests'] }), resumeRef: null }] },
+    { row: 'iteration contract / outcome fence', cases: [{ input: declaration('claude', { iterationContract: ITERATION_CONTRACT, expectsIterationOutcome: true }), resumeRef: null }] },
+    {
+      row: 'assignment / declaration',
+      cases: [{
+        input: declaration('claude', {
+          assignment: { ...ASSIGNMENT, declarationPath: '.agents/alternate.md', declarationHash: 'd'.repeat(64) },
+          instructionMarkdown: '# Alternate reviewer\nKeep the review bounded.',
+        }),
+        resumeRef: null,
+      }],
+    },
+    { row: 'proposal stage / project', cases: [{ input: declaration('claude', { proposalStage: { ...STAGE, title: 'Alternate review' }, project: 'kb-ops' }), resumeRef: null }] },
+    { row: 'Claude model', cases: [{ input: declarationForProfile({ ...CLAUDE_PROFILE, model: 'claude-opus-test' }, 300), resumeRef: null }] },
+    {
+      row: 'Claude tool / settings / permission',
+      cases: ['checker-readonly', 'producer'].map((workflowProfile, index) => ({
+        input: declarationForProfile({ ...CLAUDE_PROFILE, id: `claude-tool-${index}` }, 310 + index), workflowProfile,
+      })).map(({ input, workflowProfile }) => ({ input: { ...input, workflowProfile }, resumeRef: null })),
+    },
+    { row: 'Codex sandbox', cases: [{ input: declarationForProfile(CODEX_PROFILE, 320), resumeRef: null }] },
+    { row: 'cwd', cases: [{ input: declaration('codex', { relativeCwd: 'orgs/kb-ops/worktree-two' }), resumeRef: null }] },
+    { row: 'prompt', cases: [{ input: declaration('codex', { workOrder: 'Run the focused prompt parity fixture.' }), resumeRef: null }] },
+    {
+      row: 'resume / thread',
+      cases: [
+        { input: declarationForProfile(CLAUDE_PROFILE, 330), resumeRef: 'claude-resume-ref' },
+        { input: declarationForProfile(CODEX_PROFILE, 331), resumeRef: 'codex-thread-ref' },
+      ],
+    },
+  ])('round-trip row: $row has retained argv, settings, root/cwd, and stdin bytes', async ({ cases }) => {
+    expect(cases.length).toBeGreaterThan(0);
+    for (const { input, resumeRef } of cases) {
+      const [retained, attempt] = await Promise.all([
+        retainedLaunchObservation(input, resumeRef), attemptLaunchObservation(input, resumeRef),
+      ]);
+      expect(attempt).toEqual(retained);
+    }
+  });
+
+  it.each([
+    ['claude', 'error exit'], ['codex', 'error exit'],
+    ['claude', 'timeout'], ['codex', 'timeout'],
+    ['claude', 'output cap'], ['codex', 'output cap'],
+    ['claude', 'cancellation'], ['codex', 'cancellation'],
+    ['claude', 'malformed output'], ['codex', 'malformed output'],
+    ['claude', 'iteration failure'], ['codex', 'iteration failure'],
+    ['claude', 'single-stream diagnostics'], ['codex', 'single-stream diagnostics'],
+  ] as const)('matches the retained %s result for %s', async (runtime, scenario) => {
+    if (scenario === 'timeout') vi.useFakeTimers();
+    try {
+      const [retained, attempt] = await Promise.all([
+        retainedScenarioResult(runtime, scenario), attemptScenarioResult(runtime, scenario),
+      ]);
+      // A PTY host has one stream, so `stderrTail` is always '' for a hosted attempt.
+      expect(attempt.stderrTail).toBe('');
+      if (retained === null) {
+        expect(attempt.result).toEqual({
+          state: 'failed', summary: 'codex worker was cancelled.',
+          usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [],
+        });
+        return;
+      }
+      expect(attempt.result).toEqual(retained);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pins the retained worker limit literals it must mirror', () => {
+    const claudeSource = readFileSync(new URL('./claudeWorkerAdapter.ts', import.meta.url), 'utf8');
+    const codexSource = readFileSync(new URL('./codexExecAdapter.ts', import.meta.url), 'utf8');
+    const adapterSource = readFileSync(new URL('./attemptSessionAdapter.ts', import.meta.url), 'utf8');
+    for (const source of [claudeSource, codexSource, adapterSource]) {
+      expect(source).toContain('const DEFAULT_TIMEOUT_MS = 30 * 60_000;');
+      expect(source).toContain('const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;');
+    }
+  });
+
+  it('names the controller-null principal on every host create', async () => {
+    const host = new MemorySessionHost();
+    const input = declaration();
+    const launch = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() }).begin(input);
+    host.resolveCreate(0);
+    await launch.receipt;
+    expect(host.attempts[0].request.principal).toEqual({
+      operator: input.subject, browserSessionRef: RUN_CONTROLLER_NULL_BROWSER_SESSION_REF,
+    });
+    expect(RUN_CONTROLLER_NULL_BROWSER_SESSION_REF).toBe('run-controller-null');
+  });
+
+  it('writes the durable pending intent before the host session exists and settles it terminally', async () => {
+    const events: string[] = [];
+    const host = new MemorySessionHost(events);
+    const bindings = new MemoryBindings(events);
+    const input = declaration('codex');
+    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await launch.receipt;
+    expect(events[0]).toBe(`bindings.write:${input.operationKey}:pending:0`);
+    expect(events[1]).toBe(`host.create:${input.operationKey}`);
+    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+      status: 'bound', promptsDelivered: 1, sessionId: host.attempts[0].sessionId,
+      requestHash: attemptDeclarationFingerprint(input),
+    });
+    host.emit(0, codexTranscript('done'));
+    host.finish(0);
+    await expect(launch.result).resolves.toMatchObject({ state: 'succeeded' });
+    expect(bindings.operations.get(input.operationKey)?.status).toBe('completed');
+  });
+
+  it('adopts the winner record when the create CAS is lost and never closes the winner session', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration('codex');
+    // A rival instance wins the create CAS between our read and our write.
+    bindings.beforeWrite = (record, expectedRevision) => {
+      if (expectedRevision === null) {
+        bindings.seed(seededRecord(input, { status: 'pending', promptsDelivered: 1, sessionId: 'rival-session' }));
+        bindings.beforeWrite = null;
+      }
+      void record;
+    };
+    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+    // The rival already delivered the only codex prompt, so this instance re-sends nothing.
+    expect(host.writes).toHaveLength(0);
+    expect(host.closeCalls).toHaveLength(0);
+    expect(bindings.operations.get(input.operationKey)?.promptsDelivered).toBe(1);
+  });
+
+  it('reserves each prompt durably before writing it and never re-sends a reserved prompt', async () => {
+    const input = declaration();
+
+    // Crash before any prompt: nothing reserved, so a restart delivers both prompts exactly once.
+    const beforeHost = new MemorySessionHost();
+    const beforeBindings = new MemoryBindings();
+    beforeBindings.gate = deferred();
+    const crashed = createAttemptSessionAdapter({ host: beforeHost, bindings: beforeBindings }).begin(input);
+    await vi.waitFor(() => expect(beforeHost.attempts).toHaveLength(1));
+    beforeHost.resolveCreate(0);
+    await vi.waitFor(() => expect(beforeBindings.calls).toHaveLength(1));
+    beforeBindings.gate = null;
+    const restarted = createAttemptSessionAdapter({ host: beforeHost, bindings: beforeBindings }).begin(input);
+    await expect(restarted.receipt).resolves.toMatchObject({ ok: true, value: { replayed: true } });
+    const beforeWrites = beforeHost.writes.map((write) => Buffer.from(write.bytes).toString('utf8'));
+    expect(beforeWrites).toHaveLength(2);
+    expect(new Set(beforeWrites).size).toBe(2);
+    void crashed;
+
+    // Crash after the reservation but before the bytes leave: the restart must NOT re-send prompt 1.
+    const betweenHost = new MemorySessionHost();
+    const betweenBindings = new MemoryBindings();
+    betweenHost.writeGates.set(1, deferred<void>());
+    const interrupted = createAttemptSessionAdapter({ host: betweenHost, bindings: betweenBindings }).begin(input);
+    await vi.waitFor(() => expect(betweenHost.attempts).toHaveLength(1));
+    betweenHost.resolveCreate(0);
+    await vi.waitFor(() => {
+      expect(betweenHost.writes).toHaveLength(1);
+      expect(betweenHost.writeCalls).toBe(2);
+      expect(betweenBindings.operations.get(input.operationKey)?.promptsDelivered).toBe(2);
+    });
+    const resumed = createAttemptSessionAdapter({ host: betweenHost, bindings: betweenBindings }).begin(input);
+    await expect(resumed.receipt).resolves.toMatchObject({ ok: true, value: { replayed: true } });
+    expect(betweenHost.writes).toHaveLength(1);
+    void interrupted;
+  });
+
+  it('recomputes the prompt reservation from the current record instead of a local index', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration();
+    // Force the first prompt reservation to lose its CAS while a rival advances the counter to 1.
+    bindings.beforeWrite = (record, _expected, call) => {
+      if (record.promptsDelivered === 1 && record.status === 'pending') {
+        bindings.conflictOn.add(call);
+        bindings.seed({ ...bindings.operations.get(input.operationKey)!, promptsDelivered: 1, revision: 9 });
+        bindings.beforeWrite = null;
+      }
+    };
+    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+    // The counter advanced to 2 on the winner's state; it never regressed to 1 and re-armed a duplicate.
+    expect(bindings.operations.get(input.operationKey)?.promptsDelivered).toBe(2);
+    expect(host.writes).toHaveLength(0);
+  });
+
+  it('refuses a prompt reservation that a cancel overtook, and writes no prompt bytes', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration('codex');
+    // The reservation CAS loses its revision check; by the time it re-reads, another instance has
+    // durably cancelled the key. The retry sees a terminal record and must refuse — even though the
+    // reservation patch changes only the counter and would leave the status exactly as it found it.
+    bindings.beforeWrite = (record, _expectedRevision, call) => {
+      if (record.promptsDelivered === 1 && record.status === 'pending') {
+        bindings.conflictOn.add(call);
+        const current = bindings.operations.get(input.operationKey)!;
+        bindings.seed({ ...current, status: 'cancelled' });
+        bindings.beforeWrite = null;
+      }
+    };
+    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
+    expect(host.writes).toHaveLength(0);
+    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+      status: 'cancelled', promptsDelivered: 0,
+    });
+  });
+
+  it('refuses to adopt a create-CAS winner that is still delivering its approved prompts', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration(); // claude: two approved prompts
+    // The rival wins the create CAS while only halfway through its own prompt sequence.
+    bindings.beforeWrite = (record, expectedRevision) => {
+      if (expectedRevision === null) {
+        bindings.seed(seededRecord(input, {
+          status: 'pending', promptsDelivered: 1, sessionId: 'pty-rival',
+        }));
+        bindings.beforeWrite = null;
+      }
+      void record;
+    };
+    // Queued in advance: a rival session, if this instance wrongly creates one, gets a working receipt,
+    // so the failure mode under test is a wrong outcome rather than a hang.
+    host.resolveCreate(0);
+    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+    // No second owner: no session, no interleaved prompt, and the winner's session is never closed.
+    expect(host.attempts).toHaveLength(0);
+    expect(host.writes).toHaveLength(0);
+    expect(host.closeCalls).toHaveLength(0);
+    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+      status: 'pending', promptsDelivered: 1, sessionId: 'pty-rival',
+    });
+  });
+
+  it('never repoints a durable sessionId another instance already claimed', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration('codex');
+    bindings.seed(seededRecord(input, {
+      status: 'pending', promptsDelivered: 0, sessionId: 'pty-claimed-by-the-winner',
+    }));
+    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: true, value: { sessionId: host.attempts[0].sessionId },
+    });
+    // A host that did not dedupe by operationKey handed back a different session; the durable pointer
+    // `cancel` closes still names the one that was claimed first.
+    expect(host.attempts[0].sessionId).not.toBe('pty-claimed-by-the-winner');
+    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+      status: 'bound', promptsDelivered: 1, sessionId: 'pty-claimed-by-the-winner',
+    });
+  });
+
+  it('settles an attempt whose host receipt never resolves and releases its transcript', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration('codex');
+    const adapter = createAttemptSessionAdapter({ host, bindings, timeoutMs: 150 });
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.emit(0, codexTranscript('bytes no parse will ever read'));
+    expect(adapter.rawTranscript(input.attemptRef)!.byteLength).toBeGreaterThan(0);
+    // The host never resolves the start receipt, so only the timer can end this attempt.
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
+    expect(bindings.operations.get(input.operationKey)?.status).toBe('failed');
+    expect(adapter.rawTranscript(input.attemptRef)!.byteLength).toBe(0);
+  });
+
+  it('strands a reserved-but-unsent prompt and settles the attempt failed at the timer', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration('codex');
+    // The reservation landed durably and the process died before `host.write`: at-most-once delivery
+    // means that prompt is lost for good, and the restart must not re-send it.
+    bindings.seed(seededRecord(input, { status: 'pending', promptsDelivered: 1 }));
+    const adapter = createAttemptSessionAdapter({ host, bindings, timeoutMs: 150 });
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+    expect(host.writes).toHaveLength(0);
+    // The session therefore idles with nothing to do until the timer reaps it.
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
+    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
+    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+      status: 'failed', promptsDelivered: 1,
+    });
+  });
+
+  it('cancels durably by operationKey without a live attempt and refuses the later begin', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration();
+    const canceller = createAttemptSessionAdapter({ host, bindings });
+    await expect(canceller.cancel({ operationKey: input.operationKey, reason: 'operator stop' }))
+      .resolves.toMatchObject({ ok: true, value: { reason: 'abandoned' } });
+    expect(bindings.operations.get(input.operationKey)?.status).toBe('cancelled');
+
+    const later = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await expect(later.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
+    await expect(later.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
+    expect(host.attempts).toHaveLength(0);
+  });
+
+  it('never resurrects a terminal operation and creates no session for one', async () => {
+    for (const [status, refusal] of [['completed', 'binding-conflict'], ['failed', 'internal'], ['cancelled', 'cancelled']] as const) {
+      const host = new MemorySessionHost();
+      const bindings = new MemoryBindings();
+      const input = declaration('codex', { operationKey: `op-${status.charCodeAt(0).toString(16)}${'7'.repeat(62)}` });
+      bindings.seed(seededRecord(input, { status, promptsDelivered: 1 }));
+      const adapter = createAttemptSessionAdapter({ host, bindings });
+      const launch = adapter.begin(input);
+      await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal });
+      await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
+      expect(host.attempts).toHaveLength(0);
+      expect(adapter.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
+      expect(bindings.operations.get(input.operationKey)?.status).toBe(status);
+    }
+  });
+
+  it('reconstructs active-attempt selection on a fresh instance from the durable record and binding row', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration();
+    const first = createAttemptSessionAdapter({ host, bindings });
+    const launch = first.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await launch.receipt;
+    const writesBefore = host.writes.length;
+
+    const restarted = createAttemptSessionAdapter({ host, bindings });
+    expect(restarted.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
+    const replay = restarted.begin(input);
+    await expect(replay.receipt).resolves.toMatchObject({ ok: true, value: { replayed: true, sessionId: host.attempts[0].sessionId } });
+    expect(host.writes).toHaveLength(writesBefore);
+    expect(restarted.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(true);
+    await expect(restarted.queueRunInstruction({
+      operator: input.subject, runRef: input.runRef, idempotencyKey: 'reconstructed-1',
+      message: 'Continue on the reconstructed session.',
+    })).resolves.toBe(true);
+    expect(host.writes.at(-1)!.sessionId).toBe(host.attempts[0].sessionId);
+    expect(bindings.byAttempt(input.subject, input.attemptRef)).not.toBeNull();
+
+    // Durable binding row missing => the run is not live, whatever this instance's local flags say.
+    const orphanBindings = new MemoryBindings();
+    orphanBindings.seed(seededRecord(input, { status: 'bound', promptsDelivered: 2, sessionId: 'pty-orphan' }));
+    const orphan = createAttemptSessionAdapter({ host: new MemorySessionHost(), bindings: orphanBindings });
+    expect(orphan.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
+  });
+
+  it('decodes a multi-byte character split across two frames without corruption', async () => {
+    const host = new MemorySessionHost();
+    const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+    const input = declaration('codex');
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await launch.receipt;
+    const transcript = Buffer.from(codexTranscript('cost is 100\u20ac total'), 'utf8');
+    const euro = transcript.indexOf(Buffer.from('\u20ac', 'utf8'));
+    expect(euro).toBeGreaterThan(0);
+    // Split the 3-byte character down the middle across two frames.
+    host.emitBytes(0, transcript.subarray(0, euro + 1));
+    host.emitBytes(0, transcript.subarray(euro + 1));
+    host.finish(0);
+    await expect(launch.result).resolves.toMatchObject({ state: 'succeeded', summary: 'cost is 100\u20ac total' });
+    expect(Buffer.from(adapter.rawTranscript(input.attemptRef)!).toString('utf8')).toBe(transcript.toString('utf8'));
+  });
+
+  it('round-trips the complete Claude declaration, policy/settings, recorder, binding, prompt, receipt, and identical result', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    bindings.gate = deferred();
+    const policyInputs: unknown[] = [];
+    const parserContexts: AttemptParserContext[] = [];
+    const frames: string[] = [];
+    const recorder: AttemptSessionRecorder = {
+      data(_attempt, frame) { frames.push(Buffer.from(frame.data, 'base64').toString('utf8')); },
+      exit: vi.fn(), closed: () => false,
+    };
+    const adapter = createAttemptSessionAdapter({
+      host, bindings, recorder, repoRoot: 'C:/kb',
+      parseResult(context) { parserContexts.push(context); return parseAttemptResult(context); },
+      resolveClaudePolicyId(input) { policyInputs.push(input); return 'research-policy'; },
+    });
+    const input = declaration();
+    const launch = adapter.begin(input);
+    let receiptSettled = false;
+    let resultSettled = false;
+    void launch.receipt.then(() => { receiptSettled = true; });
+    void launch.result.then(() => { resultSettled = true; });
+
+    host.resolveCreate(0);
+    await vi.waitFor(() => expect(bindings.calls).toHaveLength(1));
+    expect(receiptSettled).toBe(false);
+    expect(resultSettled).toBe(false);
+    expect(host.writes).toHaveLength(0);
+    bindings.gate.resolve();
+    const receipt = await launch.receipt;
+
+    expect(receipt).toEqual({
+      ok: true,
+      value: {
+        operationKey: input.operationKey, sessionId: host.attempts[0].sessionId, attemptRef: input.attemptRef,
+        revision: 1, boundAt: '2026-08-23T00:00:01.000Z', replayed: false,
+      },
+    });
+    expect(bindings.calls[0]).toEqual({
+      expectedRevision: 1, operator: input.subject, runRef: input.runRef, attemptRef: input.attemptRef,
+      managedSessionRef: input.sessionRef, sessionId: host.attempts[0].sessionId,
+    });
+    expect(host.attempts[0].request).toEqual({
+      operationKey: input.operationKey,
+      principal: { operator: input.subject, browserSessionRef: RUN_CONTROLLER_NULL_BROWSER_SESSION_REF },
+      recipe: { launcher: 'claude', mode: 'headless-json', model: input.profile.model, toolPolicyId: 'research-policy', sandbox: 'claude-policy' },
+      rootId: 'worktrees', relativeCwd: input.relativeCwd, cols: input.cols, rows: input.rows,
+    });
+    expect(policyInputs).toEqual([expect.objectContaining({
+      workflowProfile: 'research',
+      policy: { allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep'], permissionMode: 'default' },
+      settings: expect.stringContaining('Read(/memory/**)'),
+    })]);
+    const written = host.writes.map((row) => Buffer.from(row.bytes).toString('utf8'));
+    expect(written).toHaveLength(2);
+    expect(written[0]).toContain('SERVER-VERIFIED AGENT DECLARATION');
+    expect(written[1]).toContain(input.workOrder);
+    expect(written[1]).toContain(input.readScope[0]);
+    expect(written[1]).toContain(input.writeScope[0]);
+
+    const transcript = claudeTranscript('adapter complete');
+    host.emit(0, transcript);
+    host.finish(0);
+    const [result, existing] = await Promise.all([launch.result, existingClaudeResult(input, transcript)]);
+    expect(result).toEqual(existing);
+    expect(result).toMatchObject({ state: 'succeeded', summary: 'adapter complete', usage: { inputTokens: 12, outputTokens: 5, costUsdMicros: 0 } });
+    expect(frames.join('')).toBe(transcript);
+    expect(Buffer.from(adapter.rawTranscript(input.attemptRef)!).toString('utf8')).toBe(transcript);
+    expect(parserContexts).toEqual([{
+      runtime: 'claude', stdout: transcript, stderrTail: '', exitCode: null,
+      timedOut: false, outputLimitExceeded: false, cancelled: false, resultObserved: true,
+    }]);
+  });
+
+  it.each(loadWorkflowProfiles())('resolves current workflow profile $id through the Claude policy/settings builders', async (workflow) => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const resolved = vi.fn(() => workflow.id);
+    const adapter = createAttemptSessionAdapter({ host, bindings, resolveClaudePolicyId: resolved });
+    const input = declaration('claude', {
+      operationKey: `op-${workflow.id.charCodeAt(0).toString(16).padStart(2, '0')}${'1'.repeat(62)}`,
+      attemptRef: `attempt-${workflow.id}-1`, sessionRef: `session-${workflow.id}-1`, workflowProfile: workflow.id,
+    });
+    const launch = adapter.begin(input);
+    host.resolveCreate(0);
+    await launch.receipt;
+    expect(resolved).toHaveBeenCalledWith({
+      workflowProfile: workflow.id,
+      policy: { allowedTools: workflow.allowedTools, permissionMode: 'default' },
+      settings: workflow.allowedTools.includes('Bash') ? undefined : expect.any(String),
+    });
+    const transcript = claudeTranscript(`${workflow.id} ok`);
+    host.emit(0, transcript);
+    host.finish(0);
+    await expect(launch.result).resolves.toMatchObject({ state: 'succeeded', summary: `${workflow.id} ok` });
+  });
+
+  it('resumes Claude by the exact prior session and records the emitted continuation without replaying its declaration', async () => {
+    const host = new MemorySessionHost();
+    const input = declaration();
+    const recorded = vi.fn();
+    const adapter = createAttemptSessionAdapter({
+      host,
+      bindings: new MemoryBindings(),
+      resolveResumeRef: (runtime, runRef, agentId) => {
+        expect([runtime, runRef, agentId]).toEqual(['claude', input.runRef, input.assignment!.agentId]);
+        return 'claude-session-prior';
+      },
+      recordResumeRef: recorded,
+    });
+    const launch = adapter.begin(input);
+    host.resolveCreate(0);
+    await launch.receipt;
+    expect(host.attempts[0].request.recipe).toMatchObject({
+      launcher: 'claude', resumeRef: 'claude-session-prior', sandbox: 'claude-policy',
+    });
+    expect(host.writes).toHaveLength(1);
+    expect(Buffer.from(host.writes[0].bytes).toString('utf8')).not.toContain('SERVER-VERIFIED AGENT DECLARATION');
+    host.emit(0, claudeLine('resumed', 'claude-session-next'));
+    await expect(launch.result).resolves.toMatchObject({ state: 'succeeded', summary: 'resumed' });
+    expect(recorded).toHaveBeenCalledWith('claude', input.runRef, input.assignment!.agentId, 'claude-session-next');
+  });
+
+  it('matches the retained Codex adapter and resumes the exact emitted thread without declaration replay', async () => {
+    const input = declaration('codex');
+    const transcript = codexTranscript('codex complete');
+    const existing = await existingCodexResult(input, transcript);
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const recorded: unknown[] = [];
+    const adapter = createAttemptSessionAdapter({
+      host, bindings, resolveResumeRef: () => null,
+      recordResumeRef: (...args) => { recorded.push(args); },
+    });
+    const launch = adapter.begin(input);
+    host.resolveCreate(0);
+    await launch.receipt;
+    const stdin = Buffer.from(host.writes[0].bytes).toString('utf8');
+    expect(stdin.endsWith('\u0004')).toBe(true);
+    expect(stdin.slice(0, -1)).toBe(existing.stdin);
+    expect(stdin).toContain('SERVER-VERIFIED AGENT DECLARATION');
+    expect(host.attempts[0].request.recipe).toEqual({
+      launcher: 'codex', mode: 'headless-json', model: CODEX_PROFILE.model,
+      toolPolicyId: 'research', sandbox: 'codex-workspace-write',
+    });
+    host.emit(0, transcript);
+    host.finish(0);
+    await expect(launch.result).resolves.toEqual(existing.result);
+    expect(recorded).toEqual([['codex', input.runRef, input.assignment!.agentId, 'thread-1']]);
+
+    const resumeHost = new MemorySessionHost();
+    const resumeAdapter = createAttemptSessionAdapter({
+      host: resumeHost, bindings: new MemoryBindings(), resolveResumeRef: () => 'thread-prior',
+    });
+    const resumed = resumeAdapter.begin({ ...input, operationKey: `op-c${'2'.repeat(63)}`, attemptRef: 'attempt-resumed', sessionRef: 'session-resumed' });
+    resumeHost.resolveCreate(0);
+    await resumed.receipt;
+    expect(resumeHost.attempts[0].request.recipe).toMatchObject({ resumeRef: 'thread-prior', sandbox: 'codex-workspace-write' });
+    expect(Buffer.from(resumeHost.writes[0].bytes).toString('utf8')).not.toContain('SERVER-VERIFIED AGENT DECLARATION');
+    resumeHost.emit(0, codexTranscript('resumed', 'thread-prior'));
+    resumeHost.finish(0);
+    await resumed.result;
+  });
+
+  it('includes every declaration field in exact-operation identity and enforces the iteration outcome fence', async () => {
+    const complete = declaration('claude', { iterationContract: ITERATION_CONTRACT, expectsIterationOutcome: true });
+    const mutations: Array<[string, (value: ApprovedAttemptDeclaration) => ApprovedAttemptDeclaration]> = [
+      ['subject', (value) => ({ ...value, subject: `${value.subject}-changed` })],
+      ['runRef', (value) => ({ ...value, runRef: `${value.runRef}-changed` })],
+      ['stageRef', (value) => ({ ...value, stageRef: `${value.stageRef}-changed` })],
+      ['attemptRef', (value) => ({ ...value, attemptRef: `${value.attemptRef}-changed` })],
+      ['sessionRef', (value) => ({ ...value, sessionRef: `${value.sessionRef}-changed` })],
+      ['rootId/cwd', (value) => ({ ...value, relativeCwd: `${value.relativeCwd}/changed` })],
+      ['cols/rows', (value) => ({ ...value, cols: value.cols + 1, rows: value.rows + 1 })],
+      ['profile', (value) => ({ ...value, profile: { ...value.profile, capabilities: [...value.profile.capabilities, 'run-approved-commands'] } })],
+      ['workflowProfile', (value) => ({ ...value, workflowProfile: 'scanner' })],
+      ['skills', (value) => ({ ...value, skills: [...value.skills, 'humanizer'] })],
+      ['action', (value) => ({ ...value, action: `${value.action}:changed` })],
+      ['target', (value) => ({ ...value, target: `${value.target}/changed` })],
+      ['workOrder', (value) => ({ ...value, workOrder: `${value.workOrder} Changed.` })],
+      ['readScope', (value) => ({ ...value, readScope: [...value.readScope, 'docs'] })],
+      ['writeScope', (value) => ({ ...value, writeScope: [...value.writeScope, 'dashboard/shared'] })],
+      ['checkpoints', (value) => ({ ...value, checkpoints: [...value.checkpoints, 'reviewed'] })],
+      ['iterationContract', (value) => ({ ...value, iterationContract: { ...value.iterationContract!, request: { ...value.iterationContract!.request, instructions: 'Changed request.' } } }) as ApprovedAttemptDeclaration],
+      ['outcome fence', (value) => ({ ...value, expectsIterationOutcome: false }) as ApprovedAttemptDeclaration],
+      ['assignment', (value) => ({ ...value, assignment: { ...value.assignment!, declarationHash: 'd'.repeat(64) } }) as ApprovedAttemptDeclaration],
+      ['declaration', (value) => ({ ...value, instructionMarkdown: `${value.instructionMarkdown}\nChanged.` }) as ApprovedAttemptDeclaration],
+      ['proposal stage', (value) => ({ ...value, proposalStage: { ...value.proposalStage, title: 'Changed stage' } })],
+      ['project', (value) => ({ ...value, project: `${value.project}-changed` })],
+    ];
+    for (const [field, mutate] of mutations) {
+      expect(attemptDeclarationFingerprint(mutate(complete)), field).not.toBe(attemptDeclarationFingerprint(complete));
+    }
+
+    const host = new MemorySessionHost();
+    const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+    await expect(adapter.begin(declaration('claude', { expectsIterationOutcome: true })).receipt)
+      .resolves.toMatchObject({ ok: false, refusal: 'invalid-request', detail: expect.stringContaining('outcome fence') });
+    const launch = adapter.begin(complete);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await launch.receipt;
+    expect(Buffer.from(host.writes[1].bytes).toString('utf8')).toContain('SERVER-OWNED ITERATION CONTRACT');
+    const outcome = {
+      schema: 'kb.iteration-outcome/v1', requestRef: 'request-1', iterationLoopRef: 'loop-1', participantId: 'reviewer',
+      cycle: 1, verdict: 'pass', inputGenerationRefs: ['generation-1'],
+      criteria: [{ criterionId: 'correct', verdict: 'pass', findingIds: [] }], findings: [], positions: [], recordedDissent: [],
+      summary: 'Review passed.',
+    };
+    host.emit(0, claudeLine('declaration accepted') + claudeLine(JSON.stringify(outcome)));
+    host.finish(0);
+    await expect(launch.result).resolves.toMatchObject({ state: 'succeeded', summary: 'Review passed.', iterationOutcome: outcome });
+  });
+
+  it.each([
+    'recipe', 'command', 'executable', 'args', 'argv', 'env', 'uid', 'user', 'host', 'token', 'cwd', 'resumeRef',
+  ].flatMap((field) => [
+    [`top-level ${field}`, field, false] as const,
+    [`nested ${field}`, field, true] as const,
+  ]))('returns invalid-request for raw authority at %s', async (_label, field, nested) => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const adapter = createAttemptSessionAdapter({ host, bindings });
+    const input = nested
+      ? { ...declaration(), proposalStage: { ...STAGE, [field]: field === 'argv' ? ['--danger'] : 'danger' } }
+      : { ...declaration(), [field]: field === 'argv' ? ['--danger'] : 'danger' };
+    const launch = adapter.begin(input as ApprovedAttemptDeclaration);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'invalid-request' });
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('invalid-request') });
+    expect(host.attempts).toHaveLength(0);
+    expect(bindings.operations.size).toBe(0);
+  });
+
+  it('barriers create refusal, bind failure, cancel-before-create, and exit-before-receipt without a live projection', async () => {
+    const input = declaration();
+
+    // Cancel before the session is created: the tombstone lands first and NO session is ever created.
+    const cancelHost = new MemorySessionHost();
+    const cancelBindings = new MemoryBindings();
+    const cancelAdapter = createAttemptSessionAdapter({ host: cancelHost, bindings: cancelBindings });
+    const cancelled = cancelAdapter.begin(input);
+    const cancelResult = cancelAdapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' });
+    expect(cancelAdapter.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
+    await expect(cancelResult).resolves.toMatchObject({ ok: true, value: { reason: 'abandoned' } });
+    await expect(cancelled.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
+    await expect(cancelled.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
+    expect(cancelHost.attempts).toHaveLength(0);
+    expect(cancelHost.closeCalls).toHaveLength(0);
+    expect(cancelBindings.operations.get(input.operationKey)?.status).toBe('cancelled');
+
+    // The host refuses at create: the durable record settles `failed` and no session leaks.
+    const refuseHost = new MemorySessionHost();
+    const refuseBindings = new MemoryBindings();
+    const refused = createAttemptSessionAdapter({ host: refuseHost, bindings: refuseBindings }).begin(input);
+    refuseHost.refuseCreate(0, { ok: false, refusal: 'launcher-unavailable', detail: 'claude missing' });
+    await expect(refused.receipt).resolves.toEqual({ ok: false, refusal: 'launcher-unavailable', detail: 'claude missing' });
+    expect(refuseHost.closeCalls).toHaveLength(0);
+    expect(refuseBindings.operations.get(input.operationKey)).toMatchObject({ status: 'failed', receipt: { refusal: 'launcher-unavailable' } });
+
+    const bindHost = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    bindings.nextRefusal = { ok: false, refusal: 'binding-conflict', detail: 'attempt already bound' };
+    const bindAdapter = createAttemptSessionAdapter({ host: bindHost, bindings });
+    const bindFailed = bindAdapter.begin(input);
+    bindHost.resolveCreate(0);
+    await expect(bindFailed.receipt).resolves.toEqual({ ok: false, refusal: 'binding-conflict', detail: 'attempt already bound' });
+    await expect(bindFailed.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('binding-conflict') });
+    expect(bindAdapter.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
+    expect(bindHost.closeCalls).toEqual([bindHost.attempts[0].sessionId]);
+    expect(bindings.operations.get(input.operationKey)?.status).toBe('failed');
+
+    const earlyHost = new MemorySessionHost();
+    const earlyBindings = new MemoryBindings();
+    earlyBindings.gate = deferred();
+    const earlyAdapter = createAttemptSessionAdapter({ host: earlyHost, bindings: earlyBindings });
+    const early = earlyAdapter.begin(input);
+    await vi.waitFor(() => expect(earlyHost.attempts).toHaveLength(1));
+    earlyHost.emit(0, claudeTranscript('exited early'));
+    earlyHost.finish(0);
+    earlyHost.resolveCreate(0);
+    let resultSettled = false;
+    void early.result.then(() => { resultSettled = true; });
+    expect(earlyBindings.calls).toHaveLength(0);
+    await expect(early.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    await expect(early.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('internal') });
+    expect(resultSettled).toBe(true);
+    expect(earlyHost.writes).toHaveLength(0);
+    expect(earlyBindings.operations.get(input.operationKey)?.status).toBe('failed');
+  });
+
+  it('persists cancellation through bind and refuses cancellation replay after restart', async () => {
+    const input = declaration();
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    bindings.gate = deferred<void>();
+    const adapter = createAttemptSessionAdapter({ host, bindings });
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await vi.waitFor(() => expect(bindings.calls).toHaveLength(1));
+    const cancellation = adapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' });
+    await vi.waitFor(() => expect(bindings.operations.get(input.operationKey)?.status).toBe('cancelled'));
+    bindings.gate!.resolve();
+    await expect(cancellation).resolves.toMatchObject({ ok: true, value: { reason: 'closed' } });
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
+    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
+    expect(host.writes).toHaveLength(0);
+
+    const attemptsBeforeRestart = host.attempts.length;
+    const replay = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await expect(replay.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
+    await expect(replay.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
+    expect(host.attempts).toHaveLength(attemptsBeforeRestart);
+  });
+
+  it.each([
+    ['workOrder', (input: ApprovedAttemptDeclaration) => ({ ...input, workOrder: `${input.workOrder} changed` })],
+    ['read scope', (input: ApprovedAttemptDeclaration) => ({ ...input, readScope: [...input.readScope, 'docs'] })],
+  ] as const)('rejects a restarted operation with changed %s by durable sha256 fingerprint', async (_field, mutate) => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration();
+    const first = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await first.receipt;
+    const attemptsBeforeRestart = host.attempts.length;
+    const conflict = createAttemptSessionAdapter({ host, bindings }).begin(mutate(input));
+    await expect(conflict.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+    expect(bindings.operations.get(input.operationKey)?.requestHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(host.attempts).toHaveLength(attemptsBeforeRestart);
+  });
+
+  it.each([
+    ['stageRef', (input: ApprovedAttemptDeclaration) => ({ ...input, stageRef: `${input.stageRef}-changed` })],
+    ['skills', (input: ApprovedAttemptDeclaration) => ({ ...input, skills: [...input.skills, 'humanizer'] })],
+    ['action', (input: ApprovedAttemptDeclaration) => ({ ...input, action: `${input.action}:changed` })],
+    ['target', (input: ApprovedAttemptDeclaration) => ({ ...input, target: `${input.target}/changed` })],
+    ['checkpoints', (input: ApprovedAttemptDeclaration) => ({ ...input, checkpoints: [...input.checkpoints, 'reviewed'] })],
+    ['project', (input: ApprovedAttemptDeclaration) => ({ ...input, project: `${input.project}-changed` })],
+    ['profile role', (input: ApprovedAttemptDeclaration) => ({ ...input, profile: { ...input.profile, role: input.profile.role === 'worker' ? 'manager' : 'worker' } }) as ApprovedAttemptDeclaration],
+    ['profile capabilities', (input: ApprovedAttemptDeclaration) => ({ ...input, profile: { ...input.profile, capabilities: [...input.profile.capabilities, 'extra-capability'] } }) as ApprovedAttemptDeclaration],
+    ['assignment path', (input: ApprovedAttemptDeclaration) => ({ ...input, assignment: { ...input.assignment!, declarationPath: '.agents/changed.md' } }) as ApprovedAttemptDeclaration],
+    ['assignment hash', (input: ApprovedAttemptDeclaration) => ({ ...input, assignment: { ...input.assignment!, declarationHash: 'e'.repeat(64) } }) as ApprovedAttemptDeclaration],
+    ['proposalStage', (input: ApprovedAttemptDeclaration) => ({ ...input, proposalStage: { ...input.proposalStage, title: 'Changed title' } })],
+  ] as const)('durably fingerprints semantically ignored field %s', async (_field, mutate) => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration();
+    const first = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await first.receipt;
+    const replay = createAttemptSessionAdapter({ host, bindings }).begin(mutate(input));
+    await expect(replay.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+    expect(host.attempts).toHaveLength(1);
+  });
+
+  it('maps rejected bind, prompt write, and rollback close promises to internal failures', async () => {
+    const bindHost = new MemorySessionHost();
+    const bindBindings = new MemoryBindings();
+    bindBindings.rejectBind = true;
+    const bind = createAttemptSessionAdapter({ host: bindHost, bindings: bindBindings }).begin(declaration());
+    await vi.waitFor(() => expect(bindHost.attempts).toHaveLength(1));
+    bindHost.resolveCreate(0);
+    await expect(bind.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    await expect(bind.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('internal') });
+    expect(bindHost.closeCalls).toHaveLength(1);
+
+    const writeHost = new MemorySessionHost();
+    writeHost.rejectedWrites.add(0);
+    const writeBindings = new MemoryBindings();
+    const write = createAttemptSessionAdapter({ host: writeHost, bindings: writeBindings }).begin(declaration());
+    await vi.waitFor(() => expect(writeHost.attempts).toHaveLength(1));
+    writeHost.resolveCreate(0);
+    await expect(write.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    await expect(write.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('internal') });
+    expect(writeHost.closeCalls).toHaveLength(1);
+    expect(writeBindings.operations.get(declaration().operationKey)?.status).toBe('failed');
+
+    const closeHost = new MemorySessionHost();
+    closeHost.rejectClose = true;
+    const closeBindings = new MemoryBindings();
+    closeBindings.nextRefusal = { ok: false, refusal: 'binding-conflict', detail: 'binding differs' };
+    const close = createAttemptSessionAdapter({ host: closeHost, bindings: closeBindings }).begin(declaration());
+    await vi.waitFor(() => expect(closeHost.attempts).toHaveLength(1));
+    closeHost.resolveCreate(0);
+    await expect(close.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    await expect(close.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('internal') });
+
+    const rejectStore = new MemorySessionHost();
+    const rejectBindings = new MemoryBindings();
+    rejectBindings.rejectOperationWrite = true;
+    const rejected = createAttemptSessionAdapter({ host: rejectStore, bindings: rejectBindings }).begin(declaration());
+    await expect(rejected.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    expect(rejectStore.attempts).toHaveLength(0);
+  });
+
+  it('refuses exit between Claude prompts and isolates recorder.closed exceptions', async () => {
+    const host = new MemorySessionHost();
+    host.finishAfterWrite = 0;
+    const bindings = new MemoryBindings();
+    const adapter = createAttemptSessionAdapter({
+      host, bindings,
+      recorder: { data() {}, exit() {}, closed() { throw new Error('observer failed'); } },
+    });
+    const input = declaration();
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    expect(() => host.attempts[0].sink.closed()).not.toThrow();
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
+    expect(host.writes).toHaveLength(1);
+    // The exited operation is durably terminal, so it is never resumed and prompt 0 is never re-sent.
+    expect(bindings.operations.get(input.operationKey)).toMatchObject({ status: 'failed', promptsDelivered: 1 });
+  });
+
+  it('shares exact duplicates, conflicts changed operation requests, and never re-runs a completed operation', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration();
+    const firstAdapter = createAttemptSessionAdapter({ host, bindings });
+    const first = firstAdapter.begin(input);
+    expect(firstAdapter.begin({ ...input })).toBe(first);
+    const changed = firstAdapter.begin({ ...input, workOrder: 'Different authority.' });
+    await expect(changed.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await first.receipt;
+    host.emit(0, claudeTranscript('first result'));
+    host.finish(0);
+    await first.result;
+    const writeCount = host.writes.length;
+    expect(bindings.operations.get(input.operationKey)?.status).toBe('completed');
+
+    const restarted = createAttemptSessionAdapter({ host, bindings });
+    const replay = restarted.begin(input);
+    await expect(replay.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+    await expect(replay.result).resolves.toMatchObject({ state: 'failed' });
+    expect(host.attempts).toHaveLength(1);
+    expect(host.writes).toHaveLength(writeCount);
+    expect(bindings.rows).toHaveLength(1);
+  });
+
+  it('evicts consumed terminal attempts, releases their transcripts, and bounds retained bytes by one output cap', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const adapter = createAttemptSessionAdapter({ host, bindings, maxOutputBytes: 16 });
+    const refs: string[] = [];
+    for (let index = 0; index < 33; index += 1) {
+      const input = declaration('codex', {
+        operationKey: `op-${index.toString(16).padStart(64, '0')}`,
+        attemptRef: `attempt-terminal-${index}`,
+        sessionRef: `session-terminal-${index}`,
+      });
+      refs.push(input.attemptRef);
+      const launch = adapter.begin(input);
+      await vi.waitFor(() => expect(host.attempts).toHaveLength(index + 1));
+      host.resolveCreate(index);
+      await launch.receipt;
+      host.emit(index, codexTranscript(`result-${index}`));
+      host.finish(index);
+      await launch.result;
+    }
+    // Every retained transcript is capped at `maxOutputBytes`, and the retained SET is capped by the same
+    // budget — so only the newest terminal attempt survives here, and the evicted arrays are released.
+    const retained = refs.filter((ref) => adapter.rawTranscript(ref) !== null);
+    expect(retained).toEqual([refs.at(-1)]);
+    expect(adapter.rawTranscript(refs.at(-1)!)!.byteLength).toBeLessThanOrEqual(16);
+    expect(bindings.rows).toHaveLength(33);
+
+    const cappedHost = new MemorySessionHost();
+    const capped = createAttemptSessionAdapter({ host: cappedHost, bindings: new MemoryBindings(), maxOutputBytes: 8 });
+    const cappedInput = declaration('codex', {
+      operationKey: `op-f${'9'.repeat(63)}`, attemptRef: 'attempt-capped', sessionRef: 'session-capped',
+    });
+    const launch = capped.begin(cappedInput);
+    await vi.waitFor(() => expect(cappedHost.attempts).toHaveLength(1));
+    cappedHost.resolveCreate(0);
+    await launch.receipt;
+    cappedHost.emit(0, 'more than eight bytes');
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('8-byte cap') });
+    expect(capped.rawTranscript(cappedInput.attemptRef)!.byteLength).toBeLessThanOrEqual(8);
+  });
+
+  it('awaits idempotent instructions on the newest active attempt, cancels it, and drains the epoch', async () => {
+    const host = new MemorySessionHost();
+    const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+    const firstInput = declaration();
+    const secondInput = declaration('claude', {
+      operationKey: `op-d${'4'.repeat(63)}`, attemptRef: 'attempt-newest', sessionRef: 'session-newest',
+    });
+    const first = adapter.begin(firstInput);
+    const second = adapter.begin(secondInput);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(2));
+    host.resolveCreate(0);
+    host.resolveCreate(1);
+    await Promise.all([first.receipt, second.receipt]);
+    expect(adapter.isRunLive({ operator: firstInput.subject, runRef: firstInput.runRef })).toBe(true);
+    const before = host.writes.length;
+    const instruction = { operator: firstInput.subject, runRef: firstInput.runRef, idempotencyKey: 'instruction-1', message: 'Inspect the smaller diff.' };
+    await expect(adapter.queueRunInstruction(instruction)).resolves.toBe(true);
+    await expect(adapter.queueRunInstruction(instruction)).resolves.toBe(true);
+    await expect(adapter.queueRunInstruction({ ...instruction, message: 'Changed message.' })).resolves.toBe(false);
+    await expect(adapter.queueRunInstructionAtCheckpoint({ ...instruction, idempotencyKey: 'checkpoint-1', checkpoint: 'tests-green' })).resolves.toBe(true);
+    expect(host.writes).toHaveLength(before + 2);
+    expect(host.writes.slice(-2).every((write) => write.sessionId === host.attempts[1].sessionId)).toBe(true);
+    expect(Buffer.from(host.writes.at(-1)!.bytes).toString('utf8')).toContain("checkpoint 'tests-green'");
+
+    const cancel = adapter.cancel({ operationKey: secondInput.operationKey, reason: 'superseded' });
+    await expect(cancel).resolves.toMatchObject({ ok: true, value: { sessionId: host.attempts[1].sessionId } });
+    expect(adapter.isRunLive({ operator: firstInput.subject, runRef: firstInput.runRef })).toBe(true);
+    await adapter.drain();
+    expect(host.listEpochCalls).toBe(1);
+    expect(host.drainCalls).toEqual(['epoch-11111111111111111111111111111111']);
+    const refused = adapter.begin({ ...firstInput, operationKey: `op-e${'5'.repeat(63)}`, attemptRef: 'attempt-after-drain' });
+    await expect(refused.receipt).resolves.toMatchObject({ ok: false, refusal: 'unavailable' });
+  });
+});

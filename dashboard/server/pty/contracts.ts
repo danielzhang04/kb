@@ -116,7 +116,12 @@ export interface AttemptBindingPort {
   bySession(operator: string, sessionId: string): AttemptBinding | null;
   readOperation(operationKey: string): Promise<AttemptOperationRecord | null>;
   /** Write-ahead CAS. `expectedRevision: null` means "must not exist" (create); any revision
-   *  mismatch (or a create over an existing key) refuses with `'binding-conflict'`. */
+   *  mismatch (or a create over an existing key) refuses with `'binding-conflict'`.
+   *  CONTRACT — approved prompt delivery is at-most-once, never at-least-once: a prompt whose delivery
+   *  was reserved here (`promptsDelivered` incremented) is never re-sent, so a crash between the
+   *  reservation and the write LOSES that prompt, and the attempt timer surfaces the stranded session as
+   *  `failed`. Lost beats duplicate: a re-sent work order re-executes a stage whose side effects are
+   *  already committed. */
   writeOperation(record: AttemptOperationRecord,
     expectedRevision: number | null): Promise<PortResult<AttemptOperationRecord>>;
 }
@@ -176,7 +181,12 @@ export type OperationReceipt = { operationKey: string; requestHash: string;
 export type AttemptOperationStatus = 'pending' | 'bound' | 'cancelled' | 'failed' | 'completed';
 /** Durable write-ahead state for one attempt operation, keyed by `operationKey`. No optional
  *  fields: absence is always an explicit `null`. `requestHash` is the sha256 hex of the canonical
- *  declaration JSON. `revision` is the CAS token carried by `AttemptBindingPort.writeOperation`. */
+ *  declaration JSON. `revision` is the CAS token carried by `AttemptBindingPort.writeOperation`.
+ *  CONTRACT — `promptsDelivered` is a RESERVATION count, not a delivery receipt: it is incremented
+ *  before the bytes leave the process and never decremented, so prompt `i` is sent at most once for the
+ *  life of the key. A crash between the reservation and the write loses that prompt permanently; the
+ *  session strands with a durable `promptsDelivered` the operator can read, and the attempt timer
+ *  settles the operation `failed`. */
 export type AttemptOperationRecord = { operationKey: string; requestHash: string;
   status: AttemptOperationStatus; promptsDelivered: number; sessionId: string | null;
   attemptRef: string | null; receipt: OperationReceipt | null; revision: number; updatedAt: string };
