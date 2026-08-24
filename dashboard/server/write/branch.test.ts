@@ -17,22 +17,53 @@ import {
   PublishedCoordinationCommitError,
   publishVerifiedScheduleMarkerRemoval,
   DEFAULT_WORK_BRANCH,
+  routeDurable,
+  resolveBaseCommit,
+  createPersistentRouteReceipts,
+  routeReceiptStorePath,
+  DurableRouteError,
+  DurableReplayConflictError,
+  type RouteOptions,
+  type RouteReceiptStore,
+  type StoredRouteReceipt,
   type GitRunner,
   type PrOpener,
   type PrRequest,
 } from './branch.ts';
+import { derivedDurableBranch, scheduleMirrorOperationKey, type DurablePathManifest } from './durableManifest.ts';
+import { PUBLISHER_PERMITTED_SUBCOMMANDS } from './asyncGit.ts';
 
 const MIGRATION_FIXTURES = resolve(import.meta.dirname, '../control/__fixtures__/dv3');
 const MARKER_GOLDEN = readdirSync(MIGRATION_FIXTURES).map((name) => {
   try { return JSON.parse(readFileSync(resolve(MIGRATION_FIXTURES, name), 'utf8')) as Record<string, unknown>; } catch { return {}; }
 }).find((value) => Array.isArray(value.markers))?.markers as Array<{ marker: string }>;
 
-/** A recording git runner; each call is captured as its argv (after `git`). Never throws. */
-function recorder(branch = 'ops'): { runner: GitRunner; calls: string[][] } {
+/** The HEAD every recorder reports — P4 manifests pin a real base commit (§3.2). */
+const FAKE_HEAD = 'a'.repeat(40);
+
+/**
+ * A recording git runner; each call is captured as its argv (after `git`). Never throws.
+ *
+ * P4 W2 contract change: the publisher now pins a base commit and proves its exact cached set, so the
+ * recorder answers `rev-parse HEAD` with a real sha and replays the paths it saw staged when asked for
+ * `diff --cached --name-status`. `--name-only` (the clean-index probe, always issued BEFORE staging)
+ * still answers empty.
+ */
+function recorder(branch = 'ops', head = FAKE_HEAD): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
+  const staged: string[] = [];
   const runner: GitRunner = (_repoRoot, args) => {
     calls.push(args);
-    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+    const joined = args.join(' ');
+    if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+    if (joined === 'rev-parse HEAD') return `${head}\n`;
+    if (args[0] === 'add' && args[1] === '--') staged.push(...args.slice(2));
+    if (joined === 'diff --cached --name-status -z') {
+      return staged.map((path) => `M\0${path}\0`).join('');
+    }
+    // The post-`add` staged-object reads: every entry a plain blob, records at the batch's state.
+    if (args[0] === 'ls-files') return staged.map((path) => `100644 ${'b'.repeat(40)} 0\t${path}\0`).join('');
+    if (args[0] === 'show') return IMPLEMENTED_RECORD;
     return '';
   };
   return { runner, calls };
@@ -496,9 +527,13 @@ describe('routeWrite — durable content (skills/**, docs/**, KB markdown)', asy
     expect(calls[0]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
     expect(calls[1]).toEqual(['diff', '--cached', '--name-only', '-z']);
     expect(calls[2]).toEqual(['add', '--', 'skills/curated/alpha-skill/SKILL.md']);
-    expect(calls[3][0]).toBe('commit');
-    expect(calls[3]).not.toContain('--only');
-    expect(calls[3]).not.toContain('--no-verify');
+    // P4 W2: the publisher proves the exact cached set, and that git staged no link, before it creates
+    // any history (plan 3.2).
+    expect(calls[3]).toEqual(['diff', '--cached', '--name-status', '-z']);
+    expect(calls[4]).toEqual(['ls-files', '-s', '-z', '--', 'skills/curated/alpha-skill/SKILL.md']);
+    expect(calls[5][0]).toBe('commit');
+    expect(calls[5]).not.toContain('--only');
+    expect(calls[5]).not.toContain('--no-verify');
 
     const pushCalls = calls.filter((c) => c[0] === 'push');
     expect(pushCalls).toHaveLength(1);
@@ -837,5 +872,598 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
       ['pull', '--rebase', 'origin', 'ops'],
       ['rev-parse', '--abbrev-ref', 'HEAD'],
     ]);
+  });
+});
+
+/* -- P4 W2: the one durable publisher over a manifest (plan 3.2, 5 W2 row) -- */
+
+const P4_BASE = 'a'.repeat(40);
+const P4_MERGE = 'd'.repeat(40);
+
+function p4Manifest(overrides: Partial<DurablePathManifest> = {}): DurablePathManifest {
+  return {
+    schema: 'kb.durable-path-manifest/v1',
+    operationKey: 'learning-implementation:learn-0123456789abcdef01234567',
+    purpose: 'learning-implementation',
+    baseCommit: P4_BASE,
+    relpaths: ['agents/alpha.md', 'docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md'],
+    ...overrides,
+  } as DurablePathManifest;
+}
+
+/** A rendered record: the closed frontmatter block first, then the inert body the wall must ignore. */
+const IMPLEMENTED_RECORD = [
+  '---',
+  'schema: kb.learning-proposal/v1',
+  'status: implemented',
+  'batch-id: learn-0123456789abcdef01234567',
+  'implemented-at: 2026-08-20T06:00:00Z',
+  '---',
+  '',
+  '## Evidence',
+  '- memory/lessons-miner.md: 2026-08-20 run_01HXYZ',
+].join('\n');
+
+const P4_BATCH = {
+  batchId: 'learn-0123456789abcdef01234567',
+  implementedAt: '2026-08-20T06:00:00Z',
+  targetPaths: ['agents/alpha.md'],
+  recordPaths: ['docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md'],
+};
+
+const PINNED_PR = { owner: 'kb-owner', repo: 'kb', number: 42, url: 'https://github.com/kb-owner/kb/pull/42' };
+
+function freshReceipts(): RouteReceiptStore {
+  const store = new Map<string, StoredRouteReceipt>();
+  return { get: (key) => store.get(key), put: (key, value) => { store.set(key, value); } };
+}
+
+function p4Options(overrides: Partial<RouteOptions> = {}): RouteOptions {
+  return {
+    learningBatch: P4_BATCH,
+    lstatPath: async () => ({ exists: true, isFile: true, isSymbolicLink: false }),
+    readPathBytes: async () => IMPLEMENTED_RECORD,
+    openPr: () => PINNED_PR,
+    receipts: freshReceipts(),
+    repoPin: { owner: 'kb-owner', repo: 'kb' },
+    ...overrides,
+  };
+}
+
+describe('routeDurable - PR mode over a manifest', () => {
+  it('derives the head branch from the operation key, stages the exact set, and returns the pinned PR receipt', async () => {
+    const manifest = p4Manifest();
+    const git = recorder(derivedDurableBranch(manifest)!);
+    const receipt = await routeDurable('/fake/repo', manifest, p4Options({ runGit: git.runner }));
+    expect(receipt).toEqual({ mode: 'pr', branch: derivedDurableBranch(manifest), pr: PINNED_PR });
+    expect(receipt.branch).toMatch(/^dv3-p4\/learning-implementation-[0-9a-f]{16}$/);
+    const joined = git.calls.map((call) => call.join(' '));
+    expect(joined).toContain(`add -- ${manifest.relpaths.join(' ')}`);
+    expect(joined).toContain(`push origin HEAD:refs/heads/${receipt.branch}`);
+    // A caller-supplied work branch can never override a derived head.
+    const override = recorder(derivedDurableBranch(manifest)!);
+    const overridden = await routeDurable('/fake/repo', manifest,
+      p4Options({ runGit: override.runner, workBranch: 'claude/attacker' }));
+    expect(overridden.branch).toBe(derivedDurableBranch(manifest));
+  });
+
+  it('refuses a thirty-third path and an off-purpose path before any git call', async () => {
+    const git = recorder();
+    const thirtyThree = Array.from({ length: 33 }, (_v, index) => `agents/a${String(index).padStart(2, '0')}.md`);
+    await expect(routeDurable('/fake/repo', p4Manifest({ relpaths: thirtyThree }), p4Options({ runGit: git.runner })))
+      .rejects.toThrow(/at most 32 paths/);
+    await expect(routeDurable('/fake/repo', p4Manifest({ relpaths: ['memory/lessons-miner.md'] }), p4Options({ runGit: git.runner })))
+      .rejects.toThrow(/rejects/);
+    expect(git.calls).toEqual([]);
+  });
+
+  it('refuses when the cached set does not equal the manifest, and creates no commit', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const calls: string[][] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      // A hook or a stray editor added one extra path to the index.
+      if (joined === 'diff --cached --name-status -z') {
+        return [...manifest.relpaths, 'agents/smuggled.md'].map((path) => `M\0${path}\0`).join('');
+      }
+      return '';
+    };
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })))
+      .rejects.toThrow(DurableRouteError);
+    const joined = calls.map((call) => call.join(' '));
+    expect(joined.some((call) => call.startsWith('commit'))).toBe(false);
+    expect(joined.some((call) => call.startsWith('push'))).toBe(false);
+    expect(joined).toContain('reset HEAD -- .');
+  });
+
+  it('refuses a symlink/reparse swap at any staged path, and a checkout whose HEAD is not the pinned base', async () => {
+    const manifest = p4Manifest();
+    const git = recorder(derivedDurableBranch(manifest)!);
+    await expect(routeDurable('/fake/repo', manifest, p4Options({
+      runGit: git.runner,
+      lstatPath: async (absolute) => ({ exists: true, isFile: true, isSymbolicLink: absolute.includes('alpha') }),
+    }))).rejects.toThrow(/symlink or reparse point/);
+    // The wall now runs INSIDE the transaction, so the branch/base reads precede it — but nothing was
+    // ever staged or committed.
+    expect(git.calls.map((call) => call[0])).toEqual(['rev-parse', 'rev-parse']);
+
+    const drifted = recorder(derivedDurableBranch(manifest)!, 'e'.repeat(40));
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: drifted.runner })))
+      .rejects.toThrow(/manifest pins/);
+    expect(drifted.calls.map((call) => call.join(' ')).some((call) => call.startsWith('add'))).toBe(false);
+  });
+
+  it('records the boundary of a partial failure and never retries a subset', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const calls: string[][] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      if (joined === 'diff --cached --name-status -z') return manifest.relpaths.map((path) => `M\0${path}\0`).join('');
+      if (args[0] === 'ls-files') return manifest.relpaths.map((path) => `100644 ${'b'.repeat(40)} 0\t${path}\0`).join('');
+      if (args[0] === 'show') return IMPLEMENTED_RECORD;
+      if (args[0] === 'push') throw new Error('remote hung up');
+      return '';
+    };
+    const error = await routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })).catch((caught) => caught);
+    expect(error).toBeInstanceOf(DurableRouteError);
+    expect(error).toMatchObject({ committed: true, pushed: false, prKnown: false, branch });
+    expect(calls.filter((call) => call[0] === 'add')).toHaveLength(1);
+    expect(calls.filter((call) => call[0] === 'push')).toHaveLength(1);
+  });
+
+  it('replays an exact operation key and rejects a changed manifest under that key', async () => {
+    const manifest = p4Manifest();
+    const receipts = freshReceipts();
+    const git = recorder(derivedDurableBranch(manifest)!);
+    const first = await routeDurable('/fake/repo', manifest, p4Options({ runGit: git.runner, receipts }));
+    const before = git.calls.length;
+    const replay = await routeDurable('/fake/repo', manifest, p4Options({ runGit: git.runner, receipts }));
+    expect(replay).toEqual(first);
+    expect(git.calls.length).toBe(before);
+    await expect(routeDurable('/fake/repo', p4Manifest({ baseCommit: 'f'.repeat(40) }),
+      p4Options({ runGit: git.runner, receipts }))).rejects.toBeInstanceOf(DurableReplayConflictError);
+  });
+
+  it('fails a learning-implementation PR whose gh output is not the pinned {owner,repo,number,url}', async () => {
+    const manifest = p4Manifest();
+    const git = recorder(derivedDurableBranch(manifest)!);
+    await expect(routeDurable('/fake/repo', manifest, p4Options({
+      runGit: git.runner, openPr: () => ({ url: 'https://example.invalid/pr/1' }),
+    }))).rejects.toThrow(/not the pinned/);
+  });
+});
+
+describe('routeDurable - the learning-implementation staged set [P4-C13]', () => {
+  it('stages exactly the validated targets plus the batch records at status: implemented', async () => {
+    const manifest = p4Manifest();
+    const git = recorder(derivedDurableBranch(manifest)!);
+    const read: string[] = [];
+    const receipt = await routeDurable('/fake/repo', manifest, p4Options({
+      runGit: git.runner,
+      readPathBytes: async (absolute) => { read.push(absolute); return IMPLEMENTED_RECORD; },
+    }));
+    expect(receipt.mode).toBe('pr');
+    expect(read).toHaveLength(1);
+    expect(read[0]).toMatch(/2026-08-20-lessons-miner-run_01HXYZ-01\.md$/);
+  });
+
+  it('rejects every other docs/proposals path, a record outside the batch, and unrendered record bytes', async () => {
+    // The derived branch is what the publisher checks out to, so the recorder reports it.
+    const git = recorder(derivedDurableBranch(p4Manifest())!);
+    await expect(routeDurable('/fake/repo', p4Manifest({
+      relpaths: ['agents/alpha.md', 'docs/proposals/decisions/2026-08-20-x.md'],
+    }), p4Options({ runGit: git.runner }))).rejects.toThrow(/rejects/);
+
+    await expect(routeDurable('/fake/repo', p4Manifest({
+      relpaths: ['agents/alpha.md', 'docs/proposals/learnings/2026-08-20-other-run_01HXYZ-09.md'],
+    }), p4Options({ runGit: git.runner }))).rejects.toThrow(/outside this batch/);
+
+    const missingLines = [
+      'status: implemented',
+      'batch-id: learn-0123456789abcdef01234567',
+      'implemented-at: 2026-08-20T06:00:00Z',
+    ];
+    for (const missing of missingLines) {
+      const bytes = IMPLEMENTED_RECORD.split('\n').filter((line) => line !== missing).join('\n');
+      await expect(routeDurable('/fake/repo', p4Manifest(), p4Options({
+        runGit: git.runner, readPathBytes: async () => bytes,
+      }))).rejects.toThrow(/not rendered at this/);
+    }
+    // Nothing was ever staged: only the in-transaction branch/base reads ran.
+    expect(git.calls.every((call) => call[0] === 'rev-parse')).toBe(true);
+  });
+
+  it('refuses a record whose FRONTMATTER says proposed even though its Evidence body carries all three literals', async () => {
+    // `## Evidence` is miner-derived, attacker-influenced text the constitution treats as inert data.
+    // A whole-file line scan would pass this record; a frontmatter parse must not.
+    const smuggled = [
+      '---',
+      'schema: kb.learning-proposal/v1',
+      'status: proposed',
+      'batch-id: null',
+      'implemented-at: null',
+      '---',
+      '',
+      '## Evidence',
+      'status: implemented',
+      'batch-id: learn-0123456789abcdef01234567',
+      'implemented-at: 2026-08-20T06:00:00Z',
+    ].join('\n');
+    const git = recorder(derivedDurableBranch(p4Manifest())!);
+    await expect(routeDurable('/fake/repo', p4Manifest(), p4Options({
+      runGit: git.runner, readPathBytes: async () => smuggled,
+    }))).rejects.toThrow(/not rendered at this/);
+    expect(git.calls.some((call) => call[0] === 'add')).toBe(false);
+  });
+
+  it('re-derives the record state from the STAGED bytes after add, refusing a swap in that window', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const staged: string[] = [];
+    const calls: string[][] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      if (args[0] === 'add' && args[1] === '--') staged.push(...args.slice(2));
+      if (joined === 'diff --cached --name-status -z') return staged.map((path) => `M\0${path}\0`).join('');
+      if (args[0] === 'ls-files') return staged.map((path) => `100644 ${'b'.repeat(40)} 0\t${path}\0`).join('');
+      // The worktree read saw the rendered record; the INDEX holds the pre-batch one.
+      if (args[0] === 'show') return IMPLEMENTED_RECORD.replace('status: implemented', 'status: proposed');
+      return '';
+    };
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })))
+      .rejects.toThrow(/not rendered at this/);
+    const joined = calls.map((call) => call.join(' '));
+    expect(joined).toContain(`show :${P4_BATCH.recordPaths[0]}`);
+    expect(joined.some((call) => call.startsWith('commit'))).toBe(false);
+  });
+
+  it('refuses an entry git staged as a symlink, and a junction on any path COMPONENT', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const staged: string[] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      if (args[0] === 'add' && args[1] === '--') staged.push(...args.slice(2));
+      if (joined === 'diff --cached --name-status -z') return staged.map((path) => `M\0${path}\0`).join('');
+      // git recorded the leaf as mode 120000 — a symlink swapped in after the component walk.
+      if (args[0] === 'ls-files') return staged.map((path) => `120000 ${'b'.repeat(40)} 0\t${path}\0`).join('');
+      if (args[0] === 'show') return IMPLEMENTED_RECORD;
+      return '';
+    };
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })))
+      .rejects.toThrow(/staged entry is a symlink/);
+
+    // A junction on the `docs/proposals/learnings` COMPONENT, with every leaf a plain file.
+    const git = recorder(branch);
+    await expect(routeDurable('/fake/repo', manifest, p4Options({
+      runGit: git.runner,
+      lstatPath: async (absolute) => ({
+        exists: true, isFile: true, isSymbolicLink: absolute.replace(/\\/g, '/').endsWith('docs/proposals'),
+      }),
+    }))).rejects.toThrow(/symlink or reparse point at docs\/proposals/);
+  });
+
+  it('refuses a rename/copy entry in the cached set, consuming git\'s real three-token grammar', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const runner: GitRunner = (_repoRoot, args) => {
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      // Real `-z` name-status: a rename is THREE tokens. Walking in pairs would read
+      // `agents/old.md` as a status and let the following entries desync.
+      if (joined === 'diff --cached --name-status -z') {
+        return `R100\0agents/old.md\0${manifest.relpaths[0]}\0M\0${manifest.relpaths[1]}\0`;
+      }
+      if (args[0] === 'ls-files') return manifest.relpaths.map((path) => `100644 ${'b'.repeat(40)} 0\t${path}\0`).join('');
+      if (args[0] === 'show') return IMPLEMENTED_RECORD;
+      return '';
+    };
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })))
+      .rejects.toThrow(/never renames or copies/);
+  });
+
+  it('refuses when a path whose content equals HEAD is omitted from the cached set by real git', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const runner: GitRunner = (_repoRoot, args) => {
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      // Real git omits a no-op add: the target's bytes already equal HEAD, so only the record shows.
+      if (joined === 'diff --cached --name-status -z') return `M\0${manifest.relpaths[1]}\0`;
+      if (args[0] === 'show') return IMPLEMENTED_RECORD;
+      return '';
+    };
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })))
+      .rejects.toThrow(/does not equal the manifest/);
+  });
+});
+
+describe('routeDurable - the pinned base, the repository pin, and durable replay', () => {
+  it('refuses the unpinned sentinel for every P4 purpose, before any git call', async () => {
+    const git = recorder();
+    for (const purpose of ['learning-implementation', 'schedule-mirror'] as const) {
+      const manifest = purpose === 'schedule-mirror'
+        ? p4Manifest({ purpose, operationKey: `schedule-mirror:${P4_BATCH.batchId}`, relpaths: ['HEARTBEAT.md'], baseCommit: '0'.repeat(40) })
+        : p4Manifest({ baseCommit: '0'.repeat(40) });
+      await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: git.runner })))
+        .rejects.toThrow(/requires a real attested base commit/);
+    }
+    expect(git.calls).toEqual([]);
+  });
+
+  it('resolveBaseCommit throws rather than downgrading a degraded checkout to the sentinel', async () => {
+    await expect(resolveBaseCommit('/fake/repo', () => '\n')).rejects.toThrow(/cannot resolve a base commit/);
+    await expect(resolveBaseCommit('/fake/repo', () => 'not-a-sha\n')).rejects.toThrow(/cannot resolve a base commit/);
+    expect(await resolveBaseCommit('/fake/repo', () => `${P4_BASE}\n`)).toBe(P4_BASE);
+  });
+
+  it('refuses when HEAD is unreadable, never treating an unresolvable base as a match', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const runner: GitRunner = (_repoRoot, args) => (
+      args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? `${branch}\n` : ''
+    );
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })))
+      .rejects.toThrow(/HEAD is unreadable/);
+  });
+
+  it('passes --repo from the pin and refuses a PR receipt from another repository', async () => {
+    const manifest = p4Manifest();
+    const git = recorder(derivedDurableBranch(manifest)!);
+    const requests: PrRequest[] = [];
+    await routeDurable('/fake/repo', manifest, p4Options({
+      runGit: git.runner,
+      openPr: (_root, request) => { requests.push(request); return PINNED_PR; },
+    }));
+    expect(requests[0]!.repo).toEqual({ owner: 'kb-owner', repo: 'kb' });
+
+    const forked = recorder(derivedDurableBranch(manifest)!);
+    await expect(routeDurable('/fake/repo', manifest, p4Options({
+      runGit: forked.runner,
+      openPr: () => ({ ...PINNED_PR, owner: 'attacker' }),
+    }))).rejects.toThrow(/not the pinned kb-owner\/kb/);
+  });
+
+  it('recovers a timed-out open from exactly one OPEN PR targeting main, and from nothing else', async () => {
+    const manifest = p4Manifest();
+    const open = { ...PINNED_PR, state: 'OPEN', base: 'main' };
+    const timeout = () => { throw new Error('gh pr create timed out after 60000ms and was killed'); };
+
+    const recovered = await routeDurable('/fake/repo', manifest, p4Options({
+      runGit: recorder(derivedDurableBranch(manifest)!).runner,
+      openPr: timeout,
+      locatePr: async () => [open],
+    }));
+    expect(recovered).toEqual({ mode: 'pr', branch: derivedDurableBranch(manifest), pr: PINNED_PR });
+
+    // A closed PR, a PR against another base, and a non-timeout failure are all unrecoverable.
+    for (const located of [[{ ...open, state: 'CLOSED' }], [{ ...open, base: 'release' }], []]) {
+      await expect(routeDurable('/fake/repo', manifest, p4Options({
+        runGit: recorder(derivedDurableBranch(manifest)!).runner,
+        openPr: timeout,
+        locatePr: async () => located,
+      }))).rejects.toThrow(/timed out/);
+    }
+    await expect(routeDurable('/fake/repo', manifest, p4Options({
+      runGit: recorder(derivedDurableBranch(manifest)!).runner,
+      openPr: () => { throw new Error('gh: authentication required'); },
+      locatePr: async () => [open],
+    }))).rejects.toThrow(/authentication required/);
+  });
+
+  it('refuses a publisher git subcommand outside the permitted table', async () => {
+    const manifest = p4Manifest();
+    const branch = derivedDurableBranch(manifest)!;
+    const runner: GitRunner = (_repoRoot, args) => (args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? `${branch}\n` : '');
+    // The table is what the publisher may issue; `worktree`/`update-ref` are not on it.
+    expect(PUBLISHER_PERMITTED_SUBCOMMANDS).toContain('fetch');
+    expect(PUBLISHER_PERMITTED_SUBCOMMANDS).toContain('merge-base');
+    expect(PUBLISHER_PERMITTED_SUBCOMMANDS).not.toContain('worktree');
+    expect(PUBLISHER_PERMITTED_SUBCOMMANDS).not.toContain('update-ref');
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: runner })))
+      .rejects.toThrow(/HEAD is unreadable/);
+  });
+
+  it('persists replay receipts across a restart: the second process republishes nothing', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-receipts-'));
+    const manifest = p4Manifest();
+    const first = await routeDurable('/fake/repo', manifest, p4Options({
+      runGit: recorder(derivedDurableBranch(manifest)!).runner,
+      receipts: createPersistentRouteReceipts(stateRoot),
+    }));
+    expect(existsSync(routeReceiptStorePath(stateRoot))).toBe(true);
+
+    // A FRESH store over the same state root is the restarted daemon.
+    const afterRestart = recorder(derivedDurableBranch(manifest)!);
+    const replay = await routeDurable('/fake/repo', manifest, p4Options({
+      runGit: afterRestart.runner,
+      receipts: createPersistentRouteReceipts(stateRoot),
+    }));
+    expect(replay).toEqual(first);
+    expect(afterRestart.calls).toEqual([]);
+
+    // And a changed manifest under that key is still a 409 after the restart.
+    await expect(routeDurable('/fake/repo', p4Manifest({ baseCommit: 'f'.repeat(40) }), p4Options({
+      runGit: afterRestart.runner,
+      receipts: createPersistentRouteReceipts(stateRoot),
+    }))).rejects.toBeInstanceOf(DurableReplayConflictError);
+  });
+});
+
+describe('routeDurable - schedule-mirror purpose contract (§3.2 cross-check)', () => {
+  function scheduleMirrorManifest(overrides: Partial<DurablePathManifest> = {}): DurablePathManifest {
+    return p4Manifest({
+      purpose: 'schedule-mirror',
+      operationKey: scheduleMirrorOperationKey(P4_BATCH.batchId),
+      relpaths: ['HEARTBEAT.md'],
+      ...overrides,
+    });
+  }
+
+  it('refuses a schedule-mirror publication whose operation key does not name the batch', async () => {
+    const manifest = scheduleMirrorManifest({ operationKey: `schedule-mirror:${'x'.repeat(24)}` });
+    const git = recorder(derivedDurableBranch(manifest)!);
+    await expect(routeDurable('/fake/repo', manifest, p4Options({ runGit: git.runner })))
+      .rejects.toThrow(/operation key does not name this batch/);
+    // Refused inside assertPurposeContract, before any staging.
+    expect(git.calls.some((call) => call[0] === 'add')).toBe(false);
+  });
+
+  it('passes a schedule-mirror publication whose operation key names the batch via scheduleMirrorOperationKey', async () => {
+    const manifest = scheduleMirrorManifest();
+    const git = recorder(derivedDurableBranch(manifest)!);
+    const receipt = await routeDurable('/fake/repo', manifest, p4Options({ runGit: git.runner }));
+    expect(receipt).toEqual({ mode: 'pr', branch: derivedDurableBranch(manifest), pr: PINNED_PR });
+    const joined = git.calls.map((call) => call.join(' '));
+    expect(joined).toContain(`add -- ${manifest.relpaths.join(' ')}`);
+  });
+});
+
+describe('routeDurable - coordination mode on ops [P4-C13, P4-C32]', () => {
+  const proposalManifest = p4Manifest({
+    purpose: 'learning-proposal',
+    operationKey: 'learning-proposal:lessons-miner:run_01HXYZ',
+    relpaths: ['docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md'],
+  });
+
+  it('publishes a learning-proposal to ops with no PR and returns {mode, branch: ops, commit}', async () => {
+    const git = recorder('ops', P4_BASE);
+    const openPr = vi.fn();
+    const receipt = await routeDurable('/fake/repo', proposalManifest, p4Options({
+      runGit: git.runner, openPr, learningBatch: undefined,
+    }));
+    expect(receipt).toEqual({ mode: 'coordination', branch: 'ops', commit: P4_BASE, pushed: true });
+    expect('pr' in receipt).toBe(false);
+    expect(openPr).not.toHaveBeenCalled();
+    const joined = git.calls.map((call) => call.join(' '));
+    expect(joined).toContain('pull --rebase origin ops');
+    expect(joined).toContain('push origin ops');
+    expect(joined.some((call) => call.includes('refs/heads/dv3-p4'))).toBe(false);
+  });
+
+  it('refuses a learning-record-retire without a proven merge and stages only deletions of the batch records', async () => {
+    const retire = p4Manifest({
+      purpose: 'learning-record-retire',
+      operationKey: `learning-record-retire:${P4_BATCH.batchId}:${P4_MERGE}`,
+      relpaths: P4_BATCH.recordPaths,
+    });
+    const unproven = recorder('ops', P4_BASE);
+    await expect(routeDurable('/fake/repo', retire, p4Options({
+      runGit: unproven.runner,
+      learningBatch: undefined,
+      retire: {
+        batchId: P4_BATCH.batchId, recordPaths: P4_BATCH.recordPaths, mergeCommit: P4_MERGE,
+        merged: false as unknown as true,
+      },
+    }))).rejects.toThrow(/proven merge/);
+    // The refusal happens inside the transaction, before any staging or deletion.
+    expect(unproven.calls.some((call) => call[0] === 'add' || call[0] === 'commit')).toBe(false);
+
+    const deleted: string[] = [];
+    const calls: string[][] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      calls.push(args);
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      if (joined === 'diff --cached --name-status -z') return P4_BATCH.recordPaths.map((path) => `D\0${path}\0`).join('');
+      return '';
+    };
+    const receipt = await routeDurable('/fake/repo', retire, p4Options({
+      runGit: runner,
+      learningBatch: undefined,
+      unlinkPath: async (absolute) => { deleted.push(absolute); },
+      retire: { batchId: P4_BATCH.batchId, recordPaths: P4_BATCH.recordPaths, mergeCommit: P4_MERGE, merged: true },
+    }));
+    expect(receipt).toEqual({ mode: 'coordination', branch: 'ops', commit: P4_BASE, pushed: true });
+    expect(deleted).toHaveLength(1);
+    const joinedCalls = calls.map((call) => call.join(' '));
+    expect(joinedCalls).toContain('push origin ops');
+    // The publisher proved the merge ITSELF, before touching a single record byte.
+    expect(joinedCalls).toContain('fetch origin main');
+    expect(joinedCalls).toContain(`merge-base --is-ancestor ${P4_MERGE} origin/main`);
+    expect(joinedCalls.indexOf('fetch origin main')).toBeLessThan(joinedCalls.findIndex((call) => call.startsWith('add')));
+  });
+
+  it('refuses a retire whose merge commit is not an ancestor of origin/main', async () => {
+    const retire = p4Manifest({
+      purpose: 'learning-record-retire',
+      operationKey: `learning-record-retire:${P4_BATCH.batchId}:${P4_MERGE}`,
+      relpaths: P4_BATCH.recordPaths,
+    });
+    const deleted: string[] = [];
+    const runner: GitRunner = (_repoRoot, args) => {
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      // git exits 1 for "not an ancestor".
+      if (args[0] === 'merge-base') throw Object.assign(new Error('merge-base --is-ancestor exited 1'), { status: 1 });
+      return '';
+    };
+    await expect(routeDurable('/fake/repo', retire, p4Options({
+      runGit: runner,
+      learningBatch: undefined,
+      unlinkPath: async (absolute) => { deleted.push(absolute); },
+      retire: { batchId: P4_BATCH.batchId, recordPaths: P4_BATCH.recordPaths, mergeCommit: P4_MERGE, merged: true },
+    }))).rejects.toThrow(/not proven merged into origin\/main/);
+    expect(deleted).toEqual([]);
+  });
+
+  it('restores every deleted record byte-for-byte when the staged set does not match', async () => {
+    const retire = p4Manifest({
+      purpose: 'learning-record-retire',
+      operationKey: `learning-record-retire:${P4_BATCH.batchId}:${P4_MERGE}`,
+      relpaths: P4_BATCH.recordPaths,
+    });
+    // A tiny virtual tree so "byte-identical" is checkable.
+    const tree = new Map<string, string>([[resolve('/fake/repo', P4_BATCH.recordPaths[0]!), IMPLEMENTED_RECORD]]);
+    const before = new Map(tree);
+    const runner: GitRunner = (_repoRoot, args) => {
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (joined === 'rev-parse HEAD') return `${P4_BASE}\n`;
+      // A stray path in the index: the exact-set proof refuses AFTER the deletions have happened.
+      if (joined === 'diff --cached --name-status -z') return `D\0${P4_BATCH.recordPaths[0]}\0D\0docs/proposals/learnings/2026-08-20-other-run_01HXYZ-09.md\0`;
+      return '';
+    };
+    await expect(routeDurable('/fake/repo', retire, p4Options({
+      runGit: runner,
+      learningBatch: undefined,
+      readPathBytes: async (absolute) => tree.get(absolute)!,
+      unlinkPath: async (absolute) => { tree.delete(absolute); },
+      writePathBytes: async (absolute, contents) => { tree.set(absolute, contents); },
+      retire: { batchId: P4_BATCH.batchId, recordPaths: P4_BATCH.recordPaths, mergeCommit: P4_MERGE, merged: true },
+    }))).rejects.toThrow(/does not equal the manifest/);
+    expect([...tree.entries()]).toEqual([...before.entries()]);
+  });
+
+  it('refuses a retire whose cached set is not all deletions', async () => {
+    const retire = p4Manifest({
+      purpose: 'learning-record-retire',
+      operationKey: `learning-record-retire:${P4_BATCH.batchId}:${P4_MERGE}`,
+      relpaths: P4_BATCH.recordPaths,
+    });
+    const git = recorder('ops', P4_BASE);
+    await expect(routeDurable('/fake/repo', retire, p4Options({
+      runGit: git.runner,
+      learningBatch: undefined,
+      unlinkPath: async () => {},
+      retire: { batchId: P4_BATCH.batchId, recordPaths: P4_BATCH.recordPaths, mergeCommit: P4_MERGE, merged: true },
+    }))).rejects.toThrow(/only deletions/);
   });
 });

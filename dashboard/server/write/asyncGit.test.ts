@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { tmpdir } from 'node:os';
-import { activeAsyncGitCount, AsyncGitError, createAsyncGitRunner, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
+import { activeAsyncGitCount, AsyncGitError, createAsyncGitRunner, drainAsyncGit, parsePrCreateOutput, PUBLISHER_PERMITTED_SUBCOMMANDS, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
 
 const NODE = process.execPath;
 /** A child that ignores signals is not needed — we only need one that outlives the test's timeout. */
@@ -124,5 +124,41 @@ describe('drainAsyncGit — kills live children on shutdown', () => {
     // Draining again finds nothing left.
     expect(activeAsyncGitCount()).toBe(0);
     expect(drainAsyncGit()).toBe(0);
+  });
+});
+
+
+describe('PUBLISHER_PERMITTED_SUBCOMMANDS - the publisher capability table [P4-C21]', () => {
+  it('carries the merge-proof reads W2 adds and nothing that can move a ref, a worktree, or reach gh', () => {
+    // The retire proves its own merge: `fetch origin main` + `merge-base --is-ancestor <sha> origin/main`.
+    expect(PUBLISHER_PERMITTED_SUBCOMMANDS).toEqual(expect.arrayContaining(['fetch', 'merge-base']));
+    // The post-`add` staged-object reads.
+    expect(PUBLISHER_PERMITTED_SUBCOMMANDS).toEqual(expect.arrayContaining(['ls-files', 'show']));
+    for (const forbidden of ['worktree', 'checkout', 'update-ref', 'clone', 'remote', 'config', 'pr']) {
+      expect(PUBLISHER_PERMITTED_SUBCOMMANDS).not.toContain(forbidden);
+    }
+    expect(new Set(PUBLISHER_PERMITTED_SUBCOMMANDS).size).toBe(PUBLISHER_PERMITTED_SUBCOMMANDS.length);
+  });
+});
+
+describe('parsePrCreateOutput - the pinned PR identity [P4 3.2]', () => {
+  it('derives owner, repo, number, and url together from a GitHub PR URL', () => {
+    const output = ['Creating pull request', 'https://github.com/kb-owner/kb/pull/42', ''].join('\n');
+    expect(parsePrCreateOutput(output)).toEqual({
+      url: 'https://github.com/kb-owner/kb/pull/42', number: 42, owner: 'kb-owner', repo: 'kb',
+    });
+  });
+
+  it('returns nothing pinnable for malformed gh output, so the publisher fails instead of half-knowing a PR', () => {
+    for (const output of [
+      '',
+      'https://example.invalid/kb-owner/kb/pull/42',
+      'https://github.com/kb-owner/kb/pull/notanumber',
+      'https://github.com/kb-owner/kb/issues/42',
+      'https://github.com/kb-owner/kb/pull/42?draft=1',
+      'created a pull request',
+    ]) {
+      expect(parsePrCreateOutput(output)).toEqual({});
+    }
   });
 });

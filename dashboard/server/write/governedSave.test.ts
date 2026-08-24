@@ -17,11 +17,20 @@ function validToken(): string {
   return mintSession('user-1', CONFIG).token;
 }
 
+/**
+ * P4 W2 contract change: the one durable publisher proves its exact cached set (and that no entry was
+ * staged as a link) before it creates any history, so the fake replays the paths it saw staged.
+ */
 function recorder(branch = 'claude/m1-dashboard'): { runner: GitRunner; calls: string[][] } {
   const calls: string[][] = [];
+  const staged: string[] = [];
   const runner: GitRunner = (_repoRoot, args) => {
     calls.push(args);
-    if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+    const joined = args.join(' ');
+    if (joined === 'rev-parse --abbrev-ref HEAD') return `${branch}\n`;
+    if (args[0] === 'add' && args[1] === '--') staged.push(...args.slice(2));
+    if (joined === 'diff --cached --name-status -z') return staged.map((path) => `M\0${path}\0`).join('');
+    if (args[0] === 'ls-files') return staged.map((path) => `100644 ${'b'.repeat(40)} 0\t${path}\0`).join('');
     return '';
   };
   return { runner, calls };
@@ -182,8 +191,13 @@ describe('save — sync_skills hook awareness', () => {
     // Simulate the sync_skills.py --check failure inside the pre-commit hook: `git commit` exits
     // non-zero (as it would for real when the mirror has drifted), never silently retried with
     // `--no-verify`.
+    const staged: string[] = [];
     const runGit: GitRunner = (_repoRoot, args) => {
-      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'claude/m1-dashboard\n';
+      const joined = args.join(' ');
+      if (joined === 'rev-parse --abbrev-ref HEAD') return 'claude/m1-dashboard\n';
+      if (args[0] === 'add' && args[1] === '--') staged.push(...args.slice(2));
+      if (joined === 'diff --cached --name-status -z') return staged.map((path) => `M\0${path}\0`).join('');
+      if (args[0] === 'ls-files') return staged.map((path) => `100644 ${'b'.repeat(40)} 0\t${path}\0`).join('');
       if (args[0] === 'commit') {
         throw new Error(
           'commit blocked: runtime skill mirrors drifted from skills/curated (run: python scripts/sync_skills.py)',

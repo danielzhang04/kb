@@ -46,7 +46,8 @@ import { compileWorkflowDef } from './compile.ts';
 import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isSafeAssignmentValue, isSafeGovernanceValue, patchWorkflowAssignment, patchWorkflowGovernance, readCanonicalDefinitionLocation, runBuilderAmendment, sourceHash, type AssignmentTarget, type AssignmentValue, type GovernanceValue } from './amendments.ts';
 import type { PendingDefinitionAmendment } from './amendmentStore.ts';
 import { nextScheduleOccurrence } from '../schedules/service.ts';
-import { DEFAULT_WORK_BRANCH, DurableRouteError, routeDurable } from '../write/branch.ts';
+import { DEFAULT_WORK_BRANCH, DurableRouteError, defaultGitRunner, resolveBaseCommit, routeDurable } from '../write/branch.ts';
+import { buildWorkflowAmendmentManifest } from '../write/durableManifestService.ts';
 import { save as governedSave } from '../write/governedSave.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import {
@@ -777,7 +778,21 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
       try { writeFileSync(durableLocation.path, patched.source, 'utf8'); }
       catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'prepared', error: `${spec.kind}-durable-write-failed`, path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: DEFAULT_WORK_BRANCH, detail: error instanceof Error ? error.message : String(error) } } }; }
       try {
-        const durable = await routeDurable(durableRoot, scanned.entry.path, { runGit: ctx.saveGit, openPr: ctx.openPr, message: spec.routeMessage });
+        // P4 §3.2: the one durable publisher consumes a manifest, not a bare relpath. The amendment
+        // keeps its existing request idempotency key (prefixed by purpose) and pins the base commit of
+        // the durable worktree it just wrote into. `withOpsTransaction` is reentrant; `routeDurable`
+        // joins the same span. A workflow amendment always publishes through a PR.
+        const receipt = await withOpsTransaction(async () => routeDurable(
+          durableRoot,
+          buildWorkflowAmendmentManifest({
+            operationKey: `${scanned.entry.path}:${proposedSourceHash}`,
+            baseCommit: await resolveBaseCommit(durableRoot, ctx.saveGit ?? defaultGitRunner),
+            relpaths: [scanned.entry.path],
+          }),
+          { runGit: ctx.saveGit, openPr: ctx.openPr, message: spec.routeMessage },
+        ));
+        if (receipt.mode !== 'pr') throw new Error('workflow amendment must publish through a PR');
+        const durable = { branch: receipt.branch, pr: receipt.pr };
         try { ctx.definitionAmendmentStore.update({ ...pending, phase: 'audit-pending', branch: durable.branch, pr: durable.pr }); }
         catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: durable.branch, pr: durable.pr, detail: error instanceof Error ? error.message : String(error) } } }; }
         return { proposedSourceHash, proposalHash, old: patched.old, riskTier: highestTier(reparsed.value), durable };

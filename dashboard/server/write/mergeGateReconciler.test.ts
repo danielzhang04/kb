@@ -66,7 +66,7 @@ function recordingDeps(
       return { exitCode: 0, stdout: JSON.stringify({ id: op.cardId, state: 'done', paths: [`queue/inbox/${op.cardId}.md`, `queue/done/${op.cardId}.md`] }), stderr: '' };
     },
     appendAuditLocal: (_repo, event) => { calls.push('audit'); return { ts: '2026-07-20T00:00:00.000Z', ...event }; },
-    commitPreparedCoordination: (async (..._args: unknown[]) => { calls.push('commit'); }) as ReconcileDeps['commitPreparedCoordination'],
+    commitPreparedCoordination: (async (..._args: unknown[]) => { calls.push('commit'); return '0'.repeat(40); }) as ReconcileDeps['commitPreparedCoordination'],
     now: () => new Date('2026-07-20T00:00:00.000Z'),
   };
   return { deps, calls, ops };

@@ -97,7 +97,7 @@ function recordingDeps(
       return { exitCode: 0, stdout: JSON.stringify({ id: op.cardId, state: 'archived', paths: [`queue/inbox/${op.cardId}.md`, `queue/archived/${op.cardId}.md`] }), stderr: '' };
     },
     appendAuditLocal: (_repo, event) => { calls.push('audit'); return { ts: NOW.toISOString(), ...event }; },
-    commitPreparedCoordination: (async (..._args: unknown[]) => { calls.push('commit'); }) as StrandedArchiveDeps['commitPreparedCoordination'],
+    commitPreparedCoordination: (async (..._args: unknown[]) => { calls.push('commit'); return '0'.repeat(40); }) as StrandedArchiveDeps['commitPreparedCoordination'],
     now: () => NOW,
     ...over,
   };

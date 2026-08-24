@@ -57,6 +57,7 @@ describe('Workflow P2 routes', () => {
   let token: string;
   let store: ControlPlaneStore;
   let gitCalls: string[][];
+  let stagedPaths: string[];
   let auditRows: AuditEvent[];
   let surface: ReturnType<typeof makeSurfaceContext>;
   let admissionDegraded: boolean;
@@ -70,6 +71,7 @@ describe('Workflow P2 routes', () => {
     token = mintSession('operator', SESSION).token;
     store = createInMemoryControlPlaneStore();
     gitCalls = [];
+    stagedPaths = [];
     auditRows = [];
     admissionDegraded = false;
     prFailure = false;
@@ -87,7 +89,21 @@ describe('Workflow P2 routes', () => {
       appendAuditLocal: (_root, event) => { if (auditFailure) throw new Error('audit unavailable'); auditRows.push(event); return { ts: 'now', ...event }; },
       opsGit: async (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n'
         : args.join(' ') === 'rev-parse HEAD' ? `${'a'.repeat(40)}\n` : '',
-      saveGit: async (_root, args) => { gitCalls.push(args); return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : ''; },
+      // P4 W2 contract change: the one durable publisher consumes a manifest and PROVES its exact
+      // cached set before creating history, so the fake replays the paths it saw staged.
+      saveGit: async (_root, args) => {
+        gitCalls.push(args);
+        const joined = args.join(' ');
+        if (joined === 'rev-parse --abbrev-ref HEAD') return 'claude/m1-dashboard\n';
+        // `resolveBaseCommit` now REFUSES a non-sha HEAD rather than downgrading to the unpinned
+        // sentinel, so the fake answers with a real base the publisher can pin against.
+        if (joined === 'rev-parse HEAD') return `${'c'.repeat(40)}\n`;
+        if (args[0] === 'add' && args[1] === '--') stagedPaths.push(...args.slice(2));
+        if (joined === 'diff --cached --name-status -z') return stagedPaths.map((path) => `M\0${path}\0`).join('');
+        if (args[0] === 'ls-files') return stagedPaths.map((path) => `100644 ${'b'.repeat(40)} 0\t${path}\0`).join('');
+        if (args[0] === 'commit' || args[0] === 'reset') stagedPaths.length = 0;
+        return '';
+      },
       openPr: async () => { prCalls += 1; if (prFailure) throw new Error('PR unavailable'); return { url: 'https://example.test/pull/9', number: 9 }; },
       runPy: (_root, _code, jsonArg) => {
         const op = JSON.parse(jsonArg) as { runId: string; stages?: Array<{ id: string }>; cardRefs?: string[] };
