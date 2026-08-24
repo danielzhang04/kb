@@ -19,7 +19,11 @@ import type {
   SessionSink,
   SessionSummary,
 } from './contracts.ts';
-import { RUN_CONTROLLER_NULL_BROWSER_SESSION_REF } from './contracts.ts';
+import {
+  MAX_PRINCIPAL_LIVE_SESSIONS,
+  RUN_CONTROLLER_NULL_BROWSER_SESSION_REF,
+  principalCapacityKey,
+} from './contracts.ts';
 import {
   applyEpochAbandonment,
   applyObservedSessionExit,
@@ -294,6 +298,41 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
     await deps.persistence.mutate(null, (document) => applyObservedSessionExit(document, exit, epochId));
   };
 
+  /**
+   * Per-principal capacity lives HERE, not in a host: the 8-per-`{operator, browserSessionRef}`
+   * ceiling is platform-independent, and the Linux broker wire carries no principal at all. Both
+   * entry points that make a session controlled-live (create, first claim) take a reservation
+   * synchronously — no `await` between the count and the take — so no interleaving oversubscribes.
+   * Hosts keep their own ceilings as defence in depth.
+   */
+  const pendingPrincipalReservations = new Map<string, number>();
+
+  const controlledLiveCount = (
+    sessions: readonly SessionRecord[], principal: BrowserPrincipal,
+  ): number => sessions.filter((record) => live(record) && sessionIsControlledBy(record, principal)).length;
+
+  const principalAtCapacity = (
+    sessions: readonly SessionRecord[], principal: BrowserPrincipal,
+  ): boolean => controlledLiveCount(sessions, principal)
+    + (pendingPrincipalReservations.get(principalCapacityKey(principal)) ?? 0)
+    >= MAX_PRINCIPAL_LIVE_SESSIONS;
+
+  /** Synchronous check-and-take against persisted controlled-live rows plus in-flight creates. */
+  const reservePrincipal = (principal: BrowserPrincipal): boolean => {
+    if (principalAtCapacity(deps.persistence.read().sessions, principal)) return false;
+    const key = principalCapacityKey(principal);
+    pendingPrincipalReservations.set(key, (pendingPrincipalReservations.get(key) ?? 0) + 1);
+    return true;
+  };
+
+  /** Released once the row is persisted (where the count then sees it) or the create failed. */
+  const releasePrincipal = (principal: BrowserPrincipal): void => {
+    const key = principalCapacityKey(principal);
+    const remaining = (pendingPrincipalReservations.get(key) ?? 1) - 1;
+    if (remaining <= 0) pendingPrincipalReservations.delete(key);
+    else pendingPrincipalReservations.set(key, remaining);
+  };
+
   const authorize = (principal: BrowserPrincipal, sessionId: string): SessionRecord | null => {
     const record = deps.persistence.read().sessions.find((item) => item.sessionId === sessionId);
     return record !== undefined && sessionIsControlledBy(record, principal) ? record : null;
@@ -302,6 +341,14 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
   const registry: SessionRecordRegistry = {
     async create(principal, input) {
       if (!validManualInput(input)) return { ok: false, refusal: 'invalid-request', detail: 'manual session request is invalid' };
+      // Taken before the probe and before any host call: capacity is the registry's, on every platform.
+      if (!reservePrincipal(principal)) return { ok: false, refusal: 'capacity', detail: null };
+      let reservationHeld = true;
+      const releaseHeldReservation = (): void => {
+        if (!reservationHeld) return;
+        reservationHeld = false;
+        releasePrincipal(principal);
+      };
       let launched: { operationKey: string; requestHash: string; sessionId: string; epochId: string } | null = null;
       let recordReady = false;
       let discardFrames = false;
@@ -449,6 +496,8 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
           }
         }
         return internal();
+      } finally {
+        releaseHeldReservation();
       }
     },
 
@@ -569,6 +618,11 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
           }
           const record = document.sessions.find((item) => item.sessionId === input.sessionId);
           if (record === undefined) return { ok: false, refusal: 'not-found', detail: 'session not found' } as PortResult<ClaimReceipt>;
+          // A first claim makes the session controlled-live for this principal, so it spends a slot
+          // of the same 8-cap create spends. An idempotent replay (already this controller) does not.
+          if (record.controller === null && principalAtCapacity(document.sessions, principal)) {
+            return { ok: false, refusal: 'capacity', detail: null } as PortResult<ClaimReceipt>;
+          }
           return claimRunController(record, principal, input, runVersion);
         });
         return result.value;

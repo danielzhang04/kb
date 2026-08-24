@@ -221,6 +221,42 @@ describe('composite-principal session policy', () => {
   const MANUAL_REQUEST = { launcher: 'shell' as const, rootId: 'repo' as const,
     relativeCwd: '', cols: 80, rows: 24 };
 
+  it('refuses the ninth concurrent create for one composite principal exactly once', async () => {
+    // B1: the 8-per-`{operator, browserSessionRef}` cap is the REGISTRY's, not a host's — the Linux
+    // broker wire carries no principal, so a host-only cap leaves the VM path uncapped and one browser
+    // principal can starve every other operator. Seven live, then two creates raced for the eighth
+    // slot: exactly one refusal, and the host is never asked for the refused one.
+    const { persistence, state } = validatingPersistence();
+    const { host, requests } = compensationHost(vi.fn(async (sessionId: string) => ({ ok: true as const,
+      value: { sessionId, sequence: 1, exitCode: null, signal: null, reason: 'closed' as const,
+        observedAt: NOW } })));
+    let operation = 0;
+    const registry = createSessionRecordRegistry({ persistence, host, now: () => NOW,
+      makeOperationKey: () => `op-${(++operation).toString(16).padStart(64, '0')}` });
+
+    for (let index = 0; index < 7; index += 1) {
+      await expect(registry.create(ALICE_A, MANUAL_REQUEST)).resolves.toMatchObject({ ok: true });
+    }
+    expect(requests).toHaveLength(7);
+
+    const raced = await Promise.all([
+      registry.create(ALICE_A, MANUAL_REQUEST),
+      registry.create(ALICE_A, MANUAL_REQUEST),
+    ]);
+    expect(raced.filter((result) => result.ok)).toHaveLength(1);
+    expect(raced.filter((result) => !result.ok))
+      .toEqual([{ ok: false, refusal: 'capacity', detail: null }]);
+    // The refused create never reached the host: capacity is decided before the host call.
+    expect(requests).toHaveLength(8);
+    expect(state.document.sessions.filter((record) => record.controller?.operator === 'alice')).toHaveLength(8);
+
+    // A different browser session of the same operator keeps its own bucket.
+    await expect(registry.create(ALICE_B, MANUAL_REQUEST)).resolves.toMatchObject({ ok: true });
+    // ...and the ninth for the full principal is still refused after the race settles.
+    await expect(registry.create(ALICE_A, MANUAL_REQUEST))
+      .resolves.toEqual({ ok: false, refusal: 'capacity', detail: null });
+  });
+
   it('names the calling principal on every host create request', async () => {
     const { persistence } = validatingPersistence();
     const { host, requests } = compensationHost(vi.fn(async (sessionId: string) => ({ ok: true as const,

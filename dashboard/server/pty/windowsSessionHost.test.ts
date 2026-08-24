@@ -388,6 +388,59 @@ describe('Windows SessionHost', () => {
     child.emitExit(0);
   });
 
+  it('refuses cumulative queued input above 262,144 bytes without loss or reordering', async () => {
+    // [C-M2] third clause. The 65,536 per-chunk bound caps ONE frame; without a cumulative bound an
+    // authenticated operator pipelines chunks faster than the child drains and grows daemon memory
+    // without limit. Same 262,144 the broker enforces (BROKER_MAX_QUEUED_INPUT_BYTES).
+    const gates: Array<() => void> = [];
+    class BlockingPty extends FakePty {
+      override write(data: string): Promise<void> {
+        this.writes.push(data);
+        return new Promise<void>((resolve) => { gates.push(resolve); });
+      }
+    }
+    const child = new BlockingPty(171);
+    const host = createWindowsSessionHost({
+      platform: 'win32',
+      epochId: `epoch-${'9'.repeat(32)}`,
+      randomId: () => '9'.repeat(32),
+      roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
+      resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
+      spawn: () => child,
+      killProcessTree: async () => {},
+    });
+    const receipt = await host.create(request('a'), sink([])).receipt;
+    expect(receipt.ok).toBe(true);
+    if (!receipt.ok) return;
+    const sessionId = receipt.value.sessionId;
+
+    const chunk = (code: number): Uint8Array => new Uint8Array(65_536).fill(code);
+    const inflight = [0x41, 0x42, 0x43, 0x44].map((code) => host.write(sessionId, chunk(code)));
+    await Promise.resolve();
+    // Four maximal chunks are exactly the bound; one more byte is over it and is refused.
+    await expect(host.write(sessionId, new Uint8Array(1))).resolves
+      .toEqual({ ok: false, refusal: 'input-too-large', detail: null });
+
+    // Nothing accepted was lost, and the refusal did not let a later chunk overtake an earlier one.
+    for (let index = 0; index < 4; index += 1) {
+      while (gates.length <= index) await new Promise<void>((resolve) => setImmediate(resolve));
+      gates[index]();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await expect(Promise.all(inflight)).resolves.toEqual([
+      { ok: true, value: { accepted: 65_536 } }, { ok: true, value: { accepted: 65_536 } },
+      { ok: true, value: { accepted: 65_536 } }, { ok: true, value: { accepted: 65_536 } },
+    ]);
+    expect(child.writes.map((written) => written[0])).toEqual(['A', 'B', 'C', 'D']);
+
+    // The bound is a high-water mark, not a lifetime quota: a drained session accepts input again.
+    const after = host.write(sessionId, new Uint8Array(1).fill(0x45));
+    while (gates.length <= 4) await new Promise<void>((resolve) => setImmediate(resolve));
+    gates[4]();
+    await expect(after).resolves.toEqual({ ok: true, value: { accepted: 1 } });
+    child.emitExit(0);
+  });
+
   it('refuses the seventeenth concurrent session on the host ceiling alone', async () => {
     const hostChildren: FakePty[] = [];
     const host = createWindowsSessionHost({

@@ -124,8 +124,8 @@
     },
     {
       "id": "raw WS oversize",
-      "suite": "server/pty/route.test.ts",
-      "title": "answers an undecodable frame with one invalid-request error and no registry call",
+      "suite": "server/testFixtures/p3AuthenticatedServer.test.ts",
+      "title": "closes with 1009 on a literal 90,113-byte raw frame, before the decoder ever sees it",
       "proof": "P8"
     },
     {
@@ -141,9 +141,21 @@
       "proof": "P8"
     },
     {
+      "id": "queued-input high-water, host",
+      "suite": "server/pty/windowsSessionHost.test.ts",
+      "title": "refuses cumulative queued input above 262,144 bytes without loss or reordering",
+      "proof": "P8"
+    },
+    {
       "id": "atomic 16-host/8-principal capacity races",
       "suite": "server/pty/windowsSessionHost.test.ts",
       "title": "reserves the final host and principal slots atomically without leaks",
+      "proof": "P1"
+    },
+    {
+      "id": "per-principal capacity race, registry",
+      "suite": "server/pty/sessionRecord.test.ts",
+      "title": "refuses the ninth concurrent create for one composite principal exactly once",
       "proof": "P1"
     },
     {

@@ -1,9 +1,13 @@
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { migratePtySessionDocument, PtySessionMigrationError } from './sessionMigration.ts';
+import {
+  mapPtySessionV1ToV2, migratePtySessionDocument, PtySessionMigrationError,
+} from './sessionMigration.ts';
 import {
   PTY_SESSIONS_V1_DOCUMENT,
   PTY_SESSIONS_V1_ENDED_RUN,
@@ -146,6 +150,71 @@ describe('v1 PTY document migration', () => {
     expect(caught).toMatchObject({ code: 'pty-session-migration-required' });
     expect(caught?.report).toContain('restore: failed');
     expect(readFileSync(`${path}.v1.bak`)).toEqual(original);
+  });
+
+  it('aborts an oversize v1 source before touching the tree', async () => {
+    // m7: the 4,000,000-byte source bound had no named case. An oversize source must be refused at
+    // read time, leaving no backup, no temp, and the source byte-identical.
+    const stateRoot = root();
+    const { path } = await writeV1Fixture(stateRoot);
+    const bloated = JSON.parse(readFileSync(path).toString('utf8')) as { archiveKeys: unknown[] };
+    bloated.archiveKeys = [...bloated.archiveKeys, { key: 'x'.repeat(4_000_001), sessionId: 'pad' }];
+    writeFileSync(path, JSON.stringify(bloated));
+    const original = readFileSync(path);
+    let caught: PtySessionMigrationError | null = null;
+    try {
+      await migratePtySessionDocument(path, { now: () => NOW });
+    } catch (error) { caught = error as PtySessionMigrationError; }
+    expect(caught).toMatchObject({ code: 'pty-session-migration-required' });
+    expect(caught?.report.join(' ')).toContain('oversized');
+    // `.equals` rather than a deep-equal on two 4 MB buffers: the assertion is byte-identity, and the
+    // elementwise comparison is what made this case time out.
+    expect(readFileSync(path).equals(original)).toBe(true);
+    expect(existsSync(`${path}.v1.bak`)).toBe(false);
+  });
+
+  it('aborts an fsync failure and leaves the v1 source byte-identical', async () => {
+    // m7: an unflushed backup or temp is exactly the false durability the migration exists to avoid.
+    const stateRoot = root();
+    const { path, original } = await writeV1Fixture(stateRoot);
+    let caught: PtySessionMigrationError | null = null;
+    try {
+      await migratePtySessionDocument(path, { now: () => NOW,
+        fs: { fsync: () => { throw new Error('fsync denied'); } } });
+    } catch (error) { caught = error as PtySessionMigrationError; }
+    expect(caught).toMatchObject({ code: 'pty-session-migration-required' });
+    expect(readFileSync(path)).toEqual(original);
+  });
+
+  it('aborts a rename failure and leaves the v1 source byte-identical', async () => {
+    // m7: publish is the rename; a failed publish must not leave a half-published v2 behind.
+    const stateRoot = root();
+    const { path, original } = await writeV1Fixture(stateRoot);
+    let caught: PtySessionMigrationError | null = null;
+    try {
+      await migratePtySessionDocument(path, { now: () => NOW,
+        fs: { rename: (source: string, destination: string) => {
+          if (source.endsWith('.tmp')) throw new Error('rename denied');
+          renameSync(source, destination);
+        } } });
+    } catch (error) { caught = error as PtySessionMigrationError; }
+    expect(caught).toMatchObject({ code: 'pty-session-migration-required' });
+    expect(readFileSync(path)).toEqual(original);
+  });
+
+  it('maps a live row endedAt to max(migrationTime, startedAt + 1ms)', async () => {
+    // m7 / [C-R5]: an abandoned row must never claim it ended before it started, and a clock behind
+    // the record must not rewrite history backwards.
+    const source = { schema: 'kb.pty-session-runs/v1' as const,
+      runs: [structuredClone(PTY_SESSIONS_V1_LIVE_RUN)], archiveKeys: [] };
+    const forward = mapPtySessionV1ToV2(structuredClone(source), NOW);
+    expect(forward.legacyRuns[0]).toMatchObject({ outcome: 'abandoned', endedAt: NOW });
+
+    const behind = mapPtySessionV1ToV2(structuredClone(source), '2026-08-23T10:00:00.000Z');
+    expect(behind.legacyRuns[0]).toMatchObject({
+      outcome: 'abandoned',
+      endedAt: new Date(Date.parse(PTY_SESSIONS_V1_LIVE_RUN.startedAt) + 1).toISOString(),
+    });
   });
 
   it('aborts malformed, duplicate, and pre-existing-backup ambiguity with a bounded named report', async () => {

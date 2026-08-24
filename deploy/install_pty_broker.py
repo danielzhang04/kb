@@ -240,6 +240,11 @@ def provision_account_and_directories(layout: Layout, run) -> None:
         (layout.assert_mutable(layout.shell_root / "home"), SHELL_ACCOUNT, SHELL_ACCOUNT, "0700"),
         (layout.assert_mutable(layout.shell_root / "home/.local"), SHELL_ACCOUNT, SHELL_ACCOUNT, "0700"),
         (layout.assert_mutable(layout.shell_root / "home/.local/bin"), SHELL_ACCOUNT, SHELL_ACCOUNT, "0700"),
+        # The two provider-CLI state dirs the broker unit carves out of the read-only home. They must
+        # exist and be kb-shell-owned before the first launch: a bind-mounted ReadWritePaths entry
+        # that does not exist makes systemd refuse to start the unit.
+        (layout.assert_mutable(layout.shell_root / "home/.claude"), SHELL_ACCOUNT, SHELL_ACCOUNT, "0700"),
+        (layout.assert_mutable(layout.shell_root / "home/.codex"), SHELL_ACCOUNT, SHELL_ACCOUNT, "0700"),
         (layout.assert_mutable(layout.shell_root / "worktrees"), DASHBOARD_ACCOUNT, SHELL_ACCOUNT,
          WORKTREES_MODE),
         (layout.assert_mutable(layout.broker_root), "root", "root", "0755"),

@@ -315,7 +315,7 @@ export interface BuildActivatedExecutionOptions {
  *
  * On the VM this is `/var/lib/kb-shell/worktrees` — the ONE tree the dashboard and the `kb-shell`
  * broker share through their common supplementary group, and the only writable path the broker unit
- * grants (`BROKER_RUNTIME_POLICY.readWritePaths`). It is deliberately NOT under `<stateRoot>/control`:
+ * grants (the `ReadWritePaths` set frozen in `BROKER_SYSTEMD_POLICY`). It is deliberately NOT under `<stateRoot>/control`:
  * `/var/lib/kb/state` is `InaccessiblePaths` to the broker, so an attempt provisioned there could be
  * written by the dashboard and then never read by the process actually running the work.
  *

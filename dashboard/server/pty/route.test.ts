@@ -484,6 +484,46 @@ describe('registerPtyRoute — cross-principal refusal', () => {
     await app.close();
   });
 
+  it('separates a registry fault (500) from the close deadline (409 exit-unconfirmed)', async () => {
+    // m3/section 6: 409 means "the kill was asked for and no exit was observed in time". A registry
+    // fault is not an unconfirmed exit, and reporting it as one told the operator the process might
+    // still be alive when the truth is the daemon failed.
+    const faulting = { ...ownedRegistry([]),
+      close: async () => ({ ok: false as const, refusal: 'internal' as const, detail: null }) };
+    const faultApp = Fastify();
+    await faultApp.register(async (scope) => {
+      await registerPtyRoute(scope, makePtyRouteContext({
+        repoRoot: process.cwd(), sessionConfig, allowedOrigins: ['https://kb.test'],
+        registry: faulting as unknown as SessionRegistryPort, persistence: fakePersistence(),
+        browserSessionRefs: echoRefs(),
+        appendAudit: () => ({ ts: '', action: '', owner: '', result: '' } as never),
+      }));
+    });
+    await faultApp.ready();
+    const faulted = await faultApp.inject({
+      method: 'DELETE', url: `/api/pty/sessions/${SESSION_ID}`, headers: identity('alice', 'ref-a'),
+    });
+    expect([faulted.statusCode, faulted.json()]).toEqual([500, { error: 'internal' }]);
+    await faultApp.close();
+
+    const hanging = { ...ownedRegistry([]), close: () => new Promise(() => {}) };
+    const slowApp = Fastify();
+    await slowApp.register(async (scope) => {
+      await registerPtyRoute(scope, makePtyRouteContext({
+        repoRoot: process.cwd(), sessionConfig, allowedOrigins: ['https://kb.test'],
+        registry: hanging as unknown as SessionRegistryPort, persistence: fakePersistence(),
+        browserSessionRefs: echoRefs(), closeTimeoutMs: 5,
+        appendAudit: () => ({ ts: '', action: '', owner: '', result: '' } as never),
+      }));
+    });
+    await slowApp.ready();
+    const unconfirmed = await slowApp.inject({
+      method: 'DELETE', url: `/api/pty/sessions/${SESSION_ID}`, headers: identity('alice', 'ref-a'),
+    });
+    expect([unconfirmed.statusCode, unconfirmed.json()]).toEqual([409, { error: 'exit-unconfirmed' }]);
+    await slowApp.close();
+  });
+
   it('refuses B attach/write/resize/close over the socket, and lets A second tab attach', async () => {
     const calls: Calls = [];
     const ctx = (): PtyRouteContext => makePtyRouteContext({

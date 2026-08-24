@@ -14,6 +14,7 @@ import {
 import type {
   RawWebSocket, SmokeHttpRequest, SmokeSocketConnect, TranscriptSpan,
 } from './p3RealPtySmokeClient.ts';
+import { expectUsageRefusal } from './expectUsageRefusal.ts';
 
 const ORIGIN = 'https://127.0.0.1:4317';
 const TOKEN = 'fixture-session-token';
@@ -35,17 +36,8 @@ function baseArgv(overrides: Record<string, string | null> = {}): string[] {
   return out;
 }
 
-function expectUsage(run: () => unknown, fragment: string): void {
-  try {
-    run();
-  } catch (error) {
-    expect(error).toBeInstanceOf(SmokeFailure);
-    expect((error as SmokeFailure).code).toBe(SMOKE_EXIT.usage);
-    expect((error as SmokeFailure).message).toContain(fragment);
-    return;
-  }
-  throw new Error('expected a usage refusal');
-}
+const expectUsage = (run: () => unknown, fragment: string): void =>
+  expectUsageRefusal(run, { failure: SmokeFailure, code: SMOKE_EXIT.usage, fragment });
 
 /* ------------------------------------------------------------------------------------------------ *
  * An in-process fake v2 server

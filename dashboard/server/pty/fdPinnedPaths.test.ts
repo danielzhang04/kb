@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BROKER_RUNTIME_POLICY,
+  BROKER_SYSTEMD_POLICY,
   FdPinnedPathError,
   LINUX_CHILD_ENV_KEYS,
   type PinnedIdentity,
@@ -20,14 +21,19 @@ describe('fdPinnedPaths', () => {
     expect(resolveLinuxRoot('worktrees')).toBe('/var/lib/kb-shell/worktrees');
     expect(BROKER_RUNTIME_POLICY).toEqual({
       runtimeDirectory: '/run/kb-shell',
-      runtimeDirectoryMode: 0o700,
+      runtimeDirectoryMode: 0o750,
       statePath: '/run/kb-shell/state.json',
       stateOwner: 'kb-shell:kb-shell',
       stateMode: 0o600,
-      readOnlyPaths: ['/var/lib/kb/ops', '/var/lib/kb-shell/home'],
-      readWritePaths: ['/var/lib/kb-shell/worktrees'],
       inaccessiblePaths: ['/var/lib/kb/state', '/opt/kb-releases', '/var/lib/kb-activation'],
     });
+    // The unit's path sandbox has exactly one copy, and it is the systemd literal.
+    expect(BROKER_RUNTIME_POLICY.runtimeDirectoryMode)
+      .toBe(Number.parseInt(BROKER_SYSTEMD_POLICY.socket.RuntimeDirectoryMode, 8));
+    expect(Object.keys(BROKER_RUNTIME_POLICY)).not.toContain('readWritePaths');
+    expect(Object.keys(BROKER_RUNTIME_POLICY)).not.toContain('readOnlyPaths');
+    expect(BROKER_SYSTEMD_POLICY.service.ReadWritePaths.split(' '))
+      .toContain('/var/lib/kb-shell/worktrees');
   });
 
   it('rejects traversal, absolute paths, denied roots, controls, and unsafe path segments', () => {

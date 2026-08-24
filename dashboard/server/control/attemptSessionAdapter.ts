@@ -59,7 +59,7 @@ const TERMINAL_STATUSES: ReadonlySet<AttemptOperationStatus> = new Set(['cancell
 
 type ResumeRuntime = ApprovedAttemptDeclaration['profile']['runtime'];
 
-export interface ResolvedClaudeLaunchPolicy {
+interface ResolvedClaudeLaunchPolicy {
   workflowProfile: string;
   policy: ClaudeToolPolicy;
   settings: string | undefined;

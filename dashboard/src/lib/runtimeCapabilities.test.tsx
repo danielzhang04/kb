@@ -56,6 +56,29 @@ describe('decodeRuntimeCapabilities', () => {
     expect(decodeRuntimeCapabilities([AVAILABLE])).toBe(null);
   });
 
+  it('decodes the available branch exactly and publishes droppedLaunchers to the browser', () => {
+    // m1: only the six PTY members, the optional droppedLaunchers, and the declared non-PTY host
+    // slice. An undeclared key is a payload nobody agreed to; a dropped launcher is the operator's
+    // only trace of a tampered launcher tree and must reach the browser, not just Health.
+    expect(decodeRuntimeCapabilities({ ...AVAILABLE, sideChannel: 'anything' })).toBe(null);
+    expect(decodeRuntimeCapabilities({
+      ...AVAILABLE,
+      droppedLaunchers: [{ launcher: 'codex', refusal: 'launcher-changed' }],
+    })).toEqual({
+      pty: true, host: 'desktop', launchers: ['shell', 'claude', 'codex'],
+      roots: ['repo', 'worktrees'], checkedAt: CHECKED_AT, localTranscripts: true,
+      droppedLaunchers: [{ launcher: 'codex', refusal: 'launcher-changed' }],
+    });
+    for (const bad of [
+      [],
+      [{ launcher: 'codex' }],
+      [{ launcher: 'codex', refusal: 'because' }],
+      [{ launcher: 'bash', refusal: 'launcher-changed' }],
+      [{ launcher: 'codex', refusal: 'launcher-changed', detail: 'C:\shim.exe' }],
+      [{ launcher: 'codex', refusal: 'launcher-changed' }, { launcher: 'codex', refusal: 'launcher-unavailable' }],
+    ]) expect(decodeRuntimeCapabilities({ ...AVAILABLE, droppedLaunchers: bad })).toBe(null);
+  });
+
   it('rejects an available capability that is not the exact closed shape', () => {
     expect(decodeRuntimeCapabilities({ ...AVAILABLE, host: 'laptop' })).toBe(null);
     expect(decodeRuntimeCapabilities({ ...AVAILABLE, launchers: ['shell', 'shell'] })).toBe(null);

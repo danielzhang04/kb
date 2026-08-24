@@ -99,6 +99,15 @@ export type ClaimReceipt = { revision: number; sessionId: string; replayed: bool
 /** Controller-null Run sessions carry this fixed `browserSessionRef`; it is deliberately outside the
  *  43-char base64url minted-ref grammar so it can never collide with a real browser session. */
 export const RUN_CONTROLLER_NULL_BROWSER_SESSION_REF = 'run-controller-null' as const;
+/** Frozen §3 bound: 8 controlled-live sessions per `{operator, browserSessionRef}`. The registry
+ *  enforces it for every platform before it calls a host; each host keeps its own copy as defence
+ *  in depth. */
+export const MAX_PRINCIPAL_LIVE_SESSIONS = 8;
+/** Length-prefixed so no separator byte inside an operator id can merge two principals into one
+ *  capacity bucket (a concatenated key lets `a|b` + `c` collide with `a` + `b|c`). */
+export function principalCapacityKey(principal: BrowserPrincipal): string {
+  return `${principal.operator.length}:${principal.operator}:${principal.browserSessionRef.length}:${principal.browserSessionRef}`;
+}
 export type SessionHostRequest = { operationKey: string; principal: BrowserPrincipal;
   recipe: LaunchRecipe; rootId: SafeRootId;
   relativeCwd: string; cols: number; rows: number };

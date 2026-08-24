@@ -484,7 +484,7 @@ describe('two-phase attempt session adapter', () => {
     const bindings = new MemoryBindings();
     const input = declaration('codex');
     // The reservation CAS loses its revision check; by the time it re-reads, another instance has
-    // durably cancelled the key. The retry sees a terminal record and must refuse â€” even though the
+    // durably cancelled the key. The retry sees a terminal record and must refuse — even though the
     // reservation patch changes only the counter and would leave the status exactly as it found it.
     bindings.beforeWrite = (record, _expectedRevision, call) => {
       if (record.promptsDelivered === 1 && record.status === 'pending') {
@@ -1022,7 +1022,7 @@ describe('two-phase attempt session adapter', () => {
       await launch.result;
     }
     // Every retained transcript is capped at `maxOutputBytes`, and the retained SET is capped by the same
-    // budget â€” so only the newest terminal attempt survives here, and the evicted arrays are released.
+    // budget — so only the newest terminal attempt survives here, and the evicted arrays are released.
     const retained = refs.filter((ref) => adapter.rawTranscript(ref) !== null);
     expect(retained).toEqual([refs.at(-1)]);
     expect(adapter.rawTranscript(refs.at(-1)!)!.byteLength).toBeLessThanOrEqual(16);

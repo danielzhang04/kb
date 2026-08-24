@@ -20,10 +20,14 @@ const repoRoot = resolve(dashboardRoot, '..');
 const at = (relPath: string): string => join(dashboardRoot, relPath);
 
 /**
- * The P3 code baseline (plan section 6 anchor `027dce12`). The `absentAtBase` claims below are checked
- * against the real tree at that commit with `git cat-file -e`, not against this file's own constants.
+ * The PHASE BASE — the commit P3 started from. `absentAtBase` claims are checked against the real tree
+ * at that commit with `git cat-file -e`, not against this file's own constants. It is deliberately the
+ * base and not the mid-phase `027dce12` this file used to cite: a claim that a path was "already
+ * missing when P3 started" is only auditable against the tree P3 actually started from. No inventory
+ * path appeared mid-phase, so no path needs the mid-phase anchor; if one ever does, it gets its own
+ * named constant here rather than moving this one.
  */
-const P3_BASE_COMMIT = '027dce12';
+const P3_BASE_COMMIT = '9a72bbf8';
 const existsAtBase = (relPath: string): boolean => {
   try {
     execFileSync('git', ['cat-file', '-e', `${P3_BASE_COMMIT}:dashboard/${relPath}`], {
@@ -124,18 +128,23 @@ const builtOutputs = [...walkBuilt('dist'), ...walkBuilt('dist-server')];
  * authority query field: the exemption therefore requires the matched token to be `agent=` immediately
  * preceded by an identifier character, in a bundle file — a real `?agent=` or `&agent=` query still fails.
  */
-const BUNDLE_TOKEN_EXEMPTIONS: readonly { token: string; precededBy: RegExp; reason: string }[] = [{
+const BUNDLE_TOKEN_EXEMPTIONS: readonly { token: string; site: string; reason: string }[] = [{
   token: 'agent=',
-  precededBy: /[A-Za-z0-9_$.]/,
+  // The WHOLE minified site, not a shape: only `.subagent=` is exempt. A future `x.otheragent=` write
+  // is a new fact about the bundle and must be looked at, not silently inherited by an identifier-class
+  // rule; `?agent=`/`&agent=` still fail everywhere.
+  site: '.subagent=',
   reason: 'minified property assignment (`.subagent=`), not a raw authority query field',
 }];
 
 function exemptBundleHit(relPath: string, source: string, match: RegExpMatchArray): boolean {
   if (!relPath.startsWith('dist/') && !relPath.startsWith('dist-server/')) return false;
   const index = match.index ?? 0;
-  const previous = index === 0 ? '' : source[index - 1];
-  return BUNDLE_TOKEN_EXEMPTIONS.some((exemption) =>
-    exemption.token === match[0] && previous !== '' && exemption.precededBy.test(previous));
+  return BUNDLE_TOKEN_EXEMPTIONS.some((exemption) => {
+    if (exemption.token !== match[0]) return false;
+    const start = index - (exemption.site.length - exemption.token.length);
+    return start >= 0 && source.slice(start, index + exemption.token.length) === exemption.site;
+  });
 }
 
 describe('P3 deletion closure — section 4 inventory', () => {

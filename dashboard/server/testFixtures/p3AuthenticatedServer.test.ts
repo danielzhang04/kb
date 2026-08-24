@@ -18,6 +18,7 @@ import {
   type P3AuthenticatedServer,
 } from './p3AuthenticatedServer.ts';
 import type { SessionHost, SessionSink } from '../pty/contracts.ts';
+import { invalidPtyProtocolVectors } from '../../shared/ptyProtocolVectors.ts';
 
 /** The browser decoder only accepts `req-<32 hex>`, and the route echoes the id it was sent. */
 const REQ_CREATE = `req-${'1'.repeat(32)}`;
@@ -326,14 +327,27 @@ describe('p3AuthenticatedServer — the real /api/pty upgrade', () => {
     await client.closed;
   }, 30_000);
 
-  it('closes with 1009 on an oversize raw frame, before the decoder ever sees it', async () => {
+  it('closes with 1009 on a literal 90,113-byte raw frame, before the decoder ever sees it', async () => {
+    // [C-M2]: the contract pins the BROWSER raw ceiling at 90,112 bytes, and the shared vector
+    // `raw-browser-frame-over-90112` is the one byte over it. The size is the LITERAL from the vector,
+    // never `PTY_MAX_PAYLOAD_BYTES + 1`: a test parameterised on the implementation constant passes at
+    // any value the implementation happens to hold, which is how 98,304 survived a green suite.
+    const vector = invalidPtyProtocolVectors.find((entry) => entry.case === 'raw-browser-frame-over-90112');
+    const rawBytes = (vector as { rawBytes?: number } | undefined)?.rawBytes;
+    expect(rawBytes).toBe(90_113);
+    expect(PTY_MAX_PAYLOAD_BYTES).toBe(90_112);
+
     const server = await start();
     const client = await open(server);
-    // One byte over the applied `maxPayload`, and still valid JSON-shaped, so a decoder that ran would
-    // answer `invalid-request` instead of the transport closing the socket.
-    client.socket.send(`{"pad":"${'x'.repeat(PTY_MAX_PAYLOAD_BYTES - 10)}"}`.padEnd(PTY_MAX_PAYLOAD_BYTES + 1, ' '));
+    // Valid JSON-shaped and a real frame type, so a decoder that ran would answer `invalid-request`
+    // instead of the transport closing the socket.
+    const envelopeBytes = '{"type":"input","pad":""}'.length;
+    const payload = `{"type":"input","pad":"${'x'.repeat(90_113 - envelopeBytes)}"}`;
+    expect(Buffer.byteLength(payload, 'utf8')).toBe(90_113);
+    client.socket.send(payload);
     const { code } = await client.closed;
     expect(code).toBe(1009);
+    // Zero decoder calls: a decoded frame of any kind would have produced a server frame here.
     expect(client.frames).toEqual([]);
   }, 30_000);
 

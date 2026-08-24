@@ -233,10 +233,10 @@ describe('LinuxBrokerServer', () => {
       { mode: 0o100600, uid: 0, gid: 1002 }, { mode: 0o100600, uid: 1002, gid: 0 }]) {
       expect(() => assertBrokerRuntimeNode(stats, policy.state, 'state file')).toThrow('violates policy');
     }
-    expect(() => assertBrokerRuntimeNode({ mode: 0o040700, uid: 1002, gid: 1002 }, policy.directory, 'directory'))
+    expect(() => assertBrokerRuntimeNode({ mode: 0o040750, uid: 1002, gid: 1001 }, policy.directory, 'directory'))
       .not.toThrow();
-    for (const stats of [{ mode: 0o040755, uid: 1002, gid: 1002 }, { mode: 0o040770, uid: 1002, gid: 1001 },
-      { mode: 0o040700, uid: 1001, gid: 1001 }]) {
+    for (const stats of [{ mode: 0o040755, uid: 1002, gid: 1001 }, { mode: 0o040770, uid: 1002, gid: 1001 },
+      { mode: 0o040750, uid: 1001, gid: 1001 }]) {
       expect(() => assertBrokerRuntimeNode(stats, policy.directory, 'directory')).toThrow('violates policy');
     }
 
@@ -261,6 +261,23 @@ describe('LinuxBrokerServer', () => {
       await expect(loadRuntimeState(statePath,
         { ...observed, directory: { ...observed.directory, modes: [0o007] } })).rejects.toThrow('violates policy');
     } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it('refuses a 0700 kb-shell:kb-shell runtime directory instead of booting unreachable', () => {
+    // The old shape (service-owned RuntimeDirectory, 0700 kb-shell:kb-shell) leaves broker.sock
+    // untraversable by kb-dashboard. Accepting it produced a broker that starts and is never
+    // reached; the only accepted shape is the socket unit's kb-shell:kb-dashboard 0750.
+    const policy = brokerRuntimePolicy({ shellUid: 1002, shellGid: 1002, dashboardUid: 1001, dashboardGid: 1001 });
+    expect(policy.directory.gids).toEqual([1001]);
+    expect(policy.directory.modes).toEqual([0o750]);
+    expect(() => assertBrokerRuntimeNode({ mode: 0o040700, uid: 1002, gid: 1002 }, policy.directory, 'directory'))
+      .toThrow('violates policy');
+    expect(() => assertBrokerRuntimeNode({ mode: 0o040750, uid: 1002, gid: 1002 }, policy.directory, 'directory'))
+      .toThrow('violates policy');
+    expect(() => assertBrokerRuntimeNode({ mode: 0o040700, uid: 1002, gid: 1001 }, policy.directory, 'directory'))
+      .toThrow('violates policy');
+    expect(() => assertBrokerRuntimeNode({ mode: 0o040750, uid: 1002, gid: 1001 }, policy.directory, 'directory'))
+      .not.toThrow();
   });
 
   it('uses only a canonical Unix listen path and checks the post-listen address', async () => {

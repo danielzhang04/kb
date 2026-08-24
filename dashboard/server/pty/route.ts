@@ -61,12 +61,13 @@ import type {
 export const PTY_SUBPROTOCOL = 'kb-pty.v1';
 
 /**
- * RAW frame ceiling, applied by `ws` itself BEFORE a byte is parsed (`maxPayload`). A frame above this
- * closes the socket at the transport, so an oversized payload can never reach `JSON.parse`, the decoder,
- * or a base64 expansion. It is deliberately the broker's `maxFrameBytes`, so both transports refuse at the
- * same size and a Windows-only or Linux-only ceiling cannot exist.
+ * RAW browser frame ceiling, applied by `ws` itself BEFORE a byte is parsed (`maxPayload`). A frame
+ * above this closes the socket at the transport, so an oversized payload can never reach `JSON.parse`,
+ * the decoder, or a base64 expansion. This is the BROWSER bound frozen by the contract; the broker's
+ * own `maxFrameBytes` (98,304) is a separate constant owned by the broker, because the broker frame
+ * wraps a browser payload plus its envelope.
  */
-export const PTY_MAX_PAYLOAD_BYTES = 98_304;
+export const PTY_MAX_PAYLOAD_BYTES = 90_112;
 
 /** Largest single decoded stdin chunk one `input` frame may carry (the broker's `maxInputBytes`). */
 export const PTY_MAX_INPUT_BYTES = 65_536;
@@ -120,6 +121,8 @@ export interface PtyRouteContext {
   browserSessionRefs?: BrowserSessionRefManager;
   /** Read-only replay used on reattach. Absent = attach without scrollback, never a control fallback. */
   replay?: SessionReplayReader;
+  /** DELETE close deadline; defaults to `PTY_CLOSE_TIMEOUT_MS`. Injected only so tests can prove 409. */
+  closeTimeoutMs?: number;
   appendAudit: (repoRoot: string, event: AuditEvent, options?: AppendAuditOptions) => AuditRow | Promise<AuditRow>;
   auditOptions?: AppendAuditOptions;
 }
@@ -139,6 +142,7 @@ export function makePtyRouteContext(
     ...(overrides.browserSessionRefs ? { browserSessionRefs: overrides.browserSessionRefs } : {}),
     ...(overrides.replay ? { replay: overrides.replay } : {}),
     ...(overrides.auditOptions ? { auditOptions: overrides.auditOptions } : {}),
+    ...(overrides.closeTimeoutMs !== undefined ? { closeTimeoutMs: overrides.closeTimeoutMs } : {}),
   };
 }
 
@@ -627,11 +631,19 @@ export async function registerPtyRoute(app: FastifyInstance, ctx: PtyRouteContex
     if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) {
       return reply.code(404).send({ error: 'not-found' });
     }
-    const closed = await ctx.registry.close(principal, sessionId);
+    // 409 belongs to the DEADLINE alone: the close was asked for and no exit was observed in time.
+    // A registry fault is a fault, not an unconfirmed exit, so it is 500.
+    const timeoutMs = ctx.closeTimeoutMs ?? PTY_CLOSE_TIMEOUT_MS;
+    let deadline: NodeJS.Timeout | undefined;
+    const timedOut = Symbol('close-deadline');
+    const closed = await Promise.race([
+      ctx.registry.close(principal, sessionId),
+      new Promise<typeof timedOut>((resolve) => { deadline = setTimeout(() => resolve(timedOut), timeoutMs); }),
+    ]).finally(() => { if (deadline !== undefined) clearTimeout(deadline); });
+    if (closed === timedOut) return reply.code(409).send({ error: 'exit-unconfirmed' });
     if (!closed.ok) {
-      // An absent or foreign session is 404 (never leaking another controller's ids); an unobserved exit
-      // inside the deadline is 409 - a kill request is not proof the process group is gone.
-      if (closed.refusal === 'internal') return reply.code(409).send({ error: 'exit-unconfirmed' });
+      // An absent or foreign session is 404 (never leaking another controller's ids).
+      if (closed.refusal === 'internal') return reply.code(500).send({ error: 'internal' });
       return reply.code(404).send({ error: 'not-found', reason: closed.refusal });
     }
     return reply.code(200).send({ ok: true, exit: publicExit(closed.value) });

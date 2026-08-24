@@ -158,7 +158,13 @@ const PLAN_SECTION_9_ATTACK_IDS: readonly string[] = [
   'raw WS oversize',
   'decoded oversize',
   'high-water',
+  // B2 closure: the outbound 1 MiB shed and the cumulative queued-INPUT bound are different
+  // mechanisms on different sides of the socket, so each owns a row.
+  'queued-input high-water, host',
   'atomic 16-host/8-principal capacity races',
+  // B1 closure: the host cap is defence in depth; the platform-independent one is the registry's,
+  // and the Linux path has no other. Its Linux twin lives in linuxBrokerClient.test.ts.
+  'per-principal capacity race, registry',
   'independent composite-principal list/attach/write/resize/close/eviction',
   'cookie CSPRNG/name/path/lifetime/renewal/collision',
   'same-pair multi-tab',

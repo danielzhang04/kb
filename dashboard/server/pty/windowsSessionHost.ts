@@ -8,6 +8,7 @@ import type {
   HostLaunch, HostStartReceipt, ObservedExit, PortResult, SessionDataFrame,
   SessionHost, SessionHostRequest, SessionSink, SessionSize,
 } from './contracts.ts';
+import { MAX_PRINCIPAL_LIVE_SESSIONS, principalCapacityKey } from './contracts.ts';
 import {
   createWindowsPathPinInspector, CURRENT_PROCESS_SERVICE_SID, isApprovedLocalWindowsRoot,
   isSafeRelativeWindowsCwd, mapWindowsLaunchRecipe, pinWindowsLauncher,
@@ -20,7 +21,8 @@ export type WindowsPtyProcess = {
   pid: number;
   onData(listener: (data: string) => void): { dispose(): void };
   onExit(listener: (event: { exitCode: number; signal?: number }) => void): { dispose(): void };
-  write(data: string): void;
+  /** node-pty returns void; the wider type lets a host await a child that reports back-pressure. */
+  write(data: string): void | Promise<void>;
   resize(cols: number, rows: number): void;
 };
 
@@ -84,6 +86,8 @@ type HostSession = {
   attachments: Map<string, AttachmentState>;
   transcriptQueue: Promise<void>;
   transcriptQueuedBytes: number;
+  inputQueue: Promise<void>;
+  queuedInputBytes: number;
   outputOverflow: boolean;
   closeRequested: boolean;
   closeAttempt: Promise<boolean> | null;
@@ -105,13 +109,19 @@ type ResourceCounts = {
 
 const OPERATION_KEY_RE = /^op-[0-9a-f]{64}$/;
 const MAX_INPUT_BYTES = 65_536;
+/**
+ * Cumulative UNDELIVERED stdin per session, the same 262,144 the broker enforces
+ * (`BROKER_MAX_QUEUED_INPUT_BYTES`). The per-chunk bound above caps one frame; without this an
+ * authenticated operator can pipeline chunks faster than the child drains and grow daemon memory
+ * without bound. A refusal drops nothing already accepted and never reorders: the chunk is rejected
+ * before it enters the ordered write queue.
+ */
+const MAX_QUEUED_INPUT_BYTES = 262_144;
 const MAX_OUTPUT_BACKLOG = 1_048_576;
 const MAX_ATTACHMENTS = 64;
 /** Terminal operation receipts retained for replay; older terminal entries are evicted first. */
 const MAX_TERMINAL_OPERATIONS = 64;
 const DEFAULT_DRAIN_TIMEOUT_MS = 2_000;
-/** Composite principal key: NUL-separated so no operator/ref pair can forge another bucket. */
-const PRINCIPAL_KEY_SEPARATOR = '\u0000';
 const TREE_HELPER_ALLOWLIST = [
   'SYSTEMROOT', 'SystemRoot', 'SYSTEMDRIVE', 'SystemDrive', 'WINDIR', 'windir',
   'COMSPEC', 'ComSpec', 'TEMP', 'TMP',
@@ -154,7 +164,9 @@ function canonicalJson(value: unknown): string {
 function requestHash(request: SessionHostRequest): string { return canonicalJson(request); }
 
 function principalKey(request: SessionHostRequest): string {
-  return `${request.principal.operator}${PRINCIPAL_KEY_SEPARATOR}${request.principal.browserSessionRef}`;
+  // Length-prefixed (see `principalCapacityKey`): a separator byte inside an operator id must not
+  // merge two principals into one capacity bucket.
+  return principalCapacityKey(request.principal);
 }
 
 function isWellFormedPrincipal(request: SessionHostRequest): boolean {
@@ -225,7 +237,7 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
   const makeRandomId = options.randomId ?? (() => randomBytes(16).toString('hex'));
   const environment = options.environment ?? process.env;
   const hostCapacity = options.hostCapacity ?? 16;
-  const principalCapacity = options.principalCapacity ?? 8;
+  const principalCapacity = options.principalCapacity ?? MAX_PRINCIPAL_LIVE_SESSIONS;
   const serviceSid = options.serviceSid ?? CURRENT_PROCESS_SERVICE_SID;
   const platform = options.platform ?? process.platform;
   const pathInspector = options.pathInspector ?? (options.resolveLaunch === undefined && platform === 'win32'
@@ -237,7 +249,6 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
   const operations = new Map<string, OperationEntry>();
   const principalReservations = new Map<string, number>();
   let reservations = 0;
-  let attachmentCounter = 0;
 
   const releasePrincipal = (principal: string): void => {
     reservations -= 1;
@@ -284,11 +295,16 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
 
   const addSink = (session: HostSession, sink: SessionSink): string | null => {
     if (session.state === 'exited' || sink.closed() || session.attachments.size >= MAX_ATTACHMENTS) return null;
-    let attachmentId: string;
-    do {
-      attachmentCounter += 1;
-      attachmentId = `att-${attachmentCounter.toString(16).padStart(32, '0')}`;
-    } while (session.attachments.has(attachmentId));
+    // Unguessable, not sequential: a same-principal tab must not be able to predict a sibling's
+    // attachment id and detach it. Minted from the same CSPRNG source as session/request ids.
+    // Straight from the CSPRNG, never `options.randomId` (a deterministic test id would collide) and
+    // never a counter: a sibling tab of the same principal must not be able to guess this and detach it.
+    let attachmentId: string | null = null;
+    for (let attempt = 0; attempt < 8 && attachmentId === null; attempt += 1) {
+      const candidate = `att-${randomBytes(16).toString('hex')}`;
+      if (!session.attachments.has(candidate)) attachmentId = candidate;
+    }
+    if (attachmentId === null) return null;
     session.attachments.set(attachmentId, {
       sink, queuedBytes: 0, queue: Promise.resolve(), detached: false,
     });
@@ -515,6 +531,7 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
         sessionId, requestHash: hash, operationKey: request.operationKey, principal,
         child: null, listeners: [], state: 'starting', sequence: 0, attachments: new Map(),
         transcriptQueue: Promise.resolve(), transcriptQueuedBytes: 0, outputOverflow: false,
+        inputQueue: Promise.resolve(), queuedInputBytes: 0,
         closeRequested: false, closeAttempt: null, released: false, exitValue: null,
         exitPromise, resolveExit, receiptPromise: null,
       };
@@ -608,7 +625,23 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
       if (data.byteLength === 0 || data.byteLength > MAX_INPUT_BYTES) {
         return { ok: false, refusal: 'input-too-large', detail: null };
       }
-      session.child.write(Buffer.from(data).toString('utf8'));
+      // Cumulative bound, checked and taken before the chunk joins the ordered queue.
+      if (session.queuedInputBytes + data.byteLength > MAX_QUEUED_INPUT_BYTES) {
+        return { ok: false, refusal: 'input-too-large', detail: null };
+      }
+      session.queuedInputBytes += data.byteLength;
+      const chunk = Buffer.from(data).toString('utf8');
+      const write = session.inputQueue.then(async () => {
+        // FIFO by construction: each accepted chunk waits on the previous one, so a refusal above
+        // can never let a later chunk overtake an earlier one.
+        if (session.child !== null) await session.child.write(chunk);
+      });
+      session.inputQueue = write.then(() => undefined, () => undefined);
+      try {
+        await write;
+      } finally {
+        session.queuedInputBytes -= data.byteLength;
+      }
       return { ok: true, value: { accepted: data.byteLength } };
     },
 

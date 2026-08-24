@@ -351,7 +351,11 @@ def test_the_broker_units_carry_the_ruled_directive_values():
     assert service["PrivateTmp"] == "yes"
     assert service["UnsetEnvironment"] == dict(
         validate_vm_runtime.parse_unit(dashboard)["Service"])["UnsetEnvironment"]
-    assert service["ReadWritePaths"] == "/var/lib/kb-shell/worktrees /run/kb-shell"
+    assert service["ReadWritePaths"] == "/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex"
+    # The provider CLIs must be able to persist their own state under the read-only home.
+    assert service["ReadOnlyPaths"] == "/var/lib/kb/ops /var/lib/kb-shell/home"
+    for carved in ("/var/lib/kb-shell/home/.claude", "/var/lib/kb-shell/home/.codex"):
+        assert carved in service["ReadWritePaths"].split()
     assert "RuntimeDirectory" not in service and "RuntimeDirectoryMode" not in service
     assert (socket["User"], socket["Group"]) == ("kb-shell", "kb-dashboard")
     assert socket["RuntimeDirectoryMode"] == "0750"

@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type {
-  PtyProbeReason, PublicPtyCapability, SafeRootId, SessionLauncher,
+  DroppedLauncher, DroppedLauncherRefusal, PtyProbeReason, PublicPtyCapability, SafeRootId,
+  SessionLauncher,
 } from '../../shared/ptyProtocol.ts';
 
 /** The server payload the browser trusts: the closed P3 §3 PTY capability plus the transcript flag. */
@@ -12,6 +13,39 @@ const PROBE_REASONS: readonly PtyProbeReason[] = [
 ];
 const DECLARED_LAUNCHERS: readonly SessionLauncher[] = ['shell', 'claude', 'codex'];
 const DECLARED_ROOTS: readonly SafeRootId[] = ['repo', 'worktrees'];
+const DECLARED_DROP_REFUSALS: readonly DroppedLauncherRefusal[] =
+  ['launcher-profile-invalid', 'launcher-unavailable', 'launcher-changed'];
+/** The available branch's own members; `droppedLaunchers` is the one optional PTY member. */
+const AVAILABLE_REQUIRED_KEYS = ['pty', 'host', 'launchers', 'roots', 'checkedAt', 'localTranscripts'];
+const AVAILABLE_OPTIONAL_KEYS = ['droppedLaunchers'];
+/**
+ * The non-PTY host slice the PTY capability rides beside (`server/runtime/capabilities.ts`
+ * `RuntimeHostCapabilities`). Named, so the available branch can be closed EXACTLY: a key that is
+ * neither a PTY member nor a declared host member is a payload nobody agreed to and is refused.
+ */
+const HOST_SLICE_KEYS = ['platform', 'python', 'runnerTrigger', 'vibe', 'durablePrWrites',
+  'localTranscripts', 'dashboardBridge'];
+
+/**
+ * A dropped launcher is the operator's only trace of a tampered launcher tree, so it is decoded and
+ * published rather than dropped on the floor: closed shape, closed refusal set, no repeats, and never
+ * empty (an available host that dropped nothing omits the field entirely).
+ */
+function decodeDroppedLaunchers(value: unknown): DroppedLauncher[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > DECLARED_LAUNCHERS.length) return null;
+  const decoded: DroppedLauncher[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return null;
+    const row = entry as Record<string, unknown>;
+    if (Object.keys(row).length !== 2) return null;
+    const launcher = row.launcher as SessionLauncher;
+    const refusal = row.refusal as DroppedLauncherRefusal;
+    if (!DECLARED_LAUNCHERS.includes(launcher) || !DECLARED_DROP_REFUSALS.includes(refusal)) return null;
+    if (decoded.some((seen) => seen.launcher === launcher)) return null;
+    decoded.push({ launcher, refusal });
+  }
+  return decoded;
+}
 /** Probe internals that are never part of the published §3 capability, on either branch. */
 const INTERNAL_PROBE_KEYS = ['epochId', 'transport', 'available', 'diagnostic', 'reason', 'detail'];
 const DETAIL_MAX_BYTES = 160;
@@ -75,17 +109,29 @@ export function decodeRuntimeCapabilities(payload: unknown): ClientRuntimeCapabi
   if (typeof row.localTranscripts !== 'boolean') return null;
   const localTranscripts = row.localTranscripts;
   if (row.pty === true) {
-    // Closed both ways. The available payload rides beside the non-PTY host slice, so its key set is
-    // not fixed and cannot be counted the way the diagnostic's is; instead the internal probe fields
-    // are named and rejected outright, so a server that ever leaked one is refused, not tolerated.
+    // Closed EXACTLY, like the diagnostic branch: the six required PTY members, the optional
+    // `droppedLaunchers`, and the declared non-PTY host slice it rides beside — anything else, probe
+    // internal or not, is refused. [C-M1] says "decoded exactly"; naming only the probe internals let
+    // every other extra key through.
     if (INTERNAL_PROBE_KEYS.some((key) => key in row)) return null;
+    const keys = Object.keys(row);
+    if (keys.some((key) => !AVAILABLE_REQUIRED_KEYS.includes(key) && !AVAILABLE_OPTIONAL_KEYS.includes(key)
+      && !HOST_SLICE_KEYS.includes(key))) {
+      return null;
+    }
+    if (AVAILABLE_REQUIRED_KEYS.some((key) => !keys.includes(key))) return null;
     if (row.host !== 'desktop' && row.host !== 'vm') return null;
     const launchers = decodeOrderedUnique(row.launchers, DECLARED_LAUNCHERS);
     const roots = decodeOrderedUnique(row.roots, DECLARED_ROOTS);
     if (launchers === null || launchers.length === 0) return null;
     if (roots === null || roots.length === 0) return null;
     if (typeof row.checkedAt !== 'string' || row.checkedAt === '') return null;
-    return { pty: true, host: row.host, launchers, roots, checkedAt: row.checkedAt, localTranscripts };
+    const host: 'desktop' | 'vm' = row.host;
+    const base = { pty: true as const, host, launchers, roots,
+      checkedAt: row.checkedAt, localTranscripts };
+    if (!('droppedLaunchers' in row)) return base;
+    const dropped = decodeDroppedLaunchers(row.droppedLaunchers);
+    return dropped === null ? null : { ...base, droppedLaunchers: dropped };
   }
   if (row.pty === false) {
     const closed = decodeDiagnostic(row.diagnostic);

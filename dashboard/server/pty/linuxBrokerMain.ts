@@ -9,7 +9,6 @@ import { BROKER_MAX_SESSIONS, BROKER_PROTOCOL } from './brokerProtocol.ts';
 import {
   BROKER_RUNTIME_POLICY,
   BROKER_SOCKET_PATH,
-  BROKER_SYSTEMD_POLICY,
   pinBrokerLaunch,
   type BrokerLaunchSpec,
 } from './fdPinnedPaths.ts';
@@ -140,10 +139,11 @@ export function assertBrokerRuntimeNode(stats: { mode: number; uid: number; gid:
  * the runtime directory the socket unit's 0750 with the kb-dashboard group, which is what lets the
  * dashboard reach broker.sock.
  *
- * The units are now reconciled (the socket unit owns /run/kb-shell; the service declares no
- * RuntimeDirectory at all), so 0700 is accepted only as the tmpfiles/manual-provisioning fallback:
- * a directory that strict is unreachable by kb-dashboard, which the WSL gate detects by stat-ing
- * /run/kb-shell rather than by anything this process can see.
+ * The units are reconciled (the socket unit owns /run/kb-shell; the service declares no
+ * RuntimeDirectory at all), so this FAILS CLOSED on the old shape: gid kb-shell and mode 0700 are
+ * REFUSED. A 0700 kb-shell:kb-shell runtime directory is unreachable by kb-dashboard, so accepting
+ * it bought a broker that boots happily while the dashboard can never traverse to broker.sock -
+ * silent unavailability. The one accepted shape is the socket unit's: kb-shell:kb-dashboard 0750.
  */
 export function brokerRuntimePolicy(identities: ServiceIdentities): BrokerRuntimePolicy {
   const [owner, group] = BROKER_RUNTIME_POLICY.stateOwner.split(':');
@@ -154,9 +154,8 @@ export function brokerRuntimePolicy(identities: ServiceIdentities): BrokerRuntim
     state: { uid: identities.shellUid, gids: [identities.shellGid], modes: [BROKER_RUNTIME_POLICY.stateMode] },
     directory: {
       uid: identities.shellUid,
-      gids: [identities.shellGid, identities.dashboardGid],
-      modes: [BROKER_RUNTIME_POLICY.runtimeDirectoryMode,
-        Number.parseInt(BROKER_SYSTEMD_POLICY.socket.DirectoryMode, 8)],
+      gids: [identities.dashboardGid],
+      modes: [BROKER_RUNTIME_POLICY.runtimeDirectoryMode],
     },
     directoryPath: BROKER_RUNTIME_POLICY.runtimeDirectory,
   };

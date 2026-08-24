@@ -58,7 +58,7 @@ def test_service_freezes_the_section_three_sandbox_directive_set():
     assert service["ExecStart"] == BROKER_EXEC_START
     assert service["ProtectSystem"] == "strict"
     assert service["ReadOnlyPaths"] == "/var/lib/kb/ops /var/lib/kb-shell/home"
-    assert service["ReadWritePaths"] == "/var/lib/kb-shell/worktrees /run/kb-shell"
+    assert service["ReadWritePaths"] == "/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex"
     assert service["InaccessiblePaths"] == "/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation"
     assert service["CapabilityBoundingSet"] == ""
     assert service["AmbientCapabilities"] == ""
@@ -400,16 +400,35 @@ def test_installer_provisions_the_named_account_home_and_worktrees_only(layout):
     assert [argv[-1] for argv in directories] == [
         str(layout.shell_root), str(layout.shell_root / "home"),
         str(layout.shell_root / "home/.local"), str(layout.shell_root / "home/.local/bin"),
+        str(layout.shell_root / "home/.claude"), str(layout.shell_root / "home/.codex"),
         str(layout.shell_root / "worktrees"), str(layout.broker_root), str(layout.releases),
     ]
     assert ("-m", "0700") == tuple(directories[1][-3:-1])
     # [C-S4]: the dashboard creates worktrees, the broker executes in them.
-    assert tuple(directories[4][-7:-1]) == ("-o", installer.DASHBOARD_ACCOUNT, "-g",
+    assert tuple(directories[6][-7:-1]) == ("-o", installer.DASHBOARD_ACCOUNT, "-g",
                                             installer.SHELL_ACCOUNT, "-m", installer.WORKTREES_MODE)
     assert installer.WORKTREES_MODE == "02770"
     account = [argv for argv in recorder.argv_list() if argv[0] in {installer.USERADD_BIN, installer.GROUPADD_BIN}]
     assert all(argv[-1] == installer.SHELL_ACCOUNT for argv in account)
     assert "--shell" in account[-1] and "/usr/sbin/nologin" in account[-1]
+
+
+def test_installer_creates_the_provider_cli_state_dirs_the_unit_carves_out_of_the_read_only_home(layout):
+    """A ReadWritePaths entry that does not exist makes systemd refuse to start the unit, and both
+    provider CLIs write their durable state (~/.claude, ~/.codex) on every run."""
+    recorder = Recorder()
+    install(layout, recorder)
+    directories = [argv for argv in recorder.argv_list()
+                   if argv[0] == installer.INSTALL_BIN and "-d" in argv]
+    by_path = {argv[-1]: argv for argv in directories}
+    service = (REPO / "deploy/systemd/kb-shell-broker.service").read_text(encoding="utf-8")
+    carved = [line for line in service.splitlines() if line.startswith("ReadWritePaths=")][0]
+    for name in (".claude", ".codex"):
+        path = layout.shell_root / "home" / name
+        assert str(path) in by_path, f"installer never creates {path}"
+        assert tuple(by_path[str(path)][-7:-1]) == ("-o", installer.SHELL_ACCOUNT, "-g",
+                                                    installer.SHELL_ACCOUNT, "-m", "0700")
+        assert f"/var/lib/kb-shell/home/{name}" in carved.split("=", 1)[1].split()
 
 
 def test_existing_account_is_not_recreated(layout):

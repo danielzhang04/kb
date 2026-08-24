@@ -20,14 +20,20 @@ export const LINUX_ROOTS = {
 
 export const BROKER_SOCKET_PATH = '/run/kb-shell/broker.sock';
 export const LINUX_CHILD_ENV_KEYS = ['HOME', 'PATH', 'LANG', 'TERM', 'COLUMNS', 'LINES'] as const;
+/**
+ * Runtime-directory + state-file facts the BROKER PROCESS checks at boot. It carries no copy of the
+ * unit's path sandbox: `ReadOnlyPaths`/`ReadWritePaths`/`InaccessiblePaths` live once, in
+ * `BROKER_SYSTEMD_POLICY.service` below, which is the literal the pairwise-equality test compares
+ * against the unit file and the Python validator. `runtimeDirectoryMode` is 0750, the value the
+ * SOCKET unit creates /run/kb-shell with (kb-shell:kb-dashboard) — the only mode that lets the
+ * dashboard traverse to broker.sock.
+ */
 export const BROKER_RUNTIME_POLICY = {
   runtimeDirectory: '/run/kb-shell',
-  runtimeDirectoryMode: 0o700,
+  runtimeDirectoryMode: 0o750,
   statePath: '/run/kb-shell/state.json',
   stateOwner: 'kb-shell:kb-shell',
   stateMode: 0o600,
-  readOnlyPaths: ['/var/lib/kb/ops', '/var/lib/kb-shell/home'],
-  readWritePaths: ['/var/lib/kb-shell/worktrees'],
   inaccessiblePaths: ['/var/lib/kb/state', '/opt/kb-releases', '/var/lib/kb-activation'],
 } as const;
 
@@ -72,7 +78,7 @@ export const BROKER_SYSTEMD_POLICY = {
     PrivateTmp: 'yes',
     ProtectSystem: 'strict',
     ReadOnlyPaths: '/var/lib/kb/ops /var/lib/kb-shell/home',
-    ReadWritePaths: '/var/lib/kb-shell/worktrees /run/kb-shell',
+    ReadWritePaths: '/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex',
     InaccessiblePaths: '/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation',
     CapabilityBoundingSet: '',
     AmbientCapabilities: '',

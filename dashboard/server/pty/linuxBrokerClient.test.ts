@@ -1,10 +1,13 @@
 import { Duplex } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
-import type { SessionSink } from './contracts.ts';
+import type { SessionHost, SessionSink } from './contracts.ts';
 import { encodeBrokerFrame } from './brokerProtocol.ts';
 import { LinuxBrokerClient } from './linuxBrokerClient.ts';
 import { LinuxBrokerServer, type BrokerPty } from './linuxBrokerServer.ts';
+import { createSessionRecordRegistry } from './sessionRecord.ts';
+import { createEmptyPtySessionsDocument, enforcePtySessionRetention } from './sessionPersistence.ts';
+import type { SessionPersistence } from './sessionPersistence.ts';
 
 class MemoryDuplex extends Duplex {
   peer: MemoryDuplex | null = null;
@@ -85,5 +88,65 @@ describe('LinuxBrokerClient', () => {
     expect((await launch.exit).reason).toBe('closed');
     child.onExitListener(0, null);
     expect(exits).toEqual(['closed']);
+  });
+  it('caps a composite principal at eight live sessions over the real broker client host', async () => {
+    // The Linux twin of the registry race: the broker frame carries no principal at all, so if the cap
+    // lived in a host it would simply not exist on the VM. Composed over the REAL LinuxBrokerClient
+    // talking to a real LinuxBrokerServer, the ninth create for one {operator, browserSessionRef} is
+    // still refused - by the registry, before the wire.
+    const [clientSocket, serverSocket] = pair();
+    let minted = 0;
+    const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: { launch: async () => new FakePty() },
+      makeSessionId: () => `pty-${(++minted).toString(16).padStart(32, '0')}`,
+      now: () => '2026-08-22T00:00:00.000Z' });
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+    let request = 0;
+    const client = new LinuxBrokerClient({ connect: async () => clientSocket, dashboardEpochId: epochId,
+      makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}` });
+
+    let document = createEmptyPtySessionsDocument();
+    let queue = Promise.resolve();
+    const persistence: SessionPersistence = {
+      read: () => structuredClone(document),
+      mutate: async (expectedRevision, callback) => {
+        let result!: { revision: number; value: unknown };
+        const action = queue.then(async () => {
+          if (expectedRevision !== null && expectedRevision !== document.revision) {
+            throw new Error('revision-conflict');
+          }
+          const draft = structuredClone(document);
+          const value = await callback(draft);
+          enforcePtySessionRetention(draft);
+          draft.revision += 1;
+          document = draft;
+          result = { revision: draft.revision, value };
+        });
+        queue = action.then(() => undefined, () => undefined);
+        await action;
+        return result as never;
+      },
+    };
+    let operation = 0;
+    const registry = createSessionRecordRegistry({
+      persistence,
+      host: client as unknown as SessionHost,
+      resolveManualRecipe: () => ({ launcher: 'shell', mode: 'interactive', model: null,
+        toolPolicyId: 'shell-default', sandbox: 'interactive' }),
+      now: () => '2026-08-22T00:00:00.000Z',
+      makeOperationKey: () => `op-${(++operation).toString(16).padStart(64, '0')}`,
+    });
+    const manual = { launcher: 'shell' as const, rootId: 'repo' as const, relativeCwd: '', cols: 80, rows: 24 };
+
+    for (let index = 0; index < 8; index += 1) {
+      expect(await registry.create(principal, manual)).toMatchObject({ ok: true });
+    }
+    expect(await registry.create(principal, manual))
+      .toEqual({ ok: false, refusal: 'capacity', detail: null });
+    // The broker was asked for exactly the eight that were admitted.
+    expect(minted).toBe(8);
+    // A second browser session of the same operator is a different bucket and still admitted.
+    expect(await registry.create({ operator: principal.operator, browserSessionRef: 'bs-fedcba9876543210' }, manual))
+      .toMatchObject({ ok: true });
   });
 });

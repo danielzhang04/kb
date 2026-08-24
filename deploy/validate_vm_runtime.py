@@ -60,7 +60,7 @@ BROKER_SERVICE_DIRECTIVES = {
     "PrivateTmp": "yes",
     "ProtectSystem": "strict",
     "ReadOnlyPaths": "/var/lib/kb/ops /var/lib/kb-shell/home",
-    "ReadWritePaths": "/var/lib/kb-shell/worktrees /run/kb-shell",
+    "ReadWritePaths": "/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex",
     "InaccessiblePaths": "/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation",
     "CapabilityBoundingSet": "",
     "AmbientCapabilities": "",

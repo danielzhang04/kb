@@ -11,6 +11,7 @@ import {
 import type {
   ActualBrowser, ActualBrowserFactory, CellObservation, ExecutableInspector, MatrixCell,
 } from './p3ActualBrowserRunner.ts';
+import { expectUsageRefusal } from './expectUsageRefusal.ts';
 
 const BROWSER = process.platform === 'win32' ? 'C:\\browsers\\msedge.exe' : '/opt/browsers/msedge';
 const okInspector: ExecutableInspector = () => 'ok';
@@ -37,17 +38,8 @@ function parse(overrides: Record<string, string | null> = {}, inspect: Executabl
   return parseP3ActualBrowserRunnerArgs(argv(overrides), inspect);
 }
 
-function expectUsage(run: () => unknown, fragment: string): void {
-  try {
-    run();
-  } catch (error) {
-    expect(error).toBeInstanceOf(BrowserRunnerFailure);
-    expect((error as BrowserRunnerFailure).code).toBe(BROWSER_EXIT.usage);
-    expect((error as BrowserRunnerFailure).message).toContain(fragment);
-    return;
-  }
-  throw new Error('expected a usage refusal');
-}
+const expectUsage = (run: () => unknown, fragment: string): void =>
+  expectUsageRefusal(run, { failure: BrowserRunnerFailure, code: BROWSER_EXIT.usage, fragment });
 
 describe('parseP3ActualBrowserRunnerArgs', () => {
   it('accepts the section 8 command line and derives the scenario from the artifact directory', () => {
