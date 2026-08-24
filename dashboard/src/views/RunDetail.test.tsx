@@ -7,11 +7,15 @@ import { SessionProvider } from '../lib/sessionContext.tsx';
 import { clearStoredSession, persistSession } from '../lib/authClient.ts';
 import { RunDetail } from './RunDetail.tsx';
 
+// The pane itself is exercised by `ConsolePane.test.tsx`; here the mock records WHICH mount the Run
+// view chose - live attach vs read-only replay, and whether a replay was handed a REST source.
 vi.mock('../console/ConsolePane.tsx', () => ({
-  ConsolePane: ({ target }: { target: { mode: string; sessionId?: string } }) => <section
+  ConsolePane: ({ target, replaySource }: { target: { mode: string; sessionId?: string }; replaySource?: unknown }) => <section
     aria-label="Run terminal"
     data-testid="run-terminal"
     data-session-id={target.sessionId}
+    data-mode={target.mode}
+    data-replay-source={replaySource ? 'rest' : 'none'}
   />,
 }));
 
@@ -44,7 +48,10 @@ function detail(overrides: Partial<RunDetailDto> = {}): RunDetailDto {
       { stageRef: 'stage-write', runRef: 'run-1', stageId: 'write', title: 'Write', dependsOn: ['research'], canonicalCardRef: 'card-write', state: 'running', version: 2, currentAttemptRef: null, assignment: null, createdAt: '', updatedAt: '' },
     ],
     attempts: [], sessions: [], humanRequests: [], stageGenerations: [], generationSupersessions: [],
-    iterationLoops: [], iterationRequests: [], iterationReceipts: [], ...overrides,
+    iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+    // [C-M4] the Run console contract is REQUIRED on every detail: a transcript run carries no
+    // selected session and an empty attempt list, and says so rather than omitting the keys.
+    streamKind: 'transcript', sessionId: null, attemptSessions: [], ...overrides,
   };
 }
 
@@ -184,7 +191,7 @@ describe('Dashboard v3 Run view', () => {
     await waitFor(() => expect(streamUrls).toEqual(['/api/control/runs/run-1/events/stream?after=301']));
   });
 
-  it('renders a PTY session in the terminal pane and excludes the transcript stream', () => {
+  it('shows the unavailable copy for a PTY run with no attempt row, and excludes the transcript stream', () => {
     const sources: unknown[] = [];
     vi.stubGlobal('EventSource', class {
       constructor() { sources.push(this); }
@@ -196,9 +203,62 @@ describe('Dashboard v3 Run view', () => {
       detail={detail({ streamKind: 'pty', sessionId: 'pty-123' } as Partial<RunDetailDto>)}
       events={events}
     />));
-    expect(screen.getByTestId('run-terminal').getAttribute('data-session-id')).toBe('pty-123');
+    // The server's managed-session fallback names a session with NO attempt binding: a live attach is
+    // refused by the principal check and a replay has no row to read, so the pane says so instead of
+    // opening a socket that will error. The transcript stream stays excluded either way.
+    expect(screen.queryByTestId('run-terminal')).toBeNull();
+    expect(screen.getByRole('status').textContent)
+      .toContain('terminal output is no longer available');
     expect(screen.queryByTestId('run-stream')).toBeNull();
     expect(sources).toEqual([]);
+  });
+
+  it('mounts the running attempt live and an earlier attempt as REST-fed replay, naming neither raw id', () => {
+    const attemptSessions: RunDetailDto['attemptSessions'] = [
+      { attemptRef: 'attempt-1', sessionId: 'pty-old', launcher: 'codex', state: 'exited', startedAt: '2026-08-21T00:00:00.000Z',
+        endedAt: '2026-08-21T00:05:00.000Z', exit: { exitCode: 2, reason: 'exited', observedAt: '2026-08-21T00:05:00.000Z' },
+        controllerClaimed: false, liveControl: false },
+      { attemptRef: 'attempt-2', sessionId: 'pty-live', launcher: 'claude', state: 'live', startedAt: '2026-08-21T00:06:00.000Z',
+        endedAt: null, exit: null, controllerClaimed: false, liveControl: true },
+    ];
+    render(unlocked(<RunDetail
+      runRef="run-1"
+      detail={detail({ streamKind: 'pty', sessionId: 'pty-live', attemptSessions })}
+      events={events}
+    />));
+    const live = screen.getByTestId('run-terminal');
+    expect(live.getAttribute('data-mode')).toBe('attach');
+    expect(live.getAttribute('data-session-id')).toBe('pty-live');
+    expect(live.getAttribute('data-replay-source')).toBe('none');
+
+    // Attempt rows are the server's order, labelled by position/launcher/outcome - never by a raw id.
+    const attemptButtons = screen.getAllByRole('button', { pressed: false })
+      .filter((button) => button.textContent?.startsWith('Attempt'));
+    expect(attemptButtons.map((button) => button.textContent))
+      .toEqual(['Attempt 1 \u00b7 Codex \u00b7 exit 2']);
+    fireEvent.click(attemptButtons[0]!);
+    const replay = screen.getByTestId('run-terminal');
+    expect(replay.getAttribute('data-mode')).toBe('replay');
+    expect(replay.getAttribute('data-session-id')).toBe('pty-old');
+    expect(replay.getAttribute('data-replay-source')).toBe('rest');
+
+    const rendered = screen.getByRole('main').textContent ?? '';
+    for (const raw of ['attempt-1', 'attempt-2', 'pty-live', 'pty-old']) expect(rendered).not.toContain(raw);
+    // A PTY attempt has one stream. No copy may offer a separate stderr or error log.
+    expect(rendered.toLowerCase()).not.toContain('stderr');
+    expect(rendered.toLowerCase()).not.toContain('error log');
+  });
+
+  it('says the run has no terminal session, with the Health next step, instead of mounting an empty console', () => {
+    render(unlocked(<RunDetail
+      runRef="run-1"
+      detail={detail({ streamKind: 'pty', sessionId: null, attemptSessions: [] })}
+      events={events}
+    />));
+    expect(screen.queryByTestId('run-terminal')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe(
+      'This run has no terminal session. Terminal availability for this host is reported in Health.',
+    );
   });
 
   it('keeps an ended run in the same layout with replay connection and no live actions', () => {

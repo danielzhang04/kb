@@ -68,9 +68,9 @@ describe('T6 gated boot smoke', () => {
     }
 
     // The core inert invariant, at the surface composition root: gate off ⇒ the three executor fields are
-    // undefined (production constructs no broker/engine and can spawn no `claude`).
+    // undefined (production constructs no attempt port/engine and can spawn no `claude`).
     const ctx = makeSurfaceContext({ controlStore: createFileControlPlaneStore(tempStateRoot) });
-    expect(ctx.controlBroker).toBeUndefined();
+    expect(ctx.attemptPort).toBeUndefined();
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
   });
@@ -104,7 +104,8 @@ describe('T6 gated boot smoke', () => {
       deps: hermeticDeps,
     });
     expect(activated).not.toBeNull();
-    expect(activated?.controlBroker).toBeDefined();
+    // No PTY host or binding store was supplied to this hermetic build, so no attempt can start.
+    expect(activated?.attemptPort).toBeNull();
     expect(typeof activated?.runAutomatic).toBe('function');
     expect(typeof activated?.cancelAutomatic).toBe('function');
   });
@@ -128,10 +129,10 @@ describe('T6 gated boot smoke', () => {
     expect(isInternalServiceCaller(caller)).toBe(true);
   });
 
-  it('GATE ON: exposes one attemptIo store and threads it to both worker factories', () => {
+  it('GATE ON: exposes one attemptIo store and gives both worker factories the attempt port', () => {
     process.env.DASHBOARD_EXECUTION_ACTIVATED = '1';
-    const createWorkers = vi.fn().mockReturnValue({ execute: vi.fn(), postMessage: () => false });
-    const createCodexWorkers = vi.fn().mockReturnValue({ execute: vi.fn() });
+    const createWorkers = vi.fn().mockReturnValue({ begin: vi.fn(), postMessage: () => false });
+    const createCodexWorkers = vi.fn().mockReturnValue({ begin: vi.fn() });
     const activated = buildActivatedExecution({
       env: process.env,
       controlStore: createFileControlPlaneStore(tempStateRoot),
@@ -147,7 +148,9 @@ describe('T6 gated boot smoke', () => {
     expect(activated?.attemptIo).toEqual(expect.objectContaining({
       append: expect.any(Function), read: expect.any(Function), onAppend: expect.any(Function),
     }));
-    expect(createWorkers).toHaveBeenCalledWith(expect.objectContaining({ attemptIo: activated?.attemptIo }));
-    expect(createCodexWorkers).toHaveBeenCalledWith(expect.objectContaining({ attemptIo: activated?.attemptIo }));
+    // [C-S5]: the transcript sink is the attempt port's recorder, not a worker-factory option; the
+    // factories now take only the attempt port and the server-owned worktree root.
+    expect(createWorkers).toHaveBeenCalledWith(expect.objectContaining({ worktreeRoot: expect.any(String) }));
+    expect(createCodexWorkers).toHaveBeenCalledWith(expect.objectContaining({ worktreeRoot: expect.any(String) }));
   });
 });

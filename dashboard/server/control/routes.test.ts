@@ -5,17 +5,17 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AttemptExecutionPort } from '../pty/contracts.ts';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
 import { makeSurfaceContext as makeProductionSurfaceContext, registerWriteSurface } from '../http/surface.ts';
+import { readScopeForSubject } from './routes.ts';
 import { createInMemoryControlPlaneStore } from './store.ts';
 import type { ControlPlaneStore } from './store.ts';
 import { createLeasedFileStoreForTest } from './test-fixtures/controlStore.ts';
 import type { PlanProposal } from './proposal.ts';
 import type { TimelineModel } from '../../src/lib/timelineModel.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
-import { ManagedSessionBroker } from './broker.ts';
-import { createSubjectBrokerPersistence } from './brokerStore.ts';
 import type { JsonObject, Run } from './types.ts';
 import type { ExecuteRunInput } from './execution.ts';
 import type { SurfaceContext } from '../http/context.ts';
@@ -42,22 +42,39 @@ function makeSurfaceContext(
   return makeProductionSurfaceContext({ controlStore: createInMemoryControlPlaneStore(), ...overrides }, activation);
 }
 
+/**
+ * A fake `AttemptExecutionPort`. Run liveness and instruction acceptance are the only behaviours these
+ * route tests steer; every other member is present so the fake satisfies the real port rather than a
+ * narrowed slice of it.
+ */
+function fakeAttemptPort(overrides: Partial<AttemptExecutionPort> = {}): AttemptExecutionPort {
+  return {
+    begin: () => { throw new Error('fake attempt port does not start attempts'); },
+    cancel: async () => ({ ok: false as const, refusal: 'not-found' as const, detail: null }),
+    isRunLive: () => false,
+    queueRunInstruction: async () => true,
+    queueRunInstructionAtCheckpoint: async () => true,
+    drain: async () => {},
+    ...overrides,
+  };
+}
+
 describe('authorized failed-run route grant', () => {
   function exactContext(liveSession = false): SurfaceContext {
-    const controlBroker = { isRunning: () => liveSession };
+    const attemptPort = fakeAttemptPort({ isRunLive: () => liveSession });
     const runAutomatic = vi.fn();
     const cancelAutomatic = vi.fn();
     const containManagerStart = vi.fn();
     const verifyCanonicalResult = vi.fn();
     const wiring = {
-      controlBroker, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
+      attemptPort, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
     };
     const executionLatch = {
       snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
       current: () => wiring,
     };
     return {
-      executionLatch, controlBroker, runAutomatic, cancelAutomatic,
+      executionLatch, attemptPort, runAutomatic, cancelAutomatic,
       containManagerStart, verifyCanonicalResult,
     } as unknown as SurfaceContext;
   }
@@ -72,9 +89,9 @@ describe('authorized failed-run route grant', () => {
     return ctx;
   }
 
-  it('refuses a context whose in-place broker identity differs from the captured wiring', () => {
+  it('refuses a context whose in-place attempt-port identity differs from the captured wiring', () => {
     const ctx = exactContext();
-    ctx.controlBroker = { isRunning: () => false } as unknown as NonNullable<SurfaceContext['controlBroker']>;
+    ctx.attemptPort = fakeAttemptPort();
     expect(authorizedFailedRunReconciliationGrant(ctx, 'operator')).toBeNull();
   });
 
@@ -565,7 +582,7 @@ describe('control proposal routes', () => {
       credentials: () => [],
       composerStore,
       controlStore,
-      controlBroker: { isRunning: () => false, drain: () => {} } as never,
+      attemptPort: fakeAttemptPort(),
       runAutomatic: runAutomatic as never,
       cancelAutomatic: cancelAutomatic as never,
       containManagerStart: containManagerStart as never,
@@ -1367,17 +1384,24 @@ describe('control proposal routes', () => {
     if (!published.ok) throw new Error(published.detail);
     const running = controlStore.transitionRun('operator', created.value.run.runRef, published.value.version, 'running');
     if (!running.ok) throw new Error(running.detail);
-    const broker = new ManagedSessionBroker({ start: () => ({ stop() {} }) }, createSubjectBrokerPersistence(controlStore, 'operator'), {
-      newId: (() => { let id = 0; return () => `broker-${++id}`; })(),
+    // The run is live for its OWNING operator only: liveness is Run-scoped now, so a steer aimed at a
+    // run the caller does not own can never find a live attempt to accept it.
+    const delivered: Array<{ runRef: string; checkpoint: string | null; message: string }> = [];
+    const liveAttemptPort = fakeAttemptPort({
+      isRunLive: (input) => input.operator === 'operator' && input.runRef === running.value.runRef,
+      queueRunInstruction: async (input) => {
+        delivered.push({ runRef: input.runRef, checkpoint: null, message: input.message });
+        return true;
+      },
+      queueRunInstructionAtCheckpoint: async (input) => {
+        delivered.push({ runRef: input.runRef, checkpoint: input.checkpoint, message: input.message });
+        return true;
+      },
     });
-    expect(broker.start({
-      runRef: running.value.runRef, sessionRef: running.value.managerSessionRef, role: 'manager',
-      profileId: 'manager:claude:claude-opus-5', approvedPrompt: 'approved',
-    })).toMatchObject({ ok: true, started: true });
     const managerApp = Fastify();
     registerWriteSurface(managerApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore, controlBroker: broker,
+      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore, attemptPort: liveAttemptPort,
       cancelAutomatic: async () => ({ state: 'stopped', stoppedSessionRefs: [running.value.managerSessionRef], interruptedSessionRefs: [], replayed: false }),
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -1397,8 +1421,12 @@ describe('control proposal routes', () => {
         payload: { ...cas, idempotencyKey: 'steer-1', checkpoint: 'safe-1', instruction: 'Inspect the diff.' },
       });
       expect(steer.statusCode, steer.body).toBe(200);
-      expect(broker.reachCheckpoint(running.value.managerSessionRef, 'other', 'checkpoint-other')).toEqual(['General message.']);
-      expect(broker.reachCheckpoint(running.value.managerSessionRef, 'safe-1', 'checkpoint-safe')).toEqual(['Inspect the diff.']);
+      // The instructions reached the server-selected active attempt, Run-scoped and in order; no caller
+      // named a session reference anywhere in either request.
+      expect(delivered).toEqual([
+        { runRef: running.value.runRef, checkpoint: null, message: 'General message.' },
+        { runRef: running.value.runRef, checkpoint: 'safe-1', message: 'Inspect the diff.' },
+      ]);
       const stop = await managerApp.inject({
         method: 'POST', url: `/api/control/runs/${running.value.runRef}/manager/stop`, headers: headers(token),
         payload: { ...cas, idempotencyKey: 'stop-1' },
@@ -2786,7 +2814,7 @@ describe('control proposal routes', () => {
     registerWriteSurface(activationApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
       allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
-      controlBroker: { isRunning: () => false, drain: () => {} } as never,
+      attemptPort: fakeAttemptPort(),
       runAutomatic: (async () => ({ ok: true })) as never,
       containManagerStart: async () => {},
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
@@ -3202,7 +3230,7 @@ describe('control execution latch routes', () => {
   it('refuses to unlock when no execution latch is wired', async () => {
     // An injected executor skips latch construction entirely (`activationOverridden` in surface.ts),
     // so there is nothing to unlock and the route says so rather than pretending it armed anything.
-    const { app, token } = buildApp({ controlBroker: { drain: () => {} } });
+    const { app, token } = buildApp({ attemptPort: fakeAttemptPort() });
     try {
       const unlocked = await app.inject({
         method: 'POST', url: '/api/control/execution/unlock', headers: headers(token), payload: {},
@@ -3268,9 +3296,9 @@ describe('control execution latch routes', () => {
     const cancelAutomatic = vi.fn();
     const containManagerStart = vi.fn();
     const verifyCanonicalResult = vi.fn();
-    const broker = { drain: vi.fn() };
+    const broker = fakeAttemptPort();
     const execution = {
-      controlBroker: broker,
+      attemptPort: broker,
       runAutomatic,
       cancelAutomatic,
       containManagerStart,
@@ -3283,7 +3311,7 @@ describe('control execution latch routes', () => {
     };
     const activateManagedRoots = vi.fn();
     const { app, token, store, audit } = buildApp({
-      executionLatch: latch, controlBroker: broker,
+      executionLatch: latch, attemptPort: broker,
       runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult, activateManagedRoots,
       appendAudit: (_root: string, event: Record<string, unknown>) => {
         order.push('audit');
@@ -3370,7 +3398,7 @@ describe('control execution latch routes', () => {
     const broker = { drain: vi.fn() };
     const exactRun = vi.fn();
     const execution = {
-      controlBroker: broker, runAutomatic: exactRun,
+      attemptPort: broker, runAutomatic: exactRun,
       cancelAutomatic: vi.fn(), verifyCanonicalResult: vi.fn(),
     };
     const latch = {
@@ -3378,7 +3406,7 @@ describe('control execution latch routes', () => {
       current: () => execution, unlock: vi.fn(), lock: vi.fn(),
     };
     const mismatched = buildApp({
-      executionLatch: latch, controlBroker: broker, runAutomatic: vi.fn(),
+      executionLatch: latch, attemptPort: broker, runAutomatic: vi.fn(),
       cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
     });
     vi.spyOn(mismatched.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
@@ -3395,7 +3423,7 @@ describe('control execution latch routes', () => {
     } finally { await mismatched.app.close(); }
 
     const auditFailure = buildApp({
-      executionLatch: latch, controlBroker: broker, runAutomatic: exactRun,
+      executionLatch: latch, attemptPort: broker, runAutomatic: exactRun,
       cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
       appendAudit: () => { throw new Error('audit unavailable'); },
     });
@@ -3800,15 +3828,14 @@ describe('operator cross-subject authority', () => {
     const cancelAutomatic = vi.fn(async () => ({
       state: 'stopped' as const, stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false,
     }));
-    const controlBroker = {
-      isRunning: () => true,
-      drain: () => {},
-      queueInstruction: (_session: string, message: string) => { queued.push(['message', message]); return true; },
-      queueInstructionAtCheckpoint: (_s: string, checkpoint: string, instruction: string) => {
-        queued.push([checkpoint, instruction]); return true;
+    const attemptPort = fakeAttemptPort({
+      isRunLive: () => true,
+      queueRunInstruction: async (input) => { queued.push(['message', input.message]); return true; },
+      queueRunInstructionAtCheckpoint: async (input) => {
+        queued.push([input.checkpoint, input.message]); return true;
       },
-    };
-    const { app, store, token } = buildApp({ controlBroker, cancelAutomatic });
+    });
+    const { app, store, token } = buildApp({ attemptPort, cancelAutomatic });
     try {
       const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
       const current = store.getRun('dashboard-engine', engineRun);
@@ -3888,10 +3915,8 @@ describe('operator cross-subject authority', () => {
 
   it('refuses every one of those mutations to a NON-operator session on a foreign run', async () => {
     const cancelAutomatic = vi.fn();
-    const controlBroker = {
-      isRunning: () => true, drain: () => {}, queueInstruction: () => true, queueInstructionAtCheckpoint: () => true,
-    };
-    const { app, store, audit } = buildApp({ controlBroker, cancelAutomatic });
+    const attemptPort = fakeAttemptPort({ isRunLive: () => true });
+    const { app, store, audit } = buildApp({ attemptPort, cancelAutomatic });
     try {
       const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
       const { requestRef, version } = parkEngineRunWithGate(store, engineRun);
@@ -4896,5 +4921,447 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const list = await app.inject({ method: 'GET', url: '/api/control/proposals', headers: headers(token) });
       expect((list.json() as { proposals: unknown[] }).proposals).toEqual([]);
     } finally { await app.close(); }
+  });
+});
+
+/**
+ * Run-scoped PTY attempt routes: the revisioned controller claim ([C-S3]) and bounded raw replay
+ * ([C-R6]). Both are authorized in the SAME layered order, and these suites prove the ORDER and the
+ * REFUSAL MAPPING at the route, not the registry's CAS (that is W3's own suite). The registry fake
+ * below therefore implements the real pair comparison rather than returning canned receipts: a route
+ * that dropped, widened, or swapped either half of `{operator, browserSessionRef}` would still pass a
+ * canned fake, and fails this one.
+ */
+type FakeBinding = { operator: string; runRef: string; sessionId: string };
+
+function fakeRunSessionRegistry(options: {
+  bindings?: FakeBinding[];
+  runVersion?: number | null;
+  sessionRevision?: number;
+} = {}) {
+  const bindings = options.bindings ?? [];
+  const runVersion = options.runVersion === undefined ? 1 : options.runVersion;
+  const sessionRevision = options.sessionRevision ?? 3;
+  const claimed = new Map<string, { operator: string; browserSessionRef: string; revision: number }>();
+  const calls: Array<Record<string, unknown>> = [];
+  return {
+    calls,
+    bindings,
+    bySession(operator: string, sessionId: string) {
+      const found = bindings.find((item) => item.operator === operator && item.sessionId === sessionId);
+      return found === undefined
+        ? null
+        : {
+          ...found, attemptRef: `attempt-${found.sessionId}`, managedSessionRef: `managed-${found.sessionId}`,
+          createdAt: '2026-08-22T00:00:00.000Z',
+        };
+    },
+    byRun(operator: string, runRef: string) {
+      return bindings.filter((item) => item.operator === operator && item.runRef === runRef);
+    },
+    async claimRunController(
+      principal: { operator: string; browserSessionRef: string },
+      input: { runRef: string; sessionId: string; expectedRunVersion: number; expectedSessionRevision: number },
+    ) {
+      calls.push({ ...principal, ...input });
+      // The run read the registry itself performs. An unreadable run is indistinguishable from a
+      // missing session, exactly as the production registry makes it.
+      if (runVersion === null) return { ok: false as const, refusal: 'not-found' as const, detail: null };
+      const binding = bindings.find((item) => item.sessionId === input.sessionId && item.runRef === input.runRef);
+      if (binding === undefined) return { ok: false as const, refusal: 'not-found' as const, detail: null };
+      if (input.expectedRunVersion !== runVersion || input.expectedSessionRevision !== sessionRevision) {
+        return { ok: false as const, refusal: 'binding-conflict' as const, detail: 'revision moved' };
+      }
+      const held = claimed.get(input.sessionId);
+      if (held === undefined) {
+        const receipt = {
+          operator: principal.operator, browserSessionRef: principal.browserSessionRef,
+          revision: sessionRevision + 1,
+        };
+        claimed.set(input.sessionId, receipt);
+        return { ok: true as const, value: { revision: receipt.revision, sessionId: input.sessionId, replayed: false } };
+      }
+      // BOTH halves must match. A different pair is masked as `not-found`, never a 403 that would
+      // confirm another browser holds a session this caller was never allowed to learn about.
+      if (held.operator !== principal.operator || held.browserSessionRef !== principal.browserSessionRef) {
+        return { ok: false as const, refusal: 'not-found' as const, detail: null };
+      }
+      return { ok: true as const, value: { revision: held.revision, sessionId: input.sessionId, replayed: true } };
+    },
+  };
+}
+
+/** A ref table that answers exactly the `kb_browser_session` value carried in the cookie header. */
+function fakeBrowserSessionRefs() {
+  return {
+    resolve: async (cookieHeader: string | undefined) => {
+      const match = /(?:^|;\s*)kb_browser_session=([A-Za-z0-9_-]+)/.exec(cookieHeader ?? '');
+      return match === null
+        ? { ok: false as const, refusal: 'absent' as const, detail: null }
+        : { ok: true as const, value: { browserSessionRef: match[1] } };
+    },
+  };
+}
+
+// Server-minted PTY session ids; both Run PTY routes refuse anything that is not `pty-<32 hex>`.
+const PTY_ONE = `pty-${'1'.repeat(32)}`;
+const PTY_TWO = `pty-${'2'.repeat(32)}`;
+const BROWSER_REF_A = 'a'.repeat(43);
+const BROWSER_REF_B = 'b'.repeat(43);
+const CLAIM_BODY = { expectedRunVersion: 1, expectedSessionRevision: 3 };
+
+const claimUrl = (runRef: string, sessionId: string) =>
+  `/api/control/runs/${runRef}/pty-sessions/${sessionId}/controller`;
+
+/** One app whose registry already holds an operator-owned binding for the seeded run. */
+function runSessionApp(
+  key: string,
+  registryOptions: Parameters<typeof fakeRunSessionRegistry>[0] = {},
+  extraContext: Record<string, unknown> = {},
+) {
+  const registry = fakeRunSessionRegistry(registryOptions);
+  const built = buildApp({ browserSessionRefs: fakeBrowserSessionRefs(), ...extraContext });
+  // The production surface only composes a registry when a real PTY host AND persistence exist — a
+  // posture, not a fallback — so a route test supplies it on the built context instead of through
+  // `makeSurfaceContext`. Both routes read `ctx.ptySessionRegistry` per request, never at
+  // registration, so assigning it after `registerWriteSurface` is what the handlers actually see.
+  (built.ctx as unknown as Record<string, unknown>).ptySessionRegistry = registry;
+  const runRef = seedRun(built.store, key);
+  registry.bindings.push({ operator: 'operator', runRef, sessionId: PTY_ONE });
+  return { ...built, registry, runRef };
+}
+
+describe('run attempt controller claim route', () => {
+  it('refuses an unauthenticated claim with 401 before it touches the registry', async () => {
+    const { app, registry, runRef } = runSessionApp('claim-unauth');
+    try {
+      const response = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { origin: ORIGIN, host: 'localhost:5317', 'content-type': 'application/json' }, payload: CLAIM_BODY,
+      });
+      expect(response.statusCode).toBe(401);
+      expect(registry.calls).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('passes the scoped Run-read refusal through unchanged, leaking no session existence', async () => {
+    const { app, runRef } = runSessionApp('claim-scoped');
+    const scoped = mintSession('viewer', SESSION).token;
+    try {
+      const read = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(scoped) });
+      const claim = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(scoped), cookie: `kb_browser_session=${BROWSER_REF_A}` }, payload: CLAIM_BODY,
+      });
+      expect(claim.statusCode).toBe(read.statusCode);
+      expect(claim.json()).toEqual(read.json());
+      expect(claim.body).not.toContain(PTY_ONE);
+    } finally { await app.close(); }
+  });
+
+  it('requires the browser half of the principal with 428 when no controller cookie is present', async () => {
+    const { app, token, registry, runRef } = runSessionApp('claim-no-cookie');
+    try {
+      const response = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE), headers: headers(token), payload: CLAIM_BODY,
+      });
+      expect(response.statusCode).toBe(428);
+      expect(response.json()).toEqual({ error: 'browser-session-required' });
+      expect(registry.calls).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('masks a claim held by the same browser ref under a DIFFERENT operator as not-found', async () => {
+    const { app, token, registry, runRef } = runSessionApp('claim-cross-operator');
+    try {
+      const held = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(token), cookie: `kb_browser_session=${BROWSER_REF_A}` }, payload: CLAIM_BODY,
+      });
+      expect(held.statusCode).toBe(200);
+      registry.bindings.push({ operator: 'operator-two', runRef, sessionId: PTY_ONE });
+      const other = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(mintSession('operator-two', SESSION).token), cookie: `kb_browser_session=${BROWSER_REF_A}` },
+        payload: CLAIM_BODY,
+      });
+      expect(other.statusCode).toBe(404);
+      expect(other.json()).toMatchObject({ error: 'not-found' });
+      // The scoped Run read refuses FIRST, so the second operator's principal never reaches the
+      // registry at all: the masking is layered, and the outer layer is the one that fires here.
+      expect(registry.calls).toHaveLength(1);
+      // Behind it, the pair comparison the route depends on masks the same ref under a different
+      // operator too — so neither layer alone is what keeps the session invisible.
+      expect(await registry.claimRunController(
+        { operator: 'operator-two', browserSessionRef: BROWSER_REF_A },
+        { runRef, sessionId: PTY_ONE, expectedRunVersion: 1, expectedSessionRevision: 3 },
+      )).toMatchObject({ ok: false, refusal: 'not-found' });
+    } finally { await app.close(); }
+  });
+
+  it('masks a claim held by the same operator under a DIFFERENT browser ref as not-found', async () => {
+    const { app, token, registry, runRef } = runSessionApp('claim-cross-ref');
+    try {
+      expect((await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(token), cookie: `kb_browser_session=${BROWSER_REF_A}` }, payload: CLAIM_BODY,
+      })).statusCode).toBe(200);
+      const other = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(token), cookie: `kb_browser_session=${BROWSER_REF_B}` }, payload: CLAIM_BODY,
+      });
+      expect(other.statusCode).toBe(404);
+      expect(registry.calls[1]).toMatchObject({ operator: 'operator', browserSessionRef: BROWSER_REF_B });
+    } finally { await app.close(); }
+  });
+
+  it('replays the identical receipt for the same pair instead of minting a second claim', async () => {
+    const { app, token, runRef } = runSessionApp('claim-replay');
+    try {
+      const request = {
+        method: 'POST' as const, url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(token), cookie: `kb_browser_session=${BROWSER_REF_A}` }, payload: CLAIM_BODY,
+      };
+      const first = await app.inject(request);
+      const second = await app.inject(request);
+      expect(first.json()).toEqual({ ok: true, value: { revision: 4, sessionId: PTY_ONE, replayed: false } });
+      expect(second.json()).toEqual({ ok: true, value: { revision: 4, sessionId: PTY_ONE, replayed: true } });
+    } finally { await app.close(); }
+  });
+
+  it('answers a stale session revision with 409 binding-conflict', async () => {
+    const { app, token, runRef } = runSessionApp('claim-conflict');
+    try {
+      const response = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(token), cookie: `kb_browser_session=${BROWSER_REF_A}` },
+        payload: { expectedRunVersion: 1, expectedSessionRevision: 2 },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'binding-conflict' });
+    } finally { await app.close(); }
+  });
+
+  it('answers not-found when the registry cannot read the run version', async () => {
+    const { app, token, runRef } = runSessionApp('claim-unreadable', { runVersion: null });
+    try {
+      const response = await app.inject({
+        method: 'POST', url: claimUrl(runRef, PTY_ONE),
+        headers: { ...headers(token), cookie: `kb_browser_session=${BROWSER_REF_A}` }, payload: CLAIM_BODY,
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ error: 'not-found' });
+    } finally { await app.close(); }
+  });
+});
+
+describe('run attempt raw replay route', () => {
+  const replayUrl = (runRef: string, sessionId: string, query = '') =>
+    `/api/control/runs/${runRef}/pty-sessions/${sessionId}/replay${query}`;
+
+  /** The typed reader seam. Records the exact cursor the route asked for. */
+  function fakeReplay(result?: { ok: false; refusal: { code: string; message: string; nextSequence: number | null; floorSequence: number | null } }) {
+    const reads: Array<{ sessionId: string; fromSequence: number }> = [];
+    const read = async (sessionId: string, fromSequence: number) => {
+      reads.push({ sessionId, fromSequence });
+      if (result !== undefined) return result;
+      return {
+        ok: true as const,
+        value: {
+          sessionId, fromSequence, replayFrom: fromSequence, nextSequence: fromSequence + 5, complete: true,
+          frames: [{ sequence: fromSequence, encoding: 'base64' as const, data: 'aGVsbG8=' }],
+        },
+      };
+    };
+    return { read, reads };
+  }
+
+  it('refuses an unauthenticated replay with 401', async () => {
+    const replay = fakeReplay();
+    const { app, runRef } = runSessionApp('replay-unauth', {}, { ptyRawReplay: replay.read });
+    try {
+      const response = await app.inject({
+        method: 'GET', url: replayUrl(runRef, PTY_ONE),
+        headers: { origin: ORIGIN, host: 'localhost:5317' },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(replay.reads).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('passes the scoped Run-read refusal through unchanged and never reads a transcript', async () => {
+    const replay = fakeReplay();
+    const { app, runRef } = runSessionApp('replay-scoped', {}, { ptyRawReplay: replay.read });
+    const scoped = mintSession('viewer', SESSION).token;
+    try {
+      const read = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(scoped) });
+      const response = await app.inject({ method: 'GET', url: replayUrl(runRef, PTY_ONE), headers: headers(scoped) });
+      expect(response.statusCode).toBe(read.statusCode);
+      expect(response.json()).toEqual(read.json());
+      expect(replay.reads).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('serves the bounded frame window and the continuation cursor for a bound session', async () => {
+    const replay = fakeReplay();
+    const { app, token, runRef } = runSessionApp('replay-ok', {}, { ptyRawReplay: replay.read });
+    try {
+      const response = await app.inject({
+        method: 'GET', url: replayUrl(runRef, PTY_ONE, '?fromSequence=12'), headers: headers(token),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        ok: true,
+        value: {
+          sessionId: PTY_ONE, fromSequence: 12, replayFrom: 12, nextSequence: 17, complete: true,
+          frames: [{ sequence: 12, encoding: 'base64', data: 'aGVsbG8=' }],
+        },
+      });
+      expect(replay.reads).toEqual([{ sessionId: PTY_ONE, fromSequence: 12 }]);
+    } finally { await app.close(); }
+  });
+
+  it('defaults an absent cursor to byte offset zero', async () => {
+    const replay = fakeReplay();
+    const { app, token, runRef } = runSessionApp('replay-default', {}, { ptyRawReplay: replay.read });
+    try {
+      expect((await app.inject({
+        method: 'GET', url: replayUrl(runRef, PTY_ONE), headers: headers(token),
+      })).statusCode).toBe(200);
+      expect(replay.reads).toEqual([{ sessionId: PTY_ONE, fromSequence: 0 }]);
+    } finally { await app.close(); }
+  });
+
+  it('walls off every query key but fromSequence with 400 rather than ignoring it', async () => {
+    const replay = fakeReplay();
+    const { app, token, runRef } = runSessionApp('replay-extra-key', {}, { ptyRawReplay: replay.read });
+    try {
+      for (const query of ['?fromSequence=0&maxBytes=999999', '?maxFrames=1000', '?fromsequence=0']) {
+        const response = await app.inject({ method: 'GET', url: replayUrl(runRef, PTY_ONE, query), headers: headers(token) });
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toMatchObject({ error: 'unexpected-query-key' });
+      }
+      expect(replay.reads).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('refuses a non-integer cursor with 400', async () => {
+    const replay = fakeReplay();
+    const { app, token, runRef } = runSessionApp('replay-bad-cursor', {}, { ptyRawReplay: replay.read });
+    try {
+      const response = await app.inject({
+        method: 'GET', url: replayUrl(runRef, PTY_ONE, '?fromSequence=-1'), headers: headers(token),
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: 'invalid-from-sequence' });
+      expect(replay.reads).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('refuses a session bound to a DIFFERENT run as not-found, identically to an unbound session', async () => {
+    const replay = fakeReplay();
+    const { app, token, registry, runRef } = runSessionApp('replay-cross-run', {}, { ptyRawReplay: replay.read });
+    try {
+      registry.bindings.push({ operator: 'operator', runRef: 'run-other', sessionId: 'pty-foreign' });
+      const foreign = await app.inject({ method: 'GET', url: replayUrl(runRef, 'pty-foreign'), headers: headers(token) });
+      const unbound = await app.inject({ method: 'GET', url: replayUrl(runRef, 'pty-absent'), headers: headers(token) });
+      expect(foreign.statusCode).toBe(404);
+      expect(foreign.json()).toEqual(unbound.json());
+      expect(replay.reads).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('turns a cursor beyond the retained stream into 409 replay-gap with the cursor to hold', async () => {
+    const replay = fakeReplay({
+      ok: false,
+      refusal: { code: 'replay-gap', message: 'PTY replay cursor is past the transcript', nextSequence: 40, floorSequence: 8 },
+    });
+    const { app, token, runRef } = runSessionApp('replay-gap', {}, { ptyRawReplay: replay.read });
+    try {
+      const response = await app.inject({
+        method: 'GET', url: replayUrl(runRef, PTY_ONE, '?fromSequence=9000'), headers: headers(token),
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'replay-gap', nextSequence: 40, floorSequence: 8 });
+    } finally { await app.close(); }
+  });
+
+  it('answers pty-unavailable when no replay reader is composed', async () => {
+    const { app, token, runRef } = runSessionApp('replay-absent');
+    try {
+      const response = await app.inject({ method: 'GET', url: replayUrl(runRef, PTY_ONE), headers: headers(token) });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'pty-unavailable' });
+    } finally { await app.close(); }
+  });
+});
+
+describe('run detail attempt-session projection and claim read scope', () => {
+  /**
+   * The route-level half of [C-M4]: the projected rows reach the browser in `byRun` (binding) order,
+   * with the server's own selection, and nothing internal crosses.
+   */
+  it('emits the projected attemptSessions in byRun order with the selected id', async () => {
+    const rows = [
+      {
+        attemptRef: 'attempt-1', sessionId: PTY_ONE, launcher: 'claude' as const, state: 'exited' as const,
+        startedAt: '2026-08-22T00:00:03.000Z', endedAt: '2026-08-22T00:00:04.000Z',
+        exit: { exitCode: 0, reason: 'exited' as const, observedAt: '2026-08-22T00:00:04.000Z' },
+        controllerClaimed: false, liveControl: false,
+      },
+      {
+        attemptRef: 'attempt-2', sessionId: PTY_TWO, launcher: 'codex' as const, state: 'live' as const,
+        startedAt: '2026-08-22T00:00:01.000Z', endedAt: null, exit: null,
+        controllerClaimed: true, liveControl: true,
+      },
+    ];
+    const seen: Array<[string, string]> = [];
+    const built = buildApp();
+    const { app, store, token } = built;
+    // Same posture as the registry: the surface composes this only with a real PTY document, and the
+    // DTO reads `ctx.ptyRunAttemptSessions` per request, so assigning it after registration is what
+    // the handler actually sees.
+    (built.ctx as unknown as Record<string, unknown>).ptyRunAttemptSessions = (
+      sub: string, runRef: string,
+    ) => { seen.push([sub, runRef]); return rows; };
+    const runRef = seedRun(store, 'attempt-session-dto');
+    try {
+      const response = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token) });
+      expect(response.statusCode).toBe(200);
+      const body = (response.json() as {
+        value: { attemptSessions: typeof rows; sessionId: string; streamKind: string };
+      }).value;
+      // Binding order, NOT newest-first: the earlier-started row is second because that is how it bound.
+      expect(body.attemptSessions.map((row) => row.sessionId)).toEqual([PTY_ONE, PTY_TWO]);
+      expect(body.attemptSessions).toEqual(rows);
+      // The one running row wins selection, and the stream stays a PTY stream.
+      expect(body.sessionId).toBe(PTY_TWO);
+      expect(body.streamKind).toBe('pty');
+      expect(seen).toEqual([['operator', runRef]]);
+      expect(response.body).not.toContain('managedSessionRef');
+    } finally { await app.close(); }
+  });
+
+  /**
+   * M3. The claim route reads the run under `readScope(req)`; the registry's inner authorization read
+   * must use the SAME scope. Under the default `own-subject` an engine-owned run the operator can
+   * legitimately read resolves to `null`, and the claim 404s on a run the operator just read.
+   */
+  it('resolves the claim run version for an engine-owned run the operator can read', async () => {
+    const { store } = buildApp();
+    const runRef = seedRun(store, 'claim-cross-subject');
+    // The production closure from `http/surface.ts`, over the production scope decision.
+    const resolveRunVersion = (operator: string, ref: string): number | null => {
+      const detail = store.getRun(operator, ref, readScopeForSubject(operator));
+      return detail.ok ? detail.value.run.version : null;
+    };
+    // A run whose subject is NOT the operator: the operator reads it under `all-subjects` only.
+    const engineOwned = store.getRun('operator', runRef, 'all-subjects');
+    expect(engineOwned.ok).toBe(true);
+    expect(readScopeForSubject('operator')).toBe('all-subjects');
+    expect(readScopeForSubject('viewer')).toBe('own-subject');
+    expect(resolveRunVersion('operator', runRef)).toBe(engineOwned.ok ? engineOwned.value.run.version : null);
+    // A caller with no scoped read still resolves to `null`, so the claim stays a closed `not-found`.
+    expect(resolveRunVersion('viewer', runRef)).toBeNull();
   });
 });

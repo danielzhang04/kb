@@ -142,8 +142,27 @@ export interface ConsoleControl {
   reconnect(): void;
 }
 
+/** One [C-R6] replay frame as the pane consumes it: base64 payload at a byte offset. */
+export type ConsoleReplayFrame = { sequence: number; encoding: 'base64'; data: string };
+
+/**
+ * A whole terminal attempt's transcript, already read. `lostOutput` says the retention window dropped
+ * the head, so the pane writes {@link LOST_OUTPUT_NOTICE} before the bytes instead of presenting a
+ * spliced stream as continuous; `notice` is the ONE sentence a refused read shows instead of frames.
+ */
+export type ConsoleReplayLoad =
+  | { ok: true; frames: readonly ConsoleReplayFrame[]; lostOutput?: boolean }
+  | { ok: false; notice: string };
+
 export interface ConsolePaneProps {
   target: ConsoleTarget;
+  /**
+   * Where a `replay` target's bytes come from. Supplied, the pane opens NO socket: it writes the read
+   * transcript into the same single xterm this pane already owns ([C-R6] — replay creates no second
+   * grid and has no input, resize, or close path). Absent, a `replay` target still resumes over the
+   * live socket read-only, which is how the Terminal workspace observes a session it does not control.
+   */
+  replaySource?: (sessionId: string) => Promise<ConsoleReplayLoad>;
   /**
    * Whether this console is the visible one. Drives `display` (NOT unmounting — a hidden console keeps
    * its socket and its scrollback) and a re-fit when it becomes visible again.
@@ -168,6 +187,7 @@ export interface ConsolePaneProps {
 export function ConsolePane({
   target,
   visible,
+  replaySource,
   socketFactory = defaultPtySocketFactory,
   sessionsClient = defaultTerminalSessionsClient,
   onServerFrame,
@@ -182,7 +202,7 @@ export function ConsolePane({
   const sessionToken = useOptionalSession()?.session?.token;
   const readOnly = target.mode === 'replay';
   const hostRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<{ cols: number; rows: number; write(d: string): void; dispose(): void } | null>(null);
+  const xtermRef = useRef<{ cols: number; rows: number; write(d: string): void; clear(): void; dispose(): void } | null>(null);
   const fitRef = useRef<{ fit(): void } | null>(null);
   const connectionRef = useRef<PtyConnection | null>(null);
   // The host-confirmed session id and attachment for THIS console, plus the reconnect cursor.
@@ -232,52 +252,94 @@ export function ConsolePane({
     }
   }, [readOnly]);
 
+  /**
+   * The ONE grid this pane will ever own. Every path that needs to write output — the socket pump and
+   * the read-only replay reader — goes through here, so a pane can never end up with two xterms
+   * ([C-R6]); a reconnect and a replay reload both keep the scrollback that is already on screen.
+   */
+  const ensureGrid = useCallback(async (): Promise<typeof xtermRef.current> => {
+    if (xtermRef.current) return xtermRef.current;
+    const [{ Terminal: XTerm }, { FitAddon }] = await Promise.all([
+      import('@xterm/xterm'),
+      import('@xterm/addon-fit'),
+    ]);
+    if (!hostRef.current) return null;
+    if (xtermRef.current) return xtermRef.current; // a concurrent caller won the race
+    const created = new XTerm({
+      theme: HOUSE_XTERM_THEME,
+      fontFamily: "ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace",
+      fontSize: 13,
+      cursorBlink: !readOnly,
+      cursorStyle: 'block',
+      convertEol: true,
+      disableStdin: readOnly,
+    });
+    const fitAddon = new FitAddon();
+    created.loadAddon(fitAddon);
+    created.open(hostRef.current);
+    xtermRef.current = created as unknown as typeof xtermRef.current;
+    fitRef.current = fitAddon as unknown as typeof fitRef.current;
+    fitAndResize(); // initial size (guarded no-op if this console mounts hidden)
+    if (!readOnly) {
+      created.onData((data: string) => {
+        const sessionId = sessionIdRef.current;
+        const attachmentId = attachmentIdRef.current;
+        const connection = connectionRef.current;
+        if (!connection?.isOpen || !sessionId || !attachmentId) return;
+        connection.send(inputFrame(sessionId, attachmentId, data));
+      });
+    }
+    return xtermRef.current;
+  }, [fitAndResize, readOnly]);
+
+  /**
+   * Read-only replay from a REST source ([C-R6]). No socket, no attachment, no cursor to hold: the
+   * whole retained transcript is read once and written into the pane's own grid. A refused read is one
+   * sentence, never an empty grid that looks like an attempt that printed nothing.
+   */
+  useEffect(() => {
+    // Keyed on the STRING `targetKey`, exactly like the socket effect below. `target` is a fresh object
+    // literal on every parent render, so depending on it re-ran this effect on each detail refresh: the
+    // whole transcript was re-downloaded and appended to the grid it was already in. The grid is also
+    // cleared before the write, so a genuine re-run (a real target change, or a reconnect) replaces the
+    // transcript instead of duplicating it.
+    const replayTarget = targetRef.current;
+    if (!replaySource || replayTarget.mode !== 'replay') return;
+    let disposed = false;
+    setState('connecting');
+    setDiagnostic(null);
+    void (async () => {
+      const [grid, load] = await Promise.all([ensureGrid(), replaySource(replayTarget.sessionId)]);
+      if (disposed) return;
+      if (!load.ok) {
+        setState('error');
+        setDiagnostic(load.notice);
+        return;
+      }
+      grid?.clear();
+      if (load.lostOutput) grid?.write(`${LOST_OUTPUT_NOTICE}\r\n`);
+      for (const frame of load.frames) grid?.write(decodeOutput(frame.data));
+      setState('closed');
+      fitAndResize();
+    })();
+    return () => { disposed = true; };
+  }, [ensureGrid, fitAndResize, replaySource, targetKey, reconnectTick]);
+
   // Connect: lazily create xterm + fit addon, open ONE socket, send the opening frame, pump the rest.
   // Runs once per (token, target, reconnect) — never per render. Cleanup closes the socket, which merely
   // DETACHES the session host-side; the session keeps running and can be reattached from the cursor.
   useEffect(() => {
     if (!sessionToken) return;
+    // A replay fed from the REST source never opens a socket — that read IS the transcript.
+    if (replaySource && targetRef.current.mode === 'replay') return;
     const connectTarget = targetRef.current;
     let disposed = false;
     setState('connecting');
 
     void (async () => {
-      const [{ Terminal: XTerm }, { FitAddon }] = await Promise.all([
-        import('@xterm/xterm'),
-        import('@xterm/addon-fit'),
-      ]);
-      if (disposed || !hostRef.current) return;
-
       // A pane that already has a grid (a reconnect) keeps it: the scrollback is the whole point.
-      let xterm = xtermRef.current;
-      if (!xterm) {
-        const created = new XTerm({
-          theme: HOUSE_XTERM_THEME,
-          fontFamily: "ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace",
-          fontSize: 13,
-          cursorBlink: !readOnly,
-          cursorStyle: 'block',
-          convertEol: true,
-          disableStdin: readOnly,
-        });
-        const fitAddon = new FitAddon();
-        created.loadAddon(fitAddon);
-        created.open(hostRef.current);
-        xtermRef.current = created as unknown as typeof xtermRef.current;
-        fitRef.current = fitAddon as unknown as typeof fitRef.current;
-        xterm = xtermRef.current;
-        fitAndResize(); // initial size (guarded no-op if this console mounts hidden)
-        if (!readOnly) {
-          created.onData((data: string) => {
-            const sessionId = sessionIdRef.current;
-            const attachmentId = attachmentIdRef.current;
-            const connection = connectionRef.current;
-            if (!connection?.isOpen || !sessionId || !attachmentId) return;
-            connection.send(inputFrame(sessionId, attachmentId, data));
-          });
-        }
-      }
-      const grid = xterm;
+      const grid = await ensureGrid();
+      if (disposed || grid === null) return;
 
       const connection = openPtyConnection(sessionToken, {
         onOpen: () => {
@@ -380,7 +442,7 @@ export function ConsolePane({
       connectionRef.current = null;
       attachmentIdRef.current = null;
     };
-  }, [sessionToken, targetKey, socketFactory, fitAndResize, readOnly, reconnectTick]);
+  }, [sessionToken, targetKey, socketFactory, fitAndResize, ensureGrid, replaySource, reconnectTick]);
 
   // Dispose the grid only when the pane itself unmounts — a reconnect keeps the scrollback.
   useEffect(() => () => {

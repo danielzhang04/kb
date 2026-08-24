@@ -3,8 +3,10 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
+  AttemptSessionPublicRow,
   AttentionEnvelope,
   ArchivedFrom,
+  PublicExit,
   EntityStatus,
   HostKind,
   RunIdentityFields,
@@ -118,5 +120,44 @@ describe('P2 control contracts', () => {
     expect(types).not.toMatch(/interface\s+Run\s*\{[\s\S]*?\b(?:owner|executionHost|terminalOutcome|completedAt|archivedFrom)\s*:/);
     expect(storedRunBody).toBeDefined();
     expect(storedRunBody).not.toMatch(/\b(?:owner|executionHost|terminalOutcome|completedAt|archivedFrom)\s*:/);
+  });
+});
+
+describe('[C-M4] AttemptSessionPublicRow (control DTO copy)', () => {
+  it('declares the exact nine keys, closed launcher/state enums, and nullable exit/endedAt', () => {
+    expectTypeOf<keyof AttemptSessionPublicRow>().toEqualTypeOf<
+      'attemptRef' | 'sessionId' | 'launcher' | 'state' | 'startedAt' | 'endedAt' | 'exit'
+      | 'controllerClaimed' | 'liveControl'
+    >();
+    expectTypeOf<AttemptSessionPublicRow['launcher']>().toEqualTypeOf<'claude' | 'codex'>();
+    expectTypeOf<AttemptSessionPublicRow['state']>().toEqualTypeOf<
+      'starting' | 'live' | 'closing' | 'exited' | 'abandoned'
+    >();
+    expectTypeOf<AttemptSessionPublicRow['endedAt']>().toEqualTypeOf<string | null>();
+    expectTypeOf<AttemptSessionPublicRow['exit']>().toEqualTypeOf<PublicExit | null>();
+    expectTypeOf<AttemptSessionPublicRow['controllerClaimed']>().toEqualTypeOf<boolean>();
+    expectTypeOf<AttemptSessionPublicRow['liveControl']>().toEqualTypeOf<boolean>();
+  });
+
+  it('stays byte-identical to the shared ptyProtocol declaration it duplicates', () => {
+    const shared = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../shared/ptyProtocol.ts'), 'utf8');
+    const local = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), './p2Contracts.ts'), 'utf8');
+    const body = /export type AttemptSessionPublicRow = \{[^}]*\};/;
+    const sharedMatch = shared.match(body);
+    const localMatch = local.match(body);
+    expect(sharedMatch).not.toBeNull();
+    expect(localMatch?.[0]).toBe(sharedMatch?.[0]);
+  });
+
+  it('keeps every internal-only field off the public row', () => {
+    const row: AttemptSessionPublicRow = {
+      attemptRef: 'attempt-1', sessionId: 'pty-' + 'a'.repeat(32), launcher: 'claude',
+      state: 'live', startedAt: '2026-08-23T00:00:00.000Z', endedAt: null, exit: null,
+      controllerClaimed: false, liveControl: true,
+    };
+    for (const forbidden of ['operator', 'browserSessionRef', 'managedSessionRef', 'transcriptRef',
+      'epochId', 'argv', 'env', 'cwd']) {
+      expect(Object.hasOwn(row, forbidden)).toBe(false);
+    }
   });
 });

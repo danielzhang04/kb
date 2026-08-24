@@ -57,6 +57,29 @@ export function createWorkflowToolPolicyResolver(
   };
 }
 
+/**
+ * The PRODUCTION `toolPolicyId` resolver ([C-S2]). The declaration may not carry argv, so the tool cap
+ * reaches the child only as a NAME the broker's recipe table re-resolves on its own side
+ * (`pty/launcherProfiles.ts` -> `resolveClaudePolicy` -> this same workflow resolver). The name is
+ * therefore only legal if the table reproduces the dashboard-computed policy exactly; anything else
+ * would launch the worker under a cap nobody approved, so it refuses instead of falling back.
+ */
+export function createAttemptToolPolicyIdResolver(
+  resolveTablePolicy: (workflowProfileId: string | null) => ClaudeToolPolicy,
+): (input: { workflowProfile: string; policy: ClaudeToolPolicy }) => string {
+  return ({ workflowProfile, policy }) => {
+    const reproduced = resolveTablePolicy(workflowProfile);
+    if (reproduced.permissionMode !== policy.permissionMode
+      || reproduced.allowedTools.length !== policy.allowedTools.length
+      || reproduced.allowedTools.some((tool, index) => tool !== policy.allowedTools[index])) {
+      throw new ToolPolicyRefusal(
+        `refusing to launch: the broker recipe table does not reproduce the approved tool cap for '${workflowProfile}'`,
+      );
+    }
+    return workflowProfile;
+  };
+}
+
 export const READ_SCOPE_SENSITIVE_ROOTS: readonly string[] = ['dashboard', 'memory', 'scripts'];
 
 /** The distinct top-level path segments of a repo-relative path list. */

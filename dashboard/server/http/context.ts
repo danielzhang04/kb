@@ -31,7 +31,7 @@ import type {
   SchtasksRunner,
 } from '../runner/liveness.ts';
 import type { ControlPlaneStore } from '../control/store.ts';
-import type { ManagedSessionBroker } from '../control/broker.ts';
+import type { AttemptExecutionPort } from '../pty/contracts.ts';
 import type {
   CancelRunInput,
   CancellationOutcome,
@@ -44,7 +44,9 @@ import type { ExecutionLatch } from '../control/activation.ts';
 import type { PaidActionExecutor } from '../control/paidActionWiring.ts';
 import type { SpendGrant } from '../control/spendGrant.ts';
 import type { SessionHost } from '../pty/contracts.ts';
+import type { AttemptSessionPublicRow } from '../control/p2Contracts.ts';
 import type { DeploymentSessionCloser, SessionRecordRegistry } from '../pty/sessionRecord.ts';
+import type { RawSessionReplayResult } from '../pty/replayReader.ts';
 import type { SessionRunStore } from '../pty/sessionRuns.ts';
 import type { SessionPersistence } from '../pty/sessionPersistence.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
@@ -127,8 +129,9 @@ export interface SurfaceContext {
   composerStore: ComposerWorkspaceStore;
   /** App-local durable proposal/run/session/event projection. Canonical queue cards remain fleet truth. */
   controlStore: ControlPlaneStore;
-  /** Optional gated daemon-owned broker. Production remains inactive until its separate approval gate. */
-  controlBroker?: ManagedSessionBroker;
+  /** Optional gated attempt-execution authority. Production remains inactive until its approval gate,
+   *  and it stays absent when the daemon has no usable PTY host. */
+  attemptPort?: AttemptExecutionPort;
   /**
    * The runtime execution unlock latch. The daemon boots LOCKED (no wiring constructed) and the
    * passkey-gated unlock route asks this to construct it, which rebinds the executor fields below IN
@@ -150,6 +153,21 @@ export interface SurfaceContext {
   ptySessionHost?: SessionHost;
   /** The one v2 session registry every registered PTY route goes through. */
   ptySessionRegistry?: SessionRecordRegistry;
+  /**
+   * The typed, read-only raw transcript read ([C-R6]) the Run-scoped replay route serves earlier
+   * attempts from. Deliberately the `read` half of `RawSessionReplaySource`, never the WebSocket
+   * `reader` adapter: the control route must see a gap or an unreadable transcript as a REFUSAL
+   * VALUE it can turn into a status, not as "attach with no scrollback". It cannot write, spawn,
+   * resize, or close, so a caller the control store already authorized to read the run can hold it.
+   */
+  ptyRawReplay?: (sessionId: string, fromSequence: number) => Promise<RawSessionReplayResult>;
+  /**
+   * [C-M4] The Run detail DTO's attempt-session projection, read synchronously at DTO build time. It
+   * is a projection port rather than a registry method so the Run detail route cannot reach anything
+   * else on the PTY document: it takes an operator plus a run ref and returns public rows only. Absent
+   * without PTY persistence, in which case the run carries an empty attempt list.
+   */
+  ptyRunAttemptSessions?: (operator: string, runRef: string) => AttemptSessionPublicRow[];
   /**
    * The ONLY cross-controller termination: Daniel's deployment `close-ptys-and-continue` against exact
    * ids. It is deliberately not a method on the registry, so no ordinary route can reach it.

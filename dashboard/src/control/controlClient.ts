@@ -449,10 +449,35 @@ export interface IterationLoopDto {
   updatedAt: string;
 }
 
+/**
+ * One PTY session bound to one Run attempt. Deliberately a DUPLICATE of the `shared/ptyProtocol.ts`
+ * and `server/control/p2Contracts.ts` declarations (plan [C-M4]): the browser pins its own copy and
+ * decodes it strictly, so a server-side widening is refused at the boundary rather than rendered.
+ */
+export type PtySessionState = 'starting' | 'live' | 'closing' | 'exited' | 'abandoned';
+export type PublicExitDto = { exitCode: number | null; reason: 'exited' | 'closed' | 'abandoned'; observedAt: string };
+export interface AttemptSessionPublicRow {
+  attemptRef: string;
+  sessionId: string;
+  launcher: 'claude' | 'codex';
+  state: PtySessionState;
+  startedAt: string;
+  endedAt: string | null;
+  exit: PublicExitDto | null;
+  controllerClaimed: boolean;
+  liveControl: boolean;
+}
+
 export interface RunDetailDto {
-  /** Present on every server DTO; optional here while literal fixtures migrate. */
-  streamKind?: 'pty' | 'transcript';
-  sessionId?: string;
+  /**
+   * [C-M4] The Run console contract, pinned REQUIRED on both sides. `sessionId` is the server's
+   * selection among `attemptSessions` and is `null`, never absent, when there is nothing to open;
+   * `attemptSessions` is every attempt session in the server's binding order — the browser renders
+   * that order as given and never re-sorts it.
+   */
+  streamKind: 'pty' | 'transcript';
+  sessionId: string | null;
+  attemptSessions: AttemptSessionPublicRow[];
   outputs?: OutputRef[];
   run: RunDto;
   /** The subject that owns this run. See {@link RunMetadataDto.ownerSubject}. */
@@ -650,6 +675,13 @@ export class ControlApiError extends Error {
     readonly reason: string,
     /** Stable server error discriminator; unlike `reason`, this never prefers human-readable detail. */
     readonly code: string = reason,
+    /**
+     * The refusal body as the server sent it, for the routes whose refusals carry STRUCTURED data a
+     * caller must act on — the [C-R6] replay gap's `nextSequence`/`floorSequence` is the first. Kept as
+     * the raw record rather than a field per route: a caller that wants one of these numbers must
+     * validate it itself, and no route can widen this error class by adding a refusal field.
+     */
+    readonly body: Record<string, unknown> | null = null,
   ) {
     super(reason ? `control request refused: ${status} (${reason})` : `control request refused: ${status}`);
   }
@@ -791,7 +823,7 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
   if (!response.ok) {
     const code = typeof body.error === 'string' ? body.error : '';
     const reason = [body.detail, body.reason, body.error].find((value): value is string => typeof value === 'string') ?? '';
-    throw new ControlApiError(response.status, reason, code);
+    throw new ControlApiError(response.status, reason, code, wireRecord(body));
   }
   return body;
 }
@@ -1153,6 +1185,22 @@ const iterationLoopDto: WireValidator = (value) => exactDto(value, {
   parkReason: wireString, unresolvedResidue: residueDto,
 });
 
+const PTY_SESSION_STATES: readonly string[] = ['starting', 'live', 'closing', 'exited', 'abandoned'];
+const EXIT_REASONS: readonly string[] = ['exited', 'closed', 'abandoned'];
+const ptySessionState: WireValidator = (value) => typeof value === 'string' && PTY_SESSION_STATES.includes(value);
+const publicExitDto: WireValidator = (value) => exactDto(value, {
+  exitCode: nullable(wireNumber),
+  reason: (reason) => typeof reason === 'string' && EXIT_REASONS.includes(reason),
+  observedAt: wireString,
+});
+/** Closed [C-M4] decoder: strict keys, closed state/launcher enums, and the existing ref/time shapes. */
+export const attemptSessionPublicRowDto: WireValidator = (value) => exactDto(value, {
+  attemptRef: wireString, sessionId: wireString,
+  launcher: (launcher) => launcher === 'claude' || launcher === 'codex',
+  state: ptySessionState, startedAt: wireString, endedAt: nullable(wireString),
+  exit: nullable(publicExitDto), controllerClaimed: wireBoolean, liveControl: wireBoolean,
+});
+
 /** Closed decoder for the complete Run-detail wire graph. */
 export function decodeRunDetail(value: unknown): RunDetailDto | null {
   return exactDto(value, {
@@ -1161,7 +1209,123 @@ export function decodeRunDetail(value: unknown): RunDetailDto | null {
     stageGenerations: arrayOf(stageGenerationDto), generationSupersessions: arrayOf(generationSupersessionDto),
     iterationLoops: arrayOf(iterationLoopDto), iterationRequests: arrayOf(iterationRequestDto),
     iterationReceipts: arrayOf(iterationReceiptDto),
-  }, { streamKind: wireString, sessionId: wireString, outputs: arrayOf(outputRefDto) }) ? value as RunDetailDto : null;
+    streamKind: (kind) => kind === 'pty' || kind === 'transcript',
+    sessionId: nullable(wireString),
+    attemptSessions: arrayOf(attemptSessionPublicRowDto),
+  }, { outputs: arrayOf(outputRefDto) }) ? value as RunDetailDto : null;
+}
+
+/** One [C-R6] raw-replay frame. `sequence` is the BYTE OFFSET of the frame's first byte. */
+export interface RunSessionReplayFrame {
+  sequence: number;
+  encoding: 'base64';
+  data: string;
+}
+
+/** One [C-R6] raw-replay page, exactly as the scoped Run replay route returns it. */
+export interface RunSessionReplayPage {
+  sessionId: string;
+  fromSequence: number;
+  nextSequence: number;
+  complete: boolean;
+  frames: RunSessionReplayFrame[];
+}
+
+/**
+ * Why the whole replay read has a CLOSED refusal union rather than a thrown message: the console has
+ * exactly four honest reactions to a refused page, and each one is a different sentence to the
+ * operator. `gap` means the retention window dropped the head the caller asked for — the transcript
+ * resumes, but with a hole. `unreadable` means the transcript itself cannot be served. `not-found`
+ * means this run has no such attempt session (a cross-Run probe gets this same answer). `invalid` is
+ * this client asking wrongly. A string-matched error message would collapse the four.
+ */
+export type RunSessionReplayRefusal =
+  | { kind: 'gap'; nextSequence: number | null; floorSequence: number | null }
+  | { kind: 'unreadable' }
+  | { kind: 'not-found' }
+  | { kind: 'invalid' };
+
+export type RunSessionReplayResult =
+  | { ok: true; value: RunSessionReplayPage }
+  | { ok: false; refusal: RunSessionReplayRefusal };
+
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+const byteOffset = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+const replayFrameDto: WireValidator = (value) => exactDto(value, {
+  sequence: byteOffset,
+  encoding: (encoding) => encoding === 'base64',
+  data: (data) => typeof data === 'string' && data.length % 4 === 0 && BASE64.test(data),
+});
+
+/** Closed decoder for one replay page: exact keys, byte-offset integers, base64 payloads only. */
+export function decodeRunSessionReplayPage(value: unknown): RunSessionReplayPage | null {
+  return exactDto(value, {
+    sessionId: wireString,
+    fromSequence: byteOffset,
+    nextSequence: byteOffset,
+    complete: wireBoolean,
+    frames: arrayOf(replayFrameDto),
+  }) ? value as RunSessionReplayPage : null;
+}
+
+function replayRefusal(cause: unknown): RunSessionReplayRefusal {
+  if (!(cause instanceof ControlApiError)) return { kind: 'unreadable' };
+  if (cause.status === 404) return { kind: 'not-found' };
+  if (cause.status === 400) return { kind: 'invalid' };
+  if (cause.code === 'replay-gap') {
+    const hint = (key: string): number | null =>
+      byteOffset(cause.body?.[key]) ? cause.body?.[key] as number : null;
+    return { kind: 'gap', nextSequence: hint('nextSequence'), floorSequence: hint('floorSequence') };
+  }
+  return { kind: 'unreadable' };
+}
+
+/**
+ * Read ONE attempt session's transcript, whole, through the scoped Run replay route.
+ *
+ * Paging is driven by the server's `nextSequence` and terminated by its `complete` flag — never by a
+ * frame count or a page-size guess, because the route's bounds (64 KiB, 256 frames) belong to the
+ * reader and may tighten without this client knowing. A page that does not advance the cursor and is
+ * not complete would spin forever, so it is treated as `unreadable` rather than retried.
+ */
+export async function readRunSessionReplay(
+  runRef: string,
+  sessionId: string,
+  fromSequence: number,
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<RunSessionReplayResult> {
+  if (!byteOffset(fromSequence)) return { ok: false, refusal: { kind: 'invalid' } };
+  const frames: RunSessionReplayFrame[] = [];
+  let cursor = fromSequence;
+  let pages = 0;
+  for (;;) {
+    let body: unknown;
+    try {
+      body = await read<unknown>(
+        `/api/control/runs/${segment(runRef)}/pty-sessions/${segment(sessionId)}/replay?fromSequence=${cursor}`,
+        token,
+        fetchImpl,
+      );
+    } catch (cause) {
+      return { ok: false, refusal: replayRefusal(cause) };
+    }
+    const envelope = wireRecord(body);
+    const page = envelope && exactWireKeys(envelope, ['ok', 'value']) && envelope.ok === true
+      ? decodeRunSessionReplayPage(envelope.value) : null;
+    if (page === null || page.sessionId !== sessionId || page.fromSequence !== cursor) {
+      return { ok: false, refusal: { kind: 'unreadable' } };
+    }
+    frames.push(...page.frames);
+    pages += 1;
+    if (page.complete) {
+      return { ok: true, value: { sessionId, fromSequence, nextSequence: page.nextSequence, complete: true, frames } };
+    }
+    // A page that neither completes nor advances is a server that cannot finish this transcript. The
+    // 4,096-page ceiling is the same statement for a stream that advances one byte at a time.
+    if (page.nextSequence <= cursor || pages >= 4096) return { ok: false, refusal: { kind: 'unreadable' } };
+    cursor = page.nextSequence;
+  }
 }
 
 export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailDto> {

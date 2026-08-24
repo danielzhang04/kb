@@ -633,6 +633,18 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
       }
     },
 
+    byRun(operator, runRef) {
+      // Durable order IS attempt order: bindings are appended at bind time and never reordered, so a
+      // single document read reconstructs Run selection after a restart with no in-memory index.
+      try {
+        return structuredClone(deps.persistence.read().attemptBindings.filter((binding) =>
+          binding.operator === operator && binding.runRef === runRef));
+      } catch (error) {
+        deps.onBackgroundError?.(error);
+        return [];
+      }
+    },
+
     async readOperation(operationKey) {
       try {
         if (!OPERATION_KEY.test(operationKey)) return null;

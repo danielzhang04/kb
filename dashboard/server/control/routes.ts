@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { createHash } from 'node:crypto';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
+import { registerRunPtyRoutes } from './runPtyRoutes.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { boundSummary } from './claudeWorkerAdapter.ts';
@@ -27,8 +28,6 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH,
   AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF,
   AUTHORIZED_20260801_FAILED_RUN_REF,
-  AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
-  AUTHORIZED_20260801_FAILED_RUN_STAGES,
   MAX_EVENTS_PER_RUN,
   MAX_EVENT_PAGE,
   OPERATOR_SUBJECT,
@@ -51,6 +50,7 @@ import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type 
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 import { projectRunState, runLifecycleKind, type RunLifecycleKind } from './runLifecycle.ts';
+import { selectAttemptSessionId } from './runProjection.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import { scanWorkflowDefs } from '../workflows/routes.ts';
 import type { HostKind, RunnableRef } from './p2Contracts.ts';
@@ -67,7 +67,7 @@ import {
 import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
 import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
 
-function record(value: unknown): Record<string, unknown> {
+export function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
@@ -75,11 +75,11 @@ function string(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-function integer(value: unknown): number {
+export function integer(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) ? value : -1;
 }
 
-function safeQueryInteger(value: unknown, fallback: number): number | null {
+export function safeQueryInteger(value: unknown, fallback: number): number | null {
   if (value === undefined) return fallback;
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
   const parsed = Number(value);
@@ -94,12 +94,12 @@ function hasRevision(req: FastifyRequest, revision: string): boolean {
   return req.headers['if-none-match'] === etag(revision);
 }
 
-function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 200) {
+export function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 200) {
   return result.ok ? reply.code(success).send({ ok: true, value: result.value, replayed: result.replayed ?? false })
     : reply.code(statusOf(result)).send({ error: result.reason, detail: result.detail });
 }
 
-function subject(req: FastifyRequest): string | null {
+export function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
 }
 
@@ -127,8 +127,12 @@ function subject(req: FastifyRequest): string | null {
  * subject) and never launders the actor (`respondedBy` and the audit row's `owner` both name the
  * operator). See {@link ReadScope}.
  */
+export function readScopeForSubject(sub: string | null | undefined): ReadScope {
+  return sub === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
+}
+
 function readScope(req: FastifyRequest): ReadScope {
-  return subject(req) === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
+  return readScopeForSubject(subject(req));
 }
 
 /**
@@ -215,10 +219,17 @@ function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope
   const ptySession = [...detail.sessions]
     .filter((session) => session.runtime === 'pty')
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  // [C-M4] Attempt rows arrive in BINDING order and the selected id is the server's own choice among
+  // them; the managed-session row above is the fallback when a run's PTY rows are gone. That fallback
+  // is still a PTY stream, so `streamKind` must not become `transcript` and send the view to the fold.
+  const attemptSessions = ctx.ptyRunAttemptSessions?.(sub, detail.run.runRef) ?? [];
+  const selectedSessionId = selectAttemptSessionId(attemptSessions)
+    ?? (ptySession ? ptySession.sessionRef : null);
   return {
     ...detail,
-    streamKind: ptySession ? 'pty' : 'transcript',
-    ...(ptySession ? { sessionId: ptySession.sessionRef } : {}),
+    streamKind: ptySession || attemptSessions.length > 0 ? 'pty' : 'transcript',
+    sessionId: selectedSessionId,
+    attemptSessions,
     run: runDisplay(ctx, runDto(detail.run), workflowRefIndex(ctx, sub, scope)),
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
     iterationLoops: detail.iterationLoops.map((loop) => {
@@ -266,6 +277,9 @@ function executionLockedRefusal(ctx: SurfaceContext): { error: string; detail: s
   };
 }
 
+/** The server-minted PTY session-id shape; both Run PTY routes refuse anything else up front. */
+export const SESSION_ID_RE = /^pty-[0-9a-f]{32}$/;
+
 function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
   return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
 }
@@ -276,8 +290,10 @@ function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): Ac
   const latch = ctx.executionLatch;
   const snapshot = latch?.snapshot();
   const current = latch?.current() ?? null;
+  // Presence is part of the identity: with no PTY host BOTH sides are empty and a bare `!==` compares
+  // nothing at all, so the surface must hold the very port object this wiring built.
   if (!latch || !current || snapshot?.state !== 'unlocked' || !isOperatorUnlockSource(snapshot.source)
-    || snapshot.unlockedBy !== sub || ctx.controlBroker !== current.controlBroker
+    || snapshot.unlockedBy !== sub || !ctx.attemptPort || ctx.attemptPort !== current.attemptPort
     || ctx.runAutomatic !== current.runAutomatic || ctx.cancelAutomatic !== current.cancelAutomatic
     || ctx.containManagerStart !== current.containManagerStart
     || ctx.verifyCanonicalResult !== current.verifyCanonicalResult) return null;
@@ -300,14 +316,17 @@ export function authorizedFailedRunReconciliationGrant(
   if (!latch || (expected && latch !== expected.latch)) return null;
   const snapshot = latch.snapshot();
   const wiring = latch.current();
-  if (!wiring || ctx.controlBroker !== wiring.controlBroker
+  // As above: an absent port on both sides is not an identity match, and it would also make the
+  // `hasLiveRun` probe below answer `false` without ever asking anything.
+  if (!wiring || !ctx.attemptPort || ctx.attemptPort !== wiring.attemptPort
     || ctx.runAutomatic !== wiring.runAutomatic || ctx.cancelAutomatic !== wiring.cancelAutomatic
     || ctx.containManagerStart !== wiring.containManagerStart
     || ctx.verifyCanonicalResult !== wiring.verifyCanonicalResult) return null;
-  const hasLiveRun = [
-    AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
-    ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
-  ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
+  // Run-scoped, not session-scoped: the attempt port answers for the whole run's live attempts, which
+  // is exactly the residue this settlement must not race.
+  const hasLiveRun = wiring.attemptPort?.isRunLive({
+    operator: sub, runRef: AUTHORIZED_20260801_FAILED_RUN_REF,
+  }) === true;
   if (snapshot.state !== 'unlocked' || !isOperatorUnlockSource(snapshot.source)
     || snapshot.unlockedBy !== sub || !snapshot.unlockedAt || hasLiveRun
     || (expected && (snapshot.unlockedAt !== expected.unlockedAt || wiring !== expected.wiring))) return null;
@@ -638,7 +657,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
-  // The daemon boots LOCKED: no broker, no engine, no worker processes. Construction is authorized by the
+  // The daemon boots LOCKED: no attempt port, no engine, no worker processes. Construction is authorized by the
   // operator's WebAuthn-minted SESSION BEARER — the same one governing every other consequential control
   // action — verified by the scope's `requireSession` preHandler before this handler runs.
   //
@@ -810,7 +829,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             store: ctx.controlStore,
             // This is re-run around every filesystem/git boundary by the core.  It binds the same
             // passkey grant (including its latch and in-place wiring identity).  It only reads the
-            // fixed run's broker/roster liveness; it never creates, steers, stops, or otherwise drives it.
+            // fixed run's attempt/roster liveness; it never creates, steers, stops, or otherwise drives it.
             assertAuthorized: () => {
               if (!authorizedFailedRunReconciliationGrant(ctx, sub, grant)) {
                 throw new Error('authorized reconciliation passkey latch changed');
@@ -1394,6 +1413,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     });
   });
 
+  registerRunPtyRoutes(scope, ctx, preHandler);
+
   scope.post('/api/control/runs/:runRef/manager/messages', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -1402,7 +1423,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const runScope = readScope(req);
     const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
-    if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
+    // Liveness is a property of the RUN, not of a manager child: the port answers for the attempt the
+    // server itself selected, so no caller can name a session to steer.
+    if (!ctx.attemptPort?.isRunLive({ operator: sub, runRef })) {
       return reply.code(409).send({ error: 'manager-not-running' });
     }
     const committed = ctx.controlStore.recordManagerCommand(sub, runRef, {
@@ -1412,9 +1435,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       kind: 'message', message: string(body.message),
     }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
-    if (!ctx.controlBroker.queueInstruction(
-      detail.value.run.managerSessionRef, string(body.message), string(body.idempotencyKey),
-    )) {
+    if (!await ctx.attemptPort.queueRunInstruction({
+      operator: sub, runRef, idempotencyKey: string(body.idempotencyKey), message: string(body.message),
+    })) {
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager message delivery needs reconciliation',
         prompt: 'The operator message committed durably, but the live Manager could not accept its checkpoint queue.',
@@ -1478,7 +1501,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const runScope = readScope(req);
     const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
-    if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
+    if (!ctx.attemptPort?.isRunLive({ operator: sub, runRef })) {
       return reply.code(409).send({ error: 'manager-not-running' });
     }
     const instruction = string(body.instruction);
@@ -1490,9 +1513,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       kind: 'steer', message: instruction, checkpoint,
     }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
-    if (!ctx.controlBroker.queueInstructionAtCheckpoint(
-      detail.value.run.managerSessionRef, checkpoint, instruction, string(body.idempotencyKey),
-    )) {
+    if (!await ctx.attemptPort.queueRunInstructionAtCheckpoint({
+      operator: sub, runRef, idempotencyKey: string(body.idempotencyKey),
+      message: instruction, checkpoint,
+    })) {
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager steering needs reconciliation',
         prompt: 'The checkpoint-bound instruction committed durably, but the live Manager could not accept its queue.',
@@ -1678,7 +1702,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       runtime, model, idempotencyKey: string(body.idempotencyKey),
     });
     if (!successor.ok) return sendResult(reply, successor);
-    if (!ctx.controlBroker || !ctx.runAutomatic) {
+    if (!ctx.attemptPort || !ctx.runAutomatic) {
       return reply.code(202).send({ ok: true, value: successor.value, replayed: successor.replayed ?? false, activationGated: true });
     }
     void ctx.runAutomatic({ subject: owner, runRef, proposal: proposal.value }).catch((error: unknown) => {
@@ -2113,7 +2137,7 @@ function activationFailure(result: Extract<ControlResult<unknown>, { ok: false }
 
 /** The executor is armed only when the whole activation wiring is present; anything less fails closed. */
 function executorArmed(ctx: SurfaceContext): boolean {
-  return !!(ctx.controlBroker && ctx.runAutomatic && ctx.containManagerStart);
+  return !!(ctx.attemptPort && ctx.runAutomatic && ctx.containManagerStart);
 }
 
 /**
@@ -2152,7 +2176,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
   if (persistedReceipt.value?.phase === 'failed') {
     return { status: 409, body: { error: 'activation-failed' } };
   }
-  if (!ctx.controlBroker || !ctx.runAutomatic || !ctx.containManagerStart) {
+  if (!ctx.attemptPort || !ctx.runAutomatic || !ctx.containManagerStart) {
     // A locked daemon gets its OWN refusal, which the UI turns into an unlock prompt; anything else
     // (an injected-but-incomplete executor) keeps the original not-activated answer.
     const locked = executionLockedRefusal(ctx);

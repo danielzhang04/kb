@@ -1,21 +1,17 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { createAttemptIoStore } from './attemptIo.ts';
 import {
   attemptDeclarationFingerprint,
   createAttemptSessionAdapter,
-  parseAttemptResult,
-  type AttemptSessionRecorder,
-  type ResolvedClaudeLaunchPolicy,
 } from './attemptSessionAdapter.ts';
 import {
-  buildClaudeArgs,
-  createClaudeWorkerAdapter,
-  type ClaudeSpawnRequest,
+  DEFAULT_MAX_OUTPUT_BYTES as CLAUDE_DEFAULT_MAX_OUTPUT_BYTES,
+  DEFAULT_TIMEOUT_MS as CLAUDE_DEFAULT_TIMEOUT_MS,
 } from './claudeWorkerAdapter.ts';
-import { createWorkflowToolPolicyResolver } from './claudeLaunchPolicy.ts';
-import { buildCodexExecArgs, createCodexExecAdapter, type CodexExecSpawnRequest } from './codexExecAdapter.ts';
-import { loadExecutionProfiles, loadWorkflowProfiles } from './environment.ts';
-import type { WorkerAdapter, WorkerExecutionResult } from './execution.ts';
+import { loadWorkflowProfiles } from './environment.ts';
 import type { ExecutionProfile } from './policy.ts';
 import type { IterationOutcomeContract } from './iterationOutcome.ts';
 import type { ProposalStage, ResolvedAgentAssignment } from './proposal.ts';
@@ -25,7 +21,6 @@ import {
   type AttemptBinding,
   type AttemptBindingPort,
   type AttemptOperationRecord,
-  type AttemptParserContext,
   type HostStartReceipt,
   type ObservedExit,
   type PortResult,
@@ -35,9 +30,6 @@ import {
   type SessionSink,
   type SessionSize,
 } from '../pty/contracts.ts';
-
-/** The host resolves `rootId` + `relativeCwd`; the retained adapters were handed an absolute path. */
-const REPO_ROOT = 'C:/kb';
 
 const CLAUDE_PROFILE: ExecutionProfile & { runtime: 'claude' } = {
   id: 'claude-worker', role: 'worker', runtime: 'claude', model: 'claude-sonnet',
@@ -106,19 +98,6 @@ function declaration(
     expectsIterationOutcome: false,
     ...overrides,
   } as ApprovedAttemptDeclaration;
-}
-
-function workerInput(input: ApprovedAttemptDeclaration): Parameters<WorkerAdapter['execute']>[0] {
-  return {
-    operationKey: input.operationKey, subject: input.subject, runRef: input.runRef, stageRef: input.stageRef,
-    attemptRef: input.attemptRef, sessionRef: input.sessionRef, worktreePath: `${REPO_ROOT}/${input.relativeCwd}`,
-    profile: input.profile, workflowProfile: input.workflowProfile, skills: input.skills, action: input.action,
-    target: input.target, workOrder: input.workOrder, readScope: input.readScope, writeScope: input.writeScope,
-    checkpoints: input.checkpoints,
-    ...(input.assignment ? { assignment: input.assignment, instructionMarkdown: input.instructionMarkdown } : {}),
-    ...(input.iterationContract ? { iterationContract: input.iterationContract, expectsIterationOutcome: true } : {}),
-    proposalStage: input.proposalStage, project: input.project,
-  };
 }
 
 interface Deferred<T> { promise: Promise<T>; resolve(value: T): void; reject(reason: unknown): void }
@@ -309,6 +288,7 @@ class MemoryBindings implements AttemptBindingPort {
   }
   byAttempt(operator: string, attemptRef: string) { return this.rows.find((row) => row.operator === operator && row.attemptRef === attemptRef) ?? null; }
   bySession(operator: string, sessionId: string) { return this.rows.find((row) => row.operator === operator && row.sessionId === sessionId) ?? null; }
+  byRun(operator: string, runRef: string) { return this.rows.filter((row) => row.operator === operator && row.runRef === runRef); }
 
   async readOperation(operationKey: string): Promise<AttemptOperationRecord | null> {
     const value = this.operations.get(operationKey);
@@ -370,346 +350,12 @@ function codexTranscript(summary: string, threadId = 'thread-1'): string {
   ].join('\n') + '\n';
 }
 
-async function existingClaudeResult(input: ApprovedAttemptDeclaration, stdout: string): Promise<WorkerExecutionResult> {
-  let onStdout: (chunk: string) => void = () => {};
-  let onExit: (code: number | null) => void = () => {};
-  let writes = 0;
-  const adapter = createClaudeWorkerAdapter({
-    resolveToolPolicy: createWorkflowToolPolicyResolver(), resolveSession: () => null,
-    spawn: () => ({
-      onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; },
-      writeStdin() { writes += 1; if (writes === 2) queueMicrotask(() => onStdout(stdout)); },
-      endStdin() { queueMicrotask(() => onExit(0)); }, kill() {},
-    }),
-  });
-  return adapter.execute(workerInput(input));
-}
-
-async function existingCodexResult(input: ApprovedAttemptDeclaration, stdout: string): Promise<{ result: WorkerExecutionResult; stdin: string }> {
-  let onStdout: (chunk: string) => void = () => {};
-  let onExit: (code: number | null) => void = () => {};
-  let stdin = '';
-  const adapter = createCodexExecAdapter({
-    resolveThread: () => null,
-    spawner: () => ({
-      onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; }, onError() {},
-      writeStdin(text) { stdin += text; }, endStdin() { queueMicrotask(() => { onStdout(stdout); onExit(0); }); }, kill() {},
-    }),
-  });
-  return { result: await adapter.execute(workerInput(input)), stdin };
-}
-
-/**
- * ENV is deliberately absent from the round trip: the adapter emits no environment at all — a
- * `SessionHostRequest` carries `recipe`/`rootId`/`relativeCwd` and the host owns the process env — so an
- * `env` row could only have compared `buildWorkerEnv()` against itself. `cwd` is compared as the host
- * would resolve it (`REPO_ROOT` + the emitted `relativeCwd`) against the absolute path the retained path
- * derived, with `rootId` asserted alongside.
- */
-interface LaunchObservation {
-  argv: readonly string[];
-  settings: string | undefined;
-  rootId: string;
-  cwd: string;
-  stdin: Uint8Array;
-}
-
-function declarationForProfile(profile: ExecutionProfile, salt: number): ApprovedAttemptDeclaration {
-  const runtime = profile.runtime;
-  const assignment: ResolvedAgentAssignment = {
-    ...ASSIGNMENT, agentId: `agent-${salt}`, profileId: profile.id, runtime, model: profile.model,
-  };
-  const proposalStage: ProposalStage = {
-    ...STAGE, id: `profile-stage-${salt}`, worker: { runtime, model: profile.model }, assignment,
-  };
-  return declaration(runtime, {
-    operationKey: `op-${salt.toString(16).padStart(64, '0')}`,
-    attemptRef: `attempt-profile-${salt}`, sessionRef: `session-profile-${salt}`,
-    profile: { ...profile }, assignment, proposalStage,
-  });
-}
-
-async function retainedLaunchObservation(
-  input: ApprovedAttemptDeclaration,
-  resumeRef: string | null = null,
-): Promise<LaunchObservation> {
-  if (input.profile.runtime === 'claude') {
-    let request: ClaudeSpawnRequest | null = null;
-    let onStdout: (chunk: string) => void = () => {};
-    let onExit: (code: number | null) => void = () => {};
-    let stdin = '';
-    let writes = 0;
-    const expectedWrites = resumeRef || input.instructionMarkdown === undefined ? 1 : 2;
-    const adapter = createClaudeWorkerAdapter({
-      resolveToolPolicy: createWorkflowToolPolicyResolver(), resolveSession: () => resumeRef,
-      spawn(value) {
-        request = value;
-        return {
-          onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; },
-          writeStdin(text) {
-            stdin += text;
-            writes += 1;
-            if (writes === expectedWrites) queueMicrotask(() => onStdout(claudeTranscript('round trip')));
-          },
-          endStdin() { queueMicrotask(() => onExit(0)); }, kill() {},
-        };
-      },
-    });
-    await adapter.execute(workerInput(input));
-    const args = request!.args;
-    const settingsIndex = args.indexOf('--settings');
-    return {
-      argv: args, settings: settingsIndex < 0 ? undefined : args[settingsIndex + 1],
-      rootId: 'worktrees', cwd: request!.cwd, stdin: Buffer.from(stdin, 'utf8'),
-    };
-  }
-
-  let request: CodexExecSpawnRequest | null = null;
-  let onStdout: (chunk: string) => void = () => {};
-  let onExit: (code: number | null) => void = () => {};
-  let stdin = '';
-  const adapter = createCodexExecAdapter({
-    resolveThread: () => resumeRef,
-    spawner(value) {
-      request = value;
-      return {
-        onStdout(callback) { onStdout = callback; }, onStderr() {}, onExit(callback) { onExit = callback; }, onError() {},
-        writeStdin(text) { stdin += text; },
-        endStdin() { queueMicrotask(() => { onStdout(codexTranscript('round trip')); onExit(0); }); },
-        kill() {},
-      };
-    },
-  });
-  await adapter.execute(workerInput(input));
-  return { argv: request!.args, settings: undefined, rootId: 'worktrees', cwd: request!.cwd, stdin: Buffer.from(stdin, 'utf8') };
-}
-
-async function attemptLaunchObservation(
-  input: ApprovedAttemptDeclaration,
-  resumeRef: string | null = null,
-): Promise<LaunchObservation> {
-  const host = new MemorySessionHost();
-  const policyBox: { value: ResolvedClaudeLaunchPolicy | null } = { value: null };
-  const adapter = createAttemptSessionAdapter({
-    host, bindings: new MemoryBindings(), repoRoot: undefined,
-    resolveResumeRef: () => resumeRef,
-    resolveClaudePolicyId(value) { policyBox.value = value; return 'roundtrip-policy'; },
-  });
-  const launch = adapter.begin(input);
-  host.resolveCreate(0);
-  await launch.receipt;
-  const request = host.attempts[0].request;
-  const cwd = `${REPO_ROOT}/${request.relativeCwd}`;
-  const claudePolicy = policyBox.value;
-  const argv = request.recipe.launcher === 'claude'
-    ? buildClaudeArgs({
-        model: request.recipe.model!, toolPolicy: claudePolicy!.policy,
-        ...(claudePolicy!.settings ? { settings: claudePolicy!.settings } : {}),
-        ...(request.recipe.resumeRef ? { resumeSessionId: request.recipe.resumeRef } : {}),
-      })
-    : buildCodexExecArgs({ model: request.recipe.model!, worktreePath: cwd, threadId: request.recipe.resumeRef ?? null });
-  const bytes = Buffer.concat(host.writes.map((write) => Buffer.from(write.bytes)));
-  const stdin = request.recipe.launcher === 'codex' && bytes.at(-1) === 4 ? bytes.subarray(0, -1) : bytes;
-  const transcript = input.profile.runtime === 'claude' ? claudeTranscript('round trip') : codexTranscript('round trip');
-  host.emit(0, transcript);
-  if (!host.attempts[0].finished) host.finish(0);
-  await launch.result;
-  return { argv, settings: claudePolicy?.settings, rootId: request.rootId, cwd, stdin };
-}
-
-type ParityScenario = 'error exit' | 'timeout' | 'output cap' | 'cancellation'
-  | 'malformed output' | 'iteration failure' | 'single-stream diagnostics';
-
-function scenarioInput(runtime: 'claude' | 'codex', scenario: ParityScenario): ApprovedAttemptDeclaration {
-  return scenario === 'iteration failure'
-    ? declaration(runtime, { iterationContract: ITERATION_CONTRACT, expectsIterationOutcome: true })
-    : declaration(runtime);
-}
-
-function scenarioStdout(runtime: 'claude' | 'codex', scenario: ParityScenario): string {
-  if (scenario === 'timeout' || scenario === 'cancellation') return '';
-  if (scenario === 'output cap') return '0123456789abcdef';
-  if (scenario === 'malformed output') return 'not-json\n';
-  if (scenario === 'error exit' || scenario === 'single-stream diagnostics') {
-    // A PTY interleaves diagnostics into the single stream both sides parse.
-    const prefix = scenario === 'single-stream diagnostics' ? 'diagnostic noise on the one stream\n' : '';
-    return prefix + (runtime === 'claude'
-      ? `${JSON.stringify({ type: 'assistant', message: { content: [] } })}\n`
-      : `${JSON.stringify({ type: 'thread.started', thread_id: 'thread-error' })}\n`);
-  }
-  if (runtime === 'claude') {
-    return scenario === 'iteration failure' ? claudeTranscript('not an iteration outcome') : claudeTranscript('terminal result');
-  }
-  return scenario === 'iteration failure' ? codexTranscript('not an iteration outcome') : codexTranscript('terminal result');
-}
-
-/**
- * Returns `null` for `codex + cancellation`: the retained `codexExecAdapter` has no cancellation hook at
- * all (no `registerCancellation`, no kill seam), so there is no retained result to compare against. The
- * matrix asserts the adapter's own documented cancellation shape for that row instead of pretending parity.
- */
-async function retainedScenarioResult(
-  runtime: 'claude' | 'codex',
-  scenario: ParityScenario,
-): Promise<WorkerExecutionResult | null> {
-  if (runtime === 'codex' && scenario === 'cancellation') return null;
-  const input = scenarioInput(runtime, scenario);
-  const timeoutMs = 10;
-  const maxOutputBytes = scenario === 'output cap' ? 8 : 64 * 1024 * 1024;
-  let onStdout: (chunk: string) => void = () => {};
-  let onExit: (code: number | null) => void = () => {};
-  let cancel: (() => void) | null = null;
-  const result = runtime === 'claude'
-    ? createClaudeWorkerAdapter({
-        resolveToolPolicy: createWorkflowToolPolicyResolver(), resolveSession: () => null,
-        timeoutMs, maxOutputBytes,
-        registerCancellation(_operationKey, callback) { cancel = callback; },
-        spawn: () => ({
-          onStdout(callback) { onStdout = callback; }, onStderr() {},
-          onExit(callback) { onExit = callback; }, writeStdin() {}, endStdin() {}, kill() {},
-        }),
-      }).execute(workerInput(input))
-    : createCodexExecAdapter({
-        timeoutMs, maxOutputBytes, resolveThread: () => null,
-        spawner: () => ({
-          onStdout(callback) { onStdout = callback; }, onStderr() {},
-          onExit(callback) { onExit = callback; }, onError() {}, writeStdin() {}, endStdin() {}, kill() {},
-        }),
-      }).execute(workerInput(input));
-  const stdout = scenarioStdout(runtime, scenario);
-  if (stdout) onStdout(stdout);
-  if (scenario === 'timeout') await vi.advanceTimersByTimeAsync(timeoutMs + 1);
-  else if (scenario === 'cancellation') cancel!();
-  else if (scenario !== 'output cap') onExit(scenario === 'error exit' || scenario === 'single-stream diagnostics' ? 7 : 0);
-  return result;
-}
-
-async function attemptScenarioResult(
-  runtime: 'claude' | 'codex',
-  scenario: ParityScenario,
-): Promise<{ result: WorkerExecutionResult; stderrTail: string }> {
-  const input = scenarioInput(runtime, scenario);
-  const host = new MemorySessionHost();
-  const maxOutputBytes = scenario === 'output cap' ? 8 : 64 * 1024 * 1024;
-  const contexts: AttemptParserContext[] = [];
-  const adapter = createAttemptSessionAdapter({
-    host, bindings: new MemoryBindings(), timeoutMs: 10, maxOutputBytes,
-    parseResult(context) {
-      contexts.push(context);
-      return parseAttemptResult(context, { timeoutMs: 10, maxOutputBytes });
-    },
-  });
-  const launch = adapter.begin(input);
-  host.resolveCreate(0);
-  await launch.receipt;
-  const stdout = scenarioStdout(runtime, scenario);
-  if (stdout) host.emit(0, stdout);
-  if (scenario === 'timeout') await vi.advanceTimersByTimeAsync(11);
-  else if (scenario === 'cancellation') await adapter.cancel({ operationKey: input.operationKey, reason: 'parity fixture' });
-  else if (scenario !== 'output cap' && !host.attempts[0].finished) {
-    host.finish(0, scenario === 'error exit' || scenario === 'single-stream diagnostics' ? 7 : 0);
-  }
-  const result = await launch.result;
-  return { result, stderrTail: contexts.at(-1)?.stderrTail ?? 'no parse' };
-}
-
 describe('two-phase attempt session adapter', () => {
-  it.each([
-    {
-      row: 'profiles',
-      cases: loadExecutionProfiles('..').map((profile, index) => ({ input: declarationForProfile(profile, 100 + index), resumeRef: null })),
-    },
-    {
-      row: 'workflow profiles',
-      cases: loadWorkflowProfiles().map((profile, index) => ({
-        input: declarationForProfile({ ...CLAUDE_PROFILE, id: `claude-${profile.id}` }, 200 + index),
-        resumeRef: null,
-        workflowProfile: profile.id,
-      })).map(({ input, resumeRef, workflowProfile }) => ({ input: { ...input, workflowProfile }, resumeRef })),
-    },
-    { row: 'skill', cases: [{ input: declaration('claude', { skills: ['code-review', 'humanizer'] }), resumeRef: null }] },
-    {
-      row: 'action / target / work order',
-      cases: [{ input: declaration('claude', { stageRef: 'changed-stage', action: 'review:security', target: 'dashboard/server', workOrder: 'Inspect the security boundary.' }), resumeRef: null }],
-    },
-    { row: 'read / write scope', cases: [{ input: declaration('claude', { readScope: ['dashboard/server'], writeScope: ['dashboard/server/control', 'dashboard/docs'] }), resumeRef: null }] },
-    { row: 'checkpoint', cases: [{ input: declaration('claude', { checkpoints: ['typecheck', 'focused-tests'] }), resumeRef: null }] },
-    { row: 'iteration contract / outcome fence', cases: [{ input: declaration('claude', { iterationContract: ITERATION_CONTRACT, expectsIterationOutcome: true }), resumeRef: null }] },
-    {
-      row: 'assignment / declaration',
-      cases: [{
-        input: declaration('claude', {
-          assignment: { ...ASSIGNMENT, declarationPath: '.agents/alternate.md', declarationHash: 'd'.repeat(64) },
-          instructionMarkdown: '# Alternate reviewer\nKeep the review bounded.',
-        }),
-        resumeRef: null,
-      }],
-    },
-    { row: 'proposal stage / project', cases: [{ input: declaration('claude', { proposalStage: { ...STAGE, title: 'Alternate review' }, project: 'kb-ops' }), resumeRef: null }] },
-    { row: 'Claude model', cases: [{ input: declarationForProfile({ ...CLAUDE_PROFILE, model: 'claude-opus-test' }, 300), resumeRef: null }] },
-    {
-      row: 'Claude tool / settings / permission',
-      cases: ['checker-readonly', 'producer'].map((workflowProfile, index) => ({
-        input: declarationForProfile({ ...CLAUDE_PROFILE, id: `claude-tool-${index}` }, 310 + index), workflowProfile,
-      })).map(({ input, workflowProfile }) => ({ input: { ...input, workflowProfile }, resumeRef: null })),
-    },
-    { row: 'Codex sandbox', cases: [{ input: declarationForProfile(CODEX_PROFILE, 320), resumeRef: null }] },
-    { row: 'cwd', cases: [{ input: declaration('codex', { relativeCwd: 'orgs/kb-ops/worktree-two' }), resumeRef: null }] },
-    { row: 'prompt', cases: [{ input: declaration('codex', { workOrder: 'Run the focused prompt parity fixture.' }), resumeRef: null }] },
-    {
-      row: 'resume / thread',
-      cases: [
-        { input: declarationForProfile(CLAUDE_PROFILE, 330), resumeRef: 'claude-resume-ref' },
-        { input: declarationForProfile(CODEX_PROFILE, 331), resumeRef: 'codex-thread-ref' },
-      ],
-    },
-  ])('round-trip row: $row has retained argv, settings, root/cwd, and stdin bytes', async ({ cases }) => {
-    expect(cases.length).toBeGreaterThan(0);
-    for (const { input, resumeRef } of cases) {
-      const [retained, attempt] = await Promise.all([
-        retainedLaunchObservation(input, resumeRef), attemptLaunchObservation(input, resumeRef),
-      ]);
-      expect(attempt).toEqual(retained);
-    }
-  });
-
-  it.each([
-    ['claude', 'error exit'], ['codex', 'error exit'],
-    ['claude', 'timeout'], ['codex', 'timeout'],
-    ['claude', 'output cap'], ['codex', 'output cap'],
-    ['claude', 'cancellation'], ['codex', 'cancellation'],
-    ['claude', 'malformed output'], ['codex', 'malformed output'],
-    ['claude', 'iteration failure'], ['codex', 'iteration failure'],
-    ['claude', 'single-stream diagnostics'], ['codex', 'single-stream diagnostics'],
-  ] as const)('matches the retained %s result for %s', async (runtime, scenario) => {
-    if (scenario === 'timeout') vi.useFakeTimers();
-    try {
-      const [retained, attempt] = await Promise.all([
-        retainedScenarioResult(runtime, scenario), attemptScenarioResult(runtime, scenario),
-      ]);
-      // A PTY host has one stream, so `stderrTail` is always '' for a hosted attempt.
-      expect(attempt.stderrTail).toBe('');
-      if (retained === null) {
-        expect(attempt.result).toEqual({
-          state: 'failed', summary: 'codex worker was cancelled.',
-          usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [],
-        });
-        return;
-      }
-      expect(attempt.result).toEqual(retained);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('pins the retained worker limit literals it must mirror', () => {
-    const claudeSource = readFileSync(new URL('./claudeWorkerAdapter.ts', import.meta.url), 'utf8');
-    const codexSource = readFileSync(new URL('./codexExecAdapter.ts', import.meta.url), 'utf8');
-    const adapterSource = readFileSync(new URL('./attemptSessionAdapter.ts', import.meta.url), 'utf8');
-    for (const source of [claudeSource, codexSource, adapterSource]) {
-      expect(source).toContain('const DEFAULT_TIMEOUT_MS = 30 * 60_000;');
-      expect(source).toContain('const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;');
-    }
+  it('applies ONE pair of limits to BOTH runtimes from the retained constants', () => {
+    // The codex adapter no longer carries its own copy of these limits (its mirrored constants were
+    // dead code): the port applies the retained pair to every runtime, so a drift has nowhere to hide.
+    expect(CLAUDE_DEFAULT_TIMEOUT_MS).toBe(30 * 60_000);
+    expect(CLAUDE_DEFAULT_MAX_OUTPUT_BYTES).toBe(64 * 1024 * 1024);
   });
 
   it('names the controller-null principal on every host create', async () => {
@@ -830,7 +476,7 @@ describe('two-phase attempt session adapter', () => {
     const bindings = new MemoryBindings();
     const input = declaration('codex');
     // The reservation CAS loses its revision check; by the time it re-reads, another instance has
-    // durably cancelled the key. The retry sees a terminal record and must refuse — even though the
+    // durably cancelled the key. The retry sees a terminal record and must refuse â€” even though the
     // reservation patch changes only the counter and would leave the status exactly as it found it.
     bindings.beforeWrite = (record, _expectedRevision, call) => {
       if (record.promptsDelivered === 1 && record.status === 'pending') {
@@ -1016,80 +662,6 @@ describe('two-phase attempt session adapter', () => {
     expect(Buffer.from(adapter.rawTranscript(input.attemptRef)!).toString('utf8')).toBe(transcript.toString('utf8'));
   });
 
-  it('round-trips the complete Claude declaration, policy/settings, recorder, binding, prompt, receipt, and identical result', async () => {
-    const host = new MemorySessionHost();
-    const bindings = new MemoryBindings();
-    bindings.gate = deferred();
-    const policyInputs: unknown[] = [];
-    const parserContexts: AttemptParserContext[] = [];
-    const frames: string[] = [];
-    const recorder: AttemptSessionRecorder = {
-      data(_attempt, frame) { frames.push(Buffer.from(frame.data, 'base64').toString('utf8')); },
-      exit: vi.fn(), closed: () => false,
-    };
-    const adapter = createAttemptSessionAdapter({
-      host, bindings, recorder, repoRoot: 'C:/kb',
-      parseResult(context) { parserContexts.push(context); return parseAttemptResult(context); },
-      resolveClaudePolicyId(input) { policyInputs.push(input); return 'research-policy'; },
-    });
-    const input = declaration();
-    const launch = adapter.begin(input);
-    let receiptSettled = false;
-    let resultSettled = false;
-    void launch.receipt.then(() => { receiptSettled = true; });
-    void launch.result.then(() => { resultSettled = true; });
-
-    host.resolveCreate(0);
-    await vi.waitFor(() => expect(bindings.calls).toHaveLength(1));
-    expect(receiptSettled).toBe(false);
-    expect(resultSettled).toBe(false);
-    expect(host.writes).toHaveLength(0);
-    bindings.gate.resolve();
-    const receipt = await launch.receipt;
-
-    expect(receipt).toEqual({
-      ok: true,
-      value: {
-        operationKey: input.operationKey, sessionId: host.attempts[0].sessionId, attemptRef: input.attemptRef,
-        revision: 1, boundAt: '2026-08-23T00:00:01.000Z', replayed: false,
-      },
-    });
-    expect(bindings.calls[0]).toEqual({
-      expectedRevision: 1, operator: input.subject, runRef: input.runRef, attemptRef: input.attemptRef,
-      managedSessionRef: input.sessionRef, sessionId: host.attempts[0].sessionId,
-    });
-    expect(host.attempts[0].request).toEqual({
-      operationKey: input.operationKey,
-      principal: { operator: input.subject, browserSessionRef: RUN_CONTROLLER_NULL_BROWSER_SESSION_REF },
-      recipe: { launcher: 'claude', mode: 'headless-json', model: input.profile.model, toolPolicyId: 'research-policy', sandbox: 'claude-policy' },
-      rootId: 'worktrees', relativeCwd: input.relativeCwd, cols: input.cols, rows: input.rows,
-    });
-    expect(policyInputs).toEqual([expect.objectContaining({
-      workflowProfile: 'research',
-      policy: { allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep'], permissionMode: 'default' },
-      settings: expect.stringContaining('Read(/memory/**)'),
-    })]);
-    const written = host.writes.map((row) => Buffer.from(row.bytes).toString('utf8'));
-    expect(written).toHaveLength(2);
-    expect(written[0]).toContain('SERVER-VERIFIED AGENT DECLARATION');
-    expect(written[1]).toContain(input.workOrder);
-    expect(written[1]).toContain(input.readScope[0]);
-    expect(written[1]).toContain(input.writeScope[0]);
-
-    const transcript = claudeTranscript('adapter complete');
-    host.emit(0, transcript);
-    host.finish(0);
-    const [result, existing] = await Promise.all([launch.result, existingClaudeResult(input, transcript)]);
-    expect(result).toEqual(existing);
-    expect(result).toMatchObject({ state: 'succeeded', summary: 'adapter complete', usage: { inputTokens: 12, outputTokens: 5, costUsdMicros: 0 } });
-    expect(frames.join('')).toBe(transcript);
-    expect(Buffer.from(adapter.rawTranscript(input.attemptRef)!).toString('utf8')).toBe(transcript);
-    expect(parserContexts).toEqual([{
-      runtime: 'claude', stdout: transcript, stderrTail: '', exitCode: null,
-      timedOut: false, outputLimitExceeded: false, cancelled: false, resultObserved: true,
-    }]);
-  });
-
   it.each(loadWorkflowProfiles())('resolves current workflow profile $id through the Claude policy/settings builders', async (workflow) => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
@@ -1137,47 +709,6 @@ describe('two-phase attempt session adapter', () => {
     host.emit(0, claudeLine('resumed', 'claude-session-next'));
     await expect(launch.result).resolves.toMatchObject({ state: 'succeeded', summary: 'resumed' });
     expect(recorded).toHaveBeenCalledWith('claude', input.runRef, input.assignment!.agentId, 'claude-session-next');
-  });
-
-  it('matches the retained Codex adapter and resumes the exact emitted thread without declaration replay', async () => {
-    const input = declaration('codex');
-    const transcript = codexTranscript('codex complete');
-    const existing = await existingCodexResult(input, transcript);
-    const host = new MemorySessionHost();
-    const bindings = new MemoryBindings();
-    const recorded: unknown[] = [];
-    const adapter = createAttemptSessionAdapter({
-      host, bindings, resolveResumeRef: () => null,
-      recordResumeRef: (...args) => { recorded.push(args); },
-    });
-    const launch = adapter.begin(input);
-    host.resolveCreate(0);
-    await launch.receipt;
-    const stdin = Buffer.from(host.writes[0].bytes).toString('utf8');
-    expect(stdin.endsWith('\u0004')).toBe(true);
-    expect(stdin.slice(0, -1)).toBe(existing.stdin);
-    expect(stdin).toContain('SERVER-VERIFIED AGENT DECLARATION');
-    expect(host.attempts[0].request.recipe).toEqual({
-      launcher: 'codex', mode: 'headless-json', model: CODEX_PROFILE.model,
-      toolPolicyId: 'research', sandbox: 'codex-workspace-write',
-    });
-    host.emit(0, transcript);
-    host.finish(0);
-    await expect(launch.result).resolves.toEqual(existing.result);
-    expect(recorded).toEqual([['codex', input.runRef, input.assignment!.agentId, 'thread-1']]);
-
-    const resumeHost = new MemorySessionHost();
-    const resumeAdapter = createAttemptSessionAdapter({
-      host: resumeHost, bindings: new MemoryBindings(), resolveResumeRef: () => 'thread-prior',
-    });
-    const resumed = resumeAdapter.begin({ ...input, operationKey: `op-c${'2'.repeat(63)}`, attemptRef: 'attempt-resumed', sessionRef: 'session-resumed' });
-    resumeHost.resolveCreate(0);
-    await resumed.receipt;
-    expect(resumeHost.attempts[0].request.recipe).toMatchObject({ resumeRef: 'thread-prior', sandbox: 'codex-workspace-write' });
-    expect(Buffer.from(resumeHost.writes[0].bytes).toString('utf8')).not.toContain('SERVER-VERIFIED AGENT DECLARATION');
-    resumeHost.emit(0, codexTranscript('resumed', 'thread-prior'));
-    resumeHost.finish(0);
-    await resumed.result;
   });
 
   it('includes every declaration field in exact-operation identity and enforces the iteration outcome fence', async () => {
@@ -1483,7 +1014,7 @@ describe('two-phase attempt session adapter', () => {
       await launch.result;
     }
     // Every retained transcript is capped at `maxOutputBytes`, and the retained SET is capped by the same
-    // budget — so only the newest terminal attempt survives here, and the evicted arrays are released.
+    // budget â€” so only the newest terminal attempt survives here, and the evicted arrays are released.
     const retained = refs.filter((ref) => adapter.rawTranscript(ref) !== null);
     expect(retained).toEqual([refs.at(-1)]);
     expect(adapter.rawTranscript(refs.at(-1)!)!.byteLength).toBeLessThanOrEqual(16);
@@ -1535,5 +1066,108 @@ describe('two-phase attempt session adapter', () => {
     expect(host.drainCalls).toEqual(['epoch-11111111111111111111111111111111']);
     const refused = adapter.begin({ ...firstInput, operationKey: `op-e${'5'.repeat(63)}`, attemptRef: 'attempt-after-drain' });
     await expect(refused.receipt).resolves.toMatchObject({ ok: false, refusal: 'unavailable' });
+  });
+
+  /**
+   * B1 regression. The durable per-attempt IO log has exactly one writer, and it is this port: the
+   * `attempt-io` route and the hub signal both read the other side of the SAME store, so a port that
+   * does not tap it leaves three operator surfaces permanently empty with no error anywhere.
+   */
+  it('taps every data frame into the durable attempt IO log the attempt-io route reads', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-attempt-io-'));
+    const attemptIo = createAttemptIoStore({ root, flushMs: 0 });
+    const appended: string[] = [];
+    const off = attemptIo.onAppend((event) => appended.push(`${event.entry.dir}:${event.entry.line}`));
+    try {
+      const host = new MemorySessionHost();
+      const input = declaration();
+      const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings(), attemptIo });
+      const launch = adapter.begin(input);
+      host.resolveCreate(0);
+      await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+      host.emit(0, 'first line\n');
+      host.emit(0, 'second line\n');
+
+      // Exactly what the route serves: `attemptIo.read(attemptRef)`.
+      const entries = attemptIo.read(input.attemptRef);
+      expect(entries.map((entry) => entry.line)).toEqual(['first line\n', 'second line\n']);
+      expect(entries.every((entry) => entry.dir === 'out')).toBe(true);
+      expect(appended).toEqual(['out:first line\n', 'out:second line\n']);
+    } finally {
+      off();
+      attemptIo.stop();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * B2 regression. `agentMessages.deliver` answers `queued` only because THIS drain exists: the queued
+   * text must reach the next attempt's own prompt, in chain order, and the chain must be empty after.
+   */
+  it('drains queued operator messages into the next attempt\u2019s first prompt, in order', async () => {
+    const host = new MemorySessionHost();
+    const chain = new Map<string, string[]>([['run:reviewer-agent', ['first queued', 'second queued']]]);
+    const drainCalls: Array<[string, string]> = [];
+    const input = declaration();
+    const adapter = createAttemptSessionAdapter({
+      host,
+      bindings: new MemoryBindings(),
+      drainMessages: async (runRef, agentId) => {
+        drainCalls.push([runRef, agentId]);
+        const drained = chain.get('run:reviewer-agent') ?? [];
+        chain.delete('run:reviewer-agent');
+        return drained;
+      },
+    });
+
+    const launch = adapter.begin(input);
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+
+    expect(drainCalls).toEqual([[input.runRef, 'reviewer-agent']]);
+    const prompts = host.writes.map((write) => Buffer.from(write.bytes).toString('utf8'));
+    const workOrderPrompt = prompts.at(-1)!;
+    expect(workOrderPrompt).toContain('first queued');
+    expect(workOrderPrompt).toContain('second queued');
+    expect(workOrderPrompt.indexOf('first queued')).toBeLessThan(workOrderPrompt.indexOf('second queued'));
+    // Inert data, ahead of the authoritative work order — never instructions.
+    expect(workOrderPrompt.indexOf('second queued'))
+      .toBeLessThan(workOrderPrompt.indexOf('Implement the approved attempt adapter.'));
+    expect(chain.size).toBe(0);
+  });
+
+  /**
+   * [C-S4] pre-receipt. The worktree-path validator runs BEFORE any durable record or host session, so
+   * an unsafe cwd can never produce a receipt (or a session the rollback would then have to close).
+   */
+  it('refuses an unsafe attempt worktree cwd before any receipt or host session exists', async () => {
+    for (const relativeCwd of ['../escape', '/etc', 'C:/kb', 'orgs/example/con', 'orgs/../../escape']) {
+      const host = new MemorySessionHost();
+      const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+      const launch = adapter.begin(declaration('claude', { relativeCwd }));
+      await expect(launch.receipt).resolves.toMatchObject({
+        ok: false, refusal: 'invalid-request',
+        detail: 'attempt worktree cwd is not a safe server-owned relative path',
+      });
+      expect((await launch.result).state).toBe('failed');
+      expect(host.attempts).toHaveLength(0);
+    }
+  });
+
+  /** The host request carries a recipe NAME and no env: nothing on this path can leak a credential. */
+  it('hands the host a request with no env and no credential-named material', async () => {
+    const host = new MemorySessionHost();
+    const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+    adapter.begin(declaration());
+    host.resolveCreate(0);
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    const serialized = JSON.stringify(host.attempts[0].request);
+    for (const name of ['ANTHROPIC_API_KEY', 'GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'PASSWORD', 'CREDENTIAL']) {
+      expect(serialized.toUpperCase()).not.toContain(name);
+    }
+    expect(Object.keys(host.attempts[0].request)).not.toContain('env');
+    expect(Object.keys(host.attempts[0].request.recipe).sort())
+      .toEqual(['launcher', 'mode', 'model', 'sandbox', 'toolPolicyId']);
   });
 });

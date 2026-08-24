@@ -476,7 +476,7 @@ export async function executeApprovedLaunch(
       }
       const published = ctx.controlStore.transitionPublication(sub, runRef, publishing.value.version, 'published');
       if (!published.ok) throw new Error(published.detail);
-      if (!ctx.controlBroker || !ctx.runAutomatic) {
+      if (!ctx.attemptPort || !ctx.runAutomatic) {
         const waiting = ctx.controlStore.transitionRun(sub, runRef, published.value.version, 'waiting-human');
         if (!waiting.ok) throw new Error(waiting.detail);
         ctx.controlStore.createHumanRequest(sub, runRef, {

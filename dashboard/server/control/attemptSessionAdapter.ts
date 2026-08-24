@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import {
   boundSummary,
+  DEFAULT_MAX_OUTPUT_BYTES,
+  DEFAULT_TIMEOUT_MS,
   buildAgentBindingPrompt,
   buildQueuedOperatorMessagePrompt,
   buildWorkerPrompt,
@@ -14,6 +16,8 @@ import {
 } from './claudeLaunchPolicy.ts';
 import { parseCodexStream } from './codexResultParser.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
+import type { AttemptIoSink } from './attemptIo.ts';
+import { validateRelativeCwd } from '../pty/fdPinnedPaths.ts';
 import {
   RUN_CONTROLLER_NULL_BROWSER_SESSION_REF,
   type ApprovedAttemptDeclaration,
@@ -43,15 +47,6 @@ import type { LaunchRecipe } from '../../shared/ptyProtocol.ts';
 type WorkerExecutionResult = Awaited<AttemptLaunch['result']>;
 type ExecutionUsage = WorkerExecutionResult['usage'];
 
-/**
- * The retained adapters declare `DEFAULT_TIMEOUT_MS` / `DEFAULT_MAX_OUTPUT_BYTES` as module-private
- * consts (claudeWorkerAdapter.ts:50/72, codexExecAdapter.ts:22/23) and W5 may not edit those files to
- * export them. These mirrors are therefore pinned to the retained literals by
- * `attemptSessionAdapter.test.ts` ("pins the retained worker limit literals"), which reads both
- * retained sources and fails the moment either default drifts.
- */
-const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
-const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
 const TERMINAL_ATTEMPT_LIMIT = 32;
@@ -91,6 +86,17 @@ export interface AttemptSessionAdapterOptions {
   ) => void | Promise<void>;
   parseResult?: (context: AttemptParserContext) => ParsedAttemptResult;
   recorder?: AttemptSessionRecorder;
+  /**
+   * Write-side seam of the durable per-attempt IO log. Every observed data frame is tapped into it, the
+   * same tap the pre-port spawner held; the `attempt-io` route and the hub signal read from the other
+   * side of the store, so losing this seam silently empties both.
+   */
+  attemptIo?: AttemptIoSink;
+  /**
+   * Durable operator messages queued while no attempt was live. Drained EXACTLY once, at the start of the
+   * next attempt for the same (run, agent), and prepended in chain order to that attempt's own prompt.
+   */
+  drainMessages?: (runRef: string, agentId: string) => Promise<readonly string[]>;
   repoRoot?: string;
   timeoutMs?: number;
   maxOutputBytes?: number;
@@ -298,8 +304,17 @@ function attemptAgentId(input: ApprovedAttemptDeclaration): string {
 function prepareAttempt(
   input: ApprovedAttemptDeclaration,
   options: AttemptSessionAdapterOptions,
+  queuedMessages: readonly string[] = [],
 ): PreparedAttempt {
   if (containsRawAuthority(input)) throw new Error('attempt declaration contains raw recipe authority');
+  // [C-S4] pre-receipt: the SAME server-owned worktree-path validator the pinned launch path uses
+  // (`pty/fdPinnedPaths.ts`) runs here, before any durable record or session exists, so an attempt whose
+  // cwd is absolute, escapes the root, or carries control characters/reserved names refuses instead of
+  // producing a receipt. Mode/ownership (special files, symlinks, setuid/setgid) is enforced by the same
+  // module's `pinBrokerLaunch` at the host, which opens every component O_NOFOLLOW before exec.
+  try { validateRelativeCwd(input.relativeCwd); } catch {
+    throw new Error('attempt worktree cwd is not a safe server-owned relative path');
+  }
   if ((input.assignment === undefined) !== (input.instructionMarkdown === undefined)) {
     throw new Error('attempt requires assignment and declaration instructions together');
   }
@@ -328,7 +343,7 @@ function prepareAttempt(
   }
   const agentId = attemptAgentId(input);
   const resumeRef = options.resolveResumeRef?.(input.profile.runtime, input.runRef, agentId) ?? null;
-  const prompt = buildWorkerPrompt({
+  const workOrderPrompt = buildWorkerPrompt({
     workOrder: input.workOrder,
     readScope: input.readScope,
     writeScope: input.writeScope,
@@ -337,6 +352,11 @@ function prepareAttempt(
     ...(input.iterationContract
       ? { iterationContract: input.iterationContract, proposalStage: input.proposalStage } : {}),
   });
+  // Operator text queued while nothing was live enters the NEXT attempt as inert data, ahead of the work
+  // order and in chain order — never as instructions, never as argv.
+  const prompt = queuedMessages.length === 0
+    ? workOrderPrompt
+    : `${buildQueuedOperatorMessagePrompt(queuedMessages)}\n${workOrderPrompt}`;
 
   if (input.profile.runtime === 'claude') {
     const resolvePolicy = options.resolveClaudePolicy ?? createWorkflowToolPolicyResolver();
@@ -765,6 +785,9 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     // One streaming decoder per attempt: a multi-byte character split across two frames decodes as one
     // character instead of two replacement characters.
     let decoder = new TextDecoder('utf-8', { fatal: false });
+    // A SECOND streaming decoder for the durable IO log: the transcript decoder stops at `maxOutputBytes`,
+    // and the operator-visible log must keep receiving frames past that cap.
+    const ioDecoder = new TextDecoder('utf-8', { fatal: false });
     let exceededBeforeAttempt = false;
     let exitedBeforeAttempt = false;
     let attempt!: ActiveAttempt;
@@ -773,6 +796,16 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
         if (attempt?.settled) return;
         const bytes = Buffer.from(frame.data, 'base64');
         try { options.recorder?.data(input, frame); } catch { /* recorder observation is failure-isolated */ }
+        // The durable per-attempt IO log tap (the store redacts and caps on its own side). A PTY host
+        // exposes one stream, so every observed frame is an `out` entry.
+        if (bytes.byteLength > 0) {
+          const text = ioDecoder.decode(bytes, { stream: true });
+          if (text.length > 0) {
+            try { options.attemptIo?.append(input.attemptRef, 'out', text); } catch {
+              /* the durable IO log must never break the live data path */
+            }
+          }
+        }
         // A PTY host exposes exactly one stream; `SessionDataFrame` carries no channel discriminator, so
         // every observed byte is stdout.
         const remaining = Math.max(0, maxOutputBytes - capturedBytes);
@@ -874,6 +907,23 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     };
 
     receiptPromise = (async (): Promise<PortResult<AttemptStartReceipt>> => {
+      // ---- PHASE 0: drain the durable operator queue into THIS attempt's opening prompt. ----
+      // `agentMessages.deliver` answers `queued` when no worker frame could be written; this is the only
+      // place that promise is honoured. It runs before the write-ahead reservation so the reserved prompt
+      // count already covers the augmented sequence, and it drains exactly once per attempt (a duplicate
+      // `begin` for the same operationKey returns the memoised launch above and never reaches here).
+      if (options.drainMessages) {
+        let queued: readonly string[] = [];
+        try { queued = await options.drainMessages(input.runRef, prepared.agentId); } catch {
+          // An unavailable chain document must not sink the attempt; the messages stay queued.
+          queued = [];
+        }
+        if (queued.length > 0) {
+          try { prepared.prompts = prepareAttempt(input, options, queued).prompts; } catch {
+            /* an unrepresentable message set falls back to the approved prompt sequence */
+          }
+        }
+      }
       // ---- WRITE-AHEAD PHASE 1: the durable intent lands BEFORE any session can exist. ----
       const read = await readRecord(input.operationKey);
       if (!read.ok) { attempt.hostLaunchReady.resolve(null); return read; }

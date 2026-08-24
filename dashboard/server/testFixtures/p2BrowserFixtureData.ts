@@ -232,6 +232,9 @@ export function p2RunDetail(scenario: P2BrowserScenario) {
         response: null, createdAt: NOW, updatedAt: NOW,
       }] : [],
       stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+      // [C-M4] every Run detail carries the whole console contract, not just `streamKind`. This P2 run
+      // is a transcript run: no selected session and no attempt sessions — stated, not omitted.
+      sessionId: null, attemptSessions: [],
     },
   };
 }

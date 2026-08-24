@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
-import { mapStreamLine as mapClaudeStreamLine } from './claudeSessionAdapter.ts';
-import { mapCodexStreamLine } from './codexSessionAdapter.ts';
+import {
+  mapCodexStreamLine,
+  mapStreamLine as mapClaudeStreamLine,
+} from './providerOperationalEvents.ts';
 import type { RunEventPage, RunRow } from './p2Contracts.ts';
 import type { PublicOperationalEvent } from './publicEvents.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';

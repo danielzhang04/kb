@@ -72,6 +72,27 @@ export interface RunRow {
   gateBadge?: string | null;
 }
 
+/**
+ * One PTY session bound to one Run attempt, as the browser sees it. Deliberately a DUPLICATE of the
+ * `shared/ptyProtocol.ts` declaration (plan [C-M4]): the control DTO surface pins its own copy so a
+ * drift in either file is a compile error here and a decoder failure in `controlClient.ts`, rather
+ * than a silently widened Run payload. It carries no operator, browser session ref, transcript path,
+ * epoch, managed session ref, argv, env, or absolute path.
+ */
+export type SessionState = 'starting' | 'live' | 'closing' | 'exited' | 'abandoned';
+export type PublicExit = { exitCode: number | null; reason: 'exited' | 'closed' | 'abandoned'; observedAt: string };
+export type AttemptSessionPublicRow = {
+  attemptRef: string;
+  sessionId: string;
+  launcher: 'claude' | 'codex';
+  state: SessionState;
+  startedAt: string;
+  endedAt: string | null;
+  exit: PublicExit | null;
+  controllerClaimed: boolean;
+  liveControl: boolean;
+};
+
 /** A schedule fire projected for cards and Home. */
 export interface ScheduleOccurrence {
   scheduleId: string;

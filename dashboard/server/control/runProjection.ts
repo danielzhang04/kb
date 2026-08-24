@@ -1,4 +1,5 @@
-import type { ArchivedFrom, AttentionEnvelope, EntityStatus, RunOutcome, RunRow, RunnableRef, ScheduleOccurrence } from './p2Contracts.ts';
+import type { ArchivedFrom, AttemptSessionPublicRow, AttentionEnvelope, EntityStatus, RunOutcome, RunRow, RunnableRef, ScheduleOccurrence, SessionState } from './p2Contracts.ts';
+import type { AttemptBinding, SessionRecord } from '../pty/contracts.ts';
 import { projectRunAttention } from './attention.ts';
 import type { RunStreamSource } from './runEventService.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
@@ -70,6 +71,64 @@ export function projectRunActivity(run: ProjectableRun, now: string): RunActivit
     lastLine,
     result: run.terminalOutcome,
   };
+}
+
+/** A PTY session state that has not settled: the child is still on the host, so live control is possible. */
+function sessionIsRunning(state: SessionState): boolean {
+  return state === 'starting' || state === 'live' || state === 'closing';
+}
+
+/**
+ * [C-M4] The Run's attempt sessions, exactly as the browser is allowed to see them, plus the ONE
+ * session the Run view selects.
+ *
+ * Rows keep `AttemptBindingPort.byRun`'s durable append order and are never re-sorted by timestamp: two
+ * attempts started inside one clock tick would otherwise swap places between reads and the operator's
+ * attempt list would reorder itself under them.
+ *
+ * A binding whose session record is absent (evicted by the record cap, or a launcher this Run surface
+ * does not project) contributes NO row — a placeholder would list an attempt the console could never
+ * open. Nothing internal crosses: no operator, browser session ref, transcript path, epoch, managed
+ * session ref, argv, env, or cwd.
+ */
+export function projectAttemptSessions(
+  bindings: readonly AttemptBinding[],
+  records: readonly SessionRecord[],
+): AttemptSessionPublicRow[] {
+  const byId = new Map(records.map((record) => [record.sessionId, record]));
+  const attemptSessions: AttemptSessionPublicRow[] = [];
+  for (const binding of bindings) {
+    const record = byId.get(binding.sessionId);
+    if (record === undefined) continue;
+    if (record.launcher !== 'claude' && record.launcher !== 'codex') continue;
+    attemptSessions.push({
+      attemptRef: binding.attemptRef,
+      sessionId: record.sessionId,
+      launcher: record.launcher,
+      state: record.state,
+      startedAt: record.startedAt,
+      endedAt: record.endedAt,
+      exit: record.exit === null
+        ? null
+        : { exitCode: record.exit.exitCode, reason: record.exit.reason, observedAt: record.exit.observedAt },
+      // `controllerClaimed` is whether SOME browser already holds this session's controller; `liveControl`
+      // is whether live control is possible at all (the child is still running). They are independent:
+      // an unclaimed live attempt is exactly the claimable case the Run view offers.
+      controllerClaimed: record.controller !== null,
+      liveControl: sessionIsRunning(record.state),
+    });
+  }
+  return attemptSessions;
+}
+
+/**
+ * The server's ONE selection rule over those rows (see above): the last running attempt, else the last
+ * attempt, else null. It is server-side so the browser never has to agree with the console about which
+ * attempt is "current" — it renders the id it was given.
+ */
+export function selectAttemptSessionId(rows: readonly AttemptSessionPublicRow[]): string | null {
+  const running = [...rows].reverse().find((row) => sessionIsRunning(row.state));
+  return running?.sessionId ?? rows.at(-1)?.sessionId ?? null;
 }
 
 function isActive(run: ProjectableRun): boolean { return categoryFor(run.lifecycle) === 'active'; }

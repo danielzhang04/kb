@@ -59,7 +59,7 @@ import type {
   BrokerConsumption,
   BrokerMutation,
   ManagedStartSpec,
-} from './broker.ts';
+} from './attemptDurability.ts';
 import type { PublicOperationalEvent } from './publicEvents.ts';
 import { TERMINAL_ATTEMPT } from './types.ts';
 import { MAX_DEPLOYMENT_OPERATION_RECEIPTS } from './controlPlaneLimits.ts';
@@ -235,7 +235,10 @@ const STAGE_EDGES: Readonly<Record<StageState, ReadonlySet<StageState>>> = {
 };
 const ATTEMPT_EDGES: Readonly<Record<AttemptState, ReadonlySet<AttemptState>>> = {
   queued: new Set(['starting', 'waiting-human', 'failed', 'stopped', 'interrupted']),
-  starting: new Set(['running', 'waiting-human', 'failed', 'stopped', 'interrupted']),
+  // `starting -> succeeded` exists because [C-S5] moved the `running` projection behind the attempt
+  // start receipt: a stage finalized from an already-committed canonical result adopts it without ever
+  // starting a session, so its attempt succeeds straight out of `starting`.
+  starting: new Set(['running', 'succeeded', 'waiting-human', 'failed', 'stopped', 'interrupted']),
   running: new Set(['waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']),
   'waiting-human': new Set(['failed', 'stopped', 'interrupted']),
   succeeded: new Set(),
@@ -245,7 +248,10 @@ const ATTEMPT_EDGES: Readonly<Record<AttemptState, ReadonlySet<AttemptState>>> =
 };
 const SESSION_EDGES: Readonly<Record<ManagedSessionState, ReadonlySet<ManagedSessionState>>> = {
   pending: new Set(['starting', 'failed', 'stopped', 'interrupted']),
-  starting: new Set(['running', 'failed', 'stopped', 'interrupted']),
+  // `starting -> waiting` exists because [C-S5] moved the `running` projection behind the attempt start
+  // receipt: a stage that parks for a human (a refused skill resolution) between session creation and
+  // that receipt has a `starting` session that never ran, and parking it is not an interruption.
+  starting: new Set(['running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']),
   running: new Set(['waiting', 'completed', 'failed', 'stopped', 'interrupted']),
   waiting: new Set(['running', 'completed', 'failed', 'stopped', 'interrupted']),
   completed: new Set(),

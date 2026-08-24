@@ -39,15 +39,17 @@ import { activeVibeProcessCount } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { activeAsyncGitCount } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore, createPythonScheduleClaimRenderer } from '../control/store.ts';
+import { projectAttemptSessions } from '../control/runProjection.ts';
 import { loadP2MigrationEvidence } from '../control/p2MigrationEvidence.ts';
 import type { FileControlPlaneAccess } from '../control/writerLease.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
-import { registerControlRoutes } from '../control/routes.ts';
+import { readScopeForSubject, registerControlRoutes } from '../control/routes.ts';
 import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
 import { createSessionRunStore } from '../pty/sessionRuns.ts';
+import { createRawSessionReplaySource } from '../pty/replayReader.ts';
 import { createSessionPersistence, createTranscriptRetention } from '../pty/sessionPersistence.ts';
 import { createWindowsSessionHost } from '../pty/windowsSessionHost.ts';
 import { LinuxBrokerClient } from '../pty/linuxBrokerClient.ts';
@@ -182,9 +184,9 @@ export function makeSurfaceContext(
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
   // supplied as an override (tests, or a future explicit injection), activation is skipped entirely so no
   // construction is attempted. Otherwise `buildActivatedExecution` returns `null` unless the gate is on —
-  // meaning production, gate absent, constructs no broker/engine and spawns no `claude` (the core inert
+  // meaning production, gate absent, constructs no attempt port/engine and spawns no `claude` (the core inert
   // invariant): the executor fields below stay `undefined` exactly as today.
-  const activationOverridden = overrides.controlBroker !== undefined
+  const activationOverridden = overrides.attemptPort !== undefined
     || overrides.runAutomatic !== undefined
     || overrides.cancelAutomatic !== undefined
     || overrides.containManagerStart !== undefined
@@ -242,9 +244,49 @@ export function makeSurfaceContext(
       host: ptySessionHost,
       persistence: ptyPersistence,
       transcript: createTranscriptRetention(stateRoot),
+      // A Run-controller claim is authorized by the CONTROL plane, not by the PTY document: the
+      // registry may only hand a session to a browser whose operator can already read that run, and
+      // it CASes against the run version that read returned. An unreadable run resolves to `null`,
+      // which the registry turns into `not-found` — the same answer a nonexistent session gets, so a
+      // claim can never be used to probe for runs the caller cannot see.
+      // The inner read must use the SAME scope the claim route's outer read used (`readScopeForSubject`
+      // is a pure function of the subject, so this cannot drift from it): resolving under the default
+      // `own-subject` while the route read under `all-subjects` would turn every engine-owned run the
+      // operator can legitimately see into a `not-found` claim.
+      resolveRunVersion: async (operator: string, runRef: string) => {
+        const detail = controlStore.getRun(operator, runRef, readScopeForSubject(operator));
+        return detail.ok ? detail.value.run.version : null;
+      },
       installDeploymentCloser: (closer) => { deploymentSessionCloser = closer; },
     }))
     : undefined;
+  // The typed raw-replay read the Run-scoped replay route serves earlier attempts from ([C-R6]).
+  // Composed over the SAME `stateRoot` the registry's `createTranscriptRetention` writes into, and
+  // over the SAME record the persistence document holds, so reader and writer can never disagree
+  // about where a transcript lives or how much of it survived compaction. Absent with no persistence:
+  // there is then no retained window to serve, and the route answers `pty-unavailable` rather than
+  // inventing an empty transcript.
+  const ptyRawReplay = overrides.ptyRawReplay ?? (ptyPersistence
+    ? createRawSessionReplaySource({
+      stateRoot,
+      extent: (sessionId) => {
+        const record = ptyPersistence.read().sessions.find((item) => item.sessionId === sessionId);
+        return record === undefined
+          ? null
+          : { total: record.transcript.lastSequence, bytes: record.transcript.bytes };
+      },
+    }).read
+    : undefined);
+  // [C-M4] The Run detail's attempt-session projection. Composed over the SAME registry that owns
+  // binding order and the SAME persistence document the records live in, so the order the operator
+  // sees, the session the server selects, and the transcript the replay route serves can never come
+  // from three different reads of the world.
+  const ptyRunAttemptSessions = overrides.ptyRunAttemptSessions ?? (ptySessionRegistry && ptyPersistence
+    ? (operator: string, runRef: string) => projectAttemptSessions(
+      ptySessionRegistry.byRun(operator, runRef),
+      ptyPersistence.read().sessions,
+    )
+    : undefined);
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
@@ -351,6 +393,8 @@ export function makeSurfaceContext(
     controlStore,
     ptySessionHost,
     ptySessionRegistry,
+    ptyRawReplay,
+    ptyRunAttemptSessions,
     closeDeploymentPtySessions: async (sessionIds) =>
       deploymentSessionCloser === null
         ? { ok: false, refusal: 'unavailable', detail: 'no session host' }
@@ -364,7 +408,7 @@ export function makeSurfaceContext(
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
     // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
     // place on unlock and clears them on lock.
-    controlBroker: overrides.controlBroker,
+    attemptPort: overrides.attemptPort,
     runAutomatic: overrides.runAutomatic,
     cancelAutomatic: overrides.cancelAutomatic,
     containManagerStart: overrides.containManagerStart,
@@ -394,14 +438,19 @@ export function makeSurfaceContext(
     ctx.executionLatch = createExecutionLatch({
       build,
       env: activation.env,
-      buildOptions: { controlStore, repoRoot, stateRoot },
+      buildOptions: {
+        controlStore, repoRoot, stateRoot,
+        // The attempt port is built from the SAME probed host and v2 document the browser PTY routes
+        // use, so a Run attempt and a Terminal session are the same kind of record on the same host.
+        sessionHost: ptySessionHost, attemptBindings: ptySessionRegistry,
+      },
       onChange: (execution, state, serviceCaller) => {
         stopQueueBridge?.();
         stopQueueBridge = undefined;
         ctx.stopQueueBridge = undefined;
         offAttemptIo?.();
         offAttemptIo = null;
-        ctx.controlBroker = execution?.controlBroker;
+        ctx.attemptPort = execution?.attemptPort ?? undefined;
         ctx.runAutomatic = execution?.runAutomatic;
         ctx.cancelAutomatic = execution?.cancelAutomatic;
         ctx.containManagerStart = execution?.containManagerStart;
@@ -480,7 +529,9 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
   app.addHook('preClose', async () => {
     ctx.stopQueueBridge?.();
     ctx.stopQueueBridge = undefined;
-    ctx.controlBroker?.drain();
+    // Shutdown is a fail-safe direction: a drain that throws synchronously, rejects, or returns
+    // nothing at all must not block Fastify from closing.
+    try { await ctx.attemptPort?.drain(); } catch { /* best effort */ }
     drainVibeProcesses();
     // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks
     // behind a hung push — the very failure mode this async-git conversion exists to remove.

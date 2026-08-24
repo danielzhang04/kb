@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { projectGateCounts, projectRunActivity, projectRunStatus, type ProjectableRun } from './runProjection.ts';
+import { projectAttemptSessions, projectGateCounts, projectRunActivity, projectRunStatus, selectAttemptSessionId, type ProjectableRun } from './runProjection.ts';
+import type { AttemptBinding, SessionRecord } from '../pty/contracts.ts';
 import { RUN_LIFECYCLE_KINDS } from './runLifecycle.ts';
 
 const owner = { type: 'agent' as const, id: 'fyt-runner', sourcePath: 'agents/fyt-runner.md' as const };
@@ -74,6 +75,80 @@ describe('run projections', () => {
     expect(projectGateCounts('revision-2', gatedRuns).pairs.map((item) => item.runRef)).toEqual(['run-a', 'run-b']);
     expect(runs).toEqual(clone);
     expect(gatedRuns).toEqual(gatedClone);
+  });
+});
+
+describe('[C-M4] run attempt-session projection', () => {
+  function binding(attemptRef: string, sessionId: string): AttemptBinding {
+    return { operator: 'operator', runRef: 'run-1', attemptRef, managedSessionRef: `managed-${attemptRef}`,
+      sessionId, createdAt: '2026-08-20T09:00:00.000Z' };
+  }
+  function record(overrides: Partial<SessionRecord> & { sessionId: string }): SessionRecord {
+    return {
+      operationKey: `op-${overrides.sessionId}`, requestHash: 'hash', recipeDigest: 'digest',
+      launcher: 'claude', host: 'desktop', rootId: 'worktrees', relativeCwd: 'a', name: 'Attempt',
+      attachmentIds: [], transcript: { path: 'p', bytes: 4, truncated: false, lastSequence: 4 },
+      startedAt: '2026-08-20T09:00:00.000Z', endedAt: null, revision: 1,
+      provenance: 'run', controller: null, operator: 'operator', runRef: 'run-1',
+      attemptRef: 'attempt-x', managedSessionRef: 'managed-x',
+      state: 'live', epochId: 'epoch-1', exit: null, ...overrides,
+    } as SessionRecord;
+  }
+  const exited = (sessionId: string, exitCode: number): SessionRecord => record({
+    sessionId, state: 'exited', endedAt: '2026-08-20T09:10:00.000Z',
+    exit: { sessionId, sequence: 12, exitCode, signal: null, reason: 'exited', observedAt: '2026-08-20T09:10:00.000Z' },
+  } as Partial<SessionRecord> & { sessionId: string });
+
+  it('keeps binding order, carries no internal field, and selects the running attempt', () => {
+    const rows = projectAttemptSessions(
+      [binding('attempt-2', 'pty-b'), binding('attempt-1', 'pty-a'), binding('attempt-3', 'pty-c')],
+      [record({ sessionId: 'pty-c' }), exited('pty-a', 0), exited('pty-b', 1)],
+    );
+    expect(rows.map((row) => row.sessionId)).toEqual(['pty-b', 'pty-a', 'pty-c']);
+    expect(rows.map((row) => row.attemptRef)).toEqual(['attempt-2', 'attempt-1', 'attempt-3']);
+    expect(Object.keys(rows[0]!).sort()).toEqual([
+      'attemptRef', 'controllerClaimed', 'endedAt', 'exit', 'launcher', 'liveControl', 'sessionId',
+      'startedAt', 'state',
+    ]);
+    expect(rows[0]!.exit).toEqual({ exitCode: 1, reason: 'exited', observedAt: '2026-08-20T09:10:00.000Z' });
+    expect(rows[0]!.liveControl).toBe(false);
+    expect(rows[2]!.liveControl).toBe(true);
+    expect(selectAttemptSessionId(rows)).toBe('pty-c');
+  });
+
+  it('selects the newest attempt when none is running, and null with no rows', () => {
+    const rows = projectAttemptSessions(
+      [binding('attempt-1', 'pty-a'), binding('attempt-2', 'pty-b')],
+      [exited('pty-a', 0), exited('pty-b', 0)],
+    );
+    expect(selectAttemptSessionId(rows)).toBe('pty-b');
+    expect(selectAttemptSessionId([])).toBeNull();
+    // The LAST running attempt wins even when an earlier one is also live.
+    const both = projectAttemptSessions(
+      [binding('attempt-1', 'pty-a'), binding('attempt-2', 'pty-b')],
+      [record({ sessionId: 'pty-a' }), record({ sessionId: 'pty-b', state: 'closing' })],
+    );
+    expect(selectAttemptSessionId(both)).toBe('pty-b');
+  });
+
+  it('drops a binding with no record and a non-agent launcher rather than inventing a row', () => {
+    const rows = projectAttemptSessions(
+      [binding('attempt-1', 'pty-gone'), binding('attempt-2', 'pty-shell'), binding('attempt-3', 'pty-c')],
+      [record({ sessionId: 'pty-shell', launcher: 'shell' }), record({ sessionId: 'pty-c', launcher: 'codex' })],
+    );
+    expect(rows.map((row) => row.sessionId)).toEqual(['pty-c']);
+    expect(rows[0]!.launcher).toBe('codex');
+  });
+
+  it('reports a claimed controller without turning it into live control', () => {
+    const claimed = record({ sessionId: 'pty-a' });
+    const rows = projectAttemptSessions([binding('attempt-1', 'pty-a')], [{
+      ...claimed, controller: { operator: 'operator', browserSessionRef: 'browser-1' }, claimRevision: 3,
+    } as SessionRecord]);
+    expect(rows[0]!.controllerClaimed).toBe(true);
+    expect(rows[0]!.liveControl).toBe(true);
+    expect(JSON.stringify(rows)).not.toContain('browser-1');
+    expect(JSON.stringify(rows)).not.toContain('managed-');
   });
 });
 

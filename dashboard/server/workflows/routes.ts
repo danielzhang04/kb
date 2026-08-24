@@ -35,7 +35,7 @@ import type { AgentWorkspaceLaunchProvenance, JsonObject, RunMetadata } from '..
 import type { AttentionEnvelope, HostKind, OutputRef, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
 import type { EntityDetail, EntityList } from '../entities/contracts.ts';
 import { patchEntityBuilderSource, renderWorkflowBuilderSource, submitEntityBuilder, type EntityBuilderCatalog, type EntityBuilderPort } from '../entities/builder.ts';
-import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
 import { runtimeExecutionHost } from '../runtime/capabilities.ts';
 import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs, projectOutputRef } from '../entities/outputs.ts';
@@ -909,7 +909,7 @@ function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRu
   return {
     ref, projects: [scanned.entry.project], modelLabel: 'varies',
     temporalLabel: latest ? `ran ${relativeRunTime(latest.completedAt, now)} \u00b7 ${latest.outcome}` : projectLiveEmpty(null, nextScheduleOccurrence(ctx.controlStore, ref)?.nextAt ?? null),
-    host: hostRun?.executionHost ?? resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud'),
+    host: hostRun?.executionHost ?? runtimeExecutionHost(ctx.runtimeCapabilities),
     activeRuns,
     gatedRunCount: attention.workflows[`workflow:${ref.project}:${ref.id}`] ?? 0,
     latestRun: latest?.outcome ?? null, nextSchedule: nextScheduleOccurrence(ctx.controlStore, ref),
@@ -1197,7 +1197,7 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
           // The workspace records who composed the launch, never who owns the immutable Workflow run.
         }
         return launchDefinition(ctx, sub, verifiedSession(req)?.token, instantiated.value, idempotencyKey,
-          agentWorkspaceLaunch, { owner, executionHost: resolveExecutionHost(process.platform === 'win32' ? 'desktop' : 'cloud') });
+          agentWorkspaceLaunch, { owner, executionHost: runtimeExecutionHost(ctx.runtimeCapabilities) });
       });
       return reply.code(result.status).send(result.body);
     });

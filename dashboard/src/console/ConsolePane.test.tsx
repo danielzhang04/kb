@@ -37,6 +37,7 @@ vi.mock('@xterm/xterm', () => {
     loadAddon() {}
     open() {}
     write(d: string) { this.writes.push(d); }
+    clear() { this.writes.length = 0; }
     onData(cb: (d: string) => void) { this.dataCb = cb; }
     dispose() {}
   }
@@ -430,5 +431,97 @@ describe('read-only replay', () => {
     expect(screen.getByTestId('console-panel-readonly')).toBeTruthy();
     // Nothing beyond the opening attach was ever sent: no input, no resize.
     expect(socket.frames().every((frame) => frame.type === 'attach')).toBe(true);
+  });
+});
+
+
+describe('[C-R6] REST-fed read-only replay', () => {
+  it('writes the read transcript into the ONE grid and opens no socket at all', async () => {
+    const { sockets, factory } = makeFactory();
+    const replaySource = vi.fn(async () => ({
+      ok: true as const,
+      frames: [
+        { sequence: 0, encoding: 'base64' as const, data: encodeInput('first ') },
+        { sequence: 6, encoding: 'base64' as const, data: encodeInput('second') },
+      ],
+    }));
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={replaySource}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    await waitFor(() => expect(xtermReg.instances[0]?.writes).toEqual(['first ', 'second']));
+    expect(replaySource).toHaveBeenCalledWith(SESSION_ID);
+    expect(sockets).toHaveLength(0);
+    // One grid, no keystroke path, and the pane says out loud that it cannot be typed into.
+    expect(xtermReg.instances).toHaveLength(1);
+    expect(xtermReg.instances[0].options.disableStdin).toBe(true);
+    expect(xtermReg.instances[0].dataCb).toBeNull();
+    expect(screen.getByTestId('console-panel-readonly')).toBeTruthy();
+  });
+
+  it('re-renders with an EQUAL target without re-reading or duplicating the transcript', async () => {
+    // M1 regression: the replay effect keyed on the `target` OBJECT, which `RunDetail` rebuilds as a
+    // fresh literal on every detail refresh — so each parent render re-downloaded the whole transcript
+    // and appended it to the grid again. The effect now keys on the string `targetKey`.
+    const { factory } = makeFactory();
+    const replaySource = vi.fn(async () => ({
+      ok: true as const,
+      frames: [{ sequence: 0, encoding: 'base64' as const, data: encodeInput('once') }],
+    }));
+    const pane = (): React.JSX.Element => unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={replaySource}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    );
+    const view = render(pane());
+    await waitFor(() => expect(xtermReg.instances[0]?.writes).toEqual(['once']));
+
+    view.rerender(pane());
+    view.rerender(pane());
+    await waitFor(() => expect(replaySource).toHaveBeenCalledTimes(1));
+
+    expect(xtermReg.instances).toHaveLength(1);
+    expect(xtermReg.instances[0].writes).toEqual(['once']);
+  });
+
+  it('writes the lost-output notice ahead of a truncated transcript', async () => {
+    const { factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={async () => ({ ok: true, lostOutput: true, frames: [{ sequence: 64, encoding: 'base64', data: encodeInput('tail') }] })}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    await waitFor(() => expect(xtermReg.instances[0]?.writes)
+      .toEqual([LOST_OUTPUT_NOTICE + '\r\n', 'tail']));
+  });
+
+  it('shows the refusal sentence instead of an empty grid that looks like silence', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={async () => ({ ok: false, notice: 'This attempt has no terminal output on this run.' })}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    await waitFor(() => expect(screen.getByTestId('console-panel-diagnostic').textContent)
+      .toContain('This attempt has no terminal output on this run.'));
+    expect(sockets).toHaveLength(0);
+    expect(xtermReg.instances[0]?.writes ?? []).toEqual([]);
   });
 });

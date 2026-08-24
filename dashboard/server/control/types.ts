@@ -15,7 +15,7 @@ import type {
 import type { IterationOutcome } from './iterationOutcome.ts';
 import type { DeploymentState } from './deploymentState.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
-import type { RunIdentityFields } from './p2Contracts.ts';
+import type { AttemptSessionPublicRow, RunIdentityFields } from './p2Contracts.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -613,8 +613,16 @@ export interface IterationLoopDto extends Omit<IterationLoop, 'unresolvedResidue
 export interface RunDetailDto extends Omit<RunDetail, 'run' | 'iterationLoops'> {
   run: RunDto;
   iterationLoops: IterationLoopDto[];
+  /**
+   * [C-M4] The Run console contract, all three fields REQUIRED so no surface has to guess from an
+   * absent key. `sessionId` is the SERVER's selection among `attemptSessions` (see
+   * `runProjection.ts#projectAttemptSessions`) and is `null` — never absent — when this run has no
+   * session to open; `attemptSessions` is every attempt session in binding order, empty for a
+   * transcript run.
+   */
   streamKind: 'pty' | 'transcript';
-  sessionId?: string;
+  sessionId: string | null;
+  attemptSessions: AttemptSessionPublicRow[];
 }
 
 export interface StorageInventoryItem {

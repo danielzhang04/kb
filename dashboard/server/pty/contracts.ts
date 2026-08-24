@@ -118,6 +118,9 @@ export interface AttemptBindingPort {
     managedSessionRef: string; sessionId: string }): Promise<PortResult<{ revision: number }>>;
   byAttempt(operator: string, attemptRef: string): AttemptBinding | null;
   bySession(operator: string, sessionId: string): AttemptBinding | null;
+  /** Every binding this operator owns for one Run, in durable attempt order (oldest first). One read
+   *  reconstructs Run selection after a restart, so live selection needs no in-memory index. */
+  byRun(operator: string, runRef: string): AttemptBinding[];
   readOperation(operationKey: string): Promise<AttemptOperationRecord | null>;
   /** Write-ahead CAS. `expectedRevision: null` means "must not exist" (create); any revision
    *  mismatch (or a create over an existing key) refuses with `'binding-conflict'`.

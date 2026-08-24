@@ -1089,17 +1089,17 @@ describe('approvals surface — verify wiring', () => {
 
 describe('surface — Wave-A executor activation wiring (env-gated, default OFF)', () => {
   const activatedTriple = () => ({
-    controlBroker: { drain() {} } as unknown as NonNullable<SurfaceContext['controlBroker']>,
+    attemptPort: { async drain() {} } as unknown as NonNullable<SurfaceContext['attemptPort']>,
     runAutomatic: (async () => ({ state: 'succeeded', startedStageIds: [], completedStageIds: [], waitingStageIds: [] })) as unknown as NonNullable<SurfaceContext['runAutomatic']>,
     cancelAutomatic: (async () => ({ state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false })) as unknown as NonNullable<SurfaceContext['cancelAutomatic']>,
     containManagerStart: (async () => {}) as NonNullable<SurfaceContext['containManagerStart']>,
     verifyCanonicalResult: (async () => true) as NonNullable<SurfaceContext['verifyCanonicalResult']>,
   });
 
-  it('CORE INERT INVARIANT: gate unset ⇒ controlBroker/runAutomatic/cancelAutomatic are undefined', () => {
+  it('CORE INERT INVARIANT: gate unset ⇒ attemptPort/runAutomatic/cancelAutomatic are undefined', () => {
     // Real builder, deterministic gate-off env — must return null and construct nothing.
     const ctx = makeSurfaceContext({ repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] }, { env: {} });
-    expect(ctx.controlBroker).toBeUndefined();
+    expect(ctx.attemptPort).toBeUndefined();
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
     expect(ctx.containManagerStart).toBeUndefined();
@@ -1121,8 +1121,13 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     }));
     expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessionHost');
     expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessionRegistry');
+    // The host and the v2 binding document DO reach the builder, under the port names the attempt
+    // adapter consumes: the fleet-gated host wrapper, never the raw underlying host.
+    expect(build.mock.calls[0][0].sessionHost).toBe(ctx.ptySessionHost);
+    expect(build.mock.calls[0][0].sessionHost).not.toBe(underlying.host);
+    expect(build.mock.calls[0][0].attemptBindings).toBe(ctx.ptySessionRegistry);
     expect(ctx.ptySessionHost).not.toBe(underlying.host);
-    expect(ctx.controlBroker).toBe(triple.controlBroker);
+    expect(ctx.attemptPort).toBe(triple.attemptPort);
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);
     expect(ctx.cancelAutomatic).toBe(triple.cancelAutomatic);
     expect(ctx.containManagerStart).toBe(triple.containManagerStart);
@@ -1131,13 +1136,13 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
 
   it('an explicit executor override wins and short-circuits activation entirely (builder never called)', () => {
     const build = vi.fn().mockReturnValue(activatedTriple());
-    const overrideBroker = { drain() {} } as unknown as NonNullable<SurfaceContext['controlBroker']>;
+    const overridePort = { async drain() {} } as unknown as NonNullable<SurfaceContext['attemptPort']>;
     const ctx = makeSurfaceContext(
-      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], controlBroker: overrideBroker },
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], attemptPort: overridePort },
       { build: build as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' } },
     );
     expect(build).not.toHaveBeenCalled();
-    expect(ctx.controlBroker).toBe(overrideBroker);
+    expect(ctx.attemptPort).toBe(overridePort);
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
     expect(ctx.containManagerStart).toBeUndefined();

@@ -177,6 +177,10 @@ const badOperationMissingRevision: AttemptOperationRecord = {
 const badSyncWriteOperation: AttemptBindingPort['writeOperation'] = () => ({ ok: true, value: operationRecord });
 // @ts-expect-error expectedRevision is a number or null, never a string
 const badExpectedRevisionType: Parameters<AttemptBindingPort['writeOperation']>[1] = '1';
+// @ts-expect-error byRun lists every binding for the run; it is never a single-binding lookup
+const badByRunSingle: AttemptBindingPort['byRun'] = () => null;
+// @ts-expect-error byRun is a synchronous document read, never a promise
+const badByRunAsync: AttemptBindingPort['byRun'] = async () => [];
 
 // Async-port negatives.
 // @ts-expect-error create returns HostLaunch directly, never Promise<HostLaunch>

@@ -100,7 +100,7 @@ describe('Workflow P2 routes', () => {
         return { exitCode: 0, stdout: `${JSON.stringify({ runId: op.runId, cards })}\n`, stderr: '' };
       },
       ...(options.activated ? {
-        controlBroker: { isRunning: () => true, drain: () => {} } as never,
+        attemptPort: { isRunLive: () => true, drain: async () => {} } as never,
         runAutomatic: (async ({ runRef }: { runRef: string }) => { automaticRunRefs.push(runRef); return { ok: true }; }) as never,
       } : {}),
     });

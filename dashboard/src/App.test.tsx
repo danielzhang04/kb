@@ -249,6 +249,7 @@ describe('App P1 shell', () => {
         state: 'running', version: 1, managerSessionRef: 'manager-1', managerGeneration: 1, managerAssignment: null,
         createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:01:00.000Z' },
       stages: [], attempts: [], sessions: [], humanRequests: [], stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+      streamKind: 'transcript', sessionId: null, attemptSessions: [],
     } as RunDetailDto;
     render(<SessionProvider><RunDetail runRef="run-humanized" detail={runDetail} events={[]} /></SessionProvider>);
     expect(screen.getByText(/FYT API Worker/)).toBeTruthy();
