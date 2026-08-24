@@ -28,6 +28,9 @@ def test_state_root_resolution_has_one_implementation_per_language() -> None:
         ROOT / "dashboard" / "server" / "composer" / "store.ts",
         # Main-owned acceptance fixture assignment, not a state-root read.
         ROOT / "dashboard" / "server" / "control" / "synthetic-acceptance.ts",
+        # P3 authenticated fixture: sets the variable to route its temp root through the
+        # production reader, then restores it — an assignment, not a second implementation.
+        ROOT / "dashboard" / "server" / "testFixtures" / "p3AuthenticatedServer.ts",
     }
     js_consumers = [
         path for base in (ROOT / "scripts" / "hooks", ROOT / "dashboard" / "server")
