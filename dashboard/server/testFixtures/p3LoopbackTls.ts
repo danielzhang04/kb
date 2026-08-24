@@ -130,3 +130,69 @@ export function readLoopbackCertificate(port: number): string | null {
     return null;
   }
 }
+
+/* ------------------------------------------------------------------------------------------------ *
+ * Principal publication
+ *
+ * The §7 authenticated smoke has an ordering problem: the client needs a session token, but the token
+ * is MINTED by this fixture at startup, after the outer command line was written. The lifecycle
+ * wrapper passes client argv through untouched by contract, so the handoff cannot go through argv.
+ * The fixture therefore publishes the principal beside its TLS certificate — same 0600 discipline,
+ * same per-port key, same lifetime — and the lifecycle reads it and puts it in the CLIENT's
+ * environment. Nothing is printed that the banner does not already print.
+ * ------------------------------------------------------------------------------------------------ */
+
+/** The environment variables `p3FixtureLifecycle` puts a published principal into. */
+export const P3_SESSION_TOKEN_ENV = 'KB_P3_SESSION_TOKEN';
+export const P3_CONTEXT_PATH_ENV = 'KB_P3_CONTEXT_PATH';
+
+/** What a running authenticated fixture publishes for the client the lifecycle starts next. */
+export interface PublishedP3Principal {
+  origin: string;
+  /** Context A's bearer token — the same principal the banner prints. */
+  token: string;
+  browserSessionRef: string;
+  contextPath: string;
+}
+
+export function fixturePrincipalPath(port: number): string {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error('fixturePrincipalPath: invalid port');
+  }
+  return join(loopbackCertificateDir(), `kb-p3-principal-${port}.json`);
+}
+
+export function publishFixturePrincipal(port: number, principal: PublishedP3Principal): string {
+  const path = fixturePrincipalPath(port);
+  // 0600, like the private key beside it: this file carries a bearer token.
+  writeFileSync(path, `${JSON.stringify(principal, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  return path;
+}
+
+export function revokeFixturePrincipal(port: number): void {
+  try {
+    rmSync(fixturePrincipalPath(port), { force: true });
+  } catch {
+    /* shutting down; the next run on this port overwrites it and the token is already dead */
+  }
+}
+
+/** Read a published principal, or null when no authenticated fixture is serving this port. */
+export function readFixturePrincipal(port: number): PublishedP3Principal | null {
+  try {
+    const parsed = JSON.parse(readFileSync(fixturePrincipalPath(port), 'utf8')) as unknown;
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const record = parsed as Record<string, unknown>;
+    if (typeof record.token !== 'string' || record.token.length === 0) return null;
+    if (typeof record.contextPath !== 'string' || !record.contextPath.startsWith('/')) return null;
+    if (typeof record.origin !== 'string' || typeof record.browserSessionRef !== 'string') return null;
+    return {
+      origin: record.origin,
+      token: record.token,
+      browserSessionRef: record.browserSessionRef,
+      contextPath: record.contextPath,
+    };
+  } catch {
+    return null;
+  }
+}

@@ -15,7 +15,11 @@ afterEach(cleanup);
 class FakeSource implements SseSource {
   handlers: Record<string, ((ev: { data: string }) => void)[]> = {};
   closed = false;
-  constructor(public url: string) {}
+  url: string;
+
+  constructor(url: string) {
+    this.url = url;
+  }
   addEventListener(type: string, handler: (ev: { data: string }) => void): void {
     (this.handlers[type] ??= []).push(handler);
   }

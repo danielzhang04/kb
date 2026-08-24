@@ -111,7 +111,13 @@ function reindexSlice(repoRoot: string, prev: PlaneAIndex, kind: PlaneASlice, na
 export function watchPlaneA(
   repoRoot: string,
   onChange: (delta: PlaneADelta) => void,
-  opts: { debounceMs?: number; naming?: NamingRegistry } = {},
+  opts: {
+    debounceMs?: number;
+    naming?: NamingRegistry;
+    /** Handed the watcher SYNCHRONOUSLY, before the initial scan. A caller that only needs to tear the
+     *  watch down must not have to await `ready` first — see `registerHub`'s onClose. */
+    onWatcher?: (watcher: FSWatcher) => void;
+  } = {},
 ): Promise<FSWatcher> {
   const debounceMs = opts.debounceMs ?? 50;
   const naming = opts.naming ?? defaultNamingRegistry();
@@ -133,12 +139,26 @@ export function watchPlaneA(
   targets.push(join(repoRoot, 'STOP'));
 
   const watcher = watch(targets, { ignoreInitial: true, persistent: true });
+  opts.onWatcher?.(watcher);
 
   const pending = new Map<PlaneASlice, string>();
   let timer: NodeJS.Timeout | undefined;
+  // A change landing just before `close()` left a debounce timer armed that fired afterwards and
+  // published onto a torn-down app's bus. The watch is closed through `close()`, which is where the
+  // flag is set, so the guard covers both the armed timer and any event chokidar still delivers.
+  let closed = false;
+  const nativeClose = watcher.close.bind(watcher);
+  watcher.close = async (): Promise<void> => {
+    closed = true;
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    pending.clear();
+    await nativeClose();
+  };
 
   const flush = (): void => {
     timer = undefined;
+    if (closed) return;
     for (const [kind, path] of pending) {
       index = reindexSlice(repoRoot, index, kind, naming);
       onChange({ kind, path, index });
@@ -147,6 +167,7 @@ export function watchPlaneA(
   };
 
   const onEvent = (path: string): void => {
+    if (closed) return;
     const kind = classify(repoRoot, path);
     pending.set(kind, path); // debounce: last path per slice wins
     if (timer) clearTimeout(timer);

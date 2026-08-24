@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 
 import type {
-  PtyCapabilityProbe, PtyProbeReason, PublicPtyCapability, SessionLauncher,
+  DroppedLauncher, PtyCapabilityProbe, PtyProbeReason, PublicPtyCapability, SessionLauncher,
 } from './contracts.ts';
 import {
   createWindowsLauncherProbeProfile,
@@ -13,7 +13,7 @@ import {
 
 type NodePtySurface = { spawn: (...args: never[]) => unknown };
 type LauncherProbeResult =
-  | { ok: true; launchers: SessionLauncher[] }
+  | { ok: true; launchers: SessionLauncher[]; dropped?: DroppedLauncher[] }
   | { ok: false; reason?: 'shell-unavailable' | 'root-policy-invalid' | 'launcher-unavailable' };
 
 export type WindowsPtyProbeOptions = {
@@ -64,26 +64,61 @@ async function defaultProbeLaunchPolicy(
     launchers.push('codex');
   } catch { /* optional */ }
 
+  // A launcher whose own tree cannot be pinned is DROPPED, exactly as a launcher whose files are
+  // absent is dropped above: `claude`/`codex` are optional, so an unpinnable optional tree must not
+  // take the shell (and with it the whole terminal) down with it. What is never dropped is a ROOT
+  // refusal — `unsafe-root` says the approved root itself is writable by an untrusted principal,
+  // which is true for every launcher, so the probe fails closed for the whole host. The advertised
+  // set is therefore exactly the set that pinned; capability can never name a launcher the pin
+  // validator refuses, and launch re-pins the same paths anyway.
+  //
+  // A drop is never SILENT. Every refusal is recorded against its launcher and travels out with the
+  // available probe, because "the terminal offers shell only" and "someone put a write ACE on your
+  // Claude binary" are different truths and the operator has no other way to tell them apart.
+  const refused = new Map<SessionLauncher, DroppedLauncher['refusal']>();
   for (const rootPath of [roots.repo, roots.worktrees]) {
     for (const launcher of launchers) {
+      if (refused.has(launcher)) continue;
+      const drop = (refusal: DroppedLauncher['refusal']): LauncherProbeResult | null => {
+        if (launcher === 'shell') return { ok: false, reason: 'launcher-unavailable' };
+        refused.set(launcher, refusal);
+        return null;
+      };
       const profile = createWindowsLauncherProbeProfile(launcher, environment, rootPath);
-      if (!profile.ok) return { ok: false, reason: 'root-policy-invalid' };
+      if (!profile.ok) {
+        // Only a bad approved root or a missing service root reaches here; for the shell that is the
+        // root policy itself, for an optional launcher it is that launcher's own missing service root.
+        if (launcher === 'shell') return { ok: false, reason: 'root-policy-invalid' };
+        refused.set(launcher, 'launcher-profile-invalid');
+        continue;
+      }
       const pinned = await pinWindowsLauncher(
         profile.value, inspector, options.serviceSid, options.platform ?? process.platform,
       );
       if (!pinned.ok) {
-        return { ok: false, reason: pinned.refusal === 'unsafe-root'
-          ? 'root-policy-invalid'
-          : 'launcher-unavailable' };
+        if (pinned.refusal === 'unsafe-root') return { ok: false, reason: 'root-policy-invalid' };
+        const refusal = drop('launcher-unavailable');
+        if (refusal !== null) return refusal;
+        continue;
       }
+      let rechecked: boolean;
       try {
-        if (!await pinned.value.recheck()) return { ok: false, reason: 'launcher-unavailable' };
+        rechecked = await pinned.value.recheck();
       } finally {
         await pinned.value.release();
       }
+      if (!rechecked) {
+        // The launcher's file identity moved between pin and recheck: a swap under our own handles.
+        const refusal = drop('launcher-changed');
+        if (refusal !== null) return refusal;
+      }
     }
   }
-  return { ok: true, launchers };
+  const advertised = launchers.filter((launcher) => !refused.has(launcher));
+  const dropped: DroppedLauncher[] = [...refused].map(([launcher, refusal]) => ({ launcher, refusal }));
+  return dropped.length === 0
+    ? { ok: true, launchers: advertised }
+    : { ok: true, launchers: advertised, dropped };
 }
 
 function unavailable(reason: PtyProbeReason, checkedAt: string): PtyCapabilityProbe {
@@ -125,10 +160,12 @@ export async function probeWindowsPty(options: WindowsPtyProbeOptions): Promise<
   }
   if (!launchers.ok) return unavailable(launchers.reason ?? 'shell-unavailable', checkedAt);
   if (launchers.launchers[0] !== 'shell') return unavailable('shell-unavailable', checkedAt);
+  const dropped = launchers.dropped ?? [];
   return {
     available: true, host: 'desktop', transport: 'local-node-pty',
     launchers: [...new Set(launchers.launchers)], roots: ['repo', 'worktrees'],
     epochId: options.epochId, checkedAt,
+    ...(dropped.length === 0 ? {} : { droppedLaunchers: dropped }),
   };
 }
 
@@ -163,9 +200,16 @@ export function toPublicPtyCapability(probe: PtyCapabilityProbe): PublicPtyCapab
       reason: probe.reason, detail: sanitizePublicPtyDetail(probe.detail), checkedAt: probe.checkedAt,
     } };
   }
+  // The drop record crosses the publish boundary as the CLOSED pair it already is — launcher id plus
+  // refusal code, no path, no ACL, no SID — so a tampered launcher is visible to the operator without
+  // handing the browser (or a log) the attacker's own filenames.
+  const dropped = probe.droppedLaunchers ?? [];
   return {
     pty: true, host: probe.host, launchers: [...probe.launchers], roots: [...probe.roots],
     checkedAt: probe.checkedAt,
+    ...(dropped.length === 0
+      ? {}
+      : { droppedLaunchers: dropped.map(({ launcher, refusal }) => ({ launcher, refusal })) }),
   };
 }
 

@@ -284,9 +284,21 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
   const maxChangedFileBytes = options.maxChangedFileBytes ?? 16 * 1024 * 1024;
   requireSafeInteger(maxChangedFiles, 'maxChangedFiles', 1);
   requireSafeInteger(maxChangedFileBytes, 'maxChangedFileBytes', 1);
-  mkdirSync(worktreeRoot, { recursive: true, mode: 0o700 });
+  // [C-S4] The server-owned worktree root is NEVER created here. On the VM it is `/var/lib/kb-shell/worktrees`,
+  // owned by the `kb-shell` broker (02770, created by the installer) and NOT writable by the dashboard's own
+  // uid at composition time — an eager `mkdirSync` here made the whole activation chain unconstructible on
+  // Linux (`EACCES: permission denied, mkdir '/var/lib/kb-shell/worktrees'`), and would have created the tree
+  // with the wrong owner/mode anywhere it did succeed. Construction must succeed on a host where the root is
+  // absent or unwritable; the root's existence and ownership are the host's/broker's to enforce, and a missing
+  // root surfaces at attempt time as the host's create refusal, not as a composition crash.
   const hooksPath = join(worktreeRoot, '.disabled-hooks');
-  mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
+  let hooksDirReady = false;
+  /** Lazily materialize the empty hooks dir — first git invocation only, never at construction. */
+  const ensureHooksDir = (): void => {
+    if (hooksDirReady) return;
+    mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
+    hooksDirReady = true;
+  };
   // core.longpaths=true: server-owned worktrees live under a deep state-root path
   // (…/control/worktrees/run-…/attempt-…); combined with long repo-relative paths this exceeds Windows
   // MAX_PATH (260) and `git worktree add` fails "Filename too long". A no-op off Windows. Not a gate.
@@ -310,6 +322,11 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
       const path = expectedAttemptPath(worktreeRoot, input.runRef, input.path);
       const baseCommit = input.baseCommit ?? options.baseCommit;
       if (!PINNED_COMMIT.test(baseCommit)) throw new ExecutionAdapterError('attempt baseCommit must be a full immutable object id');
+      // First filesystem write of the adapter's life, and only on a real provisioning attempt. `inspect`
+      // and `remove` deliberately do NOT call this: they only ever run against a tree `ensure` already
+      // provisioned, and `core.hooksPath` pointing at a path that does not exist disables repo hooks just
+      // as completely as pointing it at an empty directory — so neither needs to create anything.
+      ensureHooksDir();
       if (existsSync(path)) {
         if (!lstatSync(path).isDirectory()) throw new ExecutionAdapterError('planned worktree path is not a directory');
         await verify(path);

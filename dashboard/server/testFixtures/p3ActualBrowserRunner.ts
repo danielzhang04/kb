@@ -34,8 +34,11 @@ export const BROWSER_EXIT = { ok: 0, usage: 64, failed: 65, timeout: 67 } as con
 export type BrowserExitCode = (typeof BROWSER_EXIT)[keyof typeof BROWSER_EXIT];
 
 export class BrowserRunnerFailure extends Error {
-  constructor(readonly code: BrowserExitCode, message: string) {
+  readonly code: BrowserExitCode;
+
+  constructor(code: BrowserExitCode, message: string) {
     super(message);
+    this.code = code;
     this.name = 'BrowserRunnerFailure';
   }
 }

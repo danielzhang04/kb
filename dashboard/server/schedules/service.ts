@@ -20,8 +20,13 @@ import type {
 } from './contracts.ts';
 
 export class ScheduleServiceError extends Error {
-  constructor(readonly status: number, readonly code: string, message = code) {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(status: number, code: string, message = code) {
     super(message);
+    this.status = status;
+    this.code = code;
     this.name = 'ScheduleServiceError';
   }
 }
@@ -174,7 +179,11 @@ function replayedReceipt<T extends ScheduleMutationReceipt | DeleteScheduleRecei
 }
 
 export class ScheduleService {
-  constructor(private readonly options: ScheduleServiceOptions) {}
+  private readonly options: ScheduleServiceOptions;
+
+  constructor(options: ScheduleServiceOptions) {
+    this.options = options;
+  }
 
   private async requireCurrentOwner(owner: RunnableRef): Promise<void> {
     const resolved = await this.options.resolveOwner({ type: owner.type, id: owner.id });

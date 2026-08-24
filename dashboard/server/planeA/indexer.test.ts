@@ -84,4 +84,35 @@ describe('watchPlaneA', () => {
     expect(delta.kind).toBe('cards');
     expect(delta.path).toContain('card-new.md');
   }, 10_000);
+
+  it('hands the watcher over SYNCHRONOUSLY, before the returned promise settles', async () => {
+    // The teardown contract `registerHub` depends on: a caller that only needs to CLOSE the watch must
+    // never have to await the initial repo scan first.
+    const repo = scratchRepo();
+    let handed: FSWatcher | undefined;
+    let settled = false;
+
+    const ready = watchPlaneA(repo, () => {}, { onWatcher: (w) => { handed = w; } });
+    // Synchronously after the call, with no await in between.
+    expect(handed).toBeDefined();
+    expect(settled).toBe(false);
+
+    void ready.then(() => { settled = true; });
+    watcher = await ready;
+    expect(watcher).toBe(handed);
+  }, 10_000);
+
+  it('publishes nothing after close, even for a change queued while the watch was open', async () => {
+    // The armed debounce timer: a write landing just before close used to flush 50 ms later, onto a
+    // torn-down consumer.
+    const repo = scratchRepo();
+    const deltas: string[] = [];
+    const open = await watchPlaneA(repo, (delta) => { deltas.push(delta.path); }, { debounceMs: 50 });
+
+    writeFileSync(join(repo, 'queue', 'inbox', 'card-late.md'), CARD, 'utf-8');
+    await open.close();
+    await new Promise((settle) => { setTimeout(settle, 250); });
+
+    expect(deltas).toEqual([]);
+  }, 10_000);
 });

@@ -24,7 +24,8 @@ import { createServer as createSecureServer } from 'node:https';
 import { randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
-import { mkdtempSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,12 +39,17 @@ import {
   type StoredBrowserSessionRef,
 } from '../auth/browserSessionRef.ts';
 import { createWindowsSessionHost } from '../pty/windowsSessionHost.ts';
+import { toPublicPtyCapability } from '../pty/probe.ts';
+import { runtimeHostCapabilities, unavailablePtyCapability } from '../runtime/capabilities.ts';
 import type {
-  HostLaunch, ObservedExit, PtyCapabilityProbe, SessionHost, SessionHostRequest, SessionSink,
+  HostLaunch, ObservedExit, PtyCapabilityProbe, PublicPtyCapability, SessionHost, SessionHostRequest,
+  SessionSink,
 } from '../pty/contracts.ts';
 import {
-  createLoopbackTlsMaterial, publishLoopbackCertificate, revokeLoopbackCertificate,
+  createLoopbackTlsMaterial, publishFixturePrincipal, publishLoopbackCertificate,
+  revokeFixturePrincipal, revokeLoopbackCertificate,
 } from './p3LoopbackTls.ts';
+
 
 /** One browser identity the fixture publishes: a session token plus the ref cookie that pairs with it. */
 export interface P3FixtureContext {
@@ -213,6 +219,31 @@ export function createMemoryBrowserSessionRefs() {
   });
 }
 
+/**
+ * Create `<stateRoot>/pty-roots/{repo,worktrees}` with an ACL the W1 root policy accepts: inheritance
+ * broken, and write granted to nobody but SYSTEM, Administrators and the account this process runs as
+ * (the service identity the pin validator compares against). `icacls` is the only way to set a Windows
+ * DACL from Node; it is invoked with a fixed argument vector (no shell), so no path can inject flags.
+ */
+function createPolicyConformingPtyRoots(stateRoot: string): { repo: string; worktrees: string } {
+  const base = resolvePath(stateRoot, 'pty-roots');
+  const roots = { repo: resolvePath(base, 'repo'), worktrees: resolvePath(base, 'worktrees') };
+  for (const root of [roots.repo, roots.worktrees]) {
+    mkdirSync(root, { recursive: true });
+    // Resolved absolutely, never through PATH: on a machine whose own P3 finding is that `%APPDATA%\\npm`
+    // is writable by sandbox SIDs and sits on PATH, resolving a security tool by bare name is the wrong
+    // discipline even where the argv is fixed.
+    execFileSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'icacls.exe'), [
+      root,
+      '/inheritance:r',
+      '/grant:r', '*S-1-5-18:(OI)(CI)F',
+      '/grant:r', '*S-1-5-32-544:(OI)(CI)F',
+      '/grant:r', `${process.env.USERDOMAIN ?? '.'}\\${process.env.USERNAME ?? ''}:(OI)(CI)F`,
+    ], { stdio: 'ignore' });
+  }
+  return roots;
+}
+
 export async function startP3AuthenticatedServer(
   options: P3AuthenticatedServerOptions = {},
 ): Promise<P3AuthenticatedServer> {
@@ -234,7 +265,13 @@ export async function startP3AuthenticatedServer(
     ?? (realWindowsHost
       ? createWindowsSessionHost({
         epochId: FIXTURE_EPOCH,
-        roots: { repo: repoRoot, worktrees: resolvePath(stateRoot, 'worktrees') },
+        // NOT this checkout and NOT a bare mkdtemp: both inherit Modify ACEs for other local
+        // principals on a developer machine (kb's own codex sandbox provisioning grants
+        // `CodexSandboxUsers` and per-worker SIDs (OI)(CI)(M) all the way down `%USERPROFILE%`), and
+        // the W1 root policy refuses such a root as `unsafe-root` — correctly, since anything those
+        // accounts write becomes the cwd of a spawned shell. The fixture therefore PROVISIONS roots
+        // that conform, so the smoke proves the real host against a real conforming root.
+        roots: createPolicyConformingPtyRoots(stateRoot),
       })
       : createDeterministicSessionHost());
 
@@ -295,6 +332,15 @@ export async function startP3AuthenticatedServer(
   const origin = `${tls === null ? 'http' : 'https'}://127.0.0.1:${address.port}`;
   if (tls !== null) publishLoopbackCertificate(address.port, tls.cert);
 
+  // One probe of the composed host, before the app exists — the same single composition-time probe
+  // `start()` performs in production.
+  let ptyCapability: PublicPtyCapability;
+  try {
+    ptyCapability = toPublicPtyCapability(await sessionHost.probe());
+  } catch {
+    ptyCapability = unavailablePtyCapability(process.platform, new Date().toISOString());
+  }
+
   const writerLease = acquireWriterLease({ stateRoot, bootId: `p3-fixture-${process.pid}` });
   const browserSessionRefs = createMemoryBrowserSessionRefs();
   const sessionConfig = { secret: randomBytes(32), ttlMs: 60 * 60 * 1000 };
@@ -305,10 +351,15 @@ export async function startP3AuthenticatedServer(
     traceRoot: null,
     allowedOrigins: [origin],
     sessionConfig,
-    runtimeCapabilities: {
-      pty: true, host: 'desktop', launchers: ['shell', 'claude', 'codex'],
-      roots: ['repo', 'worktrees'], checkedAt: new Date().toISOString(), localTranscripts: false,
-    } as never,
+    // The published capability is the host's OWN probe, never a literal. A hard-coded `pty: true`
+    // here is what let the §7 smoke reach WS create against a real host whose probe had refused
+    // (`root-policy-invalid`), i.e. the surface advertised a terminal the host would not build.
+    // Composition is fail-closed in exactly the production direction: a refusing — or throwing —
+    // probe publishes the closed capability, and the launchers advertised are the launchers the pin
+    // validator accepted, nothing more.
+    // Typed, not cast: `RuntimeCapabilities` is the host slice plus the published PTY capability, so a
+    // shape drift in `toPublicPtyCapability` fails HERE at compile time instead of at fixture runtime.
+    runtimeCapabilities: { ...runtimeHostCapabilities(), ...ptyCapability },
     ptySessionHost: sessionHost,
     browserSessionRefs,
     // A REAL writer lease, but over this fixture's throwaway state root: boot performs control-plane
@@ -344,6 +395,15 @@ export async function startP3AuthenticatedServer(
     ['/fixture/context-a-second-tab', aSecondTab],
   ]);
 
+  // Published AFTER the contexts exist and BEFORE the banner: the lifecycle only reads it once
+  // `/readyz` answers, so a half-written principal can never be handed to a client.
+  publishFixturePrincipal(address.port, {
+    origin,
+    token: a.token,
+    browserSessionRef: a.browserSessionRef,
+    contextPath: '/fixture/context-a',
+  });
+
   let closed = false;
   return {
     origin,
@@ -365,6 +425,7 @@ export async function startP3AuthenticatedServer(
     async close(): Promise<void> {
       if (closed) return;
       closed = true;
+      revokeFixturePrincipal(address.port);
       if (tls !== null) revokeLoopbackCertificate(address.port);
       for (const socket of upgraded) socket.destroy();
       upgraded.clear();

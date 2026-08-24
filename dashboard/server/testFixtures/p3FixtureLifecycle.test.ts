@@ -221,8 +221,8 @@ describe('p3FixtureLifecycle — argument parsing', () => {
     expect(parsed.origin).toBe('https://127.0.0.1:4322');
     expect(parsed.readyTimeoutMs).toBe(10_000);
     expect(parsed.shutdownTimeoutMs).toBe(5_000);
+    // No `--experimental-transform-types`: the fixture loads under Node's strip-only default.
     expect(parsed.fixtureCommand.slice(1)).toEqual([
-      '--experimental-transform-types', '--disable-warning=ExperimentalWarning',
       'server/testFixtures/p1BrowserFixture.ts', '--port', '4322', '--scenario', 'p3-terminal-named-sessions', '--https',
     ]);
     expect(parsed.clientCommand[1]).toBe('server/testFixtures/p3ActualBrowserRunner.ts');
@@ -237,7 +237,8 @@ describe('p3FixtureLifecycle — argument parsing', () => {
       '--', 'node', 'server/testFixtures/p3RealPtySmokeClient.ts',
     ]);
 
-    expect(parsed.fixtureCommand[3]).toBe('server/testFixtures/p3AuthenticatedServer.ts');
+    // Index 1: the module follows the node executable directly now that no transform flag precedes it.
+    expect(parsed.fixtureCommand[1]).toBe('server/testFixtures/p3AuthenticatedServer.ts');
     expect(parsed.fixtureCommand).toContain('--real-windows-host');
     expect(parsed.origin).toBe('https://127.0.0.1:4317');
   });

@@ -16,14 +16,16 @@
  * watched); this smoke proves the construction chain hermetically so a boot break is caught in CI.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../index.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
-import { buildActivatedExecution, createExecutionLatch, isExecutionActivated, type ActivationDeps } from './activation.ts';
+import {
+  buildActivatedExecution, createExecutionLatch, defaultWorktreeRoot, isExecutionActivated, type ActivationDeps,
+} from './activation.ts';
 import { isInternalServiceCaller, type InternalServiceCaller } from '../auth/session.ts';
 import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import { createQueueBridge, settleFleetLedgerForRun } from './queueBridge.ts';
@@ -108,6 +110,50 @@ describe('T6 gated boot smoke', () => {
     expect(activated?.attemptPort).toBeNull();
     expect(typeof activated?.runAutomatic).toBe('function');
     expect(typeof activated?.cancelAutomatic).toBe('function');
+  });
+
+  it('GATE ON: construction succeeds when the Linux worktree root does not exist and creates no directory', () => {
+    process.env.DASHBOARD_EXECUTION_ACTIVATED = '1';
+    // [C-S4] regression. On the VM `/var/lib/kb-shell/worktrees` is broker-owned (`kb-shell`, 02770,
+    // created by the installer) and NOT creatable by the dashboard uid. W6.5 left an eager
+    // `mkdirSync(worktreeRoot, …)` in the worktree adapter's and the result integrator's constructors, so
+    // every gate-ON construction on Linux died with `EACCES: permission denied, mkdir
+    // '/var/lib/kb-shell/worktrees'` before any attempt existed. The dashboard NEVER creates that root:
+    // the production default path must be constructible on a host where the root is absent or unwritable,
+    // and composition must touch the filesystem under it not at all. A missing root is the host's create
+    // refusal at attempt time, not a composition crash.
+    const linuxRoot = defaultWorktreeRoot(tempStateRoot, { DASHBOARD_HOST_PLATFORM: 'linux' });
+    expect(linuxRoot).toBe('/var/lib/kb-shell/worktrees');
+    const rootExistedBefore = existsSync(linuxRoot);
+    const hermeticDeps: Partial<ActivationDeps> = {
+      resolveBaseCommit: () => 'f'.repeat(40),
+      loadPolicy: () => ({ profiles: [], curatedSkills: new Set<string>(), contractText: '', governanceContents: {} }) as never,
+    };
+    const activated = buildActivatedExecution({
+      env: { ...process.env, DASHBOARD_HOST_PLATFORM: 'linux' },
+      controlStore: createFileControlPlaneStore(tempStateRoot),
+      repoRoot: process.cwd(),
+      stateRoot: tempStateRoot,
+      deps: hermeticDeps,
+    });
+    expect(activated).not.toBeNull();
+    // Absence proof: the root is exactly as construction found it, and neither constructor materialized
+    // the `.disabled-hooks` sibling both of them name in their git prefix.
+    expect(existsSync(linuxRoot)).toBe(rootExistedBefore);
+    expect(existsSync(join(linuxRoot, '.disabled-hooks'))).toBe(false);
+
+    // Windows keeps the state-root tree as its default (behaviour unchanged) — and that tree is likewise
+    // only created when an attempt is actually provisioned, never at composition.
+    const windowsRoot = defaultWorktreeRoot(tempStateRoot, { DASHBOARD_HOST_PLATFORM: 'win32' });
+    expect(windowsRoot).toBe(join(tempStateRoot, 'control', 'worktrees'));
+    expect(buildActivatedExecution({
+      env: { ...process.env, DASHBOARD_HOST_PLATFORM: 'win32' },
+      controlStore: createFileControlPlaneStore(tempStateRoot),
+      repoRoot: process.cwd(),
+      stateRoot: tempStateRoot,
+      deps: hermeticDeps,
+    })).not.toBeNull();
+    expect(existsSync(windowsRoot)).toBe(false);
   });
 
   it('PASSKEY LATCH: mints the internal service caller only through the armed latch path', () => {

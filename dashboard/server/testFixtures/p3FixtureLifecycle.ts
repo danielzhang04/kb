@@ -28,7 +28,9 @@ import type { ChildProcess } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { fileURLToPath } from 'node:url';
-import { readLoopbackCertificate } from './p3LoopbackTls.ts';
+import {
+  P3_CONTEXT_PATH_ENV, P3_SESSION_TOKEN_ENV, readFixturePrincipal, readLoopbackCertificate,
+} from './p3LoopbackTls.ts';
 
 /** The bounded child this wrapper drives. A real {@link ChildProcess} satisfies it structurally. */
 export interface LifecycleChild {
@@ -38,7 +40,18 @@ export interface LifecycleChild {
   once(event: 'error', listener: (error: Error) => void): unknown;
 }
 
-export type LifecycleSpawn = (command: string, args: readonly string[]) => LifecycleChild;
+/**
+ * `env` carries ADDITIONS to the child's environment, never a replacement: the client still needs
+ * PATH and the rest of the inherited environment to run at all.
+ */
+export type LifecycleSpawn = (
+  command: string,
+  args: readonly string[],
+  env?: Readonly<Record<string, string>>,
+) => LifecycleChild;
+
+/** Reads the principal an authenticated fixture published for `port`, or null. Injected for the suite. */
+export type PrincipalReader = (port: number) => { token: string; contextPath: string } | null;
 
 /** How the wrapper reaches `/readyz`. Returns true once the fixture answers as ready. */
 export type ReadyProbe = (url: string) => Promise<boolean>;
@@ -60,6 +73,8 @@ export interface P3FixtureLifecycleOptions {
   now?: () => number;
   /** Registers an interrupt handler; returns its unregister. Injected so the suite can fire SIGINT. */
   onInterrupt?: (handler: () => void) => () => void;
+  /** Reads the authenticated fixture's published principal. Defaults to the on-disk publication. */
+  readPrincipal?: PrincipalReader;
   log?: (line: string) => void;
 }
 
@@ -69,8 +84,16 @@ export type P3FixtureLifecycleOutcome =
 
 const DEFAULT_READY_INTERVAL_MS = 150;
 
-function defaultSpawn(command: string, args: readonly string[]): LifecycleChild {
-  return spawn(command, [...args], { stdio: 'inherit', shell: false }) as ChildProcess;
+function defaultSpawn(
+  command: string,
+  args: readonly string[],
+  env?: Readonly<Record<string, string>>,
+): LifecycleChild {
+  return spawn(command, [...args], {
+    stdio: 'inherit',
+    shell: false,
+    ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
+  }) as ChildProcess;
 }
 
 /**
@@ -140,6 +163,36 @@ function waitForExit(child: LifecycleChild): Promise<number> {
   });
 }
 
+/** The port an origin serves on, or null when it names no usable port. */
+export function originPort(origin: string): number | null {
+  let target: URL;
+  try {
+    target = new URL(origin);
+  } catch {
+    return null;
+  }
+  const port = target.port === '' ? (target.protocol === 'https:' ? 443 : 80) : Number(target.port);
+  return Number.isInteger(port) && port > 0 && port < 65_536 ? port : null;
+}
+
+/**
+ * Environment additions for the client: the fixture's published session token and context path, or
+ * nothing at all when no principal was published (the p1 browser fixture mints none).
+ */
+export function principalEnv(
+  options: Pick<P3FixtureLifecycleOptions, 'origin'>,
+  readPrincipal: PrincipalReader,
+  log: (line: string) => void,
+): Record<string, string> | undefined {
+  const port = originPort(options.origin);
+  if (port === null) return undefined;
+  const principal = readPrincipal(port);
+  if (principal === null) return undefined;
+  // The value is a bearer token: report THAT it was handed over, never what it is.
+  log(`handing the client the fixture principal for ${principal.contextPath}`);
+  return { [P3_SESSION_TOKEN_ENV]: principal.token, [P3_CONTEXT_PATH_ENV]: principal.contextPath };
+}
+
 /**
  * Run one bounded fixture + client pair. Never throws for an expected failure — every path returns an
  * outcome, so a caller (and the CLI below) always reaches the same teardown.
@@ -152,6 +205,7 @@ export async function runP3FixtureLifecycle(
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }));
   const now = options.now ?? Date.now;
   const registerInterrupt = options.onInterrupt ?? defaultOnInterrupt;
+  const readPrincipal = options.readPrincipal ?? readFixturePrincipal;
   const log = options.log ?? (() => {});
   const readyInterval = options.readyIntervalMs ?? DEFAULT_READY_INTERVAL_MS;
 
@@ -193,7 +247,10 @@ export async function runP3FixtureLifecycle(
 
     // (3) The client owns the run. Its exit code is the command's exit code.
     if (interrupted) { outcome = { ok: false, reason: 'interrupted', exitCode: 130, forcedKill: false }; return outcome; }
-    const client = spawnChild(clientBin, clientArgs);
+    // The minted principal reaches the client through its ENVIRONMENT. Argv stays byte-identical to
+    // what the operator typed (the pass-through contract), and the §7 smoke command — which cannot
+    // name a token that does not exist until the fixture starts — becomes runnable as written.
+    const client = spawnChild(clientBin, clientArgs, principalEnv(options, readPrincipal, log));
     const clientCode = await waitForExit(client);
     if (interrupted) { outcome = { ok: false, reason: 'interrupted', exitCode: 130, forcedKill: false }; return outcome; }
     outcome = { ok: true, exitCode: clientCode, forcedKill: false };
@@ -285,13 +342,10 @@ export function parseP3FixtureLifecycleArgs(argv: readonly string[]): P3FixtureL
   const module = fixture === 'p1'
     ? 'server/testFixtures/p1BrowserFixture.ts'
     : 'server/testFixtures/p3AuthenticatedServer.ts';
-  // `--experimental-transform-types`, not bare type-stripping: nine modules the server graph imports
-  // still use TS parameter properties (a standing violation of the repo's strip-only floor), and without
-  // the transform `node server/index.ts` refuses to load at all.
-  const fixtureCommand = [
-    process.execPath, '--experimental-transform-types', '--disable-warning=ExperimentalWarning',
-    module, '--port', String(port),
-  ];
+  // Bare type-stripping, no transform flag: W6.6 closure converted every TS constructor parameter
+  // property in the server graph to an explicit field declaration, so plain `node <file>.ts` loads
+  // the fixture. `p3NoParameterProperties.test.ts` keeps it that way.
+  const fixtureCommand = [process.execPath, module, '--port', String(port)];
   if (scenario !== null) fixtureCommand.push('--scenario', scenario);
   if (https) fixtureCommand.push('--https');
   if (realWindowsHost) fixtureCommand.push('--real-windows-host');

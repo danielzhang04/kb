@@ -198,7 +198,12 @@ function sendRevisioned(reply: FastifyReply, requestEtag: string | string[] | un
 const BUILDER_FIELDS = ['humanName', 'purpose', 'model', 'profile', 'tools', 'skills', 'connectors', 'filesystemRoots'] as const;
 
 class AgentBuilderFailure extends Error {
-  constructor(readonly status: number, message: string) { super(message); }
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
 }
 
 function builderCatalog(ctx: SurfaceContext): EntityBuilderCatalog {

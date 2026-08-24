@@ -630,8 +630,12 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
   const rawOpsGit = options.coordinationGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
   const statePath = join(stateRoot, 'control', 'canonical-integration.json');
+  // [C-S4] No eager mkdir under the worktree root. On the VM that root is `/var/lib/kb-shell/worktrees`,
+  // broker-owned (02770, installer-created) and not writable by the dashboard uid at composition time, so
+  // creating it here made activation unconstructible on Linux (EACCES). Nothing is lost: `core.hooksPath`
+  // pointing at a path that does not exist disables repo hooks exactly as an empty directory does, and the
+  // worktree adapter materializes this same directory at first provisioning.
   const hooksPath = join(worktreeRoot, '.disabled-hooks');
-  mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
   // core.longpaths=true: the integration worktree is created under the same deep state-root path as the
   // attempt worktree, so long repo-relative paths tip over Windows MAX_PATH (260) without it. No-op off
   // Windows; not a gate.

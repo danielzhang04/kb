@@ -1,6 +1,6 @@
 /**
- * Durable attempt-mutation vocabulary. These three types outlived the inactive `ManagedSessionBroker`
- * they were declared beside (`broker.ts`, deleted in P3 W6.5 per plan [C-S6]); the retained control
+ * Durable attempt-mutation vocabulary. These three types outlived the inactive managed session
+ * broker they were declared beside (deleted in P3 W6.5 per plan [C-S6]); the retained control
  * store and activation path still speak them, so they live here — the durability boundary — rather
  * than in a process supervisor.
  *

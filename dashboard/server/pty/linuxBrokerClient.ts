@@ -61,7 +61,11 @@ export class LinuxBrokerClient implements SessionHost {
   private readonly sessions = new Map<string, Session>();
   private unavailable = false;
 
-  constructor(private readonly options: LinuxBrokerClientOptions) {}
+  private readonly options: LinuxBrokerClientOptions;
+
+  constructor(options: LinuxBrokerClientOptions) {
+    this.options = options;
+  }
 
   async probe(): Promise<PtyCapabilityProbe> {
     const checkedAt = (this.options.now ?? (() => new Date().toISOString()))();

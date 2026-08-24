@@ -32,7 +32,9 @@ import type {
   BrowserClientFrame, BrowserServerFrame, HostRefusalCode, PublicExit, SessionLauncher,
   SessionSummary,
 } from '../../shared/ptyProtocol.ts';
-import { readLoopbackCertificate } from './p3LoopbackTls.ts';
+import {
+  P3_CONTEXT_PATH_ENV, P3_SESSION_TOKEN_ENV, readLoopbackCertificate,
+} from './p3LoopbackTls.ts';
 
 /* ------------------------------------------------------------------------------------------------ *
  * Exit codes
@@ -50,8 +52,11 @@ export type SmokeExitCode = (typeof SMOKE_EXIT)[keyof typeof SMOKE_EXIT];
 
 /** Every failure this client can report. `code` is what the process exits with. */
 export class SmokeFailure extends Error {
-  constructor(readonly code: SmokeExitCode, message: string) {
+  readonly code: SmokeExitCode;
+
+  constructor(code: SmokeExitCode, message: string) {
     super(message);
+    this.code = code;
     this.name = 'SmokeFailure';
   }
 }
@@ -478,10 +483,19 @@ function parseLauncherList(flag: string, raw: string): SessionLauncher[] {
   return seen;
 }
 
-export function parseP3RealPtySmokeArgs(argv: readonly string[]): P3RealPtySmokeArgs {
+/**
+ * `env` supplies the fixture-minted principal the lifecycle hands over (see `p3LoopbackTls.ts`): the
+ * token cannot be written on the command line because it does not exist until the fixture starts.
+ * ARGV WINS over the environment wherever both are present, and a run with neither is refused — the
+ * client never invents, derives, or defaults a principal.
+ */
+export function parseP3RealPtySmokeArgs(
+  argv: readonly string[],
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): P3RealPtySmokeArgs {
   let origin: string | null = null;
   let sessionToken: string | null = null;
-  let contextPath = '/fixture/context-a';
+  let contextPath: string | null = null;
   let interactive: SessionLauncher[] = ['shell'];
   let headless: SessionLauncher[] = [];
   let cycle: SmokeCycleStep[] = [...SMOKE_CYCLE_STEPS];
@@ -534,17 +548,24 @@ export function parseP3RealPtySmokeArgs(argv: readonly string[]): P3RealPtySmoke
   if (parsedOrigin.protocol !== 'https:' && parsedOrigin.protocol !== 'http:') {
     throw new SmokeFailure(SMOKE_EXIT.usage, `--origin must be http(s): ${origin}`);
   }
-  if (sessionToken === null || sessionToken.length === 0) {
-    throw new SmokeFailure(SMOKE_EXIT.usage, '--session-token is required');
+  const resolvedToken = sessionToken ?? env[P3_SESSION_TOKEN_ENV] ?? null;
+  if (resolvedToken === null || resolvedToken.length === 0) {
+    throw new SmokeFailure(
+      SMOKE_EXIT.usage,
+      `--session-token is required (or ${P3_SESSION_TOKEN_ENV} from the fixture lifecycle)`,
+    );
   }
-  if (!contextPath.startsWith('/')) throw new SmokeFailure(SMOKE_EXIT.usage, '--context-path must be absolute');
+  const resolvedContextPath = contextPath ?? env[P3_CONTEXT_PATH_ENV] ?? '/fixture/context-a';
+  if (!resolvedContextPath.startsWith('/')) {
+    throw new SmokeFailure(SMOKE_EXIT.usage, '--context-path must be absolute');
+  }
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
     throw new SmokeFailure(SMOKE_EXIT.usage, '--timeout-ms must be a positive integer');
   }
 
   return {
     origin: `${parsedOrigin.protocol}//${parsedOrigin.host}`,
-    sessionToken, contextPath, interactive, headless, cycle,
+    sessionToken: resolvedToken, contextPath: resolvedContextPath, interactive, headless, cycle,
     roundtripCurrentRecipes, failIfUnavailable, timeoutMs,
   };
 }
@@ -643,6 +664,95 @@ export interface SmokeReport {
   launchers: SmokeLauncherReport[];
 }
 
+/* ------------------------------------------------------------------------------------------------ *
+ * Offset-aligned transcript comparison
+ * ------------------------------------------------------------------------------------------------ */
+
+/** One `data` frame's payload, tagged with the byte offset the frame's `sequence` named (W0 #3). */
+export interface TranscriptSpan {
+  readonly offset: number;
+  readonly bytes: Buffer;
+}
+
+export type TranscriptComparison =
+  | { readonly ok: true; readonly firstLiveOffset: number; readonly comparedBytes: number; readonly replayedBeforeLive: number }
+  | { readonly ok: false; readonly reason: string };
+
+/** The bytes of `spans`, in order. Only a LENGTH or a substring search may use this — never an offset. */
+export function foldSpans(spans: readonly TranscriptSpan[]): Buffer {
+  return Buffer.concat(spans.map((span) => span.bytes));
+}
+
+/** `[first offset, end offset)` of a contiguous run, or `null` for no spans. */
+export function spanRange(spans: readonly TranscriptSpan[]): { start: number; end: number } | null {
+  if (spans.length === 0) return null;
+  const last = spans[spans.length - 1];
+  return { start: spans[0].offset, end: last.offset + last.bytes.byteLength };
+}
+
+/** The first offset at which the run is not contiguous, or `null` when it is. */
+function firstGap(spans: readonly TranscriptSpan[]): number | null {
+  let expected: number | null = null;
+  for (const span of spans) {
+    if (expected !== null && span.offset !== expected) return expected;
+    expected = span.offset + span.bytes.byteLength;
+  }
+  return null;
+}
+
+/**
+ * Compare a replay against what the client actually saw live, ALIGNED BY BYTE OFFSET.
+ *
+ * A real host writes before the client attaches — cmd.exe prints its banner between `create` and the
+ * first data frame — so a `fromSequence: 0` replay legitimately carries MORE bytes than the live view:
+ * it starts at offset 0 while the live view starts mid-stream. Those earlier bytes are the replay being
+ * correct, not a mismatch, so the comparison is over the OVERLAP only: the replayed bytes in
+ * `[firstLiveOffset, lastLiveOffset + len)` against the live bytes at the same offsets. Everything the
+ * step is for still fails: a replay that does not reach the live range, a hole in either run, and any
+ * differing byte inside the overlap.
+ */
+export function compareReplayToLive(
+  live: readonly TranscriptSpan[],
+  replay: readonly TranscriptSpan[],
+): TranscriptComparison {
+  const liveRange = spanRange(live);
+  if (liveRange === null) return { ok: false, reason: 'no live bytes were observed to compare a replay against' };
+  const replayRange = spanRange(replay);
+  if (replayRange === null) return { ok: false, reason: `replay delivered no bytes for live [${liveRange.start}, ${liveRange.end})` };
+
+  const liveGap = firstGap(live);
+  if (liveGap !== null) return { ok: false, reason: `live transcript has a gap at offset ${liveGap}` };
+  const replayGap = firstGap(replay);
+  if (replayGap !== null) return { ok: false, reason: `replay has a gap at offset ${replayGap}` };
+
+  if (replayRange.start > liveRange.start || replayRange.end < liveRange.end) {
+    return {
+      ok: false,
+      reason: `replay [${replayRange.start}, ${replayRange.end}) does not cover the live range `
+        + `[${liveRange.start}, ${liveRange.end})`,
+    };
+  }
+
+  const liveFold = foldSpans(live);
+  const replayFold = foldSpans(replay);
+  const overlap = replayFold.subarray(liveRange.start - replayRange.start, liveRange.end - replayRange.start);
+  if (!overlap.equals(liveFold)) {
+    let at = 0;
+    while (at < liveFold.byteLength && overlap[at] === liveFold[at]) at += 1;
+    return {
+      ok: false,
+      reason: `replay differs from the live bytes at offset ${liveRange.start + at} `
+        + `(live ${liveFold.byteLength} bytes from ${liveRange.start}, replay ${replayFold.byteLength} bytes from ${replayRange.start})`,
+    };
+  }
+  return {
+    ok: true,
+    firstLiveOffset: liveRange.start,
+    comparedBytes: liveFold.byteLength,
+    replayedBeforeLive: liveRange.start - replayRange.start,
+  };
+}
+
 function jsonOf(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -672,7 +782,7 @@ async function awaitFrame<T extends BrowserServerFrame['type']>(
   socket: RawWebSocket,
   type: T,
   timeoutMs: number,
-  sink: Buffer[] | null,
+  sink: TranscriptSpan[] | null,
   requestId: string | null = null,
 ): Promise<Extract<BrowserServerFrame, { type: T }>> {
   const deadline = Date.now() + timeoutMs;
@@ -680,7 +790,9 @@ async function awaitFrame<T extends BrowserServerFrame['type']>(
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new SmokeFailure(SMOKE_EXIT.timeout, `no ${type} frame within ${timeoutMs} ms`);
     const frame = await nextFrame(socket, remaining);
-    if (frame.type === 'data' && sink !== null) sink.push(Buffer.from(frame.data, 'base64'));
+    if (frame.type === 'data' && sink !== null) {
+      sink.push({ offset: frame.sequence, bytes: Buffer.from(frame.data, 'base64') });
+    }
     if (frame.type !== type) continue;
     if (requestId !== null && frame.requestId !== requestId) continue;
     return frame as Extract<BrowserServerFrame, { type: T }>;
@@ -760,7 +872,7 @@ export async function runP3RealPtySmoke(
     const socket = await connect({
       url: wsUrl, cookie: cookieHeader, sessionToken: args.sessionToken, timeoutMs: args.timeoutMs,
     });
-    const live: Buffer[] = [];
+    const live: TranscriptSpan[] = [];
     let sessionId = '';
     let attachmentId = '';
     let exit: PublicExit | null = null;
@@ -801,13 +913,13 @@ export async function runP3RealPtySmoke(
         // Bounded wait for the host's echo. Data frames arrive interleaved with the ack, so the fold is
         // filled by the same loop that watches for the mark.
         const deadline = Date.now() + args.timeoutMs;
-        while (!Buffer.concat(live).toString('utf8').includes(SMOKE_ECHO_MARK)) {
+        while (!foldSpans(live).toString('utf8').includes(SMOKE_ECHO_MARK)) {
           const remaining = deadline - Date.now();
           if (remaining <= 0) {
             throw new SmokeFailure(SMOKE_EXIT.timeout, `echo of ${SMOKE_ECHO_MARK} did not arrive in ${args.timeoutMs} ms`);
           }
           const frame = await nextFrame(socket, remaining);
-          if (frame.type === 'data') live.push(Buffer.from(frame.data, 'base64'));
+          if (frame.type === 'data') live.push({ offset: frame.sequence, bytes: Buffer.from(frame.data, 'base64') });
         }
       }
 
@@ -821,7 +933,7 @@ export async function runP3RealPtySmoke(
         }
       }
 
-      const replay: Buffer[] = [];
+      const replay: TranscriptSpan[] = [];
       if (steps.has('reattach')) {
         const attachId = nextRequestId();
         const attach: BrowserClientFrame = {
@@ -846,20 +958,17 @@ export async function runP3RealPtySmoke(
           if (frame.sequence !== seen) {
             throw new SmokeFailure(SMOKE_EXIT.mismatch, `replay frame at ${frame.sequence} does not continue ${seen}`);
           }
-          replay.push(bytes);
+          replay.push({ offset: frame.sequence, bytes });
           seen = frame.sequence + bytes.byteLength;
         }
       }
 
       if (steps.has('compare-transcript')) {
-        const liveFold = Buffer.concat(live);
-        const replayFold = Buffer.concat(replay);
-        if (!liveFold.equals(replayFold)) {
-          throw new SmokeFailure(
-            SMOKE_EXIT.mismatch,
-            `replay is not byte-identical: ${liveFold.length} live vs ${replayFold.length} replayed`,
-          );
-        }
+        // Offset-aligned, NOT length-equal: a real cmd.exe writes its banner between `create` and this
+        // client's first data frame, so the live view starts mid-stream while a `fromSequence: 0` replay
+        // starts at 0. Those earlier replayed bytes are the server being right. See `compareReplayToLive`.
+        const comparison = compareReplayToLive(live, replay);
+        if (!comparison.ok) throw new SmokeFailure(SMOKE_EXIT.mismatch, comparison.reason);
       }
 
       // The step [C-R6] exists for: drive the session PAST the 64 KiB window, reattach, and prove the
@@ -868,10 +977,10 @@ export async function runP3RealPtySmoke(
       let bulkLiveBytes: number | null = null;
       let bulkReplayBytes: number | null = null;
       if (steps.has('bulk-reattach')) {
-        const before = Buffer.concat(live).byteLength;
-        for (let round = 0; Buffer.concat(live).byteLength - before < SMOKE_BULK_TARGET_BYTES; round += 1) {
+        const before = foldSpans(live).byteLength;
+        for (let round = 0; foldSpans(live).byteLength - before < SMOKE_BULK_TARGET_BYTES; round += 1) {
           if (round > 400) throw new SmokeFailure(SMOKE_EXIT.mismatch, 'bulk output never reached the replay window');
-          const grown = Buffer.concat(live).byteLength;
+          const grown = foldSpans(live).byteLength;
           socket.send(JSON.stringify({
             type: 'input', requestId: nextRequestId(), sessionId, attachmentId,
             encoding: 'base64', data: Buffer.from(SMOKE_BULK_LINE, 'utf8').toString('base64'),
@@ -879,18 +988,18 @@ export async function runP3RealPtySmoke(
           // Each line is echoed as typed and printed by the shell, so ~900 new bytes per round is the
           // floor. Waiting on GROWTH keeps this shell-agnostic — no prompt, wrap, or CRLF assumptions.
           const deadline = Date.now() + args.timeoutMs;
-          while (Buffer.concat(live).byteLength - grown < 900) {
+          while (foldSpans(live).byteLength - grown < 900) {
             const remaining = deadline - Date.now();
             if (remaining <= 0) throw new SmokeFailure(SMOKE_EXIT.timeout, 'bulk echo did not arrive');
             const frame = await nextFrame(socket, remaining);
-            if (frame.type === 'data') live.push(Buffer.from(frame.data, 'base64'));
+            if (frame.type === 'data') live.push({ offset: frame.sequence, bytes: Buffer.from(frame.data, 'base64') });
           }
         }
         // Quiesce: the tail comparison is only honest once the host has stopped producing.
         for (;;) {
           try {
             const frame = await nextFrame(socket, 750);
-            if (frame.type === 'data') live.push(Buffer.from(frame.data, 'base64'));
+            if (frame.type === 'data') live.push({ offset: frame.sequence, bytes: Buffer.from(frame.data, 'base64') });
           } catch (error) {
             if (error instanceof SmokeFailure && error.code === SMOKE_EXIT.timeout) break;
             throw error;
@@ -908,11 +1017,16 @@ export async function runP3RealPtySmoke(
           type: 'attach', requestId: attachId, sessionId, fromSequence: 0,
         } satisfies BrowserClientFrame));
         const attached = await awaitFrame(socket, 'attached', args.timeoutMs, null, attachId);
-        const liveFold = Buffer.concat(live);
-        if (attached.nextSequence !== liveFold.byteLength) {
+        const liveFold = foldSpans(live);
+        // The cursor is compared against the live END OFFSET, not the live byte COUNT: bytes the host
+        // wrote before this client attached are in the server's transcript and not in `live`.
+        const liveSpan = spanRange(live);
+        if (liveSpan === null) throw new SmokeFailure(SMOKE_EXIT.mismatch, 'no live bytes were observed');
+        if (attached.nextSequence !== liveSpan.end) {
           throw new SmokeFailure(
             SMOKE_EXIT.mismatch,
-            `server cursor ${attached.nextSequence} does not match the ${liveFold.byteLength} bytes observed live`,
+            `server cursor ${attached.nextSequence} does not match the live end offset ${liveSpan.end}`
+              + ` (${liveFold.byteLength} bytes observed live from ${liveSpan.start})`,
           );
         }
         if (attached.replayFrom <= 0) {
@@ -938,7 +1052,9 @@ export async function runP3RealPtySmoke(
         if (tailFold.byteLength === 0 || tailFold.byteLength > 65_536) {
           throw new SmokeFailure(SMOKE_EXIT.mismatch, `tail replay returned ${tailFold.byteLength} bytes`);
         }
-        if (!liveFold.subarray(attached.replayFrom).equals(tailFold)) {
+        // `replayFrom` is an ABSOLUTE offset; `liveFold` starts at `liveSpan.start`, so the live tail is
+        // taken relative to that, not from index `replayFrom`.
+        if (!liveFold.subarray(attached.replayFrom - liveSpan.start).equals(tailFold)) {
           throw new SmokeFailure(
             SMOKE_EXIT.mismatch,
             `tail replay is not the live tail: ${liveFold.byteLength} live vs ${tailFold.byteLength} replayed from ${attached.replayFrom}`,
@@ -960,14 +1076,14 @@ export async function runP3RealPtySmoke(
 
       launchers.push({
         launcher, sessionId,
-        liveBytes: Buffer.concat(live).length,
-        replayBytes: Buffer.concat(replay).length,
+        liveBytes: foldSpans(live).length,
+        replayBytes: foldSpans(replay).length,
         bulkLiveBytes,
         bulkReplayBytes,
         exit,
       });
-      log(`[p3-smoke] ${launcher} ${sessionId} ok live=${Buffer.concat(live).length}`
-        + ` replay=${Buffer.concat(replay).length}`
+      log(`[p3-smoke] ${launcher} ${sessionId} ok live=${foldSpans(live).length}`
+        + ` replay=${foldSpans(replay).length}`
         + `${bulkLiveBytes === null ? '' : ` bulkLive=${bulkLiveBytes} bulkTailReplay=${bulkReplayBytes}`}`);
     } finally {
       socket.close();

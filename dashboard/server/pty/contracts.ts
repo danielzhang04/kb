@@ -11,6 +11,7 @@ import type { ProposalStage, ResolvedAgentAssignment } from '../control/proposal
 import type { WorkerExecutionResult } from '../control/execution.ts';
 import type { SessionRunRecord } from './sessionRuns.ts';
 import type {
+  DroppedLauncher,
   HostRefusalCode,
   LaunchRecipe,
   SafeRootId,
@@ -23,6 +24,7 @@ import type {
 export type {
   AttemptSessionPublicRow,
   BrokerClientFrame,
+  DroppedLauncher,
   BrokerServerFrame,
   BrowserClientFrame,
   BrowserServerFrame,
@@ -55,7 +57,11 @@ export type SessionSink = { data(frame: SessionDataFrame): void; exit(exit: Obse
   closed(): boolean };
 export type PtyCapabilityProbe =
   | { available: true; host: SessionHostKind; transport: 'local-node-pty' | 'unix-broker';
-      launchers: SessionLauncher[]; roots: SafeRootId[]; epochId: string; checkedAt: string }
+      launchers: SessionLauncher[]; roots: SafeRootId[]; epochId: string; checkedAt: string;
+      /** Optional launchers the pin validator refused. Present only when non-empty; the operator's
+       *  only trace of a tampered launcher tree, so it is carried to the public capability and Health
+       *  rather than swallowed by the drop. */
+      droppedLaunchers?: DroppedLauncher[] }
   | { available: false; host: SessionHostKind; transport: 'local-node-pty' | 'unix-broker';
       reason: import('../../shared/ptyProtocol.ts').PtyProbeReason; detail: string | null; checkedAt: string };
 export type BrowserPrincipal = { operator: string; browserSessionRef: string };

@@ -63,8 +63,11 @@ export type PtySessionPersistenceErrorCode = 'invalid-input' | 'document-unavail
   | 'revision-conflict' | 'capacity';
 
 export class PtySessionPersistenceError extends Error {
-  constructor(readonly code: PtySessionPersistenceErrorCode, message: string) {
+  readonly code: PtySessionPersistenceErrorCode;
+
+  constructor(code: PtySessionPersistenceErrorCode, message: string) {
     super(message);
+    this.code = code;
     this.name = 'PtySessionPersistenceError';
   }
 }

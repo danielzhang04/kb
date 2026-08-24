@@ -7,8 +7,13 @@ export type EntityCollection = 'agents' | 'workflows';
 export type EntityRequestScope = 'list' | 'detail';
 
 export class EntityClientFailure extends Error {
-  constructor(readonly status: number, readonly scope: EntityRequestScope) {
+  readonly status: number;
+  readonly scope: EntityRequestScope;
+
+  constructor(status: number, scope: EntityRequestScope) {
     super(`entity ${scope} request failed (${status})`);
+    this.status = status;
+    this.scope = scope;
     this.name = 'EntityClientFailure';
   }
 }

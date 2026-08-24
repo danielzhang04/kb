@@ -163,7 +163,10 @@ export class LinuxBrokerServer {
   private persistTail: Promise<void> = Promise.resolve();
   private recoveryComplete: boolean;
 
-  constructor(private readonly options: LinuxBrokerServerOptions) {
+  private readonly options: LinuxBrokerServerOptions;
+
+  constructor(options: LinuxBrokerServerOptions) {
+    this.options = options;
     for (const session of options.recoveredSessions ?? []) this.recovered.set(session.sessionId, session);
     for (const receipt of options.recoveredReceipts ?? []) {
       this.receipts.set(receipt.operationKey, { requestHash: receipt.requestHash, sessionId: receipt.sessionId });

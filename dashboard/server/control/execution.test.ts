@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
 import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import type { JsonObject } from './types.ts';
@@ -288,7 +288,13 @@ function windowAccounting(window: ExecutionBudget, maxConcurrency = 1): { adapte
   return { adapter, records };
 }
 
-function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir(), 'kb-auto-worktrees')): AutomaticExecutionOptions {
+// Per-suite worktree root. A fixed `tmpdir()/kb-auto-worktrees` was shared with the store/launch
+// suites, so concurrent workers raced each other's directories under full-gate load.
+const SUITE_WORKTREE_ROOT = mkdtempSync(join(tmpdir(), 'kb-auto-worktrees-execution-'));
+// Removed once the suite ends: a per-run mkdtemp root with no cleanup leaks one temp tree per run.
+afterAll(() => { rmSync(SUITE_WORKTREE_ROOT, { recursive: true, force: true }); });
+
+function engineOptions(store: ControlPlaneStore, fake: Fakes, root = SUITE_WORKTREE_ROOT): AutomaticExecutionOptions {
   return {
     store,
     policy,

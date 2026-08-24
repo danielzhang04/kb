@@ -125,6 +125,46 @@ describe('p3AuthenticatedServer — the real authenticated surface', () => {
     expect(created).toBe(0);
   });
 
+  /**
+   * THE INVARIANT the W6.6 defect broke: the published capability is the composed host's own probe.
+   * The fixture used to publish a hard-coded `pty: true, launchers: [shell, claude, codex]` beside a
+   * real host whose probe answered `{available:false, reason:'root-policy-invalid'}`, so the browser
+   * was invited to a terminal the host refused at create. Capability may never advertise what the
+   * probe refuses — and never more launchers than it returned.
+   */
+  it.each([
+    ['an available probe', {
+      available: true as const, host: 'desktop' as const, transport: 'local-node-pty' as const,
+      launchers: ['shell' as const], roots: ['repo' as const],
+      epochId: 'epoch-0f3a0f3a0f3a0f3a0f3a0f3a0f3a0f3a', checkedAt: '2026-08-23T00:00:00.000Z',
+    }],
+    ['a refusing probe', {
+      available: false as const, host: 'desktop' as const, transport: 'local-node-pty' as const,
+      reason: 'root-policy-invalid' as const, detail: null, checkedAt: '2026-08-23T00:00:00.000Z',
+    }],
+    ['a throwing probe', null],
+  ])('publishes exactly what the composed host probe says (%s)', async (_label, probeResult) => {
+    const inner = createDeterministicSessionHost();
+    const host: SessionHost = {
+      ...inner,
+      async probe() {
+        if (probeResult === null) throw new Error('probe exploded');
+        return probeResult;
+      },
+    };
+    const server = await start({ sessionHost: host });
+    const response = await fetch(`${server.origin}/api/runtime/capabilities`, { headers: headers(server, 'a') });
+    expect(response.status).toBe(200);
+    const capability = await response.json() as { pty: boolean; launchers?: string[] };
+    expect(capability.pty).toBe(probeResult?.available === true);
+    if (capability.pty) expect(capability.launchers).toEqual(['shell']);
+    // Fail-closed both ways: a refused probe leaves the create path unreachable, not merely unadvertised.
+    if (!capability.pty) {
+      const listed = await fetch(`${server.origin}/api/pty/sessions`, { headers: headers(server, 'a') });
+      expect(listed.status).toBe(404);
+    }
+  });
+
   it('refuses --real-windows-host off win32 instead of silently substituting the fake', async () => {
     if (process.platform === 'win32') {
       // On Windows the flag is honoured; the refusal below is the non-Windows contract.

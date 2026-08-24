@@ -670,20 +670,29 @@ export interface QuarantinePlanDto {
 }
 
 export class ControlApiError extends Error {
+  readonly status: number;
+  readonly reason: string;
+  /** Stable server error discriminator; unlike `reason`, this never prefers human-readable detail. */
+  readonly code: string;
+  /**
+   * The refusal body as the server sent it, for the routes whose refusals carry STRUCTURED data a
+   * caller must act on — the [C-R6] replay gap's `nextSequence`/`floorSequence` is the first. Kept as
+   * the raw record rather than a field per route: a caller that wants one of these numbers must
+   * validate it itself, and no route can widen this error class by adding a refusal field.
+   */
+  readonly body: Record<string, unknown> | null;
+
   constructor(
-    readonly status: number,
-    readonly reason: string,
-    /** Stable server error discriminator; unlike `reason`, this never prefers human-readable detail. */
-    readonly code: string = reason,
-    /**
-     * The refusal body as the server sent it, for the routes whose refusals carry STRUCTURED data a
-     * caller must act on — the [C-R6] replay gap's `nextSequence`/`floorSequence` is the first. Kept as
-     * the raw record rather than a field per route: a caller that wants one of these numbers must
-     * validate it itself, and no route can widen this error class by adding a refusal field.
-     */
-    readonly body: Record<string, unknown> | null = null,
+    status: number,
+    reason: string,
+    code: string = reason,
+    body: Record<string, unknown> | null = null,
   ) {
     super(reason ? `control request refused: ${status} (${reason})` : `control request refused: ${status}`);
+    this.status = status;
+    this.reason = reason;
+    this.code = code;
+    this.body = body;
   }
 }
 

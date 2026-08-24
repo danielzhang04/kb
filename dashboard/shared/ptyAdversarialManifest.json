@@ -1,27 +1,234 @@
 {
-  "titles": [
-    "traversal",
-    "denied-root static symlink",
-    "cwd/executable/shim/JS/interpreter/parent swap",
-    "every raw authority field",
-    "arbitrary and duplicate query",
-    "raw WS oversize",
-    "decoded oversize",
-    "high-water",
-    "atomic 16-host/8-principal capacity races",
-    "independent composite-principal list/attach/write/resize/close/eviction",
-    "cookie CSPRNG/name/path/lifetime/renewal/collision",
-    "same-pair multi-tab",
-    "claim first/replay/revision/foreign mask and exact claim envelope",
-    "root uid/mode refusal",
-    "child uid/env deny list",
-    "Unix-only listener",
-    "recipe/policy/parser round-trip/refusal",
-    "awaited durable mutations",
-    "dashboard/broker restart, drain, zero-orphan and old-epoch exit precedence",
-    "false-persistence prevention",
-    "OS-derived-capability source flow",
-    "retained-import/deletion closure",
-    "deployment closer casts"
+  "note": "P3 adversarial manifest. `attacks` carries one exact owning test title and required proof layer per plan section 9 attack id; `gateFiles` repeats the plan section 7 focused gate file list (with the two closure amendments recorded in `gateFileAmendments`). server/pty/p3AttackManifest.test.ts is the set-equality and ownership authority.",
+  "gateFileAmendments": [
+    {
+      "path": "server/pty/persistentSessions.test.ts",
+      "change": "removed",
+      "reason": "W6.4 review ruling deleted persistentSessions.ts/.test.ts as production-dead; the plan section 7 literal list predates that deletion."
+    },
+    {
+      "path": "server/pty/transcripts.test.ts",
+      "change": "removed",
+      "reason": "W6.4 review ruling deleted transcripts.ts/.test.ts in favour of W3 createTranscriptRetention; the plan section 7 literal list predates that deletion."
+    },
+    {
+      "path": "server/pty/p3DeletionClosure.test.ts",
+      "change": "added",
+      "reason": "W6.6 closure suite: proves the deleted-path inventory, the retained-import residue closure, and the strip-only parameter-property floor. It owns the `retained-import/deletion closure` attack id and must run inside the focused gate."
+    },
+    {
+      "path": "server/testFixtures/assertP3GateResults.test.ts",
+      "change": "added",
+      "reason": "W6.6 closure suite for the gate-result asserter the plan section 7 gate itself invokes; the asserter must be proven inside the gate it guards."
+    }
+  ],
+  "gateFiles": [
+    "server/pty/contracts.test.ts",
+    "server/pty/probe.test.ts",
+    "server/pty/windowsSessionHost.test.ts",
+    "server/pty/launcherProfiles.test.ts",
+    "server/pty/brokerProtocol.test.ts",
+    "server/pty/fdPinnedPaths.test.ts",
+    "server/pty/linuxBrokerClient.test.ts",
+    "server/pty/linuxBrokerServer.test.ts",
+    "server/pty/brokerProbe.test.ts",
+    "server/pty/sessionRecord.test.ts",
+    "server/pty/sessionPersistence.test.ts",
+    "server/pty/sessionMigration.test.ts",
+    "server/pty/sessionRuns.test.ts",
+    "server/pty/route.test.ts",
+    "server/pty/p3AttackManifest.test.ts",
+    "server/pty/p3DeletionClosure.test.ts",
+    "server/auth/browserSessionRef.test.ts",
+    "server/auth/session.test.ts",
+    "server/auth/routes.test.ts",
+    "server/runtime/capabilities.test.ts",
+    "server/runtime/capabilitiesSource.test.ts",
+    "server/health/service.test.ts",
+    "server/http/surface.test.ts",
+    "server/index.test.ts",
+    "server/agents/routes.test.ts",
+    "server/write/cardRespondRoute.test.ts",
+    "server/control/attemptSessionAdapter.test.ts",
+    "server/control/activation.test.ts",
+    "server/control/activation.boot.test.ts",
+    "server/control/managedExecution.test.ts",
+    "server/control/execution.test.ts",
+    "server/control/claudeWorkerAdapter.test.ts",
+    "server/control/codexExecAdapter.test.ts",
+    "server/control/childEnv.test.ts",
+    "server/control/toolPolicyWire.test.ts",
+    "server/control/store.test.ts",
+    "server/control/launch.test.ts",
+    "server/control/adapters.test.ts",
+    "server/control/canonicalResultIntegrator.test.ts",
+    "server/control/paidActionWiring.test.ts",
+    "server/control/spendGrantProvision.test.ts",
+    "server/control/p2Contracts.test.ts",
+    "server/control/providerOperationalEvents.test.ts",
+    "server/control/runEventService.test.ts",
+    "server/control/runEventStream.test.ts",
+    "server/control/runProjection.test.ts",
+    "server/control/routes.test.ts",
+    "server/control/synthetic-acceptance.test.ts",
+    "server/workflows/routes.test.ts",
+    "server/testFixtures/p1BrowserFixture.test.ts",
+    "server/testFixtures/p3AuthenticatedServer.test.ts",
+    "server/testFixtures/p3FixtureLifecycle.test.ts",
+    "server/testFixtures/p3ActualBrowserRunner.test.ts",
+    "server/testFixtures/p3RealPtySmokeClient.test.ts",
+    "server/testFixtures/assertP3GateResults.test.ts",
+    "src/lib/runtimeCapabilities.test.tsx",
+    "src/lib/terminalClient.test.ts",
+    "src/control/controlClient.test.ts",
+    "src/console/ConsolePane.test.tsx",
+    "src/console/sessionWorkspaceModel.test.ts",
+    "src/views/TerminalSessionHeader.test.tsx",
+    "src/views/TerminalSessionEmpty.test.tsx",
+    "src/views/Terminal.test.tsx",
+    "src/views/RunDetail.test.tsx",
+    "src/views/AgentDetail.test.tsx",
+    "src/views/WorkflowDetail.test.tsx",
+    "src/App.test.tsx"
+  ],
+  "attacks": [
+    {
+      "id": "traversal",
+      "suite": "server/pty/fdPinnedPaths.test.ts",
+      "title": "rejects traversal, absolute paths, denied roots, controls, and unsafe path segments",
+      "proof": "P6"
+    },
+    {
+      "id": "denied-root static symlink",
+      "suite": "server/pty/launcherProfiles.test.ts",
+      "title": "refuses a reparse-point component beneath the approved cwd root",
+      "proof": "P6"
+    },
+    {
+      "id": "cwd/executable/shim/JS/interpreter/parent swap",
+      "suite": "server/pty/fdPinnedPaths.test.ts",
+      "title": "follows a policy-valid symlink but refuses one swapped between the O_PATH pin and its use",
+      "proof": "P6"
+    },
+    {
+      "id": "every raw authority field",
+      "suite": "server/pty/brokerProtocol.test.ts",
+      "title": "rejects raw authority keys and non-canonical base64 on broker frames",
+      "proof": "P6"
+    },
+    {
+      "id": "arbitrary and duplicate query",
+      "suite": "server/pty/route.test.ts",
+      "title": "refuses ANY query on the upgrade with 400 after the principal and before 101",
+      "proof": "P9"
+    },
+    {
+      "id": "raw WS oversize",
+      "suite": "server/pty/route.test.ts",
+      "title": "answers an undecodable frame with one invalid-request error and no registry call",
+      "proof": "P8"
+    },
+    {
+      "id": "decoded oversize",
+      "suite": "server/pty/brokerProtocol.test.ts",
+      "title": "refuses a declared or buffered frame above 98,304 bytes before JSON parsing",
+      "proof": "P8"
+    },
+    {
+      "id": "high-water",
+      "suite": "server/pty/route.test.ts",
+      "title": "high-water: a send buffer above the mark detaches the attachment and closes the socket",
+      "proof": "P8"
+    },
+    {
+      "id": "atomic 16-host/8-principal capacity races",
+      "suite": "server/pty/windowsSessionHost.test.ts",
+      "title": "reserves the final host and principal slots atomically without leaks",
+      "proof": "P1"
+    },
+    {
+      "id": "independent composite-principal list/attach/write/resize/close/eviction",
+      "suite": "server/pty/sessionRecord.test.ts",
+      "title": "independent composite-principal list/attach/write/resize/close/eviction",
+      "proof": "P5"
+    },
+    {
+      "id": "cookie CSPRNG/name/path/lifetime/renewal/collision",
+      "suite": "server/auth/browserSessionRef.test.ts",
+      "title": "cookie CSPRNG/name/path/lifetime/renewal/collision",
+      "proof": "P5"
+    },
+    {
+      "id": "same-pair multi-tab",
+      "suite": "server/pty/sessionRecord.test.ts",
+      "title": "same-pair multi-tab",
+      "proof": "P5"
+    },
+    {
+      "id": "claim first/replay/revision/foreign mask and exact claim envelope",
+      "suite": "server/pty/sessionRecord.test.ts",
+      "title": "claim first/replay/revision/foreign mask and exact claim envelope",
+      "proof": "P4"
+    },
+    {
+      "id": "root uid/mode refusal",
+      "suite": "server/pty/linuxBrokerServer.test.ts",
+      "title": "requires the named non-root kb-shell and kb-dashboard uid/gid policy",
+      "proof": "P7"
+    },
+    {
+      "id": "child uid/env deny list",
+      "suite": "server/pty/launcherProfiles.test.ts",
+      "title": "builds a minimal child environment through the credential deny-list backstop",
+      "proof": "P2"
+    },
+    {
+      "id": "Unix-only listener",
+      "suite": "server/pty/linuxBrokerServer.test.ts",
+      "title": "uses only a canonical Unix listen path and checks the post-listen address",
+      "proof": "P7"
+    },
+    {
+      "id": "recipe/policy/parser round-trip/refusal",
+      "suite": "server/pty/launcherProfiles.test.ts",
+      "title": "refuses invalid closed recipe combinations",
+      "proof": "P1"
+    },
+    {
+      "id": "awaited durable mutations",
+      "suite": "server/pty/sessionPersistence.test.ts",
+      "title": "awaits asynchronous persistence callbacks before commit",
+      "proof": "P4"
+    },
+    {
+      "id": "dashboard/broker restart, drain, zero-orphan and old-epoch exit precedence",
+      "suite": "server/pty/linuxBrokerServer.test.ts",
+      "title": "kills an old epoch, finalizes an exit once, and drops a late exit after shutdown",
+      "proof": "P10"
+    },
+    {
+      "id": "false-persistence prevention",
+      "suite": "server/pty/sessionMigration.test.ts",
+      "title": "false-persistence prevention",
+      "proof": "P10"
+    },
+    {
+      "id": "OS-derived-capability source flow",
+      "suite": "server/runtime/capabilitiesSource.test.ts",
+      "title": "OS-derived-capability source flow",
+      "proof": "P3"
+    },
+    {
+      "id": "retained-import/deletion closure",
+      "suite": "server/pty/p3DeletionClosure.test.ts",
+      "title": "retained-import/deletion closure",
+      "proof": "P3"
+    },
+    {
+      "id": "deployment closer casts",
+      "suite": "server/pty/sessionRecord.test.ts",
+      "title": "deployment closer casts",
+      "proof": "P7"
+    }
   ]
 }

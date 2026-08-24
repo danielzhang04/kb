@@ -230,7 +230,12 @@ export class NodePtyChild implements BrokerPty {
   private dataListener: (data: Uint8Array) => void = () => {};
   private exitListener: (exitCode: number | null, signal: number | null) => void = () => {};
 
-  constructor(private readonly child: IPty, readonly identity: BrokerProcessIdentity) {
+  private readonly child: IPty;
+  readonly identity: BrokerProcessIdentity;
+
+  constructor(child: IPty, identity: BrokerProcessIdentity) {
+    this.child = child;
+    this.identity = identity;
     this.pid = child.pid;
     // Spawned with `encoding: null`, so node-pty delivers Buffers: PTY output is never decoded.
     // A string can only appear if that option is lost; latin1 is the byte-preserving fallback.

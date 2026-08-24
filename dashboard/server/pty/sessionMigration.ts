@@ -29,8 +29,11 @@ export type PtySessionMigrationStage = 'directory' | 'mutex' | 'source-read' | '
 export class PtySessionMigrationError extends Error {
   readonly code = PTY_SESSION_MIGRATION_REQUIRED;
 
-  constructor(message: string, readonly report: readonly string[]) {
+  readonly report: readonly string[];
+
+  constructor(message: string, report: readonly string[]) {
     super(message);
+    this.report = report;
     this.name = 'PtySessionMigrationError';
   }
 }

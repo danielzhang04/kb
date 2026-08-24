@@ -173,3 +173,52 @@ describe('composeHealth — PTY state migration integrity row', () => {
     expect(composeSpy).not.toHaveBeenCalled();
   });
 });
+/**
+ * B1 closure - an optional launcher dropped by the pin validator is not fatal, so Health is the ONLY
+ * surface on which an operator can see that one was dropped and why.
+ */
+describe('composeHealth - dropped PTY launcher integrity row', () => {
+  const droppedInput = (ptyDroppedLaunchers?: () => readonly { launcher: string; refusal: string }[]) => ({
+    scheduleSnapshot: () => ({ collectionRevision: 0, schedules: [] as Schedule[] }),
+    ...(ptyDroppedLaunchers ? { ptyDroppedLaunchers } : {}),
+  });
+
+  it('emits exactly ONE closed integrity row naming every dropped launcher and its refusal', () => {
+    const response = composeHealth('/repo', readers(), droppedInput(() => [
+      { launcher: 'claude', refusal: 'launcher-changed' },
+      { launcher: 'codex', refusal: 'launcher-unavailable' },
+    ]));
+
+    expect(response.sections[0].rows.filter((row) => row.key === 'pty-launcher-dropped')).toEqual([{
+      kind: 'integrity',
+      key: 'pty-launcher-dropped',
+      label: 'PTY launchers',
+      value: {
+        status: 'error',
+        code: 'pty-launcher-dropped',
+        detail: 'Launcher dropped by the pin validator · claude (launcher-changed), '
+          + 'codex (launcher-unavailable) · terminal offers the remaining launchers only',
+      },
+      observedAt: now(),
+      source: 'pty-probe',
+    }]);
+  });
+
+  it('says nothing when nothing was dropped, the reader is absent, or the reader throws', () => {
+    const throwing = droppedInput(() => { throw new Error('capability unavailable'); });
+    for (const input of [droppedInput(() => []), droppedInput(), throwing]) {
+      const response = composeHealth('/repo', readers(), input);
+      expect(response.sections[0].rows.some((row) => row.key === 'pty-launcher-dropped')).toBe(false);
+    }
+  });
+
+  it('keeps the drop visible even when the fleet reader itself fails', () => {
+    const failing = { ...readers(), fleet: vi.fn(() => { throw new Error('fleet reader down'); }) };
+
+    const response = composeHealth('/repo', failing, droppedInput(() => [
+      { launcher: 'claude', refusal: 'launcher-unavailable' },
+    ]));
+
+    expect(response.sections[0].rows.map((row) => row.key)).toEqual(['error:fleet', 'pty-launcher-dropped']);
+  });
+});

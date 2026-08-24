@@ -32,9 +32,21 @@ export type PtyMigrationIntegrityRow = {
   observedAt: string;
   source: 'pty-store';
 };
-export type HealthRow = FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | StopRow | MachineRow | McpRow | UsageRow | ReleaseRow | McpAvailabilityRow | UnavailableRow;
+/** One or more OPTIONAL launchers were dropped from an otherwise-available PTY host because their own
+ *  tree failed the pin. Present ONLY when something was dropped: a host that advertised everything it
+ *  found says nothing. This is the operator's only reading of "your Claude binary was tampered with"
+ *  — the drop itself is deliberately not fatal, so without this row it would be invisible. */
+export type PtyLauncherIntegrityRow = {
+  kind: 'integrity';
+  key: 'pty-launcher-dropped';
+  label: 'PTY launchers';
+  value: { status: 'error'; code: 'pty-launcher-dropped'; detail: string };
+  observedAt: string;
+  source: 'pty-probe';
+};
+export type HealthRow = FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | PtyLauncherIntegrityRow | StopRow | MachineRow | McpRow | UsageRow | ReleaseRow | McpAvailabilityRow | UnavailableRow;
 export type HealthResponse = { sections: [
-  { id: 'fleet'; label: 'Fleet'; rows: Array<FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | UnavailableRow<'fleet'>> },
+  { id: 'fleet'; label: 'Fleet'; rows: Array<FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | PtyLauncherIntegrityRow | UnavailableRow<'fleet'>> },
   { id: 'stop'; label: 'STOP'; rows: Array<StopRow | UnavailableRow<'stop'>> },
   { id: 'daemon-machine'; label: 'Daemon and machine'; rows: Array<MachineRow | ReleaseRow | UnavailableRow<'daemon-machine'>> },
   { id: 'mcp'; label: 'MCP'; rows: Array<McpRow | McpAvailabilityRow | UnavailableRow<'mcp'>> },
@@ -58,11 +70,16 @@ export interface HealthReaders {
 /** Structural, not imported from `server/pty/`: Health composing this row must not pull the PTY module
  *  graph (and its host probe) into a read route. `SessionRunStore#migrationState` satisfies it by shape. */
 export type PtyMigrationStateReader = () => 'pending' | 'ok' | { refused: string };
+/** Structural for the same reason: the composed capability already holds the closed `{launcher, refusal}`
+ *  pairs, so Health reads them as data and never constructs or re-probes a PTY host. */
+export type PtyDroppedLauncherReader = () => readonly { launcher: string; refusal: string }[];
 
 export interface HealthFleetInput {
   scheduleSnapshot: () => { collectionRevision: number; schedules: readonly Schedule[] };
   /** Absent on a daemon with no PTY stack (probe refused) — which is not a migration refusal, so no row. */
   ptyMigrationState?: PtyMigrationStateReader;
+  /** Absent when the composed capability advertised no PTY host, or dropped nothing. */
+  ptyDroppedLaunchers?: PtyDroppedLauncherReader;
 }
 
 const emptyFleetInput: HealthFleetInput = {
@@ -92,6 +109,33 @@ function ptyMigrationRows(observedAt: string, reader: PtyMigrationStateReader | 
     },
     observedAt,
     source: 'pty-store',
+  }];
+}
+
+/** ONE row listing every dropped launcher, and only when at least one was dropped. The detail names the
+ *  launcher and its closed refusal code and nothing else — no path, no ACL, no SID. */
+function ptyLauncherRows(observedAt: string, reader: PtyDroppedLauncherReader | undefined): PtyLauncherIntegrityRow[] {
+  if (reader === undefined) return [];
+  let dropped: readonly { launcher: string; refusal: string }[];
+  try {
+    dropped = reader();
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(dropped) || dropped.length === 0) return [];
+  // The separator is written as an escape, never a literal middot byte.
+  const named = dropped.map((entry) => `${entry.launcher} (${entry.refusal})`).join(', ');
+  return [{
+    kind: 'integrity',
+    key: 'pty-launcher-dropped',
+    label: 'PTY launchers',
+    value: {
+      status: 'error',
+      code: 'pty-launcher-dropped',
+      detail: `Launcher dropped by the pin validator \u00b7 ${named} \u00b7 terminal offers the remaining launchers only`,
+    },
+    observedAt,
+    source: 'pty-probe',
   }];
 }
 
@@ -127,10 +171,15 @@ function fleetRows(
   ownerReader: HealthReaders['owners'],
   scheduleSnapshot: HealthFleetInput['scheduleSnapshot'],
   ptyMigrationState: HealthFleetInput['ptyMigrationState'],
-): Array<FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | UnavailableRow<'fleet'>> {
+  ptyDroppedLaunchers: HealthFleetInput['ptyDroppedLaunchers'],
+): Array<FleetRow | ScheduleIntegrityRow | PtyMigrationIntegrityRow | PtyLauncherIntegrityRow | UnavailableRow<'fleet'>> {
   // Composed OUTSIDE the fleet try: a PTY migration refusal is exactly the moment the operator needs the
-  // row, and it must not be swallowed by (or swallow) an unrelated fleet-reader failure.
-  const ptyIntegrity = ptyMigrationRows(observedAt, ptyMigrationState);
+  // row, and it must not be swallowed by (or swallow) an unrelated fleet-reader failure. The dropped-
+  // launcher row is composed on the same terms and for the same reason.
+  const ptyIntegrity = [
+    ...ptyMigrationRows(observedAt, ptyMigrationState),
+    ...ptyLauncherRows(observedAt, ptyDroppedLaunchers),
+  ];
   try {
     const schedules = scheduleSnapshot().schedules;
     const fleet: FleetRow[] = reader(repoRoot).agents.map((agent) => ({
@@ -212,7 +261,7 @@ export function composeHealth(
   const observedAt = readers.now();
   return {
     sections: [
-      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet, readers.owners, fleetInput.scheduleSnapshot, fleetInput.ptyMigrationState) },
+      { id: 'fleet', label: 'Fleet', rows: fleetRows(repoRoot, observedAt, readers.fleet, readers.owners, fleetInput.scheduleSnapshot, fleetInput.ptyMigrationState, fleetInput.ptyDroppedLaunchers) },
       { id: 'stop', label: 'STOP', rows: stopRows(repoRoot, observedAt, readers.stop) },
       { id: 'daemon-machine', label: 'Daemon and machine', rows: machineRows(observedAt, readers.platform) },
       { id: 'mcp', label: 'MCP', rows: mcpRows(repoRoot, observedAt, readers.connections) },

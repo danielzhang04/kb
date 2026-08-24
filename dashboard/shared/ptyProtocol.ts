@@ -43,8 +43,19 @@ export type RecipeSandbox = 'interactive' | 'claude-policy' | 'codex-workspace-w
 export type LaunchRecipe = { launcher: SessionLauncher; mode: SessionMode; model: string | null;
   toolPolicyId: string; sandbox: RecipeSandbox; resumeRef?: string };
 
+/**
+ * Why an OPTIONAL launcher was dropped from an otherwise-available host. A closed set of codes and
+ * nothing else — never a path, an ACL, a SID, or a message from the pin inspector: this crosses the
+ * wire to the browser and into Health, where a tampered launcher must be VISIBLE without publishing
+ * the attacker's own filenames back out.
+ */
+export type DroppedLauncherRefusal = 'launcher-profile-invalid' | 'launcher-unavailable' | 'launcher-changed';
+export type DroppedLauncher = { launcher: SessionLauncher; refusal: DroppedLauncherRefusal };
 export type PublicPtyCapability =
-  | { pty: true; host: SessionHostKind; launchers: SessionLauncher[]; roots: SafeRootId[]; checkedAt: string }
+  /** `droppedLaunchers` is present ONLY when a launcher was dropped: an available host that advertised
+   *  everything it found says nothing, so the field's presence is itself the alarm. */
+  | { pty: true; host: SessionHostKind; launchers: SessionLauncher[]; roots: SafeRootId[]; checkedAt: string;
+      droppedLaunchers?: DroppedLauncher[] }
   | { pty: false; diagnostic: { reason: PtyProbeReason; detail: string | null; checkedAt: string } };
 export type PublicExit = { exitCode: number | null; reason: 'exited' | 'closed' | 'abandoned'; observedAt: string };
 export type SessionSummary = {

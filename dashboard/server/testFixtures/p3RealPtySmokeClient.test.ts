@@ -6,12 +6,13 @@ import {
   SMOKE_EXIT,
   SMOKE_INPUT,
   SmokeFailure,
+  compareReplayToLive,
   decodeBrowserServerFrame,
   mainP3RealPtySmoke,
   parseP3RealPtySmokeArgs,
 } from './p3RealPtySmokeClient.ts';
 import type {
-  RawWebSocket, SmokeHttpRequest, SmokeSocketConnect,
+  RawWebSocket, SmokeHttpRequest, SmokeSocketConnect, TranscriptSpan,
 } from './p3RealPtySmokeClient.ts';
 
 const ORIGIN = 'https://127.0.0.1:4317';
@@ -417,5 +418,69 @@ describe('mainP3RealPtySmoke', () => {
       { connect: server.connect, http: makeHttp().http },
     );
     expect(code).toBe(SMOKE_EXIT.timeout);
+  });
+});
+
+describe('compareReplayToLive', () => {
+  /** A `data` frame's payload at an absolute byte offset, the way the wire tags it. */
+  const span = (offset: number, text: string): TranscriptSpan => ({ offset, bytes: Buffer.from(text, 'utf8') });
+
+  it('accepts a replay that starts BEFORE the live view — the real-cmd.exe case', () => {
+    // 143 bytes of banner were written between create and attach: the client never saw them live, and
+    // a `fromSequence: 0` replay legitimately carries them. Only the overlap is the client's business.
+    const banner = 'B'.repeat(143);
+    const live = [span(143, 'echo p3-smoke'), span(156, 'p3-smoke')];
+    const replay = [span(0, banner), span(143, 'echo p3-smokep3-smoke')];
+
+    const result = compareReplayToLive(live, replay);
+    expect(result).toEqual({ ok: true, firstLiveOffset: 143, comparedBytes: 21, replayedBeforeLive: 143 });
+  });
+
+  it('accepts an exact match, where the live view began at offset 0', () => {
+    const live = [span(0, 'abc'), span(3, 'def')];
+    const replay = [span(0, 'abcdef')];
+
+    expect(compareReplayToLive(live, replay)).toEqual({
+      ok: true, firstLiveOffset: 0, comparedBytes: 6, replayedBeforeLive: 0,
+    });
+  });
+
+  it('refuses a genuine content difference inside the overlapping range', () => {
+    const live = [span(10, 'abcdef')];
+    const replay = [span(0, '0123456789'), span(10, 'abcXef')];
+
+    const result = compareReplayToLive(live, replay);
+    expect(result.ok).toBe(false);
+    // The offset named is ABSOLUTE, so it can be read against the frames on the wire.
+    expect(result.ok === false && result.reason).toContain('offset 13');
+  });
+
+  it('refuses a replay that stops short of the live range', () => {
+    const result = compareReplayToLive([span(10, 'abcdef')], [span(0, '0123456789abc')]);
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toContain('does not cover the live range');
+  });
+
+  it('refuses a replay that starts after the live view did', () => {
+    const result = compareReplayToLive([span(0, 'abcdef')], [span(2, 'cdef')]);
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toContain('does not cover the live range');
+  });
+
+  it('refuses a gap in the replay, even when the folded bytes would have matched', () => {
+    const result = compareReplayToLive([span(0, 'abcdef')], [span(0, 'abc'), span(4, 'def')]);
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe('replay has a gap at offset 3');
+  });
+
+  it('refuses a gap in what was collected live', () => {
+    const result = compareReplayToLive([span(0, 'abc'), span(9, 'def')], [span(0, 'abcdef')]);
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe('live transcript has a gap at offset 3');
+  });
+
+  it('refuses an empty replay and an empty live view', () => {
+    expect(compareReplayToLive([span(0, 'abc')], []).ok).toBe(false);
+    expect(compareReplayToLive([], [span(0, 'abc')]).ok).toBe(false);
   });
 });

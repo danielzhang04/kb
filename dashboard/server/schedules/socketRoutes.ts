@@ -17,8 +17,11 @@ const SOL_SOCKET = 1;
 const SO_PEERCRED = 17;
 
 export class ScheduleSocketError extends Error {
-  constructor(readonly code: string, message: string = code) {
+  readonly code: string;
+
+  constructor(code: string, message: string = code) {
     super(message);
+    this.code = code;
     this.name = 'ScheduleSocketError';
   }
 }

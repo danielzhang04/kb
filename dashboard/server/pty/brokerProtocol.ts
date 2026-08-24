@@ -305,7 +305,11 @@ export function encodeBrokerFrame(frame: unknown): Uint8Array {
 
 export class BrokerFrameDecoder<T> {
   private buffered = Buffer.alloc(0);
-  constructor(private readonly decode: (value: unknown) => T) {}
+  private readonly decode: (value: unknown) => T;
+
+  constructor(decode: (value: unknown) => T) {
+    this.decode = decode;
+  }
 
   push(chunk: Uint8Array): T[] {
     if (chunk.byteLength === 0) return [];

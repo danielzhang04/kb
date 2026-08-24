@@ -17,6 +17,10 @@ export function registerHealthRoutes(scope: FastifyInstance, ctx: SurfaceContext
       // Reports the state the PTY store already reached; it starts no migration and opens no file, so a
       // Health poll stays a pure read. Absent when the daemon composed no PTY stack at all.
       ...(ctx.ptySessionRuns ? { ptyMigrationState: () => ctx.ptySessionRuns!.migrationState() } : {}),
+      // Read off the capability the daemon already composed at boot from ITS single host probe — Health
+      // never probes. A launcher the pin validator refused is dropped rather than fatal, so this row is
+      // the only place the operator learns a launcher tree was tampered with.
+      ptyDroppedLaunchers: () => (ctx.runtimeCapabilities.pty ? ctx.runtimeCapabilities.droppedLaunchers ?? [] : []),
     });
     const stableSections = response.sections.map((section) => ({
       ...section,

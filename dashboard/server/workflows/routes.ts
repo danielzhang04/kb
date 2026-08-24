@@ -1007,7 +1007,12 @@ function sendEntity(reply: FastifyReply, etagHeader: string | string[] | undefin
 const WORKFLOW_BUILDER_FIELDS = ['humanName', 'purpose', 'model', 'profile', 'tools', 'skills', 'connectors', 'filesystemRoots'] as const;
 
 class WorkflowBuilderFailure extends Error {
-  constructor(readonly status: number, message: string) { super(message); }
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
 }
 
 function workflowBuilderCatalog(ctx: SurfaceContext): EntityBuilderCatalog {

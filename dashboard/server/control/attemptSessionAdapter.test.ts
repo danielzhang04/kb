@@ -133,7 +133,11 @@ class MemorySessionHost implements SessionHost {
   listEpochCalls = 0;
   drainCalls: string[] = [];
 
-  constructor(readonly events: string[] = []) {}
+  readonly events: string[];
+
+  constructor(events: string[] = []) {
+    this.events = events;
+  }
 
   async probe(): Promise<PtyCapabilityProbe> {
     return { available: true, host: 'desktop', transport: 'local-node-pty', launchers: ['claude', 'codex'], roots: ['worktrees'], epochId: 'epoch-11111111111111111111111111111111', checkedAt: '2026-08-23T00:00:00.000Z' };
@@ -262,7 +266,11 @@ class MemoryBindings implements AttemptBindingPort {
   beforeWrite: ((record: AttemptOperationRecord, expectedRevision: number | null, call: number) => void) | null = null;
   writeCalls = 0;
 
-  constructor(readonly events: string[] = []) {}
+  readonly events: string[];
+
+  constructor(events: string[] = []) {
+    this.events = events;
+  }
 
   async bind(input: Parameters<AttemptBindingPort['bind']>[0]): Promise<PortResult<{ revision: number }>> {
     this.calls.push(input);
