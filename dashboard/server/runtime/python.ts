@@ -8,7 +8,18 @@ export interface PythonRunOptions {
   input?: string;
   timeoutMs?: number;
   environment?: NodeJS.ProcessEnv;
+  /** Stdout ceiling in bytes; defaults to `PYTHON_STDOUT_MAX_BYTES`. Test-only override. */
+  maxBuffer?: number;
 }
+
+/**
+ * Node's `execFileSync` default is 1 MiB, which is ~30x smaller than one legal
+ * `learning_proposals.py read`: `MAX_RECORDS_PER_DIRECTORY` (500) x `MAX_RECORD_BYTES` (65536)
+ * = 32 MiB of record text, plus JSON re-encoding overhead (quoted keys, `\uXXXX` escapes and the
+ * envelope) — 40 MiB covers the worst legal read with headroom and still fails closed above it.
+ * A directory that overflows this is a real refusal, not a silently truncated read.
+ */
+export const PYTHON_STDOUT_MAX_BYTES = 40 * 1024 * 1024;
 
 export function resolvePython(
   platform: NodeJS.Platform = process.platform,
@@ -28,10 +39,17 @@ export function pythonFailureResult(error: unknown): { exitCode: number; stdout:
   const failure = error as {
     status?: number | null;
     signal?: string | null;
+    code?: string;
     stdout?: Buffer | string;
     stderr?: Buffer | string;
   };
+  // Both a timeout and a stdout overflow terminate with SIGTERM, so the signal alone is
+  // ambiguous and reads as "timeout" to anyone triaging. Name the cause from `code`.
+  const cause = failure.code === 'ENOBUFS'
+    ? `stdout exceeded the ${PYTHON_STDOUT_MAX_BYTES}-byte ceiling`
+    : failure.code === 'ETIMEDOUT' ? 'the process exceeded its time budget' : '';
   const synthesized = [
+    cause,
     failure.signal ? `signal ${failure.signal}` : '',
     error instanceof Error ? error.message : String(error),
   ].filter(Boolean).join(': ');
@@ -50,6 +68,7 @@ export function runPythonSync(args: readonly string[], options: PythonRunOptions
     encoding: 'utf8',
     input: options.input,
     timeout: options.timeoutMs ?? 30_000,
+    maxBuffer: options.maxBuffer ?? PYTHON_STDOUT_MAX_BYTES,
     windowsHide: true,
     env: {
       ...(options.environment ?? process.env),

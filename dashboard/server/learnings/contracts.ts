@@ -34,8 +34,36 @@ export const MAX_PROPOSED_CHANGE_BYTES = 8192;
 /** The exact frontmatter keys, in the exact order, that the parser accepts (`design:321-330`). */
 export const PROPOSAL_FRONTMATTER_KEYS = [
   'schema', 'id', 'kind', 'source-agent', 'source-run', 'created-at', 'target', 'status',
-  'batch-id', 'implemented-at',
+  'batch-id', 'implemented-at', 'content-hash',
 ] as const;
+
+/**
+ * `content-hash` = sha256 over the canonical candidate body (kind, target, evidence, proposed
+ * change). The plan pins the id grammar to a positional ordinal, so this is what binds an id to
+ * its content: a body changed under a reused id fails closed when the parser re-reads it.
+ */
+export const CONTENT_HASH_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Refused in EVERY decoded string field. The Python parser scans the raw record, so a
+ * JSON-escaped \u0000 or \u001b, a bidi override or a zero-width joiner inside a quoted locator
+ * would otherwise arrive here as live JS string content and land in a PR body or an audit row.
+ * The same closed set is enforced on both sides of the wire.
+ */
+// eslint-disable-next-line no-control-regex
+export const DISALLOWED_FIELD_CHARS = /[\u0000-\u001f\u007f\u0085\u200b\u2028\u2029\u202a-\u202e\ufeff]/;
+/** Locators are bounded on both sides of the wire (the Python parser's MAX_LOCATOR_BYTES). */
+export const MAX_LOCATOR_BYTES = 512;
+export const MAX_EVIDENCE_PATH_BYTES = 256;
+
+/** Reject the closed disallowed set without ever echoing the offending text back. */
+function requireInertField(value: string, field: string, allowNewline = false): string {
+  const scanned = allowNewline ? value.replace(/\n/g, '') : value;
+  if (DISALLOWED_FIELD_CHARS.test(scanned)) {
+    throw new ContractDecodeError(field, 'control, bidi and zero-width characters are refused');
+  }
+  return value;
+}
 
 /** The closed JSON wire object: the frontmatter keys plus the two parsed body blocks. */
 export const PROPOSAL_WIRE_KEYS = [...PROPOSAL_FRONTMATTER_KEYS, 'evidence', 'proposed-change'] as const;
@@ -64,6 +92,8 @@ export interface ProposalRecord {
   readonly status: ProposalStatus;
   readonly batchId: string | null;
   readonly implementedAt: string | null;
+  /** sha256 of the canonical candidate body; the id↔content binding, verified by the parser. */
+  readonly contentHash: string;
   readonly evidence: readonly ProposalEvidenceRow[];
   readonly proposedChange: string;
 }
@@ -80,6 +110,7 @@ export interface ProposalRecordWire {
   readonly status: ProposalStatus;
   readonly 'batch-id': string | null;
   readonly 'implemented-at': string | null;
+  readonly 'content-hash': string;
   readonly evidence: readonly ProposalEvidenceRow[];
   readonly 'proposed-change': string;
 }
@@ -124,6 +155,14 @@ function decodeEvidence(value: unknown): readonly ProposalEvidenceRow[] {
     const locator = row['locator'];
     if (typeof locator !== 'string') throw new ContractDecodeError('evidence.locator', 'string required');
     if (TARGET_REJECT.test(path)) throw new ContractDecodeError('evidence.path', 'repository-relative path required');
+    if (Buffer.byteLength(path, 'utf8') > MAX_EVIDENCE_PATH_BYTES) {
+      throw new ContractDecodeError('evidence.path', `at most ${MAX_EVIDENCE_PATH_BYTES} bytes`);
+    }
+    if (Buffer.byteLength(locator, 'utf8') > MAX_LOCATOR_BYTES) {
+      throw new ContractDecodeError('evidence.locator', `at most ${MAX_LOCATOR_BYTES} bytes`);
+    }
+    requireInertField(path, 'evidence.path');
+    requireInertField(locator, 'evidence.locator');
     return { path, locator };
   });
 }
@@ -167,6 +206,15 @@ export function decodeProposalRecord(value: unknown): ProposalRecord {
   if (Buffer.byteLength(proposedChange, 'utf8') > MAX_PROPOSED_CHANGE_BYTES) {
     throw new ContractDecodeError('record.proposed-change', `at most ${MAX_PROPOSED_CHANGE_BYTES} bytes`);
   }
+  const contentHash = requireString(record, 'content-hash', 'record');
+  if (!CONTENT_HASH_PATTERN.test(contentHash)) {
+    throw new ContractDecodeError('record.content-hash', '64 lowercase hex characters required');
+  }
+  for (const [field, value] of [
+    ['record.id', id], ['record.source-agent', sourceAgent], ['record.source-run', sourceRun],
+    ['record.target', target], ['record.created-at', createdAt],
+  ] as const) requireInertField(value, field);
+  requireInertField(proposedChange, 'record.proposed-change', true);
   if (status === 'proposed' && (batchId !== null || implementedAt !== null)) {
     throw new ContractDecodeError('record.status', 'a proposed record carries no batch-id or implemented-at');
   }
@@ -176,7 +224,7 @@ export function decodeProposalRecord(value: unknown): ProposalRecord {
   const decoded: ProposalRecord = {
     schema: LEARNING_PROPOSAL_SCHEMA,
     id, kind: kind as ProposalKind, sourceAgent, sourceRun, createdAt, target, status, batchId,
-    implementedAt, evidence: decodeEvidence(record['evidence']), proposedChange,
+    implementedAt, contentHash, evidence: decodeEvidence(record['evidence']), proposedChange,
   };
   if (proposalRecordId(sourceAgent, sourceRun, ordinalOf(id, sourceAgent, sourceRun)) !== id) {
     throw new ContractDecodeError('record.id', 'id must equal <source-agent>-<source-run>-<ordinal>');

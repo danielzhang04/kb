@@ -22,7 +22,7 @@ describe('learning proposal record', () => {
   it('freezes the exact frontmatter key list and order (design:321-330)', () => {
     expect([...PROPOSAL_FRONTMATTER_KEYS]).toEqual([
       'schema', 'id', 'kind', 'source-agent', 'source-run', 'created-at', 'target', 'status',
-      'batch-id', 'implemented-at',
+      'batch-id', 'implemented-at', 'content-hash',
     ]);
   });
 
@@ -35,6 +35,7 @@ describe('learning proposal record', () => {
       expect(record.batchId).toBe(wire['batch-id']);
       expect(record.implementedAt).toBe(wire['implemented-at']);
       expect(record.proposedChange).toBe(wire['proposed-change']);
+      expect(record.contentHash).toBe(wire['content-hash']);
       expect(record.evidence.length).toBeGreaterThan(0);
       expect(record.evidence.length).toBeLessThanOrEqual(MAX_EVIDENCE_ROWS);
     });
@@ -100,6 +101,7 @@ describe('compile negatives', () => {
       status: 'proposed',
       'batch-id': null,
       'implemented-at': null,
+      'content-hash': 'bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3',
       evidence: [{ path: 'memory/lessons-miner.md', locator: '2026-08-20 run_01HXYZ' }],
       'proposed-change': 'One bounded, testable change.',
       // @ts-expect-error - `priority` is outside the closed frontmatter set.

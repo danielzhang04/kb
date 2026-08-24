@@ -27,6 +27,14 @@
 /tests/fixtures/signed-approval/other-key.gpg -text
 /tests/fixtures/signed-approval/meta.json -text
 
+# Learning-proposal records are parsed by scripts/learning_proposals.py, whose closed
+# grammar rejects CR structurally (P4 plan §3.1: "CR/NUL/control bytes ... reject
+# structurally"). This repo runs core.autocrlf=true, so without a pin every committed
+# record and fixture smudges to CRLF on checkout and the parser — and the Windows
+# coordination checkout's whole read — fails closed forever. Pin them to LF.
+/docs/proposals/learnings/** text=auto eol=lf
+/tests/fixtures/learning-proposals-*.md text=auto eol=lf
+
 # Generated control-plane schema modules are compared byte-for-byte by the
 # generator check; pin them to LF so autocrlf cannot create false drift.
 /dashboard/server/control/generated/** text=auto eol=lf

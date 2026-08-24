@@ -23,6 +23,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -45,6 +46,7 @@
           "status": "implemented",
           "batch-id": "learn-0c91b646f215c10de9fb3ddf",
           "implemented-at": "2026-08-20T06:00:00Z",
+          "content-hash": "62e09b7e87e9b55e7f763c950bdc165db1a7ba01eeb7cd1f697e3b9d4f9dcb5d",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -67,6 +69,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "df04db8d40429bd2619d5c74afb7ec99d48ad26996b24ca25838c01c316f6458",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -92,6 +95,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -116,6 +120,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "a04af664cdf359b46222b5c9780b5745dff1108399597d2d10a6d941b251783e",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -139,6 +144,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "eddbec450bbb66a192ddd606c90d7589aaee80eaa46fea8667ccc28a58fe5404",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -162,6 +168,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "626e606b1c2ed00e65fc11f5658b8a00bd9a4c304fd8c56dee9e290a1039bbae",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -185,6 +192,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -208,6 +216,7 @@
           "status": "proposed",
           "batch-id": "learn-0c91b646f215c10de9fb3ddf",
           "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -231,6 +240,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -254,6 +264,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "0dc28c2b1d3d5db14024c7921b550dec5e9a62f0d370b229bd8e364ba868978e",
           "evidence": [],
           "proposed-change": "One bounded, testable change."
         }
@@ -272,6 +283,7 @@
           "status": "proposed",
           "batch-id": null,
           "implemented-at": null,
+          "content-hash": "066b1cf89881e61dba59241603d60746d27dcaa5b5d3919d317876c6ab7659f8",
           "evidence": [
             {
               "path": "memory/lessons-miner.md",
@@ -359,6 +371,269 @@
             }
           ],
           "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "missing content-hash",
+        "field": "record.content-hash",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "content-hash of the wrong shape",
+        "field": "record.content-hash",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "NOTAHASH",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a NUL",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a\u0000b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying an ANSI escape",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "\u001b[2J\u001b[31mFAKE"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying CRLF",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "x\r\n- path: injected/p.md"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a bidi override",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a‮b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a zero-width space",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a​b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a byte-order mark",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a﻿b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator over 512 bytes",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "evidence path over 256 bytes",
+        "field": "evidence.path",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.md",
+              "locator": "row 1"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "proposed change carrying a vertical tab",
+        "field": "record.proposed-change",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "one\u000bchange"
         }
       }
     ]
