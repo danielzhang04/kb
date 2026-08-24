@@ -1,4 +1,9 @@
+import {
+  compareInboxItems, inboxItemId, inboxRevision, prHref, prSubjectKeyString, type InboxResponse,
+  type P4InboxItem, type SourceState,
+} from './contracts.ts';
 import type { InboxProjection } from './project.ts';
+import { prItemRevision } from './resolvers.ts';
 
 export type InboxFixtureScenario = 'inbox-populated' | 'inbox-empty' | 'inbox-error-after-success' | 'events-reconnect-unknown';
 
@@ -22,6 +27,39 @@ const item = {
 const populated: InboxProjection = { items: [item] };
 const empty: InboxProjection = { items: [] };
 const burst = Array.from({ length: 5 }, (_value, index) => JSON.stringify({ sequence: index + 1 }));
+
+// P4 section 3.3: a deterministic instance of the closed PR + escalation union, written beside the
+// `{items}` fixture above. W6.1 repoints the browser fixture at this one when the route cuts over.
+const PR_SUBJECT = { owner: 'kb-owner', repo: 'kb', number: 4 } as const;
+const P4_VERIFIED: SourceState = { status: 'verified', revision: 'fixture-source', verifiedAt: '2026-08-20T12:00:00.000Z' };
+
+const PR_TITLE = 'Fixture pull request awaiting review';
+const PR_CREATED_AT = '2026-08-19T10:00:00Z';
+
+// Derived, never hand-typed: the id, the revision and the order all come from the same formulas the
+// resolver and the contract use, so a change to any of them moves the fixture with it.
+const p4ItemsUnordered: readonly P4InboxItem[] = [
+  {
+    kind: 'pr',
+    id: inboxItemId('pr', prSubjectKeyString(PR_SUBJECT)),
+    createdAt: new Date(PR_CREATED_AT).toISOString(),
+    revision: prItemRevision(prSubjectKeyString(PR_SUBJECT), PR_TITLE, PR_CREATED_AT),
+    subject: PR_SUBJECT,
+    title: PR_TITLE,
+    href: prHref(PR_SUBJECT),
+  },
+  {
+    ...item,
+    id: inboxItemId('escalation', item.subject.cardId),
+  },
+];
+const p4Items: readonly P4InboxItem[] = [...p4ItemsUnordered].sort(compareInboxItems);
+
+/** The P4 union fixture: both sources verified, one subject of each kind, sorted and revisioned. */
+export function p4InboxFixture(): InboxResponse {
+  const sources = { pr: P4_VERIFIED, escalation: P4_VERIFIED };
+  return { items: p4Items, revision: inboxRevision(sources, p4Items), sources };
+}
 
 /** Deterministic Inbox-only inputs for W5's closed loopback fixture harness. */
 export function inboxFixtureData(scenario: InboxFixtureScenario): InboxFixtureData {

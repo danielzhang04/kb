@@ -16,7 +16,16 @@ export const INBOX_SOURCE_ERROR_CODES: readonly InboxSourceErrorCode[] = [
 ];
 
 export type SourceState =
-  | { readonly status: 'verified'; readonly revision: string; readonly verifiedAt: string }
+  | {
+      readonly status: 'verified'; readonly revision: string; readonly verifiedAt: string;
+      /**
+       * Set only by the source cache when a read inside the global budget window was served from
+       * the last verified snapshot instead of a fresh subprocess [P4-C26/C34]. Absent means "read
+       * fresh"; `true` means "verified data, older than this request". W6.1 surfaces it at the
+       * route so the UI never claims freshness it does not have.
+       */
+      readonly stale?: true;
+    }
   | {
       readonly status: 'failed'; readonly revision?: string; readonly verifiedAt?: string;
       readonly errorCode: InboxSourceErrorCode; readonly stale: boolean;
@@ -65,10 +74,19 @@ export function decodeInboxRefreshParam(value: unknown): InboxRefreshSource | nu
   throw new ContractDecodeError('refresh', 'pr | escalation');
 }
 
-/** Pinned literal read command [P4-C25]; `<owner>/<repo>` comes only from the composition-time pin. */
+/**
+ * Pinned literal read command [P4-C25]; `<owner>/<repo>` comes only from the composition-time pin.
+ * The `--json` projection is part of the pin: `gh pr list` without it writes FIVE tab-separated
+ * columns whose title field is not escaped, so a tab in a PR title shifts every later field. The
+ * closed three-key JSON projection is the only wire format this repo reads.
+ */
 export const PR_LIST_ROW_LIMIT = 100;
+export const PR_LIST_JSON_FIELDS = 'number,title,createdAt';
 export function ghPrListArgv(owner: string, repo: string): readonly string[] {
-  return ['pr', 'list', '--repo', `${owner}/${repo}`, '--state', 'open', '--limit', String(PR_LIST_ROW_LIMIT + 1)];
+  return [
+    'pr', 'list', '--repo', `${owner}/${repo}`, '--state', 'open',
+    '--limit', String(PR_LIST_ROW_LIMIT + 1), '--json', PR_LIST_JSON_FIELDS,
+  ];
 }
 export const PR_LIST_TIMEOUT_MS = 15_000;
 /** ONE `gh` subprocess per 30 s GLOBALLY; the 60 s poll shares the same budget [P4-C34]. */
@@ -106,7 +124,8 @@ export function compareInboxItems(left: P4InboxItem, right: P4InboxItem): number
 
 function canonicalSourceState(kind: InboxSourceKind, state: SourceState): string {
   return state.status === 'verified'
-    ? `${kind}\u0000verified\u0000${state.revision}\u0000${state.verifiedAt}`
+    // `stale` only ever APPENDS, so a fresh verified state keeps its historical canonical bytes.
+    ? `${kind}\u0000verified\u0000${state.revision}\u0000${state.verifiedAt}${state.stale === true ? '\u0000stale' : ''}`
     : `${kind}\u0000failed\u0000${state.revision ?? ''}\u0000${state.verifiedAt ?? ''}\u0000${state.errorCode}\u0000${String(state.stale)}`;
 }
 
@@ -122,7 +141,7 @@ export function inboxRevision(
   return sha256Hex([...sourceLines, ...itemLines].join('\u0001'));
 }
 
-const VERIFIED_KEYS = ['status', 'revision', 'verifiedAt'] as const;
+const VERIFIED_KEYS = ['status', 'revision', 'verifiedAt', 'stale'] as const;
 const FAILED_KEYS = ['status', 'revision', 'verifiedAt', 'errorCode', 'stale'] as const;
 
 export function decodeSourceState(value: unknown): SourceState {
@@ -130,10 +149,15 @@ export function decodeSourceState(value: unknown): SourceState {
   const status = (value as Record<string, unknown>)['status'];
   if (status === 'verified') {
     const record = closedObject(value, VERIFIED_KEYS, 'source');
+    // `stale` is optional and, when present, may ONLY be the literal `true` — an absent field and
+    // an explicit `false` are not interchangeable, so the wire has exactly one shape per meaning.
+    const stale = record['stale'];
+    if (stale !== undefined && stale !== true) throw new ContractDecodeError('source.stale', 'true or absent required');
     return {
       status: 'verified',
       revision: requireString(record, 'revision', 'source'),
       verifiedAt: requireString(record, 'verifiedAt', 'source'),
+      ...(stale === undefined ? {} : { stale: true as const }),
     };
   }
   if (status === 'failed') {

@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { ContractDecodeError } from '../write/durableManifest.ts';
 import {
-  compareInboxItems, decodeInboxItem, decodeInboxRefreshParam, decodeInboxResponse, escalationSubjectKeyString,
+  compareInboxItems, decodeInboxItem, decodeInboxRefreshParam, decodeInboxResponse, decodeSourceState,
+  escalationSubjectKeyString,
   ghPrListArgv, inboxItemId, inboxRevision, isLegalEmptyInbox, PR_LIST_TIMEOUT_MS, PR_POLL_INTERVAL_MS,
   PR_REFRESH_BUDGET_MS, prHref, prSubjectKeyString, runSourceKey, stopSourceKey,
 } from './contracts.ts';
@@ -48,10 +49,25 @@ describe('P4 inbox union', () => {
 
   it('pins the literal gh read command [P4-C25] and the global budget [P4-C34]', () => {
     expect([...ghPrListArgv('danielzt', 'kb')])
-      .toEqual(['pr', 'list', '--repo', 'danielzt/kb', '--state', 'open', '--limit', '101']);
+      .toEqual([
+        'pr', 'list', '--repo', 'danielzt/kb', '--state', 'open', '--limit', '101',
+        '--json', 'number,title,createdAt',
+      ]);
     expect(PR_LIST_TIMEOUT_MS).toBe(15_000);
     expect(PR_REFRESH_BUDGET_MS).toBe(30_000);
     expect(PR_POLL_INTERVAL_MS).toBe(60_000);
+  });
+
+  it('accepts the verified arm with stale present or absent, and only as literal true', () => {
+    const fresh = { status: 'verified', revision: 'a'.repeat(64), verifiedAt: '2026-08-22T10:00:05Z' };
+    expect(decodeSourceState(fresh)).toEqual(fresh);
+    expect(decodeSourceState({ ...fresh, stale: true })).toEqual({ ...fresh, stale: true });
+    expect(() => decodeSourceState({ ...fresh, stale: false })).toThrow(ContractDecodeError);
+    expect(() => decodeSourceState({ ...fresh, stale: 'yes' })).toThrow(ContractDecodeError);
+    // `stale` appends to the canonical string, so it changes the revision it feeds.
+    const sources = { pr: decodeSourceState(fresh), escalation: decodeSourceState(fresh) };
+    const staleSources = { pr: decodeSourceState({ ...fresh, stale: true }), escalation: sources.escalation };
+    expect(inboxRevision(staleSources, [])).not.toBe(inboxRevision(sources, []));
   });
 
   it('sorts by createdAt desc, then kind, then id', () => {

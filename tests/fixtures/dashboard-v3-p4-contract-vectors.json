@@ -465,6 +465,54 @@
             }
           }
         }
+      },
+      {
+        "name": "stale-but-verified pr source served from inside the 30 s budget window",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://github.com/danielzt/kb/pull/42"
+            },
+            {
+              "kind": "escalation",
+              "id": "aee80bb66cd2e5f8ec506af088f32edf33a3969f5edadd655b8da898853a1065",
+              "createdAt": "2026-08-21T09:00:00Z",
+              "revision": "31ee9b79e368b27cfebf39aae88c368678c8c5f584c4cb619fdbdbb8912aaf72",
+              "subject": {
+                "cardId": "queue/inbox/6a714a06-cb14d1ca.md"
+              },
+              "related": {
+                "runRef": "run-4f2c"
+              },
+              "title": "System Sweeper fire failed",
+              "reason": "sweeper-failure"
+            }
+          ],
+          "revision": "22a9196945ca80f241eec45482950ee28a09b34f1ab5d9deed630d74a4cc511c",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z",
+              "stale": true
+            }
+          }
+        }
       }
     ],
     "invalid": [
@@ -597,6 +645,54 @@
               "status": "verified",
               "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
               "verifiedAt": "2026-08-22T10:00:05Z"
+            }
+          }
+        }
+      },
+      {
+        "name": "verified source with stale false",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://github.com/danielzt/kb/pull/42"
+            },
+            {
+              "kind": "escalation",
+              "id": "aee80bb66cd2e5f8ec506af088f32edf33a3969f5edadd655b8da898853a1065",
+              "createdAt": "2026-08-21T09:00:00Z",
+              "revision": "31ee9b79e368b27cfebf39aae88c368678c8c5f584c4cb619fdbdbb8912aaf72",
+              "subject": {
+                "cardId": "queue/inbox/6a714a06-cb14d1ca.md"
+              },
+              "related": {
+                "runRef": "run-4f2c"
+              },
+              "title": "System Sweeper fire failed",
+              "reason": "sweeper-failure"
+            }
+          ],
+          "revision": "767a019ac7b341465e7c67e10459fb9a129534806ab7d4f16785258bd9866b75",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z",
+              "stale": false
             }
           }
         }

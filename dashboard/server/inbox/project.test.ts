@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CardProjection } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
-import { inboxFixtureData } from './fixture.ts';
-import { projectInbox } from './project.ts';
+import {
+  compareInboxItems, decodeInboxResponse, inboxItemId, inboxRevision, isLegalEmptyInbox, prHref,
+  prSubjectKeyString, type PrSubject, type SourceState,
+} from './contracts.ts';
+import { inboxFixtureData, p4InboxFixture } from './fixture.ts';
+import { projectEscalationSubjects, projectInbox, projectP4Inbox } from './project.ts';
 
 function card(id: string, action: string, state = 'inbox', extra: Record<string, string> = {}): CardProjection {
   return {
@@ -89,5 +93,115 @@ describe('projectInbox', () => {
       body: '## Work order\n\nSafe reason.\n\n## Evidence\n\n> Untrusted payload.\n',
     };
     expect(projectInbox(index([escalation])).items[0]?.reason).toBe('Safe reason.');
+  });
+});
+
+const VERIFIED: SourceState = { status: 'verified', revision: 'r', verifiedAt: '2026-08-20T00:00:00.000Z' };
+
+function pr(number: number, createdAt: string, title = `PR ${number}`): PrSubject {
+  const subject = { owner: 'kb-owner', repo: 'kb', number };
+  return {
+    kind: 'pr', id: inboxItemId('pr', prSubjectKeyString(subject)), createdAt,
+    revision: `pr-rev-${number}`, subject, title, href: prHref(subject),
+  };
+}
+
+describe('projectP4Inbox', () => {
+  it('projects exactly the PR + escalation union with per-source states and a matching revision', () => {
+    const escalations = projectEscalationSubjects(index([card('65a1b2c3-01234567', 'wake-me:runner-failed')]));
+    const items = [pr(4, '2026-08-21T00:00:00.000Z')];
+    const response = projectP4Inbox({
+      pr: { items, state: VERIFIED }, escalation: { items: escalations, state: VERIFIED },
+    });
+
+    expect(response.items.map((entry) => entry.kind)).toEqual(['pr', 'escalation']);
+    expect(response.sources).toEqual({ pr: VERIFIED, escalation: VERIFIED });
+    expect(response.revision).toBe(inboxRevision(response.sources, response.items));
+    expect(decodeInboxResponse(JSON.parse(JSON.stringify(response)))).toEqual(response);
+  });
+
+  it('sorts by createdAt desc, then kind, then id, and is byte-stable across runs', () => {
+    const escalations = projectEscalationSubjects(index([
+      card('65a1b2c3-01234567', 'wake-me:a'), card('65a1b2c3-01234568', 'wake-me:b'),
+    ]));
+    const sameInstant = escalations[0]!.createdAt;
+    const sources = {
+      pr: { items: [pr(2, '2026-01-01T00:00:00.000Z'), pr(9, sameInstant)], state: VERIFIED },
+      escalation: { items: escalations, state: VERIFIED },
+    };
+    const first = projectP4Inbox(sources);
+    expect(JSON.stringify(projectP4Inbox(sources))).toBe(JSON.stringify(first));
+    for (let i = 1; i < first.items.length; i += 1) {
+      expect(compareInboxItems(first.items[i - 1]!, first.items[i]!)).toBeLessThanOrEqual(0);
+    }
+    const tied = first.items.filter((entry) => entry.createdAt === sameInstant);
+    expect(tied.map((entry) => entry.kind)).toEqual(['escalation', 'escalation', 'pr']);
+  });
+
+  it('removes only the merged PR subject and only the completed card escalation', () => {
+    const both = projectP4Inbox({
+      pr: { items: [pr(4, '2026-08-21T00:00:00.000Z'), pr(6, '2026-08-20T00:00:00.000Z')], state: VERIFIED },
+      escalation: {
+        items: projectEscalationSubjects(index([card('65a1b2c3-01234567', 'wake-me:x'), card('65a1b2c4-01234567', 'wake-me:y')])),
+        state: VERIFIED,
+      },
+    });
+    expect(both.items).toHaveLength(4);
+
+    const after = projectP4Inbox({
+      pr: { items: [pr(6, '2026-08-20T00:00:00.000Z')], state: VERIFIED },
+      escalation: {
+        items: projectEscalationSubjects(index([
+          card('65a1b2c3-01234567', 'wake-me:x', 'done'), card('65a1b2c4-01234567', 'wake-me:y'),
+        ])),
+        state: VERIFIED,
+      },
+    });
+    expect(after.items.map((entry) => entry.kind)).toEqual(['pr', 'escalation']);
+    expect(after.items.filter((entry) => entry.kind === 'pr')).toHaveLength(1);
+    expect(after.revision).not.toBe(both.revision);
+  });
+
+  it('keeps last-good items of the failed source and leaves the other source unaffected', () => {
+    const failed: SourceState = { status: 'failed', errorCode: 'timeout', stale: true, revision: 'r' };
+    const response = projectP4Inbox({
+      pr: { items: [pr(4, '2026-08-21T00:00:00.000Z')], state: failed },
+      escalation: { items: projectEscalationSubjects(index([card('65a1b2c3-01234567', 'wake-me:x')])), state: VERIFIED },
+    });
+    expect(response.sources.pr).toEqual(failed);
+    expect(response.sources.escalation).toEqual(VERIFIED);
+    expect(response.items).toHaveLength(2);
+    expect(isLegalEmptyInbox(response)).toBe(false);
+  });
+
+  it('never reports a legal empty inbox while a source is failed with no last-good data', () => {
+    const response = projectP4Inbox({
+      pr: { items: [], state: { status: 'failed', errorCode: 'unavailable', stale: false } },
+      escalation: { items: [], state: VERIFIED },
+    });
+    expect(response.items).toEqual([]);
+    expect(isLegalEmptyInbox(response)).toBe(false);
+    expect(isLegalEmptyInbox(projectP4Inbox({
+      pr: { items: [], state: VERIFIED }, escalation: { items: [], state: VERIFIED },
+    }))).toBe(true);
+  });
+
+  it('carries no run subject and no run gate: run and STOP stay escalation links', () => {
+    const escalations = projectEscalationSubjects(index([
+      card('65a1b2c3-01234567', 'wake-me:run-failed', 'inbox', { 'run-ref': 'run-7', 'stop-event': 'stop-2' }),
+    ]));
+    const response = projectP4Inbox({ pr: { items: [], state: VERIFIED }, escalation: { items: escalations, state: VERIFIED } });
+    expect(response.items.map((entry) => entry.kind)).toEqual(['escalation']);
+    expect(response.items).toHaveLength(1);
+    expect((response.items[0] as { related: unknown }).related).toEqual({ runRef: 'run-7', stopEvent: 'stop-2' });
+    expect(Object.keys(response)).toEqual(['items', 'revision', 'sources']);
+    expect(JSON.stringify(response)).not.toMatch(/nextFire|runGate|gate/i);
+  });
+
+  it('serves a decodable P4 union fixture beside the current {items} fixture', () => {
+    const fixture = p4InboxFixture();
+    expect(decodeInboxResponse(JSON.parse(JSON.stringify(fixture)))).toEqual(fixture);
+    expect(fixture.items.map((entry) => entry.kind)).toEqual(['pr', 'escalation']);
+    expect(inboxFixtureData('inbox-populated').responses[0]).toMatchObject({ status: 200 });
   });
 });
