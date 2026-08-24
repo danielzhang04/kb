@@ -21,11 +21,8 @@ import type {
   ActualBrowser, ActualBrowserFactory, CellObservation, CellTarget, CertificateReader,
   ExecutableInspector, MatrixCell,
 } from './p3ActualBrowserRunner.ts';
-<<<<<<< ours
 import { expectUsageRefusal } from './expectUsageRefusal.ts';
-=======
 import { createLoopbackTlsMaterial } from './p3LoopbackTls.ts';
->>>>>>> theirs
 
 const BROWSER = process.platform === 'win32' ? 'C:\\browsers\\msedge.exe' : '/opt/browsers/msedge';
 const okInspector: ExecutableInspector = () => 'ok';
