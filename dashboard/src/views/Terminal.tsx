@@ -81,8 +81,18 @@ export function Terminal({
   const { session, requireSession } = useSession();
   const sessionToken = session?.token;
   const runtimeCapability = useRuntimeCapabilities();
-  // Fail-closed: the closed switch wins over whatever the capability payload claims.
-  const capability: PublicPtyCapability = ptyEnabled ? runtimeCapability : CLOSED_CAPABILITY;
+  /**
+   * Fail-closed: the closed switch wins over whatever the capability payload CLAIMS. What it must not
+   * do is overwrite a payload that already refuses — `App` derives `ptyEnabled` from `pty === true`, so
+   * every genuinely closed host arrived here with the switch off, and substituting the local sentinel
+   * threw away the host's real reason and detail. The operator was then told "Terminal is not available
+   * on this host." (the sentinel's `node-pty-unavailable` copy) when the truth was a broker that was not
+   * listening. A closed payload is already closed: keeping it grants nothing and explains everything.
+   * Only a payload claiming `pty:true` against a false switch is replaced.
+   */
+  const capability: PublicPtyCapability = ptyEnabled || runtimeCapability.pty === false
+    ? runtimeCapability
+    : CLOSED_CAPABILITY;
 
   const [model, setModel] = useState<SessionWorkspaceModel>(() => createSessionWorkspaceModel(capability));
   const [panes, setPanes] = useState<PaneEntry[]>([]);
@@ -90,8 +100,15 @@ export function Terminal({
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  const [listNonce, setListNonce] = useState(0);
   const nextPaneIdRef = useRef(1);
   const listedRef = useRef(false);
+  /**
+   * The highest session-collection revision this workspace has seen, from a listing or from any frame
+   * that carries one. It is the ordering fact that lets a re-list be judged: a listing older than what
+   * frames already proved is a STALE answer, and applying it would delete rows the host still has.
+   */
+  const observedRevisionRef = useRef(-1);
   const controlsRef = useRef(new Map<number, ConsoleControl>());
 
   // Availability is derived from the capability; a capability change re-seats the whole workspace.
@@ -104,6 +121,7 @@ export function Terminal({
   useEffect(() => {
     if (sessionToken) return;
     listedRef.current = false;
+    observedRevisionRef.current = -1;
     setPanes([]);
     setModel(createSessionWorkspaceModel(capability));
     setNotice(null);
@@ -111,9 +129,14 @@ export function Terminal({
   }, [sessionToken, capability]);
 
   /**
-   * Ask the HOST what sessions exist, exactly once per signed-in visible workspace. A `null` answer is
+   * Ask the HOST what sessions exist — on entering a signed-in visible workspace, and again whenever a
+   * frame proves the collection moved past the revision this listing was taken at. A `null` answer is
    * "we could not ask" — it is reported, never rendered as "you have no sessions", because the second
    * would invite the operator to open a duplicate of a session they already own.
+   *
+   * The rows land in the model whether or not anything is attached. That is the whole point of a
+   * WORKSPACE over host sessions: a session this browser has never attached to is still the operator's
+   * session, and hiding it until they happen to open a console is how you get two shells in one root.
    */
   useEffect(() => {
     if (!sessionToken || !visible || !ptyEnabled || listedRef.current) return;
@@ -126,16 +149,31 @@ export function Terminal({
         setNotice('The dashboard could not read your sessions. Reload to try again.');
         return;
       }
+      // A listing older than a revision frames already proved is stale: keep the newer truth.
+      if (listing.revision < observedRevisionRef.current) return;
+      observedRevisionRef.current = listing.revision;
       setModel((current) => ({
         ...current,
+        // SERVER ORDER, verbatim. The host decides the order of its own sessions; re-sorting here would
+        // make two browsers disagree about a list neither of them owns.
         sessions: listing.sessions,
-        selectedSessionId: current.selectedSessionId ?? listing.sessions[0]?.sessionId ?? null,
+        selectedSessionId: listing.sessions.some((row) => row.sessionId === current.selectedSessionId)
+          ? current.selectedSessionId
+          : listing.sessions[0]?.sessionId ?? null,
       }));
     })();
     return () => {
       cancelled = true;
     };
-  }, [sessionToken, visible, ptyEnabled, sessionsClient]);
+  }, [sessionToken, visible, ptyEnabled, sessionsClient, listNonce]);
+
+  /** A frame carrying a newer revision retires the current listing and asks the host again. */
+  const noteRevision = useCallback((revision: number) => {
+    if (revision <= observedRevisionRef.current) return;
+    observedRevisionRef.current = revision;
+    listedRef.current = false;
+    setListNonce((current) => current + 1);
+  }, []);
 
   const foldFrame = useCallback((paneId: number, frame: BrowserServerFrame) => {
     setModel((current) => reduceSessionWorkspace(current, frame));
@@ -143,7 +181,8 @@ export function Terminal({
       const sessionId = frame.session.sessionId;
       setPanes((current) => current.map((pane) => pane.paneId === paneId ? { ...pane, sessionId } : pane));
     }
-  }, []);
+    if ('revision' in frame && typeof frame.revision === 'number') noteRevision(frame.revision);
+  }, [noteRevision]);
 
   const noteSession = useCallback((session: SessionSummary) => {
     setModel((current) => reduceSessionWorkspace(current, {
@@ -218,7 +257,10 @@ export function Terminal({
         >
           {signingIn ? 'Unlocking…' : 'Locked — unlock to open a terminal'}
         </button>
-      ) : availability.kind === 'unavailable' || panes.length === 0 ? (
+      ) : availability.kind === 'unavailable' || (model.sessions.length === 0 && panes.length === 0) ? (
+        // Launcher-only is for a workspace with NOTHING in it. The old condition also fired whenever no
+        // console happened to be mounted, so four listed host sessions rendered as "Start a session" —
+        // the operator was told they had none while the host was running four.
         <div className="terminal__empty" data-testid="terminal-empty">
           <TerminalSessionEmpty
             availability={availability}

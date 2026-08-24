@@ -293,6 +293,22 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
         json(reply, 200, { ...p3PtyCapability(p3Scenario), localTranscripts: false });
         return;
       }
+
+      // The §8 matrix boots the WHOLE app, not just the terminal, so the app shell's own boot fetches
+      // have to be served here too. Without them every p3 cell logs two 404s and the "zero console
+      // errors" row can never be honestly green. The payloads are the p2 ones: the shell is not what
+      // the p3 scenarios vary, so the matrix wants a shell that renders rather than a bespoke one.
+      if (request.method === 'GET' && url.pathname === '/api/attention') return json(reply, 200, P2_ATTENTION);
+      if (request.method === 'GET' && url.pathname === '/api/home') return json(reply, 200, p2Home(false));
+      // The run's attempt sessions live in the Workflows destination, which the operator reaches
+      // through the workflow roster. There is no `run:` URL entity (see src/nav/stack.ts), so the
+      // §8 run scenario navigates the roster and the roster has to be served.
+      if (request.method === 'GET' && url.pathname === '/api/agents') return json(reply, 200, p2EntityList('agents'));
+      if (request.method === 'GET' && url.pathname === '/api/workflows') return json(reply, 200, p2EntityList('workflows'));
+      const p3Entity = url.pathname.match(/^\/api\/(agents|workflows)\/([^/]+)$/);
+      if (request.method === 'GET' && p3Entity) {
+        return json(reply, 200, p2EntityDetail(p3Entity[1] as 'agents' | 'workflows', decodeURIComponent(p3Entity[2])));
+      }
     }
 
     if (isP2BrowserScenario(options.scenario)) {

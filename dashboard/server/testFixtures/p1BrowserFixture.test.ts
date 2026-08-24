@@ -9,6 +9,8 @@ import {
   type P1BrowserFixture,
 } from './p1BrowserFixture.ts';
 import { decodeEntityDetail, decodeEntityList } from '../../src/lib/entityClient.ts';
+import { BROWSER_SESSION_COOKIE_NAME, isBrowserSessionRef, parseBrowserSessionCookie } from '../auth/browserSessionRef.ts';
+import { P3_BROWSER_PRINCIPALS } from './p2BrowserFixtureData.ts';
 import { decodeHomeResponse } from '../../src/lib/homeClient.ts';
 import {
   decodeRuntimeCapabilities,
@@ -316,6 +318,23 @@ describe('P1 browser fixture', () => {
  * green against data production could never produce, so each scenario is round-tripped through the
  * SHIPPING decoders and projectors, and a one-field mutation of each payload is required to be refused.
  */
+describe('p1BrowserFixture p3 principals are refs the real parser accepts', () => {
+  // The browser matrix reaches the fixture through a REAL cookie round-trip, so a placeholder ref the
+  // shipping parser rejects silently empties every listing and makes all four scenarios render the
+  // same page. Both identities must pass the same predicate production uses, and they must differ.
+  it('both context refs satisfy isBrowserSessionRef and are distinct', () => {
+    for (const principal of [P3_BROWSER_PRINCIPALS.a, P3_BROWSER_PRINCIPALS.b]) {
+      expect(isBrowserSessionRef(principal.browserSessionRef)).toBe(true);
+      expect(parseBrowserSessionCookie(`${BROWSER_SESSION_COOKIE_NAME}=${principal.browserSessionRef}`))
+        .toBe(principal.browserSessionRef);
+    }
+    expect(P3_BROWSER_PRINCIPALS.a.browserSessionRef).not.toBe(P3_BROWSER_PRINCIPALS.b.browserSessionRef);
+    // The same-operator second tab is the SAME ref: that pair is what makes B's refusal a statement
+    // about the ref rather than about the operator name.
+    expect(P3_BROWSER_PRINCIPALS.aSecondTab.browserSessionRef).toBe(P3_BROWSER_PRINCIPALS.a.browserSessionRef);
+  });
+});
+
 describe('p1BrowserFixture p3 scenarios decode with the shipping client decoders', () => {
   const P3_SCENARIOS = [
     'p3-terminal-empty-unavailable',

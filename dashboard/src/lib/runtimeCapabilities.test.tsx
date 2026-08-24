@@ -153,7 +153,26 @@ describe('runtime capability context', () => {
       kind: 'unavailable',
       title: 'Terminal unavailable',
       message: 'Terminal is unavailable right now.',
+      // (b) Assertion extended for a field the projector now carries. The fail-closed constant was
+      // never probed, so it has no host sentence to show and its detail is null.
+      detail: null,
       actionLabel: 'Open Health',
     });
+  });
+
+  it('carries the host\'s bounded detail from a decoded pty:false payload into the workspace copy', () => {
+    const decoded = decodeRuntimeCapabilities({
+      pty: false,
+      diagnostic: {
+        reason: 'broker-unavailable',
+        detail: 'kb-shell-broker socket is not listening',
+        checkedAt: '2026-08-22T00:00:00.000Z',
+      },
+      localTranscripts: false,
+    });
+    if (decoded === null) throw new Error('expected the closed capability to decode');
+    const availability = createSessionWorkspaceModel(decoded).availability;
+    expect(availability.kind === 'unavailable' && availability.detail)
+      .toBe('kb-shell-broker socket is not listening');
   });
 });

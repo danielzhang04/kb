@@ -49,13 +49,15 @@ const model: SessionWorkspaceModel = {
 };
 
 describe('TerminalSessionHeader', () => {
-  it('renders server names in order with human state copy', () => {
+  // (a) Row copy intentionally widened: P3 \u00a78 requires "server-derived name/host/root/relative cwd"
+  // to render, not just the name and state.
+  it('renders server names in order with launcher, host, root, relative cwd, and human state copy', () => {
     render(<TerminalSessionHeader model={model} onSelectSession={() => undefined} />);
 
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual([
-      'Builder \u00b7 Live',
-      'Review \u00b7 Closing',
+      'Builder \u00b7 Shell \u00b7 Desktop/repo \u00b7 Live',
+      'Review \u00b7 Codex \u00b7 VM/worktrees/review \u00b7 Closing',
     ]);
     expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
     expect(tabs[1]?.getAttribute('aria-selected')).toBe('false');
@@ -66,7 +68,7 @@ describe('TerminalSessionHeader', () => {
     const onSelectSession = vi.fn();
     render(<TerminalSessionHeader model={model} onSelectSession={onSelectSession} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Review \u00b7 Closing' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Review \u00b7 Codex \u00b7 VM/worktrees/review \u00b7 Closing' }));
     expect(onSelectSession).toHaveBeenCalledWith('pty-22222222222222222222222222222222');
   });
 });

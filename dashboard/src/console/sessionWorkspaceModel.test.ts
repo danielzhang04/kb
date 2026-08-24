@@ -116,7 +116,12 @@ describe('session workspace model', () => {
     expect(model.sessions[0]?.attachmentCount).toBe(2);
   });
 
-  it.each(diagnosticCases)('projects %s with closed safe copy and no diagnostic detail', (reason, message) => {
+  // (a) Behaviour intentionally changed: P3 §8 requires the unavailable state to show the bounded
+  // reason/detail, and the browser matrix asserts the literal host sentence. The projector previously
+  // DROPPED `detail`, which is why the live panel could only say "Terminal is not available on this
+  // host." The safety property that mattered is kept and re-stated below: the projected detail is the
+  // host's sanitized single-line sentence, bounded, and the closed reason enum never becomes copy.
+  it.each(diagnosticCases)('projects %s with closed safe copy and the bounded host detail', (reason, message) => {
     const model = createSessionWorkspaceModel({
       pty: false,
       diagnostic: {
@@ -130,9 +135,25 @@ describe('session workspace model', () => {
       kind: 'unavailable',
       title: 'Terminal unavailable',
       message,
+      detail: diagnosticDetail,
       actionLabel: 'Open Health',
     });
-    expect(JSON.stringify(model)).not.toContain(diagnosticDetail);
+    // The reason ENUM stays out of copy — ux-rules 13 counts a raw id used as a name as a violation.
+    expect(JSON.stringify(model.availability)).not.toContain(reason);
+  });
+
+  it('refuses a detail that is empty, multi-line, or over the 160-byte bound', () => {
+    const project = (detail: string | null) => createSessionWorkspaceModel({
+      pty: false,
+      diagnostic: { reason: 'broker-unavailable', detail, checkedAt: '2026-08-22T00:00:00.000Z' },
+    }).availability;
+
+    for (const detail of [null, '', '   ', 'a\nb', 'x'.repeat(161)]) {
+      const availability = project(detail);
+      expect(availability.kind === 'unavailable' && availability.detail).toBe(null);
+    }
+    const bounded = project('  kb-shell-broker socket is not listening  ');
+    expect(bounded.kind === 'unavailable' && bounded.detail).toBe('kb-shell-broker socket is not listening');
   });
 
   it('selects the active Run session and keeps prior attempts replay-only', () => {

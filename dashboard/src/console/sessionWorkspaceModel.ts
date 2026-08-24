@@ -289,7 +289,21 @@ export type SessionWorkspaceAvailability =
       launchers: readonly SessionLauncher[];
       roots: readonly SafeRootId[];
     }
-  | { kind: 'unavailable'; title: string; message: string; actionLabel: string };
+  | {
+      kind: 'unavailable';
+      title: string;
+      message: string;
+      /**
+       * The host's own bounded explanation, e.g. `kb-shell-broker socket is not listening`. This is the
+       * `detail` half of P3 §8's "unavailable shows bounded reason/detail": without it the operator is
+       * told a terminal is missing and given no way to tell "this host has no PTY" from "the broker is
+       * down", which are two different next actions. The closed `reason` ENUM is deliberately NOT
+       * carried into copy — ux-rules 13 lists "raw ids as names" as a violation, so the enum stays a
+       * projection input and only the sanitized human sentence reaches the DOM.
+       */
+      detail: string | null;
+      actionLabel: string;
+    };
 
 export interface SessionWorkspaceModel {
   availability: SessionWorkspaceAvailability;
@@ -319,8 +333,22 @@ function projectAvailability(capability: PublicPtyCapability): SessionWorkspaceA
     kind: 'unavailable',
     title: 'Terminal unavailable',
     message: unavailableMessage(capability.diagnostic.reason),
+    detail: boundedDetail(capability.diagnostic.detail),
     actionLabel: 'Open Health',
   };
+}
+
+/**
+ * The same bound the wire decoder enforces, applied again here because a capability may reach this
+ * projector without passing `decodeRuntimeCapabilities` (the view's own fail-closed constant does).
+ * Single-line, ≤160 UTF-8 bytes, non-empty after trimming, no display-control characters — anything
+ * else projects to `null` and the panel shows the closed message alone.
+ */
+function boundedDetail(detail: string | null): string | null {
+  if (detail === null) return null;
+  const trimmed = detail.trim();
+  if (trimmed === '' || !isSafeText(trimmed, 160)) return null;
+  return trimmed;
 }
 
 export function createSessionWorkspaceModel(capability: PublicPtyCapability): SessionWorkspaceModel {

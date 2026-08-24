@@ -310,10 +310,19 @@ export function isP3BrowserScenario(value: string): value is P3BrowserScenario {
  * to control A's sessions, which is what makes the refusal of `b` a statement about the ref and not
  * merely about the operator name.
  */
+const P3_REF_A = Buffer.alloc(32, 0xaa).toString('base64url');
+const P3_REF_B = Buffer.alloc(32, 0xbb).toString('base64url');
+
 export const P3_BROWSER_PRINCIPALS = {
-  a: { operator: 'operator-a', browserSessionRef: 'bsr-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
-  aSecondTab: { operator: 'operator-a', browserSessionRef: 'bsr-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
-  b: { operator: 'operator-b', browserSessionRef: 'bsr-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+  // These must satisfy the REAL parser: `isBrowserSessionRef` (server/auth/browserSessionRef.ts) wants
+  // 43 base64url characters that round-trip as a canonical 32-byte value, so a readable placeholder
+  // like `bsr-aaaa...` is rejected. The first browser matrix used one, `parseBrowserSessionCookie`
+  // dropped the cookie the fixture had just set, every listing came back empty for BOTH contexts, and
+  // all four scenarios rendered the same signed-out-looking page. Constant bytes keep them
+  // deterministic and obviously fake: 0xAA for A, 0xBB for B.
+  a: { operator: 'operator-a', browserSessionRef: P3_REF_A },
+  aSecondTab: { operator: 'operator-a', browserSessionRef: P3_REF_A },
+  b: { operator: 'operator-b', browserSessionRef: P3_REF_B },
 } as const;
 
 const P3_CHECKED_AT = '2026-08-22T00:00:00.000Z';
