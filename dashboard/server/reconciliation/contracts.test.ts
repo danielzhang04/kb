@@ -81,14 +81,17 @@ describe('two-phase receipt replay [P4-C33]', () => {
 
 describe('compile negatives', () => {
   it('refuses a direct Sweeper effect port at compile time', () => {
-    const readOnly: SweeperPorts<{ readInboxSnapshot(): string; readScheduleSnapshot(): string }> = {
-      readInboxSnapshot: () => 'snapshot',
-      readScheduleSnapshot: () => 'snapshot',
-    };
-    expect(readOnly.readInboxSnapshot()).toBe('snapshot');
+    const readOnly: SweeperPorts<{ readSnapshot(): string }> = { readSnapshot: () => 'snapshot' };
+    expect(readOnly.readSnapshot()).toBe('snapshot');
     // @ts-expect-error - SweeperPorts collapses to `never` when any effect member is present.
     const effectful: SweeperPorts<{ routeDurable(): void }> = { routeDurable: () => undefined };
     expect(effectful).toBeDefined();
+    // The allowlist also collapses for members no blacklist of effect names would have caught.
+    // @ts-expect-error - only `readSnapshot` is on the allowlist.
+    const unlisted: SweeperPorts<{ readSnapshot(): string; persist(): void }> = {
+      readSnapshot: () => 'snapshot', persist: () => undefined,
+    };
+    expect(unlisted).toBeDefined();
   });
 
   it('refuses a changed replay by making the persisted receipt readonly', () => {

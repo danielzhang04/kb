@@ -11,6 +11,12 @@ import type { DurablePathManifest } from '../write/durableManifest.ts';
 import { decodeScheduleMirrorWatermark } from '../schedules/mirrorContracts.ts';
 import type { ScheduleMirrorWatermark } from '../schedules/mirrorContracts.ts';
 
+/**
+ * Re-exported so the read-only Sweeper can hash a dedup identity while keeping its ONE runtime
+ * import; it is the same pure `node:crypto` helper W0 already uses for every other key formula.
+ */
+export { sha256Hex };
+
 export const RECONCILIATION_INTENT_SCHEMA = 'kb.reconciliation-intent/v1';
 
 export type ReconciliationIntentKind = 'card-transition' | 'escalation-card' | 'schedule-mirror' | 'mirror-merged';
@@ -73,7 +79,16 @@ export interface MirrorMergedIntent extends ReconciliationIntentBase {
 export type ReconciliationIntent =
   | CardTransitionIntent | EscalationCardIntent | ScheduleMirrorIntent | MirrorMergedIntent;
 
-/** The four closed key formulas of section 3.4. */
+/**
+ * The four closed key formulas of section 3.4, reproduced verbatim — the formula is contract-fixed,
+ * so the variable-length segments are NOT length-prefixed or hashed here.
+ *
+ * Separator ambiguity is therefore constructible (`a:b` vs `a` + `:b`), and is contained rather
+ * than removed: every receipt row also stores `requestSha256` (`reconciliationIntentSha256`), and
+ * `classifyReplay` refuses any second intent that lands on an occupied key with a different
+ * canonical hash (409). A crafted collision can therefore deny another operation's key, but can
+ * never make the publisher apply the colliding intent's effect under the victim's receipt.
+ */
 export function reconciliationIdempotencyKey(intent: ReconciliationIntent): string {
   switch (intent.kind) {
     case 'card-transition':
@@ -90,7 +105,14 @@ export function reconciliationIdempotencyKey(intent: ReconciliationIntent): stri
   }
 }
 
-/** The publisher recomputes `exactTargets` from the kind payload; a mismatch rejects. */
+/**
+ * The publisher recomputes `exactTargets` from the kind payload; a mismatch rejects.
+ *
+ * `escalationCardPath` has exactly ONE authoritative source: the publisher's
+ * `ReconciliationSourceSnapshot.escalationCardPath`. A Sweeper that seals an escalation passes its
+ * own read of the same server-derived fact; if the two reads ever disagree the publisher refuses
+ * with 409 (`exact targets disagree with the kind payload`) rather than publishing to either path.
+ */
 export function reconciliationExactTargets(
   intent: ReconciliationIntent,
   escalationCardPath?: string,
@@ -188,16 +210,38 @@ export interface ReconciliationAuditRecord {
 
 // --- Read-only Sweeper wall ---------------------------------------------------------------------
 
-/** The effect members a read-only Sweeper may never hold; mirrored by section 9 probe 5. */
+/**
+ * The ONLY member a Sweeper port object may carry. This is an ALLOWLIST, not a blacklist: a
+ * blacklist of known effect names ("writeFile", "routeDurable", ...) is defeated by any name not on
+ * it (`persist`, `save`, `mutate`, `emit`, `applyIntent`), so the wall admits only this one name.
+ */
+export type SweeperReadOnlyMember = 'readSnapshot';
+
+/** Retained for section 9 probe 5, which greps these literal effect names out of `sweeper.ts`. */
 export type ForbiddenSweeperEffect =
   | 'writeFile' | 'appendFile' | 'routeDurable' | 'executeCardMutation' | 'publishOpsOutbox'
   | 'spawn' | 'exec' | 'commit' | 'push' | 'transition';
 
-/** `SweeperPorts<T>` is `never` when `T` carries any effect member, so a direct effect cannot compile. */
-export type SweeperPorts<T> = Extract<keyof T, ForbiddenSweeperEffect> extends never ? T : never;
+/**
+ * `SweeperPorts<T>` is `never` unless every member of `T` is on the allowlist, so a port object
+ * carrying ANY additional member — effect-named or not — cannot be passed to `runSweeper`.
+ */
+export type SweeperPorts<T> = Exclude<keyof T, SweeperReadOnlyMember> extends never ? T : never;
 
 /** The Sweeper emits at most 20 intents per fire and applies none of them. */
 export const MAX_SWEEPER_INTENTS = 20;
+
+/**
+ * Per-kind reserved slots inside `MAX_SWEEPER_INTENTS`, so a card-noisy fire can never starve the
+ * escalation and mirror tails (section 3.5 permits at most ONE open mirror batch, so a starved
+ * mirror slot wedges schedule mirroring indefinitely). Unused reservations spill to the other
+ * kinds in this order, and the reservations sum to `MAX_SWEEPER_INTENTS`.
+ */
+export const SWEEPER_KIND_RESERVATIONS = {
+  cards: 12,
+  escalations: 4,
+  mirrors: 4,
+} as const;
 
 // --- Canonical hashing + decoders -----------------------------------------------------------------
 
