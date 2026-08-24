@@ -34,9 +34,16 @@ import type {
   ScheduleMutationReceipt,
   ScheduleMutationEvent,
   ScheduleOccurrenceClaim,
+  CommitScheduleMirrorPreparationResult,
+  ScheduleMirrorRow,
+  ScheduleMirrorStorePort,
   ScheduleSnapshot,
   SetScheduleArmedInput,
 } from '../schedules/contracts.ts';
+import {
+  decodeScheduleMirrorBatch, decodeScheduleMirrorWatermark, isRowCoveredByMirror,
+} from '../schedules/mirrorContracts.ts';
+import type { ScheduleMirrorBatch, ScheduleMirrorWatermark } from '../schedules/mirrorContracts.ts';
 import type {
   AtomicScheduleStorePort,
   ScheduleMutationTransaction,
@@ -433,6 +440,12 @@ export interface StoredSchedule extends Schedule {
   emissionReceipts: JsonObject[];
   mirrorMetadataRevision: number;
   tombstone: JsonObject | null;
+  /**
+   * P4 section 3.5: the store mirror revision this row was last touched at. Additive and optional —
+   * a pre-P4 document lacking it reads as 0 and gains it on the first mirror batch, with no document
+   * version bump and no migration [P4-C37].
+   */
+  lastMirrorRevision?: number;
 }
 
 export interface StoredScheduleTombstone extends JsonObject {
@@ -440,6 +453,11 @@ export interface StoredScheduleTombstone extends JsonObject {
   deletedAt: string;
   version: number;
   operationReceipts: JsonObject[];
+  /**
+   * A tombstone also carries the additive `lastMirrorRevision` and `mirroredAt` [P4-C37], but it is
+   * a `JsonObject` whose index signature admits no `undefined`, so those two live behind index
+   * access (`scheduleMirrorFields`) rather than as declared optional properties.
+   */
 }
 
 export interface StoredScheduleOccurrenceClaim extends JsonObject {
@@ -490,6 +508,22 @@ export interface StoreDocument extends StoreDocumentCollections {
   documentRevision: number;
   nextEventCursor: number;
   scheduleCollectionRevision: number;
+  /**
+   * P4 section 3.5: incremented only by mirror-relevant create, arm/disarm, delete, and seed
+   * reconciliation — never by occurrence completion. Additive and optional on the SAME versioned
+   * document: absent reads as 0, first written when the first mirror batch is prepared [P4-C37].
+   */
+  scheduleMirrorRevision?: number;
+  /**
+   * The durable §3.5 batch record: `{ record: <ScheduleMirrorBatch>, superseded?: {...} }`. One
+   * field holds the whole batch (state/operationKey/pr/mergedAt/targetWatermark/paths) so the
+   * preparation CAS has something to read and write inside a single writer transaction. When a
+   * `failed` batch is closed by the next preparation, that close is recorded on the replacing
+   * wrapper — the batch-state union itself is W0's closed contract and is not extended here.
+   */
+  scheduleMirrorBatch?: JsonObject;
+  /** The watermark of the last mirror actually landed (a merge, or a byte-identical no-op). */
+  scheduleMirrorMergedWatermark?: JsonObject;
 }
 
 type StoreDocumentCollectionEquality =
@@ -877,7 +911,8 @@ export interface BrokerStoreBackend {
   }): BrokerMutation;
 }
 
-export interface ControlPlaneStore extends BrokerStoreBackend, AtomicScheduleStorePort, ScheduleSocketStorePort {
+export interface ControlPlaneStore
+  extends BrokerStoreBackend, AtomicScheduleStorePort, ScheduleSocketStorePort, ScheduleMirrorStorePort {
   getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision' | 'scheduleCollectionRevision'>;
   /** W6 schedule read side; private durability fields never cross this boundary. */
   getScheduleSnapshot(): { collectionRevision: number; schedules: Schedule[] };
@@ -3225,6 +3260,83 @@ function makeStore(
     schedules: document.schedules.map(publicSchedule),
   });
 
+  // P4 section 3.5 mirror revision. Absent fields default to 0 so a pre-P4 document reads without
+  // error; a mirror-relevant mutation is the only thing that advances the counter [P4-C37].
+  const scheduleMirrorRevisionOf = (document: StoreDocument): number => document.scheduleMirrorRevision ?? 0;
+
+  const advanceScheduleMirrorRevision = (
+    document: StoreDocument,
+    ...rows: Array<{ lastMirrorRevision?: number }>
+  ): number => {
+    const next = scheduleMirrorRevisionOf(document) + 1;
+    document.scheduleMirrorRevision = next;
+    for (const row of rows) row.lastMirrorRevision = next;
+    return next;
+  };
+
+  /**
+   * The mirror projection. `name` is the seed cadence identity the HEARTBEAT file is keyed on — a
+   * row that no seed import produced has none, reads null, and is skipped by the renderer rather
+   * than invented from `owner.id` (which would re-import under a different `seedScheduleId`).
+   * `schedule` is the canonical source expression the file's own consumers parse, never the words.
+   */
+  const scheduleMirrorRow = (schedule: StoredSchedule): ScheduleMirrorRow => {
+    const cadenceName = schedule.launchPayload?.cadenceName;
+    return {
+      id: schedule.id,
+      name: typeof cadenceName === 'string' && cadenceName !== '' ? cadenceName : null,
+      schedule: schedule.cadenceCanonical,
+      agent: schedule.owner.type === 'agent' ? schedule.owner.id : null,
+      armed: schedule.armed,
+      mirrorPath: schedule.mirrorPath,
+      lastMirrorRevision: schedule.lastMirrorRevision ?? 0,
+    };
+  };
+
+  /** The watermark of a store that has never merged a mirror batch. */
+  const unmirroredWatermark = (): ScheduleMirrorWatermark => ({
+    revision: 0,
+    digest: sha256('schedule-mirror-unmirrored'),
+  });
+
+  const storedScheduleMirrorBatch = (document: StoreDocument): ScheduleMirrorBatch | null => {
+    const wrapper = document.scheduleMirrorBatch;
+    if (!wrapper || typeof wrapper !== 'object') return null;
+    const record = (wrapper as JsonObject)['record'];
+    if (record === undefined || record === null) return null;
+    return decodeScheduleMirrorBatch(record);
+  };
+
+  const scheduleMirrorBatchJson = (batch: ScheduleMirrorBatch): JsonObject =>
+    JSON.parse(JSON.stringify(batch)) as JsonObject;
+
+  /**
+   * The additive P4 mirror fields of one row. A live schedule declares them; a tombstone is a
+   * `JsonObject` and reaches them by index, so both are handled through this one view.
+   */
+  type ScheduleMirrorFields = { id: string; lastMirrorRevision?: number; mirroredAt?: string | null };
+  const scheduleMirrorFields = (row: StoredSchedule | StoredScheduleTombstone): ScheduleMirrorFields =>
+    row as unknown as ScheduleMirrorFields;
+
+  const mirrorRows = (document: StoreDocument): ScheduleMirrorFields[] =>
+    [...document.schedules, ...document.scheduleTombstones].map(scheduleMirrorFields);
+
+  /** Materialise the additive P4 fields on an existing document. No version bump, no migration. */
+  const materialiseScheduleMirrorFields = (document: StoreDocument): boolean => {
+    let changed = false;
+    if (document.scheduleMirrorRevision === undefined) {
+      document.scheduleMirrorRevision = 0;
+      changed = true;
+    }
+    for (const row of mirrorRows(document)) {
+      if (row.lastMirrorRevision === undefined) {
+        row.lastMirrorRevision = 0;
+        changed = true;
+      }
+    }
+    return changed;
+  };
+
   const scheduleFailure = (status: number, code: string): Error & { status: number; code: string } =>
     Object.assign(new Error(code), { status, code });
 
@@ -3302,6 +3414,7 @@ function makeStore(
           };
           document.schedules.push(schedule);
           document.scheduleCollectionRevision += 1;
+          advanceScheduleMirrorRevision(document, schedule);
           dirty = true;
           return { schedule: publicSchedule(schedule), collectionRevision: document.scheduleCollectionRevision, replayed: false };
         },
@@ -3312,6 +3425,7 @@ function makeStore(
           schedule.armed = input.armed;
           schedule.version += 1;
           document.scheduleCollectionRevision += 1;
+          advanceScheduleMirrorRevision(document, schedule);
           appendScheduleMutationEvent(document, schedule.operationReceipts, {
             operation: input.armed ? 'armed' : 'disarmed',
             scheduleId: id,
@@ -3343,6 +3457,7 @@ function makeStore(
           };
           document.schedules.splice(index, 1);
           document.scheduleTombstones.push(tombstone);
+          advanceScheduleMirrorRevision(document, scheduleMirrorFields(tombstone));
           dirty = true;
           return {
             tombstone: { id, deletedAt: tombstone.deletedAt, version: tombstone.version },
@@ -3466,6 +3581,93 @@ function makeStore(
 
     getScheduleSnapshot() {
       return scheduleSnapshot(load());
+    },
+
+    async readScheduleMirrorSnapshot() {
+      const document = load();
+      return { revision: scheduleMirrorRevisionOf(document), rows: document.schedules.map(scheduleMirrorRow) };
+    },
+
+    async readOpenScheduleMirrorBatch() {
+      return storedScheduleMirrorBatch(load());
+    },
+
+    async readMergedScheduleMirrorWatermark() {
+      const merged = load().scheduleMirrorMergedWatermark;
+      return merged === undefined ? unmirroredWatermark() : decodeScheduleMirrorWatermark(merged);
+    },
+
+    // The read and the write both live inside the single-writer schedule transaction, so this call
+    // — not the caller's earlier read — is what makes "at most one open batch" true.
+    commitScheduleMirrorPreparation(batch): Promise<CommitScheduleMirrorPreparationResult> {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const stored = storedScheduleMirrorBatch(document);
+        if (stored && stored.state !== 'merged' && stored.state !== 'failed') {
+          if (stored.id === batch.id) return { outcome: 'replayed' as const, batch: stored };
+          return { outcome: 'batch-open' as const, batch: stored };
+        }
+        // The first batch materialises both additive fields on the existing document [P4-C37].
+        materialiseScheduleMirrorFields(document);
+        // A batch the operator abandoned (state `failed`) is closed by the next preparation instead
+        // of wedging the mirror forever; the close is recorded on the replacing record.
+        const superseded = stored && stored.state === 'failed'
+          ? { id: stored.id, state: 'superseded', at: batch.createdAt }
+          : undefined;
+        document.scheduleMirrorBatch = {
+          record: scheduleMirrorBatchJson(batch),
+          ...(superseded === undefined ? {} : { superseded }),
+        };
+        commit(document);
+        return { outcome: 'committed' as const };
+      });
+    },
+
+    applyScheduleMirrorMerge(input) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        materialiseScheduleMirrorFields(document);
+        const updatedRowIds: string[] = [];
+        // §3.5: CAS only the rows AND tombstones the batch actually covered. A mutation made after
+        // the batch was prepared carries a higher revision and is left for the next batch.
+        for (const row of mirrorRows(document)) {
+          if (!isRowCoveredByMirror(row.lastMirrorRevision ?? 0, input.batch.targetWatermark)) continue;
+          row.mirroredAt = input.mirroredAt;
+          updatedRowIds.push(row.id);
+        }
+        document.scheduleMirrorBatch = { record: scheduleMirrorBatchJson(input.batch) };
+        document.scheduleMirrorMergedWatermark = { ...input.batch.targetWatermark };
+        commit(document);
+        return { updatedRowIds };
+      });
+    },
+
+    recordScheduleMirrorUnchanged(watermark) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const merged = document.scheduleMirrorMergedWatermark;
+        if (merged !== undefined
+          && merged['revision'] === watermark.revision && merged['digest'] === watermark.digest) {
+          return;
+        }
+        materialiseScheduleMirrorFields(document);
+        document.scheduleMirrorMergedWatermark = { ...watermark };
+        commit(document);
+      });
+    },
+
+    markScheduleMirrorBatchFailed(batchId) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const stored = storedScheduleMirrorBatch(document);
+        if (!stored || stored.id !== batchId || stored.state === 'merged' || stored.state === 'failed') {
+          return { failed: false };
+        }
+        const { pr: _pr, ...rest } = stored;
+        document.scheduleMirrorBatch = { record: scheduleMirrorBatchJson({ ...rest, state: 'failed' }) };
+        commit(document);
+        return { failed: true };
+      });
     },
 
     async readScheduleSnapshot() {
@@ -3609,6 +3811,11 @@ function makeStore(
           importedAt: plan.marker.importedAt,
         });
         document.scheduleCollectionRevision += 1;
+        // Seed reconciliation is one mirror-relevant event; every imported row carries its revision.
+        const imported = plan.seeds
+          .map((seed) => document.schedules.find((schedule) => schedule.id === seed.id))
+          .filter((schedule): schedule is StoredSchedule => schedule !== undefined);
+        advanceScheduleMirrorRevision(document, ...imported);
         commit(document);
       });
     },

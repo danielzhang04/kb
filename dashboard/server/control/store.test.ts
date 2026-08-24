@@ -28,6 +28,10 @@ import { acquireWriterLease } from './writerLease.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
 import { ScheduleService } from '../schedules/service.ts';
+import { scheduleMirrorSnapshotDigest } from '../schedules/mirror.ts';
+import { SCHEDULE_MIRROR_BATCH_SCHEMA, scheduleMirrorBatchId } from '../schedules/mirrorContracts.ts';
+import type { ScheduleMirrorBatch } from '../schedules/mirrorContracts.ts';
+import { scheduleMirrorOperationKey } from '../write/durableManifest.ts';
 import { resolveQueueBridgeRunnable } from './queueBridge.ts';
 
 const roots: string[] = [];
@@ -4938,4 +4942,191 @@ describe('read scope', () => {
     }, 'all-subjects')).toMatchObject({ ok: false, reason: 'conflict' });
   });
 
+});
+
+describe('control-store schedule mirror revision', () => {
+  const mirrorBatch = (revision: number, rows: Parameters<typeof scheduleMirrorSnapshotDigest>[0]): ScheduleMirrorBatch => {
+    const targetWatermark = { revision, digest: scheduleMirrorSnapshotDigest(rows) };
+    const id = scheduleMirrorBatchId(targetWatermark);
+    return {
+      schema: SCHEDULE_MIRROR_BATCH_SCHEMA,
+      id,
+      baseWatermark: { revision: 0, digest: '0'.repeat(64) },
+      targetWatermark,
+      paths: [{ path: 'HEARTBEAT.md', digest: 'a'.repeat(64) }],
+      state: 'prepared',
+      operationKey: scheduleMirrorOperationKey(id),
+      createdAt: '2026-08-23T09:00:00.000Z',
+    };
+  };
+
+  it('reads a pre-P4 document lacking both mirror fields and writes them on the first mirror batch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-mirror-prep4-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+
+    // A genuine pre-P4 document: produced by the store's OWN save path, then reduced to base
+    // semantics by deleting exactly the two fields P4 adds. Nothing here is hand-built.
+    const seeding = createFileControlPlaneStore(root);
+    await seeding.transaction(async (transaction) => {
+      await transaction.createSchedule({
+        owner: { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' },
+        cadence: { source: 'weekly:sun', words: 'Weekly on Sun' },
+        mirrorPath: 'HEARTBEAT.md', expectedCollectionRevision: 0, idempotencyKey: 'pre-p4',
+      });
+    });
+    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+      scheduleMirrorRevision?: number; schedules: Array<Record<string, unknown>>;
+    };
+    expect(Object.hasOwn(saved, 'scheduleMirrorRevision')).toBe(true);
+    delete saved.scheduleMirrorRevision;
+    for (const schedule of saved.schedules) {
+      expect(Object.hasOwn(schedule, 'lastMirrorRevision')).toBe(true);
+      delete schedule['lastMirrorRevision'];
+      // Seed identity, exactly as the seed importer writes it.
+      schedule['launchPayload'] = { cadenceName: 'branch-hygiene', disarmedReason: null };
+    }
+    writeFileSync(path, `${JSON.stringify(saved)}\n`);
+    const scheduleId = String(saved.schedules[0]['id']);
+
+    const store = createFileControlPlaneStore(root);
+    const snapshot = await store.readScheduleMirrorSnapshot();
+    expect(snapshot).toEqual({
+      revision: 0,
+      rows: [{
+        id: scheduleId, name: 'branch-hygiene', schedule: 'weekly:sun',
+        agent: 'hygiene', armed: false, mirrorPath: 'HEARTBEAT.md', lastMirrorRevision: 0,
+      }],
+    });
+
+    expect(await store.commitScheduleMirrorPreparation(mirrorBatch(0, snapshot.rows)))
+      .toEqual({ outcome: 'committed' });
+    const written = JSON.parse(readFileSync(path, 'utf8')) as {
+      version: number; scheduleMirrorRevision?: number;
+      scheduleMirrorBatch?: { record: unknown };
+      schedules: Array<{ lastMirrorRevision?: number }>;
+    };
+    expect(written.version).toBe(3);
+    expect(Object.hasOwn(written, 'scheduleMirrorRevision')).toBe(true);
+    expect(written.scheduleMirrorRevision).toBe(0);
+    expect(Object.hasOwn(written.schedules[0], 'lastMirrorRevision')).toBe(true);
+    expect(written.schedules[0].lastMirrorRevision).toBe(0);
+    // The batch record itself is durable, not just the revision fields.
+    expect(written.scheduleMirrorBatch?.record).toMatchObject({ state: 'prepared', id: mirrorBatch(0, snapshot.rows).id });
+  });
+
+  it('replays an identical preparation and refuses a second, different open batch', async () => {
+    const store = createInMemoryControlPlaneStore();
+    const snapshot = await store.readScheduleMirrorSnapshot();
+    const first = mirrorBatch(0, snapshot.rows);
+    expect(await store.commitScheduleMirrorPreparation(first)).toEqual({ outcome: 'committed' });
+    expect(await store.commitScheduleMirrorPreparation(first)).toEqual({ outcome: 'replayed', batch: first });
+    const second = mirrorBatch(1, snapshot.rows);
+    expect(await store.commitScheduleMirrorPreparation(second)).toEqual({ outcome: 'batch-open', batch: first });
+    expect(await store.readOpenScheduleMirrorBatch()).toEqual(first);
+  });
+
+  it('records a byte-identical mirror by advancing the merged watermark with no batch', async () => {
+    const store = createInMemoryControlPlaneStore();
+    expect((await store.readMergedScheduleMirrorWatermark()).revision).toBe(0);
+    const watermark = { revision: 4, digest: 'c'.repeat(64) };
+    await store.recordScheduleMirrorUnchanged(watermark);
+    expect(await store.readMergedScheduleMirrorWatermark()).toEqual(watermark);
+    expect(await store.readOpenScheduleMirrorBatch()).toBeNull();
+    const before = store.getControlDocumentMetadata().documentRevision;
+    await store.recordScheduleMirrorUnchanged(watermark);
+    expect(store.getControlDocumentMetadata().documentRevision).toBe(before);
+  });
+
+  it('advances the mirror revision for create, arm, disarm, and delete but never for an occurrence', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-mirror-hooks-'));
+    roots.push(root);
+    const scheduledFor = '2026-08-23T07:15:00.000Z';
+    const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+      const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+      return { card: {
+        meta: {
+          'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+          project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+          'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+          workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+          runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+        },
+        body: '## Work order\n\nRun the scheduled Hygiene agent.\n',
+      }, cardBytesSha256: 'b'.repeat(64) };
+    });
+    const store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
+    const revision = async () => (await store.readScheduleMirrorSnapshot()).revision;
+
+    expect(await revision()).toBe(0);
+    const created = await api.create({
+      owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '07:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'mirror-create',
+    });
+    expect(await revision()).toBe(1);
+    const armed = await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'mirror-arm', armed: true });
+    expect(await revision()).toBe(2);
+    // A replayed mutation is not a fresh mirror-relevant mutation.
+    await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'mirror-arm', armed: true });
+    expect(await revision()).toBe(2);
+    expect((await store.readScheduleMirrorSnapshot()).rows[0].lastMirrorRevision).toBe(2);
+
+    // Occurrence claim, phase advance, and terminal completion are NOT mirror hooks.
+    const claim = await api.claimScheduleOccurrence({
+      occurrence: { scheduleId: armed.schedule.id, scheduledFor, nextAt: '2026-08-24T07:15:00.000Z' },
+      expectedVersion: armed.schedule.version, idempotencyKey: 'mirror-claim',
+    });
+    const cardId = String((claim.card.meta as Record<string, unknown>).id);
+    for (const phase of ['card-saved', 'ledger-appended'] as const) {
+      await store.advanceScheduleOccurrence({
+        scheduleId: armed.schedule.id, scheduledFor, nextAt: '2026-08-24T07:15:00.000Z',
+        phase, idempotencyKey: `mirror-claim:${phase}`,
+      });
+    }
+    const launched = createRun(store, 'alice');
+    await store.bindScheduleOccurrenceRun(cardId, launched.run.runRef);
+    const running = store.transitionRun('alice', launched.run.runRef, launched.run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const done = store.transitionRun('alice', launched.run.runRef, running.value.version, 'failed');
+    if (!done.ok) throw new Error(done.detail);
+    expect(store.getScheduleSnapshot().schedules[0].lastOutcome).toBe('failed');
+    expect(await revision()).toBe(2);
+
+    const current = store.getScheduleSnapshot().schedules[0];
+    const disarmed = await api.setArmed(current.id, { expectedVersion: current.version, idempotencyKey: 'mirror-disarm', armed: false });
+    expect(await revision()).toBe(3);
+    await api.delete(disarmed.schedule.id, { expectedVersion: disarmed.schedule.version, idempotencyKey: 'mirror-delete' });
+    expect(await revision()).toBe(4);
+    const persisted = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      scheduleMirrorRevision?: number; scheduleTombstones: Array<{ lastMirrorRevision?: number }>;
+    };
+    expect(persisted.scheduleMirrorRevision).toBe(4);
+    expect(persisted.scheduleTombstones[0].lastMirrorRevision).toBe(4);
+  });
+
+  it('bounds mirroredAt to the rows the merged batch covered', async () => {
+    const store = createInMemoryControlPlaneStore();
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
+    const covered = await api.create({
+      owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '07:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'covered',
+    });
+    const snapshot = await store.readScheduleMirrorSnapshot();
+    const batch = mirrorBatch(snapshot.revision, snapshot.rows);
+    // A later mutation advances the store watermark; the open batch never covers it.
+    const later = await api.create({
+      owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '08:15' },
+      expectedCollectionRevision: 1, idempotencyKey: 'later',
+    });
+    expect((await store.readScheduleMirrorSnapshot()).revision).toBe(2);
+
+    const merged = await store.applyScheduleMirrorMerge({ batch, mirroredAt: '2026-08-23T10:00:00.000Z' });
+    expect(merged.updatedRowIds).toEqual([covered.schedule.id]);
+    const rows = store.getScheduleSnapshot().schedules;
+    expect(rows.find((row) => row.id === covered.schedule.id)?.mirroredAt).toBe('2026-08-23T10:00:00.000Z');
+    expect(rows.find((row) => row.id === later.schedule.id)?.mirroredAt).toBeNull();
+  });
 });
