@@ -36,6 +36,7 @@ function record(overrides: Partial<ProposalRecord> & { id: string }): ProposalRe
     status: 'proposed',
     batchId: null,
     implementedAt: null,
+    contentHash: 'a'.repeat(64),
     evidence: [{ path: 'memory/lessons-miner.md', locator: '2026-08-20 run_01HXYZ' }],
     proposedChange: 'One bounded, testable change.',
     ...overrides,
