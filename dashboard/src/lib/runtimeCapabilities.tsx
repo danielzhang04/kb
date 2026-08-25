@@ -24,7 +24,7 @@ const AVAILABLE_OPTIONAL_KEYS = ['droppedLaunchers'];
  * neither a PTY member nor a declared host member is a payload nobody agreed to and is refused.
  */
 const HOST_SLICE_KEYS = ['platform', 'python', 'runnerTrigger', 'vibe', 'durablePrWrites',
-  'localTranscripts', 'dashboardBridge'];
+  'localTranscripts', 'dashboardBridge', 'connectors', 'skills', 'filesystemRoots', 'gpu', 'clis'];
 
 /**
  * A dropped launcher is the operator's only trace of a tampered launcher tree, so it is decoded and

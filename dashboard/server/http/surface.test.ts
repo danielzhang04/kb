@@ -1496,11 +1496,15 @@ describe('P2 production migration evidence wiring', () => {
       makeProductionSurfaceContext({ repoRoot: success.repoRoot, stateRoot: success.stateRoot,
         fileControlAccess: { mode: 'already-locked', lease: successLease } });
       expect(JSON.parse(readFileSync(success.path, 'utf8'))).toMatchObject({
-        version: 3,
+        version: 4,
         runs: [
           { owner: { type: 'agent', id: 'grader' }, terminalOutcome: null },
           { owner: { type: 'agent', id: 'grader' }, terminalOutcome: 'abandoned', archivedFrom: 'waiting-human' },
         ],
+        // P6 W1's purely additive v3->v4 edge: the three placement collections land empty.
+        hostAdvertisements: [],
+        placementLeases: [],
+        v1Idempotency: [],
       });
     } finally {
       successLease.release();

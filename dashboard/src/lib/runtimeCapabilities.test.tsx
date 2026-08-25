@@ -79,6 +79,22 @@ describe('decodeRuntimeCapabilities', () => {
     ]) expect(decodeRuntimeCapabilities({ ...AVAILABLE, droppedLaunchers: bad })).toBe(null);
   });
 
+  it('accepts an available capability carrying the five advertisement-bound host fields', () => {
+    // P6 W3 added connectors/skills/filesystemRoots/gpu/clis to the composed host slice; the browser
+    // decoder must widen its closed key-wall to accept the enriched body rather than refuse it.
+    expect(decodeRuntimeCapabilities({
+      ...AVAILABLE,
+      connectors: [{ server: 'kb', tools: ['read'] }],
+      skills: ['humanizer'],
+      filesystemRoots: ['/repo'],
+      gpu: false,
+      clis: { claude: 'ready', codex: 'missing' },
+    })).toEqual({
+      pty: true, host: 'desktop', launchers: ['shell', 'claude', 'codex'],
+      roots: ['repo', 'worktrees'], checkedAt: CHECKED_AT, localTranscripts: true,
+    });
+  });
+
   it('rejects an available capability that is not the exact closed shape', () => {
     expect(decodeRuntimeCapabilities({ ...AVAILABLE, host: 'laptop' })).toBe(null);
     expect(decodeRuntimeCapabilities({ ...AVAILABLE, launchers: ['shell', 'shell'] })).toBe(null);
