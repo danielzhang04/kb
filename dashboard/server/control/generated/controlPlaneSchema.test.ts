@@ -8,14 +8,17 @@ import {
 } from './controlPlaneSchema.ts';
 
 describe('generated control-plane schema', () => {
-  it('pins v3 and derives release metadata from the immediate rollback edge', () => {
-    expect(CONTROL_PLANE_SCHEMA_VERSION).toBe(3);
-    expect(ROLLBACK_CONTROL_PLANE_SCHEMA_VERSION).toBe(2);
+  it('pins v4 and derives release metadata from the immediate rollback edge', () => {
+    expect(CONTROL_PLANE_SCHEMA_VERSION).toBe(4);
+    expect(ROLLBACK_CONTROL_PLANE_SCHEMA_VERSION).toBe(3);
     expect(CONTROL_PLANE_MIGRATIONS).toEqual([
       { from: 1, to: 2, breaking: true, down: 'present' },
       { from: 2, to: 3, breaking: true, down: 'present' },
+      { from: 3, to: 4, breaking: false, down: 'present' },
     ]);
-    expect([STATE_SCHEMA, ROLLBACK_STATE_SCHEMA, STATE_MIGRATION]).toEqual(['3', '2', 'breaking']);
+    // The v3 -> v4 placement edge is additive, but the aggregated upgrade path still crosses breaking
+    // edges, so the release-level state migration stays 'breaking' [P6-C48].
+    expect([STATE_SCHEMA, ROLLBACK_STATE_SCHEMA, STATE_MIGRATION]).toEqual(['4', '3', 'breaking']);
     expect(RELEASE_ATTESTATION_SCHEMA).toBe('kb.release-attestation/v2');
     expect(RELEASE_ATTESTATION_KEYS).toEqual([
       'archive', 'schema', 'sha256', 'sourceCommit', 'stateSchema',
@@ -29,7 +32,7 @@ describe('generated control-plane schema', () => {
       'old-selected', 'rollback-cancelled', 'recovery-required',
     ]);
     const empty = emptyControlPlaneDocument();
-    expect(empty.version).toBe(3);
+    expect(empty.version).toBe(4);
     expect(empty.documentRevision).toBe(0);
     expect(empty.scheduleCollectionRevision).toBe(0);
     expect(Object.entries(empty).filter(([, value]) => Array.isArray(value)).map(([key]) => key).sort())

@@ -26,6 +26,10 @@ import {
 import { CONTROL_PLANE_SCHEMA_VERSION, type ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
 import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
 import type { HostKind, RunnableRef, Schedule } from './p2Contracts.ts';
+// P6 W1 [P6-C23, P6-C37, P6-C48, P6-C59]: the three additive placement collections introduced by the
+// v3 -> v4 migration. Their record decoders are W0's contracts, imported — never re-declared here.
+import type { PlacementLease, StoredHostAdvertisement } from '../placement/contracts.ts';
+import type { V1IdempotencyRecord } from '../api/v1/idempotency.ts';
 import type {
   CompleteScheduleOccurrenceInput,
   DeleteScheduleInput,
@@ -526,10 +530,14 @@ export interface StoreDocumentCollections {
   scheduleTombstones: StoredScheduleTombstone[];
   scheduleOccurrenceClaims: StoredScheduleOccurrenceClaim[];
   scheduleSeedImports: StoredScheduleSeedImport[];
+  // P6 W1: the three placement collections join the versioned document at schema v4 [P6-C23, P6-C48].
+  hostAdvertisements: StoredHostAdvertisement[];
+  placementLeases: PlacementLease[];
+  v1Idempotency: V1IdempotencyRecord[];
 }
 
 export interface StoreDocument extends StoreDocumentCollections {
-  version: 3;
+  version: 4;
   documentRevision: number;
   nextEventCursor: number;
   scheduleCollectionRevision: number;
@@ -564,6 +572,12 @@ export interface StoreDocument extends StoreDocumentCollections {
    * above [P5-C34]. Rows are keyed by `intentRef`.
    */
   assetPullIntents?: StoredAssetPullIntent[];
+  /**
+   * P6 W1 [P6-C41]: the per-store HMAC key for opaque v1 cursors. Additive and optional on the SAME
+   * versioned document — absent until first minted, then durable across every reopen and identical on
+   * both daemons so a VM-minted cursor verifies at the Desktop daemon. Never an authorization input.
+   */
+  cursorSecret?: string;
 }
 
 type StoreDocumentCollectionEquality =
@@ -1151,7 +1165,7 @@ function genericPersistenceDocument(document: StoreDocument): StoreDocument {
 
 export function emptyStoreDocumentForTest(): StoreDocument {
   return {
-    version: 3,
+    version: 4,
     documentRevision: 0,
     nextEventCursor: 1,
     scheduleCollectionRevision: 0,
@@ -1173,6 +1187,9 @@ export function emptyStoreDocumentForTest(): StoreDocument {
     scheduleTombstones: [],
     scheduleOccurrenceClaims: [],
     scheduleSeedImports: [],
+    hostAdvertisements: [],
+    placementLeases: [],
+    v1Idempotency: [],
   };
 }
 
@@ -7301,6 +7318,7 @@ export function createFileControlPlaneStore(
   let legacyRewrite = false;
   let sourceBytes = 0;
   let migrationBackupSource: Buffer | null = null;
+  let migrationBackupFrom = 0;
   if (existsSync(path)) {
     sourceBytes = statSync(path).size;
     const source = readFileSync(path, 'utf8');
@@ -7337,9 +7355,11 @@ export function createFileControlPlaneStore(
     validateGenericIterationBundle(recovered);
     for (const bundle of recovered.quarantine) validateGenericIterationBundle(bundle);
     migrated = initial.applied.length > 0;
-    if ((parsed as Record<string, unknown>).version === 2
-      && initial.applied.some((edge) => edge.from === 2 && edge.to === 3)) {
+    // P6 [P6-C32]: capture the exact preimage for ANY applied edge, not only v2 -> v3. `from` is the
+    // on-disk source version; `to` is the schema version we migrated up to.
+    if (initial.applied.length > 0) {
       migrationBackupSource = Buffer.from(source, 'utf8');
+      migrationBackupFrom = Number((parsed as Record<string, unknown>).version);
     }
   }
   const normalized = normalizeCrash(recovered, { stamp: startupStamp, bootId });
@@ -7358,8 +7378,16 @@ export function createFileControlPlaneStore(
       : acceptedMaxBytes;
     acceptedMaxBytes = nextAcceptedMaxBytes;
     if (migrationBackupSource) {
-      (options.generatedPythonRoundTripForTest ?? validateGeneratedPythonControlPlaneRoundTrip)(recovered);
-      writeControlPlaneMigrationBackupSync(stateRoot, migrationBackupSource, options.persistenceDepsForTest);
+      // P6 [P6-C32]: the BACKUP is captured for any applied edge (above), but the cross-language Python
+      // round-trip guard stays scoped to a v2-origin document — the P2 identity/schedule carrier it was
+      // written to validate. A v1 legacy rewrite migrates through its own TS-validated path and never had
+      // this guard; a purely additive v3->v4 has no carrier to cross-check.
+      if (migrationBackupFrom === 2) {
+        (options.generatedPythonRoundTripForTest ?? validateGeneratedPythonControlPlaneRoundTrip)(recovered);
+      }
+      writeControlPlaneMigrationBackupSync(
+        stateRoot, migrationBackupSource, migrationBackupFrom, recovered.version, options.persistenceDepsForTest,
+      );
     }
     save(recovered, 'deploy-critical');
     if (pureSchemaMigrationOverage) {

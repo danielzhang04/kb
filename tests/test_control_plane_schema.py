@@ -33,7 +33,8 @@ def _valid_schedule():
 
 
 def _valid_v3_payload():
-    value = json.loads(control_plane_schema.EMPTY_CONTROL_PLANE)
+    # EMPTY_CONTROL_PLANE is now schema v4; down-migrate to a clean v3 shell for the v3 carrier tests.
+    value = control_plane_schema.down_migrate_v4_to_v3(json.loads(control_plane_schema.EMPTY_CONTROL_PLANE))
     run = _valid_run()
     value["runs"] = [json.loads(json.dumps(run))]
     value["quarantine"] = [{
@@ -58,14 +59,29 @@ def four_version_breaking_upgrade_registry():
     )
     return registry
 
-def test_generated_empty_document_is_schema_v3():
+def test_generated_empty_document_is_schema_v4():
     value = json.loads(control_plane_schema.EMPTY_CONTROL_PLANE)
-    assert value["version"] == control_plane_schema.CONTROL_PLANE_SCHEMA_VERSION == 3
+    assert value["version"] == control_plane_schema.CONTROL_PLANE_SCHEMA_VERSION == 4
+    assert control_plane_schema.ROLLBACK_CONTROL_PLANE_SCHEMA_VERSION == 3
     assert value["documentRevision"] == 0
     assert value["scheduleCollectionRevision"] == 0
     assert {k for k, v in value.items() if isinstance(v, list)} == set(
         control_plane_schema.CONTROL_PLANE_COLLECTIONS
     )
+    # The three P6 placement collections are additive and default empty [P6-C37, P6-C48].
+    assert value["hostAdvertisements"] == value["placementLeases"] == value["v1Idempotency"] == []
+
+
+def test_v3_to_v4_is_additive_and_rolls_back_byte_identical():
+    v3 = control_plane_schema.down_migrate_v4_to_v3(json.loads(control_plane_schema.EMPTY_CONTROL_PLANE))
+    run = _valid_run()
+    v3["runs"] = [json.loads(json.dumps(run))]
+    original_v3 = json.loads(json.dumps(v3))
+    v4 = control_plane_schema.up_migrate_v3_to_v4(v3)
+    assert v4["version"] == 4
+    assert v4["hostAdvertisements"] == v4["placementLeases"] == v4["v1Idempotency"] == []
+    # Down-migration drops exactly the three additive collections and restores the byte-identical v3.
+    assert control_plane_schema.down_migrate_v4_to_v3(v4) == original_v3
 
 def test_activation_journal_phases_are_generated_for_python_consumers():
     assert len(control_plane_schema.ACTIVATION_JOURNAL_PHASES) == 16

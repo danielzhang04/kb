@@ -99,7 +99,8 @@ it('runs the real boss-only leased restore command against a fixture backup', ()
   const live = join(root, 'control', 'control-plane.json');
   const source = Buffer.from('{"version":2}\n', 'utf8');
   writeFileSync(live, source);
-  const backup = writeControlPlaneMigrationBackupSync(root, source);
+  // P6 [P6-C32]: the backup filename now records the from/to versions of the migration it preimages.
+  const backup = writeControlPlaneMigrationBackupSync(root, source, 2, 3);
   writeFileSync(live, '{"version":3}\n', 'utf8');
   const cli = fileURLToPath(new URL('./migrationReport.ts', import.meta.url));
   const output = execFileSync(process.execPath, [cli, '--restore', root, backup.path], { encoding: 'utf8' });

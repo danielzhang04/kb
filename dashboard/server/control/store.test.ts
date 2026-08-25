@@ -2444,7 +2444,7 @@ describe('Task 2 generic iteration durability', () => {
     expect(secondBoot.createProposalRevision('alice', {
       sourceComposerRef: 'large-v1-second-boot', sourceTurnId: 'turn-second', title: 'Second boot', snapshot: {},
     }).ok).toBe(true);
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 3, documentRevision: 3 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 4, documentRevision: 3 });
   });
 
   it.each([
@@ -2505,14 +2505,16 @@ describe('Task 2 generic iteration durability', () => {
     createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
     const firstGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
     expect(statSync(path).size).toBeGreaterThan(maxDocumentBytes);
-    expect(firstGrant).toMatchObject({ schemaVersion: 3 });
+    expect(firstGrant).toMatchObject({ schemaVersion: 4 });
 
+    // Simulate a further pure-schema migration that grows the already-current v4 document, and assert the
+    // accepted-size grant accumulates on top of the first [P6-C32]: the mock forces a growing edge.
     expect(() => createFileControlPlaneStore(root, {
       ...deterministicOptions(),
       maxDocumentBytes,
       loadAndMigrateForTest: (encoded, target, context) => {
         const result = loadAndMigrate(encoded, target, context);
-        if ((JSON.parse(encoded) as { version: number }).version === 3) {
+        if ((JSON.parse(encoded) as { version: number }).version === 4) {
           for (const run of result.document.runs) run.title = `${run.title}x`;
           return { document: result.document, applied: [{ from: 3, to: 4, breaking: true, down: 'present' }] };
         }
@@ -2520,7 +2522,7 @@ describe('Task 2 generic iteration durability', () => {
       },
     })).not.toThrow();
     const secondGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
-    expect(secondGrant.schemaVersion).toBe(3);
+    expect(secondGrant.schemaVersion).toBe(4);
     expect(secondGrant.maxBytes).toBeGreaterThan(firstGrant.maxBytes);
   });
 
@@ -4096,7 +4098,7 @@ describe('durability, crash recovery, and retention', () => {
     if (!managerRunning.ok) throw new Error(managerRunning.detail);
 
     const path = join(root, 'control', 'control-plane.json');
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 3, nextEventCursor: 1 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 4, nextEventCursor: 1 });
     expect(readdirSync(join(root, 'control')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
 
     const restarted = createFileControlPlaneStore(root, clock);
@@ -5017,7 +5019,7 @@ describe('control-store schedule mirror revision', () => {
       scheduleMirrorBatch?: { record: unknown };
       schedules: Array<{ lastMirrorRevision?: number }>;
     };
-    expect(written.version).toBe(3);
+    expect(written.version).toBe(4);
     expect(Object.hasOwn(written, 'scheduleMirrorRevision')).toBe(true);
     expect(written.scheduleMirrorRevision).toBe(0);
     expect(Object.hasOwn(written.schedules[0], 'lastMirrorRevision')).toBe(true);

@@ -86,21 +86,23 @@ it('backs up and migrates v2 once, commits CAS once, and reopens byte-identicall
   const opened = createLeasedFileStoreForTest({
     generatedPythonRoundTripForTest: (document) => {
       validationCalls += 1;
-      expect(document.version).toBe(3);
+      // P6 W1: a v2 document now migrates to the current schema v4 (chaining 2->3->4) [P6-C32, P6-C48].
+      expect(document.version).toBe(4);
     },
   }, fixture('v2-empty.json'));
   let bytes: Buffer;
   let document: Record<string, any>;
   try {
     expect(readDocument(opened.path)).toMatchObject({
-      version: 3, documentRevision: 1, scheduleCollectionRevision: 0, deployments: [], schedules: [],
+      version: 4, documentRevision: 1, scheduleCollectionRevision: 0, deployments: [], schedules: [],
     });
     expect(validationCalls).toBe(1);
     const backups = join(dirname(opened.path), 'backups');
     expect(existsSync(backups)).toBe(true);
+    // The generalised backup filename records the full from/to span of the applied migration [P6-C32].
     expect(readdirSync(backups)).toEqual(expect.arrayContaining([
-      expect.stringMatching(/^control-plane-v2-to-v3-[a-f0-9]{64}\.json$/),
-      expect.stringMatching(/^control-plane-v2-to-v3-[a-f0-9]{64}\.json\.sha256$/),
+      expect.stringMatching(/^control-plane-v2-to-v4-[a-f0-9]{64}\.json$/),
+      expect.stringMatching(/^control-plane-v2-to-v4-[a-f0-9]{64}\.json\.sha256$/),
     ]));
     const input = createDeploymentFixture();
     const made = opened.store.createDeployment('operator', input);

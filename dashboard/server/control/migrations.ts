@@ -69,6 +69,12 @@ const V2_COLLECTIONS = [
   'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts',
   'generationSupersessions', 'quarantine', 'deployments',
 ] as const;
+// P6 [P6-C23, P6-C48]: the three additive placement collections the v3 -> v4 edge introduces. They are
+// present only from schema v4, so a pre-P6 v3 document must NOT be required to carry them.
+const V4_NEW_COLLECTIONS = ['hostAdvertisements', 'placementLeases', 'v1Idempotency'] as const;
+const V3_COLLECTIONS = CONTROL_PLANE_COLLECTIONS.filter(
+  (collection) => !(V4_NEW_COLLECTIONS as readonly string[]).includes(collection),
+);
 
 type RawDocument = Record<string, any>;
 
@@ -211,7 +217,8 @@ export function assertMigrationEnvelope(value: unknown): asserts value is RawDoc
   }
   const required = version === 1
     ? ['proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'quarantine']
-    : version === 2 ? [...V2_COLLECTIONS] : [...CONTROL_PLANE_COLLECTIONS];
+    : version === 2 ? [...V2_COLLECTIONS]
+      : version === 3 ? [...V3_COLLECTIONS] : [...CONTROL_PLANE_COLLECTIONS];
   if (required.some((field) => !boundedArray(value[field]))) throw new Error('invalid control-plane store');
   if (version === 1) {
     for (const field of [
@@ -1201,9 +1208,27 @@ function downV3ToV2(source: RawDocument): RawDocument {
   return source;
 }
 
+// P6 [P6-C23, P6-C48]: v3 -> v4 is a purely ADDITIVE edge — it introduces the three placement
+// collections empty and touches nothing else, so the paired down deletes exactly those keys and
+// restores a byte-identical v3 document (the keys are appended last on the way up and removed on the
+// way down, leaving the original key order intact).
+function upV3ToV4(source: RawDocument): RawDocument {
+  source.hostAdvertisements = [];
+  source.placementLeases = [];
+  source.v1Idempotency = [];
+  source.version = 4;
+  return source;
+}
+
+function downV4ToV3(source: RawDocument): RawDocument {
+  for (const collection of V4_NEW_COLLECTIONS) delete source[collection];
+  source.version = 3;
+  return source;
+}
+
 export function applyMigrationEdgeForTest(
   source: unknown,
-  target: 1 | 2 | 3,
+  target: 1 | 2 | 3 | 4,
   context: MigrationContext,
 ): unknown {
   assertMigrationEnvelope(source);
@@ -1212,6 +1237,8 @@ export function applyMigrationEdgeForTest(
   if (document.version === 2 && target === 1) return downV2ToV1(document);
   if (document.version === 2 && target === 3) return upV2ToV3(document, context);
   if (document.version === 3 && target === 2) return downV3ToV2(document);
+  if (document.version === 3 && target === 4) return upV3ToV4(document);
+  if (document.version === 4 && target === 3) return downV4ToV3(document);
   throw new Error(`no control-plane migration edge ${document.version}->${target}`);
 }
 
@@ -1226,20 +1253,31 @@ export function migrateControlDocument(
   }
   const document = clone(source);
   const applied: AppliedMigration[] = [];
-  if (document.version === 1 && target >= 2) {
-    upV1ToV2(document, context);
-    applied.push({ from: 1, to: 2, breaking: true, down: 'present' });
+  // P6 [P6-C32]: the ladder chains every up edge so v1 -> v4 and v2 -> v4 reach the target in one call
+  // (each `up*`/`down*` advances `document.version`, so the loop steps one edge at a time).
+  while (document.version < target) {
+    if (document.version === 1) {
+      upV1ToV2(document, context);
+      applied.push({ from: 1, to: 2, breaking: true, down: 'present' });
+    } else if (document.version === 2) {
+      upV2ToV3(document, context);
+      applied.push({ from: 2, to: 3, breaking: true, down: 'present' });
+    } else if (document.version === 3) {
+      upV3ToV4(document);
+      applied.push({ from: 3, to: 4, breaking: true, down: 'present' });
+    } else break;
   }
-  if (document.version === 2 && target === 3) {
-    upV2ToV3(document, context);
-    applied.push({ from: 2, to: 3, breaking: true, down: 'present' });
-  } else if (document.version === 3 && target <= 2) {
-    downV3ToV2(document);
-    applied.push({ from: 3, to: 2, breaking: true, down: 'present' });
-  }
-  if (document.version === 2 && target === 1) {
-    downV2ToV1(document);
-    applied.push({ from: 2, to: 1, breaking: true, down: 'present' });
+  while (document.version > target) {
+    if (document.version === 4) {
+      downV4ToV3(document);
+      applied.push({ from: 4, to: 3, breaking: true, down: 'present' });
+    } else if (document.version === 3) {
+      downV3ToV2(document);
+      applied.push({ from: 3, to: 2, breaking: true, down: 'present' });
+    } else if (document.version === 2) {
+      downV2ToV1(document);
+      applied.push({ from: 2, to: 1, breaking: true, down: 'present' });
+    } else break;
   }
   if (document.version !== target) {
     throw new Error(`no control-plane migration path ${document.version}->${target}`);

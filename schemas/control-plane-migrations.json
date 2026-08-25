@@ -121,6 +121,61 @@
         "nextEventCursor",
         "scheduleCollectionRevision"
       ]
+    },
+    {
+      "version": 4,
+      "collections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "stageGenerations",
+        "iterationLoops",
+        "iterationRequests",
+        "iterationReceipts",
+        "generationSupersessions",
+        "quarantine",
+        "deployments",
+        "schedules",
+        "scheduleTombstones",
+        "scheduleOccurrenceClaims",
+        "scheduleSeedImports",
+        "hostAdvertisements",
+        "placementLeases",
+        "v1Idempotency"
+      ],
+      "requiredCollections": [
+        "proposals",
+        "runs",
+        "stages",
+        "attempts",
+        "sessions",
+        "humanRequests",
+        "events",
+        "stageGenerations",
+        "iterationLoops",
+        "iterationRequests",
+        "iterationReceipts",
+        "generationSupersessions",
+        "quarantine",
+        "deployments",
+        "schedules",
+        "scheduleTombstones",
+        "scheduleOccurrenceClaims",
+        "scheduleSeedImports",
+        "hostAdvertisements",
+        "placementLeases",
+        "v1Idempotency"
+      ],
+      "envelopeRequired": [
+        "version",
+        "documentRevision",
+        "nextEventCursor",
+        "scheduleCollectionRevision"
+      ]
     }
   ],
   "migrations": [
@@ -134,6 +189,12 @@
       "from": 2,
       "to": 3,
       "breaking": true,
+      "down": "present"
+    },
+    {
+      "from": 3,
+      "to": 4,
+      "breaking": false,
       "down": "present"
     }
   ],

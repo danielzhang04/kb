@@ -30,7 +30,7 @@ it('writes a SHA-keyed v2 backup and restores only checksum-matching bytes atomi
     mkdirSync(join(root, 'control'), { recursive: true });
     const source = Buffer.from('{"version":2}\n', 'utf8');
     writeFileSync(livePath, source);
-    const backup = writeControlPlaneMigrationBackupSync(root, source);
+    const backup = writeControlPlaneMigrationBackupSync(root, source, 2, 3);
     expect(existsSync(backup.path)).toBe(true);
     expect(readFileSync(backup.path)).toEqual(source);
     writeFileSync(livePath, '{"version":3}\n', 'utf8');
@@ -38,6 +38,33 @@ it('writes a SHA-keyed v2 backup and restores only checksum-matching bytes atomi
     const lease = acquireWriterLease({ stateRoot: root, bootId: 'restore-test' });
     restoreControlPlaneMigrationBackupSync(root, backup.path, lease);
     expect(readFileSync(livePath)).toEqual(source);
+    writeFileSync(backup.sidecarPath, `${'0'.repeat(64)}\n`, 'utf8');
+    expect(() => restoreControlPlaneMigrationBackupSync(root, backup.path, lease)).toThrow(/checksum/);
+    expect(readFileSync(livePath)).toEqual(source);
+    lease.release();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('writes and restores a generalised v3->v4 preimage backup under a writer lease [P6-C32]', () => {
+  const root = mkdtempSync(join(tmpdir(), 'kb-v4-backup-'));
+  try {
+    const livePath = join(root, 'control', 'control-plane.json');
+    mkdirSync(join(root, 'control'), { recursive: true });
+    const source = Buffer.from('{"version":3,"marker":"pre-p6"}\n', 'utf8');
+    writeFileSync(livePath, source);
+    const backup = writeControlPlaneMigrationBackupSync(root, source, 3, 4);
+    // The filename records the generalised from/to versions, not the hardcoded v2->v3.
+    expect(backup.path.endsWith(`control-plane-v3-to-v4-${backup.sha256}.json`)).toBe(true);
+    expect(readFileSync(backup.path)).toEqual(source);
+    // A restore without a writer lease is refused; with one it republishes the exact preimage bytes.
+    expect(() => restoreControlPlaneMigrationBackupSync(root, backup.path, undefined as never)).toThrow(/writer lease/i);
+    writeFileSync(livePath, '{"version":4,"placementLeases":[]}\n', 'utf8');
+    const lease = acquireWriterLease({ stateRoot: root, bootId: 'v4-restore' });
+    restoreControlPlaneMigrationBackupSync(root, backup.path, lease);
+    expect(readFileSync(livePath)).toEqual(source);
+    // A tampered sidecar fails the checksum recheck and leaves the restored bytes intact.
     writeFileSync(backup.sidecarPath, `${'0'.repeat(64)}\n`, 'utf8');
     expect(() => restoreControlPlaneMigrationBackupSync(root, backup.path, lease)).toThrow(/checksum/);
     expect(readFileSync(livePath)).toEqual(source);
@@ -170,13 +197,15 @@ it('injects a real spy and coalesces migration plus crash normalization into one
         workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
       },
     });
-    expect(calls.filter((call) => call === 'rename')).toHaveLength(1);
+    // P6 [P6-C32]: any applied migration now also writes the preimage backup + its sidecar, so a v1 ->
+    // v4 startup coalesces the crash-normalised document save (1) plus the backup pair (2) = 3 renames.
+    expect(calls.filter((call) => call === 'rename')).toHaveLength(3);
     expect(calls.slice(0, 5)).toEqual(['open-temp', 'write', 'fsync-temp', 'close-temp', 'rename']);
-    expect(calls.filter((call) => call === 'write')).toHaveLength(1);
+    expect(calls.filter((call) => call === 'write')).toHaveLength(3);
     const encoded = readFileSync(path, 'utf8');
     expect(encoded.endsWith('\n')).toBe(true);
     const persisted = JSON.parse(encoded) as Record<string, any>;
-    expect(persisted).toMatchObject({ version: 3, documentRevision: 1, nextEventCursor: 2 });
+    expect(persisted).toMatchObject({ version: 4, documentRevision: 1, nextEventCursor: 2 });
     expect(persisted.runs[0]).toMatchObject({
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
       executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
@@ -198,7 +227,8 @@ it('coalesces each deploy-critical mutation into one persisted transaction', () 
     { persistenceDepsForTest: deps }, fixture('v1-supported.json'),
   );
   try {
-    expect(calls.filter((call) => call === 'rename')).toHaveLength(1); // migration
+    // migration (1) + preimage backup pair (2) now coalesce into 3 renames [P6-C32].
+    expect(calls.filter((call) => call === 'rename')).toHaveLength(3); // migration + backup pair
     const migrated = readDocument(opened.path);
     calls.length = 0;
     const made = opened.store.createDeployment('operator', createDeploymentFixture());

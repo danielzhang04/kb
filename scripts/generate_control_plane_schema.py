@@ -197,7 +197,7 @@ def py_source(registry: dict[str, Any]) -> str:
         "    for key in (*collections, *optional):",
         "        if key in value and (not isinstance(value[key], list) or len(value[key]) > _MAX_ENVELOPE_COLLECTION_ROWS):",
         "            raise ValueError(f'invalid control-plane collection: {key}')",
-        "    if version == 3:",
+        "    if version in (3, 4):",
         "        _validate_v3_payload(value, envelope, collections)",
         "    return value",
         "",
@@ -442,12 +442,36 @@ def restore_v3_down_carrier(value):
     document['version'] = 3
     return assert_control_plane_schema(document)
 
+_V4_COLLECTIONS = ('hostAdvertisements', 'placementLeases', 'v1Idempotency')
+
+def down_migrate_v4_to_v3(value):
+    document = deepcopy(assert_control_plane_schema(value))
+    if document['version'] != 4:
+        raise ValueError('control-plane v4 down migration requires schema v4')
+    for key in _V4_COLLECTIONS:
+        document.pop(key, None)
+    document['version'] = 3
+    return assert_control_plane_schema(document)
+
+def up_migrate_v3_to_v4(value):
+    document = deepcopy(assert_control_plane_schema(value))
+    if document['version'] != 3:
+        raise ValueError('control-plane v3 up migration requires schema v3')
+    for key in _V4_COLLECTIONS:
+        document[key] = []
+    document['version'] = 4
+    return assert_control_plane_schema(document)
+
 def _main(argv):
     if argv != ['--round-trip-v3']:
         return 2
     try:
         value = json.load(sys.stdin)
-        restored = restore_v3_down_carrier(down_migrate_v3_to_v2(value))
+        version = value.get('version') if isinstance(value, dict) else None
+        if version == 4:
+            restored = up_migrate_v3_to_v4(restore_v3_down_carrier(down_migrate_v3_to_v2(down_migrate_v4_to_v3(value))))
+        else:
+            restored = restore_v3_down_carrier(down_migrate_v3_to_v2(value))
         sys.stdout.write(json.dumps(restored, separators=(',', ':'), ensure_ascii=False))
         return 0
     except Exception as error:

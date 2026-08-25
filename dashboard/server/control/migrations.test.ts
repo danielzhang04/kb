@@ -142,10 +142,63 @@ describe('control document migrations', () => {
 
   it('rejects future versions before mutation', () => {
     const future = fixture('future-v3.json') as Record<string, unknown>;
-    future.version = 4;
+    future.version = 5;
     const before = structuredClone(future);
-    expect(() => assertMigrationEnvelope(future)).toThrow(/unsupported control-plane version 4/);
+    expect(() => assertMigrationEnvelope(future)).toThrow(/unsupported control-plane version 5/);
     expect(future).toEqual(before);
+  });
+
+  // ---- P6 W1: the additive v3 -> v4 placement migration, its byte-identical rollback, and the
+  // ---- chained ladder that reaches v4 from v1 and v2 [P6-C23, P6-C32, P6-C37, P6-C48]. -------------
+  const ctx = { stamp: '2026-08-24T00:00:00.000Z' };
+  const emptyV3 = (): Record<string, any> =>
+    applyMigrationEdgeForTest(emptyControlPlaneDocument(), 3, ctx) as Record<string, any>;
+
+  it('migrates a pre-P6 v3 document to v4 with three empty placement collections, advancing once', () => {
+    const v3 = emptyV3();
+    expect(v3.version).toBe(3);
+    expect(v3).not.toHaveProperty('hostAdvertisements');
+    const result = migrateControlDocument(v3, 4, ctx);
+    expect(result.document.version).toBe(4);
+    expect(result.document.hostAdvertisements).toEqual([]);
+    expect(result.document.placementLeases).toEqual([]);
+    expect(result.document.v1Idempotency).toEqual([]);
+    expect(result.applied).toEqual([{ from: 3, to: 4, breaking: true, down: 'present' }]);
+    assertDocumentInvariant(result.document);
+  });
+
+  it('rolls a v4 document back to a BYTE-IDENTICAL v3 through the paired down edge', () => {
+    const v3 = emptyV3();
+    const before = JSON.stringify(v3);
+    const v4 = applyMigrationEdgeForTest(structuredClone(v3), 4, ctx);
+    expect((v4 as Record<string, any>).version).toBe(4);
+    const back = applyMigrationEdgeForTest(v4, 3, ctx);
+    expect(JSON.stringify(back)).toBe(before);
+  });
+
+  it('exposes the single-step 3->4 and 4->3 migration edges', () => {
+    const up = applyMigrationEdgeForTest(emptyV3(), 4, ctx) as Record<string, any>;
+    expect(up.version).toBe(4);
+    expect(Object.keys(up).slice(-3)).toEqual(['hostAdvertisements', 'placementLeases', 'v1Idempotency']);
+    const down = applyMigrationEdgeForTest(up, 3, ctx) as Record<string, any>;
+    expect(down.version).toBe(3);
+    expect(down).not.toHaveProperty('placementLeases');
+  });
+
+  it('chains v1 -> v4 in one call (fails today with no control-plane migration path)', () => {
+    const result = migrateControlDocument(fixture('v1-sparse-legacy.json'), 4, ctx);
+    expect(result.document.version).toBe(4);
+    expect(result.applied.map((edge) => `${edge.from}->${edge.to}`)).toEqual(['1->2', '2->3', '3->4']);
+    expect(result.document.hostAdvertisements).toEqual([]);
+    expect(result.document.placementLeases).toEqual([]);
+    expect(result.document.v1Idempotency).toEqual([]);
+  });
+
+  it('chains v2 -> v4 in one call (fails today with no control-plane migration path)', () => {
+    const result = migrateControlDocument(fixture('v2-empty.json'), 4, ctx);
+    expect(result.document.version).toBe(4);
+    expect(result.applied.map((edge) => `${edge.from}->${edge.to}`)).toEqual(['2->3', '3->4']);
+    expect(result.document.v1Idempotency).toEqual([]);
   });
 
   it('creates missing generic collections while migrating sparse v1 data', () => {
