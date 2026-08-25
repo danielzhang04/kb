@@ -74,4 +74,58 @@ describe('fetchHealth', () => {
       expect(() => decodeHealthResponse(broken), `key ${key}`).toThrow(/invalid health response/i);
     }
   });
+
+  // P6 W6.2 [P6-C64, P6-C76, P6-C80]: the `fleet` section's integrity wall widens from the single
+  // schedule-owner shape into a closed key-prefix/source/label/code quadruple set covering THREE
+  // members — schedule-owner (existing), node-proxy, and host-map (both new, failure-only).
+  const INTEGRITY_VARIANTS = [
+    {
+      key: 'schedule-owner:agent:deleted-owner', source: 'schedule-store', label: 'Schedule owner',
+      code: 'schedule-owner-unresolvable', owner: { type: 'agent', id: 'deleted-owner', sourcePath: 'agents/deleted-owner.md' } as unknown,
+    },
+    { key: 'node-proxy:kb-node-proxy', source: 'node-proxy', label: 'Node proxy', code: 'node-proxy-unreachable', owner: 'kb-node-proxy' as unknown },
+    { key: 'host-map:host-nodes.json', source: 'host-map', label: 'Host map', code: 'host-map-invalid', owner: 'host-nodes.json' as unknown },
+  ] as const;
+
+  function withIntegrityRow(variant: typeof INTEGRITY_VARIANTS[number]) {
+    const body = structuredClone(healthResponseFixture);
+    body.sections[0]!.rows = [{
+      kind: 'integrity', key: variant.key, label: variant.label,
+      value: { status: 'error', code: variant.code, owner: variant.owner },
+      observedAt: '2026-08-25T00:00:00.000Z', source: variant.source,
+    }] as unknown as typeof body.sections[0]['rows'];
+    return body;
+  }
+
+  it('accepts each of the three closed fleet-integrity variants (source, label, code, and key prefix)', () => {
+    for (const variant of INTEGRITY_VARIANTS) {
+      expect(() => decodeHealthResponse(withIntegrityRow(variant)), variant.key).not.toThrow();
+    }
+  });
+
+  it('rejects an unknown integrity source, an unlisted label, and an unlisted code', () => {
+    const unknownSource = withIntegrityRow(INTEGRITY_VARIANTS[1]);
+    (unknownSource.sections[0]!.rows[0] as unknown as { source: string }).source = 'bogus-source';
+    expect(() => decodeHealthResponse(unknownSource)).toThrow(/invalid health response/i);
+
+    const unlistedLabel = withIntegrityRow(INTEGRITY_VARIANTS[2]);
+    (unlistedLabel.sections[0]!.rows[0] as unknown as { label: string }).label = 'Bogus label';
+    expect(() => decodeHealthResponse(unlistedLabel)).toThrow(/invalid health response/i);
+
+    const unlistedCode = withIntegrityRow(INTEGRITY_VARIANTS[0]);
+    (unlistedCode.sections[0]!.rows[0] as unknown as { value: { code: string } }).value.code = 'bogus-code';
+    expect(() => decodeHealthResponse(unlistedCode)).toThrow(/invalid health response/i);
+  });
+
+  it('still enforces status:error and the exact {status,code,owner} body wall on every integrity variant', () => {
+    for (const variant of INTEGRITY_VARIANTS) {
+      const wrongStatus = withIntegrityRow(variant);
+      (wrongStatus.sections[0]!.rows[0] as unknown as { value: { status: string } }).value.status = 'ok';
+      expect(() => decodeHealthResponse(wrongStatus), `${variant.key} status`).toThrow(/invalid health response/i);
+
+      const extraKey = withIntegrityRow(variant);
+      (extraKey.sections[0]!.rows[0] as unknown as { value: Record<string, unknown> }).value.extra = true;
+      expect(() => decodeHealthResponse(extraKey), `${variant.key} extra key`).toThrow(/invalid health response/i);
+    }
+  });
 });

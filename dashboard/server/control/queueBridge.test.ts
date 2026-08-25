@@ -412,6 +412,12 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
       listProposalRevisionsForComposer: vi.fn().mockReturnValue([]),
       createProposalRevision: vi.fn().mockReturnValue({ ok: true, value: { proposalRef: 'p1', revision: 1 } }),
       decideProposal: vi.fn().mockReturnValue({ ok: true, value: {} }),
+      // P6 W6.2 [P6-C55]: the bridge's launch host now comes from a live placement decision.
+      listHostAdvertisements: vi.fn().mockReturnValue([{
+        hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+        connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+        clis: { claude: 'ready', codex: 'ready' }, version: 1,
+      }]),
     };
     const ctx = {
       repoRoot: '/repo',
@@ -1279,6 +1285,12 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
   it('persists the queue-resolved identity in the first file-backed Run bytes', async () => {
     const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `queue-file-${++n}`; })() });
     try {
+      // P6 W6.2 [P6-C55]: the bridge's launch host now comes from a live placement decision.
+      opened.store.seedHostAdvertisementForTest({
+        hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+        connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+        clis: { claude: 'ready', codex: 'ready' }, version: 1,
+      });
       const { ctx } = fakeCtx({ controlStore: opened.store });
       const launch = vi.fn(async (_ctx: SurfaceContext, subject: string, input: ApprovedLaunchInput) => {
         const parsed = validateServerCompiledPlanProposal(input.snapshot, REAL_WORKFLOW_ENVIRONMENT.registry);
@@ -1311,7 +1323,8 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
       const document = JSON.parse(readFileSync(opened.path, 'utf8')) as { runs: Array<Record<string, unknown>> };
       expect(document.runs[0]).toMatchObject({
         owner: { type: 'agent', id: SUBJECT, sourcePath: `agents/${SUBJECT}.md` },
-        executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+        // P6 W6.2 [P6-C55]: the seeded fixture advertises only 'vm', so placement selects it.
+        executionHost: 'vm',
       });
     } finally {
       opened.close();

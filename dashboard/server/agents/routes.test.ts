@@ -139,6 +139,14 @@ describe('Agent P2 routes', () => {
   });
 
   it('resolves positive agent launch identity and source CAS before creating a Run', async () => {
+    // P6 W6.2 [P6-C55]: the launch host now comes from a live placement decision — the seeded
+    // advertisement must cover research-worker's own declared capability (`filesystem-roots: [kb-ops]`,
+    // `runtime: claude`), which `computeCapabilityRequirement` now turns into a real match requirement.
+    store.seedHostAdvertisementForTest({
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+      connectors: [], skills: [], filesystemRoots: ['kb-ops'], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
     const detail = (await app.inject({ method: 'GET', url: '/api/agents/research-worker' })).json();
     const headers = { origin: ORIGIN, host: 'localhost:5317', authorization: `Bearer ${token}` };
     const stale = await app.inject({ method: 'POST', url: '/api/agents/research-worker/launch', headers, payload: { expectedSourceRevision: '0'.repeat(64), idempotencyKey: 'launch-1' } });
@@ -157,16 +165,29 @@ describe('Agent P2 routes', () => {
   it('stores and previews the executionHost the composed capability advertises, on both platforms', async () => {
     const headers = { origin: ORIGIN, host: 'localhost:5317', authorization: `Bearer ${token}` };
     const detail = (await app.inject({ method: 'GET', url: '/api/agents/research-worker' })).json();
-    // Refused capability: the single platform mapper answers 'vm' for the run AND the preview row,
-    // which is what a re-derived `process.platform` on this Windows box would get wrong.
+    // The never-run PREVIEW row still falls back to the composed capability's own self-identity
+    // (`runtimeExecutionHost`, unchanged by P6) when nothing has run yet — that is what a re-derived
+    // `process.platform` on this Windows box would get wrong.
     expect(JSON.stringify((await app.inject({ method: 'GET', url: '/api/agents' })).json())).toContain('"host":"vm"');
+    // P6 W6.2 [P6-C55]: the ACTUAL launch host now comes from a live placement decision, so the fixture
+    // advertises the host under test with research-worker's own declared capability satisfied.
+    store.seedHostAdvertisementForTest({
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+      connectors: [], skills: [], filesystemRoots: ['kb-ops'], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
     expect((await app.inject({
       method: 'POST', url: '/api/agents/research-worker/launch', headers,
       payload: { expectedSourceRevision: detail.details.sourceRevision, idempotencyKey: 'host-refused' },
     })).statusCode).toBe(202);
     expect(store.listRuns('operator', 'all-subjects')[0]?.executionHost).toBe('vm');
 
-    store = createInMemoryControlPlaneStore();
+    store = createInMemoryControlPlaneStore({ initialHostAdvertisements: [] });
+    store.seedHostAdvertisementForTest({
+      hostId: 'desktop', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+      connectors: [], skills: [], filesystemRoots: ['kb-ops'], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
     const desktop = Fastify();
     registerAgents(desktop, surfaceFor(runtimeCapabilities('win32', {
       pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'], checkedAt: '2026-08-22T09:00:00.000Z',

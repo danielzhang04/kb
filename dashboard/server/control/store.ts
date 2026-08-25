@@ -652,6 +652,13 @@ export interface ControlStoreOptions {
     boundary: 'quarantine' | 'restore',
     target: StoreDocument | QuarantinedRunBundle,
   ) => void;
+  /**
+   * P6 W6.2 [P6-C55]: seed the `hostAdvertisements` collection at construction. Production advertises
+   * through `PUT /api/v1/hosts/:hostId` (W6.3's self-advertisement timer); this is the test-only seam a
+   * fixture uses to give the launch-time placement decision a fresh candidate without a real HTTP round
+   * trip. Never read outside `createInMemoryControlPlaneStore`.
+   */
+  initialHostAdvertisements?: StoredHostAdvertisement[];
 }
 
 /** Invoke the canonical Python card renderer without a shell or caller-provided path. */
@@ -1012,6 +1019,20 @@ export interface ControlPlaneStore
   getProposalRevision(subject: string, proposalRef: string, revision: number, scope?: ReadScope): ControlResult<ProposalRevision>;
   createProposalRevision(subject: string, input: CreateProposalRevisionInput): ControlResult<ProposalRevision>;
   decideProposal(subject: string, proposalRef: string, revision: number, input: ApproveProposalInput): ControlResult<ProposalRevision>;
+
+  /**
+   * P6 W6.2 [P6-C55]: the raw stored `HostAdvertisement` rows (freshness is the CALLER's decision, via
+   * `placement/select.ts`'s `isAdvertisementFresh`/`freshMatches`, never filtered here). This is the one
+   * read seam the four launch-time placement sites use instead of `process.platform`.
+   */
+  listHostAdvertisements(): StoredHostAdvertisement[];
+  /**
+   * @internal P6 W6.2 test-only seam: append/replace one advertisement by `hostId` so a fixture can give
+   * the launch-time placement decision a fresh candidate without a real `PUT /api/v1/hosts/:hostId`
+   * round trip. Production advertises only through that route (W6.3's daemon timer). Never called from
+   * a route handler.
+   */
+  seedHostAdvertisementForTest(advertisement: StoredHostAdvertisement): void;
 
   /** `scope` defaults to `'own-subject'` everywhere it appears; only a verified operator session widens
    *  it (see {@link ReadScope}). Reads first; the operator-driven mutations below take it too. */
@@ -4320,6 +4341,19 @@ function makeStore(
       return ok(publicProposal(proposal));
     },
 
+    listHostAdvertisements() {
+      return [...load().hostAdvertisements];
+    },
+
+    seedHostAdvertisementForTest(advertisement) {
+      const document = load();
+      document.hostAdvertisements = [
+        ...document.hostAdvertisements.filter((existing) => existing.hostId !== advertisement.hostId),
+        advertisement,
+      ];
+      commit(document);
+    },
+
     listRuns(subject, scope = 'own-subject') {
       const document = load();
       return document.runs
@@ -7169,8 +7203,27 @@ function makeStore(
   };
 }
 
+/**
+ * P6 W6.2 [P6-C55]: a fresh, maximally-capable synthetic advertisement — `pty`/`gpu` true, both CLIs
+ * `ready`, empty connector/skill/root lists (an empty `CapabilityRequirement` is the common case for a
+ * test fixture that never declares one). This is what `createInMemoryControlPlaneStore` seeds by
+ * default so every P2-era launch test — written before placement existed — keeps succeeding without
+ * each of dozens of call sites naming a host explicitly. Pass `initialHostAdvertisements: []` to opt out
+ * and exercise the `no-complete-placement` refusal instead.
+ */
+function defaultTestHostAdvertisement(): StoredHostAdvertisement {
+  return {
+    hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+    connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+    clis: { claude: 'ready', codex: 'ready' }, version: 1,
+  };
+}
+
 export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {}): ControlPlaneStore {
-  let document = emptyStoreDocumentForTest();
+  let document = {
+    ...emptyStoreDocumentForTest(),
+    hostAdvertisements: options.initialHostAdvertisements ?? [defaultTestHostAdvertisement()],
+  };
   const maxBytes = options.maxDocumentBytes ?? MAX_CONTROL_DOCUMENT_BYTES;
   return makeStore(
     () => {
@@ -7196,6 +7249,7 @@ const READ_ONLY_CONTROL_STORE_METHODS = new Set<keyof ControlPlaneStore>([
   'getDeployment', 'listDeployments',
   'getAssetPullIntent', 'listAssetPullIntents',
   'listProposalRevisions', 'listProposalRevisionsForComposer', 'getProposalRevision',
+  'listHostAdvertisements',
   'listRuns', 'getRun', 'findActiveRunForRevision', 'getRunActivationReceipt', 'hasActiveRunActivation',
   'getHumanRequest', 'preflightAuthorized20260731ExecutionLock',
   'preflightAuthorized20260801FailedRunReconciliation', 'listEvents', 'inventory', 'dryRunQuarantine',

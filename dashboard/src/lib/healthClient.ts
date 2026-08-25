@@ -32,6 +32,30 @@ function unavailable(value: Record<string, unknown>, section: HealthSectionId): 
     && exactKeys(body, ['status', 'reason']) && body.status === 'unavailable' && string(body.reason);
 }
 
+// P6 W6.2 [P6-C64, P6-C76, P6-C80]: the `fleet` section's integrity wall widens from the single
+// schedule-owner shape into a closed set of THREE key-prefix/source/label/code quadruples — the
+// `node-proxy` and `host-map` failure-only rows W2's `healthService.ts` composes beside it. Every other
+// clause of the wall (`status === 'error'`, the three-key `{status,code,owner}` body) is unchanged.
+const INTEGRITY_ROW_KINDS: ReadonlyArray<{
+  readonly prefix: string; readonly source: string; readonly label: string; readonly code: string;
+  /** `schedule-owner`'s body carries an object `owner` (a `RunnableRef`); the two P6 rows carry a
+   *  literal-id STRING `owner` (`'kb-node-proxy'`, or the host-map file's basename). */
+  readonly owner: (value: unknown) => boolean;
+}> = [
+  { prefix: 'schedule-owner:', source: 'schedule-store', label: 'Schedule owner', code: 'schedule-owner-unresolvable', owner: (value) => record(value) !== null },
+  { prefix: 'node-proxy:', source: 'node-proxy', label: 'Node proxy', code: 'node-proxy-unreachable', owner: (value) => value === 'kb-node-proxy' },
+  { prefix: 'host-map:', source: 'host-map', label: 'Host map', code: 'host-map-invalid', owner: (value) => string(value) && value.length > 0 },
+];
+
+function validIntegrityRow(row: Record<string, unknown>, body: Record<string, unknown> | null): boolean {
+  if (row.kind !== 'integrity' || typeof row.key !== 'string' || body === null) return false;
+  const key = row.key;
+  const matched = INTEGRITY_ROW_KINDS.find((candidate) =>
+    key.startsWith(candidate.prefix) && row.source === candidate.source && row.label === candidate.label);
+  if (!matched) return false;
+  return exactKeys(body, ['status', 'code', 'owner']) && body.status === 'error' && body.code === matched.code && matched.owner(body.owner);
+}
+
 function validRow(value: unknown, section: HealthSectionId): value is HealthRow {
   const row = record(value);
   if (!row) return false;
@@ -41,9 +65,7 @@ function validRow(value: unknown, section: HealthSectionId): value is HealthRow 
   if (section === 'fleet') return (row.kind === 'fleet' && row.source === 'fleet' && row.key.startsWith('agent:') && body !== null
     && exactKeys(body, ['status', 'role', 'working', 'lastActive']) && ['working', 'active', 'stale', 'idle'].includes(String(body.status))
     && (body.role === null || string(body.role)) && typeof body.working === 'boolean' && (body.lastActive === null || string(body.lastActive)))
-    || (row.kind === 'integrity' && row.source === 'schedule-store' && row.key.startsWith('schedule-owner:')
-      && row.label === 'Schedule owner' && body !== null && exactKeys(body, ['status', 'code', 'owner'])
-      && body.status === 'error' && body.code === 'schedule-owner-unresolvable' && record(body.owner) !== null);
+    || validIntegrityRow(row, body);
   if (section === 'stop') return row.kind === 'stop' && row.source === 'stop' && row.key === 'stop-file' && row.label === 'STOP' && (row.value === 'present' || row.value === 'clear');
   if (section === 'daemon-machine') {
     if (row.kind === 'machine' && row.source === 'machine') {

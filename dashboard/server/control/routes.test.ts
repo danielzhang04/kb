@@ -4416,6 +4416,12 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
   it('launches an engine-owned revision AS the engine, with the operator audited as the actor', async () => {
     const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `x-${++n}`; })() });
     const store = opened.store;
+    // P6 W6.2 [P6-C55]: the launch host now comes from a live placement decision, not `process.platform`.
+    store.seedHostAdvertisementForTest({
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+      connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
     const revision = approvedRevisionFor(store, ENGINE, 'engine-launch');
     const { app, audit, token } = surface(store);
     try {
@@ -4441,7 +4447,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       expect(firstPersisted.runs.find((run) => run.runRef === runRef)).toMatchObject({
         owner: { type: 'workflow', id: 'self-lint-report', project: 'kb-ops',
           sourcePath: 'orgs/kb-ops/workflows/self-lint-report.md' },
-        executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+        // P6 W6.2 [P6-C55]: the seeded fixture advertises only 'vm', so placement selects it.
+        executionHost: 'vm',
       });
 
       // ATTRIBUTION: `owner` is the operator (the actor), `runOwnerSubject` is whose run it is.
@@ -4455,6 +4462,13 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
   it('copies the Retry predecessor owner and host instead of the caller daemon identity', async () => {
     const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });
     const store = opened.store;
+    // P6 W6.2 [P6-C55]: the boot-time default host now comes from placement, not `process.platform`; a
+    // fresh advertisement is required for the launch route to reach the predecessor-host branch at all.
+    store.seedHostAdvertisementForTest({
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+      connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
     const revision = approvedRevisionFor(store, ENGINE, 'engine-retry');
     const predecessorHost = process.platform === 'win32' ? 'vm' : 'desktop';
     const predecessor = bridgeRunFor(store, revision, 'queue-bridge:card-retry', predecessorHost);

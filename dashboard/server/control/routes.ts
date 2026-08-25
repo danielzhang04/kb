@@ -47,6 +47,8 @@ import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
+import { selectPlacementHost } from '../placement/select.ts';
+import type { CapabilityRequirement } from '../placement/contracts.ts';
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 import { projectRunState, runLifecycleKind, type RunLifecycleKind } from './runLifecycle.ts';
@@ -73,6 +75,17 @@ import {
 } from '../inbox/deploymentContracts.ts';
 import type { DeployT3Decision, DeployT3Preimage, DeployT3Subject } from '../deploy/contracts.ts';
 import { DEPLOY_T3_DECISIONS } from '../deploy/contracts.ts';
+
+/**
+ * P6 W6.2 [P6-C55, design:410]: this route replays an already-approved PROPOSAL SNAPSHOT (never a live
+ * WorkflowDef with stage assignments), so there is no stage-agent capability union to derive here. The
+ * placement decision runs against the empty requirement — every fresh host satisfies it, and the VM/
+ * Desktop tie-break rule alone decides — rather than skipping placement and falling back to a platform
+ * guess.
+ */
+const EMPTY_CAPABILITY_REQUIREMENT: CapabilityRequirement = {
+  connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [],
+};
 
 /**
  * P5 W6.3 [P5-C23, P5-C45]: the reachability gate for the SHIPPED WebAuthn ceremony — an EXHAUSTIVE
@@ -627,7 +640,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       declarationPath: workspace.workspace.agent.path,
       declarationHash: workspace.workspace.agent.sourceHash,
     } : null;
-    const bootHost: HostKind = process.platform === 'win32' ? 'desktop' : 'vm';
+    // P6 W6.2 [P6-C55]: the boot-time default host comes from the placement lease host, never a platform
+    // guess. Zero fresh complete matches refuses BEFORE any owner resolution or store write, so a
+    // `no-complete-placement` retry/relaunch creates no Run row.
+    const placement = selectPlacementHost(EMPTY_CAPABILITY_REQUIREMENT, ctx.controlStore.listHostAdvertisements(), Date.now());
+    if (placement.outcome === 'no-complete-placement') {
+      return reply.code(409).send({ error: 'no-complete-placement' });
+    }
+    const bootHost: HostKind = placement.hostId!;
     let owner: RunnableRef | null = null;
     let executionHost: HostKind = bootHost;
     const predecessorRef = body.predecessorRunRef == null ? null : string(body.predecessorRunRef);

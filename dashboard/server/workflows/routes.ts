@@ -37,6 +37,9 @@ import type { EntityDetail, EntityList } from '../entities/contracts.ts';
 import { patchEntityBuilderSource, renderWorkflowBuilderSource, submitEntityBuilder, type EntityBuilderCatalog, type EntityBuilderPort } from '../entities/builder.ts';
 import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, selectEntityHostRun, type EntityGroupProjectionInput } from '../entities/project.ts';
 import { runtimeExecutionHost } from '../runtime/capabilities.ts';
+import { selectPlacementHost, projectNeverRunHost } from '../placement/select.ts';
+import { computeCapabilityRequirement, type StageAgentCapabilityFields } from '../placement/requirements.ts';
+import type { CapabilityRequirement } from '../placement/contracts.ts';
 import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs, projectOutputRef } from '../entities/outputs.ts';
 import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
@@ -467,6 +470,37 @@ function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
 }
 
+/** No declared capability at all — the never-run chip's fallback when a definition failed to parse. */
+const EMPTY_CAPABILITY_REQUIREMENT: CapabilityRequirement = {
+  connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [],
+};
+
+/**
+ * P6 W6.2 [P6-C55, design:383]: the placement `CapabilityRequirement` for a workflow run — the union of
+ * the definition's own declared fields and every ASSIGNED stage/manager agent's capability fields, via
+ * W3's `computeCapabilityRequirement`. This is the ONE requirement both launch sites (`launchDefinition`,
+ * shared by the workflow launch route and `launchDeclaredAgent`) select a host against.
+ */
+function workflowCapabilityRequirement(ctx: SurfaceContext, def: WorkflowDef): CapabilityRequirement {
+  const agentIds = new Set<string>();
+  if (def.manager?.agentId) agentIds.add(def.manager.agentId);
+  for (const stage of def.stages) if (stage.agentId) agentIds.add(stage.agentId);
+  const declarations = readDeclaredAgentDetails(ctx.repoRoot);
+  const stageAgents: StageAgentCapabilityFields[] = [...agentIds].map((id) => {
+    const declared = declarations.get(id);
+    return {
+      skills: declared?.skills ?? [],
+      connectors: declared?.connectors ?? [],
+      filesystemRoots: declared?.filesystemRoots ?? [],
+      runtime: declared?.runtime ?? null,
+    };
+  });
+  return computeCapabilityRequirement(
+    { tools: def.tools, skills: def.skills, connectors: def.connectors, filesystemRoots: def.filesystemRoots },
+    stageAgents,
+  );
+}
+
 /**
  * Prepare the approved-revision preconditions for a definition and hand off to the canonical launch.
  *
@@ -489,6 +523,16 @@ async function launchDefinition(
   // waiting-human when the engine is absent and hands root-card activation + worker startup to the
   // automatic executor when it is present. T2+/gated stages still stop at human requests before any
   // execution. There is no separate manual proposal path for definitions to divert to, so do not refuse.
+  //
+  // P6 W6.2 [P6-C55, design:410]: the execution host is the PLACEMENT lease host, never the caller's
+  // self-identity guess — `identity.executionHost` above is superseded here. Zero fresh complete matches
+  // refuses `409 no-complete-placement` BEFORE compile/import/approve, so no proposal or Run row exists.
+  const requirement = workflowCapabilityRequirement(ctx, def);
+  const placement = selectPlacementHost(requirement, ctx.controlStore.listHostAdvertisements(), Date.now());
+  if (placement.outcome === 'no-complete-placement') {
+    return { status: 409, body: { error: 'no-complete-placement' } };
+  }
+  const executionHost = placement.hostId!;
   const compileEnvironment = loadWorkflowCompileEnvironment(ctx.repoRoot);
   const compiled = compileWorkflowDef(def, compileEnvironment);
   if (!compiled.ok) return { status: 400, body: { error: compiled.reason, detail: compiled.detail } };
@@ -551,7 +595,7 @@ async function launchDefinition(
     expectedPredecessorVersion: -1,
     source: `workflow:${def.id}`,
     agentWorkspaceLaunch,
-    identity,
+    identity: { owner: identity.owner, executionHost },
   });
 }
 
@@ -928,7 +972,14 @@ function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRu
   return {
     ref, projects: [scanned.entry.project], modelLabel: 'varies',
     temporalLabel: latest ? `ran ${relativeRunTime(latest.completedAt, now)} \u00b7 ${latest.outcome}` : projectLiveEmpty(null, nextScheduleOccurrence(ctx.controlStore, ref)?.nextAt ?? null),
-    host: hostRun?.executionHost ?? runtimeExecutionHost(ctx.runtimeCapabilities),
+    // P6 W6.2 [P6-C39, P6-C55, design:159,410]: the never-run entity chip projects the PLACEMENT decision
+    // when at least one advertisement is fresh, falling back to self-identity only when none is.
+    host: hostRun?.executionHost ?? projectNeverRunHost(
+      scanned.def ? workflowCapabilityRequirement(ctx, scanned.def) : EMPTY_CAPABILITY_REQUIREMENT,
+      ctx.controlStore.listHostAdvertisements(),
+      now.getTime(),
+      ctx.runtimeCapabilities,
+    ).hostId,
     activeRuns,
     gatedRunCount: attention.workflows[`workflow:${ref.project}:${ref.id}`] ?? 0,
     latestRun: latest?.outcome ?? null, nextSchedule: nextScheduleOccurrence(ctx.controlStore, ref),

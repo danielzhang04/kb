@@ -41,6 +41,8 @@ import type { CoordinationPublication } from '../write/outbox.ts';
 import { reconciliationIdempotencyKey, RECONCILIATION_INTENT_SCHEMA } from '../reconciliation/contracts.ts';
 import type { CardTransitionIntent, CardTransitionWrite } from '../reconciliation/contracts.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { selectPlacementHost } from '../placement/select.ts';
+import { computeCapabilityRequirement, type StageAgentCapabilityFields } from '../placement/requirements.ts';
 
 export class QueueBridgeError extends Error {}
 
@@ -670,6 +672,30 @@ export async function dispatchClaimedCard(
       return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: String(error) };
     }
   }
+  // P6 W6.2 [P6-C55, design:410]: the bridge's launch host is the placement lease host, never a
+  // platform guess. Zero fresh complete matches refuses BEFORE compile/import/approve, so a
+  // `no-complete-placement` card creates no proposal or Run row.
+  const bridgeAgentIds = new Set<string>();
+  if (mapped.def.manager?.agentId) bridgeAgentIds.add(mapped.def.manager.agentId);
+  for (const stage of mapped.def.stages) if (stage.agentId) bridgeAgentIds.add(stage.agentId);
+  const bridgeDeclarations = readDeclaredAgentDetails(ctx.repoRoot);
+  const bridgeStageAgents: StageAgentCapabilityFields[] = [...bridgeAgentIds].map((id) => {
+    const declared = bridgeDeclarations.get(id);
+    return {
+      skills: declared?.skills ?? [], connectors: declared?.connectors ?? [],
+      filesystemRoots: declared?.filesystemRoots ?? [], runtime: declared?.runtime ?? null,
+    };
+  });
+  const bridgeRequirement = computeCapabilityRequirement(
+    { tools: mapped.def.tools, skills: mapped.def.skills, connectors: mapped.def.connectors, filesystemRoots: mapped.def.filesystemRoots },
+    bridgeStageAgents,
+  );
+  const bridgePlacement = selectPlacementHost(bridgeRequirement, ctx.controlStore.listHostAdvertisements(), Date.now());
+  if (bridgePlacement.outcome === 'no-complete-placement') {
+    return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: 'no-complete-placement' };
+  }
+  const bridgeExecutionHost = bridgePlacement.hostId!;
+
   const registry = loadRegistry(ctx.repoRoot);
   const compiled = compile(mapped.def, { registry });
   if (!compiled.ok) return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: `${compiled.reason}: ${compiled.detail}` };
@@ -777,7 +803,7 @@ export async function dispatchClaimedCard(
     source: `queue-bridge:${card.id}`,
     identity: {
       owner: runnable.value,
-      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+      executionHost: bridgeExecutionHost,
     },
   });
 
