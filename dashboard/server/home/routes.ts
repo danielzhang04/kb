@@ -1,6 +1,6 @@
 import { realpath, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type { SessionConfig } from '../auth/session.ts';
 import { projectGateCounts, projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
 import { runLifecycleKind } from '../control/runLifecycle.ts';
@@ -13,6 +13,7 @@ import type { SubprocessPort } from '../inbox/resolvers.ts';
 import { openAttestedScheduleSource } from '../schedules/attestedSource.ts';
 import type { ScheduleService } from '../schedules/service.ts';
 import { projectHome, type ActivationReaderPort, type HomeProjectionPorts } from './project.ts';
+import { readHome, type HomeServicePort } from '../services/homeService.ts';
 
 export type HomeRoutePorts = HomeProjectionPorts & { sessionConfig: SessionConfig; now?: () => Date };
 
@@ -167,13 +168,19 @@ export function createHomeRoutePorts(
   };
 }
 
-function sendRevisioned(reply: FastifyReply, requestEtag: string | string[] | undefined, value: Awaited<ReturnType<typeof projectHome>>): FastifyReply {
-  const etag = `"${value.revision}"`;
-  reply.header('etag', etag);
-  return requestEtag === etag ? reply.code(304).send() : reply.send(value);
-}
-
+/** P6 W6.2 [P6-C42, design:435]: `GET /api/home` is now a THIN caller of `services/homeService.ts#readHome`
+ *  — the D13 projection stays `projectHome(ports, nowIso)`; only the ETag/304 wrapping moved into the
+ *  service. No byte of the request/response contract changed. */
 export function registerHomeRoutes(scope: FastifyInstance, ports: HomeRoutePorts): void {
-  scope.get('/api/home', { preHandler: requireSession(ports.sessionConfig) }, async (request, reply) =>
-    sendRevisioned(reply, request.headers['if-none-match'], await projectHome(ports, (ports.now?.() ?? new Date()).toISOString())));
+  scope.get('/api/home', { preHandler: requireSession(ports.sessionConfig) }, async (request, reply) => {
+    const result = await readHome(
+      // `HomeResponse` (`project.ts`'s exact closed shape) structurally satisfies `HomeProjection`
+      // (`revision` plus an index signature) at every field; only the service's own type is nominal.
+      { projectHome: (nowIso) => projectHome(ports, nowIso) as unknown as ReturnType<HomeServicePort['projectHome']> },
+      (ports.now?.() ?? new Date()).toISOString(),
+      request.headers['if-none-match'] as string | undefined,
+    );
+    if (result.etag) reply.header('etag', result.etag);
+    return result.status === 304 ? reply.code(304).send() : reply.send(result.body);
+  });
 }

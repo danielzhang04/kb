@@ -18,6 +18,7 @@ import {
 import { runTrackedProcess } from '../write/asyncGit.ts';
 import { indexRepo, type PlaneAIndex } from '../planeA/indexer.ts';
 import { ContractDecodeError, sha256Hex } from '../write/durableManifest.ts';
+import { readInboxRoute } from '../services/inboxService.ts';
 import type { SourceState } from './contracts.ts';
 import {
   projectEscalationSubjects, projectP5Inbox,
@@ -301,21 +302,22 @@ export function createInboxRoutePorts(ctx: SurfaceContext, opts: InboxRoutePorts
   };
 }
 
+/** P6 W6.2 [design:435]: `GET /api/inbox` is now a THIN caller of `services/inboxService.ts#readInboxRoute`
+ *  — the refresh-param decode, the per-source invalidation, and the `readInbox` composition are all the
+ *  service's, reached only through this bound port. No byte of the request/response contract changed. */
+function inboxServicePort(ctx: SurfaceContext, ports: InboxRoutePorts) {
+  return {
+    invalidatePr: () => ports.cache.invalidatePr(),
+    invalidateBudget: (source: 'deployment' | 'assetPull') => ports.p5Budget.invalidate(source),
+    readInbox: () => readInbox(ports, ctx.repoRoot),
+  };
+}
+
 export function registerInboxRoutes(scope: FastifyInstance, ctx: SurfaceContext, ports: InboxRoutePorts): void {
   scope.get('/api/inbox', { preHandler: requireSession(ctx.sessionConfig) }, async (request: FastifyRequest, reply: FastifyReply) => {
     const query = request.query as Record<string, unknown> | undefined;
-    let refresh: P5InboxSourceKind | null;
-    try {
-      refresh = decodeP5InboxRefreshParam(query?.['refresh']);
-    } catch (error: unknown) {
-      const reason = error instanceof ContractDecodeError ? error.message : 'refresh must be deployment | assetPull | pr | escalation';
-      return reply.code(400).send({ error: 'bad-refresh', reason });
-    }
-    // `?refresh=<source>` invalidates only the named source; the per-source budget still gates any real
-    // recompute, so Retry needs no mutation endpoint. `escalation` re-reads the store, always fresh.
-    if (refresh === 'pr') ports.cache.invalidatePr();
-    else if (refresh === 'deployment' || refresh === 'assetPull') ports.p5Budget.invalidate(refresh);
-    return reply.code(200).send(await readInbox(ports, ctx.repoRoot));
+    const result = await readInboxRoute(inboxServicePort(ctx, ports), query?.['refresh']);
+    return reply.code(result.status).send(result.body);
   });
 }
 

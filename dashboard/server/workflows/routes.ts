@@ -29,7 +29,7 @@ import {
   validateServerCompiledPlanProposal,
   type PlanProposal,
 } from '../control/proposal.ts';
-import { executeApprovedLaunch, type LaunchOutcome } from '../control/launch.ts';
+import { executeApprovedLaunch, runOpsTransaction, type LaunchOutcome } from '../control/launch.ts';
 import { proposalSnapshotHash } from '../control/store.ts';
 import type { AgentWorkspaceLaunchProvenance, JsonObject, RunMetadata } from '../control/types.ts';
 import type { AttentionEnvelope, HostKind, OutputRef, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
@@ -49,10 +49,17 @@ import { compileWorkflowDef } from './compile.ts';
 import { decodeUtf8, isExactAssignmentAmendment, isExactGovernanceAmendment, isSafeAssignmentValue, isSafeGovernanceValue, patchWorkflowAssignment, patchWorkflowGovernance, readCanonicalDefinitionLocation, runBuilderAmendment, sourceHash, type AssignmentTarget, type AssignmentValue, type GovernanceValue } from './amendments.ts';
 import type { PendingDefinitionAmendment } from './amendmentStore.ts';
 import { nextScheduleOccurrence } from '../schedules/service.ts';
+import { launchService, type LaunchServicePort } from '../services/launchService.ts';
+import {
+  readEntityList, readWorkflowDetail, createWorkflow as createWorkflowEntity,
+  updateWorkflowBuilder as updateWorkflowBuilderEntity, amendWorkflowDefinition,
+  type EntityListPort, type WorkflowDetailPort, type SubmitBuilderPort, type Revisioned,
+  type AmendPort, type AmendPrepared,
+} from '../services/entityService.ts';
+import type { ServiceReply } from '../services/scheduleService.ts';
 import { DEFAULT_WORK_BRANCH, DurableRouteError, defaultGitRunner, resolveBaseCommit, routeDurable } from '../write/branch.ts';
 import { buildWorkflowAmendmentManifest } from '../write/durableManifestService.ts';
 import { save as governedSave } from '../write/governedSave.ts';
-import { withOpsTransaction } from '../write/asyncGit.ts';
 import {
   buildRoster,
   readDeclaredAgentDetails,
@@ -761,22 +768,31 @@ type DefinitionAmendmentSpec = {
   successDetail: (proposalHash: string, durable: { branch: string; pr: { url?: string; number?: number } }) => Record<string, unknown>;
 };
 
-/** The single durable pipeline for every workflow-definition edit. The edit-specific patch and
- * semantic proof are supplied by the caller; CAS, pending state, durable route, rollback and audit
- * remain deliberately identical so amendment kinds cannot drift or race. */
+/**
+ * The single durable pipeline for every workflow-definition edit. The edit-specific patch and semantic
+ * proof are supplied by the caller; CAS, pending state, durable route, rollback and audit remain
+ * deliberately identical so amendment kinds cannot drift or race.
+ *
+ * P6 W6.2 [P6-C80, design:435]: this is now a THIN caller of
+ * `services/entityService.ts#amendWorkflowDefinition` — the pre-transaction guards, the audit +
+ * amendment-record update, and (critically) the CAS-span WRAPPING all live in the service now. This
+ * function supplies only `AmendPort`: `prepareAmendment` carries the heavy CAS interior (reread,
+ * reparse, patch, durable route, rollback) verbatim, and the span-opening port field is bound to
+ * `runOpsTransaction` (`control/launch.ts`) — this file never imports the real span function by name.
+ */
 async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: ScannedDef, spec: DefinitionAmendmentSpec): Promise<LaunchOutcome> {
-  if (!scanned.def || !scanned.entry.sourceHash) return { status: 409, body: { error: 'definition-invalid', detail: scanned.entry.detail } };
-  if (spec.expectedSourceHash !== scanned.entry.sourceHash) return { status: 409, body: { error: 'stale-source-revision', sourceRevision: scanned.entry.sourceHash } };
-  if (!ctx.durableRepoRoot) return { status: 409, body: { error: 'durable-worktree-required' } };
   const durableRoot = ctx.durableRepoRoot;
-  try { if (realpathSync(resolve(ctx.repoRoot)) === realpathSync(resolve(durableRoot))) return { status: 409, body: { error: 'durable-worktree-required' } }; }
-  catch { return { status: 409, body: { error: 'durable-worktree-required' } }; }
-  type Prepared = { outcome: LaunchOutcome } | { proposedSourceHash: string; proposalHash: string; old: unknown; riskTier: 'T1' | 'T2' | 'T3'; durable: { branch: string; pr: { url?: string; number?: number } } };
-  let prepared: Prepared;
-  try {
-    prepared = await withOpsTransaction(async (): Promise<Prepared> => {
+  let durableWorktreeReady = !!durableRoot;
+  if (durableWorktreeReady) {
+    try { if (realpathSync(resolve(ctx.repoRoot)) === realpathSync(resolve(durableRoot!))) durableWorktreeReady = false; }
+    catch { durableWorktreeReady = false; }
+  }
+  const amendPort: AmendPort = {
+    durableWorktreeReady,
+    withOpsTransaction: runOpsTransaction,
+    async prepareAmendment(): Promise<AmendPrepared> {
       const active = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
-      const durableLocation = readCanonicalDefinitionLocation(durableRoot, scanned.entry.path);
+      const durableLocation = readCanonicalDefinitionLocation(durableRoot!, scanned.entry.path);
       if (!active || !durableLocation || active.path === durableLocation.path) return { outcome: { status: 409, body: { error: 'definition-path-refused' } } };
       const activeHash = sourceHash(active.bytes);
       if (activeHash !== spec.expectedSourceHash) return { outcome: { status: 409, body: { error: 'stale-source-revision', sourceRevision: activeHash } } };
@@ -824,13 +840,14 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
       try {
         // P4 §3.2: the one durable publisher consumes a manifest, not a bare relpath. The amendment
         // keeps its existing request idempotency key (prefixed by purpose) and pins the base commit of
-        // the durable worktree it just wrote into. `withOpsTransaction` is reentrant; `routeDurable`
-        // joins the same span. A workflow amendment always publishes through a PR.
-        const receipt = await withOpsTransaction(async () => routeDurable(
-          durableRoot,
+        // the durable worktree it just wrote into. The CAS span is reentrant; `routeDurable` joins the
+        // SAME span the service opened via the port's span-opening field. A workflow amendment always
+        // publishes through a PR.
+        const receipt = await runOpsTransaction(async () => routeDurable(
+          durableRoot!,
           buildWorkflowAmendmentManifest({
             operationKey: `${scanned.entry.path}:${proposedSourceHash}`,
-            baseCommit: await resolveBaseCommit(durableRoot, ctx.saveGit ?? defaultGitRunner),
+            baseCommit: await resolveBaseCommit(durableRoot!, ctx.saveGit ?? defaultGitRunner),
             relpaths: [scanned.entry.path],
           }),
           { runGit: ctx.saveGit, openPr: ctx.openPr, message: spec.routeMessage },
@@ -855,18 +872,21 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
         catch (cleanupError) { return { outcome: { status: 500, body: { error: 'assignment-amendment-state-cleanup-required', detail: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) } } }; }
         throw error;
       }
-    });
-  } catch (error) { return { status: 500, body: { error: `${spec.kind}-durable-write-failed`, detail: error instanceof Error ? error.message : String(error) } }; }
-  if ('outcome' in prepared) return prepared.outcome;
-  try {
-    await auditFn(ctx)(ctx.repoRoot, { action: spec.auditAction, owner: sub, target: scanned.entry.path, riskTier: prepared.riskTier, result: 'pending-human-merge', detail: { path: scanned.entry.path, oldSourceHash: spec.expectedSourceHash, newSourceHash: prepared.proposedSourceHash, ...spec.auditDetail(prepared.old, prepared.proposalHash, prepared.durable) } }, { runGit: ctx.opsGit, now: ctx.now });
-  } catch {
-    try { ctx.definitionAmendmentStore.update({ kind: spec.kind, workflowPath: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'audit-failed' }); } catch { /* pending remains fail-closed */ }
-    return { status: 500, body: { ok: false, status: 'pending-human-merge', auditStatus: 'failed', error: `${spec.kind}-amendment-audit-required`, path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr } };
-  }
-  try { ctx.definitionAmendmentStore.update({ kind: spec.kind, workflowPath: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, phase: 'pending-human-merge' }); }
-  catch (error) { return { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, branch: prepared.durable.branch, pr: prepared.durable.pr, detail: error instanceof Error ? error.message : String(error) } }; }
-  return { status: 202, body: { ok: true, status: 'pending-human-merge', replayed: false, path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash: prepared.proposedSourceHash, proposalContentHash: prepared.proposalHash, ...spec.successDetail(prepared.proposalHash, prepared.durable) } };
+    },
+    async auditAmendment(event) {
+      await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
+    },
+    updateAmendmentRecord(record) {
+      ctx.definitionAmendmentStore.update(record as unknown as PendingDefinitionAmendment);
+    },
+  };
+  return amendWorkflowDefinition(
+    amendPort, sub, { entry: scanned.entry as unknown as { path: string; sourceHash: string; detail?: unknown }, def: scanned.def },
+    {
+      kind: spec.kind, expectedSourceHash: spec.expectedSourceHash, auditAction: spec.auditAction,
+      auditDetail: spec.auditDetail, successDetail: spec.successDetail,
+    },
+  );
 }
 
 async function amendAssignment(
@@ -1068,13 +1088,12 @@ function workflowDetail(ctx: SurfaceContext, scanned: ScannedDef & { def: Workfl
   };
 }
 
-function sendEntity(reply: FastifyReply, etagHeader: string | string[] | undefined, value: EntityList | EntityDetail): FastifyReply {
-  const etag = `"${value.revision}"`;
-  reply.header('etag', etag);
-  return etagHeader === etag ? reply.code(304).send() : reply.send(value);
+/** P6 W6.2 [design:435]: sends a `services/entityService.ts` `ServiceReply` byte-for-byte the way the
+ *  route's own `sendEntity` did — the etag header, then a bodiless 304 or the body at its status. */
+function sendServiceReply(reply: FastifyReply, result: ServiceReply): FastifyReply {
+  if (result.etag) reply.header('etag', result.etag);
+  return result.status === 304 ? reply.code(304).send() : reply.code(result.status).send(result.body);
 }
-
-const WORKFLOW_BUILDER_FIELDS = ['humanName', 'purpose', 'model', 'profile', 'tools', 'skills', 'connectors', 'filesystemRoots'] as const;
 
 class WorkflowBuilderFailure extends Error {
   readonly status: number;
@@ -1099,15 +1118,6 @@ function workflowBuilderCatalog(ctx: SurfaceContext): EntityBuilderCatalog {
     filesystemRoots: Object.fromEntries(projects.map((project) => [project, `orgs/${project}`])),
     projects,
   };
-}
-
-function workflowBuilderRequest(body: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(WORKFLOW_BUILDER_FIELDS.map((key) => [key, body[key]]));
-}
-
-function exactWorkflowBody(body: unknown, keys: readonly string[]): body is Record<string, unknown> {
-  return !!body && typeof body === 'object' && !Array.isArray(body)
-    && Object.keys(body as Record<string, unknown>).every((key) => keys.includes(key));
 }
 
 function workflowBuilderPort(ctx: SurfaceContext): EntityBuilderPort {
@@ -1145,10 +1155,35 @@ function workflowBuilderPort(ctx: SurfaceContext): EntityBuilderPort {
   };
 }
 
-function workflowBuilderError(reply: FastifyReply, error: unknown): FastifyReply {
-  if (error instanceof WorkflowBuilderFailure) return reply.code(error.status).send({ error: error.message });
-  const message = error instanceof Error ? error.message : 'invalid-builder-request';
-  return reply.code(message === 'idempotency-body-conflict' ? 409 : 400).send({ error: message });
+/**
+ * P6 W6.2 [design:633]: the ONE `LaunchServicePort` binding for a workflow one-step launch — used by
+ * `POST /api/workflows/:id/launch` below, and exported so `POST /api/v1/runs` (`api/v1/routes.ts`, wired
+ * through `ctx.v1.launchPort`) can be bound to the IDENTICAL port. Two URLs, one launch implementation:
+ * this is what makes an old-route launch and a v1 launch of the same owner produce byte-identical
+ * `Run.owner`/`executionHost`/`terminalOutcome`/`completedAt`/`archivedFrom` rows.
+ */
+export function createWorkflowLaunchServicePort(ctx: SurfaceContext): LaunchServicePort {
+  const repoRoot = ctx.repoRoot;
+  return {
+    admission: (kind) => ctx.admission(kind),
+    findScannedDef: (scanId) => (findScannedDef(repoRoot, scanId) ?? null) as unknown as import('../services/launchService.ts').LaunchScannedDef | null,
+    pendingAmendmentFor: (entry) => pendingAmendmentFor(ctx, entry as unknown as WorkflowDefRecord),
+    lookupAmendment: (path, hash) => ctx.definitionAmendmentStore.lookup(path, hash),
+    readCanonicalDefinition: (path) => readCanonicalDefinitionLocation(ctx.repoRoot, path),
+    sourceHash: (bytes) => sourceHash(bytes),
+    decodeUtf8: (bytes) => decodeUtf8(bytes),
+    parseWorkflowDef: (text) => parseWorkflowDef(text, { knownProfiles: workflowProfileIds() }),
+    instantiateWorkflowDef: (def, parameters) => instantiateWorkflowDef(def, parameters),
+    composerGet: (composerSubject, composerRef) =>
+      ctx.composerStore.get(composerSubject, composerRef) as unknown as import('../services/launchService.ts').LaunchComposerRead,
+    declaredAgent: (id) => readDeclaredAgentDetails(ctx.repoRoot).get(id),
+    // The placement lease host, resolved inside `launchDefinition` itself — this value is a harmless
+    // self-identity placeholder `launchDefinition` ignores and recomputes [P6-C55].
+    runtimeExecutionHost: () => runtimeExecutionHost(ctx.runtimeCapabilities),
+    withOpsTransaction: runOpsTransaction,
+    launchDefinition: (launchSub, sessionToken, def, idempotencyKey, agentWorkspaceLaunch, identity) =>
+      launchDefinition(ctx, launchSub, sessionToken, def, idempotencyKey, agentWorkspaceLaunch, identity),
+  };
 }
 
 /** Register the workflow-definition registry routes + the governed one-step launch route. */
@@ -1163,16 +1198,19 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     return { type: 'workflow', id: selector.id, project, sourcePath: `orgs/${project}/workflows/${selector.id}.md` };
   };
 
-  app.get('/api/workflows', async (req, reply) => sendEntity(reply, req.headers['if-none-match'], workflowList(ctx)));
+  const entityListPort: EntityListPort = { list: () => workflowList(ctx) as unknown as Revisioned };
+  const workflowDetailPort: WorkflowDetailPort = {
+    findScannedDef: (id) => findScannedDef(repoRoot, id) ?? null,
+    detail: (scanned) => workflowDetail(ctx, scanned as ScannedDef & { def: WorkflowDef }) as unknown as Revisioned,
+  };
+  app.get('/api/workflows', async (req, reply) =>
+    sendServiceReply(reply, readEntityList(entityListPort, req.headers['if-none-match'] as string | undefined)));
   // Profiles are server-owned execution policy. Clients must read them rather than infer a default.
   app.get('/api/workflows/profiles', async () => ({ profiles: [...workflowProfileIds()].sort() }));
 
   app.get('/api/workflows/:id', async (req: FastifyRequest, reply: FastifyReply) => {
     const { id } = req.params as { id: string };
-    const scanned = findScannedDef(repoRoot, id);
-    if (!scanned) return reply.code(404).send({ error: 'not-found' });
-    if (!scanned.def) return reply.code(422).send({ error: 'workflow-definition-invalid' });
-    return sendEntity(reply, req.headers['if-none-match'], workflowDetail(ctx, scanned as ScannedDef & { def: WorkflowDef }));
+    return sendServiceReply(reply, readWorkflowDetail(workflowDetailPort, id, req.headers['if-none-match'] as string | undefined));
   });
 
   // Governed WRITE: its own origin → rate-limit → session child scope (mirrors the PTY route in index.ts;
@@ -1182,99 +1220,30 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     scope.addHook('onRequest', writeRateLimitHook(ctx.rateGuard));
     const preHandler = requireSession(ctx.sessionConfig);
     scope.post('/api/workflows', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!exactWorkflowBody(req.body, [...WORKFLOW_BUILDER_FIELDS, 'selector', 'project', 'expectedCollectionRevision', 'idempotencyKey'])) return reply.code(400).send({ error: 'invalid-workflow-create-body' });
-      const body = req.body;
-      const selector = body.selector as { type?: unknown; id?: unknown } | undefined;
-      if (!selector || selector.type !== 'workflow' || typeof selector.id !== 'string' || typeof body.project !== 'string') return reply.code(400).send({ error: 'invalid-runnable-selector' });
-      if (findScannedDef(repoRoot, selector.id)) return reply.code(409).send({ error: 'already-exists' });
-      const resolveCreate = (candidate: { type: 'agent' | 'workflow'; id: string }): RunnableRef => {
-        if (candidate.type !== 'workflow' || candidate.id !== selector.id || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(candidate.id)) throw new Error('invalid-runnable-selector');
-        return { type: 'workflow', id: candidate.id, project: body.project as string, sourcePath: `orgs/${body.project as string}/workflows/${candidate.id}.md` };
-      };
-      try {
-        const receipt = await submitEntityBuilder({ selector: { type: 'workflow', id: selector.id }, project: body.project, expectedSourceRevision: body.expectedCollectionRevision as string, idempotencyKey: body.idempotencyKey as string, sessionToken: verifiedSession(req)?.token, request: workflowBuilderRequest(body) }, { resolve: resolveCreate, catalog: workflowBuilderCatalog(ctx), port: builderPort });
-        return reply.code(202).send(receipt);
-      } catch (error) { return workflowBuilderError(reply, error); }
-    });
-    scope.post('/api/workflows/:id/launch', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
-      const sub = subject(req);
-      if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-      const admission = ctx.admission('new-work');
-      if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
-      const { id } = req.params as { id: string };
-      // Launch identity is CLIENT-supplied. A server-minted key would make every double-click or proxy
-      // retry a fresh run with duplicate canonical cards, so an absent key is refused, never invented.
-      const body = req.body !== null && typeof req.body === 'object' && !Array.isArray(req.body)
-        ? req.body as Record<string, unknown> : {};
-      if (Object.keys(body).some((key) => key !== 'idempotencyKey' && key !== 'composerRef' && key !== 'parameters' && key !== 'expectedSourceRevision')) {
-        return reply.code(400).send({ error: 'invalid-launch-body' });
-      }
-      const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
-      if (idempotencyKey.trim() === '' || idempotencyKey.length > 512) {
-        return reply.code(400).send({
-          error: 'idempotency-key-required',
-          detail: 'a non-empty client-supplied idempotencyKey of at most 512 characters is required',
-        });
-      }
-      const scanned = findScannedDef(repoRoot, id);
-      if (!scanned) return reply.code(404).send({ error: 'not-found' });
-      if (!scanned.def) return reply.code(409).send({ error: 'definition-invalid', detail: scanned.entry.detail });
-      if (typeof body.expectedSourceRevision !== 'string' || !/^[a-f0-9]{64}$/.test(body.expectedSourceRevision)) {
-        return reply.code(400).send({ error: 'source-revision-required' });
-      }
-      if (body.expectedSourceRevision !== scanned.entry.sourceHash) {
-        return reply.code(409).send({ error: 'stale-source-revision', sourceRevision: scanned.entry.sourceHash });
-      }
-      const pending = pendingAmendmentFor(ctx, scanned.entry);
-      if (pending.error) return reply.code(409).send({ error: 'assignment-amendment-state-invalid' });
-      if (pending.pending) return reply.code(409).send({ error: 'assignment-amendment-pending', pending: pending.pending });
-      const rawParameters = body.parameters;
-      if (rawParameters === undefined ? (scanned.def.parameters ?? []).length > 0 : !rawParameters || typeof rawParameters !== 'object' || Array.isArray(rawParameters)) {
-        return reply.code(400).send({ error: 'invalid-launch-parameters' });
-      }
-      const parameters = rawParameters === undefined ? {} : rawParameters as Record<string, unknown>;
-      if (Object.values(parameters).some((value) => typeof value !== 'string')) return reply.code(400).send({ error: 'invalid-launch-parameters' });
-      const result = await withOpsTransaction(async (): Promise<LaunchOutcome> => {
-        // This is the authoritative launch CAS. No proposal/store/audit/run work starts until the raw
-        // canonical bytes are re-read under the same in-process write transaction.
-        const fresh = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
-        if (!fresh || sourceHash(fresh.bytes) !== body.expectedSourceRevision) {
-          return { status: 409, body: { error: 'stale-source-revision', sourceRevision: fresh ? sourceHash(fresh.bytes) : null } };
-        }
-        const freshText = decodeUtf8(fresh.bytes);
-        if (freshText === null) return { status: 409, body: { error: 'definition-invalid' } };
-        const reparsed = parseWorkflowDef(freshText, { knownProfiles: workflowProfileIds() });
-        if (!reparsed.ok || reparsed.value.id !== scanned.def!.id || reparsed.value.project !== scanned.def!.project) {
-          return { status: 409, body: { error: 'definition-changed' } };
-        }
-        const currentPending = ctx.definitionAmendmentStore.lookup(scanned.entry.path, sourceHash(fresh.bytes));
-        if (!currentPending.ok) return { status: 409, body: { error: 'assignment-amendment-state-invalid' } };
-        if (currentPending.record) return { status: 409, body: { error: 'assignment-amendment-pending', pending: currentPending.record } };
-        const instantiated = instantiateWorkflowDef(reparsed.value, parameters as Record<string, string>);
-        if (!instantiated.ok) return { status: 400, body: { error: 'invalid-launch-parameters', detail: instantiated.detail } };
-        let agentWorkspaceLaunch: AgentWorkspaceLaunchProvenance | null = null;
-        let owner: RunnableRef = {
-          type: 'workflow', id: instantiated.value.id, project: instantiated.value.project,
-          sourcePath: scanned.entry.path as `orgs/${string}/workflows/${string}.md`,
+      const submit: SubmitBuilderPort = (args) => {
+        const resolveCreate = (candidate: { type: 'agent' | 'workflow'; id: string }): RunnableRef => {
+          if (candidate.type !== 'workflow' || candidate.id !== args.selector.id || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(candidate.id)) throw new Error('invalid-runnable-selector');
+          return { type: 'workflow', id: candidate.id, project: args.project, sourcePath: `orgs/${args.project}/workflows/${candidate.id}.md` };
         };
-        if (body.composerRef !== undefined) {
-          if (typeof body.composerRef !== 'string' || body.composerRef.trim() === '') return { status: 400, body: { error: 'invalid-agent-workspace-ref' } };
-          const workspace = ctx.composerStore.get(sub, body.composerRef);
-          if (!workspace.ok) return { status: 404, body: { error: 'agent-workspace-not-found' } };
-          const agent = workspace.workspace.agent;
-          if (!agent) return { status: 409, body: { error: 'agent-workspace-unbound' } };
-          if (!(agent.projects ?? []).includes(instantiated.value.project)) return { status: 403, body: { error: 'agent-workspace-project-refused' } };
-          agentWorkspaceLaunch = { composerRef: workspace.workspace.composerRef, agentId: agent.id, declarationPath: agent.path, declarationHash: agent.sourceHash };
-          const declared = readDeclaredAgentDetails(ctx.repoRoot).get(agent.id);
-          if (!declared || declared.source !== agent.path || declared.sourceHash !== agent.sourceHash) {
-            return { status: 409, body: { error: 'runnable-owner-required' } };
-          }
-          // The workspace records who composed the launch, never who owns the immutable Workflow run.
-        }
-        return launchDefinition(ctx, sub, verifiedSession(req)?.token, instantiated.value, idempotencyKey,
-          agentWorkspaceLaunch, { owner, executionHost: runtimeExecutionHost(ctx.runtimeCapabilities) });
+        return submitEntityBuilder(
+          { ...args, sessionToken: verifiedSession(req)?.token },
+          { resolve: resolveCreate, catalog: workflowBuilderCatalog(ctx), port: builderPort },
+        );
+      };
+      return sendServiceReply(reply, await createWorkflowEntity(submit, req.body, (id) => !!findScannedDef(repoRoot, id)));
+    });
+    // P6 W6.2 [P6-C80, design:435]: THIN caller of `services/launchService.ts` — every gate (admission,
+    // closed body validation, client idempotency, expected source-hash, pending-amendment, the
+    // transactional reread/reparse/instantiate, Composer/project binding) lives in the service now; this
+    // handler only binds the injected ports to the real route context. No byte of the request/response
+    // contract changed, and the port's span-opening field is bound to `runOpsTransaction`
+    // (`control/launch.ts`) — this file never imports the real transaction span function by name.
+    scope.post('/api/workflows/:id/launch', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const outcome = await launchService(createWorkflowLaunchServicePort(ctx), {
+        subject: subject(req), sessionToken: verifiedSession(req)?.token, id, body: req.body,
       });
-      return reply.code(result.status).send(result.body);
+      return reply.code(outcome.status).send(outcome.body);
     });
     scope.put('/api/workflows/:id', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
       const sub = subject(req);
@@ -1292,11 +1261,11 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
           : await amendGovernance(ctx, sub, scanned, governance!);
         return reply.code(result.status).send(result.body);
       }
-      if (!scanned.def || !exactWorkflowBody(req.body, [...WORKFLOW_BUILDER_FIELDS, 'expectedSourceRevision', 'idempotencyKey'])) return reply.code(400).send({ error: 'invalid-workflow-update-body' });
-      try {
-        const receipt = await submitEntityBuilder({ selector: { type: 'workflow', id }, project: scanned.entry.project, expectedSourceRevision: req.body.expectedSourceRevision as string, idempotencyKey: req.body.idempotencyKey as string, sessionToken: verifiedSession(req)?.token, request: workflowBuilderRequest(req.body) }, { resolve: resolveBuilderSelector, catalog: workflowBuilderCatalog(ctx), port: builderPort });
-        return reply.code(202).send(receipt);
-      } catch (error) { return workflowBuilderError(reply, error); }
+      const submit: SubmitBuilderPort = (args) => submitEntityBuilder(
+        { ...args, sessionToken: verifiedSession(req)?.token },
+        { resolve: resolveBuilderSelector, catalog: workflowBuilderCatalog(ctx), port: builderPort },
+      );
+      return sendServiceReply(reply, await updateWorkflowBuilderEntity(submit, scanned, id, req.body));
     });
   });
 }

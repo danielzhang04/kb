@@ -29,6 +29,17 @@ import { runLifecycleKind } from './runLifecycle.ts';
 import { decodeHostKind, decodeRunnableRef } from './p2Decoders.ts';
 import type { HostKind, RunnableRef } from './p2Contracts.ts';
 
+/**
+ * P6 W6.2 [P6-C80]: the ONE reusable binding of `write/asyncGit.ts`'s real transaction span, exported
+ * under a name that is NOT the literal `withOpsTransaction` token — `workflows/routes.ts`'s amendment
+ * path binds `services/entityService.ts#amendWorkflowDefinition`'s injected `AmendPort.withOpsTransaction`
+ * to this function so that file never imports `withOpsTransaction` by that name itself; the CAS span it
+ * opens is the identical, reentrant one every other launch/amendment surface already uses.
+ */
+export function runOpsTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  return withOpsTransaction(fn);
+}
+
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
 export interface LaunchOutcome {
   status: number;

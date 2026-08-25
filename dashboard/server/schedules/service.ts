@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
+import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from 'fastify';
 import { OPERATOR_SUBJECT } from '../auth/operator.ts';
 import { verifiedSession } from '../http/middleware.ts';
 import { validateScheduleCadence } from '../../src/lib/scheduleWords.ts';
@@ -18,6 +18,9 @@ import type {
   ScheduleStorePort,
   SetScheduleArmedInput,
 } from './contracts.ts';
+import {
+  listSchedules, createSchedule, setScheduleArmed, deleteSchedule, type ServiceReply,
+} from '../services/scheduleService.ts';
 
 export class ScheduleServiceError extends Error {
   readonly status: number;
@@ -291,70 +294,14 @@ function record(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
-  return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
-}
-
-function idempotencyKey(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 200;
-}
-
-function createBody(value: unknown): CreateScheduleInput | null {
-  const body = record(value);
-  if (!body || !exactKeys(body, ['owner', 'cadence', 'expectedCollectionRevision', 'idempotencyKey'])
-    || !Number.isSafeInteger(body.expectedCollectionRevision) || Number(body.expectedCollectionRevision) < 0
-    || !idempotencyKey(body.idempotencyKey)) return null;
-  const owner = record(body.owner);
-  if (!owner || !exactKeys(owner, ['type', 'id'])
-    || (owner.type !== 'agent' && owner.type !== 'workflow')
-    || typeof owner.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(owner.id)) return null;
-  const cadence = record(body.cadence);
-  if (!cadence || typeof cadence.kind !== 'string') return null;
-  if (cadence.kind === 'words') {
-    if (!exactKeys(cadence, ['kind', 'words', 'time']) || typeof cadence.words !== 'string' || typeof cadence.time !== 'string') return null;
-  } else if (cadence.kind === 'cron') {
-    if (!exactKeys(cadence, ['kind', 'minute', 'hour', 'dayOfMonth', 'month', 'dayOfWeek'])
-      || ['minute', 'hour', 'dayOfMonth', 'month', 'dayOfWeek'].some((key) => typeof cadence[key] !== 'string')) return null;
-  } else return null;
-  return body as unknown as CreateScheduleInput;
-}
-
-function armedBody(value: unknown, armed: boolean): SetScheduleArmedInput | null {
-  const body = record(value);
-  return body && exactKeys(body, ['expectedVersion', 'idempotencyKey', 'armed'])
-    && Number.isSafeInteger(body.expectedVersion) && Number(body.expectedVersion) >= 1
-    && idempotencyKey(body.idempotencyKey) && body.armed === armed
-    ? body as unknown as SetScheduleArmedInput : null;
-}
-
-function deleteBody(value: unknown): DeleteScheduleInput | null {
-  const body = record(value);
-  return body && exactKeys(body, ['expectedVersion', 'idempotencyKey'])
-    && Number.isSafeInteger(body.expectedVersion) && Number(body.expectedVersion) >= 1
-    && idempotencyKey(body.idempotencyKey)
-    ? body as unknown as DeleteScheduleInput : null;
-}
-
-function scheduleId(request: FastifyRequest): string | null {
-  const id = record(request.params)?.id;
-  return typeof id === 'string' && /^[0-9a-f]{64}$/.test(id) ? id : null;
-}
-
-async function routeResult(reply: FastifyReply, operation: () => Promise<unknown>, success: number): Promise<void> {
-  try {
-    reply.code(success).send(await operation());
-  } catch (error) {
-    const candidate = record(error);
-    if ((error instanceof ScheduleServiceError || candidate)
-      && Number.isInteger((error as { status?: unknown }).status)
-      && typeof (error as { code?: unknown }).code === 'string') {
-      reply.code((error as { status: number }).status).send({ error: (error as { code: string }).code });
-      return;
-    }
-    throw error;
-  }
+/** P6 W6.2 [design:435]: every §2 handler below is a THIN caller of `services/scheduleService.ts` —
+ *  the closed body walls, the ETag/304 read, and the `ScheduleServiceError`-to-HTTP mapping are all the
+ *  service's, driven only through this `ScheduleService` instance (which already structurally satisfies
+ *  `ScheduleServicePort`). No byte of the request/response contract changed; no route logic duplicated. */
+function sendServiceReply(res: FastifyReply, result: ServiceReply): void {
+  if (result.etag) res.header('etag', result.etag);
+  if (result.status === 304) { res.code(304).send(); return; }
+  res.code(result.status).send(result.body);
 }
 
 /** Closed P2 browser surface. Authentication/origin gates are owned by the enclosing server scope. */
@@ -363,43 +310,16 @@ export function registerScheduleRoutes(
   service: ScheduleService,
   mutationPreHandler: preHandlerHookHandler = requireScheduleOperator,
 ): void {
-  app.get('/api/schedules', async (request, reply) => {
-    let snapshot: ScheduleSnapshot;
-    try {
-      snapshot = await service.list();
-    } catch (error) {
-      if (error instanceof ScheduleServiceError) return reply.code(error.status).send({ error: error.code });
-      throw error;
-    }
-    const etag = `\"schedules:${snapshot.collectionRevision}\"`;
-    if (request.headers['if-none-match'] === etag) {
-      reply.header('etag', etag).code(304).send();
-      return;
-    }
-    reply.header('etag', etag).send({
-      scheduleCollectionRevision: snapshot.collectionRevision,
-      rows: snapshot.schedules,
-    });
-  });
-  app.post('/api/schedules', { preHandler: mutationPreHandler }, async (request, reply) => {
-    const input = createBody(request.body);
-    if (!input) return reply.code(400).send({ error: 'invalid-schedule-create-body' });
-    await routeResult(reply, () => service.create(input), 201);
-  });
+  app.get('/api/schedules', async (request, res) =>
+    sendServiceReply(res, await listSchedules(service, request.headers['if-none-match'] as string | undefined)));
+  app.post('/api/schedules', { preHandler: mutationPreHandler }, async (request, res) =>
+    sendServiceReply(res, await createSchedule(service, request.body)));
   for (const [action, armed] of [['arm', true], ['disarm', false]] as const) {
-    app.post(`/api/schedules/:id/${action}`, { preHandler: mutationPreHandler }, async (request, reply) => {
-      const id = scheduleId(request);
-      const input = armedBody(request.body, armed);
-      if (!id || !input) return reply.code(400).send({ error: 'invalid-schedule-arm-body' });
-      await routeResult(reply, () => service.setArmed(id, input), 200);
-    });
+    app.post(`/api/schedules/:id/${action}`, { preHandler: mutationPreHandler }, async (request, res) =>
+      sendServiceReply(res, await setScheduleArmed(service, record(request.params)?.id, request.body, armed)));
   }
-  app.delete('/api/schedules/:id', { preHandler: mutationPreHandler }, async (request, reply) => {
-    const id = scheduleId(request);
-    const input = deleteBody(request.body);
-    if (!id || !input) return reply.code(400).send({ error: 'invalid-schedule-delete-body' });
-    await routeResult(reply, () => service.delete(id, input), 200);
-  });
+  app.delete('/api/schedules/:id', { preHandler: mutationPreHandler }, async (request, res) =>
+    sendServiceReply(res, await deleteSchedule(service, record(request.params)?.id, request.body)));
 }
 
 function sameRunnable(left: RunnableRef, right: RunnableRef): boolean {

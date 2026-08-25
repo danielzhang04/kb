@@ -75,6 +75,10 @@ import {
 } from '../inbox/deploymentContracts.ts';
 import type { DeployT3Decision, DeployT3Preimage, DeployT3Subject } from '../deploy/contracts.ts';
 import { DEPLOY_T3_DECISIONS } from '../deploy/contracts.ts';
+import {
+  listRuns as runReadServiceListRuns, getRunDetail, replayRunEvents, respondHumanRequestRoute,
+  type RunReadPort, type ControlReadResult, type EventPage, type RespondPort,
+} from '../services/runReadService.ts';
 
 /**
  * P6 W6.2 [P6-C55, design:410]: this route replays an already-approved PROPOSAL SNAPSHOT (never a live
@@ -896,34 +900,32 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       }));
   });
 
+  // P6 W6.2 [design:435]: the run-list, run-detail, and run-events reads below are now THIN callers of
+  // `services/runReadService.ts` — the `401 unauthenticated` gate, the `includeArchived` default
+  // projection, the `ControlResult` not-ok mapping, and the numeric event-cursor wall are all the
+  // service's. No byte of the request/response contract changed.
+  const runReadPort: RunReadPort = {
+    listRuns: (sub, readScopeValue) => ctx.controlStore.listRuns(sub, readScopeValue),
+    getRun: (sub, runRef, readScopeValue) => ctx.controlStore.getRun(sub, runRef, readScopeValue) as unknown as ControlReadResult<Record<string, unknown>>,
+    statusOf: (result) => statusOf(result as Extract<ControlResult<unknown>, { ok: false }>),
+    lifecycleKind: (run) => runLifecycleKind((run as Run).lifecycle),
+    workflowRefIndex: (sub, readScopeValue) => workflowRefIndex(ctx, sub, readScopeValue),
+    runDto: (run) => runDto(run as Run) as unknown as { runRef: string; title: string; proposalRef: string } & Record<string, unknown>,
+    runDisplay: (dto, workflows) => runDisplay(ctx, dto as { runRef: string; title: string; proposalRef: string }, workflows),
+    runDetailDto: (sub, detail, readScopeValue) => runDetailDto(ctx, sub, detail as RunDetail, readScopeValue),
+    executionPosture: () => executionPosture(ctx),
+    replayEvents: (input) => projectRunEvents.replay(input) as unknown as Promise<EventPage>,
+  };
+
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    const scope = readScope(req);
-    // One revision walk for the whole list, not one per run.
-    const workflows = workflowRefIndex(ctx, sub, scope);
-    // An archived run is one the operator explicitly dismissed. It stays fully readable by ref and is
-    // still listable on request, but it is out of the DEFAULT projection every surface renders —
-    // otherwise "archive" would mean nothing and dead runs would keep haunting every list.
-    const includeArchived = string((req.query as { includeArchived?: unknown }).includeArchived) === '1';
-    const runs = ctx.controlStore.listRuns(sub, scope)
-      .filter((run) => includeArchived || runLifecycleKind(run.lifecycle) !== 'archived');
-    return reply.send({ runs: runs.map((run) => runDisplay(ctx, runDto(run), workflows)) });
+    const result = runReadServiceListRuns(runReadPort, subject(req), req.query as { includeArchived?: unknown });
+    return reply.code(result.status).send(result.body);
   });
 
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
-    const scope = readScope(req);
-    const detail = ctx.controlStore.getRun(sub, runRef, scope);
-    if (!detail.ok) return sendResult(reply, detail);
-    return reply.send({
-      ok: true,
-      value: runDetailDto(ctx, sub, detail.value, scope),
-      replayed: detail.replayed ?? false,
-      execution: executionPosture(ctx),
-    });
+    const result = getRunDetail(runReadPort, subject(req), runRef);
+    return reply.code(result.status).send(result.body);
   });
 
   scope.get('/api/control/runs/:runRef/attempts/:attemptRef/io', { preHandler }, async (req, reply) => {
@@ -956,25 +958,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   };
 
   scope.get('/api/control/runs/:runRef/events', { preHandler }, async (req, reply) => {
-    const authorized = authorizeReplay(req, reply);
-    if ('response' in authorized) return authorized.response;
+    const runRef = (req.params as { runRef: string }).runRef;
     const query = req.query as { after?: unknown; limit?: unknown; stageRef?: unknown };
-    const after = safeQueryInteger(query.after, 0);
-    const limit = safeQueryInteger(query.limit, 200);
-    if (after === null || limit === null || limit < 1 || limit > 250) {
-      return reply.code(400).send({ error: 'invalid-event-cursor' });
-    }
-    const page = await projectRunEvents.replay({
-      subject: authorized.sub,
-      runRef: authorized.runRef,
-      scope: authorized.scope,
-      afterCursor: after,
-      limit,
-      stageRef: typeof query.stageRef === 'string' && query.stageRef.length > 0 ? query.stageRef : null,
-    });
-    reply.header('ETag', etag(page.revision));
-    if (hasRevision(req, page.revision)) return reply.code(304).send();
-    return reply.send(page);
+    const result = await replayRunEvents(runReadPort, subject(req), runRef, query, req.headers['if-none-match'] as string | undefined);
+    if (result.etag) reply.header('ETag', result.etag);
+    return result.status === 304 ? reply.code(304).send() : reply.code(result.status).send(result.body);
   });
 
   scope.get('/api/control/runs/:runRef/events/stream', { preHandler }, async (req, reply) => {
@@ -1994,38 +1982,17 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.send({ ceremonyId, options, challengeExpiresAt });
   });
 
+  // P6 W6.2 [design:435]: THIN caller of `services/runReadService.ts#respondHumanRequestRoute` — the
+  // closed body wall and the gate-service result mapping are the service's. No byte of the
+  // request/response contract changed.
   scope.post('/api/control/human-requests/:requestRef/respond', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    {
-      const inputBody = record(req.body);
-      const decision = string(inputBody.decision) as HumanResponseInput['decision'];
-      if (!['responded', 'approved', 'rejected', 'changes-requested'].includes(decision)
-        || integer(inputBody.expectedRevision) < 1 || !string(inputBody.idempotencyKey)) {
-        return reply.code(400).send({ error: 'invalid-human-response' });
-      }
-      const result = await responseService(req).respond({
-        actor: { kind: 'operator', subject: sub },
-        requestRef: (req.params as { requestRef: string }).requestRef,
-        expectedRevision: integer(inputBody.expectedRevision),
-        decision,
-        idempotencyKey: string(inputBody.idempotencyKey),
-        response: inputBody.response == null ? null : string(inputBody.response),
-        origin: string(req.headers.origin),
-        ceremonyAssertion: inputBody.ceremonyId == null || inputBody.assertion == null
-          ? undefined
-          : { ceremonyId: string(inputBody.ceremonyId), response: inputBody.assertion },
-        challengeExpiresAt: inputBody.challengeExpiresAt == null ? undefined : string(inputBody.challengeExpiresAt),
-      });
-      if (!result.ok) {
-        return reply.code(result.status).send({
-          error: result.status === 404 ? 'not-found' : result.error,
-          ...(result.gateKind ? { gateKind: result.gateKind } : {}),
-          ...(result.resolveUrl ? { resolveUrl: result.resolveUrl } : {}),
-        });
-      }
-      return reply.send({ ok: true, value: result.value, replayed: result.replayed });
-    }
+    const respondPort: RespondPort = {
+      respond: (input) => responseService(req).respond(input as unknown as HumanResponseInput) as unknown as ReturnType<RespondPort['respond']>,
+    };
+    const result = await respondHumanRequestRoute(
+      respondPort, subject(req), (req.params as { requestRef: string }).requestRef, req.body, req.headers.origin,
+    );
+    return reply.code(result.status).send(result.body);
   });
 
   const resolveIterationGateRoute = async (

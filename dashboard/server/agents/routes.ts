@@ -21,6 +21,11 @@ import { launchDeclaredAgent } from '../workflows/routes.ts';
 import { runBuilderAmendment } from '../workflows/amendments.ts';
 import { readAgentDeclarationProblems, readDeclaredAgentDetails, type DeclaredAgentDetail } from './roster.ts';
 import { nextScheduleOccurrence } from '../schedules/service.ts';
+import {
+  readEntityList, readAgentDetail, createAgent as createAgentEntity, updateAgent as updateAgentEntity,
+  type EntityListPort, type AgentDetailPort, type SubmitBuilderPort, type Revisioned,
+} from '../services/entityService.ts';
+import type { ServiceReply } from '../services/scheduleService.ts';
 
 const BULLET = '\u00b7';
 
@@ -189,13 +194,12 @@ function agentDetail(ctx: SurfaceContext, declaration: DeclaredAgentDetail): Ent
   };
 }
 
-function sendRevisioned(reply: FastifyReply, requestEtag: string | string[] | undefined, value: EntityList | EntityDetail): FastifyReply {
-  const etag = `"${value.revision}"`;
-  reply.header('etag', etag);
-  return requestEtag === etag ? reply.code(304).send() : reply.send(value);
+/** P6 W6.2 [design:435]: sends a `services/entityService.ts` `ServiceReply` byte-for-byte the way the
+ *  route's own `sendRevisioned` did — the etag header, then a bodiless 304 or the body at its status. */
+function sendServiceReply(reply: FastifyReply, result: ServiceReply): FastifyReply {
+  if (result.etag) reply.header('etag', result.etag);
+  return result.status === 304 ? reply.code(304).send() : reply.code(result.status).send(result.body);
 }
-
-const BUILDER_FIELDS = ['humanName', 'purpose', 'model', 'profile', 'tools', 'skills', 'connectors', 'filesystemRoots'] as const;
 
 class AgentBuilderFailure extends Error {
   readonly status: number;
@@ -220,10 +224,6 @@ function builderCatalog(ctx: SurfaceContext): EntityBuilderCatalog {
     filesystemRoots,
     projects,
   };
-}
-
-function builderRequest(body: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(BUILDER_FIELDS.map((key) => [key, body[key]]));
 }
 
 function exactBody(body: unknown, keys: readonly string[]): body is Record<string, unknown> {
@@ -264,23 +264,29 @@ function agentBuilderPort(ctx: SurfaceContext): EntityBuilderPort {
   };
 }
 
-function builderError(reply: FastifyReply, error: unknown): FastifyReply {
-  if (error instanceof AgentBuilderFailure) return reply.code(error.status).send({ error: error.message });
-  const message = error instanceof Error ? error.message : 'invalid-builder-request';
-  return reply.code(message === 'idempotency-body-conflict' ? 409 : 400).send({ error: message });
-}
-
-/** Register the P2 Agent entity list/detail service. */
+/** Register the P2 Agent entity list/detail service. P6 W6.2 [design:435]: every handler below except
+ *  the launch route is now a THIN caller of `services/entityService.ts` — the list/detail ETag-304 read,
+ *  the closed create/update body walls, and the `submitEntityBuilder` -> 202 / builder-error mapping are
+ *  all the service's. No byte of the request/response contract changed.
+ *
+ *  BLOCKER (flagged, not silently dropped): `POST /api/agents/:id/launch` has NO covering W2 service.
+ *  `services/launchService.ts` characterizes only the WORKFLOW one-step launch (`findScannedDef`,
+ *  `expectedSourceRevision`/`parameters`/`composerRef` body) — the agent launch body/gate sequence here
+ *  (source-CAS, pending-amendment, admission, then `launchDeclaredAgent`'s synthetic WorkflowDef) has no
+ *  analog in any built W2 service, so it stays inline. Its execution host already comes from placement
+ *  via `launchDeclaredAgent` -> the shared `launchDefinition` (W6.2's earlier launch-site conversion). */
 export function registerAgents(app: FastifyInstance, ctx: SurfaceContext): void {
-  app.get('/api/agents', async (request, reply) => sendRevisioned(reply, request.headers['if-none-match'], agentList(ctx)));
+  const entityListPort: EntityListPort = { list: () => agentList(ctx) as unknown as Revisioned };
+  const agentDetailPort: AgentDetailPort = {
+    declaration: (id) => readDeclaredAgentDetails(ctx.repoRoot).get(id),
+    detail: (declaration) => agentDetail(ctx, declaration as DeclaredAgentDetail) as unknown as Revisioned,
+    problem: (id) => readAgentDeclarationProblems(ctx.repoRoot).get(id),
+  };
+  app.get('/api/agents', async (request, reply) =>
+    sendServiceReply(reply, readEntityList(entityListPort, request.headers['if-none-match'] as string | undefined)));
   app.get('/api/agents/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const declaration = readDeclaredAgentDetails(ctx.repoRoot).get(id);
-    if (declaration) return sendRevisioned(reply, request.headers['if-none-match'], agentDetail(ctx, declaration));
-    const problem = readAgentDeclarationProblems(ctx.repoRoot).get(id);
-    return problem
-      ? reply.code(422).send({ error: 'agent-declaration-invalid', declaration: problem })
-      : reply.code(404).send({ error: 'not-found' });
+    return sendServiceReply(reply, readAgentDetail(agentDetailPort, id, request.headers['if-none-match'] as string | undefined));
   });
 
   const port = agentBuilderPort(ctx);
@@ -293,23 +299,20 @@ export function registerAgents(app: FastifyInstance, ctx: SurfaceContext): void 
     scope.addHook('onRequest', writeRateLimitHook(ctx.rateGuard));
     const preHandler = requireSession(ctx.sessionConfig);
     scope.post('/api/agents', { preHandler }, async (request: FastifyRequest, reply: FastifyReply) => {
-      if (!exactBody(request.body, [...BUILDER_FIELDS, 'selector', 'project', 'expectedCollectionRevision', 'idempotencyKey'])) return reply.code(400).send({ error: 'invalid-agent-create-body' });
-      const body = request.body;
-      if (!body.project) return reply.code(400).send({ error: 'project-required' });
-      try {
-        const receipt = await submitEntityBuilder({ selector: body.selector as never, project: body.project as string, expectedSourceRevision: body.expectedCollectionRevision as string, idempotencyKey: body.idempotencyKey as string, sessionToken: verifiedSession(request)?.token, request: builderRequest(body) }, { resolve: resolveSelector, catalog: builderCatalog(ctx), port });
-        return reply.code(202).send(receipt);
-      } catch (error) { return builderError(reply, error); }
+      const submit: SubmitBuilderPort = (args) => submitEntityBuilder(
+        { ...args, sessionToken: verifiedSession(request)?.token },
+        { resolve: resolveSelector, catalog: builderCatalog(ctx), port },
+      );
+      return sendServiceReply(reply, await createAgentEntity(submit, request.body));
     });
     scope.put('/api/agents/:id', { preHandler }, async (request: FastifyRequest, reply: FastifyReply) => {
-      if (!exactBody(request.body, [...BUILDER_FIELDS, 'expectedSourceRevision', 'idempotencyKey'])) return reply.code(400).send({ error: 'invalid-agent-update-body' });
       const { id } = request.params as { id: string };
       const declaration = readDeclaredAgentDetails(ctx.repoRoot).get(id);
-      if (!declaration) return reply.code(404).send({ error: 'not-found' });
-      try {
-        const receipt = await submitEntityBuilder({ selector: { type: 'agent', id }, project: declaration.projects[0], expectedSourceRevision: request.body.expectedSourceRevision as string, idempotencyKey: request.body.idempotencyKey as string, sessionToken: verifiedSession(request)?.token, request: builderRequest(request.body) }, { resolve: resolveSelector, catalog: builderCatalog(ctx), port });
-        return reply.code(202).send(receipt);
-      } catch (error) { return builderError(reply, error); }
+      const submit: SubmitBuilderPort = (args) => submitEntityBuilder(
+        { ...args, sessionToken: verifiedSession(request)?.token },
+        { resolve: resolveSelector, catalog: builderCatalog(ctx), port },
+      );
+      return sendServiceReply(reply, await updateAgentEntity(submit, declaration, id, request.body, declaration?.projects[0]));
     });
     scope.post('/api/agents/:id/launch', { preHandler }, async (request: FastifyRequest, reply: FastifyReply) => {
       const body = request.body;

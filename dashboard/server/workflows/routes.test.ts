@@ -11,7 +11,10 @@ import { makeSurfaceContext } from '../http/surface.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import { createFileAssignmentAmendmentStore } from './amendmentStore.ts';
-import { registerWorkflows, scanWorkflowDefs } from './routes.ts';
+import { registerWorkflows, scanWorkflowDefs, createWorkflowLaunchServicePort } from './routes.ts';
+import { registerV1OperatorMutationRoutes } from '../api/v1/routes.ts';
+import { originPlugin } from '../security/origin.ts';
+import { requireSession } from '../http/middleware.ts';
 import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import { registerAgents } from '../agents/routes.ts';
 import { projectRunAttention } from '../control/attention.ts';
@@ -428,6 +431,95 @@ describe('Workflow P2 routes', () => {
       expect(scanWorkflowDefs(activeRoot).some((entry) => entry.def?.id === 'escape-link')).toBe(false);
     } finally {
       rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  // P6 W6.2 [design:435] — the no-byte-change snapshot: every §2 handler this task converted into a thin
+  // service caller must serve the EXACT same top-level key set (and error vocabulary) it served before
+  // the conversion. `toMatchObject` above already pins individual fields per scenario; this test pins
+  // the FULL key set (via `Object.keys(...).sort()`) so an extraction that silently added or dropped a
+  // field — the class of defect a partial `toMatchObject` cannot see — fails here.
+  it('no-byte-change snapshot: the converted handlers serve the exact same envelope key set as before', async () => {
+    const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
+    expect(Object.keys(listed.json()).sort()).toEqual(['groups', 'items', 'revision']);
+    const detail = await app.inject({ method: 'GET', url: '/api/workflows/amendable' });
+    expect(Object.keys(detail.json()).sort()).toEqual(['brief', 'details', 'revision', 'summary']);
+
+    const created = await app.inject({
+      method: 'POST', url: '/api/workflows', headers: headers(token),
+      payload: {
+        selector: { type: 'workflow', id: 'snapshot-flow' }, project: 'kb-ops', expectedCollectionRevision: listed.json().revision, idempotencyKey: 'snapshot-create',
+        humanName: 'Snapshot Flow', purpose: 'Prove the byte contract.', model: 'claude-sonnet-5', profile: 'producer',
+        tools: [], skills: [], connectors: [], filesystemRoots: ['kb-ops'],
+      },
+    });
+    expect(created.statusCode).toBe(202);
+    expect(Object.keys(created.json()).sort()).toEqual(['operationId', 'replayed', 'status'].sort());
+
+    const launched = await app.inject({
+      method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token),
+      payload: { idempotencyKey: 'snapshot-launch', expectedSourceRevision: await sourceRevision(), parameters: {} },
+    });
+    expect(launched.statusCode).toBe(202);
+    expect(Object.keys(launched.json()).sort()).toEqual(['activationGated', 'cards', 'ok', 'runRef', 'waitingHuman'].sort());
+
+    // Refusals: the closed error vocabulary is unchanged too — an extraction that renamed a code or
+    // widened a body would fail these exact-shape checks.
+    const staleLaunch = await app.inject({
+      method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token),
+      payload: { idempotencyKey: 'snapshot-stale', expectedSourceRevision: '0'.repeat(64), parameters: {} },
+    });
+    expect(staleLaunch.statusCode).toBe(409);
+    expect(staleLaunch.json()).toEqual({ error: 'stale-source-revision', sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/) });
+
+    const missingKey = await app.inject({
+      method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token),
+      payload: { idempotencyKey: '', expectedSourceRevision: await sourceRevision(), parameters: {} },
+    });
+    expect(missingKey.statusCode).toBe(400);
+    expect(Object.keys(missingKey.json()).sort()).toEqual(['detail', 'error']);
+  });
+
+  // P6 W6.2 [design:633]: an old-route launch and a `POST /api/v1/runs` launch of the SAME owner must
+  // produce byte-identical `Run.owner`/`executionHost`/`terminalOutcome`/`completedAt`/`archivedFrom`
+  // rows. Both routes now call `launchService` bound to the SAME `createWorkflowLaunchServicePort(ctx)`
+  // (workflows/routes.ts) — this test proves that parity end to end, against the SAME store, rather than
+  // asserting it structurally.
+  it('an old-route launch and a v1 launch of the same owner store byte-identical Run identity fields', async () => {
+    const v1App = Fastify();
+    surface.v1 = { launchPort: createWorkflowLaunchServicePort(surface) };
+    v1App.register(async (v1Scope) => {
+      originPlugin(v1Scope, { allowedOrigins: [ORIGIN] });
+      v1Scope.addHook('preHandler', requireSession(SESSION));
+      registerV1OperatorMutationRoutes(v1Scope, surface);
+    });
+    await v1App.ready();
+    try {
+      const oldRoute = await app.inject({
+        method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token),
+        payload: { idempotencyKey: 'parity-old-route', expectedSourceRevision: await sourceRevision(), parameters: {} },
+      });
+      expect(oldRoute.statusCode).toBe(202);
+      const oldRunRef = oldRoute.json().runRef as string;
+
+      const v1Route = await v1App.inject({
+        method: 'POST', url: '/api/v1/runs', headers: headers(token),
+        payload: { workflowId: 'amendable', idempotencyKey: 'parity-v1-route', expectedSourceRevision: await sourceRevision(), parameters: {} },
+      });
+      expect(v1Route.statusCode).toBe(202);
+      const v1RunRef = v1Route.json().data.runRef as string;
+      expect(v1RunRef).not.toBe(oldRunRef); // two distinct client idempotency keys, two distinct runs
+
+      const identityFields = (runRef: string) => {
+        const run = store.listRuns('operator', 'all-subjects').find((candidate) => candidate.runRef === runRef)!;
+        return {
+          owner: run.owner, executionHost: run.executionHost, terminalOutcome: run.terminalOutcome,
+          completedAt: run.completedAt, archivedFrom: run.archivedFrom,
+        };
+      };
+      expect(identityFields(v1RunRef)).toEqual(identityFields(oldRunRef));
+    } finally {
+      await v1App.close();
     }
   });
 });
