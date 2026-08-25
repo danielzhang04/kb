@@ -11,6 +11,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readLoopbackCertificate } from './p3LoopbackTls.ts';
+import {
+  assessReachedTheApp, defaultExecutableInspector, defaultLaunchCdpBrowser, resolveSpkiPin,
+  type ActualBrowserFactory, type CertificateReader, type ExecutableInspector,
+  type MatrixCell as P3MatrixCell,
+} from './p3ActualBrowserRunner.ts';
 
 export const P6_THEMES = ['light', 'dark'] as const;
 export type P6Theme = (typeof P6_THEMES)[number];
@@ -83,6 +89,8 @@ export interface P6BrowserRunOptions {
   readonly artifactDir: string;
   readonly commit: string;
   readonly now: () => Date;
+  /** Optional cell subset (e.g. from `--max-cells`); defaults to the full scenario matrix. */
+  readonly cells?: readonly MatrixCell[];
 }
 
 export interface P6BrowserDeps {
@@ -101,8 +109,9 @@ export async function runP6BrowserMatrix(options: P6BrowserRunOptions, deps: P6B
   const dir = resolve(options.artifactDir);
   ensureDir(dir);
   const fixtureKind = P6_SCENARIO_FIXTURE[options.scenario];
+  const cells = options.cells ?? enumerateMatrix(options.scenario);
   let failed = 0;
-  for (const cell of enumerateMatrix(options.scenario)) {
+  for (const cell of cells) {
     const capture = await deps.capture(cell);
     const ok = capture.ok && capture.consoleErrors.length === 0;
     const artifact: MatrixArtifact = {
@@ -114,7 +123,7 @@ export async function runP6BrowserMatrix(options: P6BrowserRunOptions, deps: P6B
     if (!ok) { failed += 1; log(`[p6-browser] cell failed: ${name}: ${capture.consoleErrors.join('; ') || capture.note || 'not ok'}`); }
   }
   if (failed > 0) { log(`[p6-browser] ${failed} cell(s) failed`); return P6_BROWSER_EXIT.cellFailed; }
-  log(`[p6-browser] ${enumerateMatrix(options.scenario).length} cells passed for ${options.scenario}`);
+  log(`[p6-browser] ${cells.length} cells passed for ${options.scenario}`);
   return P6_BROWSER_EXIT.ok;
 }
 
@@ -129,6 +138,8 @@ export interface P6BrowserCliArgs {
   readonly originVm: string | null;
   readonly originDesktop: string | null;
   readonly origin: string | null;
+  readonly commit: string;
+  readonly maxCells: number | null;
 }
 
 export function parseP6BrowserCliArgs(argv: readonly string[]): P6BrowserCliArgs {
@@ -138,6 +149,8 @@ export function parseP6BrowserCliArgs(argv: readonly string[]): P6BrowserCliArgs
   let originVm: string | null = null;
   let originDesktop: string | null = null;
   let origin: string | null = null;
+  let commit = 'unknown';
+  let maxCells: number | null = null;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const value = argv[i + 1];
@@ -154,6 +167,13 @@ export function parseP6BrowserCliArgs(argv: readonly string[]): P6BrowserCliArgs
       case '--origin-vm': originVm = needValue(); break;
       case '--origin-desktop': originDesktop = needValue(); break;
       case '--origin': origin = needValue(); break;
+      case '--commit': commit = needValue(); break;
+      case '--max-cells': {
+        const parsed = Number.parseInt(needValue(), 10);
+        if (!Number.isInteger(parsed) || parsed <= 0) throw new P6BrowserUsageError('--max-cells must be a positive integer');
+        maxCells = parsed;
+        break;
+      }
       default: throw new P6BrowserUsageError(`unknown or incomplete argument: ${String(arg)}`);
     }
   }
@@ -165,19 +185,107 @@ export function parseP6BrowserCliArgs(argv: readonly string[]): P6BrowserCliArgs
   if (scenario === 'placement-chip' && origin === null) {
     throw new P6BrowserUsageError('the placement-chip scenario requires --origin');
   }
-  return { scenario, artifactDir, browserExecutable, originVm, originDesktop, origin };
+  return { scenario, artifactDir, browserExecutable, originVm, originDesktop, origin, commit, maxCells };
+}
+
+/* ------------------------------------------------------------------------------------------------ *
+ * The REAL browser capture — reuses the PROVEN P3 CDP driver verbatim, exactly as the P5 runner does.
+ *
+ * Before this, `main` was a STUB: it parse-validated its arguments, printed "run it there", and wrote no
+ * artifacts. This section drives a real Edge/Chromium over CDP against the live fixture origin the §8
+ * command brought up: it navigates each matrix cell, records whether the app shell mounted
+ * (`assessReachedTheApp`) and every console error, writes one artifact per cell, and fails the run (exit
+ * `cellFailed`) on any cell that did not reach the app or logged a console error.
+ * ------------------------------------------------------------------------------------------------ */
+
+/** The UI origin Edge navigates for a scenario: the Desktop daemon's local UI for `two-daemon`, and the
+ *  bounded fixture origin for `placement-chip`. Both are the origins the §8 commands pass. */
+function originForScenario(args: P6BrowserCliArgs): string {
+  if (args.scenario === 'two-daemon') {
+    // Both daemons are up; the Desktop origin is the one that carries the local placement UI + read proxy.
+    return args.originDesktop ?? args.originVm ?? '';
+  }
+  return args.origin ?? '';
+}
+
+/** A p6 matrix cell → the p3 driver's cell shape. Reduced-motion is recorded in the p6 artifact but not
+ *  emulated at the CDP level (the p3 driver has no reduced-motion knob), exactly as the p5 runner folds it. */
+function toP3Cell(cell: MatrixCell): P3MatrixCell {
+  return {
+    id: `${cell.theme}-${cell.width}-${cell.interaction}-${cell.motion}`,
+    theme: cell.theme,
+    viewport: { width: cell.width, height: 900 },
+    inputMode: cell.interaction === 'keyboard-only' ? 'keyboard-only' : 'pointer',
+  };
+}
+
+export interface P6RealBrowserDeps {
+  launch?: ActualBrowserFactory;
+  readCertificate?: CertificateReader;
+  inspect?: ExecutableInspector;
+  now?: () => Date;
+  writeArtifact?: (path: string, contents: string) => void;
+  timeoutMs?: number;
+  log?: (line: string) => void;
+}
+
+/**
+ * Parse, resolve the SPKI pin (a run that cannot pin an HTTPS origin does not launch), launch ONE real
+ * browser, drive the (optionally capped) matrix against the live fixture origin, and tear the browser
+ * down. Never throws for an expected failure — every path returns an exit code.
+ */
+export async function mainP6ActualBrowserRunner(
+  argv: readonly string[], deps: P6RealBrowserDeps = {},
+): Promise<number> {
+  const log = deps.log ?? (() => undefined);
+  let args: P6BrowserCliArgs;
+  try {
+    args = parseP6BrowserCliArgs(argv);
+  } catch (error) {
+    if (error instanceof P6BrowserUsageError) { log(`[p6-browser] ${error.message}`); return P6_BROWSER_EXIT.usage; }
+    throw error;
+  }
+
+  const inspect = deps.inspect ?? defaultExecutableInspector;
+  if (args.browserExecutable !== resolve(args.browserExecutable)) {
+    log('[p6-browser] --browser-executable must be an absolute path'); return P6_BROWSER_EXIT.usage;
+  }
+  const verdict = inspect(args.browserExecutable);
+  if (verdict !== 'ok') { log(`[p6-browser] --browser-executable is ${verdict}: ${args.browserExecutable}`); return P6_BROWSER_EXIT.usage; }
+
+  const origin = originForScenario(args);
+  const readCertificate = deps.readCertificate ?? readLoopbackCertificate;
+  const timeoutMs = deps.timeoutMs ?? 30_000;
+  let spkiPin: string | null;
+  try {
+    spkiPin = resolveSpkiPin(origin, readCertificate);
+  } catch (error) {
+    log(`[p6-browser] ${error instanceof Error ? error.message : String(error)}`);
+    return P6_BROWSER_EXIT.cellFailed;
+  }
+  if (spkiPin !== null) log(`[p6-browser] pinning the fixture SPKI ${spkiPin} for ${origin}`);
+
+  const launch = deps.launch ?? defaultLaunchCdpBrowser;
+  const browser = await launch({ executable: args.browserExecutable, timeoutMs, spkiPin });
+  try {
+    const capture: CellCaptureFn = async (cell) => {
+      const observation = await browser.runCell(toP3Cell(cell), { origin, entryPath: '/', viewPath: '/', clickPath: [] });
+      const reached = assessReachedTheApp(observation.dom);
+      const reachedApp = reached.marker !== null && reached.signs.length === 0;
+      const note = `reached-app=${reachedApp} (${reached.marker ?? 'no app marker'}${reached.signs.length > 0 ? `; signs: ${reached.signs.join(', ')}` : ''}); console-errors=${observation.consoleErrors.length}`;
+      return { ok: reachedApp, consoleErrors: observation.consoleErrors, note };
+    };
+    const cells = args.maxCells === null ? enumerateMatrix(args.scenario) : enumerateMatrix(args.scenario).slice(0, args.maxCells);
+    return await runP6BrowserMatrix(
+      { scenario: args.scenario, artifactDir: args.artifactDir, commit: args.commit, now: deps.now ?? (() => new Date()), cells },
+      { capture, writeArtifact: deps.writeArtifact, log },
+    );
+  } finally {
+    await browser.close();
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  // The real capture requires a reviewed browser executable and the proven P3 CDP driver; that path is
-  // exercised by W6.5's §8 command, not here. Running this module bare validates its arguments and refuses
-  // rather than silently launching nothing.
-  try {
-    parseP6BrowserCliArgs(process.argv.slice(2));
-    process.stderr.write('[p6-browser] real CDP capture is wired by the §8 command; run it there\n');
-    process.exitCode = P6_BROWSER_EXIT.ok;
-  } catch (error: unknown) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = P6_BROWSER_EXIT.usage;
-  }
+  void mainP6ActualBrowserRunner(process.argv.slice(2), { log: (line) => process.stderr.write(`${line}\n`) })
+    .then((code) => { process.exitCode = code; });
 }

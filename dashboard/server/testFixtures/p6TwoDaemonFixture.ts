@@ -236,6 +236,11 @@ export interface FixtureDaemonOptions {
   vmOrigin?: string;
   /** Force the WhoIs shim state for the forged-proxy split [P6-C70]: 'up' | 'shim-down'. */
   shimState?: 'up' | 'shim-down';
+  /** Extra Host/Origin authorities the node scope's origin guard admits, beyond the fixed dashboard
+   *  origin. `startFixtureDaemon` sets this to the daemon's ACTUAL listening origin so a real client's
+   *  `Host: 127.0.0.1:<realPort>` header is admitted; the in-process `app.inject` path leaves it unset and
+   *  keeps only the fixed 4317 origin (its injected requests carry `host: 127.0.0.1:4317`). */
+  extraAllowedOrigins?: readonly string[];
   now?: () => Date;
 }
 
@@ -251,7 +256,7 @@ function ctxFor(store: InMemoryPlacementStore, map: HostNodeMap, opts: FixtureDa
     now: opts.now ?? (() => new Date()),
   };
   return {
-    allowedOrigins: [`http://127.0.0.1:${DASH_PORT}`, 'https://127.0.0.1'],
+    allowedOrigins: [`http://127.0.0.1:${DASH_PORT}`, 'https://127.0.0.1', ...(opts.extraAllowedOrigins ?? [])],
     sessionConfig: FIXTURE_SESSION,
     nodeProxyUid: NODE_PROXY_UID,
     loadHostNodeMap: loadMap,
@@ -268,9 +273,16 @@ function stampPeerHook(app: FastifyInstance): void {
     const raw = req.headers[SIM_PEER_UID_HEADER];
     const value = Array.isArray(raw) ? raw[0] : raw;
     const uid = value === undefined ? OPERATOR_UID : Number.parseInt(value, 10);
-    const s = req.socket as unknown as Record<string, unknown>;
-    s.remoteAddress = '127.0.0.1'; s.localAddress = '127.0.0.1';
-    s.localPort = DASH_PORT; s.remotePort = peerPortFor(Number.isInteger(uid) ? uid : -1);
+    // Shadow the (read-only on a real TLSSocket) 4-tuple getters with own-properties on the socket
+    // instance, so the REAL peer-resolution code (nodeIdentity/peerUid) transparently reads the SIMULATED
+    // tuple. On the injected fake socket these are plain writable props, so defineProperty works there too;
+    // this is the peer-uid SIMULATION and must stamp exactly the tuple the SIM /proc/net/tcp table maps.
+    const s = req.socket as unknown as object;
+    const stamp = (prop: string, val: string | number): void => {
+      Object.defineProperty(s, prop, { value: val, writable: true, enumerable: true, configurable: true });
+    };
+    stamp('remoteAddress', '127.0.0.1'); stamp('localAddress', '127.0.0.1');
+    stamp('localPort', DASH_PORT); stamp('remotePort', peerPortFor(Number.isInteger(uid) ? uid : -1));
   });
 }
 
@@ -343,7 +355,17 @@ export async function startFixtureDaemon(opts: FixtureDaemonOptions & { port: nu
   // Rebuild the daemon routes onto this (possibly TLS) instance by delegating to buildFixtureDaemon's body:
   // simplest is to compose directly here by registering the built app as a plugin is not possible, so we
   // reuse buildFixtureDaemon to get an app and copy is not feasible — instead build directly on `app`.
-  composeDaemon(app, opts);
+  // Admit the daemon's ACTUAL listening origin in the node scope's origin guard — a real client's
+  // `Host: 127.0.0.1:<port>` header must match the allowlist (the in-process inject path uses the fixed
+  // 4317 origin instead). `opts.port` is the concrete CLI port; the composed routes are registered before
+  // `listen`, so the allowlist is built from it here.
+  const realHost = `127.0.0.1:${opts.port}`;
+  composeDaemon(app, {
+    ...opts,
+    extraAllowedOrigins: [
+      `http://${realHost}`, `https://${realHost}`, ...(opts.extraAllowedOrigins ?? []),
+    ],
+  });
   await app.listen({ host: '127.0.0.1', port: opts.port });
   const address = app.server.address();
   const port = typeof address === 'object' && address ? address.port : opts.port;
@@ -839,7 +861,14 @@ async function claimForDesktop(app: FastifyInstance, store: InMemoryPlacementSto
 // -------------------------------------------------------------------------------------------------
 // CLI dispatch: --daemon | --attack | lifecycle.
 // -------------------------------------------------------------------------------------------------
-export interface DaemonCliArgs { role: DaemonRole; port: number; https: boolean; vmOrigin?: string; nodeMap?: string; }
+export interface DaemonCliArgs { role: DaemonRole; port: number; https: boolean; vmOrigin?: string; nodeMap?: string; nowIso: string; }
+
+/** The deterministic fixture epoch. The two-daemon scenario driver seeds advertisements/runs stamped at
+ *  this instant, so the CLI daemon runs its clock here (not real wall-clock time) — otherwise a midnight-
+ *  stamped advertisement is already past the 90-s freshness window by the time a real claim arrives and
+ *  every claim answers 204. The in-process (`buildFixtureDaemon`) attack/scenario tests already pin this
+ *  same instant via an explicit `now`; this makes the real-socket CLI match them. Overridable per run. */
+export const FIXTURE_CLOCK_ISO = '2026-08-25T00:00:00.000Z';
 
 export function parseDaemonArgs(argv: readonly string[]): DaemonCliArgs {
   let role: DaemonRole | null = null;
@@ -847,6 +876,7 @@ export function parseDaemonArgs(argv: readonly string[]): DaemonCliArgs {
   let https = false;
   let vmOrigin: string | undefined;
   let nodeMap: string | undefined;
+  let nowIso = FIXTURE_CLOCK_ISO;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]; const value = argv[i + 1];
     const need = (): string => { if (value === undefined || value.startsWith('--')) throw new Error(`${arg} needs a value`); i += 1; return value; };
@@ -857,12 +887,13 @@ export function parseDaemonArgs(argv: readonly string[]): DaemonCliArgs {
       case '--https': https = true; break;
       case '--vm-origin': vmOrigin = need(); break;
       case '--node-map': nodeMap = need(); break;
+      case '--now-iso': { const v = need(); if (Number.isNaN(Date.parse(v))) throw new Error('--now-iso must be an ISO instant'); nowIso = v; break; }
       default: throw new Error(`p6TwoDaemonFixture daemon: unknown flag ${arg}`);
     }
   }
   if (role === null) throw new Error('--role is required');
   if (port === null || !Number.isInteger(port)) throw new Error('--port is required');
-  return { role, port, https, vmOrigin, nodeMap };
+  return { role, port, https, vmOrigin, nodeMap, nowIso };
 }
 
 export interface LifecycleCliArgs {
@@ -896,10 +927,14 @@ export function parseLifecycleArgs(argv: readonly string[]): LifecycleCliArgs {
 }
 
 async function mainDaemon(args: DaemonCliArgs): Promise<void> {
+  const clockMs = Date.parse(args.nowIso);
   const store = new InMemoryPlacementStore();
+  // Pin BOTH the store clock and the daemon (ctx) clock to the fixture epoch so a scenario's midnight-
+  // stamped advertisement is still inside the freshness window when a real claim arrives (see FIXTURE_CLOCK_ISO).
+  store.now = () => clockMs;
   const map = args.nodeMap ? loadFixtureMap(args.nodeMap) : loadFixtureMap();
   const running = await startFixtureDaemon({
-    role: args.role, store, map, port: args.port, https: args.https,
+    role: args.role, store, map, port: args.port, https: args.https, now: () => new Date(clockMs),
     ...(args.vmOrigin ? { vmOrigin: args.vmOrigin } : {}),
   });
   process.stderr.write(`[p6-daemon:${args.role}] ${running.origin}\n`);

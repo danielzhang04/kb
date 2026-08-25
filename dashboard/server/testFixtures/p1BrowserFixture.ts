@@ -605,13 +605,21 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
 
 export function parseP1FixtureArgs(
   args: string[],
-): { scenario: P1BrowserScenario; port: number; https: boolean } {
+): { scenario: P1BrowserScenario; port: number; https: boolean; clientCommand: string[] } {
+  // A `--` separates this fixture's own flags from an optional client command it runs AFTER the fixture is
+  // up and tears down after (the §8 browser matrix drives the runner this way) — matching how
+  // p6TwoDaemonFixture / p5FixtureLifecycle split on `--`. Everything before `--` is the fixture's flags;
+  // everything after is the verbatim client argv (never re-parsed, never shell-composed).
+  const separator = args.indexOf('--');
+  const own = separator === -1 ? args : args.slice(0, separator);
+  const clientCommand = separator === -1 ? [] : args.slice(separator + 1);
+  if (separator !== -1 && clientCommand.length === 0) throw new Error('a client command after `--` is required');
   let scenario: string | null = null;
   let port = 4317;
   let https = false;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    const value = args[index + 1];
+  for (let index = 0; index < own.length; index += 1) {
+    const arg = own[index];
+    const value = own[index + 1];
     if (arg === '--scenario' && value) {
       scenario = value;
       index += 1;
@@ -625,15 +633,33 @@ export function parseP1FixtureArgs(
     }
   }
   if (!scenario || !isScenario(scenario)) throw new Error(`Unknown scenario: ${String(scenario)}`);
-  return { scenario, port, https };
+  return { scenario, port, https, clientCommand };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  startP1BrowserFixture(parseP1FixtureArgs(process.argv.slice(2)))
-    .then((fixture) => {
+  const parsed = parseP1FixtureArgs(process.argv.slice(2));
+  startP1BrowserFixture(parsed)
+    .then(async (fixture) => {
       console.log(`[p1-browser-fixture] ${fixture.origin}`);
       console.log(`[p1-browser-fixture] context A ${fixture.contextUrls.a}`);
       console.log(`[p1-browser-fixture] context B ${fixture.contextUrls.b}`);
+      if (parsed.clientCommand.length === 0) return;
+      // Lifecycle mode: run the client after `--`, then tear the fixture down on its exit or on a signal —
+      // the fixture is already listening (startP1BrowserFixture resolves only once bound), so no ready poll.
+      const { spawn } = await import('node:child_process');
+      const [bin, ...rest] = parsed.clientCommand;
+      const child = spawn(bin!, rest, { stdio: 'inherit', shell: false });
+      let settled = false;
+      const teardown = async (code: number): Promise<void> => {
+        if (settled) return;
+        settled = true;
+        await fixture.close();
+        process.exit(code);
+      };
+      const onSignal = (): void => { child.kill('SIGTERM'); };
+      process.once('SIGINT', onSignal); process.once('SIGTERM', onSignal);
+      child.once('error', (error) => { console.error(error instanceof Error ? error.message : String(error)); void teardown(1); });
+      child.once('exit', (code) => { void teardown(code ?? 1); });
     })
     .catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : String(error));
