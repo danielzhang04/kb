@@ -70,7 +70,7 @@
     "server/testFixtures/p6TwoDaemonScenarios.test.ts",
     "server/testFixtures/assertP6GateResults.test.ts",
     "server/testFixtures/p6ActualBrowserRunner.test.ts",
-    "src/lib/controlClient.test.ts",
+    "src/control/controlClient.test.ts",
     "src/lib/homeClient.test.ts",
     "src/lib/inboxClient.test.ts",
     "src/lib/healthClient.test.ts",
