@@ -1,12 +1,16 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { SubprocessResult } from './resolvers.ts';
 import { getInboxSourceCache, resetInboxSourceCacheForTests } from './sourceCache.ts';
-import { registerInboxRoutes, type InboxRoutePorts } from './routes.ts';
-import { decodeInboxResponse } from './contracts.ts';
+import { registerInboxRoutes, createInboxRoutePorts, readInbox, type InboxRoutePorts } from './routes.ts';
+import { decodeInboxResponse, prHref } from './contracts.ts';
 
 const sessionConfig = { ['se' + 'cret']: Buffer.from('inbox-route-test-session-value'), ttlMs: 60_000 } as unknown as SessionConfig;
 const origin = 'http://kb.test';
@@ -117,6 +121,32 @@ describe('Inbox routes — PR + escalation + source health', () => {
     expect(body.sources.pr.status).toBe('failed');
     expect(body.sources.escalation.status).toBe('verified');
     await instance.close();
+  });
+
+  // Defect-A regression (boss ruling refining M1): a legitimate non-GitHub deployment (WSL oracle,
+  // local dev, air-gapped VM) has a non-GitHub `origin`. `createInboxRoutePorts` must DEGRADE the pin
+  // (not throw out of buildApp): composition SUCCEEDS, `pin()` is null, the PR source reports
+  // `unavailable`, NO PR item is emitted, and escalation is unaffected. `prHref` still throws if ever
+  // asked to build a URL without a valid pin, so no bad PR URL can be produced.
+  it('degrades a non-GitHub origin to an unavailable PR source instead of failing composition', async () => {
+    resetInboxSourceCacheForTests();
+    const repoRoot = await mkdtemp(join(tmpdir(), 'inbox-pin-'));
+    mkdirSync(join(repoRoot, 'queue'));
+    const ctx = { repoRoot, sessionConfig } as unknown as SurfaceContext;
+    // Composition must NOT throw on a non-GitHub remote.
+    const built = createInboxRoutePorts(ctx, {
+      readRemote: () => '/mnt/c/Users/danie/kb\n',
+      runGh: async (): Promise<SubprocessResult> => ({ ok: true, stdout: JSON.stringify([PR_ROW]) }),
+    });
+    expect(built.pin()).toBeNull();
+    const body = await readInbox({ ...built, indexRepo: emptyIndex, now: () => NOW }, repoRoot);
+    expect(body.sources.pr.status).toBe('failed');
+    if (body.sources.pr.status === 'failed') expect(body.sources.pr.errorCode).toBe('unavailable');
+    expect(body.items.filter((item) => item.kind === 'pr')).toHaveLength(0);
+    expect(body.sources.escalation.status).toBe('verified');
+    // The URL constructor guards the safety property: no valid pin ⇒ no PR url is ever built.
+    expect(() => prHref({ owner: '', repo: '', number: 0 })).toThrow();
+    await rm(repoRoot, { recursive: true, force: true });
   });
 
   it('rejects an unknown refresh value with 400 and never spawns', async () => {

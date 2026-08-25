@@ -93,7 +93,18 @@ export const PR_LIST_TIMEOUT_MS = 15_000;
 export const PR_REFRESH_BUDGET_MS = 30_000;
 export const PR_POLL_INTERVAL_MS = 60_000;
 
+/**
+ * Build the canonical PR URL from the PINNED owner/repo/number. The safety half of the P4-C35 pin
+ * degrade (boss ruling): when no GitHub pin resolves there is no PR source at all, but this constructor
+ * still THROWS on any subject that is not a valid pin (empty owner/repo, non-positive/non-integer
+ * number), so a bad PR URL can never be produced even if a caller reaches it without one.
+ */
 export function prHref(subject: PrSubjectKey): string {
+  if (typeof subject.owner !== 'string' || subject.owner.length === 0
+    || typeof subject.repo !== 'string' || subject.repo.length === 0
+    || typeof subject.number !== 'number' || !Number.isInteger(subject.number) || subject.number <= 0) {
+    throw new ContractDecodeError('prHref', 'a valid pinned owner/repo/number is required to build a PR url');
+  }
   return `https://github.com/${subject.owner}/${subject.repo}/pull/${subject.number}`;
 }
 

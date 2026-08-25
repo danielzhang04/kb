@@ -36,7 +36,11 @@ function recorder(branch = 'claude/m1-dashboard'): { runner: GitRunner; calls: s
   return { runner, calls };
 }
 
-const noopPrOpener: PrOpener = () => {};
+// P4 W6.1 (M4): `branch.ts#pinPrResult` now requires the pinned {owner,repo,number,url} for EVERY PR
+// purpose — a void opener is a failure, never a half-known PR. A PR-mode governed save therefore needs
+// an opener that returns a real pinned result (standing in for `gh pr create`). Refusal tests that never
+// reach routing still pass it; it is simply never invoked there.
+const pinnedPrOpener: PrOpener = () => ({ owner: 'owner', repo: 'repo', number: 1, url: 'https://github.com/owner/repo/pull/1' });
 const okPreamble: PreambleRunner = () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
 
 function save(input: Omit<SaveInput, 'runPreamble'>): ReturnType<typeof governedSave> {
@@ -74,7 +78,7 @@ describe('save - preamble gate is first', () => {
       sessionConfig: CONFIG,
       runPreamble: frozen,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
 
     expect(result).toEqual({
@@ -100,7 +104,7 @@ describe('save — session gate', () => {
       sessionToken: undefined,
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
 
     expect(result.ok).toBe(false);
@@ -115,7 +119,7 @@ describe('save — session gate', () => {
       sessionToken: 'garbage.notasignature',
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(resultBadToken.ok).toBe(false);
     if (!resultBadToken.ok) expect(resultBadToken.status).toBe(401);
@@ -135,7 +139,7 @@ describe('save — path confinement', () => {
       sessionToken: token,
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(traversal.ok).toBe(false);
     if (!traversal.ok) expect(traversal.status).toBe(400);
@@ -147,7 +151,7 @@ describe('save — path confinement', () => {
       sessionToken: token,
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(absolute.ok).toBe(false);
     if (!absolute.ok) expect(absolute.status).toBe(400);
@@ -170,7 +174,7 @@ describe('save — sync_skills hook awareness', () => {
       sessionToken: token,
       sessionConfig: CONFIG,
       runGit,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
 
     expect(result.ok).toBe(true);
@@ -213,7 +217,7 @@ describe('save — sync_skills hook awareness', () => {
       sessionToken: token,
       sessionConfig: CONFIG,
       runGit,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
 
     expect(result.ok).toBe(false);
@@ -231,6 +235,7 @@ describe('save — routes durable vs coordination via branch.ts', () => {
     const prRequests: unknown[] = [];
     const openPr: PrOpener = (_repoRoot, req) => {
       prRequests.push(req);
+      return { owner: 'owner', repo: 'repo', number: 1, url: 'https://github.com/owner/repo/pull/1' };
     };
     const token = validToken();
 
@@ -287,7 +292,7 @@ describe('save — governance/ is never writable through this path', () => {
       sessionToken: token,
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
 
     expect(result.ok).toBe(false);
@@ -312,7 +317,7 @@ describe('save — governance/ is never writable through this path', () => {
         sessionToken: token,
         sessionConfig: CONFIG,
         runGit: runner,
-        openPr: noopPrOpener,
+        openPr: pinnedPrOpener,
       });
       expect(result.ok, relpath).toBe(false);
       if (!result.ok) expect(result.status, relpath).toBe(403);
@@ -347,7 +352,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -368,7 +373,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -385,6 +390,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
     const prRequests: unknown[] = [];
     const openPr: PrOpener = (_repoRoot, req) => {
       prRequests.push(req);
+      return { owner: 'owner', repo: 'repo', number: 1, url: 'https://github.com/owner/repo/pull/1' };
     };
     const result = await save({
       repoRoot: repo,
@@ -416,7 +422,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(create.ok).toBe(true);
     expect(readFileSync(join(repo, 'agents', 'foo.md'), 'utf-8')).toContain('id: foo');
@@ -430,7 +436,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(forgeRuntime.ok).toBe(false);
     if (!forgeRuntime.ok) {
@@ -449,7 +455,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(forgeHuman.ok).toBe(false);
     if (!forgeHuman.ok) expect(forgeHuman.status).toBe(400);
@@ -470,7 +476,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
   });
@@ -490,7 +496,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
   });
@@ -506,7 +512,7 @@ describe('save — C7.6 agent id-collision / anti-impersonation guard', () => {
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.target).toBe('durable');
@@ -527,7 +533,7 @@ describe('save — LOW (Finding 2): runner-bound is not client-settable on agent
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -549,7 +555,7 @@ describe('save — LOW (Finding 2): runner-bound is not client-settable on agent
         sessionToken: validToken(),
         sessionConfig: CONFIG,
         runGit: runner,
-        openPr: noopPrOpener,
+        openPr: pinnedPrOpener,
       });
       expect(result.ok, line).toBe(false);
       if (!result.ok) expect(result.status, line).toBe(400);
@@ -566,7 +572,7 @@ describe('save — LOW (Finding 2): runner-bound is not client-settable on agent
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(falseSave.ok).toBe(true);
 
@@ -577,7 +583,7 @@ describe('save — LOW (Finding 2): runner-bound is not client-settable on agent
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(absentSave.ok).toBe(true);
   });
@@ -591,7 +597,7 @@ describe('save — LOW (Finding 2): runner-bound is not client-settable on agent
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
   });
@@ -630,7 +636,7 @@ runtimes:
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -651,7 +657,7 @@ runtimes:
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
   });
@@ -666,7 +672,7 @@ runtimes:
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
   });
@@ -686,7 +692,7 @@ runtimes:
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
   });
@@ -713,7 +719,7 @@ runtimes:
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -738,7 +744,7 @@ runtimes:
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -763,7 +769,7 @@ runtimes:
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: recorder().runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
     expect(result.ok).toBe(true);
   });
@@ -788,7 +794,7 @@ runtimes:
         sessionToken: validToken(),
         sessionConfig: CONFIG,
         runGit: runner,
-        openPr: noopPrOpener,
+        openPr: pinnedPrOpener,
       });
       expect(result.ok, content).toBe(false);
       if (!result.ok) {
@@ -825,7 +831,7 @@ describe('save — path confinement is realpath, not lexical (symlink escape)', 
       sessionToken: validToken(),
       sessionConfig: CONFIG,
       runGit: runner,
-      openPr: noopPrOpener,
+      openPr: pinnedPrOpener,
     });
 
     expect(result.ok).toBe(false);

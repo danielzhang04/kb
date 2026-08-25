@@ -12,7 +12,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import {
-  assertCoordinationRoot, resolveRepositoryPin, type GitRemoteReader, type RepositoryPin,
+  assertCoordinationRoot, resolveRepositoryPin, RepositoryPinError,
+  type GitRemoteReader, type RepositoryPin,
 } from '../runtime/repoPin.ts';
 import { runTrackedProcess } from '../write/asyncGit.ts';
 import { indexRepo, type PlaneAIndex } from '../planeA/indexer.ts';
@@ -88,23 +89,34 @@ export async function readInbox(ports: InboxRoutePorts, repoRoot: string): Promi
 }
 
 /**
- * Build the production route ports. The repository pin derives ONCE, EAGERLY, from the coordination
- * root's `git remote get-url origin` through the closed GitHub parser [P4-C35], AND the root is
- * asserted absolute-with-`queue/` [P4-C39]. Both are COMPOSITION-TIME misconfiguration checks and
- * therefore FAIL CLOSED here (they throw out of `buildApp`), never degrade to a silently-`unavailable`
- * PR source: a wrong `DASHBOARD_REPO_ROOT`, a missing `queue/`, or a non-GitHub/ambiguous/unparseable
- * remote is an operator error that must surface at boot, not hide the whole PR review surface forever
- * [P4-C35]/[P4-C39]. Only a RUNTIME `gh` read outcome degrades to a `failed` source row, and that lives
- * in `resolvers.ts`. `readRemote` is injectable only so the suite can drive the parser without a real
- * checkout. `pin()` returns the resolved value; its `null` arm remains for the pin-less test seam that
- * exercises the runtime-degrade path directly, and is never reached in production.
+ * Build the production route ports. The two composition-time checks the older M1 code coupled are now
+ * SPLIT (boss ruling refining M1), because they guard different things:
+ *   - `assertCoordinationRoot(ctx.repoRoot)` STAYS eager fail-closed [P4-C39]: it is a real filesystem
+ *     invariant (absolute path, `queue/` present); a wrong `DASHBOARD_REPO_ROOT` must surface at boot.
+ *   - `resolveRepositoryPin(...)` DEGRADES: a legitimate kb deployment (the WSL oracle, local dev, an
+ *     air-gapped VM) has a non-GitHub `origin`, and the whole dashboard must still BOOT. So a
+ *     missing/ambiguous/non-GitHub/unparseable remote is caught here and the PR source resolves to
+ *     `unavailable` at runtime (`pin()` returns `null` → the `readInbox` PR arm reports it) instead of
+ *     throwing out of `buildApp`. The GitHub pin is a prerequisite for the Inbox PR SOURCE only, not for
+ *     the dashboard. The safety property of P4-C35 is preserved a different way: `prHref` still THROWS if
+ *     ever asked to build a URL without a valid pin, so no bad PR URL is ever produced — there is simply
+ *     no PR source. Only a non-`RepositoryPinError` (unexpected) still propagates.
+ * `readRemote` is injectable only so the suite can drive the parser without a real checkout.
  */
 export function createInboxRoutePorts(
   ctx: SurfaceContext,
   opts: { readRemote?: GitRemoteReader; runGh?: SubprocessPort } = {},
 ): InboxRoutePorts {
   assertCoordinationRoot(ctx.repoRoot);
-  const resolved: RepositoryPin = resolveRepositoryPin(ctx.repoRoot, opts.readRemote);
+  let resolved: RepositoryPin | null;
+  try {
+    resolved = resolveRepositoryPin(ctx.repoRoot, opts.readRemote);
+  } catch (error: unknown) {
+    if (!(error instanceof RepositoryPinError)) throw error;
+    // The coordination remote cannot be pinned to a GitHub repo: degrade the PR source to `unavailable`
+    // and let the dashboard boot. `prHref` guards the URL side, so no bad PR URL can be produced.
+    resolved = null;
+  }
   return {
     pin: () => resolved,
     runGh: opts.runGh ?? createGhSubprocessPort(ctx.repoRoot),
