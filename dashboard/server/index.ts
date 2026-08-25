@@ -28,6 +28,13 @@ import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
+import { createImplementerBatchRegistry, startMergePollTimer } from './learnings/execution.ts';
+import { createLearningRecordRetire } from './reconciliation/realPorts.ts';
+import type { MergedPrStatus, PrMergeReader } from './reconciliation/mergePoll.ts';
+import { resolveRepositoryPin, RepositoryPinError } from './runtime/repoPin.ts';
+import { defaultGitRunner, resolveBaseCommit } from './write/branch.ts';
+import { runTrackedProcess } from './write/asyncGit.ts';
+import { isCommitSha } from './write/durableManifest.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
 import type { SurfaceContext } from './http/context.ts';
 import {
@@ -57,6 +64,17 @@ export const PORT = Number(process.env.DASHBOARD_PORT ?? 4317);
  *  document it already owns, so there is no filesystem move or git commit to gate behind a dry-run.
  *  Default interval 5 minutes. */
 export const DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS = 300_000;
+
+/** Merge-poll cadence — the read-only `reconciliation/mergePoll.ts` PR resolver. Default 60 s, matching
+ *  the §3.3 background PR poll; the poll spawns no `gh` while its batch sources are empty. */
+export const DEFAULT_MERGE_POLL_INTERVAL_MS = 60_000;
+
+export function resolveMergePollIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.DASHBOARD_MERGE_POLL_INTERVAL_MS;
+  if (raw === undefined || raw === '') return DEFAULT_MERGE_POLL_INTERVAL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_MERGE_POLL_INTERVAL_MS;
+}
 export function resolveHumanRequestSweepIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
   if (raw === undefined || raw === '') return DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
@@ -253,8 +271,78 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // P4 W6.2: the daemon-side merge-gate reconciler and stranded-card auto-archiver were DELETED here
   // (`write/{mergeGateReconciler,strandedArchiver,ownerActivity}.*`). Merge polling is now the read-only
   // `reconciliation/mergePoll.ts` PR resolver, which mutates ONLY through the one reconciliation publisher
-  // (`mirror-merged` intents + the `learning-record-retire` action); its live startup timer lands with the
-  // Implementer-batch source it polls (W6.3). Card auto-archival by age is retired outright [P4-C14].
+  // (`mirror-merged` intents + the `learning-record-retire` action); card auto-archival by age is retired
+  // outright [P4-C14].
+  //
+  // W6.3 wires that resolver's LIVE startup timer here, feeding it from the open-Implementer-batch registry
+  // (`createImplementerBatchRegistry`). The repo pin is resolved once, degrade-safe: a deployment whose
+  // `origin` is not a pinnable GitHub repo (the WSL oracle, local dev) simply runs no PR poll instead of
+  // crashing boot [P4-C35, and the W6.1c degrade ruling]. The poll never calls `gh` while both the mirror
+  // batch and the Implementer registry are empty, so the boot sweep spawns nothing on a fresh daemon.
+  const implementerBatchRegistry = createImplementerBatchRegistry();
+  let repoPinForPoll: { owner: string; repo: string } | null = null;
+  try {
+    repoPinForPoll = resolveRepositoryPin(repoRoot);
+  } catch (error) {
+    if (!(error instanceof RepositoryPinError)) throw error;
+    // eslint-disable-next-line no-console
+    console.info(`merge-poll timer disabled: ${error.message}`);
+  }
+  if (repoPinForPoll !== null) {
+    const pollNow = (): string => (surfaceCtx.now ?? (() => new Date()))().toISOString();
+    const retire = createLearningRecordRetire({
+      repoRoot: surfaceCtx.repoRoot,
+      store: surfaceCtx.controlStore,
+      stateRoot: surfaceCtx.stateRoot,
+      now: pollNow,
+      coordinationPublication: surfaceCtx.coordinationPublication,
+      outboxRoot: surfaceCtx.outboxRoot,
+    });
+    // A read-only single-PR merge reader over ambient `gh`. Any non-zero exit, timeout, or parse fault is
+    // UNKNOWN (`null`) — the resolver then leaves the PR alone, exactly the safe direction the old gate took.
+    const ghMergeReader: PrMergeReader = async (pr): Promise<MergedPrStatus | null> => {
+      try {
+        const stdout = await runTrackedProcess(
+          'gh',
+          ['pr', 'view', String(pr.number), '--repo', `${pr.owner}/${pr.repo}`, '--json', 'state,mergeCommit,mergedAt'],
+          surfaceCtx.repoRoot,
+          'pr view',
+          { timeoutMs: 15_000 },
+        );
+        const parsed = JSON.parse(stdout) as { state?: unknown; mergeCommit?: unknown; mergedAt?: unknown };
+        const merged = parsed.state === 'MERGED';
+        const oid = (parsed.mergeCommit as { oid?: unknown } | null)?.oid;
+        const mergeCommit = typeof oid === 'string' && isCommitSha(oid) ? oid : null;
+        const mergedAt = typeof parsed.mergedAt === 'string' ? parsed.mergedAt : null;
+        return { merged: merged && mergeCommit !== null, mergeCommit, mergedAt };
+      } catch {
+        return null;
+      }
+    };
+    const stopMergePoll = startMergePollTimer(
+      {
+        repoPin: repoPinForPoll,
+        gh: ghMergeReader,
+        readOpenMirrorBatch: () => surfaceCtx.controlStore.readOpenScheduleMirrorBatch(),
+        readOpenImplementerBatches: async () => implementerBatchRegistry.list(),
+        readSourceRevision: () => resolveBaseCommit(surfaceCtx.repoRoot, defaultGitRunner),
+        readStoreRevision: () => String(surfaceCtx.controlStore.getControlDocumentMetadata().documentRevision),
+        publish: surfaceCtx.reconciliationPublisher,
+        retire,
+        // The Inbox PR projection is refreshed by its own resolver; a dedicated invalidation port is not
+        // exposed to this scope, so a merged PR simply leaves the open list on the next scheduled refresh.
+        invalidatePr: () => {},
+        now: pollNow,
+      },
+      {
+        intervalMs: resolveMergePollIntervalMs(),
+        // On a confirmed retire the batch is done: drop it so the next poll does not re-resolve it.
+        onPoll: (outcome) => { for (const batchId of outcome.recordsRetired) implementerBatchRegistry.forget(batchId); },
+        onError: (error) => { console.error('merge poll tick failed', error); },
+      },
+    );
+    app.addHook('onClose', async () => { stopMergePoll(); });
+  }
 
   // Human Request orphan sweeper — ON BY DEFAULT. Runs once immediately (the boot sweep — clears any
   // request left open on a run that had already gone terminal before this process started, which is how
