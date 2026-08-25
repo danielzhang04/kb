@@ -3,7 +3,6 @@ import type { PrOpener } from '../write/branch.ts';
 import type { CoordinationPublication } from '../write/outbox.ts';
 import type { PtyCapabilityProbe, PublicPtyCapability } from '../pty/contracts.ts';
 import { probeWindowsPty, toPublicPtyCapability, type WindowsPtyProbeOptions } from '../pty/probe.ts';
-import { resolveExecutionHost } from '../entities/project.ts';
 import type { HostKind } from '../control/p2Contracts.ts';
 import type { CliStatus } from '../placement/contracts.ts';
 
@@ -126,7 +125,7 @@ export async function probePublicPtyCapability(options: {
 export function runtimeExecutionHost(capabilities: RuntimeCapabilities): HostKind {
   return capabilities.pty
     ? capabilities.host
-    : resolveExecutionHost(capabilities.platform === 'win32' ? 'desktop' : 'cloud');
+    : capabilities.platform === 'win32' ? 'desktop' : 'vm';
 }
 
 export function runtimeCapabilities(

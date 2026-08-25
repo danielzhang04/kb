@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, resolveExecutionHost, selectEntityHostRun } from './project.ts';
+import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiveEmpty, projectStepDag, selectEntityHostRun } from './project.ts';
 import { SYSTEM_ENTITY_GROUP_ID } from './contracts.ts';
 import type { RunRow } from '../control/p2Contracts.ts';
 import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
@@ -12,11 +12,6 @@ const detailFixture = JSON.parse(readFileSync(new URL('./__fixtures__/entity-det
 const stepDagFixture = JSON.parse(readFileSync(new URL('../control/__fixtures__/dv3/step-dag.json', import.meta.url), 'utf8')) as { stages: string[]; edges: [string, string][] };
 
 describe('entity projectors', () => {
-  it('maps the current cloud and desktop routing tiers to the fixed P2 host labels', () => {
-    expect(resolveExecutionHost('cloud')).toBe('vm');
-    expect(resolveExecutionHost('desktop')).toBe('desktop');
-  });
-
   it('selects the newest-created active host, then the latest actually completed host', () => {
     const active = [
       { runRef: 'run-newer-updated', createdAt: '2026-08-21T10:00:00.000Z', updatedAt: '2026-08-21T14:00:00.000Z', completedAt: null, executionHost: 'desktop' as const },

@@ -1,6 +1,5 @@
 import { SYSTEM_ENTITY_GROUP_ID, type EntityBrief, type EntityGroup, type EntityList } from './contracts.ts';
 import type { EntityStatus, EntitySummary, OutputRef, RunRow, RunnableRef, ScheduleOccurrence } from '../control/p2Contracts.ts';
-import type { HostKind } from '../control/p2Contracts.ts';
 import { humanizeEntityId } from '../../src/entity/humanizeEntityId.ts';
 
 export interface EntityProjectionInput {
@@ -55,11 +54,6 @@ export interface StepDag {
   nodes: StepDagNode[];
   edges: StepDagEdge[];
   eventsFor(stageRef: string | null): StepEvent[];
-}
-
-/** P2's deterministic current-routing preview; P6 replaces the tier resolver, not this HostKind seam. */
-export function resolveExecutionHost(tier: 'cloud' | 'desktop'): HostKind {
-  return tier === 'cloud' ? 'vm' : 'desktop';
 }
 
 export function selectEntityHostRun<T extends {
