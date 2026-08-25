@@ -7,10 +7,14 @@ import {
 import type { CandidateRun, ClaimClock, LeaseStorePort } from './leaseService.ts';
 
 /**
- * A minimal in-memory fake of the lease store. It is deliberately synchronous under the hood (no
- * internal `await`) so two calls issued back-to-back via `Promise.all` are NOT interleaved by the
- * event loop — exactly the property a real CAS store gives for free and the property these tests are
- * exercising, not working around.
+ * A minimal in-memory fake of the lease store. Every method but `releaseExpiredLeases` is deliberately
+ * synchronous under the hood (no internal `await`), so calls issued back-to-back via `Promise.all` are
+ * NOT interleaved by the event loop for those paths. `releaseExpiredLeases` is the one exception (see
+ * its own comment below): it yields a microtask BEFORE its check, so two concurrent callers (a sweeper
+ * and a lazy-expiry claim) are both genuinely in flight, racing on the shared `lease` variable, rather
+ * than one running to completion before the other is even invoked. The check-and-mutate itself stays
+ * atomic (no further yield between them) — exactly the guarantee a real CAS store gives for free — so
+ * this simulates a correct atomic port under real interleaving, not a broken one.
  */
 function fakeStore(seed: readonly CandidateRun[], advertisedHash: Record<HostKind, string | undefined> = { vm: undefined, desktop: undefined }) {
   let unplaced: CandidateRun[] = [...seed];
@@ -19,6 +23,12 @@ function fakeStore(seed: readonly CandidateRun[], advertisedHash: Record<HostKin
   let nextRevision = 1;
   const port: LeaseStorePort = {
     async releaseExpiredLeases(nowIso) {
+      // Genuine interleaving point (P6-C36 fix round, W5b #1): yield to the microtask queue BEFORE
+      // reading `lease`, so a concurrent caller's own `releaseExpiredLeases` call can also be in
+      // flight at this instant. Whichever continuation resumes first performs an atomic
+      // check-and-mutate; the other then observes `lease` already cleared and is a no-op. This is what
+      // makes the race below real instead of an artifact of JS run-to-completion.
+      await Promise.resolve();
       if (lease && Date.parse(lease.expiresAt) <= Date.parse(nowIso)) {
         const runRef = lease.runRef;
         const capabilityHash = lease.capabilityHash;
@@ -110,7 +120,7 @@ describe('claimLease (§3.5)', () => {
 });
 
 describe('sweepExpiredLeases + claim-time lazy expiry together (§3.5, P6-C36)', () => {
-  it('release exactly once and reclaim exactly once when the sweeper and a lazy-expiry claim race', async () => {
+  it('release exactly once and reclaim exactly once when the sweeper and a lazy-expiry claim genuinely race', async () => {
     const { port, releaseEvents } = fakeStore([{ runRef: 'run-1', capabilityHash: HASH_A }]);
     const clock = fixedClock(0);
     const claimed = await claimLease(port, { hostId: 'vm', waitMs: 0 }, clock);
@@ -118,12 +128,19 @@ describe('sweepExpiredLeases + claim-time lazy expiry together (§3.5, P6-C36)',
     const afterExpiryIso = new Date(Date.parse((claimed as { lease: PlacementLease }).lease.expiresAt) + 1).toISOString();
     const expiredClock = fixedClock(Date.parse(afterExpiryIso));
 
+    // Both calls below invoke the SAME fake `releaseExpiredLeases`, which now yields a microtask
+    // before its check (see fakeStore's comment). That means `sweepExpiredLeases`'s call and
+    // `claimLease`'s own first-line lazy-expiry call are BOTH pending simultaneously when this
+    // `Promise.all` starts — a genuine interleaving of the sweeper and the claim, not one running to
+    // completion before the other begins. Exactly one of the two continuations will still see the
+    // live lease and release it; the loser observes it already cleared.
     const [sweepResult, reclaimResult] = await Promise.all([
       sweepExpiredLeases(port, afterExpiryIso),
       claimLease(port, { hostId: 'desktop', waitMs: 0 }, expiredClock),
     ]);
 
-    // exactly one of the two release paths actually fired the release event — never both.
+    // exactly one of the two release paths actually fired the release event — never both — even
+    // though both were genuinely in flight at once.
     expect(releaseEvents()).toBe(1);
     expect(sweepResult.length + (reclaimResult.ok ? 0 : 0)).toBeGreaterThanOrEqual(0); // sweepResult is a plain array; sanity only
     expect(reclaimResult).toEqual({ ok: true, lease: expect.objectContaining({ runRef: 'run-1', hostId: 'desktop' }) });

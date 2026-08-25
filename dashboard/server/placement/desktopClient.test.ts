@@ -23,6 +23,9 @@ describe('assertApiV1Origin (P6-C29: the base URL cannot be a bare host)', () =>
   it('rejects a non-string origin', () => {
     expect(() => assertApiV1Origin(undefined)).toThrow(RangeError);
   });
+  it('rejects a userinfo-bearing origin (host spoof via @) (W5b fix #3)', () => {
+    expect(() => assertApiV1Origin('https://a@b/api/v1')).toThrow(RangeError);
+  });
 });
 
 describe('createDesktopClient (§3.5 node routes, design:456-459 verbatim paths)', () => {

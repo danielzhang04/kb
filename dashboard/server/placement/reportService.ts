@@ -118,11 +118,16 @@ export async function submitReport(port: ReportStorePort, input: SubmitReportInp
 
   if (report.kind === 'gate-opened') {
     const rawGateKind = report.payload.gateRequestKind;
-    const gateKind: HumanRequestKind = rawGateKind === undefined
-      ? 'input'
-      : (GATE_REQUEST_KINDS as readonly unknown[]).includes(rawGateKind)
-        ? rawGateKind as HumanRequestKind
-        : (() => { throw new ContractDecodeError('payload.gateRequestKind', `not a human-request kind ${JSON.stringify(rawGateKind)}`); })();
+    let gateKind: HumanRequestKind;
+    if (rawGateKind === undefined) {
+      gateKind = 'input';
+    } else if ((GATE_REQUEST_KINDS as readonly unknown[]).includes(rawGateKind)) {
+      gateKind = rawGateKind as HumanRequestKind;
+    } else {
+      // A defined-but-invalid gateRequestKind is a clean refusal, not a throw: this branch runs
+      // before any port write, same as every other exact-key refusal in this file (W5b fix #2).
+      return { ok: false, status: 400, code: 'unknown-key', field: 'payload.gateRequestKind' };
+    }
     const title = typeof report.payload.title === 'string' ? report.payload.title : `Gate for ${input.runRef}`;
     const prompt = typeof report.payload.prompt === 'string' ? report.payload.prompt : '';
     const stageRef = typeof report.payload.stageRef === 'string' ? report.payload.stageRef : null;

@@ -173,6 +173,18 @@ describe('submitReport gate-opened (§3.5, §3.6 T3 host ban)', () => {
     });
     expect(port.humanRequestsOpened).toBe(0);
   });
+
+  it('rejects a defined-but-invalid gateRequestKind as a clean 400 with NO port write (W5b fix #2)', async () => {
+    const port = fakePort();
+    const result = await submitReport(port, {
+      runRef: 'run-1', hostId: 'desktop', nowIso: NOW,
+      body: { expectedLeaseRevision: 1, sequence: 1, kind: 'gate-opened', payload: { gateRequestKind: 'bogus' } },
+    });
+    expect(result).toEqual({ ok: false, status: 400, code: 'unknown-key', field: 'payload.gateRequestKind' });
+    expect(port.events).toEqual([]);
+    expect(port.humanRequestsOpened).toBe(0);
+    expect(port.terminalCalls).toBe(0);
+  });
 });
 
 describe('submitReport exact-key wall (§3.5, §3.6 T3 host ban)', () => {

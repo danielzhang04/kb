@@ -9,8 +9,13 @@
 import { decodeClaimRequest, decodeRenewRequest } from '../api/v1/contracts.ts';
 import type { HostKind } from './contracts.ts';
 
-/** An absolute http(s) URL ending EXACTLY in `/api/v1` — never a bare host, never a trailing slash. */
-const API_V1_ORIGIN = /^https?:\/\/[^\s/]+(?::\d+)?\/api\/v1$/;
+/**
+ * An absolute http(s) URL ending EXACTLY in `/api/v1` — never a bare host, never a trailing slash.
+ * The host segment excludes `@` (and whitespace) so a userinfo-bearing origin like
+ * `https://vm.example@attacker.com/api/v1` — which browsers/fetch resolve to host `attacker.com` —
+ * is refused rather than accepted on the spoofed `vm.example` prefix (W5b fix #3).
+ */
+const API_V1_ORIGIN = /^https?:\/\/[^\s/@]+(?::\d+)?\/api\/v1$/;
 
 export function assertApiV1Origin(origin: unknown): string {
   if (typeof origin !== 'string' || !API_V1_ORIGIN.test(origin)) {

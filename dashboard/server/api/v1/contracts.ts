@@ -150,7 +150,11 @@ export interface ReportRequest {
   readonly payload: Record<string, unknown>;
 }
 
-/** A report can never carry an operator decision or a T3 assertion [§3.5:219]. */
+/**
+ * A report can never carry an operator decision or a T3 assertion [§3.5:219]. This is intentionally a
+ * DENYLIST of T3-forbidden fields over an otherwise free-form `payload`, not a strict allowlist — the
+ * payload shape is free-form by design (W5b fix-round note).
+ */
 export const REPORT_FORBIDDEN_PAYLOAD_KEYS: readonly string[] = [
   'decision', 'assertion', 'authorization', 'expectedRequestRevision', 'credential', 'signature',
 ];
