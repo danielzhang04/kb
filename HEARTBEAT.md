@@ -68,8 +68,11 @@ cadences:
     armed: true
     risk-tier: T1
     prompt: |
-      Inspect bounded context-lifecycle evidence and produce only the declaration's
-      reviewable report/proposals. Do not arm, merge, or edit a proposed target.
+      Run the declaration's tool-free context-lifecycle worker over its bounded named
+      sources and emit at most five kb.learning-proposal/v1 records (status: proposed),
+      each with at most twenty inert evidence rows, or one no-change report. Publish in
+      coordination mode straight to ops: no PR, no durablePrWrites. Do not arm, merge,
+      or edit a proposed target.
   - name: lessons-miner
     schedule: "45 1 * * *"
     tier: desktop
@@ -77,8 +80,11 @@ cadences:
     armed: true
     risk-tier: T1
     prompt: |
-      Mine the bounded durable sources named by the Lessons Miner declaration and emit
-      at most its per-fire proposal cap. Evidence stays inert; never edit a target.
+      Mine the bounded durable sources named by the Lessons Miner declaration with
+      session_miner.py + agent_maintainer.py#run_fire(forecast=False) and emit at most
+      five kb.learning-proposal/v1 lesson records (status: proposed), each with at most
+      twenty inert evidence rows, or one no-change report. Publish in coordination mode
+      straight to ops: no PR, no durablePrWrites. Evidence stays inert; never edit a target.
   - name: grader
     schedule: "15 2 * * *"
     tier: desktop
@@ -87,7 +93,11 @@ cadences:
     risk-tier: T1
     prompt: |
       Reconcile only pinned, independently inspected grading evidence within the
-      declaration's bounds. Never grade this run or bless an eval manifest.
+      declaration's bounds via agent_evals.py#run_suite(record=False,
+      include_model_judged=False) and emit at most five kb.learning-proposal/v1
+      grade-finding records (status: proposed), or one no-change report. Publish in
+      coordination mode straight to ops: no PR, no durablePrWrites. Never grade this run
+      or bless an eval manifest.
   - name: model-audit
     schedule: "45 2 * * 1"
     tier: desktop
@@ -95,7 +105,10 @@ cadences:
     armed: true
     risk-tier: T1
     prompt: |
-      Audit bounded model-routing observations and produce a reviewable report. Do not
+      Audit bounded model-routing observations with the declaration's tool-free worker
+      and emit at most five kb.learning-proposal/v1 model-audit records (status:
+      proposed), each with at most twenty inert evidence rows, or one no-change report.
+      Publish in coordination mode straight to ops: no PR, no durablePrWrites. Do not
       change governance, routing, model assignments, or live cards.
   - name: hygiene
     schedule: "15 3 * * 0"
@@ -104,7 +117,10 @@ cadences:
     armed: true
     risk-tier: T1
     prompt: |
-      Inspect bounded repository-hygiene evidence and report safe proposals. Never
+      Inspect bounded repository-hygiene evidence with the declaration's tool-free
+      worker and emit at most five kb.learning-proposal/v1 hygiene records (status:
+      proposed), each with at most twenty inert evidence rows, or one no-change report.
+      Publish in coordination mode straight to ops: no PR, no durablePrWrites. Never
       delete, merge, rewrite history, or mutate a proposed target.
   - name: learnings-implementer
     schedule: "30 3 * * *"
@@ -113,8 +129,12 @@ cadences:
     armed: true
     risk-tier: T2
     prompt: |
-      Process only the bounded proposed-learning batch allowed by the declaration and
-      stop at the reviewed branch/publisher boundary. Never merge or write main.
+      Read the bounded proposed-learning batch with readProposedLearningRecords, select
+      at most five non-conflicting kb.learning-proposal/v1 records via
+      selectImplementerBatch, apply the smallest tested batch, and open exactly ONE
+      learning-implementation PR (records rewritten to status: implemented) through the
+      durablePrWrites publisher. This is the only System path that holds durablePrWrites.
+      Stop at the reviewed publisher boundary. Never merge or write main.
   - name: system-sweeper
     schedule: "*/15 * * * *"
     tier: cloud
@@ -122,6 +142,8 @@ cadences:
     armed: true
     risk-tier: T1
     prompt: |
-      Read the bounded reconciliation sources and emit intents only. Never mutate cards,
-      Inbox state, HEARTBEAT files, git, schedules, or ledgers directly.
+      Read the bounded reconciliation sources and run runSweeper to emit at most twenty
+      kb.reconciliation-intent/v1 intents (read-only ports, no durablePrWrites), or one
+      no-change report. Never mutate cards, Inbox state, HEARTBEAT files, git, schedules,
+      or ledgers directly.
 ```

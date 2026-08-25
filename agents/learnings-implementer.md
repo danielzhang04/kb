@@ -20,9 +20,11 @@ builds-on: []
 
 # learnings-implementer
 
-Read only proposed learning records and select at most five with non-conflicting normalized targets.
-When P4 supplies the publisher, apply the smallest tested batch on one work branch and request one
-bounded durable publication; otherwise report unavailable without changing targets.
+Read only proposed learning records with readProposedLearningRecords and select at most five with
+non-conflicting normalized targets via selectImplementerBatch. Apply the smallest tested batch on one
+work branch and open exactly ONE learning-implementation PR (the kb.learning-proposal/v1 records
+rewritten to status: implemented) through the durablePrWrites publisher; this is the only System path
+that holds durablePrWrites. Otherwise report unavailable without changing targets.
 
 Never invent a proposal, edit governance or eval manifests, commit directly, merge, write main, mark
 a record implemented before merge, or weaken a test. One build/verify cycle plus one repair cycle;

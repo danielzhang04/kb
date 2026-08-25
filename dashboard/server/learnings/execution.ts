@@ -16,8 +16,20 @@
 // so this module holds no git/write/spawn capability of its own: server code supplies metadata, renders
 // records/intents, validates every worker-suggested target through the wall, and invokes the permitted
 // publisher. Worker prose can authorize no path, actor, revision, or tool.
+//
+// SCOPE / P7 WIRING DISCLOSURE (read before wiring a live fire path):
+// `resolveExecutionPath`, the `run*` runners (`runProposalProducer` / `runLearningsImplementer` /
+// `runSystemSweeper`), and `implementerBatchRegistry.record()` are the dashboard-side execution-path
+// LIBRARY plus its fail-closed VALIDATION — pure, injected, unit-tested. They are NOT self-wired.
+// The live integration — a real schedule FIRE -> `resolveExecutionPath` -> the matching `run*` ->
+// `implementerBatchRegistry.record()` (which is what populates the open-Implementer-batch registry the
+// `startMergePollTimer` retire arm polls) — is a RUNTIME / dispatcher wiring step owned by P7, because
+// it needs Daniel's live dispatcher and environment. Consequently, TODAY: the mirror-merged arm of the
+// merge poll is live end-to-end, while the Implementer / `learning-record-retire` arm is exercised only
+// by tests and the timer's read loop and has NO production fire path yet — nothing calls `.record()` in
+// production, so `readOpenImplementerBatches` is `[]` and a retire cannot fire until P7 lands the wiring.
 import {
-  IMPLEMENTABLE_PROPOSAL_KINDS, PROPOSAL_CANDIDATE_CAP, RECORDS_ONLY_PROPOSAL_KINDS,
+  PROPOSAL_CANDIDATE_CAP,
   type ProposalEvidenceRow, type ProposalKind, type ProposalRecord,
 } from './contracts.ts';
 import {
@@ -140,14 +152,6 @@ export function resolveExecutionPath(scheduleId: string, agentId: string): Execu
     throw new ExecutionResolutionError('agent-mismatch', `${JSON.stringify(scheduleId)} expects agent ${descriptor.agentId}, got ${JSON.stringify(agentId)}`);
   }
   return descriptor;
-}
-
-/** True only for the two implementable kinds; a producer of any other kind emits records-only output. */
-export function producesImplementableKind(kind: ProposalKind): boolean {
-  return IMPLEMENTABLE_PROPOSAL_KINDS.includes(kind);
-}
-export function producesRecordsOnlyKind(kind: ProposalKind): boolean {
-  return RECORDS_ONLY_PROPOSAL_KINDS.includes(kind);
 }
 
 // --- Proposal producer execution ----------------------------------------------------------------
@@ -433,6 +437,9 @@ export interface SystemExecutionComposition {
  * DEGRADES: a legitimate kb deployment whose `origin` is not a GitHub repo (the WSL oracle, local dev)
  * must still boot, so a `RepositoryPinError` disables the PR-dependent paths rather than crashing the
  * daemon — consistent with W6.1's degrade ruling. Only an UNEXPECTED error propagates.
+ * Note: this boot-composition helper is the intended single fail-closed entry, exercised today by its
+ * own test; index.ts still open-codes `resolveRepositoryPin` alone, so the eager `assertCoordinationRoot`
+ * lands only when W6.1's composition adopts this helper (P4-C39) — no safety gap, just not yet the caller.
  */
 export function composeSystemExecution(input: {
   coordinationRoot: string;

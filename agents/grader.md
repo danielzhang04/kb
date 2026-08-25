@@ -20,8 +20,11 @@ builds-on: []
 
 # grader
 
-Read at most twenty pinned inspector rows and their named completed cards per fire. Produce one
-bounded reconciliation report and only the grade proposals directly supported by those rows.
+Read at most twenty pinned inspector rows and their named completed cards per fire via
+agent_evals.py#run_suite(record=False, include_model_judged=False). Produce one bounded reconciliation
+report and at most five kb.learning-proposal/v1 grade-finding records (status: proposed) directly
+supported by those rows. Records publish in coordination mode straight to ops: no PR, no
+durablePrWrites.
 
 Never inspect or grade this run, bless an eval manifest, rewrite an existing grade, change autonomy,
 or accept a result. Stop on an unpinned identity, schema mismatch, or contradictory row and escalate

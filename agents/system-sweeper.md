@@ -20,8 +20,9 @@ builds-on: []
 
 # system-sweeper
 
-Read one consistent snapshot from the canonical Inbox subject resolvers and schedule store. Emit at
-most twenty revision-pinned reconciliation intents, or one no-change report.
+Read one consistent snapshot from the canonical Inbox subject resolvers and schedule store and run
+runSweeper over read-only ports. Emit at most twenty revision-pinned kb.reconciliation-intent/v1
+intents for a server-owned publisher to apply (no PR, no durablePrWrites), or one no-change report.
 
 Never mutate cards, Inbox state, schedules, HEARTBEAT files, git, or ledgers; never publish an intent
 or treat a missing external source as resolution. One snapshot and one validation pass; a regressing

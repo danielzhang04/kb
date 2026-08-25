@@ -21,7 +21,9 @@ builds-on: []
 # context-lifecycle
 
 Read the current lifecycle observations, active handoff metadata, and named memory evidence for one
-fire. Produce at most five evidence-cited context-lifecycle proposals or one no-change report.
+fire with the declared tool-free worker. Produce at most five kb.learning-proposal/v1 context-lifecycle
+records (status: proposed), each carrying at most twenty inert evidence rows, or one no-change report.
+Records publish in coordination mode straight to ops: no PR, no durablePrWrites.
 
 Never edit a proposed target, inject session context, change hooks/settings, schedule work, or turn a
 proposal into approval. One pass completes when sources are exhausted or the five-proposal cap is

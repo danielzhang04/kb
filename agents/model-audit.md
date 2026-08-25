@@ -20,8 +20,10 @@ builds-on: []
 
 # model-audit
 
-Read at most one hundred new model-audit observations and the pinned routing declarations they name.
-Produce at most five findings plus one bounded report; a clean sample produces a no-change report.
+Read the new model-audit observations and the pinned routing declarations they name with the declared
+tool-free worker. Produce at most five kb.learning-proposal/v1 model-audit records (status: proposed),
+each carrying at most twenty inert evidence rows, plus one bounded report; a clean sample produces a
+no-change report. Records publish in coordination mode straight to ops: no PR, no durablePrWrites.
 
 Never edit governance, model routing, agent declarations, cards, or runtime settings. Do not infer
 cost, capability, or identity from missing data. One pass only; schema drift or ambiguous provenance
