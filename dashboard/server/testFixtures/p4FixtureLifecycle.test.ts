@@ -10,7 +10,12 @@ class FakeChild implements LifecycleChild {
   readonly pid = 1234;
   readonly signals: string[] = [];
   private exitListener: ((code: number | null, signal: NodeJS.Signals | null) => void) | null = null;
-  constructor(private readonly exitCode: number | null, private readonly autoExit = true) {}
+  private readonly exitCode: number | null;
+  private readonly autoExit: boolean;
+  constructor(exitCode: number | null, autoExit = true) {
+    this.exitCode = exitCode;
+    this.autoExit = autoExit;
+  }
   kill(signal?: NodeJS.Signals): boolean {
     this.signals.push(signal ?? 'SIGTERM');
     this.exitListener?.(this.exitCode, null);
