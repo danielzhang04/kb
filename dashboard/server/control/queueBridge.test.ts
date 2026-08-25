@@ -941,6 +941,35 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     }
   });
 
+  it('refuses 409 no-complete-placement and creates no proposal or Run when zero fresh host advertisements match [W6.2b]', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-no-placement-'));
+    try {
+      writeWorkflowDef(repoRoot, 'tiered-run', T2_STAGE_DEF);
+      const launch = vi.fn();
+      // The exact card the sibling 'matching-tier' case above launches successfully — only the fixture's
+      // host advertisements differ, isolating dispatchClaimedCard's own no-complete-placement refusal
+      // (queueBridge.ts:693-696) from every other gate this suite already covers.
+      const matching = {
+        ...baseCard(),
+        meta: { ...baseCard().meta, id: 'matching-tier', 'workflow-def': 'tiered-run', parameters: { channel: 'x' }, 'risk-tier': 'T2' },
+      };
+      const { ctx, store } = fakeCtx({ repoRoot });
+      store.listHostAdvertisements.mockReturnValue([]);
+
+      const result = await dispatchClaimedCard(ctx, owned, commonDeps({
+        readCard: () => matching,
+        launch: launch as never,
+      }));
+
+      expect(result).toEqual({ cardId: owned.id, outcome: 'failed', status: 409, reconciled: false, detail: 'no-complete-placement' });
+      expect(launch).not.toHaveBeenCalled();
+      expect(store.createProposalRevision).not.toHaveBeenCalled();
+      expect(store.decideProposal).not.toHaveBeenCalled();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
   it('bridge tick reads a def-card with YAML parameters and dispatches the full definition', async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-def-card-integration-'));
     const queueRoot = join(repoRoot, 'queue');

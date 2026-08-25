@@ -1,6 +1,6 @@
 // P6 W2 — characterization of the agent/workflow entity handlers' extracted service: the list/detail
 // ETag-304 + 404/422 reads, the closed builder body walls + submit → 202 / builderError mapping, and the
-// amend `withOpsTransaction` path (P6-C80) — its pre-guards, the CAS span, and the post-audit branches.
+// amend `runCasTransaction` path (P6-C80) — its pre-guards, the CAS span, and the post-audit branches.
 
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -13,11 +13,11 @@ const FIELDS = { humanName: 'H', purpose: 'P', model: 'm', profile: 'p', tools: 
 
 class BuilderFailure extends Error { readonly status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
 
-// AmendPort['withOpsTransaction'] is generic (<T>(fn: () => Promise<T>) => Promise<T>); a vi.fn() mock
+// AmendPort['runCasTransaction'] is generic (<T>(fn: () => Promise<T>) => Promise<T>); a vi.fn() mock
 // closing over one concrete T can't satisfy that generic signature. This passthrough keeps the mock's
 // spy behaviour (call recording, toHaveBeenCalled*) while presenting the port's real generic type.
-function opsTransactionMock(): AmendPort['withOpsTransaction'] {
-  return vi.fn((fn: () => Promise<unknown>) => fn()) as AmendPort['withOpsTransaction'];
+function opsTransactionMock(): AmendPort['runCasTransaction'] {
+  return vi.fn((fn: () => Promise<unknown>) => fn()) as AmendPort['runCasTransaction'];
 }
 
 describe('entityService reads', () => {
@@ -88,7 +88,7 @@ describe('entityService builder writes', () => {
   });
 });
 
-describe('entityService amendWorkflowDefinition — the withOpsTransaction path', () => {
+describe('entityService amendWorkflowDefinition — the runCasTransaction path', () => {
   const scanned: AmendScanned = { entry: { path: 'orgs/kb-ops/workflows/w.md', sourceHash: 'h', detail: 'd' }, def: {} };
   const spec: AmendSpec = {
     kind: 'assignment', expectedSourceHash: 'h', auditAction: 'workflow-assignment-amendment',
@@ -99,7 +99,7 @@ describe('entityService amendWorkflowDefinition — the withOpsTransaction path'
 
   function port(over: Partial<AmendPort> = {}): AmendPort {
     return {
-      withOpsTransaction: opsTransactionMock(),
+      runCasTransaction: opsTransactionMock(),
       prepareAmendment: async () => preparedOk,
       durableWorktreeReady: true,
       auditAmendment: vi.fn(async () => {}),
@@ -109,19 +109,19 @@ describe('entityService amendWorkflowDefinition — the withOpsTransaction path'
   }
 
   it('refuses before the transaction on definition-invalid / stale hash / no durable worktree', async () => {
-    const withOpsTransaction = vi.fn();
-    expect(await amendWorkflowDefinition(port({ withOpsTransaction }), 'op', { entry: scanned.entry, def: null }, spec)).toEqual({ status: 409, body: { error: 'definition-invalid', detail: 'd' } });
-    expect(await amendWorkflowDefinition(port({ withOpsTransaction }), 'op', scanned, { ...spec, expectedSourceHash: 'other' })).toEqual({ status: 409, body: { error: 'stale-source-revision', sourceRevision: 'h' } });
-    expect(await amendWorkflowDefinition(port({ withOpsTransaction, durableWorktreeReady: false }), 'op', scanned, spec)).toEqual({ status: 409, body: { error: 'durable-worktree-required' } });
-    expect(withOpsTransaction).not.toHaveBeenCalled();
+    const runCasTransaction = vi.fn();
+    expect(await amendWorkflowDefinition(port({ runCasTransaction }), 'op', { entry: scanned.entry, def: null }, spec)).toEqual({ status: 409, body: { error: 'definition-invalid', detail: 'd' } });
+    expect(await amendWorkflowDefinition(port({ runCasTransaction }), 'op', scanned, { ...spec, expectedSourceHash: 'other' })).toEqual({ status: 409, body: { error: 'stale-source-revision', sourceRevision: 'h' } });
+    expect(await amendWorkflowDefinition(port({ runCasTransaction, durableWorktreeReady: false }), 'op', scanned, spec)).toEqual({ status: 409, body: { error: 'durable-worktree-required' } });
+    expect(runCasTransaction).not.toHaveBeenCalled();
   });
 
-  it('wraps the amendment CAS in withOpsTransaction and returns a short-circuit outcome verbatim', async () => {
-    const withOpsTransaction = opsTransactionMock();
+  it('wraps the amendment CAS in runCasTransaction and returns a short-circuit outcome verbatim', async () => {
+    const runCasTransaction = opsTransactionMock();
     const outcome: AmendPrepared = { outcome: { status: 409, body: { error: 'assignment-no-change' } } };
-    const out = await amendWorkflowDefinition(port({ withOpsTransaction, prepareAmendment: async () => outcome }), 'op', scanned, spec);
+    const out = await amendWorkflowDefinition(port({ runCasTransaction, prepareAmendment: async () => outcome }), 'op', scanned, spec);
     expect(out).toEqual({ status: 409, body: { error: 'assignment-no-change' } });
-    expect(withOpsTransaction).toHaveBeenCalledOnce();
+    expect(runCasTransaction).toHaveBeenCalledOnce();
   });
 
   it('returns 202 pending-human-merge after a successful prepare + audit + record update', async () => {
@@ -135,7 +135,7 @@ describe('entityService amendWorkflowDefinition — the withOpsTransaction path'
   });
 
   it('maps a thrown transaction to 500 *-durable-write-failed', async () => {
-    const out = await amendWorkflowDefinition(port({ withOpsTransaction: async () => { throw new Error('boom'); } }), 'op', scanned, spec);
+    const out = await amendWorkflowDefinition(port({ runCasTransaction: async () => { throw new Error('boom'); } }), 'op', scanned, spec);
     expect(out).toEqual({ status: 500, body: { error: 'assignment-durable-write-failed', detail: 'boom' } });
   });
 

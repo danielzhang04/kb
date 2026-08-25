@@ -11,13 +11,14 @@ import { makeSurfaceContext } from '../http/surface.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import { createFileAssignmentAmendmentStore } from './amendmentStore.ts';
-import { registerWorkflows, scanWorkflowDefs, createWorkflowLaunchServicePort } from './routes.ts';
+import { registerWorkflows, scanWorkflowDefs, createWorkflowLaunchServicePort, launchDeclaredAgent } from './routes.ts';
 import { registerV1OperatorMutationRoutes } from '../api/v1/routes.ts';
 import { originPlugin } from '../security/origin.ts';
 import { requireSession } from '../http/middleware.ts';
 import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import { registerAgents } from '../agents/routes.ts';
 import { projectRunAttention } from '../control/attention.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('workflow-route-test-secret-32byte!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -210,6 +211,33 @@ describe('Workflow P2 routes', () => {
       attempts: expect.any(Array), events: expect.any(Array),
     });
     expect(detail.details.workflow.stepDag.nodes[0].stageRef).toMatch(/^stage-/);
+  });
+
+  it('refuses 409 no-complete-placement and creates no Run row when zero fresh host advertisements match [W6.2b]', async () => {
+    // The in-memory store seeds one default `vm` advertisement (`defaultTestHostAdvertisement`). Staling
+    // it out — rather than removing it — reproduces the real zero-fresh-match path `placement/select.ts`
+    // gates: `seedHostAdvertisementForTest` upserts by hostId, so this replaces the fresh default in place.
+    store.seedHostAdvertisementForTest({
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date(0).toISOString(),
+      connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
+    const refused = await app.inject({ method: 'POST', url: '/api/workflows/amendable/launch', headers: headers(token), payload: { idempotencyKey: 'no-placement', expectedSourceRevision: await sourceRevision(), parameters: {} } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({ error: 'no-complete-placement' });
+    expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
+  });
+
+  it('launchDeclaredAgent (the entity host-preview launch path) refuses 409 no-complete-placement and creates no Run row [W6.2b]', async () => {
+    store.seedHostAdvertisementForTest({
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date(0).toISOString(),
+      connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
+    const declaration = readDeclaredAgentDetails(activeRoot).get('assigned-worker')!;
+    const outcome = await launchDeclaredAgent(surface, 'operator', token, declaration, 'agent-no-placement');
+    expect(outcome).toEqual({ status: 409, body: { error: 'no-complete-placement' } });
+    expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
   });
 
   it('keeps Workflow ownership immutable when composer provenance is supplied and rejects owner or host body fields', async () => {

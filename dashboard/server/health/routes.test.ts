@@ -10,11 +10,17 @@ import type { Schedule } from '../control/p2Contracts.ts';
 import { composeHealth } from './service.ts';
 
 // W6.2b regression fixture: lets a single test drive `os.loadavg()` to two distinct readings so the
-// `daemon-machine` cpu row's live `value` changes between two `/api/health` reads. `freemem` is frozen
-// alongside it — the real value now feeds the ETag hash again (that's the fix), and this host's free
-// memory measurably drifts by tens of KB between two back-to-back reads, which would otherwise make the
-// pre-existing immediate-304 test below flaky for a reason unrelated to what it tests. `totalmem`,
-// `disk` (statfsSync, not os), and `uptime` stay real — none of them drift at this granularity.
+// `daemon-machine` cpu row's live `value` changes between two `/api/health` reads. `freemem`, `uptime`,
+// and `statfsSync`'s disk free/total are frozen alongside it — the real row values now feed the ETag hash
+// again (that's the P5 fix), and every one of them can drift between two back-to-back reads: freemem by
+// tens of KB, the integer-second uptime (`Math.floor(hostUptimeSeconds())`, `health/service.ts`) by
+// crossing a whole-second boundary, and disk free space (`statfsSync(process.cwd())`, also
+// `health/service.ts`) by whatever any OTHER process on the machine — including sibling test files writing
+// their own temp fixtures — happens to write or delete between the two reads. None of these are reliably
+// stable running this file alone, but under a large parallel/batch vitest run (this file's own scheduling
+// slows down, and disk churn from concurrent suites is real) each has reproduced the flake this test
+// guards against: an unwanted 200 where a stable 304 was expected. `totalmem` stays real — it is a fixed
+// machine constant that never changes at runtime, so `freemem`'s formula below stays deterministic too.
 const cpuFixture = vi.hoisted(() => ({ load1: 1 }));
 vi.mock('node:os', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:os')>();
@@ -22,6 +28,19 @@ vi.mock('node:os', async (importOriginal) => {
     ...actual,
     loadavg: () => [cpuFixture.load1, cpuFixture.load1, cpuFixture.load1],
     freemem: () => actual.totalmem() - 10 * 1024 * 1024 * 1024,
+    uptime: () => 123_456,
+  };
+});
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    // Only the disk-space probe's shape matters to `health/service.ts`'s reader (`blocks * bsize` total,
+    // `total - bfree * bsize` used); every other `node:fs` caller (including this file's own fixtures)
+    // keeps the real implementation via `...actual`.
+    statfsSync: (() => ({
+      type: 0, bsize: 4096, blocks: 1_000_000, bfree: 500_000, bavail: 500_000, files: 0, ffree: 0, frsize: 4096,
+    })) as unknown as typeof actual.statfsSync,
   };
 });
 

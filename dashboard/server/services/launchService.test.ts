@@ -6,17 +6,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { launchService, type LaunchServicePort, type LaunchServiceInput } from './launchService.ts';
 import type { LaunchOutcome } from '../control/launch.ts';
 
-// LaunchServicePort['withOpsTransaction'] is generic (<T>(fn: () => Promise<T>) => Promise<T>); a
+// LaunchServicePort['runCasTransaction'] is generic (<T>(fn: () => Promise<T>) => Promise<T>); a
 // vi.fn() mock closing over one concrete T can't satisfy that generic signature. This passthrough
 // keeps the mock's spy behaviour (call recording, toHaveBeenCalled*) while presenting the port's
 // real generic type. `onSpan` lets a test observe entry/exit of the transaction span.
-function opsTransactionMock(onSpan?: (inside: boolean) => void): LaunchServicePort['withOpsTransaction'] {
+function opsTransactionMock(onSpan?: (inside: boolean) => void): LaunchServicePort['runCasTransaction'] {
   return vi.fn(async (fn: () => Promise<unknown>) => {
     onSpan?.(true);
     const result = await fn();
     onSpan?.(false);
     return result;
-  }) as LaunchServicePort['withOpsTransaction'];
+  }) as LaunchServicePort['runCasTransaction'];
 }
 
 const HASH = 'a'.repeat(64);
@@ -43,7 +43,7 @@ function happyPort(over: Partial<LaunchServicePort> = {}): LaunchServicePort {
     composerGet: () => ({ ok: true, workspace: { composerRef: 'c1', agent: { id: 'a1', path: 'agents/a1.md', sourceHash: 'h', projects: ['kb-ops'] } } }),
     declaredAgent: () => ({ source: 'agents/a1.md', sourceHash: 'h' }),
     runtimeExecutionHost: () => 'vm',
-    withOpsTransaction: async (fn) => fn(),
+    runCasTransaction: async (fn) => fn(),
     launchDefinition: async () => launched,
     ...over,
   };
@@ -102,12 +102,12 @@ describe('launchService ordering + refusal matrix', () => {
   });
 
   it('refuses on a pending-amendment guard, before the transaction opens', async () => {
-    const withOpsTransaction = vi.fn();
-    const invalid = await launchService(happyPort({ pendingAmendmentFor: () => ({ pending: null, error: 'x' }), withOpsTransaction }), base);
+    const runCasTransaction = vi.fn();
+    const invalid = await launchService(happyPort({ pendingAmendmentFor: () => ({ pending: null, error: 'x' }), runCasTransaction }), base);
     expect(invalid).toEqual({ status: 409, body: { error: 'assignment-amendment-state-invalid' } });
-    const pending = await launchService(happyPort({ pendingAmendmentFor: () => ({ pending: { id: 'p' }, error: null }), withOpsTransaction }), base);
+    const pending = await launchService(happyPort({ pendingAmendmentFor: () => ({ pending: { id: 'p' }, error: null }), runCasTransaction }), base);
     expect(pending).toEqual({ status: 409, body: { error: 'assignment-amendment-pending', pending: { id: 'p' } } });
-    expect(withOpsTransaction).not.toHaveBeenCalled();
+    expect(runCasTransaction).not.toHaveBeenCalled();
   });
 
   it('refuses 400 invalid-launch-parameters when params are required but absent, or non-string', async () => {
@@ -145,10 +145,10 @@ describe('launchService ordering + refusal matrix', () => {
       async () => ({ status: 202, body: { ok: true, runRef: 'r1' } }) as LaunchOutcome,
     );
     let insideTxn = false;
-    const withOpsTransaction = opsTransactionMock((inside) => { insideTxn = inside; });
-    const out = await launchService(happyPort({ launchDefinition, withOpsTransaction }), base);
+    const runCasTransaction = opsTransactionMock((inside) => { insideTxn = inside; });
+    const out = await launchService(happyPort({ launchDefinition, runCasTransaction }), base);
     expect(out).toEqual({ status: 202, body: { ok: true, runRef: 'r1' } });
-    expect(withOpsTransaction).toHaveBeenCalledOnce();
+    expect(runCasTransaction).toHaveBeenCalledOnce();
     const [sub, token, , key, provenance, identity] = launchDefinition.mock.calls[0];
     expect(sub).toBe('operator');
     expect(token).toBe('tok');

@@ -4459,6 +4459,27 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     } finally { await app.close(); opened.close(); }
   });
 
+  it('refuses 409 no-complete-placement and creates no Run row when zero fresh host advertisements exist [W6.2b]', async () => {
+    const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `z-${++n}`; })() });
+    const store = opened.store;
+    // Deliberately no `seedHostAdvertisementForTest` call: a freshly opened leased file store starts
+    // with ZERO host advertisements, so `selectPlacementHost` at control/routes.ts:650 finds zero fresh
+    // matches before any owner resolution or store write — the bootHost fallback's own no-complete-placement
+    // refusal path.
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-no-placement');
+    const { app, token } = surface(store);
+    try {
+      const launched = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `no-placement:${revision.hash}` },
+      });
+      expect(launched.statusCode, launched.body).toBe(409);
+      expect(launched.json()).toEqual({ error: 'no-complete-placement' });
+      expect(store.listRuns(ENGINE)).toEqual([]);
+      expect(store.listRuns('operator')).toEqual([]);
+    } finally { await app.close(); opened.close(); }
+  });
+
   it('copies the Retry predecessor owner and host instead of the caller daemon identity', async () => {
     const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });
     const store = opened.store;

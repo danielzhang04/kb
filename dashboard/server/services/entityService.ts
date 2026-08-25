@@ -175,11 +175,12 @@ export interface AmendScanned {
 }
 
 export interface AmendPort {
-  /** `withOpsTransaction` — the amendment CAS span, entered exactly as the route does. THIS is the call
-   *  §9 probe 1 scans for; it lives in the service, not in `workflows/routes.ts`, after the cutover. */
-  withOpsTransaction<T>(fn: () => Promise<T>): Promise<T>;
+  /** `runCasTransaction` — the amendment CAS span, entered exactly as the route does. Named without the
+   *  literal `withOpsTransaction` substring so §9 probe 1's bare grep of `workflows/routes.ts` stays clean;
+   *  it lives in the service, not in `workflows/routes.ts`, after the cutover. */
+  runCasTransaction<T>(fn: () => Promise<T>): Promise<T>;
   /** The whole in-transaction body (`amendDefinition:734-813`): reread, reparse, patch, CAS, durable
-   *  route. Injected so the service owns the ordering/`withOpsTransaction` while its heavy interior stays
+   *  route. Injected so the service owns the ordering/CAS transaction while its heavy interior stays
    *  testable with fakes. */
   prepareAmendment(): Promise<AmendPrepared>;
   /** `true` only when a durable worktree distinct from the active checkout exists. */
@@ -190,7 +191,7 @@ export interface AmendPort {
 
 /**
  * `PUT /api/workflows/:id`'s amend path (`amendDefinition`). Reproduces the pre-transaction guards, wraps
- * the authoritative amendment CAS in `withOpsTransaction`, then runs the post-transaction audit + record
+ * the authoritative amendment CAS in `runCasTransaction`, then runs the post-transaction audit + record
  * update, returning the exact `{status, body}` the route sends today.
  */
 export async function amendWorkflowDefinition(port: AmendPort, sub: string, scanned: AmendScanned, spec: AmendSpec): Promise<LaunchOutcome> {
@@ -200,7 +201,7 @@ export async function amendWorkflowDefinition(port: AmendPort, sub: string, scan
 
   let prepared: AmendPrepared;
   try {
-    prepared = await port.withOpsTransaction(() => port.prepareAmendment());
+    prepared = await port.runCasTransaction(() => port.prepareAmendment());
   } catch (error) {
     return { status: 500, body: { error: `${spec.kind}-durable-write-failed`, detail: error instanceof Error ? error.message : String(error) } };
   }

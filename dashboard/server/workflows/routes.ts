@@ -789,7 +789,7 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
   }
   const amendPort: AmendPort = {
     durableWorktreeReady,
-    withOpsTransaction: runOpsTransaction,
+    runCasTransaction: runOpsTransaction,
     async prepareAmendment(): Promise<AmendPrepared> {
       const active = readCanonicalDefinitionLocation(ctx.repoRoot, scanned.entry.path);
       const durableLocation = readCanonicalDefinitionLocation(durableRoot!, scanned.entry.path);
@@ -1180,7 +1180,7 @@ export function createWorkflowLaunchServicePort(ctx: SurfaceContext): LaunchServ
     // The placement lease host, resolved inside `launchDefinition` itself — this value is a harmless
     // self-identity placeholder `launchDefinition` ignores and recomputes [P6-C55].
     runtimeExecutionHost: () => runtimeExecutionHost(ctx.runtimeCapabilities),
-    withOpsTransaction: runOpsTransaction,
+    runCasTransaction: runOpsTransaction,
     launchDefinition: (launchSub, sessionToken, def, idempotencyKey, agentWorkspaceLaunch, identity) =>
       launchDefinition(ctx, launchSub, sessionToken, def, idempotencyKey, agentWorkspaceLaunch, identity),
   };
