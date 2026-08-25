@@ -45,6 +45,7 @@ import type { AdvertiseStorePort } from '../api/v1/routes.ts';
 import { createDesktopClient, type DesktopClientTransport } from '../placement/desktopClient.ts';
 import { forwardDesktopReadProxy } from '../placement/desktopReadProxy.ts';
 import { v1Success, v1Error } from '../api/v1/envelope.ts';
+import { decodeCursor, encodeCursor } from '../api/v1/cursor.ts';
 import {
   createLoopbackTlsMaterial, publishLoopbackCertificate, readLoopbackCertificate, revokeLoopbackCertificate,
 } from './p3LoopbackTls.ts';
@@ -59,6 +60,9 @@ export const SIM_PEER_UID_HEADER = 'x-sim-peer-uid';
 const DASH_PORT = 4317;
 export const FIXTURE_SESSION: SessionConfig = { secret: Buffer.alloc(32, 7), ttlMs: 3_600_000 };
 export const operatorBearer = (): string => `Bearer ${mintSession('operator', FIXTURE_SESSION).token}`;
+/** The signed opaque list-cursor key for the fixture VM's `GET /api/v1/runs` [P6-C41] — the SAME
+ *  `decodeCursor`/`encodeCursor` codec production uses, over a fixture-local watermark (§9 stale-cursor). */
+const RUN_LIST_CURSOR_SECRET = Buffer.alloc(32, 9);
 
 export const DEFAULT_NODE_MAP_PATH = fileURLToPath(new URL('./p6HostNodes.fixture.json', import.meta.url));
 
@@ -363,6 +367,22 @@ function composeDaemon(app: FastifyInstance, opts: FixtureDaemonOptions): void {
     registerV1NodeRoutes(app, ctx);
     app.register(async (scope) => {
       scope.addHook('preHandler', operatorRouteOnlyGuard(ctx));
+      // GET /api/v1/runs — kind:'run-list' over the REAL signed opaque cursor codec [P6-C41]: the
+      // watermark is the fixture store's run count, so scheduling a run advances it and stales any
+      // cursor minted before (§9 stale-cursor).
+      scope.get('/api/v1/runs', async (req, reply) => {
+        const query = req.query as Record<string, unknown>;
+        const watermark = String(opts.store.runs.size);
+        let lastKey = '';
+        if (typeof query.cursor === 'string') {
+          const decoded = decodeCursor(query.cursor, RUN_LIST_CURSOR_SECRET, watermark);
+          if (!decoded.ok) return reply.code(decoded.status).send(v1Error(decoded.code, decoded.code, decoded.retryable));
+          if (decoded.payload.kind !== 'run-list') return reply.code(400).send(v1Error('cursor-malformed', 'cursor kind mismatch', false));
+          lastKey = decoded.payload.lastKey;
+        }
+        const nextCursor = encodeCursor({ kind: 'run-list', watermark, filterHash: '', lastKey }, RUN_LIST_CURSOR_SECRET);
+        reply.code(200).send(v1Success('run-list', { runs: [...opts.store.runs.keys()] }, { watermark, nextCursor }));
+      });
       scope.get('/api/v1/runs/:runRef', async (req, reply) => sendRunRead(opts.store, req.params as { runRef: string }, reply));
       scope.get('/api/v1/runs/:runRef/events', async (req, reply) => sendRunEvents(opts.store, req.params as { runRef: string }, reply));
       scope.get('/api/v1/runs/:runRef/gates', async (req, reply) => sendRunGates(opts.store, req.params as { runRef: string }, reply));
@@ -654,10 +674,17 @@ export async function runAttackProbe(caseId: string): Promise<AttackProbeResult>
       await app.close();
       return r.statusCode === 412 ? pass('a foreign-domain (Run) ETag on the host precondition is 412') : fail(`expected 412, got ${r.statusCode}`);
     }
-    case 'stale-cursor':
-      // The stale-cursor refusal is proven at the operator v1 read layer (routes.test.ts); the two-daemon
-      // fixture confirms the fixture stream's watermark advances so a stale replay would not silently pass.
-      return pass('cursor staleness is a 409 at the operator read layer; the fixture stream watermark advances monotonically');
+    case 'stale-cursor': {
+      const { app, store } = await seededVm(now);
+      // Mint a real nextCursor off the operator run-list read, then advance the run-list watermark
+      // (schedule a new run) so the pinned cursor is now stale, and replay it.
+      const first = await app.inject({ method: 'GET', url: '/api/v1/runs', headers: opHeaders(OPERATOR_UID) });
+      const cursor = (first.json() as { meta: { nextCursor: string } }).meta.nextCursor;
+      store.scheduleRun({ runRef: 'run-desk-2', host: 'desktop', requirement: DESKTOP_REQUIREMENT, createdAt: nowIso });
+      const replay = await app.inject({ method: 'GET', url: `/api/v1/runs?cursor=${encodeURIComponent(cursor)}`, headers: opHeaders(OPERATOR_UID) });
+      await app.close();
+      return replay.statusCode === 409 && replay.json().error.code === 'cursor-stale' ? pass('a cursor whose watermark moved is 409 cursor-stale') : fail(`expected 409 cursor-stale, got ${replay.statusCode}`);
+    }
     case 'changed-idempotency-replay': {
       const { app, store } = await seededVm(now);
       // The three node routes are accepted with NO Idempotency-Key; a replayed advertise is a no-op by CAS.
