@@ -146,6 +146,8 @@ describe('App P1 shell', () => {
     }], revision: 'e'.repeat(64), sources: {
       pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
       escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
     } }), { status: 200 });
     const attentionResponse = new Response(JSON.stringify({
       revision: 'c'.repeat(64),
@@ -187,6 +189,8 @@ describe('App P1 shell', () => {
     }], revision: 'e'.repeat(64), sources: {
       pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
       escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
     } }), { status: 200 });
     fetchStub = vi.fn((input: RequestInfo | URL) => String(input) === '/api/inbox' ? Promise.resolve(inboxResponse.clone()) : new Promise<Response>(() => undefined));
     vi.stubGlobal('fetch', fetchStub);
@@ -289,6 +293,8 @@ describe('App P1 shell', () => {
     }], revision: 'e'.repeat(64), sources: {
       pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
       escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
     } }), { status: 200 }));
     render(<SessionProvider><Inbox fetchImpl={inboxFetch} sseFactory={() => ({ addEventListener: () => undefined, close: () => undefined })} /></SessionProvider>);
     const inboxLabel = await screen.findByText('Wake Me Runner Failed');
