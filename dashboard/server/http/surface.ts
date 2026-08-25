@@ -459,6 +459,10 @@ export function makeSurfaceContext(
         // The attempt port is built from the SAME probed host and v2 document the browser PTY routes
         // use, so a Run attempt and a Terminal session are the same kind of record on the same host.
         sessionHost: ptySessionHost, attemptBindings: ptySessionRegistry,
+        // The ONE reconciliation publisher composed above, threaded to the canonical result integrator so
+        // its coordination phase publishes serial `card-transition` intents (P4 §3.4) rather than running
+        // its own cards.py mutation + git commit/push.
+        reconciliationPublisher,
       },
       onChange: (execution, state, serviceCaller) => {
         stopQueueBridge?.();

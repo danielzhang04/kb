@@ -63,6 +63,7 @@ import {
 import { loadPolicyEnvironment } from './environment.ts';
 import type { PolicyEnvironment } from './policy.ts';
 import type { ControlPlaneStore } from './store.ts';
+import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import {
   createBrokerCancellationController,
   createBrokerManagerAdapter,
@@ -307,6 +308,14 @@ export interface BuildActivatedExecutionOptions {
    * ANTHROPIC_API_KEY). A future metered-billing wave supplies a reader here.
    */
   readUsageMicros?: (stageRef: string, attemptRef: string | null) => number;
+  /**
+   * The ONE server-owned reconciliation publisher, composed once in the surface over the same
+   * `controlStore`/ops ports. Threaded through to the canonical result integrator so its coordination
+   * phase publishes its card walk as serial `card-transition` intents instead of running its own
+   * `cards.py` mutation + git commit/push (P4 §3.4 [P4-C-R1]). Absent in headless/test construction that
+   * injects the executor directly; the integrator then fails closed if a canonical card walk is reached.
+   */
+  reconciliationPublisher?: ReconciliationPublisher;
   deps?: Partial<ActivationDeps>;
 }
 
@@ -447,6 +456,11 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     worktreeRoot,
     stateRoot,
     baseCommit,
+    // The canonical coordination phase publishes its card walk through the ONE reconciliation publisher
+    // (P4 §3.4). `readStoreRevision` pins each intent's `expectedStoreRevision` off the SAME control store
+    // the surface composed that publisher over, so the publisher's freshness gate never sees a stale value.
+    reconciliationPublisher: options.reconciliationPublisher,
+    readStoreRevision: () => String(options.controlStore.getControlDocumentMetadata().documentRevision),
   });
 
   const registry = deps.createRegistry();

@@ -9,7 +9,6 @@ import { resolvePython } from './runtime/python.ts';
 // escapes/interpolation) and asks Python to ast.parse it. No source-scraping, no escape
 // false positives.
 import {
-  CANONICAL_RESULT_CARD_SCRIPT,
   CANONICAL_RESULT_VERIFY_SCRIPT,
 } from './control/canonicalResultIntegrator.ts';
 import {
@@ -28,7 +27,6 @@ import {
 } from './approvals/cardVerifier.ts';
 
 const SCRIPTS: Record<string, string> = {
-  CANONICAL_RESULT_CARD_SCRIPT,
   CANONICAL_RESULT_VERIFY_SCRIPT,
   QUEUE_BRIDGE_SELECT_SCRIPT,
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
