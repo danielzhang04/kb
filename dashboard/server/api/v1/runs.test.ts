@@ -8,6 +8,9 @@ import { mintSession, type SessionConfig } from '../../auth/session.ts';
 import { originPlugin } from '../../security/origin.ts';
 import type { SurfaceContext } from '../../http/context.ts';
 import { registerV1OperatorReadRoutes, type ReadRunResult } from './routes.ts';
+import { opCtx, operatorApp, operatorBearer as opBearer } from './_nodeHarness.ts';
+import { encodeCursor } from './cursor.ts';
+import type { RunReadPort } from '../../services/runReadService.ts';
 
 const HOST = '127.0.0.1:4317';
 const ALLOWED = ['http://127.0.0.1:4317'];
@@ -48,5 +51,53 @@ describe('GET /api/v1/runs/:runRef', () => {
       .inject({ method: 'GET', url: '/api/v1/runs/run-x', headers: { host: HOST, authorization: bearer() } });
     expect(res.statusCode).toBe(404);
     expect(JSON.parse(res.body).error.code).toBe('not-found');
+  });
+});
+
+const SECRET = Buffer.alloc(32, 3);
+function listPort(): RunReadPort {
+  return {
+    listRuns: () => [{ runRef: 'run-1' }],
+    getRun: () => ({ ok: true, value: {} }),
+    statusOf: () => 404,
+    lifecycleKind: () => 'active',
+    workflowRefIndex: () => new Map(),
+    runDto: (r) => r as never,
+    runDisplay: (d) => d,
+    runDetailDto: () => ({}),
+    executionPosture: () => ({}),
+    async replayEvents() { return { revision: 'r' }; },
+  };
+}
+
+describe('GET /api/v1/runs — list + signed opaque cursor [§3.4:209, P6-C41]', () => {
+  const ctx = () => opCtx({ runReadPort: listPort(), runListWatermark: () => 'wm-1', cursorSecret: SECRET });
+
+  it('200 kind:run-list with a watermark and a fresh nextCursor', async () => {
+    const res = await operatorApp(ctx(), 'reads').inject({ method: 'GET', url: '/api/v1/runs', headers: { host: HOST, authorization: opBearer() } });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.kind).toBe('run-list');
+    expect(body.meta.watermark).toBe('wm-1');
+    expect(typeof body.meta.nextCursor).toBe('string');
+  });
+
+  it('409 cursor-stale when the cursor watermark has moved', async () => {
+    const staleCursor = encodeCursor({ kind: 'run-list', watermark: 'wm-OLD', filterHash: '', lastKey: '' }, SECRET);
+    const res = await operatorApp(ctx(), 'reads').inject({ method: 'GET', url: `/api/v1/runs?cursor=${encodeURIComponent(staleCursor)}`, headers: { host: HOST, authorization: opBearer() } });
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error.code).toBe('cursor-stale');
+  });
+
+  it('400 cursor-malformed on a hand-edited cursor', async () => {
+    const res = await operatorApp(ctx(), 'reads').inject({ method: 'GET', url: '/api/v1/runs?cursor=not.a.cursor', headers: { host: HOST, authorization: opBearer() } });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.code).toBe('cursor-malformed');
+  });
+
+  it('accepts a fresh cursor (round-tripped) and returns 200', async () => {
+    const fresh = encodeCursor({ kind: 'run-list', watermark: 'wm-1', filterHash: '', lastKey: 'run-1' }, SECRET);
+    const res = await operatorApp(ctx(), 'reads').inject({ method: 'GET', url: `/api/v1/runs?cursor=${encodeURIComponent(fresh)}`, headers: { host: HOST, authorization: opBearer() } });
+    expect(res.statusCode).toBe(200);
   });
 });

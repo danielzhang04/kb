@@ -37,6 +37,17 @@ import { submitReport } from '../../placement/reportService.ts';
 import { decodeHostAdvertisement, type HostAdvertisement, type HostKind } from '../../placement/contracts.ts';
 import type { LaunchServicePort, LaunchServiceInput } from '../../services/launchService.ts';
 import { launchService } from '../../services/launchService.ts';
+import type { EntityListPort, AgentDetailPort, WorkflowDetailPort, SubmitBuilderPort } from '../../services/entityService.ts';
+import { readEntityList, readAgentDetail, readWorkflowDetail, createAgent, updateAgent, createWorkflow, updateWorkflowBuilder } from '../../services/entityService.ts';
+import type { RunReadPort } from '../../services/runReadService.ts';
+import { listRuns, replayRunEvents, respondHumanRequestRoute, type RespondPort } from '../../services/runReadService.ts';
+import type { ScheduleServicePort } from '../../services/scheduleService.ts';
+import { listSchedules, createSchedule, setScheduleArmed, deleteSchedule } from '../../services/scheduleService.ts';
+import type { InboxServicePort } from '../../services/inboxService.ts';
+import { readInboxRoute } from '../../services/inboxService.ts';
+import type { HealthServicePort } from '../../services/healthService.ts';
+import { readHealth } from '../../services/healthService.ts';
+import type { ServiceReply } from '../../services/scheduleService.ts';
 import { ContractDecodeError } from '../../write/durableManifest.ts';
 import {
   decodeClaimRequest,
@@ -44,6 +55,8 @@ import {
   runEtag,
   type RunEtag,
 } from './contracts.ts';
+import { isIdempotencyKey } from './idempotency.ts';
+import { decodeCursor, encodeCursor } from './cursor.ts';
 import { v1Error, v1Success } from './envelope.ts';
 
 const LONG_POLL_TIMEOUT_MS = 35_000;
@@ -82,6 +95,43 @@ export interface V1SurfaceDeps {
   // --- operator ports ---
   readonly readRun?: (subject: string, runRef: string) => ReadRunResult;
   readonly launchPort?: LaunchServicePort;
+  // agents (§6): list/detail reads + builder create/update mutations
+  readonly agentListPort?: EntityListPort;
+  readonly agentDetailPort?: AgentDetailPort;
+  readonly submitAgent?: SubmitBuilderPort;
+  readonly agentDeclarationFor?: (id: string) => unknown | undefined;
+  readonly agentFirstProject?: () => string | undefined;
+  // workflows (§6): list/detail reads + builder create/update
+  readonly workflowListPort?: EntityListPort;
+  readonly workflowDetailPort?: WorkflowDetailPort;
+  readonly submitWorkflow?: SubmitBuilderPort;
+  readonly workflowExists?: (id: string) => boolean;
+  readonly workflowScannedFor?: (id: string) => { def: unknown | null; entry: { project: string } } | null;
+  // runs list + events + human-response
+  readonly runReadPort?: RunReadPort;
+  readonly runListWatermark?: () => string;
+  readonly cursorSecret?: Buffer;
+  readonly respondPort?: RespondPort;
+  // schedules / inbox / health
+  readonly schedulePort?: ScheduleServicePort;
+  readonly inboxPort?: InboxServicePort;
+  readonly healthPort?: HealthServicePort;
+  // deployments + asset-pulls (T3 arm reuses the shipped ceremony vocabulary — ceremonyId+assertion)
+  readonly deploymentPort?: DeploymentActionPort;
+  readonly assetPullPort?: AssetPullActionPort;
+}
+
+/** The injected deployment-action port: read-only inspect + the T3-gated transitions. The route enforces
+ *  the fail-closed T3 ceremony (403 ceremony-unavailable without an assertion) BEFORE calling this. */
+export interface DeploymentActionPort {
+  inspect(ref: string): ServiceReply;
+  transition(ref: string, action: 'confirm' | 'deploy' | 'abort' | 'acknowledge' | 'close-ptys-and-continue', body: unknown): Promise<ServiceReply>;
+}
+
+/** The injected asset-pull port: read-only inspect + the pull/retry transitions. */
+export interface AssetPullActionPort {
+  inspect(intentRef: string): ServiceReply;
+  transition(intentRef: string, action: 'pull' | 'retry', body: unknown): Promise<ServiceReply>;
 }
 
 function nowIso(ctx: SurfaceContext): string {
@@ -318,14 +368,131 @@ function operatorSubject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
 }
 
+function stripQuotes(etag: string | undefined): string | undefined {
+  if (etag === undefined) return undefined;
+  return etag.startsWith('"') && etag.endsWith('"') ? etag.slice(1, -1) : etag;
+}
+
+/**
+ * Map a W2-service `ServiceReply` into the v1 envelope. `metaField` places the service ETag into
+ * `meta.etag` (item kinds) or `meta.watermark` (list/aggregate kinds); a `304` keeps its ETag header and
+ * no body; a 4xx/5xx becomes a `v1Error` whose code is the service body's `error`. `meta` fields not
+ * meaningful to the kind are ABSENT, never null.
+ */
+function sendServiceReply(
+  reply: FastifyReply, kind: string, sr: ServiceReply, metaField: 'etag' | 'watermark' | null,
+): void {
+  if (sr.status === 304) {
+    if (sr.etag) reply.header('etag', sr.etag);
+    reply.code(304).send();
+    return;
+  }
+  if (sr.status >= 200 && sr.status < 300) {
+    const opts: { etag?: string; watermark?: string } = {};
+    const value = stripQuotes(sr.etag);
+    if (metaField === 'etag' && value !== undefined) opts.etag = value;
+    if (metaField === 'watermark' && value !== undefined) opts.watermark = value;
+    // Also expose the raw (quoted) service ETag as the transport header, so a conditional GET can
+    // round-trip it back as `If-None-Match` and get the service's own 304.
+    if (sr.etag) reply.header('etag', sr.etag);
+    reply.code(sr.status).send(v1Success(kind, sr.body, opts));
+    return;
+  }
+  const body = (sr.body ?? {}) as Record<string, unknown>;
+  const code = typeof body.error === 'string' ? body.error : 'error';
+  reply.code(sr.status).send(v1Error(code, code, sr.status >= 500));
+}
+
+const ifNoneMatchOf = (req: FastifyRequest): string | undefined => headerValue(req, 'if-none-match');
+
+/** §3.4 wire contract: every operator mutation carrying a body requires a well-formed `Idempotency-Key`
+ *  header. An absent or off-grammar key is refused BEFORE any service call. The node CAS/seq-pinned routes
+ *  are exempt and never reach this [P6-C69]. Returns the key, or renders the refusal and returns null. */
+function requireIdempotencyKey(req: FastifyRequest, reply: FastifyReply): string | null {
+  const key = headerValue(req, 'idempotency-key');
+  if (!isIdempotencyKey(key)) {
+    sendError(reply, 400, 'idempotency-key-required', 'a well-formed Idempotency-Key header is required', false);
+    return null;
+  }
+  return key;
+}
+
+/** Resolve the operator subject or render `401 unauthenticated`. */
+function requireOperator(req: FastifyRequest, reply: FastifyReply): string | null {
+  const subject = operatorSubject(req);
+  if (subject === null) {
+    sendError(reply, 401, 'unauthenticated', 'operator session required', false);
+    return null;
+  }
+  return subject;
+}
+
 export function registerV1OperatorReadRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   scope.addHook('preHandler', operatorRouteOnlyGuard(ctx));
 
-  // GET /api/v1/runs/:runRef — kind:'run', meta.etag = run:<runRef>:<version>. This is the SAMPLE operator
-  // route under /api/v1/runs/**, the shared prefix that proves the peer-uid split (operator-route-only).
+  // GET /api/v1/agents — kind:'agent-list', meta.watermark = the definitions-list revision.
+  scope.get('/api/v1/agents', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.agentListPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'agent list unavailable', false);
+    sendServiceReply(reply, 'agent-list', readEntityList(port, ifNoneMatchOf(req)), 'watermark');
+  });
+
+  // GET /api/v1/agents/:id — kind:'agent', meta.etag = <source hash>.
+  scope.get('/api/v1/agents/:id', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.agentDetailPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'agent detail unavailable', false);
+    sendServiceReply(reply, 'agent', readAgentDetail(port, (req.params as { id: string }).id, ifNoneMatchOf(req)), 'etag');
+  });
+
+  // GET /api/v1/workflows — kind:'workflow-list'.
+  scope.get('/api/v1/workflows', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.workflowListPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'workflow list unavailable', false);
+    sendServiceReply(reply, 'workflow-list', readEntityList(port, ifNoneMatchOf(req)), 'watermark');
+  });
+
+  // GET /api/v1/workflows/:id — kind:'workflow' (carries the stage graph).
+  scope.get('/api/v1/workflows/:id', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.workflowDetailPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'workflow detail unavailable', false);
+    sendServiceReply(reply, 'workflow', readWorkflowDetail(port, (req.params as { id: string }).id, ifNoneMatchOf(req)), 'etag');
+  });
+
+  // GET /api/v1/runs — kind:'run-list' with the signed opaque cursor [§3.4:209]; a moved watermark is
+  // 409 cursor-stale, a hand-edited cursor 400 cursor-malformed [P6-C41].
+  scope.get('/api/v1/runs', async (req, reply) => {
+    const subject = requireOperator(req, reply);
+    if (subject === null) return;
+    const port = ctx.v1?.runReadPort;
+    const secret = ctx.v1?.cursorSecret;
+    const watermarkOf = ctx.v1?.runListWatermark;
+    if (port === undefined || secret === undefined || watermarkOf === undefined) {
+      return sendError(reply, 404, 'not-found', 'run list unavailable', false);
+    }
+    const watermark = watermarkOf();
+    const query = req.query as Record<string, unknown>;
+    let lastKey = '';
+    if (typeof query.cursor === 'string') {
+      const decoded = decodeCursor(query.cursor, secret, watermark);
+      if (!decoded.ok) return sendError(reply, decoded.status, decoded.code, decoded.code, decoded.retryable);
+      if (decoded.payload.kind !== 'run-list') return sendError(reply, 400, 'cursor-malformed', 'cursor kind mismatch', false);
+      lastKey = decoded.payload.lastKey;
+    }
+    const sr = listRuns(port, subject, { includeArchived: query.includeArchived });
+    if (sr.status !== 200) return sendServiceReply(reply, 'run-list', sr, null);
+    const nextCursor = encodeCursor({ kind: 'run-list', watermark, filterHash: '', lastKey }, secret);
+    reply.code(200).send(v1Success('run-list', sr.body, { watermark, nextCursor }));
+  });
+
+  // GET /api/v1/runs/:runRef — kind:'run', meta.etag = run:<runRef>:<version>. The SAMPLE operator route
+  // under /api/v1/runs/**, the shared prefix that proves the peer-uid split (operator-route-only).
   scope.get('/api/v1/runs/:runRef', async (req, reply) => {
-    const subject = operatorSubject(req);
-    if (subject === null) return sendError(reply, 401, 'unauthenticated', 'operator session required', false);
+    const subject = requireOperator(req, reply);
+    if (subject === null) return;
     const read = ctx.v1?.readRun;
     if (read === undefined) return sendError(reply, 404, 'not-found', 'run read unavailable', false);
     const runRef = (req.params as { runRef: string }).runRef;
@@ -339,6 +506,68 @@ export function registerV1OperatorReadRoutes(scope: FastifyInstance, ctx: Surfac
       throw err;
     }
     reply.code(200).send(v1Success('run', result.data, { etag }));
+  });
+
+  // GET /api/v1/runs/:runRef/events — cursor replay; Accept: text/event-stream selects the same source.
+  scope.get('/api/v1/runs/:runRef/events', async (req, reply) => {
+    const subject = requireOperator(req, reply);
+    if (subject === null) return;
+    const port = ctx.v1?.runReadPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'run events unavailable', false);
+    const runRef = (req.params as { runRef: string }).runRef;
+    const query = req.query as Record<string, unknown>;
+    const sr = await replayRunEvents(port, subject, runRef, query, ifNoneMatchOf(req));
+    const accept = headerValue(req, 'accept') ?? '';
+    if (sr.status === 200 && accept.includes('text/event-stream')) {
+      // The SAME replay page, framed as SSE from the same source [§6]. Live fold-in remains the hub's job.
+      reply.raw.setHeader('content-type', 'text/event-stream');
+      reply.raw.setHeader('cache-control', 'no-cache');
+      reply.raw.write(`event: replay\ndata: ${JSON.stringify(sr.body)}\n\n`);
+      reply.raw.end();
+      return;
+    }
+    sendServiceReply(reply, 'run-events', sr, 'watermark');
+  });
+
+  // GET /api/v1/schedules — kind:'schedule-list', meta.watermark = schedules:<scheduleCollectionRevision>.
+  scope.get('/api/v1/schedules', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.schedulePort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'schedule list unavailable', false);
+    sendServiceReply(reply, 'schedule-list', await listSchedules(port, ifNoneMatchOf(req)), 'watermark');
+  });
+
+  // GET /api/v1/inbox — kind:'inbox'.
+  scope.get('/api/v1/inbox', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.inboxPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'inbox unavailable', false);
+    const sr = await readInboxRoute(port, (req.query as Record<string, unknown>).refresh);
+    sendServiceReply(reply, 'inbox', sr, null);
+  });
+
+  // GET /api/v1/health — kind:'health'; the aggregate watermark is NEVER accepted for mutation.
+  scope.get('/api/v1/health', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.healthPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'health unavailable', false);
+    sendServiceReply(reply, 'health', await readHealth(port, ifNoneMatchOf(req)), 'watermark');
+  });
+
+  // GET /api/v1/deployments/:ref/inspect — read-only projection.
+  scope.get('/api/v1/deployments/:ref/inspect', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.deploymentPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'deployment inspect unavailable', false);
+    sendServiceReply(reply, 'deployment', port.inspect((req.params as { ref: string }).ref), 'etag');
+  });
+
+  // GET /api/v1/asset-pulls/:intentRef/inspect — read-only projection.
+  scope.get('/api/v1/asset-pulls/:intentRef/inspect', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    const port = ctx.v1?.assetPullPort;
+    if (port === undefined) return sendError(reply, 404, 'not-found', 'asset-pull inspect unavailable', false);
+    sendServiceReply(reply, 'asset-pull', port.inspect((req.params as { intentRef: string }).intentRef), 'etag');
   });
 }
 
@@ -375,6 +604,132 @@ export function registerV1OperatorMutationRoutes(scope: FastifyInstance, ctx: Su
       : typeof outcome.body.reason === 'string' ? outcome.body.reason : 'launch-refused';
     reply.code(outcome.status).send(v1Error(code, code, outcome.status >= 500));
   });
+
+  // POST /api/v1/agents — builder create (Idempotency-Key required, body carries expectedCollectionRevision).
+  scope.post('/api/v1/agents', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const submit = ctx.v1?.submitAgent;
+    if (submit === undefined) return sendError(reply, 503, 'launch-unavailable', 'agent builder unavailable', true);
+    sendServiceReply(reply, 'agent', await createAgent(submit, req.body), 'etag');
+  });
+
+  // PUT /api/v1/agents/:id — builder update (If-Match item ETag lives in body.expectedSourceRevision).
+  scope.put('/api/v1/agents/:id', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const submit = ctx.v1?.submitAgent;
+    if (submit === undefined) return sendError(reply, 503, 'launch-unavailable', 'agent builder unavailable', true);
+    const id = (req.params as { id: string }).id;
+    const declaration = ctx.v1?.agentDeclarationFor?.(id);
+    const firstProject = ctx.v1?.agentFirstProject?.();
+    sendServiceReply(reply, 'agent', await updateAgent(submit, declaration, id, req.body, firstProject), 'etag');
+  });
+
+  // POST /api/v1/workflows — builder create.
+  scope.post('/api/v1/workflows', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const submit = ctx.v1?.submitWorkflow;
+    const exists = ctx.v1?.workflowExists;
+    if (submit === undefined || exists === undefined) return sendError(reply, 503, 'launch-unavailable', 'workflow builder unavailable', true);
+    sendServiceReply(reply, 'workflow', await createWorkflow(submit, req.body, exists), 'etag');
+  });
+
+  // PUT /api/v1/workflows/:id — builder update branch (the amend branch is served by the same service).
+  scope.put('/api/v1/workflows/:id', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const submit = ctx.v1?.submitWorkflow;
+    if (submit === undefined) return sendError(reply, 503, 'launch-unavailable', 'workflow builder unavailable', true);
+    const id = (req.params as { id: string }).id;
+    const scanned = ctx.v1?.workflowScannedFor?.(id) ?? null;
+    sendServiceReply(reply, 'workflow', await updateWorkflowBuilder(submit, scanned, id, req.body), 'etag');
+  });
+
+  // POST /api/v1/schedules — create; body carries the NUMERIC expectedCollectionRevision precondition
+  // [§3.4:433]. A foreign-domain value (e.g. a Run ETag string) fails the numeric wall -> 400.
+  scope.post('/api/v1/schedules', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const port = ctx.v1?.schedulePort;
+    if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'schedule service unavailable', true);
+    sendServiceReply(reply, 'schedule', await createSchedule(port, req.body), 'watermark');
+  });
+
+  // POST /api/v1/schedules/:id/arm and /disarm — closed armed body with expectedVersion precondition.
+  for (const armed of [true, false] as const) {
+    scope.post(`/api/v1/schedules/:id/${armed ? 'arm' : 'disarm'}`, async (req, reply) => {
+      if (requireOperator(req, reply) === null) return;
+      if (requireIdempotencyKey(req, reply) === null) return;
+      const port = ctx.v1?.schedulePort;
+      if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'schedule service unavailable', true);
+      sendServiceReply(reply, 'schedule', await setScheduleArmed(port, (req.params as { id: string }).id, req.body, armed), 'etag');
+    });
+  }
+
+  // DELETE /api/v1/schedules/:id — closed delete body with expectedVersion precondition.
+  scope.delete('/api/v1/schedules/:id', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const port = ctx.v1?.schedulePort;
+    if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'schedule service unavailable', true);
+    sendServiceReply(reply, 'schedule', await deleteSchedule(port, (req.params as { id: string }).id, req.body), 'etag');
+  });
+
+  // POST /api/v1/runs/:runRef/human-requests/:requestRef/respond — operator human-response. A node/host
+  // identity can never reach it: the operatorRouteOnlyGuard refuses the node-proxy peer 403
+  // operator-route-only (the §3.6 host-response ban in practice — a host cannot respond).
+  scope.post('/api/v1/runs/:runRef/human-requests/:requestRef/respond', async (req, reply) => {
+    const subject = requireOperator(req, reply);
+    if (subject === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const port = ctx.v1?.respondPort;
+    if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'human-response unavailable', true);
+    const requestRef = (req.params as { requestRef: string }).requestRef;
+    const origin = headerValue(req, 'origin') ?? '';
+    sendServiceReply(reply, 'human-response', await respondHumanRequestRoute(port, subject, requestRef, req.body, origin), null);
+  });
+
+  // Deployment T3 arm — confirm/deploy/abort/close-ptys are T3: fail-closed 403 ceremony-unavailable
+  // WITHOUT a ceremony assertion (the shipped ceremony vocabulary: body.ceremonyId + body.assertion),
+  // NO new ceremony vocabulary. acknowledge is a non-T3 operator transition.
+  for (const action of ['confirm', 'deploy', 'abort', 'close-ptys-and-continue'] as const) {
+    scope.post(`/api/v1/deployments/:ref/${action}`, async (req, reply) => {
+      if (requireOperator(req, reply) === null) return;
+      if (requireIdempotencyKey(req, reply) === null) return;
+      const port = ctx.v1?.deploymentPort;
+      if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'deployment service unavailable', true);
+      if (!hasCeremonyAssertion(req.body)) return sendError(reply, 403, 'ceremony-unavailable', 'a passkey ceremony assertion is required for this T3 deployment action', false);
+      sendServiceReply(reply, 'deployment', await port.transition((req.params as { ref: string }).ref, action, req.body), 'etag');
+    });
+  }
+  scope.post('/api/v1/deployments/:ref/acknowledge', async (req, reply) => {
+    if (requireOperator(req, reply) === null) return;
+    if (requireIdempotencyKey(req, reply) === null) return;
+    const port = ctx.v1?.deploymentPort;
+    if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'deployment service unavailable', true);
+    sendServiceReply(reply, 'deployment', await port.transition((req.params as { ref: string }).ref, 'acknowledge', req.body), 'etag');
+  });
+
+  // POST /api/v1/asset-pulls/:intentRef/(pull|retry).
+  for (const action of ['pull', 'retry'] as const) {
+    scope.post(`/api/v1/asset-pulls/:intentRef/${action}`, async (req, reply) => {
+      if (requireOperator(req, reply) === null) return;
+      if (requireIdempotencyKey(req, reply) === null) return;
+      const port = ctx.v1?.assetPullPort;
+      if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'asset-pull service unavailable', true);
+      sendServiceReply(reply, 'asset-pull', await port.transition((req.params as { intentRef: string }).intentRef, action, req.body), 'etag');
+    });
+  }
+}
+
+/** True when the body carries the shipped passkey ceremony assertion pair — the SAME vocabulary the
+ *  human-response route uses (`ceremonyId` + `assertion`); no new ceremony field is introduced [P5 reuse]. */
+function hasCeremonyAssertion(body: unknown): boolean {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
+  const rec = body as Record<string, unknown>;
+  return rec.ceremonyId != null && rec.assertion != null;
 }
 
 /** The single composition entry the checkpoint names. `where` selects which of the three scopes to mount,

@@ -5,10 +5,16 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { SurfaceContext } from '../../http/context.ts';
 import { makeNodeRateGuard, makeNodeReadRateGuard } from '../../http/context.ts';
+import { requireSession } from '../../http/middleware.ts';
+import { mintSession, type SessionConfig } from '../../auth/session.ts';
+import { originPlugin } from '../../security/origin.ts';
 import { decodeHostNodeMap, type HostNodeMap } from '../../auth/hostNodeMapContracts.ts';
 import type { HostNodeMapLoad } from '../../auth/hostNodeMap.ts';
 import type { PlacementLease } from '../../placement/contracts.ts';
-import { registerV1NodeRoutes, type V1SurfaceDeps } from './routes.ts';
+import {
+  registerV1NodeRoutes, registerV1OperatorReadRoutes, registerV1OperatorMutationRoutes,
+  type V1SurfaceDeps,
+} from './routes.ts';
 
 export const NODE_PROXY_UID = 1001;
 export const DASH_PORT = 4317;
@@ -72,4 +78,46 @@ export function advertisementBody(): Record<string, unknown> {
     daemonVersion: 'vm-1.2.3', reportedAt: NOW, connectors: [], skills: [], filesystemRoots: [],
     pty: true, gpu: false, clis: { claude: 'ready', codex: 'ready' },
   };
+}
+
+// --- operator-scope harness -----------------------------------------------------------------------
+
+export const OP_SESSION: SessionConfig = { secret: Buffer.alloc(32, 5), ttlMs: 600_000 };
+export const operatorBearer = (): string => `Bearer ${mintSession('operator', OP_SESSION).token}`;
+/** A valid Idempotency-Key header value (§3.4 grammar). */
+export const IDEM = 'idem-key-abcdef123456';
+
+/** Build a SurfaceContext for the operator scopes with the injected v1 ports. `nodeProxyUid` is set so the
+ *  operator-route-only peer guard is live; pass a non-proxy `peerUid` (default) for normal operator calls. */
+export function opCtx(v1: Partial<V1SurfaceDeps> = {}, peerUid = 0): SurfaceContext {
+  return {
+    allowedOrigins: ALLOWED,
+    sessionConfig: OP_SESSION,
+    nodeProxyUid: NODE_PROXY_UID,
+    now: () => new Date(NOW),
+    v1: { readTables: tablesFor(peerUid), now: () => new Date(NOW), ...v1 },
+  } as unknown as SurfaceContext;
+}
+
+/** An app mounting the operator READ or MUTATION scope exactly as index.ts / surface.ts do: originPlugin +
+ *  requireSession, then the registrar. The loopback 4-tuple is stamped so the operator-route-only peer
+ *  guard can run against the synthetic table. */
+export function operatorApp(ctx: SurfaceContext, which: 'reads' | 'mutations'): FastifyInstance {
+  const app = Fastify({ logger: false });
+  app.addHook('onRequest', async (req) => {
+    const s = req.socket as unknown as Record<string, unknown>;
+    s.remoteAddress = '127.0.0.1'; s.remotePort = PEER_PORT; s.localAddress = '127.0.0.1'; s.localPort = DASH_PORT;
+  });
+  app.register(async (scope) => {
+    originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
+    scope.addHook('preHandler', requireSession(ctx.sessionConfig));
+    if (which === 'reads') registerV1OperatorReadRoutes(scope, ctx);
+    else registerV1OperatorMutationRoutes(scope, ctx);
+  });
+  return app;
+}
+
+/** Standard operator request headers (host + bearer + a valid Idempotency-Key for mutations). */
+export function opHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { host: HOST, authorization: operatorBearer(), 'idempotency-key': IDEM, ...extra };
 }
