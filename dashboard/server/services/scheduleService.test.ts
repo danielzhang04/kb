@@ -8,7 +8,9 @@ import {
 import type { ScheduleSnapshot } from '../schedules/contracts.ts';
 
 class ScheduleServiceError extends Error {
-  constructor(readonly status: number, readonly code: string) { super(code); }
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string) { super(code); this.status = status; this.code = code; }
 }
 
 function snapshot(rev: number, schedules: unknown[] = []): ScheduleSnapshot {

@@ -11,7 +11,7 @@ import {
 
 const FIELDS = { humanName: 'H', purpose: 'P', model: 'm', profile: 'p', tools: [], skills: [], connectors: [], filesystemRoots: [] };
 
-class BuilderFailure extends Error { constructor(readonly status: number, message: string) { super(message); } }
+class BuilderFailure extends Error { readonly status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
 
 // AmendPort['withOpsTransaction'] is generic (<T>(fn: () => Promise<T>) => Promise<T>); a vi.fn() mock
 // closing over one concrete T can't satisfy that generic signature. This passthrough keeps the mock's
