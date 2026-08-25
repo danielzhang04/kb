@@ -792,7 +792,11 @@ async function amendDefinition(ctx: SurfaceContext, sub: string, scanned: Scanne
           { runGit: ctx.saveGit, openPr: ctx.openPr, message: spec.routeMessage },
         ));
         if (receipt.mode !== 'pr') throw new Error('workflow amendment must publish through a PR');
-        const durable = { branch: receipt.branch, pr: receipt.pr };
+        // W6.1 widened `AsyncPrResult`/`receipt.pr` to the pinned `{owner,repo,number,url}`, but the
+        // amendment record stores (and the launch outcome exposes) only the display pair `{url,number}`
+        // — and `amendmentStore.validate` REJECTS any extra `pr` key. Project down to that pair before
+        // it reaches the store, so a fully-pinned receipt does not trip the state write.
+        const durable = { branch: receipt.branch, pr: { url: receipt.pr.url, number: receipt.pr.number } };
         try { ctx.definitionAmendmentStore.update({ ...pending, phase: 'audit-pending', branch: durable.branch, pr: durable.pr }); }
         catch (error) { return { outcome: { status: 500, body: { ok: false, status: 'recovery-required', stateStatus: 'update-failed', error: 'assignment-amendment-state-write-failed', path: scanned.entry.path, baseSourceHash: spec.expectedSourceHash, proposedSourceHash, branch: durable.branch, pr: durable.pr, detail: error instanceof Error ? error.message : String(error) } } }; }
         return { proposedSourceHash, proposalHash, old: patched.old, riskTier: highestTier(reparsed.value), durable };

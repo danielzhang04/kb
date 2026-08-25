@@ -9,8 +9,8 @@ import {
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,
-} from './inbox.ts';
-import type { DriveVerifyDeps, VerifiedCardView } from './inbox.ts';
+} from './cardVerifier.ts';
+import type { DriveVerifyDeps, VerifiedCardView } from './cardVerifier.ts';
 import type { PyRunner, PyRunResult } from '../write/launch.ts';
 
 /** Records every invocation so tests can assert exactly what would have been shelled (or wasn't). */

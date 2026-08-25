@@ -9,6 +9,7 @@ import { createInMemoryControlPlaneStore, type ControlPlaneStore } from '../cont
 import { makeSurfaceContext } from '../http/surface.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
+import { stagingGit } from '../testFixtures/stagingGit.ts';
 import { registerAgents } from './routes.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('agent-route-test-secret-32bytes!'), ttlMs: 60_000 };
@@ -65,8 +66,8 @@ describe('Agent P2 routes', () => {
       appendAuditLocal: (_repo, event) => ({ ts: 'now', ...event }),
       opsGit: (_repo, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n'
         : args.join(' ') === 'rev-parse HEAD' ? `${'a'.repeat(40)}\n` : '',
-      saveGit: (_repo, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '',
-      openPr: async () => ({ url: 'https://example.test/pull/11', number: 11 }),
+      saveGit: stagingGit(),
+      openPr: async () => ({ url: 'https://example.test/pull/11', number: 11, owner: 'danielzhang04', repo: 'kb' }),
       runPy: (_repo, _code, jsonArg) => {
         const op = JSON.parse(jsonArg) as { runId: string; stages: Array<{ id: string }> };
         return { exitCode: 0, stdout: `${JSON.stringify({ runId: op.runId, cards: op.stages.map((stage) => ({ stageId: stage.id, cardId: workflowCardId(op.runId, stage.id), state: 'blocked', cardPath: `queue/inbox/${workflowCardId(op.runId, stage.id)}.md` })) })}\n`, stderr: '' };

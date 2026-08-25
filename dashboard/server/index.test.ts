@@ -78,7 +78,9 @@ const AVAILABLE_PTY = {
   pty: true as const, host: 'desktop' as const, launchers: ['shell' as const],
   roots: ['repo' as const], checkedAt: '2026-08-22T09:00:00.000Z',
 };
-const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
+// Inject an empty-PR `gh` port so the Inbox route reaches no real `gh` subprocess in the matrix test.
+const emptyInboxGh = async () => ({ ok: true, stdout: '[]' });
+const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION, inboxGh: emptyInboxGh });
 const ptyMatrixApp = () => buildApp({
   validateData: false,
   allowedOrigins: [TEST_ORIGIN],
@@ -698,6 +700,10 @@ describe('P1 route matrix', () => {
       '/api/panels/atlas', '/api/panels/loop-status', '/api/panels/schedules',
       '/api/panels/autonomy-ladder', '/api/panels/grades-history?agent=codex-worker',
       '/api/composer/sessions', '/api/composer/sessions/example',
+      // W6.1 [P4-C29, P4-C41]: the five legacy projection routes unregistered from server/index.ts.
+      // `/api/panels/grades-history` above is deletion-only (already 404) and gets no new case.
+      '/api/context-lifecycle', '/api/context-lifecycle/example', '/api/lessons/proposals',
+      '/api/hygiene/report', '/api/model-audit',
     ]) {
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(404);
     }

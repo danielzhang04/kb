@@ -7,15 +7,12 @@ import { registerPlaneA } from './planeA/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { readDeclaredAgentDetails } from './agents/roster.ts';
-import { registerInboxRoutes } from './inbox/routes.ts';
+import { registerInboxRoutes, createInboxRoutePorts } from './inbox/routes.ts';
+import type { SubprocessPort } from './inbox/resolvers.ts';
 import { registerHealthRoutes } from './health/routes.ts';
 import { createHomeRoutePorts, registerHomeRoutes } from './home/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
 import { registerBrainSearch } from './brain/routes.ts';
-import { registerContextLifecycle } from './contextLifecycle/routes.ts';
-import { registerLessons } from './lessons/routes.ts';
-import { registerHygiene } from './hygiene/routes.ts';
-import { registerModelAudit } from './modelAudit/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
@@ -165,6 +162,8 @@ export interface BuildAppOptions {
   browserSessionRefs?: SurfaceContext['browserSessionRefs'];
   controlStore?: ControlPlaneStore;
   fileControlAccess?: FileControlPlaneAccess;
+  /** Test seam only: the `/api/inbox` `gh pr list` subprocess port, so a fixture reaches no real `gh`. */
+  inboxGh?: SubprocessPort;
 }
 
 function createScheduleService(repoRoot: string, store: ControlPlaneStore): ScheduleService {
@@ -243,17 +242,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerAgents(scope, surfaceCtx);
     const schedules = createScheduleService(repoRoot, surfaceCtx.controlStore);
     registerScheduleRoutes(scope, schedules);
-    registerInboxRoutes(scope, surfaceCtx);
-    registerHomeRoutes(scope, createHomeRoutePorts(surfaceCtx, schedules));
+    registerInboxRoutes(scope, surfaceCtx, createInboxRoutePorts(surfaceCtx, options.inboxGh ? { runGh: options.inboxGh } : {}));
+    registerHomeRoutes(scope, createHomeRoutePorts(surfaceCtx, schedules, undefined, options.inboxGh));
     registerHealthRoutes(scope, surfaceCtx);
     if (surfaceCtx.runtimeCapabilities.localTranscripts && surfaceCtx.traceRoot) {
       registerTraceRead(scope, surfaceCtx.traceRoot);
     }
     registerBrainSearch(scope, { repoRoot });
-    registerContextLifecycle(scope);
-    registerLessons(scope, repoRoot);
-    registerHygiene(scope, repoRoot);
-    registerModelAudit(scope);
     registerWorkflows(scope, surfaceCtx);
   });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)

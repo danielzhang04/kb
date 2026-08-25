@@ -26,7 +26,7 @@ import {
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,
-} from './approvals/inbox.ts';
+} from './approvals/cardVerifier.ts';
 
 const SCRIPTS: Record<string, string> = {
   CANONICAL_RESULT_CARD_SCRIPT,

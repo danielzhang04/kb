@@ -104,7 +104,7 @@ describe('Workflow P2 routes', () => {
         if (args[0] === 'commit' || args[0] === 'reset') stagedPaths.length = 0;
         return '';
       },
-      openPr: async () => { prCalls += 1; if (prFailure) throw new Error('PR unavailable'); return { url: 'https://example.test/pull/9', number: 9 }; },
+      openPr: async () => { prCalls += 1; if (prFailure) throw new Error('PR unavailable'); return { url: 'https://example.test/pull/9', number: 9, owner: 'danielzhang04', repo: 'kb' }; },
       runPy: (_root, _code, jsonArg) => {
         const op = JSON.parse(jsonArg) as { runId: string; stages?: Array<{ id: string }>; cardRefs?: string[] };
         if (op.cardRefs) return { exitCode: 0, stdout: `${JSON.stringify({ cards: op.cardRefs.map((cardRef) => ({ cardRef, path: `queue/inbox/${cardRef}.md`, completed: false, changed: false })) })}\n`, stderr: '' };

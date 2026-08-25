@@ -722,20 +722,24 @@ function manifestMessage(manifest: DurablePathManifest): string {
 }
 
 /**
- * The P4 purposes require the pinned `{owner,repo,number,url}`: a malformed `gh` output is a FAILURE,
- * never a half-known PR. The two pre-existing purposes keep the honest partial result until W6.1 makes
- * `owner`/`repo` required across their consumers [P4-C16], which is why the receipt below is the closed
- * `RouteDurableReceipt` for every P4 purpose and the widened legacy arm only for those two.
+ * EVERY PR purpose now requires the pinned `{owner,repo,number,url}`: a malformed `gh` output is a
+ * FAILURE, never a half-known PR (§3.2 "malformed `gh` output is failure"). W6.1 [P4-C16] made
+ * `AsyncPrResult` fully required across the consumers, and closed the last hole by making the two
+ * legacy purposes (`governed-save`, `workflow-amendment`) strict too — a `workflows/routes.ts` receipt
+ * can no longer store a `pr` typed `{owner,repo,number,url}` that is `{}` at runtime. No caller
+ * tolerates a null/partial PR on the `pr` publication path, so there is no non-strict arm and no `as`
+ * cast: an unpinned result throws for every purpose.
  */
-function pinPrResult(result: AsyncPrResult | void, branch: string, strict: boolean): PinnedAsyncPrResult | AsyncPrResult {
-  const pr = result ?? {};
+function pinPrResult(result: AsyncPrResult | void, branch: string): PinnedAsyncPrResult {
+  // A PR opener still returns `void` when it opens nothing, so the working value is a PARTIAL until the
+  // four fields are proven present here.
+  const pr: Partial<AsyncPrResult> = result ?? {};
   const pinned = typeof pr.owner === 'string' && pr.owner.length > 0
     && typeof pr.repo === 'string' && pr.repo.length > 0
     && typeof pr.number === 'number' && Number.isInteger(pr.number) && pr.number > 0
     && typeof pr.url === 'string' && pr.url.length > 0;
   if (pinned) return { owner: pr.owner!, repo: pr.repo!, number: pr.number!, url: pr.url! };
-  if (strict) throw new ManifestContractError(`PR result for '${branch}' is not the pinned {owner,repo,number,url}`);
-  return pr;
+  throw new ManifestContractError(`PR result for '${branch}' is not the pinned {owner,repo,number,url}`);
 }
 
 /**
@@ -974,7 +978,6 @@ export async function routeDurable(
         pr = pinPrResult(
           await openPr(repoRoot, { base: 'main', head: branch, title: message, ...(pin ? { repo: pin } : {}) }),
           branch,
-          replayable,
         );
       } catch (openError) {
         // ONLY a timeout-class failure is recoverable: any other error (auth, validation, a rejected

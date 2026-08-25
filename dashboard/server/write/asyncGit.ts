@@ -87,31 +87,32 @@ export const PUBLISHER_PERMITTED_SUBCOMMANDS: readonly string[] = [
 /**
  * Honest metadata returned by a PR opener when the provider reports it.
  *
- * P4 §3.2 pins this to `{owner,repo,number,url}`. The widening is ADDITIVE here [P4-C16]: `owner` and
- * `repo` are optional until W6.1 makes all four required. `write/branch.ts#routeDurable` already
- * refuses anything less than the complete pinned quadruple, so a malformed `gh` output is a failure
- * rather than a half-known PR.
+ * P4 §3.2 pins this to `{owner,repo,number,url}`, all required [P4-C16, P4-C32]. W2 widened it additively
+ * (adding optional `owner`/`repo`); W6.1 makes all four required across every consumer, so a PR receipt
+ * is either the complete pinned quadruple or absent — never a half-known PR. `parsePrCreateOutput`
+ * returns `null` on a malformed `gh` output, and `write/branch.ts#routeDurable` treats that as failure.
+ * This shape is now identical to {@link import('./durableManifest.ts').PinnedAsyncPrResult}.
  */
 export interface AsyncPrResult {
-  url?: string;
-  number?: number;
-  owner?: string;
-  repo?: string;
+  url: string;
+  number: number;
+  owner: string;
+  repo: string;
 }
 
 /**
  * Parse `gh pr create` output into the pinned PR identity. The ONLY accepted shape is a GitHub PR URL
  * — `https://github.com/<owner>/<repo>/pull/<number>` — from which owner, repo, and number are all
- * derived together. Any other line, a non-GitHub host, or a missing number yields `{}`, which the
+ * derived together. Any other line, a non-GitHub host, or a missing number yields `null`, which the
  * publisher treats as failure; no field is ever guessed from a request or from subject text.
  */
-export function parsePrCreateOutput(output: string): AsyncPrResult {
+export function parsePrCreateOutput(output: string): AsyncPrResult | null {
   const line = output.split(/\r?\n/).map((row) => row.trim()).find((row) => /^https:\/\//.test(row));
-  if (!line) return {};
+  if (!line) return null;
   const match = /^https:\/\/github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d+)$/.exec(line);
-  if (!match) return {};
+  if (!match) return null;
   const number = Number(match[3]);
-  if (!Number.isInteger(number) || number <= 0) return {};
+  if (!Number.isInteger(number) || number <= 0) return null;
   return { url: line, number, owner: match[1]!, repo: match[2]! };
 }
 
@@ -388,6 +389,6 @@ export function createAsyncPrOpener(options: AsyncGitOptions = {}): AsyncPrOpene
     if (req.repo) args.push('--repo', `${req.repo.owner}/${req.repo.repo}`);
     if (req.body) args.push('--body', req.body);
     const output = await runTrackedProcess('gh', args, repoRoot, 'pr create', options);
-    return parsePrCreateOutput(output);
+    return parsePrCreateOutput(output) ?? undefined;
   };
 }

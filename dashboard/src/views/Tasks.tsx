@@ -30,14 +30,13 @@ import {
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
 import { renderMarkdown } from '../lib/markdown';
-import { projectHumanInbox, type HumanInboxItem } from '../../server/tasks/cardProjection';
-import { PLANE_A_RECORDS_KEY, PLANE_A_RUN_ROWS_KEY } from '../lib/planeAKeys';
+import { classifyCardGate, type CardGateItem } from '../../server/tasks/cardProjection';
 import {
   respondToCard,
   verifyApproval,
   type ApprovalChannel,
   type RespondAction,
-} from '../lib/approvalsClient';
+} from '../lib/taskActionsClient';
 import '../styles/views/tasks.css';
 
 /** Cards grouped by state — the shape of `PlaneAIndex.cards`. */
@@ -278,7 +277,7 @@ function CardGate({
   onVerify,
   onRespond,
 }: {
-  item: HumanInboxItem;
+  item: CardGateItem;
   busy: boolean;
   draft: string;
   onDraftChange: (value: string) => void;
@@ -287,7 +286,7 @@ function CardGate({
 }): React.JSX.Element {
   return (
     <section className="v-tasks__gate" aria-label="Waiting on you" data-testid="card-gate">
-      <p className={`v-tasks__eyebrow v-tasks__eyebrow--${item.category}`}>{item.categoryLabel}</p>
+      <p className="v-tasks__eyebrow">{item.label}</p>
       <h3 className="v-tasks__gate-head">{item.status}</h3>
       <p className="v-tasks__gate-reason">{item.reason}</p>
       <p className="v-tasks__gate-next"><strong>Next action</strong> {item.nextAction}</p>
@@ -323,7 +322,7 @@ function CardGate({
         </div>
       ) : null}
 
-      {item.category === 'decision' && item.buttons ? (
+      {item.buttons ? (
         <>
           <p className="v-tasks__truth-note" role="note">
             Evidence verification records/checks an approval. It does not itself start, resume, or complete this workflow.
@@ -513,19 +512,9 @@ export function Tasks({
    * Answered by the SAME projection the Inbox lists from, run over this one card — a second predicate
    * here is exactly how the two surfaces would come to disagree about what needs Daniel.
    */
-  const gateItem = useMemo((): HumanInboxItem | null => {
+  const gateItem = useMemo((): CardGateItem | null => {
     if (!selected) return null;
-    const state = String(selected.meta.state ?? '');
-    return projectHumanInbox({
-      cards: { [state]: [selected] },
-      [PLANE_A_RECORDS_KEY]: {
-        dispatch: { count: 0, cards: 0, byProject: {} },
-        cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
-        grades: { count: 0, rows: [] },
-        [PLANE_A_RUN_ROWS_KEY]: { count: 0, rows: [] },
-      },
-      orgStates: [],
-    }).items[0] ?? null;
+    return classifyCardGate(selected);
   }, [selected]);
 
   /**

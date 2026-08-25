@@ -143,7 +143,10 @@ describe('App P1 shell', () => {
     const inboxResponse = new Response(JSON.stringify({ items: [{
       id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
       subject: { cardId: '68a70000-card' }, related: {}, title: 'wake-me', reason: 'Needs you',
-    }] }), { status: 200 });
+    }], revision: 'e'.repeat(64), sources: {
+      pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+    } }), { status: 200 });
     const attentionResponse = new Response(JSON.stringify({
       revision: 'c'.repeat(64),
       pairs: [
@@ -181,7 +184,10 @@ describe('App P1 shell', () => {
     const inboxResponse = new Response(JSON.stringify({ items: [{
       id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
       subject: { cardId: '68a70000-card' }, related: {}, title: 'wake-me', reason: 'Needs you',
-    }] }), { status: 200 });
+    }], revision: 'e'.repeat(64), sources: {
+      pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+    } }), { status: 200 });
     fetchStub = vi.fn((input: RequestInfo | URL) => String(input) === '/api/inbox' ? Promise.resolve(inboxResponse.clone()) : new Promise<Response>(() => undefined));
     vi.stubGlobal('fetch', fetchStub);
     authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
@@ -280,11 +286,15 @@ describe('App P1 shell', () => {
     const inboxFetch = vi.fn(async () => new Response(JSON.stringify({ items: [{
       id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
       subject: { cardId: '68a70000-card' }, related: {}, title: rawInbox, reason: 'Needs you',
-    }] }), { status: 200 }));
+    }], revision: 'e'.repeat(64), sources: {
+      pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+    } }), { status: 200 }));
     render(<SessionProvider><Inbox fetchImpl={inboxFetch} sseFactory={() => ({ addEventListener: () => undefined, close: () => undefined })} /></SessionProvider>);
     const inboxLabel = await screen.findByText('Wake Me Runner Failed');
+    // The raw id is preserved for hover via the `title` attribute; it is NOT also exposed as a
+    // `data-raw-id` (that unnecessary raw exposure was dropped in Inbox.tsx).
     expect(inboxLabel.getAttribute('title')).toBe(rawInbox);
-    expect(inboxLabel.closest('li')?.getAttribute('data-raw-id')).toBe(rawInbox);
     cleanup();
 
     clearStoredSession();

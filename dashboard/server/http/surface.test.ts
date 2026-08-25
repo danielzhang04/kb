@@ -24,6 +24,7 @@ import type { SurfaceContext } from './context.ts';
 import { mintSession } from '../auth/session.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from '../write/branch.ts';
+import { stagingGit } from '../testFixtures/stagingGit.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type {
@@ -493,8 +494,8 @@ describe('write surface — composition chain', () => {
     ({ app } = buildApp({
       repoRoot,
       appendAudit: audit.fn,
-      saveGit: okGit,
-      openPr: (_r, req) => { prCalls.push(req); },
+      saveGit: stagingGit(),
+      openPr: (_r, req) => { prCalls.push(req); return { url: 'https://github.com/danielzhang04/kb/pull/1', number: 1, owner: 'danielzhang04', repo: 'kb' }; },
     }));
 
     const res = await app.inject({
@@ -820,12 +821,9 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
   it('a normal durable save (no workBranch) still routes to the server work branch', async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'u2-wb-'));
     const pushCalls: string[][] = [];
-    const recordingGit: GitRunner = (_r, args) => {
-      pushCalls.push(args);
-      return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '';
-    };
+    const recordingGit: GitRunner = stagingGit({ onCall: (_r, args) => pushCalls.push(args) });
     const prCalls: { head?: string }[] = [];
-    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => { prCalls.push(req); } }));
+    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => { prCalls.push(req); return { url: 'https://github.com/danielzhang04/kb/pull/2', number: 2, owner: 'danielzhang04', repo: 'kb' }; } }));
     const res = await app.inject({
       method: 'POST',
       url: '/api/write/save',
@@ -849,11 +847,8 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
     ({ app } = buildApp({
       repoRoot: opsRoot,
       durableRepoRoot: durableRoot,
-      saveGit: (repo, args) => {
-        gitRoots.push(repo);
-        return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '';
-      },
-      openPr: () => {},
+      saveGit: stagingGit({ onCall: (repo) => gitRoots.push(repo) }),
+      openPr: () => ({ url: 'https://github.com/danielzhang04/kb/pull/3', number: 3, owner: 'danielzhang04', repo: 'kb' }),
       appendAudit: (repo, event) => {
         auditRoots.push(repo);
         return { ts: '2026-07-18T00:00:00.000Z', ...event };

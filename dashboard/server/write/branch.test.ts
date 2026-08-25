@@ -17,6 +17,7 @@ import {
   PublishedCoordinationCommitError,
   publishVerifiedScheduleMarkerRemoval,
   DEFAULT_WORK_BRANCH,
+  UNPINNED_BASE_COMMIT,
   routeDurable,
   resolveBaseCommit,
   createPersistentRouteReceipts,
@@ -31,7 +32,8 @@ import {
   type PrRequest,
 } from './branch.ts';
 import { derivedDurableBranch, scheduleMirrorOperationKey, type DurablePathManifest } from './durableManifest.ts';
-import { PUBLISHER_PERMITTED_SUBCOMMANDS } from './asyncGit.ts';
+import { buildWorkflowAmendmentManifest } from './durableManifestService.ts';
+import { PUBLISHER_PERMITTED_SUBCOMMANDS, type AsyncPrResult } from './asyncGit.ts';
 
 const MIGRATION_FIXTURES = resolve(import.meta.dirname, '../control/__fixtures__/dv3');
 const MARKER_GOLDEN = readdirSync(MIGRATION_FIXTURES).map((name) => {
@@ -71,8 +73,11 @@ function recorder(branch = 'ops', head = FAKE_HEAD): { runner: GitRunner; calls:
 
 function prRecorder(): { opener: PrOpener; requests: PrRequest[] } {
   const requests: PrRequest[] = [];
+  // A governed-save/workflow-amendment PR is now STRICT [M4]: the opener must return the pinned
+  // {owner,repo,number,url}, exactly as a real `gh pr create` does, or `routeDurable` refuses.
   const opener: PrOpener = (_repoRoot, req) => {
     requests.push(req);
+    return { owner: 'kb-owner', repo: 'kb', number: 7, url: 'https://github.com/kb-owner/kb/pull/7' };
   };
   return { opener, requests };
 }
@@ -1036,8 +1041,30 @@ describe('routeDurable - PR mode over a manifest', () => {
     const manifest = p4Manifest();
     const git = recorder(derivedDurableBranch(manifest)!);
     await expect(routeDurable('/fake/repo', manifest, p4Options({
-      runGit: git.runner, openPr: () => ({ url: 'https://example.invalid/pr/1' }),
+      // Deliberately malformed (missing owner/repo/number) to prove the strict pinned-quadruple rejection;
+      // cast past the now-required AsyncPrResult so the NEGATIVE runtime check is what is exercised.
+      runGit: git.runner, openPr: () => ({ url: 'https://example.invalid/pr/1' } as unknown as import('./asyncGit.ts').AsyncPrResult),
     }))).rejects.toThrow(/not the pinned/);
+  });
+
+  it('[M4] fails a LEGACY workflow-amendment PR whose gh output is not pinned — never a {} receipt', async () => {
+    // The two legacy purposes (governed-save, workflow-amendment) are now STRICT too: a malformed `gh`
+    // output throws instead of returning a `{}` cast, so `workflows/routes.ts` can never store a receipt
+    // whose `pr` is typed `{owner,repo,number,url}` but is `{}` at runtime. No `pr` publication path
+    // tolerates a null/partial PR, so there is no non-strict arm and no `as` cast [M4].
+    const manifest = buildWorkflowAmendmentManifest({
+      operationKey: `orgs/demo/workflows/w.md:${'a'.repeat(64)}`,
+      baseCommit: UNPINNED_BASE_COMMIT,
+      relpaths: ['orgs/demo/workflows/w.md'],
+    });
+    const git = recorder(DEFAULT_WORK_BRANCH);
+    const outcome = await routeDurable('/fake/repo', manifest, {
+      runGit: git.runner,
+      receipts: freshReceipts(),
+      openPr: () => ({ url: 'https://example.invalid/pr/1' } as unknown as AsyncPrResult),
+    }).catch((error: unknown) => error);
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toMatch(/not the pinned/);
   });
 });
 

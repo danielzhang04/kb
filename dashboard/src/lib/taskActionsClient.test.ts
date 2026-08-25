@@ -1,8 +1,8 @@
 /**
- * U2 — approvalsClient: reads the unified Human Inbox feed and drives an explicit verify POST.
+ * U2 — taskActionsClient: drives explicit Tasks card verify/reply/resolve POSTs.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { respondToCard, verifyApproval } from './approvalsClient';
+import { respondToCard, verifyApproval } from './taskActionsClient';
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response;

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -8,8 +7,9 @@ import { runLifecycleKind } from '../control/runLifecycle.ts';
 import type { RunMetadata } from '../control/types.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { requireSession } from '../http/middleware.ts';
-import { projectInbox } from '../inbox/project.ts';
-import { indexRepo } from '../planeA/indexer.ts';
+import { createInboxRoutePorts, readInbox } from '../inbox/routes.ts';
+import type { GitRemoteReader } from '../runtime/repoPin.ts';
+import type { SubprocessPort } from '../inbox/resolvers.ts';
 import { openAttestedScheduleSource } from '../schedules/attestedSource.ts';
 import type { ScheduleService } from '../schedules/service.ts';
 import { projectHome, type ActivationReaderPort, type HomeProjectionPorts } from './project.ts';
@@ -71,7 +71,16 @@ export function createHomeRoutePorts(
   ctx: SurfaceContext,
   schedules: ScheduleService,
   activation: ActivationReaderPort = createActivationReader(),
+  /** Test seam only: the Inbox `gh pr list` port, so a Home fixture reaches no real `gh`. */
+  inboxGh?: SubprocessPort,
+  /** Test seam only: the coordination `git remote get-url origin` reader, so a Home fixture drives the
+   *  composition-time pin without a real checkout. Production leaves it at the real git default. */
+  inboxReadRemote?: GitRemoteReader,
 ): HomeRoutePorts {
+  const inboxPorts = createInboxRoutePorts(ctx, {
+    ...(inboxGh ? { runGh: inboxGh } : {}),
+    ...(inboxReadRemote ? { readRemote: inboxReadRemote } : {}),
+  });
   return {
     sessionConfig: ctx.sessionConfig,
     now: ctx.now,
@@ -94,9 +103,15 @@ export function createHomeRoutePorts(
     },
     inboxCount: {
       async read() {
-        const inbox = projectInbox(indexRepo(ctx.repoRoot));
-        const revision = createHash('sha256').update(JSON.stringify(inbox.items.map((item) => item.revision))).digest('hex');
-        return { revision: `inbox:${revision}`, data: inbox.items.length };
+        // Count the same last-good PR + escalation items the Inbox route serves. A source failure with
+        // no last-good data is UNKNOWN, not zero: throw so Home shows the inbox source unavailable
+        // rather than a false "nothing needs you". A stale-but-non-empty read still counts last-good.
+        const response = await readInbox(inboxPorts, ctx.repoRoot);
+        const anyFailed = response.sources.pr.status === 'failed' || response.sources.escalation.status === 'failed';
+        if (response.items.length === 0 && anyFailed) {
+          throw new Error('inbox source unavailable — refusing a false empty count');
+        }
+        return { revision: `inbox:${response.revision}`, data: response.items.length };
       },
     },
     nextSchedules: {

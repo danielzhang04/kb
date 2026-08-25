@@ -17,6 +17,16 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+/* The text column must be allowed to shrink and wrap so a long PR title never forces the row (and thus
+ * the page) to scroll horizontally at any width. */
+.inbox__row > div {
+  min-width: 0;
+}
+
+.inbox__title {
+  overflow-wrap: anywhere;
+}
+
 .inbox__title,
 .inbox__reason,
 .inbox__empty,
@@ -36,4 +46,97 @@
 
 .inbox__error {
   color: var(--failure);
+}
+
+/* One action per row: escalations get a button, PRs an external link. No accents (dashboard doctrine). */
+.inbox__action {
+  flex: none;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.inbox__action--external {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* The explicit external marker required by design:264. */
+.inbox__external-label {
+  color: var(--muted);
+  font-size: var(--type-meta-size, 0.85em);
+}
+
+/* Per-source health: a failed source keeps the healthy half visible and offers a scoped retry. */
+.inbox__sources {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox__source-health {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.inbox__source-reason {
+  margin: 0;
+  color: var(--muted);
+}
+
+.inbox__retry {
+  flex: none;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Responsive layout for the three checkpoint widths (375 / 768 / 1440).
+ * Phone (<= 480px, covers 375): stack each row so title and action share the full width and the action
+ * spans it, so nothing overflows horizontally. */
+@media (max-width: 480px) {
+  .inbox__row,
+  .inbox__source-health {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 0;
+  }
+
+  .inbox__action,
+  .inbox__retry {
+    align-self: stretch;
+    text-align: center;
+  }
+}
+
+/* Tablet (481–1024px, covers 768): keep the two-column row, tighten the gap. */
+@media (min-width: 481px) and (max-width: 1024px) {
+  .inbox__row,
+  .inbox__source-health {
+    gap: 12px;
+  }
+}
+
+/* Desktop (>= 1025px, covers 1440): cap the reading measure so rows do not stretch edge to edge. */
+@media (min-width: 1025px) {
+  .inbox__list,
+  .inbox__sources {
+    max-width: 960px;
+  }
 }
