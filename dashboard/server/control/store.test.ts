@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import {
   CONTROL_PLANE_ACCEPTED_SIZE_FILENAME,
   ControlStoreLimitError,
+  ControlStoreReadOnlyError,
   AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
   AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
@@ -5327,5 +5328,116 @@ describe('P4 two-phase reconciliation receipt store [P4-C33]', () => {
     const stored = await store.reconciliationReceiptPort().read(intent.idempotencyKey);
     expect(stored?.phase).toBe('published');
     expect((stored as PublishedReconciliationReceipt).result).toEqual(result);
+  });
+});
+
+describe('P5 asset-pull intents — additive collection + CAS [P5-C34]', () => {
+  const INTENT_REF = `assetpull-${'0'.repeat(32)}`;
+  const DIGEST = 'a'.repeat(64);
+  const AT = '2026-08-20T00:00:00.000Z';
+  const createInput = {
+    intentRef: INTENT_REF, runRef: 'run-1', manifestDigest: DIGEST, requestedAt: AT, idempotencyKey: 'k1',
+  };
+  const assetPullRoots: string[] = [];
+  const assetPullHarness = createExistingRootFileStoreHarnessForTest();
+
+  afterEach(() => {
+    assetPullHarness.close();
+    for (const root of assetPullRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  function assetPullFileStore() {
+    const root = mkdtempSync(join(tmpdir(), 'asset-pull-store-'));
+    assetPullRoots.push(root);
+    return { root, path: join(root, 'control', 'control-plane.json'), store: assetPullHarness.open(root) };
+  }
+
+  it('reads a pre-P5 document that lacks the collection, then persists new intents additively', () => {
+    const { root, path, store } = assetPullFileStore();
+    // A pre-P5 control document carries no asset-pull collection, yet reads clean as empty.
+    expect(Object.hasOwn(emptyStoreDocumentForTest(), 'assetPullIntents')).toBe(false);
+    expect(store.listAssetPullIntents()).toEqual([]);
+    expect(store.createAssetPullIntent('asset-pull', createInput).ok).toBe(true);
+    // The additive field materialises only on the first write — no version bump.
+    expect(Object.hasOwn(JSON.parse(readFileSync(path, 'utf8')), 'assetPullIntents')).toBe(true);
+    const reopened = assetPullHarness.open(root);
+    expect(reopened.getAssetPullIntent(INTENT_REF)).toMatchObject({
+      ok: true, value: { state: 'pending', attempts: 0, result: null, manifestDigest: DIGEST },
+    });
+  });
+
+  it('rejects an inexact stored asset-pull shape through file hydration', () => {
+    const { root, path, store } = assetPullFileStore();
+    expect(store.createAssetPullIntent('asset-pull', createInput).ok).toBe(true);
+    const document = JSON.parse(readFileSync(path, 'utf8')) as any;
+    document.assetPullIntents[0].unexpected = true;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => assetPullHarness.open(root)).toThrow(/asset-pull/);
+  });
+
+  it('creates a pending intent, replays on the same intentRef, conflicts on changed content', () => {
+    const store = createInMemoryControlPlaneStore();
+    const first = store.createAssetPullIntent('asset-pull', createInput);
+    expect(first).toMatchObject({ ok: true, value: { state: 'pending', attempts: 0 } });
+    expect(store.createAssetPullIntent('asset-pull', createInput)).toMatchObject({ ok: true, replayed: true });
+    expect(store.createAssetPullIntent('asset-pull', { ...createInput, runRef: 'run-2' }))
+      .toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+  });
+
+  it('dispatches under a pinned (state, attempts) CAS and rejects a stale dispatch with no side effect', () => {
+    const store = createInMemoryControlPlaneStore();
+    store.createAssetPullIntent('asset-pull', createInput);
+    const armed = store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'pending', expectedAttempts: 0, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'pull-assets:x',
+    });
+    expect(armed).toMatchObject({ ok: true, value: { state: 'in-flight', attempts: 1 } });
+    const before = store.getControlDocumentMetadata().documentRevision;
+    // A second dispatch pinned to the now-stale (pending, 0) conflicts and writes nothing.
+    expect(store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'pending', expectedAttempts: 0, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'pull-assets:x',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.getControlDocumentMetadata().documentRevision).toBe(before);
+    expect(store.getAssetPullIntent(INTENT_REF)).toMatchObject({ ok: true, value: { attempts: 1 } });
+  });
+
+  it('refuses a dispatch that would push attempts past the cap of 32', () => {
+    const store = createInMemoryControlPlaneStore();
+    store.createAssetPullIntent('asset-pull', createInput);
+    // Walk the intent to attempts=32/state=failed through the public CAS, then attempt one more dispatch.
+    for (let i = 0; i < 32; i += 1) {
+      const from = i === 0 ? 'pending' : 'failed';
+      const armed = store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+        expectedState: from, expectedAttempts: i, nextState: 'in-flight', attemptsDelta: 1,
+        result: null, idempotencyKey: `k-arm-${i}`,
+      });
+      expect(armed.ok).toBe(true);
+      const settled = store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+        expectedState: 'in-flight', expectedAttempts: i + 1, nextState: 'failed', attemptsDelta: 0,
+        result: { outcome: 'failed', receiptAt: AT, errorCode: 'timeout' }, idempotencyKey: `k-settle-${i}`,
+      });
+      expect(settled.ok).toBe(true);
+    }
+    expect(store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'failed', expectedAttempts: 32, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'k-over',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('keeps the deployment read-only allowlist exactly getDeployment/listDeployments [P5-C33]', () => {
+    // The two deployment WRITES remain reachable on a normal store; only the two reads are allowlisted,
+    // and the two asset-pull writes join them as writer-only, proven by the read-only harness below.
+    const { root, store } = assetPullFileStore();
+    store.createAssetPullIntent('asset-pull', createInput);
+    const readOnly = openFileControlPlaneStore(root, { mode: 'read-only-harness' });
+    expect(readOnly.listAssetPullIntents()).toHaveLength(1);
+    expect(readOnly.getAssetPullIntent(INTENT_REF).ok).toBe(true);
+    expect(() => readOnly.createAssetPullIntent('asset-pull', { ...createInput, intentRef: `assetpull-${'1'.repeat(32)}` }))
+      .toThrow(ControlStoreReadOnlyError);
+    expect(() => readOnly.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'pending', expectedAttempts: 0, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'ro',
+    })).toThrow(ControlStoreReadOnlyError);
   });
 });

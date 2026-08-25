@@ -11,7 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.build_platform_release import BROKER_ARCHIVE, assert_broker_archive, build_release
+from scripts.build_platform_release import (
+    BREAKING_MARKER,
+    BROKER_ARCHIVE,
+    assert_broker_archive,
+    build_release,
+)
 
 
 release_signing_public = types.ModuleType("release_signing_public")
@@ -281,6 +286,40 @@ def test_release_refuses_a_missing_broker_archive(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="kb-shell-broker.tar.gz"):
         build_release(source, VERSION, tmp_path / f"kb-platform-{VERSION}.tar.gz",
                       tmp_path / "attestation.json", host_platform="linux")
+
+
+def test_breaking_marker_ships_and_is_manifest_covered_when_source_carries_it(tmp_path: Path):
+    """`BREAKING` at the source root rides into the release tree, covered by MANIFEST.sha256."""
+    source = release_source(tmp_path)
+    (source / BREAKING_MARKER).write_text("state schema bump\n", encoding="utf-8")
+    output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
+    build_release(source, VERSION, output, tmp_path / "attestation.json", host_platform="linux")
+    with tarfile.open(output, "r:gz") as archive:
+        names = set(archive.getnames())
+        manifest = archive.extractfile("MANIFEST.sha256").read().decode("utf-8")
+    assert BREAKING_MARKER in names
+    digest = hashlib.sha256((source / BREAKING_MARKER).read_bytes()).hexdigest()
+    assert f"{digest}  {BREAKING_MARKER}\n" in manifest
+
+
+def test_no_breaking_marker_when_source_lacks_it(tmp_path: Path):
+    """The marker is additive: a release with no `BREAKING` source file ships none [P5-C42]."""
+    source = release_source(tmp_path)
+    assert not (source / BREAKING_MARKER).exists()
+    output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
+    build_release(source, VERSION, output, tmp_path / "attestation.json", host_platform="linux")
+    with tarfile.open(output, "r:gz") as archive:
+        assert BREAKING_MARKER not in set(archive.getnames())
+
+
+def test_breaking_marker_directory_at_source_root_is_not_shipped(tmp_path: Path):
+    """Only a regular `BREAKING` file marks a breaking release; a directory is ignored."""
+    source = release_source(tmp_path)
+    (source / BREAKING_MARKER).mkdir()
+    output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
+    build_release(source, VERSION, output, tmp_path / "attestation.json", host_platform="linux")
+    with tarfile.open(output, "r:gz") as archive:
+        assert BREAKING_MARKER not in set(archive.getnames())
 
 
 @pytest.mark.slow

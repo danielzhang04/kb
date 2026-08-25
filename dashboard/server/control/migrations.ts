@@ -3,6 +3,7 @@ import { deflateSync, inflateSync } from 'node:zlib';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
 import { assertDeploymentCollection } from './deploymentState.ts';
+import { assertAssetPullCollection } from './assetPullState.ts';
 import {
   crashNormalizedLifecycle,
   lifecycleForKind,
@@ -300,6 +301,10 @@ export function assertDocumentInvariant(value: unknown): asserts value is StoreD
   assertMigrationEnvelope(value);
   if (value.version !== CONTROL_PLANE_SCHEMA_VERSION) throw new Error('invalid control-plane store target');
   assertDeploymentCollection(value.deployments);
+  // Dashboard v3 P5 §3.2: the asset-pull intents are ADDITIVE and optional on the SAME versioned
+  // document — a pre-P5 document lacks the field and reads as an empty collection, so no version bump
+  // and no migration is introduced; a present collection is still validated [P5-C34].
+  assertAssetPullCollection(value.assetPullIntents ?? []);
   assertEventCursorSequence(value);
   for (const run of value.runs) {
     assertRunLifecycle(run);

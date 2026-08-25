@@ -30,6 +30,9 @@ RELEASE_ROOTS = (
 # archive's identity, so an unpackaged or unhashed broker archive must fail the release build, not the
 # install.
 BROKER_ARCHIVE = "dashboard/dist-server/kb-shell-broker.tar.gz"
+# A `BREAKING` file at the source root marks the release as a breaking deploy; the VM deploy-ready
+# reader keys the Inbox Confirm-vs-Deploy verb on the marker's presence in the release tree [P5-C42].
+BREAKING_MARKER = "BREAKING"
 BROKER_REQUIRED_MEMBERS = ("main.js", "package.json", "server/pty/linuxBrokerMain.js",
                            "node_modules/node-pty/package.json", "node_modules/koffi/package.json")
 # The broker resolves both of these at runtime from an install root with no node_modules above it:
@@ -96,6 +99,13 @@ def release_files(source: Path) -> list[Path]:
         if not matches:
             raise FileNotFoundError(pattern)
         files.extend(matches)
+    # The BREAKING marker is optional and additive: it ships (covered by MANIFEST.sha256, so the
+    # deploy-ready reader can never be spoofed by a planted marker) exactly when a `BREAKING` file
+    # sits at the source root, and is absent otherwise [P5-C42]. Its content is irrelevant — the VM
+    # reader keys only on presence — so it is shipped verbatim.
+    marker = source / BREAKING_MARKER
+    if marker.is_file():
+        files.append(marker)
     return sorted(set(files), key=lambda item: item.relative_to(source).as_posix())
 
 

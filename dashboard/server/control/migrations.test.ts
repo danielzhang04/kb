@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  applyMigrationEdgeForTest, assertMigrationEnvelope, migrateControlDocument, P2RunMigrationError,
-  runP2ScheduleStartupMigrations,
+  applyMigrationEdgeForTest, assertDocumentInvariant, assertMigrationEnvelope, migrateControlDocument,
+  P2RunMigrationError, runP2ScheduleStartupMigrations,
 } from './migrations.ts';
+import { CONTROL_PLANE_SCHEMA_VERSION, emptyControlPlaneDocument } from './generated/controlPlaneSchema.ts';
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(
   new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
@@ -294,5 +295,33 @@ describe('control document migrations', () => {
     expect(() => applyMigrationEdgeForTest(paused, 1, {
       stamp: '2026-08-20T00:00:00.000Z',
     })).toThrow(/paused run/);
+  });
+});
+
+describe('P5 asset-pull intents are additive with no version bump [P5-C34]', () => {
+  const AT = '2026-08-20T00:00:00.000Z';
+  const intent = {
+    intentRef: `assetpull-${'0'.repeat(32)}`, runRef: 'run-1', manifestDigest: 'a'.repeat(64),
+    state: 'pending', requestedAt: AT, attempts: 0, result: null,
+  };
+
+  it('reads a pre-P5 document that lacks the collection, at the unchanged version', () => {
+    const preP5 = emptyControlPlaneDocument();
+    expect(Object.hasOwn(preP5, 'assetPullIntents')).toBe(false);
+    expect(() => assertDocumentInvariant(preP5)).not.toThrow();
+    expect(preP5.version).toBe(CONTROL_PLANE_SCHEMA_VERSION); // 3 — no schema bump, no migration.
+  });
+
+  it('validates a present asset-pull collection on the same versioned document', () => {
+    const withIntents = { ...emptyControlPlaneDocument(), assetPullIntents: [intent] };
+    expect(() => assertDocumentInvariant(withIntents)).not.toThrow();
+    expect(withIntents.version).toBe(CONTROL_PLANE_SCHEMA_VERSION);
+  });
+
+  it('rejects a malformed asset-pull collection without changing the version wall', () => {
+    const bad = { ...emptyControlPlaneDocument(), assetPullIntents: [{ ...intent, extra: 1 }] };
+    expect(() => assertDocumentInvariant(bad)).toThrow(/asset-pull/);
+    const dup = { ...emptyControlPlaneDocument(), assetPullIntents: [intent, { ...intent }] };
+    expect(() => assertDocumentInvariant(dup)).toThrow(/asset-pull/);
   });
 });

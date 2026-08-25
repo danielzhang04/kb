@@ -152,6 +152,50 @@ export interface TransitionDeploymentInput {
   patch: DeploymentTransitionPatch;
 }
 
+// Dashboard v3 P5 §3.2 — the movement:256 AssetPullIntent record, ADDITIVE on the SAME versioned
+// control document (no schema bump, no migration): a pre-P5 document simply lacks the collection and
+// reads as empty [P5-C34]. The record fields are movement:256 verbatim.
+export type AssetPullState = 'pending' | 'in-flight' | 'succeeded' | 'failed' | 'offline';
+export type AssetPullErrorCode = 'unavailable' | 'timeout' | 'digest-mismatch' | 'refused' | 'invalid';
+
+export interface AssetPullResult {
+  outcome: 'succeeded' | 'failed';
+  receiptAt: string;
+  errorCode: AssetPullErrorCode | null;
+}
+
+export interface AssetPullIntent {
+  intentRef: string;
+  runRef: string;
+  manifestDigest: string;
+  state: AssetPullState;
+  requestedAt: string;
+  attempts: number;
+  result: AssetPullResult | null;
+}
+
+export interface CreateAssetPullIntentInput {
+  intentRef: string;
+  runRef: string;
+  manifestDigest: string;
+  requestedAt: string;
+  idempotencyKey: string;
+}
+
+/**
+ * A single asset-pull CAS: pinned to the exact `(expectedState, expectedAttempts)` the caller read, so
+ * a stale dispatch or settlement conflicts with no side effect. `attemptsDelta` is `1` for a dispatch
+ * (Pull/Retry) and `0` for a settlement; `result` accompanies a terminal or offline settlement.
+ */
+export interface UpdateAssetPullIntentInput {
+  expectedState: AssetPullState;
+  expectedAttempts: number;
+  nextState: AssetPullState;
+  attemptsDelta: 0 | 1;
+  result: AssetPullResult | null;
+  idempotencyKey: string;
+}
+
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);

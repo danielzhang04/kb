@@ -85,13 +85,22 @@ import {
   validateCreateDeploymentInput,
   validateTransitionDeploymentInput,
 } from './deploymentState.ts';
+import {
+  ASSET_PULL_MAX_ATTEMPTS,
+  assertAssetPullCollection,
+  canTransitionAssetPull,
+  validateCreateAssetPullIntentInput,
+  validateUpdateAssetPullIntentInput,
+} from './assetPullState.ts';
 import type {
   Attempt,
   AttemptState,
   ActivateIterationLoopInput,
   AdvanceIterationTurnInput,
   AgentWorkspaceLaunchProvenance,
+  AssetPullIntent,
   ControlResult,
+  CreateAssetPullIntentInput,
   CreateDeploymentInput,
   Deployment,
   GenerationSupersession,
@@ -128,6 +137,7 @@ import type {
   StorageInventory,
   StorageInventoryItem,
   TransitionDeploymentInput,
+  UpdateAssetPullIntentInput,
 } from './types.ts';
 import {
   RUN_LIFECYCLE_KINDS,
@@ -304,6 +314,13 @@ interface StoredDeployment extends Deployment {
     recordedAt: string;
   }>;
 }
+
+/**
+ * The stored AssetPullIntent shape (§3.2). The intent's own `state` + `attempts` ARE its idempotency
+ * ledger — a dispatch is refused unless the caller pinned the exact `(state, attempts)` it read — so no
+ * operationReceipts sidecar is needed, and the stored shape is the public record verbatim [P5-C34].
+ */
+type StoredAssetPullIntent = AssetPullIntent;
 
 export type RunActivationPhase = 'claimed' | 'roots-activated' | 'dispatched' | 'failed';
 
@@ -540,6 +557,13 @@ export interface StoreDocument extends StoreDocumentCollections {
    * is either a `prepared` or a `published` receipt (see `decodeStoredReconciliationReceipt`).
    */
   reconciliationReceipts?: JsonObject[];
+  /**
+   * Dashboard v3 P5 §3.2: the movement:256 asset-pull intents. Additive and optional on the SAME
+   * versioned document — absent reads as an empty collection, first written when the first intent is
+   * created; no version bump and no migration, exactly like the mirror and reconciliation fields
+   * above [P5-C34]. Rows are keyed by `intentRef`.
+   */
+  assetPullIntents?: StoredAssetPullIntent[];
 }
 
 type StoreDocumentCollectionEquality =
@@ -954,6 +978,17 @@ export interface ControlPlaneStore
     deploymentRef: string,
     input: TransitionDeploymentInput,
   ): ControlResult<Deployment>;
+
+  // Dashboard v3 P5 §3.2 — the asset-pull intent collection. Reads are allowlisted below; the two
+  // mutators are reached only through the W1 `AssetPullService` under the writer lease.
+  getAssetPullIntent(intentRef: string): ControlResult<AssetPullIntent>;
+  listAssetPullIntents(): AssetPullIntent[];
+  createAssetPullIntent(subject: string, input: CreateAssetPullIntentInput): ControlResult<AssetPullIntent>;
+  updateAssetPullIntent(
+    subject: string,
+    intentRef: string,
+    input: UpdateAssetPullIntentInput,
+  ): ControlResult<AssetPullIntent>;
 
   listProposalRevisions(subject: string, proposalRef?: string): ProposalRevisionMetadata[];
   listProposalRevisionsForComposer(subject: string, sourceComposerRef: string, scope?: ReadScope): ProposalRevisionMetadata[];
@@ -1472,6 +1507,10 @@ function internalRun(value: StoredRun): Run {
 function publicDeployment(deployment: StoredDeployment): Deployment {
   const { operationReceipts: _operationReceipts, ...result } = deployment;
   return clone(result);
+}
+
+function publicAssetPullIntent(intent: StoredAssetPullIntent): AssetPullIntent {
+  return clone(intent);
 }
 
 export function publicRun(value: StoredRun): RunDto {
@@ -2452,6 +2491,7 @@ function runCanSucceed(document: StoreDocument, run: StoredRun): boolean {
 
 function validateStoreDocument(document: StoreDocument): void {
   assertDeploymentCollection(document.deployments);
+  assertAssetPullCollection(document.assetPullIntents ?? []);
   const validateRows = (bundle: Pick<StoreDocumentCollections, 'runs' | 'stages'>): void => {
     for (const run of bundle.runs) {
       if (normalizeAssignment(run.managerAssignment) === undefined) {
@@ -4090,6 +4130,74 @@ function makeStore(
       }
       commit(document, 'deploy-critical');
       return { ok: true, value: result, replayed: undefined };
+    },
+
+    getAssetPullIntent(intentRef) {
+      const intent = (load().assetPullIntents ?? []).find((item) => item.intentRef === intentRef);
+      return intent ? ok(publicAssetPullIntent(intent)) : fail('not-found', 'asset-pull intent was not found');
+    },
+
+    listAssetPullIntents() {
+      return (load().assetPullIntents ?? [])
+        .slice()
+        .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt) || a.intentRef.localeCompare(b.intentRef))
+        .map(publicAssetPullIntent);
+    },
+
+    createAssetPullIntent(subject, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validateCreateAssetPullIntentInput(input)) {
+        return fail('invalid', 'asset-pull intent creation input is invalid');
+      }
+      const document = load();
+      const intents = document.assetPullIntents ?? [];
+      // movement:256 creates one intent per succeeded run; a second create for the same intentRef is a
+      // replay when its pinned fields match, and a conflict otherwise. The intent's `(state, attempts)`
+      // are its idempotency ledger, so no operationReceipts sidecar is kept.
+      const existing = intents.find((item) => item.intentRef === input.intentRef);
+      if (existing) {
+        if (existing.runRef !== input.runRef || existing.manifestDigest !== input.manifestDigest
+          || existing.requestedAt !== input.requestedAt) {
+          return fail('idempotency-conflict', 'asset-pull intentRef was reused with different content');
+        }
+        return ok(publicAssetPullIntent(existing), true);
+      }
+      const intent: StoredAssetPullIntent = {
+        intentRef: input.intentRef,
+        runRef: input.runRef,
+        manifestDigest: input.manifestDigest,
+        state: 'pending',
+        requestedAt: input.requestedAt,
+        attempts: 0,
+        result: null,
+      };
+      intents.push(intent);
+      document.assetPullIntents = intents;
+      commit(document);
+      return ok(publicAssetPullIntent(intent));
+    },
+
+    updateAssetPullIntent(subject, intentRef, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validNonEmpty(intentRef, MAX_SHORT_TEXT)
+        || !validateUpdateAssetPullIntentInput(input)) {
+        return fail('invalid', 'asset-pull intent update input is invalid');
+      }
+      const document = load();
+      const intent = (document.assetPullIntents ?? []).find((item) => item.intentRef === intentRef);
+      if (!intent) return fail('not-found', 'asset-pull intent was not found');
+      // A CAS pinned to the exact `(state, attempts)` the caller read: a stale dispatch or settlement
+      // conflicts with NO side effect, so a concurrent double-dispatch converges on one in-flight row.
+      if (intent.state !== input.expectedState || intent.attempts !== input.expectedAttempts
+        || !canTransitionAssetPull(intent.state, input.nextState)) {
+        return fail('conflict', 'asset-pull intent state or attempts changed');
+      }
+      if (input.attemptsDelta === 1 && intent.attempts >= ASSET_PULL_MAX_ATTEMPTS) {
+        return fail('conflict', 'asset-pull intent attempts are exhausted');
+      }
+      intent.state = input.nextState;
+      intent.attempts += input.attemptsDelta;
+      intent.result = input.result === null ? null : clone(input.result);
+      commit(document);
+      return ok(publicAssetPullIntent(intent));
     },
 
     listProposalRevisions(subject, proposalRef) {
@@ -7057,6 +7165,7 @@ const READ_ONLY_CONTROL_STORE_METHODS = new Set<keyof ControlPlaneStore>([
   'isScheduleSeedAuthorized',
   'getScheduleSeedImportMarker', 'readSchedulePauseMarkerReceipt', 'listIncompleteSchedulePauseMarkerReceipts',
   'getDeployment', 'listDeployments',
+  'getAssetPullIntent', 'listAssetPullIntents',
   'listProposalRevisions', 'listProposalRevisionsForComposer', 'getProposalRevision',
   'listRuns', 'getRun', 'findActiveRunForRevision', 'getRunActivationReceipt', 'hasActiveRunActivation',
   'getHumanRequest', 'preflightAuthorized20260731ExecutionLock',
