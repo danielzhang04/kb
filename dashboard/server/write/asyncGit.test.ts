@@ -158,7 +158,7 @@ describe('parsePrCreateOutput - the pinned PR identity [P4 3.2]', () => {
       'https://github.com/kb-owner/kb/pull/42?draft=1',
       'created a pull request',
     ]) {
-      expect(parsePrCreateOutput(output)).toEqual({});
+      expect(parsePrCreateOutput(output)).toBeNull();
     }
   });
 });

@@ -129,7 +129,9 @@ describe('shared cross-language renderer vectors', () => {
 
   it('tracks the repo\'s real HEARTBEAT.md', () => {
     const real = VECTORS.cases.find((entry) => entry.name === 'real-heartbeat-field-level-update');
-    expect(real?.input).toBe(REAL_HEARTBEAT);
+    // Eol-normalize the live read: the fixture is generated (and stored) LF-only, but a Linux
+    // checkout of HEARTBEAT.md is LF while a Windows one may come back CRLF via autocrlf.
+    expect(real?.input).toBe(REAL_HEARTBEAT.replace(/\r\n/g, '\n'));
   });
 
   for (const vector of VECTORS.cases) {

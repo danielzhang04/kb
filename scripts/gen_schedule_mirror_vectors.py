@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-real = open(os.path.join(ROOT, "HEARTBEAT.md"), encoding="utf-8", newline="").read()
+real = open(os.path.join(ROOT, "HEARTBEAT.md"), encoding="utf-8", newline="").read().replace("\r\n", "\n")
 small = (
     "# Org\r\n"
     "\r\n"

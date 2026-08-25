@@ -39,3 +39,10 @@
 # generator check; pin them to LF so autocrlf cannot create false drift.
 /dashboard/server/control/generated/** text=auto eol=lf
 /deploy/control_plane_schema.py text=auto eol=lf
+
+# HEARTBEAT.md is read live and compared against a stored fixture copy
+# (dashboard/server/schedules/mirror.test.ts, tests/test_schedule_mirror.py). Pin
+# both to LF so a Windows checkout (autocrlf) and the Linux cloud VM see identical
+# bytes; otherwise the raw-byte compare is eol-fragile cross-platform.
+/HEARTBEAT.md text eol=lf
+/tests/fixtures/dashboard-v3-p4-mirror-vectors.json text eol=lf
