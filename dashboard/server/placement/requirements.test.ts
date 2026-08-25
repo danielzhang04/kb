@@ -52,6 +52,27 @@ describe('computeCapabilityRequirement — union of workflow + every assigned st
     expect(req.clis).toEqual(['claude', 'codex']);
   });
 
+  it('merges the same server named with different casing/underscoring by two stage agents into one canonical entry with the union of tools (W3b fix)', () => {
+    const stageAgents = [
+      agent({ connectors: [{ server: 'Gmail', tools: ['read'] }, { server: 'my_server', tools: ['a'] }] }),
+      agent({ connectors: [{ server: 'gmail', tools: ['send'] }, { server: 'my-server', tools: ['b'] }] }),
+    ];
+    const req = computeCapabilityRequirement({}, stageAgents);
+    expect(req.connectors).toEqual([
+      { server: 'gmail', tools: ['read', 'send'] },
+      { server: 'my-server', tools: ['a', 'b'] },
+    ]);
+  });
+
+  it('de-dupes overlapping tool sets declared for the same server by different agents', () => {
+    const stageAgents = [
+      agent({ connectors: [{ server: 'gmail', tools: ['read', 'send'] }] }),
+      agent({ connectors: [{ server: 'gmail', tools: ['send', 'draft'] }] }),
+    ];
+    const req = computeCapabilityRequirement({}, stageAgents);
+    expect(req.connectors).toEqual([{ server: 'gmail', tools: ['draft', 'read', 'send'] }]);
+  });
+
   it('defaults pty/gpu closed with no declaration source, but accepts an explicit override', () => {
     expect(computeCapabilityRequirement({}, [])).toMatchObject({ pty: false, gpu: false });
     expect(computeCapabilityRequirement({}, [], { pty: true, gpu: true })).toMatchObject({ pty: true, gpu: true });

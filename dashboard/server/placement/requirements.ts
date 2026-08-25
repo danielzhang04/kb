@@ -5,7 +5,7 @@
 // exact-key wall. `pty`/`gpu` have no declaration source today (no agent or workflow field names them),
 // so the union is closed-false unless a future caller supplies an explicit override.
 import type { CapabilityRequirement } from './contracts.ts';
-import { decodeCapabilityRequirement } from './normalize.ts';
+import { decodeCapabilityRequirement, normalizeCapabilityName } from './normalize.ts';
 
 /** The four `workflows/defs.ts:277-280` fields this module reads. Everything else is out of scope. */
 export interface WorkflowCapabilityFields {
@@ -29,16 +29,25 @@ export interface StageAgentCapabilityFields {
 
 const REQUIRABLE_CLI_RUNTIMES = new Set(['claude', 'codex']);
 
-/** Union connector tool sets by server so two agents naming the same server never collide as duplicates. */
+/**
+ * Union connector tool sets by server so two agents naming the same server never collide as
+ * duplicates. Keys the union `Map` by the W0-canonical server name (via `normalizeCapabilityName`)
+ * rather than the raw pre-normalisation string — two agents spelling the same server differently
+ * (`Gmail` vs `gmail`, `my_server` vs `my-server`) must union into one entry, not survive as two
+ * that later trip `decodeCapabilityRequirement`'s duplicate-adjacent-server check. This is a
+ * pre-merge key computation only; the single `decodeCapabilityRequirement` call below remains the
+ * one normalisation-of-record for the returned requirement.
+ */
 function mergeConnectors(
   lists: ReadonlyArray<ReadonlyArray<{ server: string; tools: readonly string[] }>>,
 ): Array<{ server: string; tools: string[] }> {
   const byServer = new Map<string, Set<string>>();
   for (const list of lists) {
     for (const { server, tools } of list) {
-      const toolSet = byServer.get(server) ?? new Set<string>();
+      const canonicalServer = normalizeCapabilityName(server);
+      const toolSet = byServer.get(canonicalServer) ?? new Set<string>();
       for (const tool of tools) toolSet.add(tool);
-      byServer.set(server, toolSet);
+      byServer.set(canonicalServer, toolSet);
     }
   }
   return [...byServer.entries()].map(([server, tools]) => ({ server, tools: [...tools] }));
