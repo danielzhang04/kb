@@ -46,3 +46,4 @@
 # bytes; otherwise the raw-byte compare is eol-fragile cross-platform.
 /HEARTBEAT.md text eol=lf
 /tests/fixtures/dashboard-v3-p4-mirror-vectors.json text eol=lf
+/tests/fixtures/dashboard-v3-p6-contract-vectors.json text eol=lf

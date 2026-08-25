@@ -1,0 +1,1040 @@
+{
+  "schema": "kb.dashboard-v3-p6-contract-vectors/v1",
+  "note": "P6 W0 contract vectors. All hashes/signatures are LOW-ENTROPY synthetic constants (repeated single chars); real hashes are computed in-code by the suites. Covers HostAdvertisement/PlacementLease verbatim decoders, the canonical CapabilityRequirement, the host-node map schema, and the v1Idempotency record decoder. Compile-negative vectors (branded revision cross-assignment, Health watermark as precondition, root with slash or dotdot, unknown advertisement key, report decision field, caller capabilityHash, requirement naming hostId, non-canonical name to match) live in the .test.ts files as @ts-expect-error plus the runtime-reject cases below.",
+  "constants": {
+    "hashA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hashB": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "iso": "2026-08-25T00:00:00.000Z",
+    "isoPlus2m": "2026-08-25T00:02:00.000Z"
+  },
+  "hostAdvertisements": {
+    "valid": [
+      {
+        "name": "vm full advertisement",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "desktop empty capabilities",
+        "value": {
+          "hostId": "desktop",
+          "daemonVersion": "0.1.0-rc.1",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [],
+          "skills": [],
+          "filesystemRoots": [],
+          "pty": false,
+          "gpu": true,
+          "clis": {
+            "claude": "missing",
+            "codex": "missing"
+          }
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "unknown key",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          },
+          "tier": "gold"
+        }
+      },
+      {
+        "name": "filesystem root with slash",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "/etc"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "filesystem root with dotdot",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "..",
+            "ops"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "filesystem root with dot",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "a.b"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "unsorted skills",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "xlsx",
+            "docx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "duplicate skill",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "docx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "uppercase daemonVersion",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "V1",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "reportedAt not iso",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "yesterday",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "cli invalid status",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "pending",
+            "codex": "ready"
+          }
+        }
+      },
+      {
+        "name": "clis extra key",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "ready",
+            "gemini": "ready"
+          }
+        }
+      },
+      {
+        "name": "missing hostId",
+        "value": {
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "bad hostId",
+        "value": {
+          "hostId": "laptop",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "connector unsorted servers",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "slack",
+              "tools": []
+            },
+            {
+              "server": "gmail",
+              "tools": []
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      },
+      {
+        "name": "connector unknown key",
+        "value": {
+          "hostId": "vm",
+          "daemonVersion": "1.2.3",
+          "reportedAt": "2026-08-25T00:00:00.000Z",
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [],
+              "extra": 1
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops",
+            "worktrees"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": {
+            "claude": "ready",
+            "codex": "login-required"
+          }
+        }
+      }
+    ]
+  },
+  "placementLeases": {
+    "valid": [
+      {
+        "name": "fresh desktop lease",
+        "value": {
+          "runRef": "run-1",
+          "hostId": "desktop",
+          "capabilityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "expiresAt": "2026-08-25T00:02:00.000Z",
+          "lastReportSequence": 0
+        }
+      },
+      {
+        "name": "renewed vm lease",
+        "value": {
+          "runRef": "run-2",
+          "hostId": "vm",
+          "capabilityHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "revision": 5,
+          "expiresAt": "2026-08-25T00:02:00.000Z",
+          "lastReportSequence": 12
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "unknown key",
+        "value": {
+          "runRef": "run-1",
+          "hostId": "vm",
+          "capabilityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "expiresAt": "2026-08-25T00:02:00.000Z",
+          "lastReportSequence": 0,
+          "extra": true
+        }
+      },
+      {
+        "name": "short capabilityHash",
+        "value": {
+          "runRef": "run-1",
+          "hostId": "vm",
+          "capabilityHash": "abc",
+          "revision": 1,
+          "expiresAt": "2026-08-25T00:02:00.000Z",
+          "lastReportSequence": 0
+        }
+      },
+      {
+        "name": "revision zero",
+        "value": {
+          "runRef": "run-1",
+          "hostId": "vm",
+          "capabilityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 0,
+          "expiresAt": "2026-08-25T00:02:00.000Z",
+          "lastReportSequence": 0
+        }
+      },
+      {
+        "name": "negative sequence",
+        "value": {
+          "runRef": "run-1",
+          "hostId": "vm",
+          "capabilityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "expiresAt": "2026-08-25T00:02:00.000Z",
+          "lastReportSequence": -1
+        }
+      },
+      {
+        "name": "bad host",
+        "value": {
+          "runRef": "run-1",
+          "hostId": "laptop",
+          "capabilityHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "expiresAt": "2026-08-25T00:02:00.000Z",
+          "lastReportSequence": 0
+        }
+      }
+    ]
+  },
+  "capabilityRequirements": {
+    "valid": [
+      {
+        "name": "lowercases and sorts",
+        "raw": {
+          "connectors": [
+            {
+              "server": "Gmail",
+              "tools": [
+                "Send",
+                "Read"
+              ]
+            }
+          ],
+          "skills": [
+            "Xlsx",
+            "Docx"
+          ],
+          "filesystemRoots": [
+            "Ops"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": [
+            "claude"
+          ]
+        },
+        "canonical": {
+          "connectors": [
+            {
+              "server": "gmail",
+              "tools": [
+                "read",
+                "send"
+              ]
+            }
+          ],
+          "skills": [
+            "docx",
+            "xlsx"
+          ],
+          "filesystemRoots": [
+            "ops"
+          ],
+          "pty": true,
+          "gpu": false,
+          "clis": [
+            "claude"
+          ]
+        }
+      },
+      {
+        "name": "underscore and collapse",
+        "raw": {
+          "connectors": [],
+          "skills": [
+            "multi_source__synthesis"
+          ],
+          "filesystemRoots": [],
+          "pty": false,
+          "gpu": false,
+          "clis": []
+        },
+        "canonical": {
+          "connectors": [],
+          "skills": [
+            "multi-source-synthesis"
+          ],
+          "filesystemRoots": [],
+          "pty": false,
+          "gpu": false,
+          "clis": []
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "naming hostId",
+        "value": {
+          "connectors": [],
+          "skills": [],
+          "filesystemRoots": [],
+          "pty": false,
+          "gpu": false,
+          "clis": [],
+          "hostId": "vm"
+        }
+      },
+      {
+        "name": "naming daemonVersion",
+        "value": {
+          "connectors": [],
+          "skills": [],
+          "filesystemRoots": [],
+          "pty": false,
+          "gpu": false,
+          "clis": [],
+          "daemonVersion": "1"
+        }
+      },
+      {
+        "name": "internal space name",
+        "value": {
+          "connectors": [],
+          "skills": [
+            "gm ail"
+          ],
+          "filesystemRoots": [],
+          "pty": false,
+          "gpu": false,
+          "clis": []
+        }
+      },
+      {
+        "name": "cli not requirable",
+        "value": {
+          "connectors": [],
+          "skills": [],
+          "filesystemRoots": [],
+          "pty": false,
+          "gpu": false,
+          "clis": [
+            "gemini"
+          ]
+        }
+      },
+      {
+        "name": "root with slash",
+        "value": {
+          "connectors": [],
+          "skills": [],
+          "filesystemRoots": [
+            "/etc/passwd"
+          ],
+          "pty": false,
+          "gpu": false,
+          "clis": []
+        }
+      }
+    ]
+  },
+  "hostNodeMaps": {
+    "valid": [
+      {
+        "name": "two active no revoked",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": []
+        }
+      },
+      {
+        "name": "with one revoked",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 3,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode02"
+            },
+            "desktop": {
+              "nodeId": "desknode02"
+            }
+          },
+          "revoked": [
+            {
+              "nodeId": "oldnode01",
+              "revokedAt": "2026-08-25T00:00:00.000Z"
+            }
+          ]
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "wrong schema",
+        "value": {
+          "schema": "kb.host-node-map/v2",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": []
+        }
+      },
+      {
+        "name": "revision zero",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 0,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": []
+        }
+      },
+      {
+        "name": "duplicate active ids",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "samenode01"
+            },
+            "desktop": {
+              "nodeId": "samenode01"
+            }
+          },
+          "revoked": []
+        }
+      },
+      {
+        "name": "active id revoked",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": [
+            {
+              "nodeId": "vmnode01",
+              "revokedAt": "2026-08-25T00:00:00.000Z"
+            }
+          ]
+        }
+      },
+      {
+        "name": "node id too short",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vm"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": []
+        }
+      },
+      {
+        "name": "unknown top key",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": [],
+          "extra": 1
+        }
+      },
+      {
+        "name": "hosts extra key",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            },
+            "laptop": {
+              "nodeId": "lapnode01"
+            }
+          },
+          "revoked": []
+        }
+      },
+      {
+        "name": "revoked missing revokedAt",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": [
+            {
+              "nodeId": "oldnode01"
+            }
+          ]
+        }
+      },
+      {
+        "name": "revoked duplicate",
+        "value": {
+          "schema": "kb.host-node-map/v1",
+          "revision": 1,
+          "hosts": {
+            "vm": {
+              "nodeId": "vmnode01"
+            },
+            "desktop": {
+              "nodeId": "desknode01"
+            }
+          },
+          "revoked": [
+            {
+              "nodeId": "oldnode01",
+              "revokedAt": "2026-08-25T00:00:00.000Z"
+            },
+            {
+              "nodeId": "oldnode01",
+              "revokedAt": "2026-08-25T00:00:00.000Z"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "idempotencyRecords": {
+    "valid": [
+      {
+        "name": "post run row",
+        "value": {
+          "actorOrNodeId": "vmnode01",
+          "method": "POST",
+          "uri": "/api/v1/runs",
+          "key": "idem-key-0000000001",
+          "bodyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": 200,
+          "responseBody": "{}",
+          "createdAt": "2026-08-25T00:00:00.000Z"
+        }
+      },
+      {
+        "name": "delete schedule row",
+        "value": {
+          "actorOrNodeId": "operator",
+          "method": "DELETE",
+          "uri": "/api/v1/schedules/s1",
+          "key": "idem.key.colon:0000000001",
+          "bodyHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "status": 204,
+          "responseBody": "",
+          "createdAt": "2026-08-25T00:00:00.000Z"
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "unknown key",
+        "value": {
+          "actorOrNodeId": "vmnode01",
+          "method": "POST",
+          "uri": "/api/v1/runs",
+          "key": "idem-key-0000000001",
+          "bodyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": 200,
+          "responseBody": "{}",
+          "createdAt": "2026-08-25T00:00:00.000Z",
+          "extra": 1
+        }
+      },
+      {
+        "name": "non-mutating method",
+        "value": {
+          "actorOrNodeId": "vmnode01",
+          "method": "GET",
+          "uri": "/api/v1/runs",
+          "key": "idem-key-0000000001",
+          "bodyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": 200,
+          "responseBody": "{}",
+          "createdAt": "2026-08-25T00:00:00.000Z"
+        }
+      },
+      {
+        "name": "short bodyHash",
+        "value": {
+          "actorOrNodeId": "vmnode01",
+          "method": "POST",
+          "uri": "/api/v1/runs",
+          "key": "idem-key-0000000001",
+          "bodyHash": "abc",
+          "status": 200,
+          "responseBody": "{}",
+          "createdAt": "2026-08-25T00:00:00.000Z"
+        }
+      },
+      {
+        "name": "key too short",
+        "value": {
+          "actorOrNodeId": "vmnode01",
+          "method": "POST",
+          "uri": "/api/v1/runs",
+          "key": "short",
+          "bodyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": 200,
+          "responseBody": "{}",
+          "createdAt": "2026-08-25T00:00:00.000Z"
+        }
+      },
+      {
+        "name": "status out of range",
+        "value": {
+          "actorOrNodeId": "vmnode01",
+          "method": "POST",
+          "uri": "/api/v1/runs",
+          "key": "idem-key-0000000001",
+          "bodyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": 700,
+          "responseBody": "{}",
+          "createdAt": "2026-08-25T00:00:00.000Z"
+        }
+      },
+      {
+        "name": "missing createdAt",
+        "value": {
+          "actorOrNodeId": "vmnode01",
+          "method": "POST",
+          "uri": "/api/v1/runs",
+          "key": "idem-key-0000000001",
+          "bodyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "status": 200,
+          "responseBody": "{}"
+        }
+      }
+    ]
+  }
+}
