@@ -49,6 +49,16 @@ describe('withBudgetMs / withBudget (§3.5 shared wrapper)', () => {
       .resolves.toEqual({ ok: false, reason: 'invalid' });
   });
 
+  it('a validator that itself throws (e.g. a throwing getter) resolves {ok:false, reason:"invalid"}, never rejects, and discards the error', async () => {
+    const secretStderr = 'stderr: /etc/shadow leaked from validator getter';
+    const poisoned = { get field() { throw new Error(secretStderr); } };
+    const result = withBudgetMs(100, () => poisoned, {
+      validate: (v: typeof poisoned) => { void v.field; return true; },
+    });
+    await expect(result).resolves.toEqual({ ok: false, reason: 'invalid' });
+    expect(JSON.stringify(await result)).not.toContain(secretStderr);
+  });
+
   it('withBudget resolves each named probe kind at its §3.5 ceiling', async () => {
     for (const kind of Object.keys(PROBE_BUDGETS_MS) as (keyof typeof PROBE_BUDGETS_MS)[]) {
       const result = withBudget(kind, never);
@@ -97,6 +107,21 @@ describe('readMachineRows: per-probe isolation', () => {
     expect(unavailableRows).toHaveLength(1);
     expect(unavailableRows[0]!.value.reason).toBe('unavailable');
     expect(JSON.stringify(rows)).not.toContain('meminfo');
+  });
+
+  it('a throwing VALIDATOR (not fn) on cpu degrades exactly the cpu row to reason "invalid"; memory/disk/uptime stay ready', async () => {
+    const poisonedCpu = {
+      get load1(): number { throw new Error('stderr: poisoned validator getter'); },
+      load5: 0.2,
+      load15: 0.3,
+    };
+    const ports: MachineReaderPorts = { ...readyPorts(), cpu: () => poisonedCpu };
+    const rows = await readMachineRows(ports, now);
+    expect(rows.filter((row) => row.kind === 'machine').map((row) => row.key).sort()).toEqual(['disk', 'memory', 'uptime']);
+    const unavailableRows = rows.filter((row) => row.kind === 'unavailable');
+    expect(unavailableRows).toHaveLength(1);
+    expect(unavailableRows[0]!.value).toEqual({ status: 'unavailable', reason: 'invalid' });
+    expect(JSON.stringify(rows)).not.toContain('poisoned validator getter');
   });
 
   it('no machine row ever carries a spend field', async () => {

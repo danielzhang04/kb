@@ -52,7 +52,13 @@ export async function withBudgetMs<T>(
       // reason crosses into a row.
       return { ok: false, reason: 'unavailable' };
     }
-    if (options.validate && !options.validate(value)) return { ok: false, reason: 'invalid' };
+    try {
+      if (options.validate && !options.validate(value)) return { ok: false, reason: 'invalid' };
+    } catch {
+      // A validator that itself throws (e.g. a throwing getter on the resolved value) is treated the
+      // same as a failed validation: the thrown error is discarded, never surfaced in a row.
+      return { ok: false, reason: 'invalid' };
+    }
     return { ok: true, value };
   })();
   try {
