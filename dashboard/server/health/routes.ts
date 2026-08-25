@@ -32,15 +32,9 @@ export function registerHealthRoutes(scope: FastifyInstance, ctx: SurfaceContext
       // Narrow read-only slice of the control-plane store — the deploy reader never sees a write method.
       deployStore: { listDeployments: () => ctx.controlStore.listDeployments() },
     });
-    // Live host telemetry (cpu/memory/disk/uptime) legitimately drifts on every single read — hashing its
-    // raw `value` would make the ETag change on almost every poll and defeat 304 caching entirely. Its
-    // `key` (still present) already signals the row exists and is ready; staleness that actually matters
-    // (fleet composition, schedule revision, release/deployment identity, ...) still drives the hash.
-    const isVolatileMachineRow = (row: { kind: string; key: string }) =>
-      row.kind === 'machine' && row.key !== 'daemon-platform';
     const stableSections = response.sections.map((section) => ({
       ...section,
-      rows: section.rows.map(({ observedAt: _observedAt, ...row }) => (isVolatileMachineRow(row) ? { ...row, value: undefined } : row)),
+      rows: section.rows.map(({ observedAt: _observedAt, ...row }) => row),
     }));
     const revision = createHash('sha256')
       .update(JSON.stringify({ scheduleCollectionRevision, sections: stableSections }))

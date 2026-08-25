@@ -9,6 +9,22 @@ import { registerHealthRoutes } from './routes.ts';
 import type { Schedule } from '../control/p2Contracts.ts';
 import { composeHealth } from './service.ts';
 
+// W6.2b regression fixture: lets a single test drive `os.loadavg()` to two distinct readings so the
+// `daemon-machine` cpu row's live `value` changes between two `/api/health` reads. `freemem` is frozen
+// alongside it — the real value now feeds the ETag hash again (that's the fix), and this host's free
+// memory measurably drifts by tens of KB between two back-to-back reads, which would otherwise make the
+// pre-existing immediate-304 test below flaky for a reason unrelated to what it tests. `totalmem`,
+// `disk` (statfsSync, not os), and `uptime` stay real — none of them drift at this granularity.
+const cpuFixture = vi.hoisted(() => ({ load1: 1 }));
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return {
+    ...actual,
+    loadavg: () => [cpuFixture.load1, cpuFixture.load1, cpuFixture.load1],
+    freemem: () => actual.totalmem() - 10 * 1024 * 1024 * 1024,
+  };
+});
+
 const repoRoot = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const sessionConfig = { secret: Buffer.from('health-route-test-key-0123456789'), ttlMs: 60_000 } as unknown as SessionConfig;
 
@@ -58,6 +74,31 @@ describe('Health routes', () => {
     });
     expect(changed.statusCode).toBe(200);
     expect(changed.headers.etag).not.toBe(first.headers.etag);
+    await live.close();
+  });
+
+  /** W6.2b regression: pre-P5 hashed the full row (minus `observedAt`), so any live cpu/memory/disk/
+   *  uptime drift always busted the ETag. A P5 regression stripped `value` from volatile machine rows
+   *  before hashing, so a real value change still produced a MATCHING ETag and a stale 304. This proves
+   *  the fix — hash the full row again — by changing only the cpu row's live value and asserting the
+   *  ETag changes, which means a stale `if-none-match` now gets a fresh 200 body, never a 304. */
+  it('busts the ETag when a live machine value (cpu) changes — a stale conditional GET gets 200, not 304', async () => {
+    const live = Fastify();
+    registerHealthRoutes(live, makeSurfaceContext({ repoRoot, sessionConfig, controlStore: createInMemoryControlPlaneStore() }));
+    const token = mintSession('operator', sessionConfig).token;
+
+    cpuFixture.load1 = 1;
+    const first = await live.inject({ method: 'GET', url: '/api/health', headers: { authorization: `Bearer ${token}` } });
+    expect(first.statusCode).toBe(200);
+
+    cpuFixture.load1 = 9;
+    const staleConditional = await live.inject({
+      method: 'GET', url: '/api/health',
+      headers: { authorization: `Bearer ${token}`, 'if-none-match': first.headers.etag! },
+    });
+
+    expect(staleConditional.statusCode).toBe(200);
+    expect(staleConditional.headers.etag).not.toBe(first.headers.etag);
     await live.close();
   });
 
