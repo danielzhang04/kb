@@ -80,34 +80,59 @@ function safeStaticFile(distDir: string, pathname: string): string | null {
 
 /**
  * `home-health-live-release` pins one injected activation: Home's chip SHA and Health's release row SHA
- * are the SAME value, and `<ago>` derives from `generatedAt`. This builds a Home/Health payload pair that
- * agrees, so the browser can assert chip-SHA === release-row-SHA.
+ * are the SAME value, and `<ago>` derives from `generatedAt`.
+ *
+ * W6.5b fix: the field this used to write (`{ ...home, release: {...} }`) is a top-level key `D13Home.tsx`
+ * never reads — the browser's "Version" section renders `sections[3].data.sha` / `.activatedAt` against
+ * top-level `generatedAt`, so the old shape was a silent no-op and the chip always showed the DEFAULT
+ * fixture sha regardless of the injected activation. This now writes the SAME fields the client actually
+ * renders, so the browser can genuinely assert chip-SHA === release-row-SHA.
  */
 function homeForScenario(scenario: P5Scenario): unknown {
   const profile = p5ScenarioProfile(scenario);
-  const home = p2Home(false) as Record<string, unknown>;
-  if (profile.liveRelease) {
-    return {
-      ...home,
-      release: {
-        sha: profile.liveRelease.sha,
-        activatedAt: profile.liveRelease.activatedAt,
-        generatedAt: profile.liveRelease.generatedAt,
-      },
-    };
-  }
-  return home;
+  const home = p2Home(false) as { sections: { state: string; data?: Record<string, unknown> }[]; generatedAt: string; [key: string]: unknown };
+  if (!profile.liveRelease) return home;
+  const live = profile.liveRelease;
+  const sections = home.sections.map((section, index) => {
+    if (index !== 3 || section.data === undefined) return section;
+    return { ...section, data: { ...section.data, sha: live.sha, activatedAt: live.activatedAt } };
+  });
+  return { ...home, sections, generatedAt: live.generatedAt };
 }
 
 function healthForScenario(scenario: P5Scenario): HealthResponse {
   const profile = p5ScenarioProfile(scenario);
   const health = structuredClone(healthResponseFixture);
   if (profile.liveRelease) {
-    // Health's daemon-machine release row carries the SAME sha as Home's chip.
-    (health as unknown as { release?: unknown }).release = {
-      sha: profile.liveRelease.sha,
-      activatedAt: profile.liveRelease.activatedAt,
-    };
+    const live = profile.liveRelease;
+    // W6.5b fix: the old code set a top-level `health.release` key `Health.tsx` never reads — the
+    // rendered "Release" row lives at `sections['daemon-machine'].rows[key='release'].value`. Mutate
+    // THAT row so the browser's rendered sha/activated fields genuinely reflect the injected activation.
+    for (const section of health.sections) {
+      for (const row of section.rows) {
+        if (row.kind === 'release') {
+          row.value = { ...row.value, sha: live.sha, activatedAt: live.activatedAt };
+        }
+      }
+    }
+  }
+  if (scenario === 'health-bounded-probe-failure') {
+    // W6.5b addition: the browser bullet asserts "exactly one row degrades under an injected probe fault,
+    // every other row stays ready" — the fixture previously served the same all-ready payload for every
+    // scenario, so there was nothing for the browser to observe. Replace exactly one section's rows with
+    // the REAL production shape a bounded probe failure takes (`UnavailableRow`, `server/health/service.ts`).
+    health.sections = health.sections.map((section) => (
+      section.id === 'mcp'
+        ? {
+          ...section,
+          rows: [{
+            kind: 'unavailable', key: `error:${section.id}`, label: 'Unavailable',
+            value: { status: 'unavailable', reason: 'probe-timeout' },
+            observedAt: '2026-08-25T12:00:00.000Z', source: 'error',
+          }],
+        }
+        : section
+    )) as HealthResponse['sections'];
   }
   return health;
 }
@@ -165,6 +190,21 @@ export async function startP5FixtureServer(options: P5FixtureServerOptions): Pro
         });
         reply.end(readFileSync(file));
         return;
+      }
+
+      // W6.5b addition: mirror production's SPA fallback (`server/static/routes.ts#registerStatic`'s
+      // `setNotFoundHandler`) — any GET that isn't under `/api/*` and matched no route above serves
+      // `index.html`, letting the client-side `parseNavigationSearch` (src/nav/stack.ts) run and fall
+      // back to a clean Home root. Without this the fixture hard-404s `/deploy` and `/deploys` at the
+      // HTTP layer for the top-level navigation itself, which is NOT what production does and which the
+      // browser logs as a console error, masking the real `no-deploy-destination` proof.
+      if (!path.startsWith('/api/')) {
+        const indexPath = safeStaticFile(distDir, '/');
+        if (indexPath) {
+          reply.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+          reply.end(readFileSync(indexPath));
+          return;
+        }
       }
     }
     return json(reply, 404, { error: 'not-found' });

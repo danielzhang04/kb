@@ -146,11 +146,47 @@ describe('p5FixtureServer — the boot-route fix and per-scenario surfaces', () 
   });
 
   it('home-health-live-release: Home chip SHA equals Health release-row SHA (one injected activation)', async () => {
+    // W6.5b: the OLD version of this test read a top-level `home.release`/`health.release` key that
+    // neither `D13Home.tsx` (Home's "Version" section, `sections[3].data`) nor `Health.tsx` (the
+    // `daemon-machine` release ROW) ever reads — it was asserting a field the browser never renders,
+    // so it stayed green while the chip and the release row silently disagreed. This reads the SAME
+    // fields the client actually renders.
     const fixture = await startServer('home-health-live-release');
-    const home = await (await fetch(`${fixture.origin}/api/home`)).json() as { release?: { sha?: string } };
-    const health = await (await fetch(`${fixture.origin}/api/health`)).json() as { release?: { sha?: string } };
-    expect(home.release?.sha).toBeDefined();
-    expect(home.release?.sha).toBe(health.release?.sha);
+    const home = await (await fetch(`${fixture.origin}/api/home`)).json() as {
+      generatedAt?: string;
+      sections?: { data?: { section?: string; sha?: string; activatedAt?: string } }[];
+    };
+    const health = await (await fetch(`${fixture.origin}/api/health`)).json() as {
+      sections: { id: string; rows: { key: string; value: unknown }[] }[];
+    };
+    const versionSection = home.sections?.[3]?.data;
+    expect(versionSection?.section).toBe('version');
+    const releaseRow = health.sections.find((s) => s.id === 'daemon-machine')?.rows.find((r) => r.key === 'release');
+    const releaseValue = releaseRow?.value as { sha?: string; activatedAt?: string } | undefined;
+    expect(versionSection?.sha).toBeDefined();
+    expect(versionSection?.sha).toBe(releaseValue?.sha);
+    expect(versionSection?.sha).toBe('a'.repeat(40));
+    expect(versionSection?.activatedAt).toBe(releaseValue?.activatedAt);
+    expect(home.generatedAt).toBe('2026-08-25T12:00:00.000Z');
+  });
+
+  it('home-health-live-release digest: every OTHER scenario keeps the default fixture sha untouched (no cross-scenario leakage)', async () => {
+    const fixture = await startServer('deployment-action-matrix');
+    const home = await (await fetch(`${fixture.origin}/api/home`)).json() as { sections?: { data?: { sha?: string } }[] };
+    expect(home.sections?.[3]?.data?.sha).toBe('64fb3d02');
+  });
+
+  it('health-bounded-probe-failure: exactly one health row is unavailable, every other daemon-machine row is intact', async () => {
+    const fixture = await startServer('health-bounded-probe-failure');
+    const health = await (await fetch(`${fixture.origin}/api/health`)).json() as {
+      sections: { id: string; rows: { kind: string; key: string }[] }[];
+    };
+    const unavailable = health.sections.flatMap((s) => s.rows).filter((row) => row.kind === 'unavailable');
+    expect(unavailable).toHaveLength(1);
+    const daemonMachine = health.sections.find((s) => s.id === 'mcp');
+    expect(daemonMachine?.rows).toEqual([expect.objectContaining({ kind: 'unavailable' })]);
+    const fleet = health.sections.find((s) => s.id === 'fleet');
+    expect(fleet?.rows.every((row) => row.kind !== 'unavailable')).toBe(true);
   });
 });
 
