@@ -3,7 +3,10 @@
 // (it never recomputes the server's sha256 revisions — those are opaque 64-hex strings here) and rebuilds
 // the PR href from the pinned owner/repo/number so subject text can never supply a link target.
 
-export type InboxSourceKind = 'pr' | 'escalation';
+// P5 W6.1: the FOUR-source envelope. The decoder validates SHAPE only (it never recomputes the server's
+// sha256 revisions) and admits the two new item arms `deployment` + `asset-pull` (plus the projected
+// `deployment-escalation` subject). No compatibility union or adapter remains [P5-C22].
+export type InboxSourceKind = 'pr' | 'escalation' | 'deployment' | 'assetPull';
 export type InboxSourceErrorCode = 'unavailable' | 'timeout' | 'overflow' | 'invalid';
 const SOURCE_ERROR_CODES: readonly InboxSourceErrorCode[] = ['unavailable', 'timeout', 'overflow', 'invalid'];
 
@@ -32,12 +35,54 @@ export interface EscalationItem {
   reason: string;
 }
 
-export type InboxItem = PrItem | EscalationItem;
+export type DeploymentItemState =
+  | 'waiting-confirmation' | 'requested' | 'parked' | 'swapping' | 'resuming'
+  | 'succeeded' | 'aborted' | 'failed' | 'acknowledged' | 'deploy-ready';
+export const DEPLOYMENT_ITEM_STATES: readonly DeploymentItemState[] = [
+  'waiting-confirmation', 'requested', 'parked', 'swapping', 'resuming',
+  'succeeded', 'aborted', 'failed', 'acknowledged', 'deploy-ready',
+];
+
+export interface DeploymentItem {
+  id: string;
+  createdAt: string;
+  revision: string;
+  kind: 'deployment';
+  subject: { deploymentRef: string };
+  title: string;
+  state: DeploymentItemState;
+  blockingPtyIds: string[];
+}
+
+export type AssetPullItemState = 'pending' | 'in-flight' | 'succeeded' | 'failed' | 'offline';
+const ASSET_PULL_ITEM_STATES: readonly AssetPullItemState[] = ['pending', 'in-flight', 'succeeded', 'failed', 'offline'];
+
+export interface AssetPullItem {
+  id: string;
+  createdAt: string;
+  revision: string;
+  kind: 'asset-pull';
+  subject: { intentRef: string; runRef: string; manifestDigest: string };
+  title: string;
+  state: AssetPullItemState;
+}
+
+export interface DeploymentEscalationItem {
+  id: string;
+  createdAt: string;
+  revision: string;
+  kind: 'deployment-escalation';
+  subject: { deploymentRef: string };
+  title: string;
+  swapDeadlineAt: string;
+}
+
+export type InboxItem = PrItem | EscalationItem | DeploymentItem | AssetPullItem | DeploymentEscalationItem;
 
 export interface InboxResponse {
   items: InboxItem[];
   revision: string;
-  sources: { pr: SourceState; escalation: SourceState };
+  sources: { pr: SourceState; escalation: SourceState; deployment: SourceState; assetPull: SourceState };
 }
 
 export type FetchLike = typeof fetch;
@@ -103,11 +148,61 @@ function decodeEscalationItem(item: Record<string, unknown>): EscalationItem | n
   };
 }
 
+const PTY_SESSION_ID = /^pty-[0-9a-f]{32}$/;
+
+function decodeDeploymentItem(item: Record<string, unknown>): DeploymentItem | null {
+  if (!exactKeys(item, ['blockingPtyIds', 'createdAt', 'id', 'kind', 'revision', 'state', 'subject', 'title'])) return null;
+  const subject = record(item.subject);
+  if (!subject || !exactKeys(subject, ['deploymentRef']) || typeof subject.deploymentRef !== 'string') return null;
+  if (!hex64(item.id) || typeof item.revision !== 'string' || !validTime(item.createdAt) || typeof item.title !== 'string') return null;
+  const state = item.state;
+  if (typeof state !== 'string' || !DEPLOYMENT_ITEM_STATES.includes(state as DeploymentItemState)) return null;
+  const rawIds = item.blockingPtyIds;
+  if (!Array.isArray(rawIds) || !rawIds.every((id) => typeof id === 'string' && PTY_SESSION_ID.test(id))) return null;
+  // A deploy-ready subject is a read projection with no record behind it — it carries no blocking ids.
+  if (state === 'deploy-ready' && rawIds.length > 0) return null;
+  return {
+    id: item.id, createdAt: item.createdAt, revision: item.revision, kind: 'deployment',
+    subject: { deploymentRef: subject.deploymentRef }, title: item.title,
+    state: state as DeploymentItemState, blockingPtyIds: rawIds as string[],
+  };
+}
+
+function decodeAssetPullItem(item: Record<string, unknown>): AssetPullItem | null {
+  if (!exactKeys(item, ['createdAt', 'id', 'kind', 'revision', 'state', 'subject', 'title'])) return null;
+  const subject = record(item.subject);
+  if (!subject || !exactKeys(subject, ['intentRef', 'manifestDigest', 'runRef'])) return null;
+  const { intentRef, manifestDigest, runRef } = subject;
+  if (typeof intentRef !== 'string' || typeof runRef !== 'string' || !hex64(manifestDigest)) return null;
+  if (!hex64(item.id) || typeof item.revision !== 'string' || !validTime(item.createdAt) || typeof item.title !== 'string') return null;
+  const state = item.state;
+  if (typeof state !== 'string' || !ASSET_PULL_ITEM_STATES.includes(state as AssetPullItemState)) return null;
+  return {
+    id: item.id, createdAt: item.createdAt, revision: item.revision, kind: 'asset-pull',
+    subject: { intentRef, runRef, manifestDigest }, title: item.title, state: state as AssetPullItemState,
+  };
+}
+
+function decodeDeploymentEscalationItem(item: Record<string, unknown>): DeploymentEscalationItem | null {
+  if (!exactKeys(item, ['createdAt', 'id', 'kind', 'revision', 'subject', 'swapDeadlineAt', 'title'])) return null;
+  const subject = record(item.subject);
+  if (!subject || !exactKeys(subject, ['deploymentRef']) || typeof subject.deploymentRef !== 'string') return null;
+  if (!hex64(item.id) || typeof item.revision !== 'string' || !validTime(item.createdAt)
+    || typeof item.title !== 'string' || !validTime(item.swapDeadlineAt)) return null;
+  return {
+    id: item.id, createdAt: item.createdAt, revision: item.revision, kind: 'deployment-escalation',
+    subject: { deploymentRef: subject.deploymentRef }, title: item.title, swapDeadlineAt: item.swapDeadlineAt,
+  };
+}
+
 function decodeItem(value: unknown): InboxItem | null {
   const item = record(value);
   if (!item) return null;
   if (item.kind === 'pr') return decodePrItem(item);
   if (item.kind === 'escalation') return decodeEscalationItem(item);
+  if (item.kind === 'deployment') return decodeDeploymentItem(item);
+  if (item.kind === 'asset-pull') return decodeAssetPullItem(item);
+  if (item.kind === 'deployment-escalation') return decodeDeploymentEscalationItem(item);
   return null;
 }
 
@@ -143,14 +238,16 @@ function decode(value: unknown): InboxResponse | null {
   const items = response.items.map(decodeItem);
   if (!items.every((item): item is InboxItem => item !== null)) return null;
   const sources = record(response.sources);
-  if (!sources || !exactKeys(sources, ['escalation', 'pr'])) return null;
+  if (!sources || !exactKeys(sources, ['assetPull', 'deployment', 'escalation', 'pr'])) return null;
   const pr = decodeSourceState(sources.pr);
   const escalation = decodeSourceState(sources.escalation);
-  if (!pr || !escalation) return null;
-  return { items, revision: response.revision, sources: { pr, escalation } };
+  const deployment = decodeSourceState(sources.deployment);
+  const assetPull = decodeSourceState(sources.assetPull);
+  if (!pr || !escalation || !deployment || !assetPull) return null;
+  return { items, revision: response.revision, sources: { pr, escalation, deployment, assetPull } };
 }
 
-/** `refresh` retries only the named failed source (`?refresh=pr|escalation`); Retry needs no mutation. */
+/** `refresh` retries only the named failed source (`?refresh=deployment|assetPull|pr|escalation`). */
 export async function fetchInbox(fetchImpl: FetchLike = fetch, refresh?: InboxSourceKind): Promise<InboxResponse> {
   const url = refresh ? `/api/inbox?refresh=${refresh}` : '/api/inbox';
   const response = await fetchImpl(url, { headers: { accept: 'application/json' } });

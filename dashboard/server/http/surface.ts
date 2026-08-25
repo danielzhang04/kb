@@ -30,6 +30,7 @@ import { resolveCredentials } from '../auth/credentialStore.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes, registerBrowserSessionRoute } from '../auth/routes.ts';
+import { createActivationReader } from '../home/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
@@ -381,6 +382,11 @@ export function makeSurfaceContext(
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
     authMode: overrides.authMode ?? authMode,
+    // P5 W6.1 [P5-C30]: the ONE shared activation reader. Constructed exactly once here and threaded
+    // through the context to Home, Health, and the Inbox deploy-ready gate. `index.test.ts` asserts a
+    // single construction; deleting the `createHomeRoutePorts` default (home/routes.ts:73) makes a
+    // second impossible.
+    activationReader: overrides.activationReader ?? createActivationReader(),
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(activation.env),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
     readRateGuard: overrides.readRateGuard ?? makeDefaultReadRateGuard(),

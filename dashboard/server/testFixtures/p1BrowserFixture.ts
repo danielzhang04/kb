@@ -392,6 +392,13 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
       if (request.method === 'POST' && url.pathname === '/api/control/human-requests/request-t3/respond') {
         return json(reply, 403, { error: 'ceremony-unavailable' });
       }
+      // P5-C38 — a DISTINCT deployment T3 endpoint that refuses the SAME `ceremony-unavailable` code
+      // without a ceremony. It is a separate route from the human-request one above; each answers on its
+      // own path and neither affects the other, so the shared refusal code is proven to be two routes
+      // rather than one. (The P1 human-request route and its test at :196 stay unchanged.)
+      if (request.method === 'POST' && /^\/api\/inbox\/deployment\/[^/]+\/deploy$/.test(url.pathname)) {
+        return json(reply, 403, { error: 'ceremony-unavailable' });
+      }
       if (request.method === 'POST' && url.pathname === '/api/control/human-requests/request-ordinary/respond') {
         const body = await requestJson(request);
         const ordinary = detail.value.humanRequests.find((candidate: Record<string, unknown>) =>

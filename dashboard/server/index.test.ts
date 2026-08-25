@@ -29,6 +29,20 @@ vi.mock('./release/quiescence.ts', async (importOriginal) => {
   quiescenceSpy.mockImplementation(actual.quiescence);
   return { ...actual, quiescence: quiescenceSpy };
 });
+
+// P5 W6.1 [P5-C30]: count every `createActivationReader()` construction across BOTH importers
+// (`http/surface.ts` and `index.ts`) so the single-construction assertion below is exact.
+const activationReaderConstructions = vi.hoisted(() => vi.fn());
+vi.mock('./home/routes.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./home/routes.ts')>();
+  return {
+    ...actual,
+    createActivationReader: (...args: Parameters<typeof actual.createActivationReader>) => {
+      activationReaderConstructions();
+      return actual.createActivationReader(...args);
+    },
+  };
+});
 import {
   buildApp as buildProductionApp,
   DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
@@ -672,6 +686,19 @@ describe('P1 route matrix', () => {
     }
     for (const url of ['/api/index', '/api/schedules']) {
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(200);
+    }
+  });
+});
+
+describe('P5 W6.1 — one shared activation reader [P5-C30]', () => {
+  it('constructs EXACTLY ONE createActivationReader() per app build (Home + Health + Inbox share it)', async () => {
+    activationReaderConstructions.mockClear();
+    const instance = matrixApp();
+    await instance.ready();
+    try {
+      expect(activationReaderConstructions).toHaveBeenCalledTimes(1);
+    } finally {
+      await instance.close();
     }
   });
 });

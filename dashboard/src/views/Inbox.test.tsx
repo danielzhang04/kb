@@ -29,8 +29,15 @@ const pr = {
   href: 'https://github.com/danielzhang04/kb/pull/42',
 };
 
-function envelope(items: unknown[], sources: { pr: unknown; escalation: unknown } = { pr: verified, escalation: verified }) {
-  return { items, revision: 'e'.repeat(64), sources };
+function envelope(
+  items: unknown[],
+  sources: Partial<{ pr: unknown; escalation: unknown; deployment: unknown; assetPull: unknown }> = {},
+) {
+  return {
+    items,
+    revision: 'e'.repeat(64),
+    sources: { pr: verified, escalation: verified, deployment: verified, assetPull: verified, ...sources },
+  };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -146,6 +153,110 @@ describe('Inbox', () => {
     expect(titled?.getAttribute('title')).toBe(hostile.title);
     for (const el of Array.from(view.container.querySelectorAll<HTMLElement>('[id]'))) {
       expect(el.id).not.toContain('script');
+    }
+  });
+
+  // -------------------------------------------------------------------------------------------------
+  // P5 W6.1 §3.1 — the deployment action table. AT MOST ONE mutating control per case + Inspect. The T3
+  // controls render disabled (ceremony unavailable). [P5-C18, P5-C49, P5-C58, P5-C59]
+  // -------------------------------------------------------------------------------------------------
+  function deployment(state: string, over: Record<string, unknown> = {}) {
+    const isReady = state === 'deploy-ready';
+    return {
+      id: 'a'.repeat(64), createdAt: ISO,
+      revision: isReady ? `deploy-ready:${'a'.repeat(64)}` : 'deployment:3',
+      kind: 'deployment' as const,
+      subject: { deploymentRef: isReady ? `deploy-ready:${'a'.repeat(40)}` : 'deployment-1' },
+      title: isReady ? `Deploy ready: ${'a'.repeat(12)}` : `Deploy ${'a'.repeat(12)} — ${state}`,
+      state, blockingPtyIds: [] as string[], ...over,
+    };
+  }
+
+  const CASES: Array<{ label: string; item: Record<string, unknown>; control: string | null; t3: boolean }> = [
+    { label: 'waiting-confirmation ⇒ Confirm alone', item: deployment('waiting-confirmation'), control: 'Confirm', t3: true },
+    { label: 'requested ⇒ Abort', item: deployment('requested'), control: 'Abort', t3: true },
+    { label: 'parked ⇒ Abort', item: deployment('parked'), control: 'Abort', t3: true },
+    { label: 'swapping ⇒ none', item: deployment('swapping'), control: null, t3: false },
+    { label: 'resuming ⇒ none', item: deployment('resuming'), control: null, t3: false },
+    { label: 'succeeded ⇒ Acknowledge', item: deployment('succeeded'), control: 'Acknowledge', t3: false },
+    { label: 'aborted ⇒ Acknowledge', item: deployment('aborted'), control: 'Acknowledge', t3: false },
+    { label: 'failed ⇒ Acknowledge', item: deployment('failed'), control: 'Acknowledge', t3: false },
+    { label: 'acknowledged ⇒ none', item: deployment('acknowledged'), control: null, t3: false },
+    { label: 'deploy-ready green ⇒ Deploy', item: deployment('deploy-ready'), control: 'Deploy', t3: true },
+    {
+      label: 'deploy-ready breaking ⇒ Confirm',
+      item: deployment('deploy-ready', { title: `Deploy ready: ${'a'.repeat(12)} (breaking)` }),
+      control: 'Confirm', t3: true,
+    },
+  ];
+
+  for (const scenario of CASES) {
+    it(`deployment case: ${scenario.label}`, async () => {
+      const fetchImpl = vi.fn(async () => json(envelope([scenario.item])));
+      const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
+      await screen.findByTestId('inbox-inspect');
+      const mutating = view.container.querySelectorAll('.inbox__action--mutating');
+      // At most one mutating control; exactly one when actionable.
+      expect(mutating.length).toBe(scenario.control === null ? 0 : 1);
+      // Decline never exists; Abort never appears at waiting-confirmation/swapping/resuming.
+      expect(screen.queryByRole('button', { name: /decline/i })).toBeNull();
+      if (['waiting-confirmation', 'swapping', 'resuming'].includes(scenario.item.state as string)) {
+        expect(screen.queryByRole('button', { name: /^Abort$/ })).toBeNull();
+      }
+      if (scenario.control !== null) {
+        const control = view.container.querySelector<HTMLButtonElement>('.inbox__action--mutating')!;
+        expect(control.textContent).toBe(scenario.control);
+        expect(control.disabled).toBe(scenario.t3);
+      }
+      // Inspect is always present as navigation and never competes with the mutating control.
+      expect(view.container.querySelectorAll('[data-testid="inbox-inspect"]').length).toBe(1);
+    });
+  }
+
+  it('a pre-swap deployment with live blocking PTYs shows Close PTYs and continue (and no deploy-ready ever does)', async () => {
+    const blocked = deployment('parked', { blockingPtyIds: [`pty-${'a'.repeat(32)}`] });
+    const fetchImpl = vi.fn(async () => json(envelope([blocked])));
+    const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
+    const control = await screen.findByTestId('inbox-deploy-control');
+    expect(control.textContent).toBe('Close PTYs and continue');
+    expect(view.container.querySelectorAll('.inbox__action--mutating').length).toBe(1);
+  });
+
+  it('asset-pull maps pending⇒Pull home, failed⇒Retry, in-flight⇒Inspect only; digest never taken from text', async () => {
+    const base = {
+      id: 'b'.repeat(64), createdAt: ISO, revision: 'c'.repeat(64), kind: 'asset-pull' as const,
+      subject: { intentRef: `assetpull-${'a'.repeat(32)}`, runRef: 'run-9', manifestDigest: 'd'.repeat(64) },
+      title: 'Pull assets for run-9',
+    };
+    for (const [state, label] of [['pending', 'Pull home'], ['failed', 'Retry'], ['offline', 'Retry']] as const) {
+      cleanup();
+      await renderWithTestSession(<Inbox fetchImpl={vi.fn(async () => json(envelope([{ ...base, state }]))) as unknown as typeof fetch} />);
+      const control = await screen.findByTestId('inbox-asset-control');
+      expect(control.textContent).toBe(label);
+    }
+    cleanup();
+    const inflight = await renderWithTestSession(<Inbox fetchImpl={vi.fn(async () => json(envelope([{ ...base, state: 'in-flight' }])))} />);
+    await inflight.findByTestId('inbox-inspect');
+    expect(inflight.container.querySelector('[data-testid="inbox-asset-control"]')).toBeNull();
+  });
+
+  it('scoped copy/control wall: no forbidden P5 token surfaces as a rendered label or copy [P5-C61]', async () => {
+    const items = [
+      ...CASES.map((c) => c.item),
+      { id: '1'.repeat(64), createdAt: ISO, revision: `deployment:4`, kind: 'deployment-escalation' as const,
+        subject: { deploymentRef: 'deployment-1' }, title: 'Deploy swap deadline expired', swapDeadlineAt: ISO },
+    ];
+    // Distinct ids so React keys do not collide.
+    const withIds = items.map((it, i) => ({ ...it, id: i.toString(16).padStart(64, '0') }));
+    const view = await renderWithTestSession(<Inbox fetchImpl={vi.fn(async () => json(envelope(withIds)))} />);
+    await screen.findAllByTestId('inbox-inspect');
+    const forbidden = ['decline', 'Decline', 'candidate-superseded', 'superseded', 'abortReason', 'DeployReady', 'deploy-ready'];
+    // Scope: visible copy + every control label/accessible name — NOT test-only attributes.
+    const copy = view.container.textContent ?? '';
+    const labels = Array.from(view.container.querySelectorAll('button, a')).map((el) => `${el.textContent} ${el.getAttribute('aria-label') ?? ''}`).join(' ');
+    for (const token of forbidden) {
+      expect(copy).not.toContain(token);
+      expect(labels).not.toContain(token);
     }
   });
 

@@ -2,10 +2,14 @@ import { createHash } from 'node:crypto';
 import { WAKE_ACTION } from '../approvals/cardActions.ts';
 import type { CardProjection } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
+import { sha256Hex } from '../write/durableManifest.ts';
 import {
   compareInboxItems, inboxRevision, type EscalationSubject, type InboxResponse, type P4InboxItem,
   type PrSubject, type SourceState,
 } from './contracts.ts';
+import type { DeploymentInboxItem } from './deploymentContracts.ts';
+import type { AssetPullInboxItem } from './assetPullSubjects.ts';
+import type { DeploymentEscalationItem } from './deploymentSubjects.ts';
 
 export interface EscalationInboxItem {
   id: string;
@@ -106,4 +110,98 @@ export function projectP4Inbox(sources: P4InboxSources): InboxResponse {
   const items: P4InboxItem[] = [...sources.pr.items, ...sources.escalation.items].sort(compareInboxItems);
   const states = { pr: sources.pr.state, escalation: sources.escalation.state };
   return { items, revision: inboxRevision(states, items), sources: states };
+}
+
+// ---------------------------------------------------------------------------------------------
+// P5 W6.1 §3.1/§3.2 — the FOUR-source envelope [P5-C31]. The P4 `{items,revision,sources}` contract
+// is extended IN THE SERVED SHAPE with the `deployment` and `asset-pull` arms and their two source
+// states; the top-level revision preimage now folds four source states in canonical lexicographic
+// order `assetPull, deployment, escalation, pr`. This is the ONE shape the route serves — there is
+// no compatibility union, adapter, or flag [P5-C22]. `projectP4Inbox`/`InboxResponse` above stay as
+// the pr+escalation building block; nothing serves them over the wire any more. The two new sources
+// carry P4's `SourceState` VERBATIM (`unavailable|timeout|overflow|invalid`, `stale`), so the browser
+// copy, refresh budget, and staleness semantics are identical [P5-C48].
+// ---------------------------------------------------------------------------------------------
+
+/** Every subject kind the P5 Inbox serves: the P4 union plus the three P5-projected kinds. */
+export type P5InboxItem =
+  | P4InboxItem
+  | DeploymentInboxItem
+  | AssetPullInboxItem
+  | DeploymentEscalationItem;
+
+export type P5InboxSourceKind = 'pr' | 'escalation' | 'deployment' | 'assetPull';
+/** Canonical lexicographic order the revision preimage folds the four source states in [P5-C31]. */
+export const P5_INBOX_SOURCE_ORDER: readonly P5InboxSourceKind[] = ['assetPull', 'deployment', 'escalation', 'pr'];
+
+export interface P5InboxSourceStates {
+  readonly pr: SourceState;
+  readonly escalation: SourceState;
+  readonly deployment: SourceState;
+  readonly assetPull: SourceState;
+}
+
+export interface P5InboxResponse {
+  readonly items: readonly P5InboxItem[];
+  readonly revision: string;
+  readonly sources: P5InboxSourceStates;
+}
+
+/** The same canonical source-state encoding P4 pins (`contracts.ts#canonicalSourceState`), so a fresh
+ *  verified state keeps stable bytes and `stale` only ever appends. Replicated here (the P4 function is
+ *  module-private) rather than crossing the union with a cast. */
+function canonicalSourceState(kind: P5InboxSourceKind, state: SourceState): string {
+  return state.status === 'verified'
+    ? `${kind}\u0000verified\u0000${state.revision}\u0000${state.verifiedAt}${state.stale === true ? '\u0000stale' : ''}`
+    : `${kind}\u0000failed\u0000${state.revision ?? ''}\u0000${state.verifiedAt ?? ''}\u0000${state.errorCode}\u0000${String(state.stale)}`;
+}
+
+/** `sha256(canonical FOUR sorted source states + sorted item id/revision pairs)` [P5-C31]. */
+export function inboxRevisionP5(
+  sources: P5InboxSourceStates,
+  items: readonly Pick<P5InboxItem, 'id' | 'revision'>[],
+): string {
+  const sourceLines = [...P5_INBOX_SOURCE_ORDER]
+    .sort()
+    .map((kind) => canonicalSourceState(kind, sources[kind]));
+  const itemLines = items.map((item) => `${item.id}\u0000${item.revision}`).sort();
+  return sha256Hex([...sourceLines, ...itemLines].join(''));
+}
+
+/** createdAt desc, then kind, then id — the P4 ordering, widened over the P5 union. */
+export function compareP5InboxItems(left: P5InboxItem, right: P5InboxItem): number {
+  if (left.createdAt !== right.createdAt) return left.createdAt < right.createdAt ? 1 : -1;
+  if (left.kind !== right.kind) return left.kind < right.kind ? -1 : 1;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+export interface P5InboxSourceReads {
+  readonly pr: { readonly items: readonly PrSubject[]; readonly state: SourceState };
+  readonly escalation: { readonly items: readonly EscalationSubject[]; readonly state: SourceState };
+  readonly deployment: {
+    readonly items: readonly (DeploymentInboxItem | DeploymentEscalationItem)[];
+    readonly state: SourceState;
+  };
+  readonly assetPull: { readonly items: readonly AssetPullInboxItem[]; readonly state: SourceState };
+}
+
+/**
+ * Compose one P5 Inbox response from the four independently-read sources. A failed source keeps its own
+ * last-good items and its own `SourceState`; the other three are untouched, so a partial failure never
+ * empties the Inbox and never hides a healthy arm [design 367].
+ */
+export function projectP5Inbox(sources: P5InboxSourceReads): P5InboxResponse {
+  const items: P5InboxItem[] = [
+    ...sources.pr.items,
+    ...sources.escalation.items,
+    ...sources.deployment.items,
+    ...sources.assetPull.items,
+  ].sort(compareP5InboxItems);
+  const states: P5InboxSourceStates = {
+    pr: sources.pr.state,
+    escalation: sources.escalation.state,
+    deployment: sources.deployment.state,
+    assetPull: sources.assetPull.state,
+  };
+  return { items, revision: inboxRevisionP5(states, items), sources: states };
 }

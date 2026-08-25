@@ -205,3 +205,78 @@ describe('projectP4Inbox', () => {
     expect(inboxFixtureData('inbox-populated').responses[0]).toMatchObject({ status: 200 });
   });
 });
+
+// P5 W6.1 §3.1/§3.2 — the four-source envelope [P5-C31].
+import {
+  projectP5Inbox, inboxRevisionP5, compareP5InboxItems, P5_INBOX_SOURCE_ORDER,
+  type P5InboxSourceStates,
+} from './project.ts';
+import type { DeploymentInboxItem } from './deploymentContracts.ts';
+import type { AssetPullInboxItem } from './assetPullSubjects.ts';
+
+const ISO = '2026-08-24T00:00:00.000Z';
+const verified = (revision: string): SourceState => ({ status: 'verified', revision, verifiedAt: ISO });
+const failed: SourceState = { status: 'failed', errorCode: 'unavailable', stale: false };
+
+function deploymentItem(id: string, state: DeploymentInboxItem['state'] = 'parked'): DeploymentInboxItem {
+  return {
+    kind: 'deployment', id, createdAt: ISO, revision: 'deployment:3',
+    subject: { deploymentRef: 'deployment-1' }, title: 't', state, blockingPtyIds: [] as string[],
+  };
+}
+function assetItem(id: string): AssetPullInboxItem {
+  return {
+    kind: 'asset-pull', id, createdAt: ISO, revision: 'r',
+    subject: { intentRef: `assetpull-${'a'.repeat(32)}`, runRef: 'run-1', manifestDigest: 'd'.repeat(64) },
+    title: 't', state: 'pending',
+  };
+}
+
+describe('projectP5Inbox — four-source envelope', () => {
+  const base = {
+    pr: { items: [], state: verified('pr') },
+    escalation: { items: [], state: verified('esc') },
+    deployment: { items: [], state: verified('dep') },
+    assetPull: { items: [], state: verified('ap') },
+  };
+
+  it('carries the four source keys and folds the revision preimage in canonical order assetPull,deployment,escalation,pr', () => {
+    expect([...P5_INBOX_SOURCE_ORDER]).toEqual(['assetPull', 'deployment', 'escalation', 'pr']);
+    const response = projectP5Inbox(base);
+    expect(Object.keys(response.sources).sort()).toEqual(['assetPull', 'deployment', 'escalation', 'pr']);
+    // The revision is exactly the four-source fold of its own inputs.
+    expect(response.revision).toBe(inboxRevisionP5(response.sources, response.items));
+  });
+
+  it('a failed source keeps the other three verified — never a false empty', () => {
+    const response = projectP5Inbox({ ...base, deployment: { items: [], state: failed } });
+    expect(response.sources.deployment.status).toBe('failed');
+    expect(response.sources.pr.status).toBe('verified');
+    expect(response.sources.assetPull.status).toBe('verified');
+  });
+
+  it('merges + sorts items from all four arms deterministically', () => {
+    const response = projectP5Inbox({
+      ...base,
+      deployment: { items: [deploymentItem('d'.repeat(64))], state: verified('dep') },
+      assetPull: { items: [assetItem('a'.repeat(64))], state: verified('ap') },
+    });
+    expect(response.items.map((i) => i.kind).sort()).toEqual(['asset-pull', 'deployment']);
+  });
+
+  it('the revision changes when any source state changes (four-source coupling)', () => {
+    const a = projectP5Inbox(base).revision;
+    const b = projectP5Inbox({ ...base, assetPull: { items: [], state: verified('ap-2') } }).revision;
+    expect(a).not.toBe(b);
+  });
+
+  it('compareP5InboxItems orders by createdAt desc, then kind, then id', () => {
+    const older = deploymentItem('a'.repeat(64));
+    const newer = { ...deploymentItem('b'.repeat(64)), createdAt: '2026-08-25T00:00:00.000Z' };
+    expect(compareP5InboxItems(newer, older)).toBeLessThan(0);
+  });
+});
+
+// Silence the unused-type lint by referencing the exported state shape.
+const _p5states: P5InboxSourceStates | null = null;
+void _p5states;

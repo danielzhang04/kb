@@ -304,6 +304,30 @@ describe('P1 browser fixture', () => {
     expect(await runAction('stop', 7, 'run:stop:7')).toMatchObject({ status: 409, body: { error: 'stale-run-version' } });
   });
 
+  it('answers the deployment T3 deploy refusal independently of the human-request ceremony refusal [P5-C38]', async () => {
+    const distDir = await dist();
+    const fixture = await startP1BrowserFixture({ scenario: 'p2-gate-dedupe-t3' as never, distDir, port: 0 });
+    fixtures.push(fixture);
+
+    // The shipped P1 human-request T3 route still refuses `ceremony-unavailable`, exactly as before.
+    const human = await fetch(`${fixture.origin}/api/control/human-requests/request-t3/respond`, { method: 'POST' });
+    expect(human.status).toBe(403);
+    expect(await human.json()).toEqual({ error: 'ceremony-unavailable' });
+
+    // The NEW, DISTINCT deployment T3 route refuses the SAME code on its own path.
+    const deploy = await fetch(`${fixture.origin}/api/inbox/deployment/deploy-ready:${'a'.repeat(64)}/deploy`, { method: 'POST' });
+    expect(deploy.status).toBe(403);
+    expect(await deploy.json()).toEqual({ error: 'ceremony-unavailable' });
+
+    // Independence: hitting one route never changes how the other answers.
+    const humanAgain = await fetch(`${fixture.origin}/api/control/human-requests/request-t3/respond`, { method: 'POST' });
+    expect(humanAgain.status).toBe(403);
+    expect(await humanAgain.json()).toEqual({ error: 'ceremony-unavailable' });
+    const deployAgain = await fetch(`${fixture.origin}/api/inbox/deployment/deployment:7/deploy`, { method: 'POST' });
+    expect(deployAgain.status).toBe(403);
+    expect(await deployAgain.json()).toEqual({ error: 'ceremony-unavailable' });
+  });
+
   it('keeps the retired repository DAG files deleted after the step-DAG fixture is consumable', () => {
     const oldDirectory = join(import.meta.dirname, '..', 'dag');
     for (const file of ['graph.ts', 'graph.test.ts', 'routes.ts', 'routes.test.ts']) {

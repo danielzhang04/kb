@@ -23,6 +23,12 @@ function coordinationRoot(): string {
 /** A pinnable GitHub remote reader, injected so the composition never spawns a real `git`. */
 const githubRemote: GitRemoteReader = () => 'https://github.com/danielzhang04/kb.git\n';
 
+/** P5 W6.1 deleted the `createActivationReader()` default arg [P5-C30]; the shared port is now passed
+ *  explicitly. These inbox-count tests do not exercise the version chip, so a fixed stub suffices. */
+function stubActivationReader() {
+  return { readActivation: async () => ({ revision: 'release:test', label: 'VM', sha: 'a'.repeat(40), activatedAt: new Date().toISOString() }) };
+}
+
 describe('Home routes module', () => {
   const app = Fastify();
   registerHomeRoutes(app, {
@@ -112,7 +118,7 @@ describe('Home routes module', () => {
     const ctx = { repoRoot: coordinationRoot(), controlStore: {} } as unknown as SurfaceContext;
     const ports = createHomeRoutePorts(
       ctx, { list: async () => ({ collectionRevision: 0, schedules: [] }) } as unknown as ScheduleService,
-      undefined, failingGh, githubRemote,
+      stubActivationReader(), failingGh, githubRemote,
     );
     await expect(ports.inboxCount.read()).rejects.toThrow(/inbox source unavailable/);
   });
@@ -128,7 +134,7 @@ describe('Home routes module', () => {
     const ctx = { repoRoot: coordinationRoot(), controlStore: {} } as unknown as SurfaceContext;
     const ports = createHomeRoutePorts(
       ctx, { list: async () => ({ collectionRevision: 0, schedules: [] }) } as unknown as ScheduleService,
-      undefined, flakyGh, githubRemote,
+      stubActivationReader(), flakyGh, githubRemote,
     );
     await expect(ports.inboxCount.read()).resolves.toMatchObject({ data: 1 });
     ok = false;

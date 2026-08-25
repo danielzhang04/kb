@@ -70,7 +70,10 @@ function runProjection(ctx: SurfaceContext): { revision: string; rows: ReturnTyp
 export function createHomeRoutePorts(
   ctx: SurfaceContext,
   schedules: ScheduleService,
-  activation: ActivationReaderPort = createActivationReader(),
+  // P5 W6.1 [P5-C30]: the shared activation port is now REQUIRED and passed explicitly from `index.ts`
+  // (`surfaceCtx.activationReader`) — the `createActivationReader()` default is DELETED so a second
+  // construction is impossible. `createActivationReader` remains exported for `makeSurfaceContext`.
+  activation: ActivationReaderPort,
   /** Test seam only: the Inbox `gh pr list` port, so a Home fixture reaches no real `gh`. */
   inboxGh?: SubprocessPort,
   /** Test seam only: the coordination `git remote get-url origin` reader, so a Home fixture drives the

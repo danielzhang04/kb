@@ -56,6 +56,7 @@ import type { quiescence } from '../release/quiescence.ts';
 import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
 import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
+import type { ActivationReaderPort } from '../home/project.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -100,6 +101,15 @@ export interface SurfaceContext {
   sessionConfig: SessionConfig;
   /** Deployment authentication mode resolved once at the HTTP composition root. */
   authMode: AuthMode;
+  /**
+   * P5 W6.1 [P5-C30]: the ONE shared installed-release activation reader, constructed exactly once in
+   * `makeSurfaceContext` and threaded through this context. Home (D13 chip), Health (ReleaseRow), and the
+   * Inbox deploy-ready gate all read the live release SHA/activation time through THIS instance — never a
+   * checkout, and never a second construction. W6.2 consumes it in `health/service.ts`. Optional only so
+   * the many test contexts that never touch a release need not build one; `makeSurfaceContext` ALWAYS
+   * sets it in production, and `index.ts` passes that one instance to Home, Health, and the Inbox gate.
+   */
+  activationReader?: ActivationReaderPort;
   allowedOrigins: AllowedOrigins;
   /** The MUTATION budget (POST/PUT/PATCH/DELETE/...) on the governed scope. */
   rateGuard: LockoutGuard;
