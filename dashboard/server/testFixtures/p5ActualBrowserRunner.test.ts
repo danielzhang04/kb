@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  P5_BROWSER_EXIT, P5_SCENARIOS, P5_VIEWPORT_WIDTHS, enumerateMatrix, mainP5ActualBrowserRunner,
-  p5InboxEnvelope, parseP5BrowserCliArgs, runP5BrowserMatrix,
-  P5_ASSET_PULL_ITEM, P5_DEPLOYMENT_ESCALATION_ITEM, P5_DEPLOYMENT_ITEM, P5_DEPLOY_READY_ITEM,
+  P5_BROWSER_EXIT, P5_FIXTURE_KINDS, P5_LIVE_ACTIVATION, P5_RAIL_DESTINATIONS, P5_SCENARIOS,
+  P5_SCENARIO_FIXTURE, P5_VIEWPORT_WIDTHS, enumerateMatrix, isP5FixtureKind, isP5Scenario,
+  mainP5ActualBrowserRunner, p5ScenarioProfile, parseP5BrowserCliArgs, runP5BrowserMatrix,
 } from './p5ActualBrowserRunner.ts';
 import type { CellCapture, MatrixArtifact, P5BrowserDeps } from './p5ActualBrowserRunner.ts';
 import type { ActualBrowser, ActualBrowserFactory, CellObservation } from './p3ActualBrowserRunner.ts';
@@ -29,59 +29,75 @@ function fakeBrowser(dom: string, consoleErrors: string[] = []): ActualBrowserFa
   return async () => browser;
 }
 
-describe('enumerateMatrix — full light/dark × a11y × width matrix', () => {
-  it('covers every theme, keyboard-only, reduced-motion, and width combination', () => {
+describe('enumerateMatrix — full light/dark × a11y × width matrix at the two §8 widths', () => {
+  it('covers every theme, keyboard-only, reduced-motion, and the two widths (desktop + 720)', () => {
     const cells = enumerateMatrix();
-    expect(cells).toHaveLength(2 * 2 * 2 * 3);
+    expect(cells).toHaveLength(2 * 2 * 2 * 2);
     expect(new Set(cells.map((c) => c.theme))).toEqual(new Set(['light', 'dark']));
     expect(new Set(cells.map((c) => c.width))).toEqual(new Set(P5_VIEWPORT_WIDTHS));
-    expect(cells.some((c) => c.keyboardOnly && c.reducedMotion && c.width === 375)).toBe(true);
+    expect([...P5_VIEWPORT_WIDTHS].sort((a, b) => b - a)).toEqual([1440, 720]);
+    expect(cells.some((c) => c.keyboardOnly && c.reducedMotion && c.width === 720)).toBe(true);
     const keys = cells.map((c) => `${c.theme}-${c.keyboardOnly}-${c.reducedMotion}-${c.width}`);
     expect(new Set(keys).size).toBe(cells.length);
   });
 });
 
-describe('p5InboxEnvelope — the four-source envelope and the three new item kinds', () => {
-  it('every scenario carries all four source states in the canonical fold set', () => {
+describe('p5ScenarioProfile — the seven §8 scenarios and their plan bullets', () => {
+  it('exposes exactly the seven §8 scenarios and two fixture kinds', () => {
+    expect([...P5_SCENARIOS]).toEqual([
+      'deployment-action-matrix', 'asset-pull-digest', 'pty-quiescence-refusal', 't3-missing-ceremony',
+      'health-bounded-probe-failure', 'home-health-live-release', 'no-deploy-destination',
+    ]);
+    expect([...P5_FIXTURE_KINDS]).toEqual(['bounded', 'real']);
+    expect(isP5Scenario('deployment-action-matrix')).toBe(true);
+    expect(isP5Scenario('inbox-deployment-arms')).toBe(false);
+    expect(isP5FixtureKind('real')).toBe(true);
+    expect(isP5FixtureKind('nope')).toBe(false);
+  });
+
+  it('every scenario carries the four-source envelope in canonical fold order and a plan bullet', () => {
     for (const scenario of P5_SCENARIOS) {
-      const envelope = p5InboxEnvelope(scenario);
-      expect(Object.keys(envelope.sources).sort()).toEqual(['assetPull', 'deployment', 'escalation', 'pr']);
-      expect(typeof envelope.revision).toBe('string');
+      const profile = p5ScenarioProfile(scenario);
+      expect(Object.keys(profile.inbox.sources).sort()).toEqual(['assetPull', 'deployment', 'escalation', 'pr']);
+      expect(profile.fixtureKind).toBe(P5_SCENARIO_FIXTURE[scenario]);
+      expect(profile.assertsBullet.length).toBeGreaterThan(0);
+      expect(typeof profile.inbox.revision).toBe('string');
     }
   });
 
-  it('the deployment arm projects deployment + deploy-ready + escalation items with the wire shapes', () => {
-    const envelope = p5InboxEnvelope('inbox-deployment-arms');
-    const kinds = envelope.items.map((item) => item.kind);
-    expect(kinds).toEqual(['deployment', 'deployment', 'deployment-escalation']);
-    // deploy-ready carries no blocking ids by construction [P5-C59].
-    expect(P5_DEPLOY_READY_ITEM.blockingPtyIds).toEqual([]);
-    expect(P5_DEPLOY_READY_ITEM.state).toBe('deploy-ready');
-    expect(Object.keys(P5_DEPLOYMENT_ITEM).sort())
-      .toEqual(['blockingPtyIds', 'createdAt', 'id', 'kind', 'revision', 'state', 'subject', 'title']);
-    expect(Object.keys(P5_DEPLOYMENT_ITEM.subject)).toEqual(['deploymentRef']);
-    expect(P5_DEPLOYMENT_ESCALATION_ITEM.kind).toBe('deployment-escalation');
-    expect(typeof P5_DEPLOYMENT_ESCALATION_ITEM.swapDeadlineAt).toBe('string');
+  it('deployment-action-matrix projects the deployment + deploy-ready + escalation arms', () => {
+    const profile = p5ScenarioProfile('deployment-action-matrix');
+    expect(profile.fixtureKind).toBe('bounded');
+    expect(profile.inbox.items.map((item) => item.kind)).toEqual(['deployment', 'deployment', 'deployment-escalation']);
   });
 
-  it('the asset-pull arm projects an asset-pull item pinning intentRef/runRef/manifestDigest', () => {
-    const envelope = p5InboxEnvelope('inbox-asset-pull-arms');
-    expect(envelope.items.map((item) => item.kind)).toEqual(['asset-pull']);
-    expect(Object.keys(P5_ASSET_PULL_ITEM.subject).sort()).toEqual(['intentRef', 'manifestDigest', 'runRef']);
-    expect(P5_ASSET_PULL_ITEM.subject.manifestDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(P5_ASSET_PULL_ITEM).not.toHaveProperty('blockingPtyIds');
+  it('asset-pull-digest pins a 64-hex manifestDigest, never taken from subject text', () => {
+    const profile = p5ScenarioProfile('asset-pull-digest');
+    const item = profile.inbox.items[0] as { subject: { manifestDigest: string } };
+    expect(item.subject.manifestDigest).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('the four-source-health scenario carries a failed source, a stale source, and verified sources', () => {
-    const { sources } = p5InboxEnvelope('inbox-four-source-health');
-    expect(sources.pr.status).toBe('failed');
-    expect(sources.assetPull).toMatchObject({ status: 'failed', errorCode: 'unavailable' });
-    expect(sources.deployment).toMatchObject({ status: 'verified', stale: true });
-    expect(sources.escalation.status).toBe('verified');
-    // The error codes stay inside the P4 closed union.
-    if (sources.pr.status === 'failed') {
-      expect(['unavailable', 'timeout', 'overflow', 'invalid']).toContain(sources.pr.errorCode);
+  it('the three real-fixture scenarios map to the real port kind', () => {
+    for (const scenario of ['pty-quiescence-refusal', 't3-missing-ceremony', 'health-bounded-probe-failure', 'home-health-live-release'] as const) {
+      expect(p5ScenarioProfile(scenario).fixtureKind).toBe('real');
     }
+  });
+
+  it('home-health-live-release pins one activation the Home chip and Health release row both show', () => {
+    const profile = p5ScenarioProfile('home-health-live-release');
+    expect(profile.liveRelease).not.toBeNull();
+    expect(profile.liveRelease?.sha).toBe(P5_LIVE_ACTIVATION.sha);
+    expect(profile.liveRelease?.generatedAt).toBe(P5_LIVE_ACTIVATION.generatedAt);
+  });
+
+  it('no-deploy-destination lists exactly the ten ux-rules:3 destinations with no deploy/deploys/learnings', () => {
+    const profile = p5ScenarioProfile('no-deploy-destination');
+    expect(profile.noDeployDestination).toBe(true);
+    expect(profile.railDestinations).toEqual([...P5_RAIL_DESTINATIONS]);
+    expect(profile.railDestinations).toHaveLength(10);
+    expect(profile.railDestinations).not.toContain('deploy');
+    expect(profile.railDestinations).not.toContain('deploys');
+    expect(profile.railDestinations).not.toContain('learnings');
   });
 });
 
@@ -102,8 +118,8 @@ function browserDeps(capture: (n: number) => CellCapture): { deps: P5BrowserDeps
 
 describe('runP5BrowserMatrix — artifact envelope + failure semantics', () => {
   const options = {
-    fixtureKind: 'bounded', scenario: 'inbox-deployment-arms', commit: 'abc123',
-    originUrl: 'https://127.0.0.1:4521', artifactDir: '/tmp/does-not-matter',
+    fixtureKind: 'bounded', scenario: 'deployment-action-matrix', commit: 'abc123',
+    originUrl: 'https://127.0.0.1:4431', artifactDir: '/tmp/does-not-matter',
   };
 
   it('passes when every cell reaches the app with no console errors and stamps the envelope', async () => {
@@ -113,7 +129,7 @@ describe('runP5BrowserMatrix — artifact envelope + failure semantics', () => {
     expect(written.size).toBe(enumerateMatrix().length);
     const sample = [...written.values()][0];
     expect(sample.fixtureKind).toBe('bounded');
-    expect(sample.scenario).toBe('inbox-deployment-arms');
+    expect(sample.scenario).toBe('deployment-action-matrix');
     expect(sample.commit).toBe('abc123');
     expect(sample.timestamp).toBe('2026-08-25T00:00:00.000Z');
     expect(sample.passed).toBe(true);
@@ -136,19 +152,23 @@ describe('parseP5BrowserCliArgs', () => {
     expect(parsed.artifactDir).toBe('.artifacts/p5-browser/bounded');
     expect(parsed.browserExecutable).toBeNull();
     expect(parsed.maxCells).toBeNull();
+    // Unspecified fixture kind defaults to the scenario's §8-mapped kind.
+    expect(parsed.fixtureKind).toBe('bounded');
     expect(() => parseP5BrowserCliArgs(['--matrix', 'some'])).toThrow(/only --matrix all/);
     expect(() => parseP5BrowserCliArgs(['--matrix', 'all'])).toThrow(/--artifact-dir/);
     expect(() => parseP5BrowserCliArgs(['--matrix', 'all', '--artifact-dir', 'd', '--scenario', 'nope']))
       .toThrow(/--scenario must be one of/);
   });
-  it('parses --scenario, --browser-executable and a positive --max-cells', () => {
+  it('parses --scenario, --fixture, --browser-executable and a positive --max-cells', () => {
     const parsed = parseP5BrowserCliArgs([
-      '--matrix', 'all', '--artifact-dir', 'd', '--scenario', 'inbox-asset-pull-arms',
-      '--browser-executable', '/opt/chrome', '--max-cells', '3',
+      '--matrix', 'all', '--artifact-dir', 'd', '--scenario', 'home-health-live-release',
+      '--fixture', 'real', '--browser-executable', '/opt/chrome', '--max-cells', '3',
     ]);
-    expect(parsed.scenario).toBe('inbox-asset-pull-arms');
+    expect(parsed.scenario).toBe('home-health-live-release');
+    expect(parsed.fixtureKind).toBe('real');
     expect(parsed.browserExecutable).toBe('/opt/chrome');
     expect(parsed.maxCells).toBe(3);
+    expect(() => parseP5BrowserCliArgs(['--matrix', 'all', '--artifact-dir', 'd', '--fixture', 'nope'])).toThrow(/bounded or real/);
     expect(() => parseP5BrowserCliArgs(['--matrix', 'all', '--artifact-dir', 'd', '--max-cells', '0'])).toThrow(/positive integer/);
   });
 });
@@ -164,7 +184,7 @@ describe('mainP5ActualBrowserRunner — real wiring against an injected browser'
     const code = await mainP5ActualBrowserRunner(
       [
         '--matrix', 'all', '--artifact-dir', artifactDir, '--origin', 'http://127.0.0.1:65535',
-        '--scenario', 'inbox-deployment-arms',
+        '--scenario', 'deployment-action-matrix',
         '--browser-executable', resolve('/fake/chrome'), '--max-cells', '2',
       ],
       {

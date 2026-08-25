@@ -22,17 +22,44 @@ import {
   type ActualBrowserFactory, type CertificateReader, type ExecutableInspector,
 } from './p3ActualBrowserRunner.ts';
 
-export const P5_VIEWPORT_WIDTHS = [375, 768, 1440] as const;
+/** design:522 fixes exactly two widths for P5 — desktop (1440) and 720 px [P5-C40, plan §8 line 380]. */
+export const P5_VIEWPORT_WIDTHS = [1440, 720] as const;
 export const P5_THEMES = ['light', 'dark'] as const;
 export type P5Theme = (typeof P5_THEMES)[number];
 
-/** The closed P5 Inbox browser scenario set — each drives a distinct arm of the four-source envelope. */
+/** The seven §8 browser scenarios (plan §8 lines 388-394). `bounded` vs `real` is the fixture kind. */
 export const P5_SCENARIOS = [
-  'inbox-deployment-arms',
-  'inbox-asset-pull-arms',
-  'inbox-four-source-health',
+  'deployment-action-matrix',
+  'asset-pull-digest',
+  'pty-quiescence-refusal',
+  't3-missing-ceremony',
+  'health-bounded-probe-failure',
+  'home-health-live-release',
+  'no-deploy-destination',
 ] as const;
 export type P5Scenario = (typeof P5_SCENARIOS)[number];
+
+export function isP5Scenario(value: string): value is P5Scenario {
+  return (P5_SCENARIOS as readonly string[]).includes(value);
+}
+
+/** The fixture kind each §8 row runs against — `bounded` (UI/projection) or `real` (registered ports). */
+export const P5_FIXTURE_KINDS = ['bounded', 'real'] as const;
+export type P5FixtureKind = (typeof P5_FIXTURE_KINDS)[number];
+export function isP5FixtureKind(value: string): value is P5FixtureKind {
+  return (P5_FIXTURE_KINDS as readonly string[]).includes(value);
+}
+
+/** The §8-line-388..394 mapping of scenario → the fixture kind its row runs against. */
+export const P5_SCENARIO_FIXTURE: Readonly<Record<P5Scenario, P5FixtureKind>> = {
+  'deployment-action-matrix': 'bounded',
+  'asset-pull-digest': 'bounded',
+  'pty-quiescence-refusal': 'real',
+  't3-missing-ceremony': 'real',
+  'health-bounded-probe-failure': 'real',
+  'home-health-live-release': 'real',
+  'no-deploy-destination': 'bounded',
+};
 
 // ---------------------------------------------------------------------------------------------------
 // P5 Inbox fixture data — the four-source envelope and the three new item kinds, in their wire shapes.
@@ -115,40 +142,93 @@ export interface P5InboxEnvelope {
 
 const VERIFIED = (revision: string): P5SourceState =>
   ({ status: 'verified', revision, verifiedAt: '2026-08-25T12:00:00.000Z' });
-const FAILED = (errorCode: P5SourceErrorCode): P5SourceState =>
-  ({ status: 'failed', errorCode, stale: false });
 
-/** The four-source envelope each P5 scenario serves. `assetPull, deployment, escalation, pr` is the
- *  canonical fold order [P5-C31]; every scenario carries all four source states. */
-export function p5InboxEnvelope(scenario: P5Scenario): P5InboxEnvelope {
+/** The ten `ux-rules:3` rail destinations — NO deploy, deploys, or learnings entry [plan §8 line 401]. */
+export const P5_RAIL_DESTINATIONS = [
+  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'tasks', 'projects', 'files', 'health',
+] as const;
+
+/** The one injected activation `home-health-live-release` pins: Home chip and Health release row show it. */
+export const P5_LIVE_ACTIVATION = {
+  sha: 'a'.repeat(40),
+  activatedAt: '2026-08-25T11:30:00.000Z',
+  generatedAt: '2026-08-25T12:00:00.000Z',
+} as const;
+
+/**
+ * The per-scenario fixture profile the §8 matrix drives. Each carries the four-source Inbox envelope its
+ * boot needs plus the scenario-specific expectation the browser asserts (plan §8 lines 388-401). The two
+ * source-failure scenarios still carry all four source states in the canonical fold order [P5-C31].
+ */
+export interface P5ScenarioProfile {
+  readonly scenario: P5Scenario;
+  readonly fixtureKind: P5FixtureKind;
+  readonly surface: 'inbox' | 'health' | 'home' | 'rail';
+  readonly inbox: P5InboxEnvelope;
+  readonly railDestinations: readonly string[];
+  /** Present only for `home-health-live-release`: the SHA Home's chip and Health's release row share. */
+  readonly liveRelease: { readonly sha: string; readonly activatedAt: string; readonly generatedAt: string } | null;
+  /** True when the scenario asserts `/deploy` + `/deploys` are 404 and absent from the rail. */
+  readonly noDeployDestination: boolean;
+  readonly assertsBullet: string;
+}
+
+const ALL_VERIFIED = {
+  pr: VERIFIED('pr-1'), escalation: VERIFIED('esc-1'),
+  deployment: VERIFIED('dep-1'), assetPull: VERIFIED('ap-1'),
+} as const;
+
+function inboxEnvelope(items: readonly Record<string, unknown>[], sources: P5InboxEnvelope['sources'], tag: string): P5InboxEnvelope {
+  return { items, revision: contentHash(tag), sources };
+}
+
+export function p5ScenarioProfile(scenario: P5Scenario): P5ScenarioProfile {
+  const base = {
+    scenario, fixtureKind: P5_SCENARIO_FIXTURE[scenario], railDestinations: [...P5_RAIL_DESTINATIONS],
+    liveRelease: null as P5ScenarioProfile['liveRelease'], noDeployDestination: false,
+  };
   switch (scenario) {
-    case 'inbox-deployment-arms':
+    case 'deployment-action-matrix':
       return {
-        items: [P5_DEPLOYMENT_ITEM, P5_DEPLOY_READY_ITEM, P5_DEPLOYMENT_ESCALATION_ITEM],
-        revision: contentHash('deployment-arms'),
-        sources: {
-          pr: VERIFIED('pr-1'), escalation: VERIFIED('esc-1'),
-          deployment: VERIFIED('dep-1'), assetPull: VERIFIED('ap-1'),
-        },
+        ...base, surface: 'inbox',
+        inbox: inboxEnvelope([P5_DEPLOYMENT_ITEM, P5_DEPLOY_READY_ITEM, P5_DEPLOYMENT_ESCALATION_ITEM], ALL_VERIFIED, 'deployment-action-matrix'),
+        assertsBullet: 'every deployment state shows exactly the one state-valid action; the movement:254 split on one deploy-ready subject (Deploy when breaking:false, Confirm when breaking:true); no Decline control anywhere.',
       };
-    case 'inbox-asset-pull-arms':
+    case 'asset-pull-digest':
       return {
-        items: [P5_ASSET_PULL_ITEM],
-        revision: contentHash('asset-pull-arms'),
-        sources: {
-          pr: VERIFIED('pr-1'), escalation: VERIFIED('esc-1'),
-          deployment: VERIFIED('dep-1'), assetPull: VERIFIED('ap-1'),
-        },
+        ...base, surface: 'inbox',
+        inbox: inboxEnvelope([P5_ASSET_PULL_ITEM], ALL_VERIFIED, 'asset-pull-digest'),
+        assertsBullet: 'asset pull/retry act against the pinned manifestDigest (never taken from subject text); the digest is a 64-hex pin.',
       };
-    case 'inbox-four-source-health':
+    case 'pty-quiescence-refusal':
       return {
-        items: [P5_DEPLOYMENT_ITEM, P5_ASSET_PULL_ITEM],
-        revision: contentHash('four-source-health'),
-        sources: {
-          pr: FAILED('timeout'), escalation: VERIFIED('esc-1'),
-          deployment: { status: 'verified', revision: 'dep-1', verifiedAt: '2026-08-25T12:00:00.000Z', stale: true },
-          assetPull: FAILED('unavailable'),
-        },
+        ...base, surface: 'inbox',
+        inbox: inboxEnvelope([P5_DEPLOYMENT_ITEM], ALL_VERIFIED, 'pty-quiescence-refusal'),
+        assertsBullet: '409 pty-set-changed and 409 pty-not-confirmed on the real store CAS + quiescence action; only close-ptys-and-continue is offered when blocked.',
+      };
+    case 't3-missing-ceremony':
+      return {
+        ...base, surface: 'inbox',
+        inbox: inboxEnvelope([P5_DEPLOY_READY_ITEM], ALL_VERIFIED, 't3-missing-ceremony'),
+        assertsBullet: '403 ceremony-unavailable on a direct call to a T3 deploy endpoint without a ceremony (disabled control in the UI, server refusal on the wire).',
+      };
+    case 'health-bounded-probe-failure':
+      return {
+        ...base, surface: 'health',
+        inbox: inboxEnvelope([], ALL_VERIFIED, 'health-bounded-probe-failure'),
+        assertsBullet: 'Health degrades exactly one row under each of three injected probe faults within the 2500 ms ceiling; every other row stays ready.',
+      };
+    case 'home-health-live-release':
+      return {
+        ...base, surface: 'home', liveRelease: P5_LIVE_ACTIVATION,
+        inbox: inboxEnvelope([], ALL_VERIFIED, 'home-health-live-release'),
+        assertsBullet: "Home's chip SHA equals Health's daemon-machine release-row SHA (one injected activation); <ago> derives from generatedAt and does not drift; neither surface changes when the checkout HEAD moves.",
+      };
+    case 'no-deploy-destination':
+      return {
+        ...base, surface: 'rail', noDeployDestination: true,
+        inbox: inboxEnvelope([], ALL_VERIFIED, 'no-deploy-destination'),
+        assertsBullet: 'the rail renders exactly the ten ux-rules:3 destinations with no Deploy/Learnings entry; /deploy and /deploys render not-found and GET /api/deploy + /api/deploys return 404.',
       };
     default:
       return assertNeverScenario(scenario);
@@ -280,8 +360,8 @@ export interface P5BrowserCliArgs {
 export function parseP5BrowserCliArgs(argv: readonly string[]): P5BrowserCliArgs {
   let artifactDir: string | null = null;
   let originUrl = 'https://127.0.0.1:4521';
-  let fixtureKind = 'bounded';
-  let scenario: P5Scenario = 'inbox-deployment-arms';
+  let fixtureKind: string | null = null;
+  let scenario: P5Scenario = 'deployment-action-matrix';
   let commit = 'unknown';
   let browserExecutable: string | null = null;
   let maxCells: number | null = null;
@@ -297,13 +377,18 @@ export function parseP5BrowserCliArgs(argv: readonly string[]): P5BrowserCliArgs
       case '--matrix': { const v = needValue(); if (v !== 'all') throw new P5BrowserUsageError('only --matrix all is supported'); break; }
       case '--artifact-dir': artifactDir = needValue(); break;
       case '--origin': originUrl = needValue(); break;
-      case '--fixture-kind': fixtureKind = needValue(); break;
+      // `--fixture` (bounded|real) and `--fixture-kind` are accepted equivalently; the artifact records it.
+      case '--fixture':
+      case '--fixture-kind': {
+        const v = needValue();
+        if (!isP5FixtureKind(v)) throw new P5BrowserUsageError('--fixture must be bounded or real');
+        fixtureKind = v;
+        break;
+      }
       case '--scenario': {
         const v = needValue();
-        if (!P5_SCENARIOS.includes(v as P5Scenario)) {
-          throw new P5BrowserUsageError(`--scenario must be one of: ${P5_SCENARIOS.join(', ')}`);
-        }
-        scenario = v as P5Scenario;
+        if (!isP5Scenario(v)) throw new P5BrowserUsageError(`--scenario must be one of: ${P5_SCENARIOS.join(', ')}`);
+        scenario = v;
         break;
       }
       case '--commit': commit = needValue(); break;
@@ -318,7 +403,11 @@ export function parseP5BrowserCliArgs(argv: readonly string[]): P5BrowserCliArgs
     }
   }
   if (artifactDir === null) throw new P5BrowserUsageError('--artifact-dir is required');
-  return { matrix: 'all', artifactDir, originUrl, fixtureKind, scenario, commit, browserExecutable, maxCells };
+  // Unspecified fixture kind defaults to the scenario's §8-mapped kind so the artifact is honest.
+  return {
+    matrix: 'all', artifactDir, originUrl, fixtureKind: fixtureKind ?? P5_SCENARIO_FIXTURE[scenario],
+    scenario, commit, browserExecutable, maxCells,
+  };
 }
 
 /* ------------------------------------------------------------------------------------------------ *
