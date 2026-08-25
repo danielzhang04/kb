@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  P4_LIFECYCLE_EXIT, parseP4FixtureLifecycleArgs, runP4FixtureLifecycle,
+  P4_LIFECYCLE_EXIT, defaultReadyProbe, parseP4FixtureLifecycleArgs, runP4FixtureLifecycle,
 } from './p4FixtureLifecycle.ts';
 import type { LifecycleChild, P4FixtureLifecycleDeps } from './p4FixtureLifecycle.ts';
+import { startP4FixtureServer } from './p4FixtureServer.ts';
 
 /** A fake child with no real process: exit is driven by the test. */
 class FakeChild implements LifecycleChild {
@@ -58,6 +59,24 @@ describe('parseP4FixtureLifecycleArgs', () => {
   });
   it('requires a client command after `--`', () => {
     expect(() => parseP4FixtureLifecycleArgs(['--fixture', 'bounded'])).toThrow(/client command/);
+  });
+  it('spawns the fixture as `node <server>.ts` (execPath first, then the module)', () => {
+    const parsed = parseP4FixtureLifecycleArgs(['--port', '4421', '--', 'node', 'client.ts']);
+    expect(parsed.fixtureArgv[0]).toBe(process.execPath);
+    expect(parsed.fixtureArgv[1]).toBe('server/testFixtures/p4FixtureServer.ts');
+  });
+});
+
+describe('defaultReadyProbe — real HTTP readiness', () => {
+  it('returns true once a live fixture server answers /readyz, false for a dead port', async () => {
+    const server = await startP4FixtureServer({ port: 0, scenario: 'empty-inbox' });
+    try {
+      expect(await defaultReadyProbe(`${server.origin}/readyz`)).toBe(true);
+    } finally {
+      await server.close();
+    }
+    // After close, the port no longer answers.
+    expect(await defaultReadyProbe(`${server.origin}/readyz`)).toBe(false);
   });
 });
 

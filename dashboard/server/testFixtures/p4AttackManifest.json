@@ -57,21 +57,21 @@
       "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
       "title": "refuses: evidence-instructions",
       "proof": "P4",
-      "summary": "Evidence imperative text stays inert string data, never reaches a worker prompt or command."
+      "summary": "The real learning-record reader (readProposedLearningRecords) parses the content-hash-bound record in the lifecycle's step 2; the Evidence locator survives verbatim on main as inert data and never enters the worker target bytes or a command."
     },
     {
       "id": "traversal-symlink",
       "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
       "title": "refuses: traversal-symlink",
       "proof": "P4",
-      "summary": "Traversal/symlink/non-agents targets reject before staging."
+      "summary": "The real target wall (validateImplementerTarget + defaultLstatPath) refuses a real on-disk symlink via lstat (reason 'symlink') and rejects traversal/absolute/nested targets structurally before any subprocess."
     },
     {
       "id": "conflicting-targets",
       "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
       "title": "refuses: conflicting-targets",
       "proof": "P4",
-      "summary": "Duplicate targets reject the whole batch; no PR opens."
+      "summary": "The real selectImplementerBatch rejects a whole batch whose two records name one target (reason 'conflicting-targets'); no PR opens."
     },
     {
       "id": "partial-durable-failure",
@@ -106,14 +106,14 @@
       "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
       "title": "refuses: stale-card",
       "proof": "P4",
-      "summary": "A stale card remains byte-identical after a no-op transition."
+      "summary": "The real reconciliation publisher refuses a card-transition whose expected card bytes are stale (ReconciliationConflictError 'stale card bytes'), runs no card effect, and audits the refusal once."
     },
     {
       "id": "failed-sweeper",
       "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
       "title": "refuses: failed-sweeper",
       "proof": "P4",
-      "summary": "A failed Sweeper produces exactly one deduplicated supervisor escalation."
+      "summary": "The real runSweeper turns a failed snapshot read into exactly one dashboard-supervisor escalation whose idempotency key is failure-stable across fires yet distinct per subject."
     },
     {
       "id": "mirror-watermark-races",
@@ -127,7 +127,7 @@
       "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
       "title": "refuses: attempted-run-gate-injection",
       "proof": "P4",
-      "summary": "A run-shaped payload cannot decode or project as an Inbox item."
+      "summary": "The real Inbox projector (projectEscalationSubjects + projectP4Inbox) drops a run/next-fire/snooze card entirely and admits only the wake-me escalation subject; no run-gate field reaches an Inbox item."
     }
   ]
 }

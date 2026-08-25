@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  P4_ATTACK_IDS, assertLocalRemote, assertSourceRootUnchanged, classifyDurableTarget, cleanup,
-  createFixture, decodesAsInboxItem, isEqualOrBeneath, runAttack, runRecordLifecycle, runScheduleBatch,
-  selectBatch, snapshotSourceRoot,
+  P4_ATTACK_IDS, assertCreatedPathsIsolated, assertLocalRemote, assertSourceRootUnchanged, cleanup,
+  createFixture, isEqualOrBeneath, parseP4RemoteCliArgs, runAttack, runRecordLifecycle, runScheduleBatch,
+  snapshotSourceRoot,
 } from './p4FixtureRemoteLifecycle.ts';
+import type { FixtureIdentity } from './p4FixtureServer.ts';
 import type { Fixture } from './p4FixtureRemoteLifecycle.ts';
 import { assertP4GateResults } from './assertP4GateResults.ts';
 
@@ -98,6 +99,37 @@ describe('createFixture — isolation from the live worktree', () => {
   });
 });
 
+describe('artifact-dir isolation carve-out [W6.4 B1]', () => {
+  it('exempts an artifact dir INSIDE the live worktree (gitignored output) while still refusing a git-writable path inside it', () => {
+    const live = realpathSync(mkdtempSync(join(tmpdir(), 'p4-live-')));
+    trees.push(live);
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'p4-iso-')));
+    trees.push(outside);
+    const base: FixtureIdentity = {
+      sourceRoot: live,
+      tempRoot: join(outside, 't'),
+      fixtureRepo: join(outside, 'r'),
+      bareRemote: join(outside, 'b.git'),
+      workerWorktree: join(outside, 'w'),
+      controlStore: join(outside, 'c.json'),
+      opsOutbox: join(outside, 'o.log'),
+      artifactDir: join(live, '.artifacts', 'p4-fixture-remote'),
+      fixtureHead: 'a'.repeat(40),
+      fixtureTag: 'p4-attested-main',
+    };
+    // The exact §8 geometry — `--artifact-dir .artifacts/p4-fixture-remote` inside the live tree —
+    // composes WITHOUT throwing; artifacts are gitignored output that never touch git.
+    expect(() => assertCreatedPathsIsolated(base)).not.toThrow();
+    // A GIT-WRITABLE created path inside the live worktree is STILL refused (isolation unweakened).
+    expect(() => assertCreatedPathsIsolated({ ...base, opsOutbox: join(live, 'ops-outbox.log') }))
+      .toThrow(/resolves inside the live worktree/);
+  });
+
+  it('defaults --artifact-dir to the §8 in-worktree gitignored path', () => {
+    expect(parseP4RemoteCliArgs(['--source-root', '..']).artifactDir).toBe('.artifacts/p4-fixture-remote');
+  });
+});
+
 describe('record lifecycle — four ordered steps', () => {
   it('publishes proposed, stages exactly target+record@implemented, merges, and retires from ops', () => {
     const fixture = newFixture();
@@ -143,27 +175,11 @@ describe('schedule mirror batch', () => {
   });
 });
 
-describe('pure wall helpers', () => {
-  it('classifies durable targets and rejects traversal/symlink/non-agents paths', () => {
-    expect(classifyDurableTarget('agents/fixture-target.md')).toBe('durable');
-    expect(classifyDurableTarget('routines/roles/x.md')).toBe('durable');
-    for (const bad of ['../x.md', 'agents/../../etc/passwd', '/etc/passwd', 'C:/x.md', 'docs/x.md']) {
-      expect(classifyDurableTarget(bad)).toBe('rejected');
-    }
-  });
-  it('rejects a batch with duplicate targets and decodes only PR/escalation subjects', () => {
-    expect(() => selectBatch([{ id: 'a', target: 't' }, { id: 'b', target: 't' }])).toThrow(/duplicate target/);
-    expect(selectBatch([{ id: 'a', target: 't1' }, { id: 'b', target: 't2' }])).toEqual(['a', 'b']);
-    expect(decodesAsInboxItem({ kind: 'run', runId: 'r' })).toBe(false);
-    expect(decodesAsInboxItem({ kind: 'pr', number: 1 })).toBe(true);
-  });
-});
-
 describe('the eleven adversarial attacks', () => {
   for (const id of P4_ATTACK_IDS) {
-    it(`refuses: ${id}`, () => {
+    it(`refuses: ${id}`, async () => {
       const fixture = newFixture();
-      const result = runAttack(fixture, id);
+      const result = await runAttack(fixture, id);
       expect(result.id).toBe(id);
       expect(result.passed).toBe(true);
       expect(result.assertion.trim().length).toBeGreaterThan(0);
@@ -173,14 +189,14 @@ describe('the eleven adversarial attacks', () => {
     });
   }
 
-  it('all eleven produce passing artifacts the gate asserter accepts', { timeout: 120000 }, () => {
+  it('all eleven produce passing artifacts the gate asserter accepts', { timeout: 120000 }, async () => {
     const attackRoot = mkdtempSync(join(tmpdir(), 'p4-attacks-'));
     trees.push(attackRoot);
     for (const id of P4_ATTACK_IDS) {
       const fixture = newFixture();
       // Redirect this attack's artifact into the shared attack root.
       const redirected: Fixture = { ...fixture, identity: { ...fixture.identity, artifactDir: attackRoot } };
-      const result = runAttack(redirected, id);
+      const result = await runAttack(redirected, id);
       expect(result.passed).toBe(true);
     }
     const lines: string[] = [];
@@ -193,13 +209,13 @@ describe('the eleven adversarial attacks', () => {
     expect(readdirSync(attackRoot).filter((f) => f.endsWith('.json'))).toHaveLength(11);
   });
 
-  it('the gate asserter refuses a tampered (passed:false) artifact', { timeout: 120000 }, () => {
+  it('the gate asserter refuses a tampered (passed:false) artifact', { timeout: 120000 }, async () => {
     const attackRoot = mkdtempSync(join(tmpdir(), 'p4-attacks-bad-'));
     trees.push(attackRoot);
     for (const id of P4_ATTACK_IDS) {
       const fixture = newFixture();
       const redirected: Fixture = { ...fixture, identity: { ...fixture.identity, artifactDir: attackRoot } };
-      runAttack(redirected, id);
+      await runAttack(redirected, id);
     }
     // Tamper one artifact to passed:false.
     const victim = join(attackRoot, `${P4_ATTACK_IDS[0]}.json`);

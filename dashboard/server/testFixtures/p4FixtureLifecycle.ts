@@ -10,7 +10,12 @@
  * The fixture command is always started as a BACKGROUND child in its own process, never `shell: true`:
  * nothing here composes a command string, so no argument can be re-parsed by a shell.
  */
+import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { fileURLToPath } from 'node:url';
+import { readLoopbackCertificate } from './p3LoopbackTls.ts';
 
 /** The bounded child this wrapper drives. A real ChildProcess satisfies it structurally. */
 export interface LifecycleChild {
@@ -91,8 +96,10 @@ export function parseP4FixtureLifecycleArgs(argv: readonly string[]): P4FixtureL
   }
   const scheme = https ? 'https' : 'http';
   return {
+    // `node <file>.ts` — bare type-stripping under native node v24, exactly as the P3 wrapper spawns its
+    // fixture. process.execPath is the current node binary, so the child is the same runtime.
     fixtureArgv: [
-      'server/testFixtures/p4FixtureServer.ts',
+      process.execPath, 'server/testFixtures/p4FixtureServer.ts',
       '--fixture', fixture, '--scenario', scenario, '--port', String(port), ...(https ? ['--https'] : []),
     ],
     clientArgv,
@@ -154,9 +161,93 @@ export async function runP4FixtureLifecycle(
   }
 }
 
+/* ------------------------------------------------------------------------------------------------ *
+ * Real OS deps for the CLI path. Every one is injected above, so the suite proves the four teardown
+ * paths against fakes; these are only reached when the module is run directly.
+ * ------------------------------------------------------------------------------------------------ */
+
+/** Spawn a bounded child in its own process, never `shell: true`: nothing here composes a command string. */
+export function defaultLifecycleSpawn(command: string, args: readonly string[]): LifecycleChild {
+  return spawn(command, [...args], { stdio: 'inherit', shell: false }) as ChildProcess;
+}
+
+/**
+ * Reach `/readyz`, PINNING the fixture's published loopback certificate when the URL is HTTPS.
+ * `rejectUnauthorized` stays at its secure default: an unpinnable origin simply reads not-ready until
+ * the fixture publishes its certificate (which it does before it can serve), and any certificate that is
+ * not the pinned one fails the probe rather than silently passing it.
+ */
+export async function defaultReadyProbe(url: string): Promise<boolean> {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return false;
+  }
+  const secure = target.protocol === 'https:';
+  let ca: string | null = null;
+  if (secure) {
+    ca = readLoopbackCertificate(Number(target.port));
+    if (ca === null) return false;
+  }
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (value: boolean): void => { if (!settled) { settled = true; resolve(value); } };
+    const send = secure ? httpsRequest : httpRequest;
+    const call = send(
+      {
+        protocol: target.protocol,
+        host: target.hostname,
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method: 'GET',
+        // No `servername`: RFC 6066 forbids SNI for an IP literal; the pinned cert carries 127.0.0.1.
+        ...(ca === null ? {} : { ca }),
+      },
+      (response) => {
+        const status = response.statusCode ?? 0;
+        response.resume();
+        finish(status >= 200 && status < 300);
+      },
+    );
+    call.on('error', () => finish(false));
+    call.end();
+  });
+}
+
+/** Register SIGINT/SIGTERM once each; returns a disposer that removes both. */
+export function defaultOnSignal(handler: () => void): () => void {
+  const wrapped = (): void => handler();
+  process.once('SIGINT', wrapped);
+  process.once('SIGTERM', wrapped);
+  return () => {
+    process.off('SIGINT', wrapped);
+    process.off('SIGTERM', wrapped);
+  };
+}
+
+/** The full real-dep set, so the CLI is one call. */
+export function defaultP4FixtureLifecycleDeps(
+  log: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+): P4FixtureLifecycleDeps {
+  return {
+    spawn: defaultLifecycleSpawn,
+    readyProbe: defaultReadyProbe,
+    now: () => Date.now(),
+    sleep: (ms: number) => new Promise<void>((resolve) => { const t = setTimeout(resolve, ms); t.unref?.(); }),
+    onSignal: defaultOnSignal,
+    log,
+  };
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  // A real CLI run would wire node:child_process spawn, an HTTPS ready probe, Date.now, timers, and
-  // process signal registration here; the unit suite drives the injected form.
-  process.stderr.write('p4FixtureLifecycle is driven by the §8 browser commands; import runP4FixtureLifecycle.\n');
-  process.exitCode = P4_LIFECYCLE_EXIT.usage;
+  const log = (line: string): void => { process.stderr.write(`${line}\n`); };
+  try {
+    const options = parseP4FixtureLifecycleArgs(process.argv.slice(2));
+    void runP4FixtureLifecycle(options, defaultP4FixtureLifecycleDeps(log))
+      .then((code) => { process.exitCode = code; });
+  } catch (error) {
+    log(error instanceof Error ? error.message : String(error));
+    process.exitCode = P4_LIFECYCLE_EXIT.usage;
+  }
 }

@@ -1,8 +1,41 @@
+import { get as httpGet } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { describe, expect, it } from 'vitest';
+import { decodeInboxResponse } from '../inbox/contracts.ts';
 import {
   FakePrRegistry, FixtureControlStore, FixtureOpsOutbox, OpsBypassRefused, ScheduleCasConflict,
-  isFortyHex,
+  composeP4Inbox, isFortyHex, startP4FixtureServer,
 } from './p4FixtureServer.ts';
+
+/** Minimal plain-HTTP GET returning status + body. */
+function httpText(url: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    httpGet(url, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+    }).on('error', reject);
+  });
+}
+
+/** HTTPS GET that PINS the fixture's certificate as the sole CA (never rejectUnauthorized:false). */
+function httpsText(url: string, ca: string): Promise<{ status: number; body: string }> {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const call = httpsRequest(
+      { protocol: target.protocol, host: target.hostname, port: target.port, path: target.pathname, method: 'GET', ca },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
+      },
+    );
+    call.on('error', reject);
+    call.end();
+  });
+}
 
 const HEAD_A = 'a'.repeat(40);
 const HEAD_B = 'b'.repeat(40);
@@ -103,5 +136,77 @@ describe('FakePrRegistry — one PR at a time, merge leaves Inbox', () => {
     expect(registry.openCount()).toBe(0);
     // Idempotent merge.
     expect(registry.merge(pr.id, () => 'x')).toBe(merged);
+  });
+});
+
+describe('composeP4Inbox — projects the fixture stores through the real contract', () => {
+  it('composes a contract-valid response with both PR and escalation items', () => {
+    const response = composeP4Inbox('pr-escalation-states', new FakePrRegistry());
+    // A freshly-constructed registry has no open PRs, so only escalations show — still contract-valid.
+    expect(() => decodeInboxResponse(response)).not.toThrow();
+    expect(response.sources.pr.status).toBe('verified');
+    expect(response.items.every((item) => item.kind === 'escalation')).toBe(true);
+  });
+
+  it('partial-source-failure keeps last-good PR items and marks the source failed+stale', () => {
+    const registry = new FakePrRegistry();
+    registry.open('p4/x', ['agents/a.md']);
+    const response = composeP4Inbox('partial-source-failure', registry);
+    expect(response.sources.pr).toMatchObject({ status: 'failed', errorCode: 'unavailable', stale: true });
+    expect(response.items.some((item) => item.kind === 'pr')).toBe(true);
+    expect(() => decodeInboxResponse(response)).not.toThrow();
+  });
+
+  it('empty-inbox is both-verified and empty (a legal "nothing needs you")', () => {
+    const response = composeP4Inbox('empty-inbox', new FakePrRegistry());
+    expect(response.items).toHaveLength(0);
+    expect(response.sources.pr.status).toBe('verified');
+    expect(response.sources.escalation.status).toBe('verified');
+  });
+});
+
+describe('startP4FixtureServer — real loopback listener', () => {
+  it('serves /readyz, a contract-valid /api/inbox, and an app-shell page over plain HTTP', async () => {
+    const server = await startP4FixtureServer({ port: 0, scenario: 'pr-escalation-states' });
+    try {
+      expect(server.origin.startsWith('http://127.0.0.1:')).toBe(true);
+      expect(server.spkiPin).toBeNull();
+
+      const ready = await httpText(`${server.origin}/readyz`);
+      expect(ready.status).toBe(200);
+      expect(JSON.parse(ready.body)).toMatchObject({ status: 'ready', scenario: 'pr-escalation-states' });
+
+      const inbox = await httpText(`${server.origin}/api/inbox`);
+      expect(inbox.status).toBe(200);
+      const decoded = decodeInboxResponse(JSON.parse(inbox.body));
+      expect(decoded.revision).toBe(server.inbox().revision);
+      expect(decoded.items.length).toBeGreaterThan(0);
+
+      const page = await httpText(`${server.origin}/`);
+      expect(page.status).toBe(200);
+      expect(page.body).toContain('<div id="root"');
+      expect(page.body).toContain('/api/inbox');
+
+      const favicon = await httpText(`${server.origin}/favicon.ico`);
+      expect(favicon.status).toBe(204);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('binds HTTPS with a published, pinnable certificate and an SPKI pin', async () => {
+    const server = await startP4FixtureServer({ port: 0, https: true, scenario: 'empty-inbox' });
+    try {
+      expect(server.origin.startsWith('https://127.0.0.1:')).toBe(true);
+      expect(server.certificate).toContain('BEGIN CERTIFICATE');
+      expect(typeof server.spkiPin).toBe('string');
+      expect((server.spkiPin ?? '').length).toBeGreaterThan(0);
+
+      // The probe pins the fixture's own cert as the sole CA — no rejectUnauthorized:false anywhere.
+      const ready = await httpsText(`${server.origin}/readyz`, server.certificate ?? '');
+      expect(ready.status).toBe(200);
+    } finally {
+      await server.close();
+    }
   });
 });

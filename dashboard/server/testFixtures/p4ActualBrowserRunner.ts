@@ -10,9 +10,15 @@
  * dropped) is proven without a real browser, and the per-cell capture seam is injected so the suite can
  * exercise a failing cell (a console error fails the whole run) without launching Chromium.
  */
+import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readLoopbackCertificate } from './p3LoopbackTls.ts';
+import {
+  assessReachedTheApp, defaultExecutableInspector, defaultLaunchCdpBrowser, resolveSpkiPin,
+  type ActualBrowserFactory, type CertificateReader, type ExecutableInspector,
+} from './p3ActualBrowserRunner.ts';
 
 export const P4_VIEWPORT_WIDTHS = [375, 768, 1440] as const;
 export const P4_THEMES = ['light', 'dark'] as const;
@@ -61,6 +67,11 @@ export interface P4BrowserRunOptions {
   readonly commit: string;
   readonly originUrl: string;
   readonly artifactDir: string;
+  /**
+   * The cells to run. Defaults to the full {@link enumerateMatrix}; a bounded proof run passes a slice
+   * (e.g. one cell) so a real browser cell can be certified without the whole 24-cell matrix.
+   */
+  readonly cells?: readonly MatrixCell[];
 }
 
 export interface MatrixArtifact extends MatrixCell {
@@ -104,7 +115,7 @@ export async function runP4BrowserMatrix(
 
   const artifacts: MatrixArtifact[] = [];
   let anyFailed = false;
-  for (const cell of enumerateMatrix()) {
+  for (const cell of options.cells ?? enumerateMatrix()) {
     const capture = await deps.capture({ ...cell, url: options.originUrl });
     const passed = capture.reachedApp && capture.consoleErrors.length === 0;
     if (!passed) anyFailed = true;
@@ -135,6 +146,13 @@ export interface P4BrowserCliArgs {
   readonly fixtureKind: string;
   readonly scenario: string;
   readonly commit: string;
+  /**
+   * The browser binary, supplied EXPLICITLY (no PATH lookup, no discovery), exactly like the P3 runner.
+   * Optional in the parse so the pure-enumeration commands still parse; required by the real run below.
+   */
+  readonly browserExecutable: string | null;
+  /** Cap the number of matrix cells actually driven; null runs the whole matrix. */
+  readonly maxCells: number | null;
 }
 
 export function parseP4BrowserCliArgs(argv: readonly string[]): P4BrowserCliArgs {
@@ -143,6 +161,8 @@ export function parseP4BrowserCliArgs(argv: readonly string[]): P4BrowserCliArgs
   let fixtureKind = 'bounded';
   let scenario = 'pr-escalation-states';
   let commit = 'unknown';
+  let browserExecutable: string | null = null;
+  let maxCells: number | null = null;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const value = argv[i + 1];
@@ -158,14 +178,121 @@ export function parseP4BrowserCliArgs(argv: readonly string[]): P4BrowserCliArgs
       case '--fixture-kind': fixtureKind = needValue(); break;
       case '--scenario': scenario = needValue(); break;
       case '--commit': commit = needValue(); break;
+      case '--browser-executable': browserExecutable = needValue(); break;
+      case '--max-cells': {
+        const parsed = Number.parseInt(needValue(), 10);
+        if (!Number.isInteger(parsed) || parsed <= 0) throw new P4BrowserUsageError('--max-cells must be a positive integer');
+        maxCells = parsed;
+        break;
+      }
       default: throw new P4BrowserUsageError(`unknown flag: ${arg}`);
     }
   }
   if (artifactDir === null) throw new P4BrowserUsageError('--artifact-dir is required');
-  return { matrix: 'all', artifactDir, originUrl, fixtureKind, scenario, commit };
+  return { matrix: 'all', artifactDir, originUrl, fixtureKind, scenario, commit, browserExecutable, maxCells };
+}
+
+/* ------------------------------------------------------------------------------------------------ *
+ * The REAL browser capture — a per-cell reached-the-app verdict from a real Chromium-family browser.
+ *
+ * It reuses the PROVEN P3 driver verbatim: `defaultLaunchCdpBrowser` launches the supplied binary with
+ * pin-scoped trust (`--ignore-certificate-errors-spki-list=<pin>`, never blanket), drives one page per
+ * cell over the DevTools protocol, and returns the DOM, the app-root HTML and every console error. This
+ * runner maps that observation onto the P4 {@link CellCapture}: the app marker is `div#root >
+ * div.app-shell` (`assessReachedTheApp`), the same marker the P4 fixture server's shell page mounts.
+ * ------------------------------------------------------------------------------------------------ */
+
+export interface P4RealBrowserDeps {
+  /** The browser factory; defaults to the P3 CDP launcher. Injected so the suite needs no real browser. */
+  launch?: ActualBrowserFactory;
+  readCertificate?: CertificateReader;
+  inspect?: ExecutableInspector;
+  now?: () => Date;
+  writeArtifact?: (path: string, contents: string) => void;
+  timeoutMs?: number;
+  log?: (line: string) => void;
+}
+
+/** Map a P4 matrix cell to the P3 driver's cell shape (theme + viewport + input mode). */
+function toP3Cell(cell: MatrixCell): {
+  id: string; theme: P4Theme; viewport: { width: number; height: number };
+  inputMode: 'pointer' | 'keyboard-only';
+} {
+  return {
+    id: `${cell.theme}-${cell.width}-${cell.keyboardOnly ? 'kbd' : 'mouse'}-${cell.reducedMotion ? 'reduced' : 'motion'}`,
+    theme: cell.theme,
+    viewport: { width: cell.width, height: 900 },
+    inputMode: cell.keyboardOnly ? 'keyboard-only' : 'pointer',
+  };
+}
+
+/**
+ * Parse, resolve the SPKI pin (a run that cannot pin an HTTPS origin does not launch), launch ONE real
+ * browser, drive the (optionally capped) matrix, and tear the browser down. Never throws for an expected
+ * failure — every path returns an exit code.
+ */
+export async function mainP4ActualBrowserRunner(
+  argv: readonly string[], deps: P4RealBrowserDeps = {},
+): Promise<number> {
+  const log = deps.log ?? (() => undefined);
+  let args: P4BrowserCliArgs;
+  try {
+    args = parseP4BrowserCliArgs(argv);
+  } catch (error) {
+    if (error instanceof P4BrowserUsageError) { log(`[p4-browser] ${error.message}`); return P4_BROWSER_EXIT.usage; }
+    throw error;
+  }
+  const inspect = deps.inspect ?? defaultExecutableInspector;
+  if (args.browserExecutable === null) {
+    log('[p4-browser] --browser-executable is required (no discovery, no PATH lookup)');
+    return P4_BROWSER_EXIT.usage;
+  }
+  if (args.browserExecutable !== resolve(args.browserExecutable)) {
+    log('[p4-browser] --browser-executable must be an absolute path');
+    return P4_BROWSER_EXIT.usage;
+  }
+  const verdict = inspect(args.browserExecutable);
+  if (verdict !== 'ok') { log(`[p4-browser] --browser-executable is ${verdict}: ${args.browserExecutable}`); return P4_BROWSER_EXIT.usage; }
+
+  const readCertificate = deps.readCertificate ?? readLoopbackCertificate;
+  const timeoutMs = deps.timeoutMs ?? 30_000;
+  let spkiPin: string | null;
+  try {
+    spkiPin = resolveSpkiPin(args.originUrl, readCertificate);
+  } catch (error) {
+    log(`[p4-browser] ${error instanceof Error ? error.message : String(error)}`);
+    return P4_BROWSER_EXIT.cellFailed;
+  }
+  if (spkiPin !== null) log(`[p4-browser] pinning the fixture SPKI ${spkiPin} for ${args.originUrl}`);
+
+  const launch = deps.launch ?? defaultLaunchCdpBrowser;
+  const browser = await launch({ executable: args.browserExecutable, timeoutMs, spkiPin });
+  try {
+    const capture: CellCaptureFn = async (input) => {
+      const observation = await browser.runCell(toP3Cell(input), {
+        origin: args.originUrl, entryPath: '/', viewPath: '/', clickPath: [],
+      });
+      const reached = assessReachedTheApp(observation.dom);
+      return {
+        reachedApp: reached.marker !== null && reached.signs.length === 0,
+        consoleErrors: observation.consoleErrors,
+        appRootHash: createHash('sha256').update(observation.appRootHtml, 'utf8').digest('hex'),
+      };
+    };
+    const cells = args.maxCells === null ? enumerateMatrix() : enumerateMatrix().slice(0, args.maxCells);
+    return await runP4BrowserMatrix(
+      {
+        fixtureKind: args.fixtureKind, scenario: args.scenario, commit: args.commit,
+        originUrl: args.originUrl, artifactDir: args.artifactDir, cells,
+      },
+      { capture, now: deps.now ?? (() => new Date()), writeArtifact: deps.writeArtifact, log },
+    );
+  } finally {
+    await browser.close();
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  process.stderr.write('p4ActualBrowserRunner requires an explicit browser-capture seam; drive runP4BrowserMatrix.\n');
-  process.exitCode = P4_BROWSER_EXIT.usage;
+  void mainP4ActualBrowserRunner(process.argv.slice(2), { log: (line) => process.stderr.write(`${line}\n`) })
+    .then((code) => { process.exitCode = code; });
 }
