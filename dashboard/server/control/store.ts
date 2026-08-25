@@ -44,6 +44,14 @@ import {
   decodeScheduleMirrorBatch, decodeScheduleMirrorWatermark, isRowCoveredByMirror,
 } from '../schedules/mirrorContracts.ts';
 import type { ScheduleMirrorBatch, ScheduleMirrorWatermark } from '../schedules/mirrorContracts.ts';
+import { ReconciliationConflictError } from '../reconciliation/contracts.ts';
+import type {
+  PreparedReconciliationReceipt,
+  PublishedReconciliationReceipt,
+  ReconciliationReceipt,
+  ReconciliationReceiptPort,
+  ReconciliationResult,
+} from '../reconciliation/contracts.ts';
 import type {
   AtomicScheduleStorePort,
   ScheduleMutationTransaction,
@@ -524,6 +532,14 @@ export interface StoreDocument extends StoreDocumentCollections {
   scheduleMirrorBatch?: JsonObject;
   /** The watermark of the last mirror actually landed (a merge, or a byte-identical no-op). */
   scheduleMirrorMergedWatermark?: JsonObject;
+  /**
+   * P4 section 3.4: the two-phase reconciliation receipts persisted behind the injected
+   * `ReconciliationReceiptPort` [P4-C33]. Additive and optional on the SAME versioned document —
+   * absent reads as an empty ledger, first written when the first intent prepares; no version bump
+   * and no migration, exactly like the mirror fields above. Rows are keyed by `idempotencyKey`; each
+   * is either a `prepared` or a `published` receipt (see `decodeStoredReconciliationReceipt`).
+   */
+  reconciliationReceipts?: JsonObject[];
 }
 
 type StoreDocumentCollectionEquality =
@@ -914,6 +930,12 @@ export interface BrokerStoreBackend {
 export interface ControlPlaneStore
   extends BrokerStoreBackend, AtomicScheduleStorePort, ScheduleSocketStorePort, ScheduleMirrorStorePort {
   getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision' | 'scheduleCollectionRevision'>;
+  /**
+   * P4 section 3.4 [P4-C33]: the real two-phase reconciliation receipt store, shaped exactly as the
+   * `ReconciliationReceiptPort` the publisher injects. W4 backs the port with an in-memory fake; the
+   * composition passes this instead and re-runs W4's suites unchanged.
+   */
+  reconciliationReceiptPort(): ReconciliationReceiptPort;
   /** W6 schedule read side; private durability fields never cross this boundary. */
   getScheduleSnapshot(): { collectionRevision: number; schedules: Schedule[] };
   resolveScheduleReceiptOwner(cardId: string): RunnableRef | null;
@@ -3573,10 +3595,115 @@ function makeStore(
     return result;
   };
 
+  // --- P4 section 3.4 two-phase reconciliation receipt [P4-C33] ---------------------------------
+  // The real store behind the injected `ReconciliationReceiptPort`. W4 backs the port with an
+  // in-memory fake and never touches this file; here it is substituted and W4's suites re-run
+  // unchanged. Both writes are CAS, serialized on ONE writer tail so `prepare` is an atomic
+  // insert-if-absent and `publish` advances exactly the `prepared` row it read — the publisher has no
+  // other guard against a duplicate effect. `load()` re-reads the persisted document and the whole
+  // transaction body is synchronous (load -> mutate -> commit), so a read always sees prior writes;
+  // a read-your-writes gap would re-classify a replay as `fresh` and re-run its effect.
+  const reconciliationReceiptRowIndex = (document: StoreDocument, idempotencyKey: string): number =>
+    (document.reconciliationReceipts ?? []).findIndex((row) => row['idempotencyKey'] === idempotencyKey);
+
+  const sameStringList = (left: unknown, right: readonly string[]): boolean =>
+    Array.isArray(left) && left.length === right.length && left.every((entry, index) => entry === right[index]);
+
+  const decodeStoredReconciliationResult = (value: unknown): ReconciliationResult => {
+    const record = (value ?? {}) as JsonObject;
+    const detail = record['detail'];
+    return {
+      outcome: record['outcome'] as ReconciliationResult['outcome'],
+      revision: record['revision'] as string,
+      // Verbatim round-trip: `detail` is present iff it was stored, so an exact replay returns a
+      // result with the same optional-field shape as the original, never a spurious `detail:undefined`.
+      ...(typeof detail === 'string' ? { detail } : {}),
+    };
+  };
+
+  const decodeStoredReconciliationReceipt = (row: JsonObject): ReconciliationReceipt => {
+    const base = {
+      idempotencyKey: row['idempotencyKey'] as string,
+      requestSha256: row['requestSha256'] as string,
+      expectedSourceRevision: row['expectedSourceRevision'] as string,
+      expectedStoreRevision: row['expectedStoreRevision'] as string,
+      exactTargets: [...((row['exactTargets'] as string[] | undefined) ?? [])],
+    };
+    if (row['phase'] === 'published') {
+      return {
+        ...base,
+        phase: 'published',
+        result: decodeStoredReconciliationResult(row['result']),
+        auditRef: row['auditRef'] as string,
+      };
+    }
+    return { ...base, phase: 'prepared' };
+  };
+
+  let reconciliationReceiptTail: Promise<unknown> = Promise.resolve();
+  const reconciliationReceiptTransaction = <T>(operation: (document: StoreDocument) => T): Promise<T> => {
+    const run = reconciliationReceiptTail.then(() => operation(load()));
+    reconciliationReceiptTail = run.then(() => undefined, () => undefined);
+    return run;
+  };
+
+  const reconciliationReceiptPortImpl: ReconciliationReceiptPort = {
+    async read(idempotencyKey: string): Promise<ReconciliationReceipt | null> {
+      const document = load();
+      const index = reconciliationReceiptRowIndex(document, idempotencyKey);
+      if (index === -1) return null;
+      return decodeStoredReconciliationReceipt(clone(document.reconciliationReceipts![index]!));
+    },
+    prepare(receipt: PreparedReconciliationReceipt): Promise<PreparedReconciliationReceipt> {
+      return reconciliationReceiptTransaction((document) => {
+        // Insert-if-absent under the single writer tail: a duplicate key surfaces a 409, never the
+        // store's raw error, so the publisher's loser sees the same audited conflict a changed replay
+        // gets [assumption 1, 2].
+        if (reconciliationReceiptRowIndex(document, receipt.idempotencyKey) !== -1) {
+          throw new ReconciliationConflictError(
+            receipt.idempotencyKey, 'a reconciliation receipt already exists for this key',
+          );
+        }
+        const rows = document.reconciliationReceipts ?? [];
+        rows.push(clone(receipt as unknown as JsonObject));
+        document.reconciliationReceipts = rows;
+        commit(document);
+        return receipt;
+      });
+    },
+    publish(receipt: PublishedReconciliationReceipt): Promise<PublishedReconciliationReceipt> {
+      return reconciliationReceiptTransaction((document) => {
+        const rows = document.reconciliationReceipts ?? [];
+        const index = reconciliationReceiptRowIndex(document, receipt.idempotencyKey);
+        const existing = index === -1 ? undefined : rows[index];
+        // CAS on the FULL prepared row: it must be `prepared`, carry the same requestSha256, and match
+        // every expectation/target the preparation staged [assumption 3].
+        if (
+          existing === undefined
+          || existing['phase'] !== 'prepared'
+          || existing['requestSha256'] !== receipt.requestSha256
+          || existing['expectedSourceRevision'] !== receipt.expectedSourceRevision
+          || existing['expectedStoreRevision'] !== receipt.expectedStoreRevision
+          || !sameStringList(existing['exactTargets'], receipt.exactTargets)
+        ) {
+          throw new ReconciliationConflictError(receipt.idempotencyKey, 'reconciliation receipt CAS failed');
+        }
+        rows[index] = clone(receipt as unknown as JsonObject);
+        document.reconciliationReceipts = rows;
+        commit(document);
+        return receipt;
+      });
+    },
+  };
+
   return {
     getControlDocumentMetadata() {
       const { version, documentRevision, scheduleCollectionRevision } = load();
       return { version, documentRevision, scheduleCollectionRevision };
+    },
+
+    reconciliationReceiptPort() {
+      return reconciliationReceiptPortImpl;
     },
 
     getScheduleSnapshot() {

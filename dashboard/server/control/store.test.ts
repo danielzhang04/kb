@@ -33,6 +33,16 @@ import { SCHEDULE_MIRROR_BATCH_SCHEMA, scheduleMirrorBatchId } from '../schedule
 import type { ScheduleMirrorBatch } from '../schedules/mirrorContracts.ts';
 import { scheduleMirrorOperationKey } from '../write/durableManifest.ts';
 import { resolveQueueBridgeRunnable } from './queueBridge.ts';
+import { assertReconciliationPublisher, publishReconciliationIntent } from '../reconciliation/publisher.ts';
+import type { ReconciliationPublisherPorts, ReconciliationSourceSnapshot } from '../reconciliation/publisher.ts';
+import {
+  ReconciliationConflictError, reconciliationIdempotencyKey,
+} from '../reconciliation/contracts.ts';
+import type {
+  CardTransitionIntent, PreparedReconciliationReceipt, PublishedReconciliationReceipt,
+  ReconciliationAuditRecord, ReconciliationResult,
+} from '../reconciliation/contracts.ts';
+import type { ReconciliationAuditSink } from '../reconciliation/audit.ts';
 
 const roots: string[] = [];
 const fileStores = createExistingRootFileStoreHarnessForTest();
@@ -5128,5 +5138,194 @@ describe('control-store schedule mirror revision', () => {
     const rows = store.getScheduleSnapshot().schedules;
     expect(rows.find((row) => row.id === covered.schedule.id)?.mirroredAt).toBe('2026-08-23T10:00:00.000Z');
     expect(rows.find((row) => row.id === later.schedule.id)?.mirroredAt).toBeNull();
+  });
+});
+
+describe('P4 two-phase reconciliation receipt store [P4-C33]', () => {
+  const CARD_SHA_RR = 'a'.repeat(64);
+
+  function rrCardIntent(overrides: Partial<CardTransitionIntent> = {}): CardTransitionIntent {
+    const draft = {
+      schema: 'kb.reconciliation-intent/v1', kind: 'card-transition', actor: 'system-sweeper',
+      idempotencyKey: '', expectedSourceRevision: 'src-1', expectedStoreRevision: 'store-1',
+      exactTargets: ['queue/inbox/card-1.md'], cardId: 'queue/inbox/card-1.md',
+      expectedCardSha256: CARD_SHA_RR, fromState: 'inbox', toState: 'done',
+      ...overrides,
+    } as CardTransitionIntent;
+    return { ...draft, idempotencyKey: reconciliationIdempotencyKey(draft) };
+  }
+
+  interface RRHarness {
+    ports: ReconciliationPublisherPorts;
+    readonly calls: string[];
+    readonly audits: ReconciliationAuditRecord[];
+    failEffect: boolean;
+    completedReplay: ReconciliationResult | null;
+    effectDetail: string | undefined;
+  }
+
+  // The REAL store's receipt port stands in for W4's in-memory fake; every other collaborator is a
+  // fake, exactly as W4 wires them, so this proves the store honors the port contract end to end.
+  function rrHarness(store: ControlPlaneStore, snapshot: Partial<ReconciliationSourceSnapshot> = {}): RRHarness {
+    const calls: string[] = [];
+    const audits: ReconciliationAuditRecord[] = [];
+    const state: RRHarness = {
+      calls, audits, failEffect: false, completedReplay: null, effectDetail: undefined,
+      ports: undefined as unknown as ReconciliationPublisherPorts,
+    };
+    const sink: ReconciliationAuditSink = {
+      async append(record) { audits.push(record); return `audit-${audits.length}`; },
+      async find() { return null; },
+    };
+    const effect = async (label: string, request: unknown) => {
+      assertReconciliationPublisher(request);
+      calls.push(label);
+      if (state.failEffect) throw new Error(`${label} failed`);
+      return {
+        revision: 'src-2', receipt: 'receipt-1', storeRevision: 'store-2',
+        ...(state.effectDetail === undefined ? {} : { detail: state.effectDetail }),
+      };
+    };
+    state.ports = {
+      receipts: store.reconciliationReceiptPort(),
+      source: {
+        async snapshot() {
+          return {
+            sourceRevision: 'src-1', storeRevision: 'store-1', cardSha256: CARD_SHA_RR,
+            escalationCardPath: null, ...snapshot,
+          };
+        },
+      },
+      cards: { executeCardMutation: (request) => effect('card', request) },
+      outbox: { publishOpsOutbox: (request) => effect('outbox', request) },
+      durable: {
+        async routeDurable(request) {
+          assertReconciliationPublisher(request);
+          calls.push('durable');
+          return {
+            revision: 'src-2',
+            receipt: { mode: 'pr', branch: 'dv3-p4/x', pr: { owner: 'kb', repo: 'kb', number: 1, url: 'https://example.invalid/pr/1' } },
+          };
+        },
+      },
+      mirror: { completeMirrorMerge: (request) => effect('mirror', request) },
+      reconciler: {
+        async findCompleted() { calls.push('reconcile-lookup'); return state.completedReplay; },
+      },
+      audit: sink,
+      clock: { now: () => '2026-08-23T00:00:00Z' },
+    };
+    return state;
+  }
+
+  function freshStore(): ControlPlaneStore {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-reconciliation-'));
+    roots.push(root);
+    return createFileControlPlaneStore(root, deterministicOptions());
+  }
+
+  it('prepares, applies, and publishes a fresh intent; the receipt persists as published and reads back', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    const intent = rrCardIntent();
+    const result = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(result.outcome).toBe('applied');
+    expect(h.calls).toEqual(['card']);
+    const stored = await store.reconciliationReceiptPort().read(intent.idempotencyKey);
+    expect(stored?.phase).toBe('published');
+    expect((stored as PublishedReconciliationReceipt).result).toEqual(result);
+  });
+
+  it('returns the original result verbatim on exact replay and never re-runs the effect', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    h.effectDetail = 'card moved to done';
+    const intent = rrCardIntent();
+    const first = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(first.detail).toBe('card moved to done');
+    // If the store lost read-your-writes, the replay would re-classify as fresh and this failing
+    // effect would throw; instead the stored result is returned verbatim, detail included.
+    h.failEffect = true;
+    const second = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(second).toEqual(first);
+    expect(h.calls).toEqual(['card']);
+  });
+
+  it('preserves optional-field absence: a detail-less result round-trips without a spurious detail key', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    const intent = rrCardIntent();
+    const first = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect('detail' in first).toBe(false);
+    const stored = await store.reconciliationReceiptPort().read(intent.idempotencyKey);
+    const result = (stored as PublishedReconciliationReceipt).result;
+    expect(Object.hasOwn(result, 'detail')).toBe(false);
+    expect(result).toEqual(first);
+  });
+
+  it('rejects the same key carrying a different intent hash with 409 and does not re-run the effect', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    await publishReconciliationIntent(rrCardIntent(), h.ports, { authenticatedTaskAction: false });
+    // fromState is not part of the idempotency-key formula, so this lands on the same key with a
+    // different canonical hash - the changed-replay 409.
+    await expect(publishReconciliationIntent(rrCardIntent({ fromState: 'working' }), h.ports, { authenticatedTaskAction: false }))
+      .rejects.toBeInstanceOf(ReconciliationConflictError);
+    expect(h.calls).toEqual(['card']);
+  });
+
+  it('surfaces a duplicate prepare as a 409 conflict (atomic insert-if-absent)', async () => {
+    const port = freshStore().reconciliationReceiptPort();
+    const prepared: PreparedReconciliationReceipt = {
+      idempotencyKey: 'k1', requestSha256: 'x'.repeat(64), phase: 'prepared',
+      expectedSourceRevision: 's', expectedStoreRevision: 't', exactTargets: ['a'],
+    };
+    await port.prepare(prepared);
+    await expect(port.prepare(prepared)).rejects.toBeInstanceOf(ReconciliationConflictError);
+  });
+
+  it('publish CAS fails unless the stored prepared row matches on key, phase, hash, and targets', async () => {
+    const port = freshStore().reconciliationReceiptPort();
+    const base = {
+      idempotencyKey: 'k2', requestSha256: 'y'.repeat(64),
+      expectedSourceRevision: 's', expectedStoreRevision: 't', exactTargets: ['a'],
+    } as const;
+    const published: PublishedReconciliationReceipt = {
+      ...base, phase: 'published', result: { outcome: 'applied', revision: 'r' }, auditRef: 'audit-1',
+    };
+    // No prepared row exists yet -> CAS fails.
+    await expect(port.publish(published)).rejects.toBeInstanceOf(ReconciliationConflictError);
+    await port.prepare({ ...base, phase: 'prepared' });
+    // Prepared row exists but the requestSha256 differs -> CAS fails, nothing published.
+    await expect(port.publish({ ...published, requestSha256: 'z'.repeat(64) }))
+      .rejects.toBeInstanceOf(ReconciliationConflictError);
+    const result = await port.publish(published);
+    expect(result.phase).toBe('published');
+    const read = await port.read('k2');
+    expect(read).toEqual(published);
+  });
+
+  it('advances a prepared receipt to published via the reconciler after a crash, never repeating the effect', async () => {
+    const { reconciliationIntentSha256 } = await import('../reconciliation/contracts.ts');
+    const store = freshStore();
+    const h = rrHarness(store);
+    const intent = rrCardIntent();
+    // Seed exactly the row the publisher would have staged, then simulate the effect having landed.
+    await store.reconciliationReceiptPort().prepare({
+      idempotencyKey: intent.idempotencyKey,
+      requestSha256: reconciliationIntentSha256(intent),
+      phase: 'prepared',
+      expectedSourceRevision: intent.expectedSourceRevision,
+      expectedStoreRevision: intent.expectedStoreRevision,
+      exactTargets: [...intent.exactTargets],
+    });
+    h.completedReplay = { outcome: 'applied', revision: 'src-2' };
+    h.failEffect = true; // the effect must NOT be re-run
+    const result = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(result).toEqual({ outcome: 'applied', revision: 'src-2' });
+    expect(h.calls).toEqual(['reconcile-lookup']);
+    const stored = await store.reconciliationReceiptPort().read(intent.idempotencyKey);
+    expect(stored?.phase).toBe('published');
+    expect((stored as PublishedReconciliationReceipt).result).toEqual(result);
   });
 });
