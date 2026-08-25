@@ -207,7 +207,7 @@ export function createHelperClient(options: HelperClientOptions): HelperClient {
 
       // Idempotent replay: a repeat with the same verb+key returns the original result and never re-sends,
       // so deploy replays bypass the cooldown and pull/result are independently idempotent (movement:235).
-      const cacheKey = `${request.verb} ${idempotencyKey}`;
+      const cacheKey = `${request.verb}\u0000${idempotencyKey}`;
       const cached = idempotent.get(cacheKey);
       if (cached) return cached;
 

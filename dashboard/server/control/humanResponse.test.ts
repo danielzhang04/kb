@@ -308,7 +308,7 @@ describe('deploy-purpose T3 binding', () => {
     expect(challenge.startsWith('kb.deploy-t3.v1.')).toBe(true);
     const encoded = challenge.slice('kb.deploy-t3.v1.'.length);
     const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
-    expect(decoded.startsWith('kb.deploy-t3/v1 deployment ')).toBe(true);
+    expect(decoded.startsWith('kb.deploy-t3/v1\u0000deployment\u0000')).toBe(true);
     expect(decoded.endsWith(PREIMAGE.digest)).toBe(true);
   });
 
