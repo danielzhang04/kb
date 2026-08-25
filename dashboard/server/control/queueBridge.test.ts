@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,12 +7,15 @@ import {
   bridgeClaimsCard,
   scanOwnedDashboardCards,
   createQueueBridge,
+  defaultReconcileTriggerCard,
   QueueBridgeError,
   QUEUE_BRIDGE_SELECT_SCRIPT,
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
   resolveQueueBridgeRunnable,
   type OwnedCard,
 } from './queueBridge.ts';
+import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
+import { stagingGit } from '../testFixtures/stagingGit.ts';
 import { createInMemoryControlPlaneStore, proposalSnapshotHash } from './store.ts';
 import { createLeasedFileStoreForTest } from './test-fixtures/controlStore.ts';
 import type { ApprovedLaunchInput } from './launch.ts';
@@ -1713,5 +1716,99 @@ describe('collectTerminalStageCosts', () => {
   it('reads usage micros from the injected accounting reader, never inventing it', () => {
     const got = collectTerminalStageCosts(detail, (stageRef) => (stageRef === 's1' ? 5_000 : 0));
     expect(got[0].costUsdMicros).toBe(5_000);
+  });
+});
+
+// --- T7-path unit coverage: the DEFAULT trigger-card reconciler (previously only exercised by the ---
+// human-supervised T7 acceptance). Real cards.py over a temp `ops` repo; the ops git is a staging
+// fake pinned to branch `ops`. Written test-first against the CURRENT heredoc, then re-run unchanged
+// against the publisher-intent cutover.
+const reconcileRoots: string[] = [];
+const cardsPySource = fileURLToPath(new URL('../../../scripts/cards.py', import.meta.url));
+
+function bridgeRepo(state: 'inbox' | 'working', body = '## Work order\n\nDo the thing.'): { root: string; id: string; relPath: string } {
+  const root = mkdtempSync(join(tmpdir(), 'queue-bridge-reconcile-'));
+  reconcileRoots.push(root);
+  mkdirSync(join(root, 'scripts'), { recursive: true });
+  copyFileSync(cardsPySource, join(root, 'scripts', 'cards.py'));
+  for (const dir of ['inbox', 'working', 'approvals', 'done']) mkdirSync(join(root, 'queue', dir), { recursive: true });
+  const id = 'wf-trigger-1';
+  const card = [
+    '---',
+    `id: ${id}`,
+    'project: kb-ops',
+    'action: run the bridged workflow',
+    'target: dashboard/server/control/queueBridge.ts',
+    'risk-tier: T1',
+    'owner: dashboard-engine',
+    `state: ${state}`,
+    'workflow: run-bridged',
+    'execution-controller: dashboard',
+    'depends-on: []',
+    '---',
+    '',
+    body,
+  ].join('\n');
+  writeFileSync(join(root, 'queue', state, `${id}.md`), card);
+  return { root, id, relPath: `queue/${state}/${id}.md` };
+}
+
+/** A git fake pinned to `ops` that also answers `rev-parse HEAD` (the real publisher's source snapshot
+ *  reads it; the CURRENT reconciler's direct string commit never does). */
+function opsGitWithHead(headSha: string, onCall?: (args: string[]) => void): SurfaceContext['opsGit'] {
+  const inner = stagingGit({ branch: 'ops', onCall: (_r, a) => onCall?.(a) });
+  return (repoRoot: string, args: string[]) => {
+    if (args.join(' ') === 'rev-parse HEAD') return headSha;
+    return inner(repoRoot, args);
+  };
+}
+
+const HEAD_SHA = 'a'.repeat(40);
+
+/**
+ * A ctx valid for BOTH the pre-cutover heredoc path (uses `opsGit`+`runPy`) and the publisher-intent
+ * cutover (uses `controlStore`+`reconciliationPublisher`, composed over the SAME ops git so both sides
+ * read one HEAD). The real cards port and real source snapshot run over the temp repo's cards.py.
+ */
+function bridgeCtx(root: string, onCommit?: (args: string[]) => void): SurfaceContext {
+  const git = opsGitWithHead(HEAD_SHA, (args) => { if (args[0] === 'commit') onCommit?.(args); });
+  const store = createInMemoryControlPlaneStore();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-recon-state-'));
+  reconcileRoots.push(stateRoot);
+  const publisher = createReconciliationPublisher(
+    createReconciliationRealPorts({ repoRoot: root, store, stateRoot, runGit: git }),
+  );
+  return { repoRoot: root, opsGit: git, controlStore: store, reconciliationPublisher: publisher } as unknown as SurfaceContext;
+}
+
+afterEach(() => {
+  for (const root of reconcileRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe('defaultReconcileTriggerCard — heredoc behaviour (test-first, pre-cutover)', () => {
+  it('walks an inbox trigger card to done and appends the ## Bridged run pointer', async () => {
+    const { root, id, relPath } = bridgeRepo('inbox');
+    const commits: string[][] = [];
+    const ctx = bridgeCtx(root, (args) => commits.push(args));
+
+    await defaultReconcileTriggerCard(ctx, { id, path: relPath, state: 'inbox' }, 'run-xyz');
+
+    expect(existsSync(join(root, 'queue', 'inbox', `${id}.md`))).toBe(false);
+    const done = readFileSync(join(root, 'queue', 'done', `${id}.md`), 'utf8');
+    expect(done).toContain('## Bridged run');
+    expect(done).toContain('This trigger card was consumed by the dashboard engine and run as run-xyz.');
+    expect(commits.length).toBeGreaterThan(0);
+  });
+
+  it('walks a working trigger card to done with the same pointer', async () => {
+    const { root, id, relPath } = bridgeRepo('working');
+    const ctx = bridgeCtx(root);
+
+    await defaultReconcileTriggerCard(ctx, { id, path: relPath, state: 'working' }, 'run-abc');
+
+    expect(existsSync(join(root, 'queue', 'working', `${id}.md`))).toBe(false);
+    const done = readFileSync(join(root, 'queue', 'done', `${id}.md`), 'utf8');
+    expect(done).toContain('## Bridged run');
+    expect(done).toContain('run as run-abc.');
   });
 });

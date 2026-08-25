@@ -19,7 +19,8 @@
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with explicit `.ts` specifiers.
  */
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { assertFleetRunnable, type PreambleRunner } from '../write/preambleGate.ts';
 import { DASHBOARD_EXECUTOR_SUBJECT, createInternalServiceCaller } from './activation.ts';
@@ -35,8 +36,10 @@ import type { RunnableRef } from './p2Contracts.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { runLifecycleKind } from './runLifecycle.ts';
-import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
+import { commitPreparedCoordination, defaultGitRunner, resolveBaseCommit, type GitRunner } from '../write/branch.ts';
 import type { CoordinationPublication } from '../write/outbox.ts';
+import { reconciliationIdempotencyKey, RECONCILIATION_INTENT_SCHEMA } from '../reconciliation/contracts.ts';
+import type { CardTransitionIntent, CardTransitionWrite } from '../reconciliation/contracts.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
 
 export class QueueBridgeError extends Error {}
@@ -525,34 +528,6 @@ card = cards.parse(Path(op["path"]))
 print(json.dumps({"meta": card.meta, "body": card.body}, default=str))
 `.trim();
 
-/**
- * Walk the trigger card out of inbox/working to `done`, appending a `## Bridged run` pointer to the minted
- * run so the signal card is traceable and never re-claimed. Runs inside the ops transaction (the default
- * reconciler commits it there); returns the card's new path. `## Result` is deliberately NOT written here
- * — that belongs to the minted canonical card, written by the untouched canonical integrator.
- */
-export const QUEUE_BRIDGE_RECONCILE_SCRIPT = `
-import sys, json
-from pathlib import Path
-sys.path.insert(0, "scripts")
-import cards
-op = json.loads(sys.argv[1])
-card_id = op["cardId"]
-run_ref = op["runRef"]
-candidates = [Path("queue/inbox") / (card_id + ".md"), Path("queue/working") / (card_id + ".md")]
-found = [p for p in candidates if p.is_file()]
-if len(found) != 1:
-    raise cards.ValidationError("trigger card is not in inbox/working (already reconciled?)")
-card = cards.parse(found[0])
-pointer = "## Bridged run\\n\\nThis trigger card was consumed by the dashboard engine and run as " + run_ref + ".\\n"
-if "## Bridged run" not in card.body:
-    card.body = card.body.rstrip() + "\\n\\n" + pointer
-if card.meta.get("state") == "inbox":
-    cards.transition(card, "working", Path("queue"))
-result_path = cards.transition(card, "done", Path("queue"))
-print(json.dumps({"resultPath": str(result_path)}))
-`.trim();
-
 /** The launch input executeApprovedLaunch consumes for a fresh (non-retry) bridge launch. */
 type ApprovedLaunchArgs = Parameters<typeof executeApprovedLaunch>[2];
 
@@ -845,30 +820,72 @@ export async function dispatchClaimedCard(
 }
 
 /**
- * The default trigger-card reconciler: pull ops, move the card inbox/working -> done with a run pointer,
- * then commit that exact path set atomically to ops (reusing the coordination-commit discipline every
- * other governed writer uses — never hand-rolled git). Runs entirely inside one ops transaction. The pull
- * precedes the mutation so the move lands on top of the latest ops, mirroring the canonical integrator.
- * Its git mechanics are exercised end-to-end by the T7 human-supervised acceptance.
+ * Publish ONE serial card-transition step through the server-owned reconciliation publisher (P4 §3.4).
+ * Each step is its own intent, pinned to the card's CURRENT bytes and the CURRENT ops/store revisions and
+ * carrying the optional `## <section>` body write; the publisher's `cards` port owns the reconcile ->
+ * mutate -> commit -> push under its own (reentrant) ops transaction.
+ *
+ * DOUBLE-TRANSACTION resolution: the publisher's `source.snapshot` reads `rev-parse HEAD` through the
+ * transaction-requiring ops runner BEFORE the `cards` port opens its transaction, so the publish must run
+ * inside `withOpsTransaction`; the `cards` port's own `withOpsTransaction` then JOINS this span reentrantly
+ * (AsyncLocalStorage) rather than acquiring a second git lock — no deadlock, no double lock. The old
+ * reconciler wrapped ONE outer span around a hand-rolled heredoc + git commit; this wraps each single-step
+ * publish, and the caller adds no coordination git of its own.
  */
-async function defaultReconcileTriggerCard(ctx: SurfaceContext, card: OwnedCard, runRef: string): Promise<void> {
-  const runPy = ctx.runPy ?? defaultPyRunner;
-  const runGit = ctx.opsGit ?? defaultGitRunner;
+async function publishTriggerCardTransition(
+  ctx: SurfaceContext,
+  runGit: GitRunner,
+  cardId: string,
+  fromState: string,
+  toState: string,
+  write?: CardTransitionWrite,
+): Promise<void> {
   await withOpsTransaction(async () => {
-    await prepareCoordination(ctx.repoRoot, runGit, ctx.coordinationPublication, ctx.outboxRoot);
-    const res = runPy(ctx.repoRoot, QUEUE_BRIDGE_RECONCILE_SCRIPT, JSON.stringify({ cardId: card.id, runRef }));
-    if (res.exitCode !== 0) {
-      throw new QueueBridgeError(`trigger-card reconciliation failed: ${res.stderr.trim() || res.stdout.trim() || '(no output)'}`);
+    const cardPath = `queue/${fromState}/${cardId}.md`;
+    const absolute = join(ctx.repoRoot, cardPath);
+    if (!existsSync(absolute)) {
+      throw new QueueBridgeError(`trigger card is not in ${fromState} (already reconciled?): ${cardId}`);
     }
-    const donePath = `queue/done/${card.id}.md`;
-    await commitPreparedCoordination(ctx.repoRoot, donePath, {
-      runGit,
-      alsoStage: [card.path],
-      message: `chore(queue): reconcile bridged trigger card ${card.id} -> ${runRef}`,
-      publication: ctx.coordinationPublication,
-      outboxRoot: ctx.outboxRoot,
-    });
+    const draft: CardTransitionIntent = {
+      schema: RECONCILIATION_INTENT_SCHEMA,
+      kind: 'card-transition',
+      actor: 'dashboard-supervisor',
+      idempotencyKey: '',
+      expectedSourceRevision: await resolveBaseCommit(ctx.repoRoot, runGit),
+      expectedStoreRevision: String(ctx.controlStore.getControlDocumentMetadata().documentRevision),
+      exactTargets: [cardPath],
+      cardId: cardPath,
+      expectedCardSha256: createHash('sha256').update(readFileSync(absolute)).digest('hex'),
+      fromState,
+      toState,
+      ...(write === undefined ? {} : { write }),
+    };
+    await ctx.reconciliationPublisher(
+      { ...draft, idempotencyKey: reconciliationIdempotencyKey(draft) },
+      { authenticatedTaskAction: false },
+    );
   });
+}
+
+/**
+ * The default trigger-card reconciler: walk the card inbox/working -> done through the ONE reconciliation
+ * publisher, appending the `## Bridged run` pointer on the FINAL step so the signal card is traceable and
+ * never re-claimed. `## Result` is deliberately NOT written here — that belongs to the minted canonical
+ * card, written by the canonical integrator. Its git mechanics (per intent: reconcile/mutate/commit/push
+ * inside the `cards` port) are exercised end-to-end by the T7 human-supervised acceptance.
+ */
+export async function defaultReconcileTriggerCard(ctx: SurfaceContext, card: OwnedCard, runRef: string): Promise<void> {
+  const runGit = ctx.opsGit ?? defaultGitRunner;
+  const bridgedRun: CardTransitionWrite = {
+    section: 'Bridged run',
+    block: `This trigger card was consumed by the dashboard engine and run as ${runRef}.`,
+  };
+  // A card discovered in `inbox` walks inbox -> working (pure) then working -> done (carrying the pointer);
+  // a card already in `working` is a single working -> done step. Mirrors the retired heredoc's walk.
+  if (card.state === 'inbox') {
+    await publishTriggerCardTransition(ctx, runGit, card.id, 'inbox', 'working');
+  }
+  await publishTriggerCardTransition(ctx, runGit, card.id, 'working', 'done', bridgedRun);
 }
 
 // ===================================================================================================
@@ -876,7 +893,7 @@ async function defaultReconcileTriggerCard(ctx: SurfaceContext, card: OwnedCard,
 // seam. This is NOT a substitute for the control plane's own accounting (D8): the engine's
 // AccountingAdapter writes the control-plane row; this writes the fleet row. Both, not either.
 //
-// The `## Result` writeback + `cards.transition` to done happen INSIDE the engine via
+// The `## Result` writeback + the state walk to done happen INSIDE the engine via
 // createCanonicalGitResultIntegrator (wired in T2), under withOpsTransaction — this module does NOT
 // re-implement writeback; the T7/T8 acceptance verifies that path end-to-end on the real daemon.
 // ===================================================================================================

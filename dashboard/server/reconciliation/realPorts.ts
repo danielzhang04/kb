@@ -221,7 +221,11 @@ export function createReconciliationRealPorts(deps: ReconciliationRealPortDeps):
         }
         const { paths } = await runCardMutationScript(
           {
-            cardId: request.cardId,
+            // `intent.cardId` is the repo-relative card PATH (`queue/<state>/<id>.md`) — the same value
+            // `cardSha256OnDisk` and `exactTargets` use. `cardRespond`'s CARD_RESPOND_SCRIPT globs by the
+            // BARE id (`queue/**/<id>.md`), so hand it the basename without its `.md`; a transition then
+            // relocates the file and the script returns both the old and new paths for staging.
+            cardId: request.cardId.replace(/^.*\//, '').replace(/\.md$/, ''),
             // Forward the write payload verbatim (R1): absent = pure transition (blockless, body unchanged);
             // present = append `write.block` under `## write.section` before the state walk.
             ...(request.write === undefined ? {} : { section: request.write.section, block: request.write.block }),
