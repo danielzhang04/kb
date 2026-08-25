@@ -88,4 +88,19 @@ describe('parseP6BrowserCliArgs', () => {
       '--scenario', 'placement-chip', '--browser-executable', 'C:/edge.exe', '--artifact-dir', 'd',
     ])).toThrow(/placement-chip scenario requires --origin/);
   });
+
+  // Plan §8 line 468's literal placement-chip command passes `--origin` to this runner and never
+  // `--scenario` — so an omitted `--scenario` must infer `placement-chip` from `--origin` alone, not
+  // fall through to the `two-daemon` default and then fail for a missing `--origin-vm`/`--origin-desktop`.
+  it('infers the placement-chip scenario from --origin alone when --scenario is omitted (plan §8 line 468)', () => {
+    expect(parseP6BrowserCliArgs([
+      '--browser-executable', 'C:/edge.exe', '--origin', 'https://127.0.0.1:4345', '--matrix', 'all', '--artifact-dir', 'd',
+    ])).toMatchObject({ scenario: 'placement-chip', origin: 'https://127.0.0.1:4345', originVm: null, originDesktop: null });
+  });
+
+  it('still infers the two-daemon default when neither --origin nor --scenario is given', () => {
+    expect(() => parseP6BrowserCliArgs([
+      '--browser-executable', 'C:/edge.exe', '--artifact-dir', 'd',
+    ])).toThrow(/two-daemon scenario requires --origin-vm and --origin-desktop/);
+  });
 });

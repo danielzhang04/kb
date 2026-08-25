@@ -37,6 +37,7 @@ export const P1_BROWSER_SCENARIOS = [
   'inbox-error-after-success',
   'events-reconnect-unknown',
   'health-reader-error',
+  'p6-placement-chip',
   ...P2_BROWSER_SCENARIOS,
   ...P3_BROWSER_SCENARIOS,
 ] as const;
@@ -90,6 +91,114 @@ export interface P1BrowserFixtureOptions {
   /** Serve TLS with a per-process self-signed loopback certificate (see `p3LoopbackTls.ts`). */
   https?: boolean;
 }
+
+/* ------------------------------------------------------------------------------------------------ *
+ * P6 W6.3 — the `p6-placement-chip` scenario (plan §8 line 468). Reuses the P2 boot-route SHAPES
+ * (EntitySummary/EntityDetail/ControlRunDto, all decoder-checked in `src/lib/entityClient.ts` and
+ * `src/control/controlClient.ts`) but never the P2 singleton data, so this scenario stays independent
+ * of `p2BrowserFixtureData.ts` and cannot drift a P2 checkpoint. It serves exactly what the §8
+ * "Bounded browser fixture" proof row needs: a VM-placed run and a Desktop-placed run whose RunDetail
+ * chip reads the persisted `executionHost` (`src/views/RunDetail.tsx:333`), and a third workflow whose
+ * launch always refuses `409 no-complete-placement` with no Run ever created — `POST
+ * /api/workflows/:id/launch` has no other fixture handler anywhere in this file, so this scenario adds
+ * the one route the real `server/workflows/routes.ts` exposes for it.
+ * ------------------------------------------------------------------------------------------------ */
+const P6_CHIP_NOW = '2026-08-25T12:00:00.000Z';
+type P6ChipHost = 'vm' | 'desktop';
+
+function p6ChipWorkflowRef(id: string): { type: 'workflow'; id: string; project: 'kb-ops'; sourcePath: `orgs/kb-ops/workflows/${string}.md` } {
+  return { type: 'workflow', id, project: 'kb-ops', sourcePath: `orgs/kb-ops/workflows/${id}.md` };
+}
+
+function p6ChipRunRow(runRef: string, owner: ReturnType<typeof p6ChipWorkflowRef>): Record<string, unknown> {
+  return {
+    runRef, title: 'Placement chip run', owner, lifecycle: 'succeeded', outcome: 'ok',
+    createdAt: P6_CHIP_NOW, completedAt: P6_CHIP_NOW, streamKind: 'transcript',
+    elapsedMs: 60_000, toolsCalled: 1, lastLine: 'Run complete.', gateBadge: null,
+  };
+}
+
+/** `EntityCard`'s accessible name comes from `humanizeEntityId(ref.id)`, never `humanName` — this is
+ *  cosmetic text only, kept distinct per id so nothing reads as a copy-paste of another entity. */
+const P6_CHIP_HUMAN_NAME: Readonly<Record<string, string>> = {
+  'placement-chip-vm': 'Placement Chip VM fixture',
+  'placement-chip-desktop': 'Placement Chip Desktop fixture',
+  'placement-chip-refused': 'Placement Chip Refused fixture',
+};
+
+function p6ChipEntityDetail(id: string, host: P6ChipHost, activeRuns: Record<string, unknown>[]): Record<string, unknown> {
+  const ref = p6ChipWorkflowRef(id);
+  const summary = {
+    ref, humanName: P6_CHIP_HUMAN_NAME[id] ?? id, status: 'idle',
+    modelLabel: 'varies', temporalLabel: activeRuns.length > 0 ? 'ran just now' : 'Never run · no schedule',
+    host, gatedRunCount: 0, activeRuns, latestRun: null, nextSchedule: null,
+  };
+  return {
+    revision: `fixture-p6-chip-${id}-1`,
+    summary,
+    brief: {
+      purpose: `Operate ${summary.humanName}.`, doingNow: 'Idle.', recentRuns: activeRuns, outputs: [],
+      pendingGates: 0, schedule: null, autonomyTier: 'T1',
+    },
+    details: {
+      sourcePath: ref.sourcePath, sourceRevision: '4'.repeat(64), tools: [], declaredCeiling: 'T1',
+      replaces: [], buildsOn: [], knowledgeSources: [], skills: [], schemas: [], lineage: [], grades: [], ids: [id],
+      workflow: { stepDag: { nodes: [], edges: [] }, parameters: [], runGraph: null },
+    },
+  };
+}
+
+function p6ChipRunDetail(runRef: string, workflowId: string, executionHost: P6ChipHost): Record<string, unknown> {
+  const owner = p6ChipWorkflowRef(workflowId);
+  return {
+    ok: true,
+    value: {
+      streamKind: 'transcript',
+      run: {
+        runRef, predecessorRunRef: null, title: 'Placement chip run', displayName: 'Placement Chip Run', shortRef: 1,
+        workflowRef: workflowId, proposalRef: `proposal-${runRef}`, proposalRevision: 1, proposalHash: '5'.repeat(64),
+        publicationState: 'published', state: 'succeeded', version: 1, managerSessionRef: 'session-manager',
+        managerGeneration: 1, managerAssignment: null, owner, executionHost, terminalOutcome: 'ok',
+        completedAt: P6_CHIP_NOW, archivedFrom: null, createdAt: P6_CHIP_NOW, updatedAt: P6_CHIP_NOW,
+      },
+      ownerSubject: 'operator',
+      stages: [], attempts: [], sessions: [], humanRequests: [],
+      stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+      sessionId: null, attemptSessions: [], outputs: [],
+    },
+  };
+}
+
+const P6_CHIP_VM_RUN_REF = 'run-p6-chip-vm';
+const P6_CHIP_DESKTOP_RUN_REF = 'run-p6-chip-desktop';
+const P6_CHIP_WORKFLOW_IDS = {
+  vm: 'placement-chip-vm', desktop: 'placement-chip-desktop', refused: 'placement-chip-refused',
+} as const;
+
+const P6_CHIP_WORKFLOW_DETAILS: Readonly<Record<string, Record<string, unknown>>> = {
+  [P6_CHIP_WORKFLOW_IDS.vm]: p6ChipEntityDetail(
+    P6_CHIP_WORKFLOW_IDS.vm, 'vm', [p6ChipRunRow(P6_CHIP_VM_RUN_REF, p6ChipWorkflowRef(P6_CHIP_WORKFLOW_IDS.vm))],
+  ),
+  [P6_CHIP_WORKFLOW_IDS.desktop]: p6ChipEntityDetail(
+    P6_CHIP_WORKFLOW_IDS.desktop, 'desktop',
+    [p6ChipRunRow(P6_CHIP_DESKTOP_RUN_REF, p6ChipWorkflowRef(P6_CHIP_WORKFLOW_IDS.desktop))],
+  ),
+  [P6_CHIP_WORKFLOW_IDS.refused]: p6ChipEntityDetail(P6_CHIP_WORKFLOW_IDS.refused, 'vm', []),
+};
+
+const P6_CHIP_WORKFLOW_LIST = {
+  revision: 'fixture-p6-chip-workflows-1',
+  groups: [{
+    id: 'kb-ops', label: 'kb-ops', collapsed: false,
+    items: Object.values(P6_CHIP_WORKFLOW_DETAILS).map((detail) => (detail as { summary: unknown }).summary),
+  }],
+  items: Object.values(P6_CHIP_WORKFLOW_DETAILS).map((detail) => (detail as { summary: unknown }).summary),
+};
+
+const P6_CHIP_RUN_DETAILS: Readonly<Record<string, Record<string, unknown>>> = {
+  [P6_CHIP_VM_RUN_REF]: p6ChipRunDetail(P6_CHIP_VM_RUN_REF, P6_CHIP_WORKFLOW_IDS.vm, 'vm'),
+  [P6_CHIP_DESKTOP_RUN_REF]: p6ChipRunDetail(P6_CHIP_DESKTOP_RUN_REF, P6_CHIP_WORKFLOW_IDS.desktop, 'desktop'),
+};
 
 /**
  * The fixture daemon hosts no PTY, so it publishes the closed unavailable capability with a fixed
@@ -173,9 +282,10 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     unknownEventFrames: 0,
     runStopRequests: 0,
   };
-  // The P2 and P3 scenarios drive their own surfaces; the inbox is background for them.
+  // The P2, P3, and placement-chip scenarios drive their own surfaces; the inbox is background for them.
   const inboxScenario: InboxFixtureScenario =
     isP2BrowserScenario(options.scenario) || isP3BrowserScenario(options.scenario)
+      || options.scenario === 'p6-placement-chip'
       ? 'inbox-empty'
       : options.scenario === 'health-reader-error' ? 'inbox-populated' : options.scenario;
   const inboxData = inboxFixtureData(inboxScenario);
@@ -470,6 +580,43 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
           Number.isSafeInteger(limit) && limit > 0 ? limit : 250,
           options.scenario === 'p2-stream-reconnect-goldens',
         ));
+      }
+    }
+
+    if (options.scenario === 'p6-placement-chip') {
+      if (request.method === 'GET' && url.pathname === '/api/home') return json(reply, 200, p2Home(false));
+      if (request.method === 'GET' && url.pathname === '/api/attention') {
+        return json(reply, 200, { revision: 'f'.repeat(64), pairs: [], agents: {}, workflows: {} });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/agents') {
+        return json(reply, 200, { revision: 'fixture-p6-chip-agents-1', groups: [], items: [] });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/workflows') return json(reply, 200, P6_CHIP_WORKFLOW_LIST);
+      const workflowDetail = url.pathname.match(/^\/api\/workflows\/([^/]+)$/);
+      if (request.method === 'GET' && workflowDetail) {
+        const detail = P6_CHIP_WORKFLOW_DETAILS[decodeURIComponent(workflowDetail[1])];
+        return detail ? json(reply, 200, detail) : json(reply, 404, { error: 'not-found' });
+      }
+      // The one route no other scenario in this file serves: `server/workflows/routes.ts`'s launch
+      // endpoint. `placement-chip-refused` always fails `select()` (P6-C49's placement result), so this
+      // mirrors the real handler's early refusal — `409 no-complete-placement` BEFORE any Run row is
+      // created (plan §3.2) — with no store, no compile/import/approve, and no queued row ever appearing.
+      const workflowLaunch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/launch$/);
+      if (request.method === 'POST' && workflowLaunch) {
+        return decodeURIComponent(workflowLaunch[1]) === P6_CHIP_WORKFLOW_IDS.refused
+          ? json(reply, 409, { error: 'no-complete-placement' })
+          : json(reply, 404, { error: 'not-found' });
+      }
+      const runDetail = url.pathname.match(/^\/api\/control\/runs\/([^/]+)$/);
+      if (request.method === 'GET' && runDetail) {
+        const detail = P6_CHIP_RUN_DETAILS[decodeURIComponent(runDetail[1])];
+        return detail ? json(reply, 200, detail) : json(reply, 404, { error: 'not-found' });
+      }
+      const runEvents = url.pathname.match(/^\/api\/control\/runs\/([^/]+)\/events$/);
+      if (request.method === 'GET' && runEvents) {
+        return decodeURIComponent(runEvents[1]) in P6_CHIP_RUN_DETAILS
+          ? json(reply, 200, { revision: 'e'.repeat(64), items: [], nextCursor: null })
+          : json(reply, 404, { error: 'not-found' });
       }
     }
 
