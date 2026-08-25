@@ -19,6 +19,7 @@ import {
   assessReachedTheApp, defaultExecutableInspector, defaultLaunchCdpBrowser, resolveSpkiPin,
   type ActualBrowserFactory, type CertificateReader, type ExecutableInspector,
 } from './p3ActualBrowserRunner.ts';
+import { P4_SCENARIOS, type P4Scenario } from './p4FixtureServer.ts';
 
 export const P4_VIEWPORT_WIDTHS = [375, 768, 1440] as const;
 export const P4_THEMES = ['light', 'dark'] as const;
@@ -144,7 +145,7 @@ export interface P4BrowserCliArgs {
   readonly artifactDir: string;
   readonly originUrl: string;
   readonly fixtureKind: string;
-  readonly scenario: string;
+  readonly scenario: P4Scenario;
   readonly commit: string;
   /**
    * The browser binary, supplied EXPLICITLY (no PATH lookup, no discovery), exactly like the P3 runner.
@@ -159,7 +160,7 @@ export function parseP4BrowserCliArgs(argv: readonly string[]): P4BrowserCliArgs
   let artifactDir: string | null = null;
   let originUrl = 'https://127.0.0.1:4421';
   let fixtureKind = 'bounded';
-  let scenario = 'pr-escalation-states';
+  let scenario: P4Scenario = 'pr-escalation-states';
   let commit = 'unknown';
   let browserExecutable: string | null = null;
   let maxCells: number | null = null;
@@ -176,7 +177,14 @@ export function parseP4BrowserCliArgs(argv: readonly string[]): P4BrowserCliArgs
       case '--artifact-dir': artifactDir = needValue(); break;
       case '--origin': originUrl = needValue(); break;
       case '--fixture-kind': fixtureKind = needValue(); break;
-      case '--scenario': scenario = needValue(); break;
+      case '--scenario': {
+        const v = needValue();
+        if (!P4_SCENARIOS.includes(v as P4Scenario)) {
+          throw new P4BrowserUsageError(`--scenario must be one of: ${P4_SCENARIOS.join(', ')}`);
+        }
+        scenario = v as P4Scenario;
+        break;
+      }
       case '--commit': commit = needValue(); break;
       case '--browser-executable': browserExecutable = needValue(); break;
       case '--max-cells': {

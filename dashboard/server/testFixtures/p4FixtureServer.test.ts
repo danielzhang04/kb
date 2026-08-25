@@ -163,6 +163,25 @@ describe('composeP4Inbox — projects the fixture stores through the real contra
     expect(response.sources.pr.status).toBe('verified');
     expect(response.sources.escalation.status).toBe('verified');
   });
+
+  it('resolved-subjects-disappear: a merged PR is OMITTED while the still-open PR and escalations remain', () => {
+    const registry = new FakePrRegistry();
+    const resolved = registry.open('p4/mirror-batch-resolved', ['agents/luna.md']);
+    const stillOpen = registry.open('p4/learning-still-open', ['docs/proposals/learnings/r9.md']);
+    // The REAL merge transition — not a hand-faked empty list — is what drops the PR from Inbox.
+    registry.merge(resolved.id, () => '2'.repeat(40));
+
+    const response = composeP4Inbox('resolved-subjects-disappear', registry);
+    expect(() => decodeInboxResponse(response)).not.toThrow();
+    expect(response.sources.pr.status).toBe('verified');
+    expect(response.sources.escalation.status).toBe('verified');
+
+    const prItems = response.items.filter((item) => item.kind === 'pr');
+    const prNumbers = prItems.map((item) => item.subject.number);
+    expect(prNumbers).not.toContain(resolved.id);
+    expect(prNumbers).toContain(stillOpen.id);
+    expect(response.items.some((item) => item.kind === 'escalation')).toBe(true);
+  });
 });
 
 describe('startP4FixtureServer — real loopback listener', () => {

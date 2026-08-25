@@ -328,9 +328,10 @@ export class FakePrRegistry {
 // guard asserts (shared with the P3 runner).
 // ---------------------------------------------------------------------------------------------------
 
-export type P4Scenario = 'pr-escalation-states' | 'partial-source-failure' | 'empty-inbox';
+export type P4Scenario =
+  | 'pr-escalation-states' | 'partial-source-failure' | 'empty-inbox' | 'resolved-subjects-disappear';
 export const P4_SCENARIOS: readonly P4Scenario[] = [
-  'pr-escalation-states', 'partial-source-failure', 'empty-inbox',
+  'pr-escalation-states', 'partial-source-failure', 'empty-inbox', 'resolved-subjects-disappear',
 ];
 
 /** The composition-time pin the PR source projects against; never accepted from subject text [P4-C25]. */
@@ -375,6 +376,22 @@ function seedPrRegistry(): FakePrRegistry {
   return registry;
 }
 
+/**
+ * Seed a registry for `resolved-subjects-disappear`: TWO PRs opened, then ONE merged through the real
+ * {@link FakePrRegistry.merge} transition (mirrors `gh pr list --state open` dropping a merged PR). The
+ * merged PR's `inInbox` flips to `false`, so `buildSources` below — via its `pr.inInbox` filter, the same
+ * filter every other scenario runs through — omits it from the projected Inbox while the still-open PR
+ * survives, alongside the always-healthy escalation pair. Nothing here hand-empties a list; the omission
+ * is the real registry state feeding the real `projectP4Inbox` union.
+ */
+function seedResolvedPrRegistry(): FakePrRegistry {
+  const registry = new FakePrRegistry();
+  const resolved = registry.open('p4/mirror-batch-resolved', ['agents/luna.md']);
+  registry.open('p4/learning-still-open', ['docs/proposals/learnings/r9.md']);
+  registry.merge(resolved.id, () => '1'.repeat(40));
+  return registry;
+}
+
 const verifiedState = (revision: string): SourceState => ({
   status: 'verified', revision, verifiedAt: P4_VERIFIED_AT,
 });
@@ -411,6 +428,16 @@ function buildSources(scenario: P4Scenario, prRegistry: FakePrRegistry): P4Inbox
         items: prItems,
         state: { status: 'failed', errorCode: 'unavailable', stale: true, revision: 'pr-lastgood', verifiedAt: P4_VERIFIED_AT },
       },
+      escalation: { items: escItems, state: verifiedState('esc-ok') },
+    };
+  }
+  if (scenario === 'resolved-subjects-disappear') {
+    // Both sources read fresh and verified; the resolved subject is already gone from `openPrs` above
+    // because the injected registry merged it (see `seedResolvedPrRegistry`), so `prItems` here holds
+    // only the still-open PR. `projectP4Inbox` unions this against the untouched escalation pair, and
+    // the OMISSION of the resolved PR falls straight out of that real composition.
+    return {
+      pr: { items: prItems, state: verifiedState('pr-ok') },
       escalation: { items: escItems, state: verifiedState('esc-ok') },
     };
   }
@@ -518,7 +545,8 @@ export async function startP4FixtureServer(options: P4FixtureServerOptions = {})
   const port = options.port ?? 4421;
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error(`Invalid port: ${String(port)}`);
   const scenario = options.scenario ?? 'pr-escalation-states';
-  const prRegistry = options.prRegistry ?? seedPrRegistry();
+  const prRegistry = options.prRegistry
+    ?? (scenario === 'resolved-subjects-disappear' ? seedResolvedPrRegistry() : seedPrRegistry());
   // Bound over the real fixture control store; the schedule-mirror surface it carries is the concern of
   // the isolated remote-lifecycle proof, so here it is simply held so this server is composed over it.
   const controlStore = options.controlStore ?? new FixtureControlStore();
