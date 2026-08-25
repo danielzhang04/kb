@@ -1,9 +1,13 @@
 import { createHash } from 'node:crypto';
 import { deflateSync, inflateSync } from 'node:zlib';
 import { parseIterationOutcome } from './iterationOutcome.ts';
-import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
+import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_MIGRATIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
 import { assertDeploymentCollection } from './deploymentState.ts';
 import { assertAssetPullCollection } from './assetPullState.ts';
+// P6 W1b [P6-C48]: the store-open invariant must decode every placement collection row through its W0
+// exact-key decoder, not just check bounded-array shape (assertMigrationEnvelope's `boundedArray` check
+// below) — otherwise a corrupt hostAdvertisements/placementLeases/v1Idempotency row loads silently.
+import { assertPlacementCollections } from './placementState.ts';
 import {
   crashNormalizedLifecycle,
   lifecycleForKind,
@@ -95,8 +99,19 @@ export interface MigrationContext {
 export interface AppliedMigration {
   from: number;
   to: number;
-  breaking: true;
+  breaking: boolean;
   down: 'present';
+}
+
+/**
+ * The up-edge `breaking` flag, sourced from the generated migration registry so the applied-migration
+ * record can never drift from the registry's own declaration (as the hardcoded v3->v4 `true` once did,
+ * against the registry's `breaking:false` for that edge) [P6 W1b].
+ */
+function breakingFlagForUpEdge(from: number, to: number): boolean {
+  const entry = CONTROL_PLANE_MIGRATIONS.find((edge) => edge.from === from && edge.to === to);
+  if (!entry) throw new Error(`no control-plane migration registry entry for edge ${from}->${to}`);
+  return entry.breaking;
 }
 
 export interface MigrationResult {
@@ -312,6 +327,15 @@ export function assertDocumentInvariant(value: unknown): asserts value is StoreD
   // document — a pre-P5 document lacks the field and reads as an empty collection, so no version bump
   // and no migration is introduced; a present collection is still validated [P5-C34].
   assertAssetPullCollection(value.assetPullIntents ?? []);
+  // P6 W1b [P6-C48]: decode every placement-collection row (hostAdvertisements/placementLeases/
+  // v1Idempotency) through its W0 exact-key decoder here, fail-closed — the `required.some(...)`
+  // bounded-array check above only confirms shape, never per-row content.
+  assertPlacementCollections({
+    hostAdvertisements: value.hostAdvertisements,
+    placementLeases: value.placementLeases,
+    v1Idempotency: value.v1Idempotency,
+    cursorSecret: value.cursorSecret,
+  });
   assertEventCursorSequence(value);
   for (const run of value.runs) {
     assertRunLifecycle(run);
@@ -1258,13 +1282,13 @@ export function migrateControlDocument(
   while (document.version < target) {
     if (document.version === 1) {
       upV1ToV2(document, context);
-      applied.push({ from: 1, to: 2, breaking: true, down: 'present' });
+      applied.push({ from: 1, to: 2, breaking: breakingFlagForUpEdge(1, 2), down: 'present' });
     } else if (document.version === 2) {
       upV2ToV3(document, context);
-      applied.push({ from: 2, to: 3, breaking: true, down: 'present' });
+      applied.push({ from: 2, to: 3, breaking: breakingFlagForUpEdge(2, 3), down: 'present' });
     } else if (document.version === 3) {
       upV3ToV4(document);
-      applied.push({ from: 3, to: 4, breaking: true, down: 'present' });
+      applied.push({ from: 3, to: 4, breaking: breakingFlagForUpEdge(3, 4), down: 'present' });
     } else break;
   }
   while (document.version > target) {

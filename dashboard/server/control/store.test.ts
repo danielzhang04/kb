@@ -21,7 +21,9 @@ import {
   proposalSnapshotHash,
   createFileControlPlaneStore as openFileControlPlaneStore,
 } from './store.ts';
-import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
+import {
+  createExistingRootFileStoreHarnessForTest, createLeasedFileStoreForTest,
+} from './test-fixtures/controlStore.ts';
 import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
 import { applyMigrationEdgeForTest, loadAndMigrate, migrateControlDocument } from './migrations.ts';
 import { createNodePersistenceDeps } from './persistence.ts';
@@ -5441,5 +5443,52 @@ describe('P5 asset-pull intents — additive collection + CAS [P5-C34]', () => {
       expectedState: 'pending', expectedAttempts: 0, nextState: 'in-flight', attemptsDelta: 1,
       result: null, idempotencyKey: 'ro',
     })).toThrow(ControlStoreReadOnlyError);
+  });
+});
+
+describe('P6 W1b — placement collections wired into the store-open invariant [P6-C48]', () => {
+  const HASH = 'a'.repeat(64);
+  const AT = '2026-08-24T00:00:00.000Z';
+  const validLease = { runRef: 'run-1', hostId: 'vm' as const, capabilityHash: HASH, revision: 1, expiresAt: AT, lastReportSequence: 0 };
+  const validIdempotency = {
+    actorOrNodeId: 'node-vm', method: 'POST' as const, uri: '/api/v1/runs/run-1/reports',
+    key: 'k'.repeat(16), bodyHash: HASH, status: 200, responseBody: '{}', createdAt: AT,
+  };
+  const validAdvertisement = {
+    hostId: 'vm' as const, daemonVersion: 'abc', reportedAt: AT, connectors: [], skills: [], filesystemRoots: [],
+    pty: true, gpu: false, clis: { claude: 'ready', codex: 'ready' }, version: 1,
+  };
+
+  const corruptCases: Array<[string, Record<string, unknown>]> = [
+    ['placementLeases', { placementLeases: [{ ...validLease, extra: true }] }],
+    ['v1Idempotency', { v1Idempotency: [{ ...validIdempotency, extra: true }] }],
+    ['hostAdvertisements', { hostAdvertisements: [{ ...validAdvertisement, extra: true }] }],
+  ];
+
+  for (const [name, override] of corruptCases) {
+    it(`aborts store-open on a corrupt ${name} row (fail-closed)`, () => {
+      const doc = { ...emptyStoreDocumentForTest(), ...override };
+      expect(() => createLeasedFileStoreForTest({}, doc)).toThrow();
+    });
+  }
+
+  it('opens a v4 document with valid populated placement collections', () => {
+    const doc = {
+      ...emptyStoreDocumentForTest(),
+      placementLeases: [validLease], v1Idempotency: [validIdempotency], hostAdvertisements: [validAdvertisement],
+    };
+    const fixture = createLeasedFileStoreForTest({}, doc);
+    fixture.close();
+  });
+
+  it('still opens a pre-P6 v3 document (regression: the new check does not fire on absent collections)', () => {
+    const v3 = { ...emptyStoreDocumentForTest() } as Record<string, unknown>;
+    delete v3.hostAdvertisements;
+    delete v3.placementLeases;
+    delete v3.v1Idempotency;
+    v3.version = 3;
+    const fixture = createLeasedFileStoreForTest({}, v3);
+    expect(fixture.store.getControlDocumentMetadata().version).toBe(4);
+    fixture.close();
   });
 });

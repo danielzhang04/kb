@@ -5,7 +5,9 @@ import {
   applyMigrationEdgeForTest, assertDocumentInvariant, assertMigrationEnvelope, migrateControlDocument,
   P2RunMigrationError, runP2ScheduleStartupMigrations,
 } from './migrations.ts';
-import { CONTROL_PLANE_SCHEMA_VERSION, emptyControlPlaneDocument } from './generated/controlPlaneSchema.ts';
+import {
+  CONTROL_PLANE_MIGRATIONS, CONTROL_PLANE_SCHEMA_VERSION, emptyControlPlaneDocument,
+} from './generated/controlPlaneSchema.ts';
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(
   new URL(`../../../tests/fixtures/control-plane/${name}`, import.meta.url)), 'utf8'));
@@ -163,8 +165,60 @@ describe('control document migrations', () => {
     expect(result.document.hostAdvertisements).toEqual([]);
     expect(result.document.placementLeases).toEqual([]);
     expect(result.document.v1Idempotency).toEqual([]);
-    expect(result.applied).toEqual([{ from: 3, to: 4, breaking: true, down: 'present' }]);
+    // The v3->v4 edge is additive-only (the migration writes empty arrays), so the registry declares it
+    // non-breaking [P6-C48] — the applied record must match, not hardcode `true` like the 1->2/2->3 edges.
+    expect(result.applied).toEqual([{ from: 3, to: 4, breaking: false, down: 'present' }]);
     assertDocumentInvariant(result.document);
+  });
+
+  it('sources every up-edge applied-migration breaking flag from the registry (P6 W1b regression)', () => {
+    const first = migrateControlDocument(fixture('v1-sparse-legacy.json'), 4, ctx);
+    for (const edge of first.applied) {
+      const registryEntry = CONTROL_PLANE_MIGRATIONS.find((item) => item.from === edge.from && item.to === edge.to);
+      expect(registryEntry).toBeDefined();
+      expect(edge.breaking).toBe(registryEntry!.breaking);
+    }
+    // Pin the concrete values so a future registry edit that silently flips breaking is caught here too.
+    expect(first.applied).toEqual([
+      { from: 1, to: 2, breaking: true, down: 'present' },
+      { from: 2, to: 3, breaking: true, down: 'present' },
+      { from: 3, to: 4, breaking: false, down: 'present' },
+    ]);
+  });
+
+  // ---- P6 W1b [P6-C48]: `assertDocumentInvariant` must decode every placement-collection row, not just
+  // ---- confirm bounded-array shape — otherwise a corrupt row loads silently on store-open. -----------
+  const HASH = 'a'.repeat(64);
+  const AT = '2026-08-24T00:00:00.000Z';
+  const validLease = { runRef: 'run-1', hostId: 'vm' as const, capabilityHash: HASH, revision: 1, expiresAt: AT, lastReportSequence: 0 };
+  const validIdempotency = {
+    actorOrNodeId: 'node-vm', method: 'POST' as const, uri: '/api/v1/runs/run-1/reports',
+    key: 'k'.repeat(16), bodyHash: HASH, status: 200, responseBody: '{}', createdAt: AT,
+  };
+  const validAdvertisement = {
+    hostId: 'vm' as const, daemonVersion: 'abc', reportedAt: AT, connectors: [], skills: [], filesystemRoots: [],
+    pty: true, gpu: false, clis: { claude: 'ready', codex: 'ready' }, version: 1,
+  };
+
+  it('aborts on a corrupt row in each of the three placement collections (fail-closed)', () => {
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['placementLeases', { placementLeases: [{ ...validLease, extra: true }] }],
+      ['v1Idempotency', { v1Idempotency: [{ ...validIdempotency, extra: true }] }],
+      ['hostAdvertisements', { hostAdvertisements: [{ ...validAdvertisement, extra: true }] }],
+    ];
+    for (const [name, override] of cases) {
+      const v4 = migrateControlDocument(emptyV3(), 4, ctx).document as unknown as Record<string, any>;
+      Object.assign(v4, override);
+      expect(() => assertDocumentInvariant(v4), name).toThrow();
+    }
+  });
+
+  it('opens a v4 document with valid populated placement collections', () => {
+    const v4 = migrateControlDocument(emptyV3(), 4, ctx).document as unknown as Record<string, any>;
+    v4.placementLeases = [validLease];
+    v4.v1Idempotency = [validIdempotency];
+    v4.hostAdvertisements = [validAdvertisement];
+    expect(() => assertDocumentInvariant(v4)).not.toThrow();
   });
 
   it('rolls a v4 document back to a BYTE-IDENTICAL v3 through the paired down edge', () => {

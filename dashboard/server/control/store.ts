@@ -30,6 +30,9 @@ import type { HostKind, RunnableRef, Schedule } from './p2Contracts.ts';
 // v3 -> v4 migration. Their record decoders are W0's contracts, imported — never re-declared here.
 import type { PlacementLease, StoredHostAdvertisement } from '../placement/contracts.ts';
 import type { V1IdempotencyRecord } from '../api/v1/idempotency.ts';
+// P6 W1b [P6-C48]: the store-open document invariant must decode every placement collection row through
+// its W0 exact-key decoder, not just confirm the collections are bounded arrays.
+import { assertPlacementCollections } from './placementState.ts';
 import type {
   CompleteScheduleOccurrenceInput,
   DeleteScheduleInput,
@@ -2509,6 +2512,15 @@ function runCanSucceed(document: StoreDocument, run: StoredRun): boolean {
 function validateStoreDocument(document: StoreDocument): void {
   assertDeploymentCollection(document.deployments);
   assertAssetPullCollection(document.assetPullIntents ?? []);
+  // P6 W1b [P6-C48]: fail closed on a corrupt placement/advertisement/idempotency row rather than
+  // loading it unvalidated — mirrors the same call in migrations.ts's assertDocumentInvariant so both
+  // the migrated-load path and the read-only-harness path (which never runs migration) are covered.
+  assertPlacementCollections({
+    hostAdvertisements: document.hostAdvertisements ?? [],
+    placementLeases: document.placementLeases ?? [],
+    v1Idempotency: document.v1Idempotency ?? [],
+    cursorSecret: document.cursorSecret,
+  });
   const validateRows = (bundle: Pick<StoreDocumentCollections, 'runs' | 'stages'>): void => {
     for (const run of bundle.runs) {
       if (normalizeAssignment(run.managerAssignment) === undefined) {
