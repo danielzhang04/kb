@@ -97,6 +97,25 @@ describe('projectHome', () => {
       .toEqual(['run-9', 'run-8', 'run-7', 'run-6', 'run-5', 'run-4', 'run-3', 'run-2', 'run-1', 'run-0']);
   });
 
+  it('threads generatedAt through untouched — the <ago> chip is never computed from Date.now() here', async () => {
+    const first = await projectHome(ports(), '2026-08-25T09:00:00.000Z');
+    const second = await projectHome(ports(), '2026-08-25T15:30:00.000Z');
+
+    expect(first.generatedAt).toBe('2026-08-25T09:00:00.000Z');
+    expect(second.generatedAt).toBe('2026-08-25T15:30:00.000Z');
+    expect(first.generatedAt).not.toBe(second.generatedAt);
+  });
+
+  it('reads the injected activation port exactly once per projection — one shared reader, never a second read', async () => {
+    const readActivation = async () => ({ revision: 'release-1', label: 'VM', sha: '64fb3d02', activatedAt: '2026-08-21T10:00:00.000Z' });
+    let calls = 0;
+    await projectHome(ports({
+      activation: { readActivation: async () => { calls += 1; return readActivation(); } },
+    }));
+
+    expect(calls).toBe(1);
+  });
+
   it('keeps exact empty data distinct from a failed activation read', async () => {
     const response = await projectHome(ports({
       runningNow: { read: async () => ({ revision: 'runs-empty', data: [] }) },
