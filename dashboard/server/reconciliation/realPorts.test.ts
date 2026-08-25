@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -13,8 +13,10 @@ import { scheduleMirrorBatchId } from '../schedules/mirrorContracts.ts';
 import { portConformanceSuite } from './publisher.ts';
 import type { ReconciliationSourcePort } from './publisher.ts';
 import {
-  createReconciliationPublisher, createReconciliationRealPorts,
+  createDurableRetirePort, createLearningRecordRetire, createReconciliationPublisher,
+  createReconciliationRealPorts,
 } from './realPorts.ts';
+import type { LearningRecordRetireRequest } from './publisher.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { stagingGit } from '../testFixtures/stagingGit.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
@@ -112,5 +114,74 @@ describe('reconciliation publisher composition on the surface context', () => {
     expect(typeof ctx.reconciliationPublisher).toBe('function');
     // Composed once per context: the same reference across reads.
     expect(ctx.reconciliationPublisher).toBe(ctx.reconciliationPublisher);
+  });
+});
+
+// --- Learning-record retire real ports [P4-C13] --------------------------------------------------
+
+const RETIRE_RECORD = 'docs/proposals/learnings/2026-08-24-run_01HXYZ-01.md';
+const RETIRE_BATCH = 'learn-0123456789abcdef01234567';
+const RETIRE_MERGE = 'e'.repeat(40);
+const RETIRE_HEAD = '1'.repeat(40);
+
+/** A git runner modelling the ops coordination checkout for a retire: ops branch, HEAD == baseCommit,
+ *  proven merge (merge-base exits 0), and the staged deletions the retire's exact-set proof reads. */
+function retireGit(onCall: (args: string[]) => void) {
+  return (_repoRoot: string, args: string[]): string => {
+    onCall(args);
+    const joined = args.join(' ');
+    if (joined === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+    if (joined === 'rev-parse HEAD') return `${RETIRE_HEAD}\n`;
+    if (joined === 'diff --cached --name-status -z') return `D\0${RETIRE_RECORD}\0`;
+    return '';
+  };
+}
+
+describe('createDurableRetirePort / createLearningRecordRetire — coordination delete [P4-C13]', () => {
+  it('the real durable retire port refuses a request the publisher never minted (note 7)', async () => {
+    const port = createDurableRetirePort({
+      repoRoot: mkdtempSync(join(tmpdir(), 'retire-repo-')),
+      store: createInMemoryControlPlaneStore(),
+      stateRoot: mkdtempSync(join(tmpdir(), 'retire-state-')),
+    });
+    const forged: LearningRecordRetireRequest = {
+      idempotencyKey: `learning-record-retire:${RETIRE_BATCH}:${RETIRE_MERGE}`,
+      exactTargets: [RETIRE_RECORD], batchId: RETIRE_BATCH, baseCommit: RETIRE_HEAD,
+      mergeCommit: RETIRE_MERGE, mergedAt: '2026-08-24T00:00:00Z', recordPaths: [RETIRE_RECORD],
+    };
+    await expect(port.retireLearningRecords(forged)).rejects.toThrow(/not minted by the reconciliation publisher/);
+  });
+
+  it('deletes the superseded record once through the durable coordination path; an exact replay is a no-op', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'retire-repo-'));
+    mkdirSync(join(repoRoot, 'docs', 'proposals', 'learnings'), { recursive: true });
+    const recordAbs = join(repoRoot, RETIRE_RECORD);
+    writeFileSync(recordAbs, 'status: proposed\n');
+    const calls: string[][] = [];
+    const retire = createLearningRecordRetire({
+      repoRoot, store: createInMemoryControlPlaneStore(),
+      stateRoot: mkdtempSync(join(tmpdir(), 'retire-state-')),
+      runGit: retireGit((args) => calls.push(args)),
+    });
+    const input = {
+      batchId: RETIRE_BATCH, baseCommit: RETIRE_HEAD, mergeCommit: RETIRE_MERGE,
+      mergedAt: '2026-08-24T00:00:00Z', recordPaths: [RETIRE_RECORD],
+      expectedSourceRevision: RETIRE_HEAD, expectedStoreRevision: 'store-1',
+    };
+
+    const first = await retire(input);
+    expect(first.outcome).toBe('applied');
+    expect(existsSync(recordAbs)).toBe(false); // the record was deleted from ops
+    // The publisher proved the merge itself before any staging.
+    const joined = calls.map((c) => c.join(' '));
+    expect(joined).toContain('fetch origin main');
+    expect(joined).toContain(`merge-base --is-ancestor ${RETIRE_MERGE} origin/main`);
+    const stagedProofs = calls.filter((c) => c.join(' ') === 'diff --cached --name-status -z').length;
+
+    const replay = await retire(input);
+    expect(replay).toEqual(first);
+    // The durable path was NOT re-entered — no second exact-set proof ran, so nothing was deleted twice.
+    const stagedProofsAfter = calls.filter((c) => c.join(' ') === 'diff --cached --name-status -z').length;
+    expect(stagedProofsAfter).toBe(stagedProofs);
   });
 });

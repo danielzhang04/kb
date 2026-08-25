@@ -11,10 +11,13 @@ import { scheduleMirrorBatchId } from '../schedules/mirrorContracts.ts';
 import type { ReconciliationAuditSink } from './audit.ts';
 import {
   OpsBypassError, assertReconciliationPublisher, portConformanceSuite, publishReconciliationIntent,
+  retireLearningRecords,
 } from './publisher.ts';
 import type {
-  CardMutationRequest, ReconciliationPublisherPorts, ReconciliationSourceSnapshot,
+  CardMutationRequest, DurableRetirePort, LearningRecordRetireInput, LearningRecordRetireRequest,
+  ReconciliationPublisherPorts, ReconciliationSourceSnapshot,
 } from './publisher.ts';
+import { learningRecordRetireOperationKey } from '../write/durableManifest.ts';
 
 const CARD_SHA = 'a'.repeat(64);
 const MIRROR_WATERMARK = { revision: 7, digest: 'd'.repeat(64) } as const;
@@ -488,5 +491,82 @@ describe('publishReconciliationIntent', () => {
       .rejects.toBeInstanceOf(ContractDecodeError);
     expect(state.calls).toEqual([]);
     expect(state.receipts.prepares).toBe(0);
+  });
+});
+
+// --- Learning-record retire (distinct publisher entry point; NOT a §3.4 intent kind) [P4-C13] --------
+
+const RETIRE_MERGE = 'e'.repeat(40);
+const RETIRE_RECORDS = [
+  'docs/proposals/learnings/2026-08-24-run_01HXYZ-01.md',
+  'docs/proposals/learnings/2026-08-24-run_01HXYZ-02.md',
+];
+
+class CountingRetirePort implements DurableRetirePort {
+  calls = 0;
+  readonly seen: LearningRecordRetireRequest[] = [];
+  constructor(private readonly commit = 'f'.repeat(40)) {}
+  async retireLearningRecords(request: LearningRecordRetireRequest) {
+    assertReconciliationPublisher(request); // the port refuses any request the action never minted
+    this.calls += 1;
+    this.seen.push(request);
+    return { revision: this.commit, receipt: this.commit };
+  }
+}
+
+function retireInput(overrides: Partial<LearningRecordRetireInput> = {}): LearningRecordRetireInput {
+  return {
+    batchId: 'learn-0123456789abcdef01234567', baseCommit: 'b'.repeat(40), mergeCommit: RETIRE_MERGE,
+    mergedAt: '2026-08-24T00:00:00Z', recordPaths: RETIRE_RECORDS,
+    expectedSourceRevision: 'src-1', expectedStoreRevision: 'store-1',
+    ...overrides,
+  };
+}
+
+describe('retireLearningRecords — coordination-delete of superseded proposed records', () => {
+  it('retires exactly once, keyed learning-record-retire:<batch>:<mergeCommit>; an exact replay is a no-op reaching no port', async () => {
+    const receipts = new FakeReceipts();
+    const retire = new CountingRetirePort();
+    const ports = { receipts, retire, clock: { now: () => '2026-08-24T00:00:00Z' } };
+
+    const first = await retireLearningRecords(retireInput(), ports);
+    expect(first.outcome).toBe('applied');
+    expect(retire.calls).toBe(1);
+    const key = learningRecordRetireOperationKey('learn-0123456789abcdef01234567', RETIRE_MERGE);
+    expect(retire.seen[0]!.idempotencyKey).toBe(key);
+    // exactTargets are the sorted, de-duplicated record paths.
+    expect(retire.seen[0]!.exactTargets).toEqual([...RETIRE_RECORDS].sort());
+    expect(receipts.publishes).toBe(1);
+
+    // Same batch + same merge commit → the published receipt is replayed; the durable port is NOT called
+    // again (deleting a second time would be refused by the durable layer — one retire, replay is a no-op).
+    const replay = await retireLearningRecords(retireInput(), ports);
+    expect(replay).toEqual(first);
+    expect(retire.calls).toBe(1);
+    expect(receipts.prepares).toBe(1);
+  });
+
+  it('refuses an unproven merge (no 40-hex merge commit) before touching any port', async () => {
+    const receipts = new FakeReceipts();
+    const retire = new CountingRetirePort();
+    const ports = { receipts, retire, clock: { now: () => '2026-08-24T00:00:00Z' } };
+    await expect(retireLearningRecords(retireInput({ mergeCommit: null }), ports))
+      .rejects.toBeInstanceOf(OpsBypassError);
+    await expect(retireLearningRecords(retireInput({ mergeCommit: 'not-a-sha' }), ports))
+      .rejects.toBeInstanceOf(OpsBypassError);
+    expect(retire.calls).toBe(0);
+    expect(receipts.prepares).toBe(0);
+  });
+
+  it('conflicts (409) when the same batch+merge key carries a different record set', async () => {
+    const receipts = new FakeReceipts();
+    const retire = new CountingRetirePort();
+    const ports = { receipts, retire, clock: { now: () => '2026-08-24T00:00:00Z' } };
+    await retireLearningRecords(retireInput(), ports);
+    await expect(retireLearningRecords(
+      retireInput({ recordPaths: ['docs/proposals/learnings/2026-08-24-run_01HXYZ-09.md'] }),
+      ports,
+    )).rejects.toBeInstanceOf(ReconciliationConflictError);
+    expect(retire.calls).toBe(1);
   });
 });

@@ -221,9 +221,9 @@ export interface ManagedRootActivationOptions {
 }
 
 /**
- * Exact canonical activation transaction for managed roots. It pulls ops before mutation, uses
- * cards.transition for blocked->inbox, commits/pushes exact paths, then proves HEAD contains the
- * bytes just validated. Empty-dependency blocked cards remain invisible to legacy dispatch until here.
+ * Exact canonical activation transaction for managed roots. It pulls ops before mutation, walks each
+ * root blocked->inbox, commits/pushes exact paths, then proves HEAD contains the bytes just validated.
+ * Empty-dependency blocked cards remain invisible to legacy dispatch until here.
  *
  * [P4-C14] MANAGED-ROOT ACTIVATION EXCEPTION (R2). This is the documented THIRD direct
  * `cards.transition`/`executeCardMutation` site permitted by the §9 / [P4-C14] transition scan,

@@ -25,12 +25,13 @@ import {
   reconciliationExactTargets, reconciliationIdempotencyKey, reconciliationIntentSha256,
 } from './contracts.ts';
 import type {
-  CardTransitionWrite, PreparedReconciliationReceipt, ReconciliationActor, ReconciliationIntent,
-  ReconciliationReceiptPort, ReconciliationResult, ScheduleMirrorIntent,
+  CardTransitionWrite, PreparedReconciliationReceipt, PublishedReconciliationReceipt,
+  ReconciliationActor, ReconciliationIntent, ReconciliationReceiptPort, ReconciliationResult,
+  ScheduleMirrorIntent,
 } from './contracts.ts';
 import { appendReconciliationAudit } from './audit.ts';
 import type { ReconciliationAuditInput, ReconciliationAuditSink } from './audit.ts';
-import { scheduleMirrorOperationKey } from '../write/durableManifest.ts';
+import { isCommitSha, learningRecordRetireOperationKey, scheduleMirrorOperationKey, sha256Hex } from '../write/durableManifest.ts';
 import type { RouteDurableReceipt } from '../write/durableManifest.ts';
 import { isWatermarkUnchanged, scheduleMirrorBatchId } from '../schedules/mirrorContracts.ts';
 import type { ScheduleMirrorWatermark } from '../schedules/mirrorContracts.ts';
@@ -548,5 +549,119 @@ export async function publishReconciliationIntent(
   });
 
   await ports.receipts.publish({ ...prepared, phase: 'published', result, auditRef });
+  return result;
+}
+
+// --- Learning-record retire (a DISTINCT publisher entry point, not a §3.4 intent kind) [P4-C13] ----
+//
+// When an Implementer batch PR merges into `main`, the superseded `status: proposed` copies on `ops` are
+// stale (the canonical implemented records now live on `main`). Removing them is a COORDINATION-DELETE
+// effect through the existing durable `learning-record-retire` purpose (coordination mode, proven-merge
+// only) — NOT one of §3.4's four reconciliation intent kinds, so the closed intent union is unchanged.
+// The read-only merge-poll resolver is this action's only caller; it invokes it on a confirmed merge.
+//
+// Idempotency is the reconciliation two-phase receipt, keyed `learning-record-retire:<batch-id>:
+// <mergeCommit>`: a fresh key deletes exactly once; the SAME key/hash returns the original result and
+// reaches NO port (one retire, replay is a no-op — the durable layer would otherwise refuse a second
+// delete, since a retire requires the record file to still exist). A merge without a real 40-hex commit
+// is refused before any effect.
+
+/** The one coordination-delete effect a {@link retireLearningRecords} action drives. */
+export interface LearningRecordRetireRequest extends AuthorizedRequest {
+  readonly batchId: string;
+  readonly baseCommit: string;
+  readonly mergeCommit: string;
+  readonly mergedAt: string;
+  readonly recordPaths: readonly string[];
+}
+
+/** Deletes the superseded proposed records from `ops` via the durable `learning-record-retire` purpose. */
+export interface DurableRetirePort {
+  retireLearningRecords(request: LearningRecordRetireRequest): Promise<ReconciliationEffectResult>;
+}
+
+export interface RetireLearningRecordsPorts {
+  readonly receipts: ReconciliationReceiptPort;
+  readonly retire: DurableRetirePort;
+  readonly clock: ReconciliationClock;
+}
+
+export interface LearningRecordRetireInput {
+  readonly batchId: string;
+  /** The ops HEAD the coordination delete commits against; the durable layer refuses a stale base. */
+  readonly baseCommit: string;
+  /** The proven merge commit of the batch PR into `main`; `null`/non-hex is refused (unproven merge). */
+  readonly mergeCommit: string | null;
+  readonly mergedAt: string;
+  readonly recordPaths: readonly string[];
+  readonly expectedSourceRevision: string;
+  readonly expectedStoreRevision: string;
+}
+
+/**
+ * Retire the superseded `proposed` learning-record copies for one merged Implementer batch. Proven-merge
+ * only, exactly-once, replay is a no-op. Reuses the ops-bypass wall (`issue`) so the durable retire port
+ * refuses any request this action did not mint, exactly as the four intent effects do.
+ */
+export async function retireLearningRecords(
+  input: LearningRecordRetireInput,
+  ports: RetireLearningRecordsPorts,
+): Promise<ReconciliationResult> {
+  if (!isCommitSha(input.mergeCommit)) {
+    throw new OpsBypassError('a learning-record-retire requires a proven 40-hex merge commit of its batch PR');
+  }
+  if (input.recordPaths.length === 0) {
+    throw new OpsBypassError('a learning-record-retire names at least one superseded record');
+  }
+  const mergeCommit = input.mergeCommit;
+  const idempotencyKey = learningRecordRetireOperationKey(input.batchId, mergeCommit);
+  const exactTargets = [...new Set(input.recordPaths)].sort();
+  const requestSha256 = sha256Hex(JSON.stringify({
+    batchId: input.batchId, baseCommit: input.baseCommit, mergeCommit, recordPaths: exactTargets,
+  }));
+
+  const existing = await ports.receipts.read(idempotencyKey);
+  const replay = classifyReplay(existing, requestSha256);
+  if (replay === 'conflict') {
+    throw new ReconciliationConflictError(idempotencyKey, 'same retire key with a different batch or record set');
+  }
+  if (replay === 'exact-replay') {
+    // Already retired under this exact key — return the original result and touch no port.
+    return (existing as PublishedReconciliationReceipt).result;
+  }
+
+  const prepared: PreparedReconciliationReceipt = replay === 'reconcile-prepared'
+    ? (existing as PreparedReconciliationReceipt)
+    : {
+      idempotencyKey, requestSha256, phase: 'prepared',
+      expectedSourceRevision: input.expectedSourceRevision,
+      expectedStoreRevision: input.expectedStoreRevision,
+      exactTargets,
+    };
+  if (replay === 'fresh') {
+    try {
+      await ports.receipts.prepare(prepared);
+    } catch {
+      throw new ReconciliationConflictError(idempotencyKey, 'a concurrent retire already prepared this operation');
+    }
+  }
+
+  // The durable retire port replays via its own operation-key receipt store, so a `prepared`-receipt
+  // reconcile (a crash between prepare and publish) returns the prior coordination receipt rather than
+  // deleting twice.
+  const effect = await ports.retire.retireLearningRecords(issue({
+    idempotencyKey, exactTargets,
+    batchId: input.batchId, baseCommit: input.baseCommit, mergeCommit, mergedAt: input.mergedAt,
+    recordPaths: exactTargets,
+  }));
+
+  const result: ReconciliationResult = {
+    outcome: effect.noop === true ? 'no-op' : 'applied',
+    revision: effect.revision,
+    ...(effect.detail === undefined ? {} : { detail: effect.detail }),
+  };
+  await ports.receipts.publish({
+    ...prepared, phase: 'published', result, auditRef: effect.receipt ?? effect.revision,
+  });
   return result;
 }

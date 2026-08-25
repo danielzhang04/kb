@@ -26,8 +26,6 @@ import { createRawSessionReplayReader } from './pty/replayReader.ts';
 import { originPlugin } from './security/origin.ts';
 import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
-import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
-import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
@@ -303,55 +301,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       });
     }
   }
-  // G1 — daemon-side merge-gate reconciler (inbox-gates). Wired here but only ticks AFTER Daniel's
-  // deliberate daemon restart (nothing in this wave restarts the live daemon). It reads the canonical ops
-  // worktree, asks gh (ambient auth) whether each open `approve:merge:<pr>` gate's PR is merged/closed,
-  // and closes the gate through the SAME governed transaction path as the card-respond route. The runner
-  // fields fall back to their real defaults in production; every failure leaves the gate OPEN. The interval
-  // is unref'd, so it never keeps the process alive; its stop fn is registered on shutdown.
-  const stopMergeGateReconciler = startMergeGateReconciler(
-    {
-      repoRoot: surfaceCtx.repoRoot,
-      opsGit: surfaceCtx.opsGit,
-      runPy: surfaceCtx.runPy,
-      appendAuditLocal: surfaceCtx.appendAuditLocal,
-      now: surfaceCtx.now,
-    },
-    resolveMergeGateIntervalMs(),
-  );
-  app.addHook('onClose', async () => { stopMergeGateReconciler(); });
-
-  // Stranded-card auto-archiver v2 (redesign 2026-07-21) — DEFAULT-OFF and DRY-RUN-ONLY. It reads the
-  // canonical ops worktree and, for each card owned by a REAL agent that is idle in inbox/working past the
-  // window with BOTH the card AND its owner showing no activity (the corrected liveness model; a missing
-  // schtasks task is NOT abandonment), decides what it WOULD archive. Two independent locks keep it inert:
-  // the interval defaults to 0 (disabled — the timer never schedules), and even when enabled `dryRun`
-  // stays TRUE (reports, moves nothing) until the compile-time STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED flag AND
-  // an operator env gate are BOTH set — pending Daniel's policy answers. The live MOVE path reuses the same
-  // governed transaction as the reconciler; every failure leaves the card untouched. Unref'd; stop on close.
-  const stopStrandedArchiver = startStrandedArchiver(
-    {
-      repoRoot: surfaceCtx.repoRoot,
-      opsGit: surfaceCtx.opsGit,
-      runPy: surfaceCtx.runPy,
-      appendAuditLocal: surfaceCtx.appendAuditLocal,
-      schtasksRun: surfaceCtx.schtasksRun,
-      runnerState: surfaceCtx.runnerState,
-      runnerProcessStartTime: surfaceCtx.runnerProcessStartTime,
-      livenessCache: surfaceCtx.livenessCache,
-      platform: surfaceCtx.runtimeCapabilities.platform,
-      now: surfaceCtx.now,
-      dryRun: resolveStrandedArchiveDryRun(),
-      windowMs: resolveStrandedArchiveWindowMs(),
-      // Dry-run report sink: one structured line per card the sweep WOULD archive, to the daemon log.
-      logDryRun: (d) => {
-        // eslint-disable-next-line no-console
-        console.info(`[stranded-archiver dry-run] WOULD archive ${d.cardId} (owner ${d.owner}, card-idle ${Math.round((d.cardIdleMs ?? 0) / 3.6e6)}h, owner-idle ${Math.round((d.ownerIdleMs ?? 0) / 3.6e6)}h; ${d.liveness})`);
-      },
-    },
-    resolveStrandedArchiveIntervalMs(),
-  );
-  app.addHook('onClose', async () => { stopStrandedArchiver(); });
+  // P4 W6.2: the daemon-side merge-gate reconciler and stranded-card auto-archiver were DELETED here
+  // (`write/{mergeGateReconciler,strandedArchiver,ownerActivity}.*`). Merge polling is now the read-only
+  // `reconciliation/mergePoll.ts` PR resolver, which mutates ONLY through the one reconciliation publisher
+  // (`mirror-merged` intents + the `learning-record-retire` action); its live startup timer lands with the
+  // Implementer-batch source it polls (W6.3). Card auto-archival by age is retired outright [P4-C14].
 
   // Human Request orphan sweeper — ON BY DEFAULT. Runs once immediately (the boot sweep — clears any
   // request left open on a run that had already gone terminal before this process started, which is how

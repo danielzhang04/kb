@@ -993,7 +993,7 @@
           "schema": "kb.reconciliation-intent/v1",
           "kind": "card-transition",
           "actor": "human-operator",
-          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:0fc6b7719645b196c63a1d84a2ae10373dc2eecd3705e76ccbfafe7b8e075119",
+          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:044273d84e06c63e64ab93cffae305880421e0acb772c44cef622a73a0369f21",
           "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
           "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
           "exactTargets": [
@@ -1003,8 +1003,10 @@
           "expectedCardSha256": "c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151",
           "fromState": "inbox",
           "toState": "done",
-          "section": "Result",
-          "block": "verified by Daniel"
+          "write": {
+            "section": "Result",
+            "block": "verified by Daniel"
+          }
         }
       },
       {
@@ -1088,7 +1090,7 @@
           "schema": "kb.reconciliation-intent/v1",
           "kind": "card-transition",
           "actor": "worker",
-          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:0fc6b7719645b196c63a1d84a2ae10373dc2eecd3705e76ccbfafe7b8e075119",
+          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:044273d84e06c63e64ab93cffae305880421e0acb772c44cef622a73a0369f21",
           "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
           "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
           "exactTargets": [
@@ -1098,8 +1100,10 @@
           "expectedCardSha256": "c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151",
           "fromState": "inbox",
           "toState": "done",
-          "section": "Result",
-          "block": "verified by Daniel"
+          "write": {
+            "section": "Result",
+            "block": "verified by Daniel"
+          }
         }
       },
       {
@@ -1109,7 +1113,7 @@
           "schema": "kb.reconciliation-intent/v1",
           "kind": "deploy",
           "actor": "human-operator",
-          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:0fc6b7719645b196c63a1d84a2ae10373dc2eecd3705e76ccbfafe7b8e075119",
+          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:044273d84e06c63e64ab93cffae305880421e0acb772c44cef622a73a0369f21",
           "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
           "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
           "exactTargets": [
@@ -1140,8 +1144,10 @@
           "expectedCardSha256": "c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151",
           "fromState": "inbox",
           "toState": "done",
-          "section": "Result",
-          "block": "verified by Daniel"
+          "write": {
+            "section": "Result",
+            "block": "verified by Daniel"
+          }
         }
       },
       {

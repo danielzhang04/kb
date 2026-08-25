@@ -19,13 +19,13 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import {
-  assertReconciliationPublisher, publishReconciliationIntent,
+  assertReconciliationPublisher, publishReconciliationIntent, retireLearningRecords,
 } from './publisher.ts';
 import type {
-  CardMutationPort, DurablePublisherPort, MirrorCompletionPort, OpsOutboxPort,
-  PreparedReconcilerPort, ReconciliationClock, ReconciliationEffectResult,
-  ReconciliationPublisherPorts, ReconciliationRequestContext, ReconciliationSourcePort,
-  ReconciliationSourceSnapshot,
+  CardMutationPort, DurablePublisherPort, DurableRetirePort, LearningRecordRetireInput,
+  MirrorCompletionPort, OpsOutboxPort, PreparedReconcilerPort, ReconciliationClock,
+  ReconciliationEffectResult, ReconciliationPublisherPorts, ReconciliationRequestContext,
+  ReconciliationSourcePort, ReconciliationSourceSnapshot,
 } from './publisher.ts';
 import {
   ReconciliationConflictError,
@@ -38,10 +38,12 @@ import type { ControlPlaneStore } from '../control/store.ts';
 import type { ReconciliationAuditSink } from './audit.ts';
 import { sha256Hex } from '../write/durableManifest.ts';
 import type { RouteDurableReceipt } from '../write/durableManifest.ts';
+import { buildLearningRecordRetireManifest } from '../write/durableManifestService.ts';
 import {
-  commitPreparedCoordination, defaultGitRunner, prepareCoordination, resolveBaseCommit, routeDurable,
+  commitPreparedCoordination, createPersistentRouteReceipts, defaultGitRunner, prepareCoordination,
+  resolveBaseCommit, routeDurable,
 } from '../write/branch.ts';
-import type { GitRunner } from '../write/branch.ts';
+import type { GitRunner, RouteReceiptStore } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { executeCardMutation as runCardMutationScript } from '../write/cardRespond.ts';
 import type { PyRunner } from '../write/launch.ts';
@@ -332,4 +334,71 @@ export function createReconciliationRealPorts(deps: ReconciliationRealPortDeps):
     audit,
     clock,
   };
+}
+
+// --- Learning-record retire (the coordination-delete effect the merge poll drives) [P4-C13] ---------
+
+/**
+ * The REAL durable retire port: it asserts the ops-bypass wall (note 7) then deletes the superseded
+ * proposed records through THE ONE durable publisher's `learning-record-retire` coordination purpose —
+ * proven-merge-only, all-deletions, restore-on-failure — reusing `write/branch.ts#routeDurable` and never
+ * a second publish path. Its own persistent operation-key receipt store makes a `prepared`-receipt
+ * reconcile return the prior coordination commit rather than deleting twice.
+ */
+export function createDurableRetirePort(deps: ReconciliationRealPortDeps): DurableRetirePort {
+  const runGit = deps.runGit ?? defaultGitRunner;
+  const publication = deps.coordinationPublication ?? 'direct';
+  const receipts: RouteReceiptStore = createPersistentRouteReceipts(deps.stateRoot);
+  return {
+    async retireLearningRecords(request): Promise<ReconciliationEffectResult> {
+      assertReconciliationPublisher(request); // note 7 — refuses any request the publisher never minted
+      const manifest = buildLearningRecordRetireManifest({
+        batchId: request.batchId,
+        baseCommit: request.baseCommit,
+        implementedAt: request.mergedAt,
+        targetPaths: [],
+        recordPaths: request.recordPaths,
+        mergeCommit: request.mergeCommit,
+        merged: true,
+      });
+      const published = await routeDurable(deps.repoRoot, manifest, {
+        runGit,
+        publication,
+        outboxRoot: deps.outboxRoot,
+        receipts,
+        retire: {
+          batchId: request.batchId,
+          recordPaths: [...request.recordPaths],
+          mergeCommit: request.mergeCommit,
+          merged: true,
+        },
+      });
+      if (published.mode !== 'coordination') {
+        throw new ReconciliationConflictError(request.idempotencyKey, 'a learning-record-retire must publish in coordination mode');
+      }
+      return { revision: published.commit, receipt: published.commit };
+    },
+  };
+}
+
+/**
+ * Compose the learning-record-retire action over the real durable retire port and the store's two-phase
+ * receipt. The merge-poll resolver calls the returned function on a confirmed batch-PR merge; nothing
+ * else may. The receipt port is resolved lazily so composition stays side-effect free (as in the main
+ * real-port builder).
+ */
+export function createLearningRecordRetire(
+  deps: ReconciliationRealPortDeps,
+): (input: LearningRecordRetireInput) => Promise<ReconciliationResult> {
+  const now = deps.now ?? (() => new Date().toISOString());
+  const retire = createDurableRetirePort(deps);
+  let receiptsPort: ReconciliationReceiptPort | null = null;
+  const resolveReceipts = (): ReconciliationReceiptPort =>
+    (receiptsPort ??= deps.store.reconciliationReceiptPort());
+  const receipts: ReconciliationReceiptPort = {
+    read: (key) => resolveReceipts().read(key),
+    prepare: (receipt) => resolveReceipts().prepare(receipt),
+    publish: (receipt) => resolveReceipts().publish(receipt),
+  };
+  return (input) => retireLearningRecords(input, { receipts, retire, clock: { now } });
 }
