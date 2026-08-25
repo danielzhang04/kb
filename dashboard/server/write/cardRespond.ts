@@ -99,6 +99,11 @@ export function planResponse(
  * if absent), optionally claim, then either walk the ordered transitions or save in place — all via
  * `scripts/cards.py`. Prints `{"id","state","paths":[...]}`. `paths` are the exact repo-relative POSIX
  * paths git must stage: a transition that MOVES the file yields both the deleted origin and the new path.
+ *
+ * A PURE transition carries an empty (or absent) `block`: no section is appended and the card body is
+ * left byte-for-byte unchanged, so a blockless card-transition (the reconciliation publisher's default,
+ * and every legal state walk that records no operator text) never injects a spurious empty section. A
+ * non-empty `block` still requires a `section`, exactly as the operator reply/resolve path supplies both.
  */
 export const CARD_RESPOND_SCRIPT = `
 import sys, json
@@ -139,7 +144,12 @@ def append_section(body, section, block):
     rebuilt = lines[:idx + 1] + mid + ["", block, ""] + lines[end:]
     return "\\n".join(rebuilt)
 
-card.body = append_section(card.body, op["section"], op["block"])
+block = op.get("block") or ""
+if block:
+    section = op.get("section")
+    if not section:
+        raise cards.ValidationError("a card-respond block requires a section")
+    card.body = append_section(card.body, section, block)
 
 if op.get("claimOwner") and not card.meta.get("owner"):
     cards.claim(card, op["claimOwner"])
@@ -195,8 +205,14 @@ function parseStdout(stdout: string): { id: string; state: string; paths: string
  */
 export interface CardMutationOp {
   cardId: string;
-  section: 'Feedback' | 'Result';
-  block: string;
+  /**
+   * Omitted for a pure transition. Required (with a non-empty {@link block}) to append text under a
+   * `## <section>` heading. The operator path supplies `'Feedback'`/`'Result'`; the reconciliation
+   * `cards` port forwards a bounded single-line heading verbatim (R1), so this is a free `string`.
+   */
+  section?: string;
+  /** Empty/absent = pure transition: the card body is left unchanged and no section is created. */
+  block?: string;
   transitions: string[];
   claimOwner: string | null;
 }
@@ -222,8 +238,8 @@ export async function executeCardMutation(op: CardMutationOp, deps: RespondDeps)
   const runPy = deps.runPy ?? defaultPyRunner;
   const jsonArg = JSON.stringify({
     cardId: op.cardId,
-    section: op.section,
-    block: op.block,
+    section: op.section ?? null,
+    block: op.block ?? '',
     transitions: op.transitions,
     claimOwner: op.claimOwner,
   });

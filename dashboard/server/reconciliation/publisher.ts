@@ -25,7 +25,7 @@ import {
   reconciliationExactTargets, reconciliationIdempotencyKey, reconciliationIntentSha256,
 } from './contracts.ts';
 import type {
-  CardBlockSection, PreparedReconciliationReceipt, ReconciliationActor, ReconciliationIntent,
+  CardTransitionWrite, PreparedReconciliationReceipt, ReconciliationActor, ReconciliationIntent,
   ReconciliationReceiptPort, ReconciliationResult, ScheduleMirrorIntent,
 } from './contracts.ts';
 import { appendReconciliationAudit } from './audit.ts';
@@ -129,8 +129,8 @@ export interface CardMutationRequest extends AuthorizedRequest {
   readonly expectedCardSha256: string;
   readonly fromState: string;
   readonly toState: string;
-  readonly section?: CardBlockSection;
-  readonly block?: string;
+  /** Absent = pure transition; present = append `write.block` under `## write.section` before the walk. */
+  readonly write?: CardTransitionWrite;
 }
 
 export interface OpsOutboxRequest extends AuthorizedRequest {
@@ -464,8 +464,7 @@ export async function publishReconciliationIntent(
           idempotencyKey: intent.idempotencyKey, exactTargets: recomputed,
           cardId: intent.cardId, expectedCardSha256: intent.expectedCardSha256,
           fromState: intent.fromState, toState: intent.toState,
-          ...(intent.section === undefined ? {} : { section: intent.section }),
-          ...(intent.block === undefined ? {} : { block: intent.block }),
+          ...(intent.write === undefined || intent.write === null ? {} : { write: intent.write }),
         }));
         break;
       case 'escalation-card':

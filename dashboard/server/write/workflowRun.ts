@@ -224,6 +224,16 @@ export interface ManagedRootActivationOptions {
  * Exact canonical activation transaction for managed roots. It pulls ops before mutation, uses
  * cards.transition for blocked->inbox, commits/pushes exact paths, then proves HEAD contains the
  * bytes just validated. Empty-dependency blocked cards remain invisible to legacy dispatch until here.
+ *
+ * [P4-C14] MANAGED-ROOT ACTIVATION EXCEPTION (R2). This is the documented THIRD direct
+ * `cards.transition`/`executeCardMutation` site permitted by the §9 / [P4-C14] transition scan,
+ * alongside `write/cardRespond.ts` (the executor) and the reconciliation publisher channel
+ * (`reconciliation/{publisher,realPorts}.ts`). It is INTENTIONALLY not a reconciliation `card-transition`
+ * intent: it publishes MULTIPLE dependency-free roots in ONE atomic commit with its own T3 authorize
+ * audit row + activation claim (`authorizeAfterPrepare`) and a pure reassert-after-reconcile re-proof.
+ * Serial one-card-per-intent publishes would break that atomicity and the T3 authorization re-proof — a
+ * security regression — so it stays a direct executor here. `authorizeAfterPrepare` runs before the
+ * mutation (see the "[P4-C14]/R2" ordering test); an activation with no re-proof is refused at entry.
  */
 export async function activateManagedRootCards(options: ManagedRootActivationOptions): Promise<{ replayed: boolean; cardPaths: string[] }> {
   if (!SAFE_ID_RE.test(options.runRef) || options.cardRefs.length === 0

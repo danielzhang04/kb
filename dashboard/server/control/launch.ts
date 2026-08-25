@@ -495,6 +495,9 @@ export async function executeApprovedLaunch(
       const rootStageIds = new Set(parsed.value.stages.filter((stage) => stage.dependsOn.length === 0).map((stage) => stage.id));
       const rootCards = outcome.cards.filter((card) => rootStageIds.has(card.stageId)).map((card) => card.cardId);
       if (rootCards.length !== rootStageIds.size) throw new Error('managed root card projection differs from the approved proposal');
+      // [P4-C14] managed-root activation: atomic multi-root T3-authorized publication, audited via its own
+      // authorize row (reassertCompiledPolicy emits the control-run-activate-authorize row) — intentionally
+      // NOT a reconciliation `card-transition` intent, so it stays a direct executor (R2).
       await activateManagedRootCards({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,

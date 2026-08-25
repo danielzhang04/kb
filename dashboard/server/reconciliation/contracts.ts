@@ -33,6 +33,27 @@ export const RECONCILIATION_ACTORS: readonly ReconciliationActor[] = [
 export type CardBlockSection = 'Feedback' | 'Result';
 export type EscalationSourceKind = 'run' | 'stop' | 'sweeper-failure';
 
+/**
+ * The optional body write a `card-transition` carries alongside the state walk (R1 / [P4-C-R1]).
+ * Absent (or `null`) is a PURE transition: the card body is left byte-for-byte unchanged. When
+ * present, the publisher's `cards` port appends `block` under the `## <section>` heading before the
+ * walk, exactly as `write/cardRespond.ts`'s executor does for an operator reply/resolve.
+ *
+ * `section` is a bounded single-line heading — deliberately a free `string`, not `CardBlockSection`,
+ * because the cut-over heredocs write headings the operator vocabulary never had (`Bridged run`, and
+ * canonical's `Result` carrying a fenced `kb.canonical-stage-result/v1` payload). `block` is bounded
+ * bytes passed through verbatim, so a canonical fenced block survives unaltered.
+ */
+export interface CardTransitionWrite {
+  readonly section: string;
+  readonly block: string;
+}
+
+/** A `card-transition` write heading fits on one line and stays well under a card body's bound. */
+export const MAX_CARD_TRANSITION_SECTION_BYTES = 200;
+/** A `card-transition` write block (incl. a fenced canonical payload) stays under the card-body bound. */
+export const MAX_CARD_TRANSITION_BLOCK_BYTES = 256 * 1024;
+
 export interface ReconciliationIntentBase {
   readonly schema: typeof RECONCILIATION_INTENT_SCHEMA;
   readonly kind: ReconciliationIntentKind;
@@ -50,8 +71,8 @@ export interface CardTransitionIntent extends ReconciliationIntentBase {
   readonly expectedCardSha256: string;
   readonly fromState: string;
   readonly toState: string;
-  readonly section?: CardBlockSection;
-  readonly block?: string;
+  /** Absent/`null` = pure transition; present = append `block` under `## section` before the walk. */
+  readonly write?: CardTransitionWrite | null;
 }
 
 export interface EscalationCardIntent extends ReconciliationIntentBase {
@@ -89,12 +110,29 @@ export type ReconciliationIntent =
  * canonical hash (409). A crafted collision can therefore deny another operation's key, but can
  * never make the publisher apply the colliding intent's effect under the victim's receipt.
  */
+/** The NUL separator/guard char for card-transition write hashing + validation (never in card text). */
+const NUL = String.fromCharCode(0);
+
+/** A write section is a single-line heading: it may not contain CR, LF, or NUL. */
+function sectionHasForbiddenChar(section: string): boolean {
+  for (const ch of section) {
+    const code = ch.charCodeAt(0);
+    if (code === 0 || code === 10 || code === 13) return true;
+  }
+  return false;
+}
+
 export function reconciliationIdempotencyKey(intent: ReconciliationIntent): string {
   switch (intent.kind) {
     case 'card-transition':
       return [
         'card-transition', intent.actor, intent.cardId, intent.expectedCardSha256, intent.toState,
-        sha256Hex(intent.block ?? ''),
+        // Pure transition (no write) hashes the empty string, exactly as the pre-R1 block-only key did.
+        sha256Hex(
+          intent.write === undefined || intent.write === null
+            ? ''
+            : `${intent.write.section}${NUL}${intent.write.block}`,
+        ),
       ].join(':');
     case 'escalation-card':
       return `escalation:${intent.source.kind}:${intent.source.ref}`;
@@ -267,7 +305,8 @@ const BASE_KEYS = [
   'schema', 'kind', 'actor', 'idempotencyKey', 'expectedSourceRevision', 'expectedStoreRevision',
   'exactTargets',
 ] as const;
-const CARD_KEYS = [...BASE_KEYS, 'cardId', 'expectedCardSha256', 'fromState', 'toState', 'section', 'block'] as const;
+const CARD_KEYS = [...BASE_KEYS, 'cardId', 'expectedCardSha256', 'fromState', 'toState', 'write'] as const;
+const CARD_WRITE_KEYS = ['section', 'block'] as const;
 const ESCALATION_KEYS = [...BASE_KEYS, 'source', 'title', 'reason', 'related'] as const;
 const MIRROR_KEYS = [...BASE_KEYS, 'batchId', 'targetWatermark', 'manifest'] as const;
 const MERGED_KEYS = [...BASE_KEYS, 'batchId', 'pr', 'mergedAt'] as const;
@@ -299,6 +338,29 @@ function decodeBase(record: Record<string, unknown>): Omit<ReconciliationIntentB
   };
 }
 
+/**
+ * Closed decoder for the optional `card-transition` write payload. Absent or `null` normalizes to
+ * `undefined` (a pure transition). When present it is exactly `{ section, block }`: `section` a bounded,
+ * single-line, non-empty heading (no newline, no NUL); `block` bounded bytes with newlines allowed (a
+ * fenced canonical payload passes through verbatim) but no NUL. Any other shape refuses.
+ */
+function decodeCardTransitionWrite(value: unknown): CardTransitionWrite | undefined {
+  if (value === undefined || value === null) return undefined;
+  const record = closedObject(value, CARD_WRITE_KEYS, 'intent.write');
+  const section = record['section'];
+  if (typeof section !== 'string' || section.length === 0
+    || Buffer.byteLength(section) > MAX_CARD_TRANSITION_SECTION_BYTES
+    || sectionHasForbiddenChar(section)) {
+    throw new ContractDecodeError('intent.write.section', 'bounded single-line heading required');
+  }
+  const block = record['block'];
+  if (typeof block !== 'string' || Buffer.byteLength(block) > MAX_CARD_TRANSITION_BLOCK_BYTES
+    || block.includes(NUL)) {
+    throw new ContractDecodeError('intent.write.block', 'bounded block string required');
+  }
+  return { section, block };
+}
+
 function assertKeyMatchesFormula(intent: ReconciliationIntent): ReconciliationIntent {
   const expected = reconciliationIdempotencyKey(intent);
   if (intent.idempotencyKey !== expected) {
@@ -312,12 +374,7 @@ export function decodeReconciliationIntent(value: unknown): ReconciliationIntent
   const kind = (value as Record<string, unknown>)['kind'];
   if (kind === 'card-transition') {
     const record = closedObject(value, CARD_KEYS, 'intent');
-    const section = record['section'];
-    if (section !== undefined && section !== 'Feedback' && section !== 'Result') {
-      throw new ContractDecodeError('intent.section', "'Feedback' | 'Result'");
-    }
-    const block = record['block'];
-    if (block !== undefined && typeof block !== 'string') throw new ContractDecodeError('intent.block', 'string required');
+    const write = decodeCardTransitionWrite(record['write']);
     const expectedCardSha256 = record['expectedCardSha256'];
     if (!isDigestSha256(expectedCardSha256)) throw new ContractDecodeError('intent.expectedCardSha256', 'sha256 hex required');
     return assertKeyMatchesFormula({
@@ -326,8 +383,7 @@ export function decodeReconciliationIntent(value: unknown): ReconciliationIntent
       expectedCardSha256,
       fromState: requireString(record, 'fromState', 'intent'),
       toState: requireString(record, 'toState', 'intent'),
-      ...(section === undefined ? {} : { section }),
-      ...(block === undefined ? {} : { block }),
+      ...(write === undefined ? {} : { write }),
     });
   }
   if (kind === 'escalation-card') {

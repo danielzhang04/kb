@@ -55,6 +55,7 @@ import type { EventBus } from '../hub/bus.ts';
 import type { quiescence } from '../release/quiescence.ts';
 import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
 import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
+import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -68,6 +69,12 @@ export interface SurfaceContext {
   runtimeCapabilities: RuntimeCapabilities;
   /** Canonical ops worktree used for live reads and coordination writes. */
   repoRoot: string;
+  /**
+   * P4 W6.2 [P4-C33]: the ONE server-owned reconciliation publisher, composed once at the surface root
+   * over the real store/ops ports. Present for step 2's callers (card/inbox transitions, schedule
+   * effects); step 1 composes it but calls it from nowhere — the four heredocs stay live.
+   */
+  reconciliationPublisher: ReconciliationPublisher;
   /** Coordination publication is resolved once at the HTTP composition root. */
   coordinationPublication?: CoordinationPublication;
   /** Durable VM spool root used when coordination publication is `outbox`. */

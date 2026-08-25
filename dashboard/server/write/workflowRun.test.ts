@@ -479,6 +479,44 @@ describe('managed canonical root activation', async () => {
     expect(calls.findIndex((args) => args[0] === 'show')).toBeGreaterThan(calls.findIndex((args) => args[0] === 'push'));
   });
 
+  /**
+   * [P4-C14] / R2 — managed-root activation is the documented THIRD direct-mutation site (alongside
+   * `write/cardRespond.ts` and the reconciliation publisher channel). It is NOT a reconciliation intent:
+   * it publishes multiple roots in ONE atomic T3-authorized commit. This proves the mutation is not a
+   * silent bypass — the `authorizeAfterPrepare` hook (whose body emits the T3 `control-run-activate-authorize`
+   * audit row in production) runs BEFORE the cards.py apply that moves the card.
+   */
+  it('runs the T3 authorize hook before the card-mutation apply [P4-C14/R2]', async () => {
+    const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
+    const repoRoot = mkdtempSync(join(tmpdir(), 'managed-authorize-order-'));
+    const cardPath = join(repoRoot, 'queue', 'inbox', `${cardRef}.md`);
+    mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
+    writeFileSync(cardPath, 'state: blocked\nexecution-controller: dashboard\n');
+    const order: string[] = [];
+    const runGit = (_root: string, args: string[]): string => {
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'show') return readFileSync(cardPath, 'utf8');
+      return '';
+    };
+    const runPy: PyRunner = (_root, _code, raw) => {
+      const operation = JSON.parse(raw) as { mode: 'probe' | 'apply' };
+      if (operation.mode === 'apply') {
+        order.push('apply-mutation');
+        writeFileSync(cardPath, 'state: inbox\nexecution-controller: dashboard\n');
+      }
+      return { exitCode: 0, stderr: '', stdout: JSON.stringify({
+        cards: [{ cardRef, path: `queue/inbox/${cardRef}.md`, completed: false, changed: true }],
+      }) };
+    };
+    await activateManagedRootCards({
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare: () => { order.push('T3-authorize-audit-row'); },
+      reassertAfterReconcile: () => {},
+    });
+    // The authorize hook (T3 audit row + claim) is strictly BEFORE the card-mutation apply — never after.
+    expect(order).toEqual(['T3-authorize-audit-row', 'apply-mutation']);
+  });
+
   it('requires remote proof for a terminal root and leaves its canonical done path untouched', async () => {
     const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
     const repoRoot = mkdtempSync(join(tmpdir(), 'managed-terminal-root-'));

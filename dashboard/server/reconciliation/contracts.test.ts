@@ -7,7 +7,7 @@ import {
   reconciliationIntentSha256,
 } from './contracts.ts';
 import type {
-  CardTransitionIntent, PreparedReconciliationReceipt, PublishedReconciliationReceipt,
+  CardTransitionIntent, CardTransitionWrite, PreparedReconciliationReceipt, PublishedReconciliationReceipt,
   ReconciliationIntent, SweeperPorts,
 } from './contracts.ts';
 
@@ -48,6 +48,26 @@ describe('reconciliation intent union', () => {
     expect(reconciliationExactTargets(decoded(0))).toEqual(decoded(0).exactTargets);
     expect(reconciliationExactTargets(decoded(2))).toEqual(['HEARTBEAT.md', 'orgs/faceless-youtube/HEARTBEAT.md']);
     expect(reconciliationExactTargets(decoded(3))).toEqual([]);
+  });
+
+  it('decodes a card-transition write payload and a pure transition [R1]', () => {
+    const withWrite = decodeReconciliationIntent(vectors.reconciliation.valid[0]!.value) as CardTransitionIntent;
+    expect(withWrite.write).toEqual({ section: 'Result', block: 'verified by Daniel' });
+    // Absent write = pure transition: no `write` key survives, and its key hashes the empty string.
+    const pureBase = { ...(vectors.reconciliation.valid[0]!.value as Record<string, unknown>) };
+    delete pureBase.write;
+    pureBase.idempotencyKey = reconciliationIdempotencyKey(pureBase as unknown as CardTransitionIntent);
+    const pure = decodeReconciliationIntent(pureBase) as CardTransitionIntent;
+    expect(pure.write).toBeUndefined();
+    expect(reconciliationIdempotencyKey(pure)).toBe(pure.idempotencyKey);
+    // A non-string section is refused at the decode boundary, before the key formula is even checked.
+    expect(() => decodeReconciliationIntent({ ...pureBase, write: { section: 123, block: 'x' } }))
+      .toThrow(ContractDecodeError);
+    // A canonical fenced block (newlines, backticks) passes through verbatim as `block` bytes.
+    const fenced = '## Result\n\n```kb.canonical-stage-result/v1\n{"a":1}\n```\n';
+    const fencedBase: Record<string, unknown> = { ...pureBase, write: { section: 'Result', block: fenced } };
+    fencedBase.idempotencyKey = reconciliationIdempotencyKey(fencedBase as unknown as CardTransitionIntent);
+    expect((decodeReconciliationIntent(fencedBase) as CardTransitionIntent).write?.block).toBe(fenced);
   });
 
   it('hashes the complete intent canonically and independently of key order', () => {
@@ -92,6 +112,15 @@ describe('compile negatives', () => {
       readSnapshot: () => 'snapshot', persist: () => undefined,
     };
     expect(unlisted).toBeDefined();
+  });
+
+  it('refuses a non-string card-transition write section at compile time [R1]', () => {
+    // @ts-expect-error - a card-transition write section must be a string heading.
+    const badSection: CardTransitionWrite = { section: 123, block: 'x' };
+    expect(badSection).toBeDefined();
+    // @ts-expect-error - a card-transition write block must be a string.
+    const badBlock: CardTransitionWrite = { section: 'Result', block: 42 };
+    expect(badBlock).toBeDefined();
   });
 
   it('refuses a changed replay by making the persisted receipt readonly', () => {

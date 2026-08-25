@@ -69,6 +69,7 @@ import { admit } from '../control/admission.ts';
 import { outboxStatus } from '../write/outboxStatus.ts';
 import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capabilities.ts';
 import { resolveSessionRoot } from '../trace/routes.ts';
+import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -291,10 +292,25 @@ export function makeSurfaceContext(
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
   let serviceCgroupCache: { checkedAt: number; children: number | null } | undefined;
+  // W6.2 (step 1): compose the ONE reconciliation publisher over the real store/ops ports and expose it
+  // on the context. It is composed exactly once here and called from NOWHERE yet — step 2 cuts the
+  // card/inbox/schedule callers over to it; the four heredocs stay live until then.
+  const reconciliationPublisher = overrides.reconciliationPublisher ?? createReconciliationPublisher(
+    createReconciliationRealPorts({
+      repoRoot,
+      store: controlStore,
+      stateRoot,
+      runPy: overrides.runPy,
+      now: overrides.now === undefined ? undefined : () => overrides.now!().toISOString(),
+      coordinationPublication,
+      outboxRoot,
+    }),
+  );
   let ctx!: SurfaceContext;
   ctx = {
     runtimeCapabilities: capabilities,
     repoRoot,
+    reconciliationPublisher,
     coordinationPublication,
     outboxRoot,
     outboxRecoveryFailure: overrides.outboxRecoveryFailure,

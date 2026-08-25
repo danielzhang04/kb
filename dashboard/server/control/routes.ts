@@ -2288,6 +2288,9 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
       }
     };
     try {
+      // [P4-C14] managed-root activation: atomic multi-root T3-authorized publication, audited via its own
+      // authorize row — intentionally NOT a reconciliation `card-transition` intent, so it stays a direct
+      // executor (R2). See `activateManagedRootCards` for the exception's invariants.
       await (ctx.activateManagedRoots ?? activateManagedRootCards)({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
