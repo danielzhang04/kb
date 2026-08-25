@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseGitHubRemote, resolveRepositoryPin, RepositoryPinError } from '../runtime/repoPin.ts';
 import {
@@ -159,7 +162,16 @@ describe('repository pin (consumed from W0 repoPin.ts)', () => {
     for (const bad of ['https://gitlab.com/kb-owner/kb.git', 'https://github.com/kb-owner', 'not a url']) {
       expect(() => parseGitHubRemote(bad)).toThrow(RepositoryPinError);
     }
-    expect(() => resolveRepositoryPin('C:/tmp/ops', () => 'https://github.com/a/b\nhttps://github.com/c/d')).toThrow(/ambiguous/);
+    // A portable OS-absolute coordination root (with the queue/ dir a real composition-time root
+    // carries) so this reaches the ambiguous-remote check on both Windows and Linux — a hardcoded
+    // 'C:/...' root is not absolute on POSIX and would throw the root-check first instead.
+    const pinRoot = mkdtempSync(join(tmpdir(), 'kb-pin-'));
+    mkdirSync(join(pinRoot, 'queue'));
+    try {
+      expect(() => resolveRepositoryPin(pinRoot, () => 'https://github.com/a/b\nhttps://github.com/c/d')).toThrow(/ambiguous/);
+    } finally {
+      rmSync(pinRoot, { recursive: true, force: true });
+    }
     expect(() => resolveRepositoryPin('relative/ops', () => 'https://github.com/a/b')).toThrow(/absolute/);
   });
 

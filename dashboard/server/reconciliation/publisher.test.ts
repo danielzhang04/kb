@@ -505,7 +505,10 @@ const RETIRE_RECORDS = [
 class CountingRetirePort implements DurableRetirePort {
   calls = 0;
   readonly seen: LearningRecordRetireRequest[] = [];
-  constructor(private readonly commit = 'f'.repeat(40)) {}
+  private readonly commit: string;
+  constructor(commit = 'f'.repeat(40)) {
+    this.commit = commit;
+  }
   async retireLearningRecords(request: LearningRecordRetireRequest) {
     assertReconciliationPublisher(request); // the port refuses any request the action never minted
     this.calls += 1;
