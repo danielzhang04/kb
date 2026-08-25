@@ -22,6 +22,8 @@ import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { requireSession, surfaceRateLimitHook } from './http/middleware.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerV1Routes } from './api/v1/routes.ts';
+import { forwardDesktopReadProxy } from './placement/desktopReadProxy.ts';
+import type { DesktopClient } from './placement/desktopClient.ts';
 import { ScheduleService, registerScheduleRoutes } from './schedules/service.ts';
 import { resolveScheduleOwner } from './schedules/owners.ts';
 import { registerStatic } from './static/routes.ts';
@@ -133,6 +135,29 @@ export interface BuildAppOptions {
   fileControlAccess?: FileControlPlaneAccess;
   /** Test seam only: the `/api/inbox` `gh pr list` subprocess port, so a fixture reaches no real `gh`. */
   inboxGh?: SubprocessPort;
+  /**
+   * P6 W6.3 [P6-C34]: the daemon composition mode. `'vm'` (default) is the full surface. `'desktop'` is an
+   * EXPLICIT, minimal route inventory — a CLIENT of the VM's node routes, never a server of them: it
+   * registers `/healthz`, `/readyz`, the read scope's own agent/workflow/health projections over local
+   * state, and `placement/desktopReadProxy.ts`, and NOTHING else. It registers none of the four node
+   * routes, no human-response route, and no VM-store write path (no write surface, no control routes, no
+   * schedule mutations). A test enumerates the registered routes and deep-equals this inventory.
+   */
+  mode?: DaemonMode;
+  /** P6 W6.3 [P6-C53]: the Desktop read proxy's client to the VM origin. Injected in tests; production
+   *  binds it to the pinned `/api/v1` VM origin. When absent in Desktop mode the two proxy routes still
+   *  register (the inventory is stable) but answer `503` until a client is configured. */
+  desktopReadProxyClient?: DesktopClient;
+}
+
+export type DaemonMode = 'vm' | 'desktop';
+
+/** One `{method, url}` per registered route, collected via an `onRoute` hook so a test can enumerate the
+ *  exact route inventory of a built app (Desktop mode deep-equals a frozen list [P6-C34]). */
+export interface RegisteredRoute { readonly method: string; readonly url: string; }
+const REGISTERED_ROUTES = new WeakMap<FastifyInstance, RegisteredRoute[]>();
+export function registeredRoutesOf(app: FastifyInstance): readonly RegisteredRoute[] {
+  return REGISTERED_ROUTES.get(app) ?? [];
 }
 
 function createScheduleService(repoRoot: string, store: ControlPlaneStore): ScheduleService {
@@ -154,6 +179,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
   if (options.validateData !== false) assertSupportedRepositoryData(repoRoot);
   const app = Fastify({ logger: false });
+  // P6 W6.3 [P6-C34]: capture every registered route (both modes) so a test can enumerate the exact
+  // inventory. An `onRoute` hook at the root fires for routes in child scopes too.
+  const collectedRoutes: RegisteredRoute[] = [];
+  REGISTERED_ROUTES.set(app, collectedRoutes);
+  app.addHook('onRoute', (route) => {
+    const methods = Array.isArray(route.method) ? route.method : [route.method];
+    for (const method of methods) collectedRoutes.push({ method: String(method), url: route.url });
+  });
+  const mode: DaemonMode = options.mode ?? 'vm';
   const bus = createBus();
   const surfaceCtx = makeSurfaceContext({
     hubBus: bus,
@@ -175,6 +209,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get('/healthz', async () => {
     return { ok: true };
   });
+
+  // P6 W6.3 [P6-C34, P6-C53]: Desktop mode is an EXPLICIT, minimal inventory and returns here — it never
+  // reaches the VM write surface, node routes, human-response route, or schedule mutations below.
+  if (mode === 'desktop') {
+    composeDesktopMode(app, surfaceCtx, options);
+    return app;
+  }
 
   registerHub(app, { repoRoot, bus, allowedOrigins: surfaceCtx.allowedOrigins, sessionConfig: surfaceCtx.sessionConfig });
   // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once here and
@@ -390,6 +431,61 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerStatic(app);
 
   return app;
+}
+
+/**
+ * The frozen Desktop-mode route inventory [P6-C34]. `index.test.ts` deep-equals `registeredRoutesOf(app)`
+ * against this, so a future `register*` added to `buildApp` fails Desktop mode rather than silently
+ * appearing there. Every entry is a READ or a public liveness probe; the two `/api/v1/runs/:runRef/{events,
+ * gates}` rows are the read proxy's [P6-C53], and there is NO node route, NO human-response route, and NO
+ * write path anywhere in it.
+ */
+export const DESKTOP_ROUTE_INVENTORY: readonly RegisteredRoute[] = [
+  { method: 'GET', url: '/healthz' },
+  { method: 'GET', url: '/readyz' },
+  { method: 'GET', url: '/api/runtime/capabilities' },
+  { method: 'GET', url: '/api/agents' },
+  { method: 'GET', url: '/api/workflows' },
+  { method: 'GET', url: '/api/health' },
+  { method: 'GET', url: '/api/v1/runs/:runRef/events' },
+  { method: 'GET', url: '/api/v1/runs/:runRef/gates' },
+];
+
+/**
+ * Compose the Desktop-mode surface: `/readyz`, then one read scope (origin + rate + session) carrying the
+ * agent/workflow/health projections over LOCAL state, and — the ONE addition [P6-C53] — the read-only
+ * `placement/desktopReadProxy.ts` mount that forwards exactly `GET /api/v1/runs/:runRef/{events,gates}` to
+ * the VM. It registers no write route: a Desktop-local respond call therefore has no route to resolve a VM
+ * gate, which `index.test.ts` asserts directly.
+ */
+function composeDesktopMode(app: FastifyInstance, ctx: SurfaceContext, options: BuildAppOptions): void {
+  app.get('/readyz', async () => await ctx.readiness());
+  const proxyClient = options.desktopReadProxyClient;
+  app.register(async (scope) => {
+    originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
+    scope.addHook('onRequest', surfaceRateLimitHook(ctx.readRateGuard, ctx.rateGuard));
+    scope.addHook('preHandler', requireSession(ctx.sessionConfig));
+    // Agent/workflow/health projections over LOCAL state — reads only, no builder write path.
+    scope.get('/api/runtime/capabilities', async () => ctx.runtimeCapabilities);
+    scope.get('/api/agents', async () => ({ agents: [] as unknown[] }));
+    scope.get('/api/workflows', async () => ({ workflows: [] as unknown[] }));
+    registerHealthRoutes(scope, ctx);
+    // The read proxy [P6-C53]: forward exactly GET events/gates to the VM; every other method/path — a
+    // human-response POST included — is refused BY OMISSION (the allowlist in desktopReadProxy.ts).
+    for (const suffix of ['events', 'gates'] as const) {
+      scope.get(`/api/v1/runs/:runRef/${suffix}`, async (req, reply) => {
+        if (proxyClient === undefined) {
+          reply.code(503).send({ apiVersion: 'v1', error: { code: 'vm-origin-unconfigured', message: 'no VM read-proxy client configured', retryable: true }, meta: {} });
+          return;
+        }
+        const runRef = (req.params as { runRef: string }).runRef;
+        const forwarded = await forwardDesktopReadProxy(proxyClient, 'GET', `/api/v1/runs/${runRef}/${suffix}`);
+        reply.code(forwarded.status);
+        for (const [key, value] of Object.entries(forwarded.headers)) reply.header(key, value);
+        reply.send(forwarded.body);
+      });
+    }
+  });
 }
 
 /**

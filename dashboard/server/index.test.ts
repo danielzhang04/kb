@@ -46,11 +46,14 @@ vi.mock('./home/routes.ts', async (importOriginal) => {
 import {
   buildApp as buildProductionApp,
   DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
+  DESKTOP_ROUTE_INVENTORY,
   humanRequestSweepLogLine,
+  registeredRoutesOf,
   resolveHumanRequestSweepIntervalMs,
   runScheduleBootMigrations,
   start,
 } from './index.ts';
+import type { DesktopClient } from './placement/desktopClient.ts';
 import type { WriterLease } from './control/writerLease.ts';
 import { createExistingRootFileStoreHarnessForTest } from './control/test-fixtures/controlStore.ts';
 import { readDevelopmentScheduleSeedSource } from './schedules/seedImport.ts';
@@ -687,6 +690,65 @@ describe('P1 route matrix', () => {
     for (const url of ['/api/index', '/api/schedules']) {
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(200);
     }
+  });
+});
+
+describe('P6 W6.3 — Desktop-mode composition is an explicit route inventory [P6-C34, P6-C53]', () => {
+  const KEY = (r: { method: string; url: string }): string => `${r.method} ${r.url}`;
+  const RELEVANT = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
+  function desktopApp(desktopReadProxyClient?: DesktopClient) {
+    return buildApp({
+      mode: 'desktop', validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'), traceRoot: null,
+      ...(desktopReadProxyClient ? { desktopReadProxyClient } : {}),
+    });
+  }
+
+  it('registers EXACTLY the frozen Desktop inventory — deep-equals it, so a new register* fails Desktop mode', async () => {
+    app = desktopApp();
+    await app.ready();
+    const registered = registeredRoutesOf(app).filter((r) => RELEVANT.has(r.method));
+    const got = [...new Set(registered.map(KEY))].sort();
+    const expected = [...new Set(DESKTOP_ROUTE_INVENTORY.map(KEY))].sort();
+    expect(got).toEqual(expected);
+  });
+
+  it('registers NONE of the four node routes, NO human-response route, and NO VM-store write path', async () => {
+    app = desktopApp();
+    await app.ready();
+    const keys = new Set(registeredRoutesOf(app).map(KEY));
+    // The four node routes.
+    for (const key of ['PUT /api/v1/hosts/:hostId', 'POST /api/v1/hosts/:hostId/leases/claim',
+      'POST /api/v1/runs/:runRef/leases/renew', 'POST /api/v1/runs/:runRef/reports']) {
+      expect(keys.has(key), key).toBe(false);
+    }
+    // No human-response route (neither the control route nor its v1 sibling).
+    expect([...keys].some((k) => k.includes('respond'))).toBe(false);
+    expect([...keys].some((k) => k.includes('human-request'))).toBe(false);
+    // No VM-store write path at all: every registered route is a GET (or an auto HEAD/OPTIONS).
+    const writeMethods = registeredRoutesOf(app).filter((r) => ['POST', 'PUT', 'DELETE', 'PATCH'].includes(r.method));
+    expect(writeMethods).toEqual([]);
+  });
+
+  it('a Desktop-local respond call cannot resolve a VM gate — the route does not exist (404)', async () => {
+    // A read-proxy client whose write-shaped methods are tripwires: the Desktop UI must never reach them.
+    const boom = (): never => { throw new Error('Desktop must not reach a VM write/gate through the proxy'); };
+    const proxyClient: DesktopClient = {
+      origin: 'https://vm.example/api/v1',
+      claim: boom, renew: boom, report: boom,
+      getRunEvents: async () => ({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apiVersion: 'v1', kind: 'run-events', data: { events: [] }, meta: {} }) }),
+      getRunGates: async () => ({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apiVersion: 'v1', kind: 'run-gates', data: { gates: [] }, meta: {} }) }),
+    };
+    app = desktopApp(proxyClient);
+    // The respond route simply does not exist on a Desktop daemon.
+    const respond = await app.inject({
+      method: 'POST', url: '/api/v1/runs/run-1/human-requests/req-1/respond', headers: sessionHeaders(), payload: { decision: 'approve' },
+    });
+    expect(respond.statusCode).toBe(404);
+    // The read proxy DOES answer events, proving the one allowed forward works while writes have no route.
+    const events = await app.inject({ method: 'GET', url: '/api/v1/runs/run-1/events', headers: sessionHeaders() });
+    expect(events.statusCode).toBe(200);
+    expect(events.json()).toMatchObject({ kind: 'run-events' });
   });
 });
 
