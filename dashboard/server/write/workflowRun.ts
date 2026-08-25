@@ -201,6 +201,10 @@ export interface ManagedRootActivationOptions {
    * ONE-SHOT authorization, run exactly once after the opening pull and before local mutation. Callers
    * put their SIDE EFFECTS here — the T3 authorize audit row, the post-audit preamble, the activation
    * claim. It is never re-run on a push reconcile; see {@link reassertAfterReconcile}.
+   *
+   * REQUIRED (not optional in practice): this function throws at entry when it is absent, because the
+   * mutation below is the atomic multi-root `cards.transition` exception — a caller that omits it would
+   * run that mutation with no T3 authorize audit row and no activation claim, silently.
    */
   authorizeAfterPrepare?: () => void | Promise<void>;
   /**
@@ -233,7 +237,8 @@ export interface ManagedRootActivationOptions {
  * audit row + activation claim (`authorizeAfterPrepare`) and a pure reassert-after-reconcile re-proof.
  * Serial one-card-per-intent publishes would break that atomicity and the T3 authorization re-proof — a
  * security regression — so it stays a direct executor here. `authorizeAfterPrepare` runs before the
- * mutation (see the "[P4-C14]/R2" ordering test); an activation with no re-proof is refused at entry.
+ * mutation (see the "[P4-C14]/R2" ordering test); an activation with no authorize step or no re-proof
+ * is refused at entry — neither hook is optional.
  */
 export async function activateManagedRootCards(options: ManagedRootActivationOptions): Promise<{ replayed: boolean; cardPaths: string[] }> {
   if (!SAFE_ID_RE.test(options.runRef) || options.cardRefs.length === 0
@@ -248,6 +253,12 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
   const reassertAfterReconcile = options.reassertAfterReconcile;
   if (!reassertAfterReconcile) {
     throw new Error('managed root activation requires a reassertAfterReconcile re-proof');
+  }
+  // Same structural-impossibility guard as reassertAfterReconcile above: a caller that omits the T3
+  // authorize step must never be able to reach the mutation below with no audit row and no claim.
+  const authorizeAfterPrepare = options.authorizeAfterPrepare;
+  if (!authorizeAfterPrepare) {
+    throw new Error('managed root activation requires an authorizeAfterPrepare audit step');
   }
   const runGit = options.runGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
@@ -282,7 +293,7 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
     if (!options.verifyCompletedRoots) throw new Error('completed managed roots require canonical provenance verification');
     await options.verifyCompletedRoots({ runRef: options.runRef, cardRefs: completedCardRefs });
   }
-  await options.authorizeAfterPrepare?.();
+  await authorizeAfterPrepare();
   const applied = checked(decode(runPy(options.repoRoot, MANAGED_ROOT_ACTIVATION_SCRIPT, JSON.stringify({
     mode: 'apply', runRef: options.runRef, cardRefs: expected, completedCardRefs,
   }))));

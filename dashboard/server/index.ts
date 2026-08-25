@@ -53,60 +53,9 @@ import { discoverLegacyScheduleMarkers, publishVerifiedScheduleMarkerRemoval } f
 export const HOST = '127.0.0.1';
 export const PORT = Number(process.env.DASHBOARD_PORT ?? 4317);
 
-/** G1 merge-gate reconciler cadence (Decision 2): default 5 minutes; a value <= 0 (or non-numeric)
- *  disables it. On-by-default is fail-safe — every reconciler failure leaves gate cards OPEN, so the
- *  only thing disabling it removes is the auto-close of already-merged PRs. */
-export const DEFAULT_MERGE_GATE_INTERVAL_MS = 300_000;
-export function resolveMergeGateIntervalMs(): number {
-  const raw = process.env.DASHBOARD_MERGE_GATE_INTERVAL_MS;
-  if (raw === undefined || raw === '') return DEFAULT_MERGE_GATE_INTERVAL_MS;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : DEFAULT_MERGE_GATE_INTERVAL_MS;
-}
-
-/** Stranded-archiver cadence — DEFAULT-OFF (0 = disabled). Unlike the merge-gate reconciler this daemon
- *  MOVES cards, so on-by-default is NOT fail-safe here: the v1 build defaulted ON at 5-min intervals and
- *  would have wrongly archived live cards. It ships disabled and is opt-in via env.
- *  POLICY RATIFIED (Daniel, 2026-07-22, all 8 §3d questions): 7-day window; archived cards stay MOVED
- *  (never deleted, `queue/archived/` retained indefinitely, reversible archived→inbox only); unattended
- *  MOVE is authorized — but only AFTER the rollout gate below; daemon default stays off; the Human-Inbox
- *  `stranded` surface stays until dry-run proves correct, then is removed; the four ownerActivity sources
- *  are approved as-is; schtasks liveness stays codex-only and veto-only. */
-export const DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS = 0;
-export function resolveStrandedArchiveIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS;
-  if (raw === undefined || raw === '') return DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS;
-}
-
-/** Compile-time policy flag guarding the LIVE MOVE path. Even with this true, a live MOVE ALSO requires
- *  the env gate below — two independent locks. While it is `false` the archiver is dry-run-only
- *  regardless of env.
- *  ROLLOUT GATE (ratified 2026-07-22, policy Q3+Q4): flip this to `true` in a reviewed PR ONLY after the
- *  dry-run cadence (enable via DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS) has produced 7 consecutive daily
- *  cycles with ZERO wrong would-archive picks; Daniel then also sets DASHBOARD_STRANDED_ARCHIVE_LIVE=1
- *  on the daemon. Until both, dry-run-only. */
-export const STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED = false;
-/** dryRun is TRUE (report only, move nothing) unless BOTH the compile-time flag is flipped AND the operator
- *  sets `DASHBOARD_STRANDED_ARCHIVE_LIVE=1`. This ship: always dry-run. */
-export function resolveStrandedArchiveDryRun(env: NodeJS.ProcessEnv = process.env): boolean {
-  const envLive = env.DASHBOARD_STRANDED_ARCHIVE_LIVE === '1';
-  return !(STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED && envLive);
-}
-
-/** Abandonment window — default 7 days (policy Q1), overridable via env for dry-run experimentation. */
-export const DEFAULT_STRANDED_ARCHIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-export function resolveStrandedArchiveWindowMs(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS;
-  if (raw === undefined || raw === '') return DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
-}
-
-/** Human Request orphan-sweep cadence — ON BY DEFAULT (unlike the stranded-card archiver above, this
- *  only ever mutates the control-plane JSON document it already owns; there is no filesystem move or
- *  git commit to gate behind a dry-run). 5 minutes, matching the merge-gate reconciler's cadence. */
+/** Human Request orphan-sweep cadence — ON BY DEFAULT: it only ever mutates the control-plane JSON
+ *  document it already owns, so there is no filesystem move or git commit to gate behind a dry-run.
+ *  Default interval 5 minutes. */
 export const DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS = 300_000;
 export function resolveHumanRequestSweepIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS;

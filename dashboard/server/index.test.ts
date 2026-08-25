@@ -32,14 +32,8 @@ vi.mock('./release/quiescence.ts', async (importOriginal) => {
 import {
   buildApp as buildProductionApp,
   DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
-  DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS,
-  DEFAULT_STRANDED_ARCHIVE_WINDOW_MS,
-  STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED,
   humanRequestSweepLogLine,
   resolveHumanRequestSweepIntervalMs,
-  resolveStrandedArchiveIntervalMs,
-  resolveStrandedArchiveDryRun,
-  resolveStrandedArchiveWindowMs,
   runScheduleBootMigrations,
   start,
 } from './index.ts';
@@ -600,37 +594,6 @@ describe('server', () => {
     const response = await realReadinessApp.inject({ method: 'GET', url: '/readyz', headers: matrixHeaders });
     expect(response.json()).toEqual({ ok: true, quiescent: false, blockers: ['service-cgroup-unknown'] });
     await realReadinessApp.close();
-  });
-});
-
-describe('stranded-archiver wiring — DEFAULT-OFF and DRY-RUN-ONLY', () => {
-  it('defaults the interval to 0 (disabled) when the env var is unset/blank', () => {
-    expect(DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS).toBe(0);
-    expect(resolveStrandedArchiveIntervalMs({})).toBe(0);
-    expect(resolveStrandedArchiveIntervalMs({ DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS: '' })).toBe(0);
-    expect(resolveStrandedArchiveIntervalMs({ DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS: 'nonsense' })).toBe(0);
-  });
-
-  it('honors an explicit positive interval (opt-in) but that alone never enables the live MOVE', () => {
-    expect(resolveStrandedArchiveIntervalMs({ DASHBOARD_STRANDED_ARCHIVE_INTERVAL_MS: '300000' })).toBe(300_000);
-  });
-
-  it('the compile-time live-move flag ships OFF', () => {
-    expect(STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED).toBe(false);
-  });
-
-  it('dryRun is TRUE regardless of env while the compile-time flag is off (two-lock gate)', () => {
-    expect(resolveStrandedArchiveDryRun({})).toBe(true);
-    expect(resolveStrandedArchiveDryRun({ DASHBOARD_STRANDED_ARCHIVE_LIVE: '1' })).toBe(true);
-    expect(resolveStrandedArchiveDryRun({ DASHBOARD_STRANDED_ARCHIVE_LIVE: '0' })).toBe(true);
-  });
-
-  it('defaults the window to 7 days, overridable by a positive env value only', () => {
-    expect(DEFAULT_STRANDED_ARCHIVE_WINDOW_MS).toBe(7 * 24 * 60 * 60 * 1000);
-    expect(resolveStrandedArchiveWindowMs({})).toBe(7 * 24 * 60 * 60 * 1000);
-    expect(resolveStrandedArchiveWindowMs({ DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS: '259200000' })).toBe(259_200_000);
-    expect(resolveStrandedArchiveWindowMs({ DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS: '-5' })).toBe(7 * 24 * 60 * 60 * 1000);
-    expect(resolveStrandedArchiveWindowMs({ DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS: 'x' })).toBe(7 * 24 * 60 * 60 * 1000);
   });
 });
 

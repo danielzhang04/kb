@@ -472,7 +472,8 @@ describe('managed canonical root activation', async () => {
 
     calls.length = 0;
     expect(await activateManagedRootCards({
-      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, reassertAfterReconcile: () => {},
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     }))
       .toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
     expect(calls.some((args) => args[0] === 'commit')).toBe(false);
@@ -538,7 +539,7 @@ describe('managed canonical root activation', async () => {
     const verifyCompletedRoots = vi.fn(async () => {});
     await expect(activateManagedRootCards({
       repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, verifyCompletedRoots,
-      reassertAfterReconcile: () => {},
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     })).resolves.toEqual({ replayed: true, cardPaths: [`queue/done/${cardRef}.md`] });
     expect(verifyCompletedRoots).toHaveBeenCalledWith({ runRef: 'wf-test-0001', cardRefs: [cardRef] });
     expect(seen).not.toContain('commit');
@@ -552,7 +553,7 @@ describe('managed canonical root activation', async () => {
     }) });
     await expect(activateManagedRootCards({
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: [cardRef], runGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '', runPy,
-      verifyCompletedRoots: async () => {}, reassertAfterReconcile: () => {},
+      verifyCompletedRoots: async () => {}, authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     })).rejects.toThrow('completion state changed');
   });
 
@@ -565,7 +566,7 @@ describe('managed canonical root activation', async () => {
     };
     await expect(activateManagedRootCards({
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
-      reassertAfterReconcile: () => {},
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     })).rejects.toThrow(/dirty index/);
     expect(runPy).not.toHaveBeenCalled();
   });
@@ -583,6 +584,22 @@ describe('managed canonical root activation', async () => {
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
       authorizeAfterPrepare: () => {},
     })).rejects.toThrow(/requires a reassertAfterReconcile re-proof/);
+    expect(runGit).not.toHaveBeenCalled();
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * M1 (P4 W6.2 review) — the T3 authorize hook must be exactly as required as its reassert twin above:
+   * a caller that omits it must never reach the atomic multi-root `cards.transition` mutation with no T3
+   * authorize audit row and no activation claim. Mirrors the reassert-absence precedence test.
+   */
+  it('refuses at entry when no authorize step is supplied, before touching git or python', async () => {
+    const runPy = vi.fn<PyRunner>();
+    const runGit = vi.fn((_root: string, _args: string[]) => 'ops\n');
+    await expect(activateManagedRootCards({
+      repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
+      reassertAfterReconcile: () => {},
+    })).rejects.toThrow(/requires an authorizeAfterPrepare audit step/);
     expect(runGit).not.toHaveBeenCalled();
     expect(runPy).not.toHaveBeenCalled();
   });
@@ -670,7 +687,8 @@ describe('managed canonical root activation', async () => {
     const reassertAfterReconcile = vi.fn(() => { order.push('reassert'); });
 
     await expect(activateManagedRootCards({
-      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, reassertAfterReconcile,
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile,
     })).resolves.toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
 
     expect(order.some((step) => step === 'commit')).toBe(false);
