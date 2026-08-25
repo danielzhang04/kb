@@ -14,6 +14,11 @@ import {
 const CHECKED_AT = '2026-08-22T09:00:00.000Z';
 const now = (): Date => new Date(CHECKED_AT);
 
+const CLOSED_ADVERTISEMENT_SLICE = {
+  connectors: [], skills: [], filesystemRoots: [], gpu: false,
+  clis: { claude: 'missing', codex: 'missing' },
+};
+
 describe('runtimeHostCapabilities', () => {
   it('answers the non-PTY host slice without a PTY key of any kind', () => {
     expect(runtimeHostCapabilities('linux')).toEqual({
@@ -24,6 +29,7 @@ describe('runtimeHostCapabilities', () => {
       durablePrWrites: false,
       localTranscripts: false,
       dashboardBridge: true,
+      ...CLOSED_ADVERTISEMENT_SLICE,
     });
     expect(runtimeHostCapabilities('win32')).toEqual({
       platform: 'win32',
@@ -33,7 +39,17 @@ describe('runtimeHostCapabilities', () => {
       durablePrWrites: false,
       localTranscripts: false,
       dashboardBridge: true,
+      ...CLOSED_ADVERTISEMENT_SLICE,
     });
+  });
+
+  it('defaults the five advertisement-bound capabilities CLOSED — a probe that has not run [P6-C15]', () => {
+    const capabilities = runtimeHostCapabilities('linux');
+    expect(capabilities.connectors).toEqual([]);
+    expect(capabilities.skills).toEqual([]);
+    expect(capabilities.filesystemRoots).toEqual([]);
+    expect(capabilities.gpu).toBe(false);
+    expect(capabilities.clis).toEqual({ claude: 'missing', codex: 'missing' });
   });
 });
 
@@ -79,6 +95,7 @@ describe('runtimeCapabilities', () => {
       durablePrWrites: false,
       localTranscripts: false,
       dashboardBridge: true,
+      ...CLOSED_ADVERTISEMENT_SLICE,
       pty: true,
       host: 'desktop',
       launchers: ['shell', 'claude'],

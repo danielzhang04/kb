@@ -5,6 +5,10 @@ import type { PtyCapabilityProbe, PublicPtyCapability } from '../pty/contracts.t
 import { probeWindowsPty, toPublicPtyCapability, type WindowsPtyProbeOptions } from '../pty/probe.ts';
 import { resolveExecutionHost } from '../entities/project.ts';
 import type { HostKind } from '../control/p2Contracts.ts';
+import type { CliStatus } from '../placement/contracts.ts';
+
+/** Both CLIs closed: neither is probed as `ready`. The default for a probe that has not run [P6-C15]. */
+export const CLOSED_CLIS: Readonly<{ claude: CliStatus; codex: CliStatus }> = { claude: 'missing', codex: 'missing' };
 
 /** Everything the host answers without touching the PTY stack (Health reads only this slice). */
 export interface RuntimeHostCapabilities {
@@ -17,6 +21,17 @@ export interface RuntimeHostCapabilities {
   /** True only when composition resolved one readable local Claude transcript root. */
   localTranscripts: boolean;
   dashboardBridge: true;
+  /**
+   * The five advertisement-bound capabilities [P6 §3.1, P6-C15]: the SAME composed capability the
+   * `HostAdvertisement` is built from — there is no second, advertisement-only composition. A probe
+   * that has not run or that failed defaults CLOSED here: no connectors/skills/roots, no gpu, both
+   * CLIs `missing`. `runtime/capabilitySources.ts` overlays real probe results onto these defaults.
+   */
+  connectors: Array<{ server: string; tools: string[] }>;
+  skills: string[];
+  filesystemRoots: string[];
+  gpu: boolean;
+  clis: { claude: CliStatus; codex: CliStatus };
 }
 
 /**
@@ -41,6 +56,11 @@ export function runtimeHostCapabilities(
     durablePrWrites: false,
     localTranscripts: false,
     dashboardBridge: true,
+    connectors: [],
+    skills: [],
+    filesystemRoots: [],
+    gpu: false,
+    clis: { ...CLOSED_CLIS },
   };
 }
 

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { materializeEntityBuilderRequest, patchEntityBuilderSource, renderAgentBuilderSource, renderWorkflowBuilderSource, submitEntityBuilder } from './builder.ts';
+import { assertCapabilitiesAdvertised, materializeEntityBuilderRequest, patchEntityBuilderSource, renderAgentBuilderSource, renderWorkflowBuilderSource, submitEntityBuilder } from './builder.ts';
+import type { HostAdvertisement } from '../placement/contracts.ts';
 import { parseWorkflowDef } from '../workflows/defs.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
 
@@ -44,6 +45,41 @@ describe('entity builder', () => {
     expect(() => materializeEntityBuilderRequest({ ...request, connectors: [{ server: 'github', tools: ['admin'] }] }, catalog)).toThrow('unknown-connector');
     expect(() => materializeEntityBuilderRequest({ ...request, tools: ['shell'] }, catalog)).toThrow('unknown-tool');
     expect(() => materializeEntityBuilderRequest({ ...request, filesystemRoots: ['unknown-root'] }, catalog)).toThrow('unknown-root');
+  });
+
+  it('refuses 422 unknown-connector-tool / unknown-root-id against the live union of fresh advertisements [§3.7]', () => {
+    const githubFullyServed: HostAdvertisement[] = [{
+      hostId: 'desktop', daemonVersion: '1.0.0', reportedAt: '2026-08-25T00:00:00.000Z',
+      connectors: [{ server: 'github', tools: ['issues.read', 'pulls.read'] }],
+      skills: [], filesystemRoots: ['kb'], pty: false, gpu: false,
+      clis: { claude: 'missing', codex: 'missing' },
+    }];
+    // github is fully served but no host advertises slack at all -> the slack grant is the one refused.
+    expect(() => materializeEntityBuilderRequest(request, catalog, undefined, githubFullyServed))
+      .toThrow('unknown-connector-tool:slack.messages.read');
+
+    const githubPartiallyServed: HostAdvertisement[] = [{
+      ...githubFullyServed[0]!, connectors: [{ server: 'github', tools: ['issues.read'] }],
+    }];
+    const githubOnly = { ...request, connectors: [{ server: 'github', tools: ['issues.read', 'pulls.read'] }] };
+    expect(() => materializeEntityBuilderRequest(githubOnly, catalog, undefined, githubPartiallyServed))
+      .toThrow('unknown-connector-tool:github.pulls.read');
+
+    const rootOnly = { ...request, connectors: [] };
+    expect(materializeEntityBuilderRequest(rootOnly, catalog, undefined, githubFullyServed)).toMatchObject({ filesystemRoots: ['kb'] });
+    expect(() => materializeEntityBuilderRequest(rootOnly, catalog, undefined, [])).toThrow('unknown-root-id:kb');
+  });
+
+  it('the advertisement check is additive: omitting it keeps the existing catalog-only behaviour unchanged', () => {
+    expect(materializeEntityBuilderRequest(request, catalog)).toMatchObject({ connectors: request.connectors });
+  });
+
+  it('assertCapabilitiesAdvertised unions connector tools across every fresh advertisement, not just one host', () => {
+    const fresh: HostAdvertisement[] = [
+      { hostId: 'vm', daemonVersion: '1', reportedAt: '2026-08-25T00:00:00.000Z', connectors: [{ server: 'github', tools: ['issues.read'] }], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: { claude: 'missing', codex: 'missing' } },
+      { hostId: 'desktop', daemonVersion: '1', reportedAt: '2026-08-25T00:00:00.000Z', connectors: [{ server: 'github', tools: ['pulls.read'] }], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: { claude: 'missing', codex: 'missing' } },
+    ];
+    expect(() => assertCapabilitiesAdvertised({ connectors: [{ server: 'github', tools: ['issues.read', 'pulls.read'] }], filesystemRoots: [] }, fresh)).not.toThrow();
   });
 
   it('rejects needs, path, sourcePath, and absolute path fields by name', () => {
@@ -90,6 +126,17 @@ describe('entity builder', () => {
     await expect(submitEntityBuilder({ ...args, request: { ...request, purpose: 'Changed.' } }, services)).rejects.toThrow('idempotency-body-conflict');
     expect(calls).toHaveLength(3);
     expect(calls[0]).toMatchObject({ sourcePath: 'orgs/kb-ops/workflows/research-brief.md', expectedSourceRevision: 'sha-1' });
+  });
+
+  it('preserves an existing needs key verbatim on patch — the builder never writes it [§3.7]', () => {
+    const materialized = { ...request, project: 'kb-ops' };
+    const rendered = renderWorkflowBuilderSource('research-flow', materialized);
+    const withNeeds = rendered.replace('---\n\n# Research Brief', 'needs: ["network"]\n---\n\n# Research Brief');
+    expect(withNeeds).toContain('needs: ["network"]');
+    const patched = patchEntityBuilderSource('workflow', withNeeds, { ...materialized, humanName: 'Renamed Flow' });
+    expect(patched).toContain('needs: ["network"]');
+    expect(patched).toContain('title: "Renamed Flow"');
+    expect(patched).not.toMatch(/needs:.*needs:/s);
   });
 
   it('serializes server-derived Agent/Workflow paths and patches only form-owned frontmatter', () => {

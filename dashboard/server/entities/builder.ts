@@ -1,5 +1,6 @@
 import type { ConnectorGrant, CreateEntityRequest, EntityBuilderRequest, RunnableSelector } from './contracts.ts';
 import type { RunnableRef } from '../control/p2Contracts.ts';
+import type { HostAdvertisement } from '../placement/contracts.ts';
 import { createHash } from 'node:crypto';
 
 export interface EntityBuilderCatalog {
@@ -58,6 +59,36 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+/**
+ * "Unknown" against the LIVE union of fresh host advertisements [§3.7, design:383]. Distinct from the
+ * static `catalog` check above: the catalog says what the builder KNOWS about; this says what some
+ * host can CURRENTLY serve. The refusal names the offending id and nothing else.
+ */
+export function assertCapabilitiesAdvertised(
+  request: Pick<EntityBuilderMaterialization, 'connectors' | 'filesystemRoots'>,
+  freshAdvertisements: readonly HostAdvertisement[],
+): void {
+  const advertisedTools = new Map<string, Set<string>>();
+  const advertisedRoots = new Set<string>();
+  for (const advertisement of freshAdvertisements) {
+    for (const connector of advertisement.connectors) {
+      const tools = advertisedTools.get(connector.server) ?? new Set<string>();
+      for (const tool of connector.tools) tools.add(tool);
+      advertisedTools.set(connector.server, tools);
+    }
+    for (const root of advertisement.filesystemRoots) advertisedRoots.add(root);
+  }
+  for (const grant of request.connectors) {
+    const tools = advertisedTools.get(grant.server);
+    for (const tool of grant.tools) {
+      if (!tools || !tools.has(tool)) throw new Error(`unknown-connector-tool:${grant.server}.${tool}`);
+    }
+  }
+  for (const rootId of request.filesystemRoots) {
+    if (!advertisedRoots.has(rootId)) throw new Error(`unknown-root-id:${rootId}`);
+  }
+}
+
 export function builderRequestFingerprint(ref: RunnableRef, expectedSourceRevision: string, request: EntityBuilderMaterialization): string {
   return createHash('sha256').update(JSON.stringify({ ref, expectedSourceRevision, request })).digest('hex');
 }
@@ -75,6 +106,9 @@ export function materializeEntityBuilderRequest(
   value: unknown,
   catalog: EntityBuilderCatalog,
   create?: Pick<CreateEntityRequest, 'selector' | 'project'>,
+  /** Optional [§3.7]: when supplied, connector tools and root ids are ALSO checked against the live
+   * union of fresh advertisements, beside (never instead of) the static catalog check above. */
+  freshAdvertisements?: readonly HostAdvertisement[],
 ): EntityBuilderMaterialization {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid-builder-request');
   const record = value as Record<string, unknown>;
@@ -86,6 +120,9 @@ export function materializeEntityBuilderRequest(
   if (!allowed(catalog.skills, record.skills)) throw new Error('unknown-capability');
   if (!allowedConnectorGrants(catalog.connectors, record.connectors)) throw new Error('unknown-connector');
   if (record.filesystemRoots.some((rootId) => !Object.hasOwn(catalog.filesystemRoots, rootId))) throw new Error('unknown-root');
+  if (freshAdvertisements !== undefined) {
+    assertCapabilitiesAdvertised({ connectors: record.connectors, filesystemRoots: record.filesystemRoots }, freshAdvertisements);
+  }
   let project: string | undefined;
   if (create) {
     if (create.selector.type === 'workflow' && !nonEmptyString(create.project)) throw new Error('project-required');
