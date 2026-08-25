@@ -591,3 +591,20 @@
   covered by umbrella card 6a7c0ebf (with a current 08-22 refresh whose output matches today's
   exactly) -> filed NO new card and did NOT re-refresh (state unchanged; avoid churn).
 - Push path: recorded in the run summary.
+
+### 2026-08-25 nightly-review
+- Clean checks: preamble OK, pyyaml OK, sync_skills --check EXIT 0 (in sync).
+- Dispatch emitted 0 cards (nothing cloud-tier due); queue/approvals/ empty and no records on the
+  approvals ref to verify in 4b. Working card 6a6bc3dd is codex's, state=halted -- untouched.
+- step-2b: naive `python scripts/sync_daemon_dirs.py --check` on ops EXIT 2 (script still absent on
+  ops -- main-authored; restore owned by 6a605ebb + wake-2026-08-15). Ran main's copy in
+  refs-fallback (documented cloud path) -> EXIT 1, drift UNCHANGED from 08-22/08-23: single ops-only
+  file orgs/kb-ops/workflows/acceptance-run.md, byte-identical to umbrella card 6a7c0ebf's 08-22
+  refresh Evidence -> filed NO new card, no re-refresh (state unchanged).
+- PROCESS SLIP caught & corrected (same as 08-14): drafted a fresh wake-me drift card BEFORE reading
+  this shard (routine step 2b's literal "nonzero => write a card"). Reading memory surfaced the
+  dedupe rule; the drift + missing-script were already fully covered by 6a7c0ebf / 6a605ebb /
+  wake-2026-08-15. DELETED the duplicate before commit. LESSON, reinforced yet again: on a fresh
+  cloud clone the recurring drift always "looks" novel -- READ memory and diff today's --check
+  against the newest standing drift card BEFORE filing anything.
+- Push path: recorded in the run summary.
