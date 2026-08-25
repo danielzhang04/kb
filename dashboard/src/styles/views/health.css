@@ -41,6 +41,32 @@
   min-height: 0;
 }
 
+/* P5 W6.2 [P5-C37, P5-C43]: fixed labelled fragments for the DaemonRow/ReleaseRow/DeployRow object
+ * values and the cpu/memory/disk/uptime MachineRow keys — the only CSS P5 touches. */
+.v-health__value-fragment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.v-health__value-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.v-health__value-field-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.v-health__value-field-data {
+  font-family: var(--font-mono);
+}
+
 @media (max-width: 720px) {
   .v-health__row {
     grid-template-columns: 1fr;

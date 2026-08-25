@@ -24,10 +24,36 @@ describe('Health', () => {
 
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
       .toEqual(['Fleet', 'STOP', 'Daemon and machine', 'MCP', 'Usage']);
-    expect(screen.getAllByText('unavailable in P1')).toHaveLength(3);
+    // Only the MCP vm/desktop deferred rows remain — the deferred Release placeholder is gone (P5-C14).
+    expect(screen.getAllByText('unavailable in P1')).toHaveLength(2);
     expect(screen.getAllByText(/Source:/).map((source) => source.textContent)).toContain('Source: mcp-config');
     expect(screen.getByText('Worker A')).toBeTruthy();
     expect(screen.getByTestId('health-row-agent:worker-a').getAttribute('data-raw-id')).toBe('worker-a');
+  });
+
+  it('renders the four §3.5 daemon-machine row kinds as fixed labelled fragments, never a raw object', async () => {
+    await renderWithTestSession(<Health response={healthResponseFixture} />);
+
+    const cpuRow = screen.getByTestId('health-row-cpu');
+    expect(cpuRow.querySelectorAll('.v-health__value-fragment .v-health__value-field').length).toBe(3);
+    expect(cpuRow.textContent).toContain('load1');
+    expect(cpuRow.textContent).toContain('0.42');
+
+    const serviceRow = screen.getByTestId('health-row-service');
+    expect(serviceRow.textContent).toContain('kb-dashboard.service');
+    expect(serviceRow.textContent).toContain('4242');
+
+    const releaseRow = screen.getByTestId('health-row-release');
+    expect(releaseRow.textContent).toContain('64fb3d02');
+    expect(releaseRow.textContent).toContain('available');
+
+    const deployRow = screen.getByTestId('health-row-deploy:deployment:1');
+    expect(deployRow.textContent).toContain('deployment:1');
+    expect(deployRow.textContent).toContain('succeeded');
+    // Health's only control is STOP (ux-rule 11) — the Deployment row is display-only.
+    expect(deployRow.querySelector('button')).toBeNull();
+    // The Inspect deep-link anchor Inbox points at (`deploy:<deploymentRef>`).
+    expect(deployRow.id).toBe('deploy:deployment:1');
   });
 
   it('keeps schedule-owner integrity visible without hiding healthy rows', async () => {

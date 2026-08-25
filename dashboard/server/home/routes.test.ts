@@ -73,6 +73,7 @@ describe('Home routes module', () => {
         expect(releaseRoot).toBe('/installed/release');
         return '2026-08-21T10:00:00.000Z';
       },
+      rollbackAvailable: async () => true,
     });
 
     await expect(reader.readActivation()).resolves.toEqual({
@@ -80,7 +81,24 @@ describe('Home routes module', () => {
       label: 'VM',
       sha: '64fb3d02' + 'a'.repeat(32),
       activatedAt: '2026-08-21T10:00:00.000Z',
+      archiveSha256: 'b'.repeat(64),
+      rollbackAvailable: true,
     });
+  });
+
+  it('the P5 W6.2 rollback probe never throws and defaults false when no sibling release exists', async () => {
+    const reader = createActivationReader({
+      openSource: async () => ({
+        available: true,
+        releaseRoot: '/installed/release',
+        sourceCommit: '64fb3d02' + 'a'.repeat(32),
+        archiveSha256: 'b'.repeat(64),
+        read: async () => '',
+      }),
+      activatedAt: async () => '2026-08-21T10:00:00.000Z',
+    });
+
+    await expect(reader.readActivation()).resolves.toMatchObject({ rollbackAvailable: false });
   });
 
   it('projects next fires through the injected owner-validating ScheduleService', async () => {

@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { SessionConfig } from '../auth/session.ts';
@@ -16,16 +16,38 @@ import { projectHome, type ActivationReaderPort, type HomeProjectionPorts } from
 
 export type HomeRoutePorts = HomeProjectionPorts & { sessionConfig: SessionConfig; now?: () => Date };
 
+/** Best-effort, fail-closed check for a rollback target beside the attested `current` release symlink.
+ *  P5 does not add a second Python-side implementation (movement §3 step 1 owns the real status verb) —
+ *  this reads the same blue/green layout `attestedSource.ts` already assumes (`/opt/kb-releases/current`)
+ *  and never throws: an unreadable or absent sibling simply means no rollback is available. */
+async function defaultRollbackAvailable(previousPath = '/opt/kb-releases/previous'): Promise<boolean> {
+  try {
+    await realpath(previousPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface ActivationReaderOptions {
   openSource?: typeof openAttestedScheduleSource;
   activatedAt?: (releaseRoot: string) => Promise<string>;
+  /** Test seam only; production leaves this at {@link defaultRollbackAvailable}. */
+  rollbackAvailable?: () => Promise<boolean>;
 }
 
-/** The D13 chip adapts the installed release reader already used by schedule seed authorization. */
+/**
+ * The D13 chip adapts the installed release reader already used by schedule seed authorization. P5 W6.2
+ * [P5-C30] widens the returned shape to the SAME superset `health/releaseReader.ts#ReleaseActivationPort`
+ * needs (`archiveSha256`, `rollbackAvailable`) so ONE instance of this reader satisfies both Home's
+ * narrower `ActivationReaderPort` and Health's `ReleaseRow` — never a second construction, never a
+ * checkout read of its own.
+ */
 export function createActivationReader(options: ActivationReaderOptions = {}): ActivationReaderPort {
   const openSource = options.openSource ?? openAttestedScheduleSource;
   const activatedAt = options.activatedAt ?? (async (releaseRoot: string) =>
     (await stat(resolve(releaseRoot, 'attestation.json'))).mtime.toISOString());
+  const rollbackAvailable = options.rollbackAvailable ?? defaultRollbackAvailable;
   return {
     async readActivation() {
       const source = await openSource();
@@ -36,6 +58,8 @@ export function createActivationReader(options: ActivationReaderOptions = {}): A
         label: 'VM',
         sha: source.sourceCommit,
         activatedAt: installedAt,
+        archiveSha256: source.archiveSha256,
+        rollbackAvailable: await rollbackAvailable(),
       };
     },
   };

@@ -77,7 +77,66 @@ describe('Health routes', () => {
       rows: [expect.objectContaining({ kind: 'unavailable', key: 'error:fleet', value: { status: 'unavailable', reason: 'Reader unavailable' } })],
     }));
     const withoutTimes = (value: unknown): unknown => JSON.parse(JSON.stringify(value), (key, item) => key === 'observedAt' ? undefined : item);
-    expect(withoutTimes(body.sections.slice(1))).toEqual(withoutTimes(composeHealth(repoRoot).sections.slice(1)));
+    // `daemon-machine`'s ready rows now carry live host metrics (cpu/memory/disk/uptime) that can drift
+    // by a byte or a second between the two independent `composeHealth` calls this test makes — strip
+    // `value` from those rows only (identity — kind/key/label/source — still proves the section shape
+    // matches) while `stop`/`mcp`/`usage`, and any daemon-machine row that DID close unavailable, keep a
+    // full deep comparison.
+    const shape = (sections: Array<{ id: string; rows: Array<Record<string, unknown>> }>) => sections.map((section) => ({
+      ...section,
+      rows: section.rows.map((row) => (
+        section.id === 'daemon-machine' && row.kind !== 'unavailable'
+          ? { kind: row.kind, key: row.key, label: row.label, source: row.source }
+          : row
+      )),
+    }));
+    expect(shape(withoutTimes(body.sections.slice(1)) as never)).toEqual(shape(withoutTimes((await composeHealth(repoRoot)).sections.slice(1)) as never));
+    await live.close();
+  });
+
+  /** P5 W6.2 [P5-C30]: proves `/api/health` reads the SAME injected activation port Home/Inbox share —
+   *  never a checkout read of its own. An arbitrary fake port that touches no filesystem still produces
+   *  the exact ReleaseRow, which could only happen if the route consumed the injected instance. */
+  it('consumes the injected activation port for the Release row — never a checkout read', async () => {
+    const fakeActivation = {
+      readActivation: async () => ({
+        revision: 'release:fake', label: 'VM', sha: 'e'.repeat(40),
+        activatedAt: '2026-08-21T09:00:00.000Z', archiveSha256: 'f'.repeat(64), rollbackAvailable: false,
+      }),
+    };
+    const live = Fastify();
+    registerHealthRoutes(live, makeSurfaceContext({
+      repoRoot, sessionConfig, controlStore: createInMemoryControlPlaneStore(), activationReader: fakeActivation,
+    }));
+    const token = mintSession('operator', sessionConfig).token;
+
+    const response = await live.inject({ method: 'GET', url: '/api/health', headers: { authorization: `Bearer ${token}` } });
+    const release = response.json().sections[2].rows.find((row: { key: string }) => row.key === 'release');
+
+    expect(release.value).toEqual({ sha: 'e'.repeat(40), archiveSha256: 'f'.repeat(64), activatedAt: '2026-08-21T09:00:00.000Z', rollbackAvailable: false });
+    await live.close();
+  });
+
+  it('renders the latest Deployment as a display-only row keyed deploy:<ref>, with no control', async () => {
+    const store = createInMemoryControlPlaneStore();
+    const created = store.createDeployment('operator', {
+      deploymentRef: 'deployment:1', initialState: 'requested',
+      targetCommit: 'a'.repeat(40), previousCommit: 'b'.repeat(40),
+      requestedAt: '2026-08-21T00:00:00.000Z', parkWarnAt: '2026-08-21T00:05:00.000Z',
+      idempotencyKey: 'health-route-test-deploy-1',
+    });
+    expect(created.ok).toBe(true);
+    const live = Fastify();
+    registerHealthRoutes(live, makeSurfaceContext({ repoRoot, sessionConfig, controlStore: store }));
+    const token = mintSession('operator', sessionConfig).token;
+
+    const response = await live.inject({ method: 'GET', url: '/api/health', headers: { authorization: `Bearer ${token}` } });
+    const rows = response.json().sections[2].rows as Array<{ key: string; kind: string }>;
+    const deploy = rows.find((row) => row.key.startsWith('deploy:'));
+
+    expect(deploy).toBeDefined();
+    expect(deploy?.kind).toBe('deploy');
+    expect(JSON.stringify(deploy)).not.toMatch(/"verb"|"control"|"action"/);
     await live.close();
   });
 });

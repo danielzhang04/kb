@@ -1,5 +1,12 @@
 import type { HealthResponse, HealthRow, HealthSectionId, UnavailableRow } from '../../server/health/service.ts';
 
+// The closed §3.5 Deployment state union, duplicated here (never imported at runtime) the same way
+// `inboxClient.ts#DEPLOYMENT_ITEM_STATES` keeps the browser bundle free of server-only modules.
+const DEPLOY_ROW_STATES = [
+  'waiting-confirmation', 'requested', 'parked', 'swapping', 'resuming',
+  'succeeded', 'aborted', 'failed', 'acknowledged',
+] as const;
+
 export type HealthFetch = typeof fetch;
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -13,6 +20,9 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boo
 
 function string(value: unknown): value is string { return typeof value === 'string'; }
 function number(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
+function integer(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value); }
+function commitSha(value: unknown): value is string { return typeof value === 'string' && /^[0-9a-f]{40}$/.test(value); }
+function digestSha256(value: unknown): value is string { return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value); }
 
 function unavailable(value: Record<string, unknown>, section: HealthSectionId): value is UnavailableRow {
   const body = record(value.value);
@@ -35,8 +45,26 @@ function validRow(value: unknown, section: HealthSectionId): value is HealthRow 
       && row.label === 'Schedule owner' && body !== null && exactKeys(body, ['status', 'code', 'owner'])
       && body.status === 'error' && body.code === 'schedule-owner-unresolvable' && record(body.owner) !== null);
   if (section === 'stop') return row.kind === 'stop' && row.source === 'stop' && row.key === 'stop-file' && row.label === 'STOP' && (row.value === 'present' || row.value === 'clear');
-  if (section === 'daemon-machine') return (row.kind === 'machine' && row.source === 'machine' && row.key === 'daemon-platform' && row.label === 'Daemon' && (row.value === 'win32' || row.value === 'linux'))
-    || (row.kind === 'deferred' && row.source === 'deferred' && row.key === 'release' && row.label === 'Release' && row.value === 'unavailable in P1');
+  if (section === 'daemon-machine') {
+    if (row.kind === 'machine' && row.source === 'machine') {
+      if (row.key === 'daemon-platform') return row.label === 'Daemon' && (row.value === 'win32' || row.value === 'linux');
+      if (row.key === 'cpu') return body !== null && exactKeys(body, ['load1', 'load5', 'load15']) && number(body.load1) && number(body.load5) && number(body.load15);
+      if (row.key === 'memory' || row.key === 'disk') return body !== null && exactKeys(body, ['used', 'total', 'unit']) && number(body.used) && number(body.total) && string(body.unit);
+      if (row.key === 'uptime') return body !== null && exactKeys(body, ['seconds']) && integer(body.seconds);
+      return false;
+    }
+    if (row.kind === 'daemon') return row.source === 'daemon' && row.key === 'service' && row.label === 'Service' && body !== null
+      && exactKeys(body, ['unit', 'mainPid', 'loadedRoot', 'childCount'])
+      && string(body.unit) && integer(body.mainPid) && string(body.loadedRoot) && integer(body.childCount);
+    if (row.kind === 'release') return row.source === 'release' && row.key === 'release' && row.label === 'Release' && body !== null
+      && exactKeys(body, ['sha', 'archiveSha256', 'activatedAt', 'rollbackAvailable'])
+      && commitSha(body.sha) && digestSha256(body.archiveSha256) && string(body.activatedAt) && typeof body.rollbackAvailable === 'boolean';
+    if (row.kind === 'deploy') return row.source === 'deploy' && row.key.startsWith('deploy:') && row.key.length > 'deploy:'.length && row.label === 'Deployment'
+      && body !== null && exactKeys(body, ['deploymentRef', 'state', 'targetCommit', 'previousCommit', 'error'])
+      && string(body.deploymentRef) && DEPLOY_ROW_STATES.includes(body.state as typeof DEPLOY_ROW_STATES[number])
+      && string(body.targetCommit) && string(body.previousCommit) && (body.error === null || string(body.error));
+    return false;
+  }
   if (section === 'mcp') return (row.kind === 'mcp' && row.source === 'mcp-config' && /^mcp:[^:]+:[^:]+$/.test(row.key) && body !== null
     && exactKeys(body, ['project', 'server', 'tools']) && string(body.project) && string(body.server) && Array.isArray(body.tools) && body.tools.every(string))
     || (row.kind === 'deferred' && row.source === 'deferred' && /^mcp:[^:]+:[^:]+:(vm|desktop)$/.test(row.key)
@@ -46,8 +74,16 @@ function validRow(value: unknown, section: HealthSectionId): value is HealthRow 
       || (row.key.startsWith('model:') && body !== null && exactKeys(body, ['steps', 'mix']) && number(body.steps) && number(body.mix)));
 }
 
+/** At most one Release row and one Service row (each may instead surface as a closed unavailable row on
+ *  read failure — never both), and at most one Deployment row (the latest, never a synthesized set). */
 function validDaemonSequence(rows: unknown[]): boolean {
-  return rows.filter((value) => record(value)?.key === 'release').length === 1;
+  const releaseCount = rows.filter((value) => record(value)?.key === 'release').length;
+  const serviceCount = rows.filter((value) => record(value)?.key === 'service').length;
+  const deployCount = rows.filter((value) => {
+    const key = record(value)?.key;
+    return typeof key === 'string' && key.startsWith('deploy:');
+  }).length;
+  return releaseCount <= 1 && serviceCount <= 1 && deployCount <= 1;
 }
 
 function validMcpSequence(rows: unknown[]): boolean {

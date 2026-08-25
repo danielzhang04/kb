@@ -25,7 +25,7 @@ describe('fetchHealth', () => {
     await expect(fetchHealth((async () => response(misplaced)) as typeof fetch)).rejects.toThrow(/invalid health response/i);
   });
 
-  it('rejects reordered or missing MCP companions and requires exactly one Release row', () => {
+  it('rejects reordered or missing MCP companions', () => {
     const reorderedMcp = structuredClone(healthResponseFixture);
     [reorderedMcp.sections[3].rows[1], reorderedMcp.sections[3].rows[2]] = [
       reorderedMcp.sections[3].rows[2]!, reorderedMcp.sections[3].rows[1]!,
@@ -35,13 +35,43 @@ describe('fetchHealth', () => {
     const missingMcp = structuredClone(healthResponseFixture);
     missingMcp.sections[3].rows.splice(1, 1);
     expect(() => decodeHealthResponse(missingMcp)).toThrow(/invalid health response/i);
+  });
 
-    const missingRelease = structuredClone(healthResponseFixture);
-    missingRelease.sections[2].rows = missingRelease.sections[2].rows.filter((row) => row.key !== 'release');
-    expect(() => decodeHealthResponse(missingRelease)).toThrow(/invalid health response/i);
-
+  it('rejects more than one Release, Service, or Deployment row', () => {
     const duplicateRelease = structuredClone(healthResponseFixture);
-    duplicateRelease.sections[2].rows.push(structuredClone(healthResponseFixture.sections[2].rows[1]!));
+    const release = duplicateRelease.sections[2].rows.find((row) => row.key === 'release');
+    duplicateRelease.sections[2].rows.push(structuredClone(release!));
     expect(() => decodeHealthResponse(duplicateRelease)).toThrow(/invalid health response/i);
+
+    const duplicateService = structuredClone(healthResponseFixture);
+    const service = duplicateService.sections[2].rows.find((row) => row.key === 'service');
+    duplicateService.sections[2].rows.push(structuredClone(service!));
+    expect(() => decodeHealthResponse(duplicateService)).toThrow(/invalid health response/i);
+  });
+
+  it('accepts a daemon-machine section with no Deployment row (none exists yet — never a synthesized one)', () => {
+    const noDeploy = structuredClone(healthResponseFixture);
+    noDeploy.sections[2].rows = noDeploy.sections[2].rows.filter((row) => !row.key.startsWith('deploy:'));
+    expect(() => decodeHealthResponse(noDeploy)).not.toThrow();
+  });
+
+  it('accepts each of the four §3.5 daemon-machine row kinds and rejects an unknown kind', () => {
+    expect(() => decodeHealthResponse(healthResponseFixture)).not.toThrow();
+    const rows = healthResponseFixture.sections[2].rows;
+    expect(rows.map((row) => row.kind)).toEqual(['machine', 'machine', 'machine', 'machine', 'machine', 'daemon', 'release', 'deploy']);
+
+    const unknownKind = structuredClone(healthResponseFixture);
+    const daemonMachine = unknownKind.sections[2];
+    (daemonMachine.rows[0] as unknown as { kind: string }).kind = 'bogus';
+    expect(() => decodeHealthResponse(unknownKind)).toThrow(/invalid health response/i);
+  });
+
+  it('rejects a daemon-machine row missing a required field, one kind at a time', () => {
+    for (const key of ['cpu', 'memory', 'disk', 'uptime', 'service', 'release', 'deploy:deployment:1']) {
+      const broken = structuredClone(healthResponseFixture);
+      const row = broken.sections[2].rows.find((candidate) => candidate.key === key) as unknown as { value: Record<string, unknown> };
+      delete row.value[Object.keys(row.value)[0]!];
+      expect(() => decodeHealthResponse(broken), `key ${key}`).toThrow(/invalid health response/i);
+    }
   });
 });

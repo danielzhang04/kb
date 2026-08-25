@@ -3,12 +3,13 @@ import type { FastifyInstance } from 'fastify';
 import { requireSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { composeHealth } from './service.ts';
+import type { ReleaseActivationPort } from './releaseReader.ts';
 
 /** Staged registrar. W5 owns mounting it on the served HTTP surface. */
 export function registerHealthRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   scope.get('/api/health', { preHandler: requireSession(ctx.sessionConfig) }, async (request, reply) => {
     let scheduleCollectionRevision: number | 'unavailable' = 'unavailable';
-    const response = composeHealth(ctx.repoRoot, undefined, {
+    const response = await composeHealth(ctx.repoRoot, undefined, {
       scheduleSnapshot: () => {
         const snapshot = ctx.controlStore.getScheduleSnapshot();
         scheduleCollectionRevision = snapshot.collectionRevision;
@@ -21,10 +22,25 @@ export function registerHealthRoutes(scope: FastifyInstance, ctx: SurfaceContext
       // never probes. A launcher the pin validator refused is dropped rather than fatal, so this row is
       // the only place the operator learns a launcher tree was tampered with.
       ptyDroppedLaunchers: () => (ctx.runtimeCapabilities.pty ? ctx.runtimeCapabilities.droppedLaunchers ?? [] : []),
+      // P5 W6.2 [P5-C30]: the SAME activation port W6.1 built once on `SurfaceContext` — Home and the
+      // Inbox deploy-ready gate read the identical instance. Never a second construction, never a
+      // checkout read of its own. `SurfaceContext` types this field with Home's narrower subset
+      // (`ActivationReaderPort`); `createActivationReader` (`home/routes.ts`) always returns the wider
+      // superset `ReleaseActivationPort` needs (`archiveSha256`, `rollbackAvailable`) — the runtime
+      // instance is the same object, only the static field type is narrower here.
+      ...(ctx.activationReader ? { activation: ctx.activationReader as unknown as ReleaseActivationPort } : {}),
+      // Narrow read-only slice of the control-plane store — the deploy reader never sees a write method.
+      deployStore: { listDeployments: () => ctx.controlStore.listDeployments() },
     });
+    // Live host telemetry (cpu/memory/disk/uptime) legitimately drifts on every single read — hashing its
+    // raw `value` would make the ETag change on almost every poll and defeat 304 caching entirely. Its
+    // `key` (still present) already signals the row exists and is ready; staleness that actually matters
+    // (fleet composition, schedule revision, release/deployment identity, ...) still drives the hash.
+    const isVolatileMachineRow = (row: { kind: string; key: string }) =>
+      row.kind === 'machine' && row.key !== 'daemon-platform';
     const stableSections = response.sections.map((section) => ({
       ...section,
-      rows: section.rows.map(({ observedAt: _observedAt, ...row }) => row),
+      rows: section.rows.map(({ observedAt: _observedAt, ...row }) => (isVolatileMachineRow(row) ? { ...row, value: undefined } : row)),
     }));
     const revision = createHash('sha256')
       .update(JSON.stringify({ scheduleCollectionRevision, sections: stableSections }))
