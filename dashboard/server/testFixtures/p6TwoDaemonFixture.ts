@@ -34,6 +34,9 @@ import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { decodeHostNodeMap, type HostNodeMap } from '../auth/hostNodeMapContracts.ts';
 import type { HostNodeMapLoad } from '../auth/hostNodeMap.ts';
 import { registerV1NodeRoutes, operatorRouteOnlyGuard, type V1SurfaceDeps } from '../api/v1/routes.ts';
+import { registerStatic } from '../static/routes.ts';
+import { healthResponseFixture } from '../health/__fixtures__/health.ts';
+import { p2Home, P2_ATTENTION } from './p2BrowserFixtureData.ts';
 import {
   type HostAdvertisement, type HostKind, type PlacementLease, type CapabilityRequirement,
   decodeHostAdvertisement, isAdvertisementFresh, ADVERTISEMENT_FRESHNESS_MS, LEASE_TTL_MS,
@@ -286,6 +289,60 @@ function stampPeerHook(app: FastifyInstance): void {
   });
 }
 
+/** The daemon hosts no PTY — the closed unavailable capability, matching `p5FixtureServer.ts`. */
+const BOOT_RUNTIME_CAPABILITIES = {
+  pty: false as const,
+  diagnostic: { reason: 'broker-unavailable' as const, detail: null, checkedAt: '2026-08-25T00:00:00.000Z' },
+  localTranscripts: false,
+};
+
+/** A minimal, decoder-valid empty Inbox envelope (`src/lib/inboxClient.ts#decode` requires the exact-key
+ *  four-source shape — no legacy two-source shape survives it). */
+const BOOT_INBOX = {
+  items: [] as unknown[],
+  revision: 'e'.repeat(64),
+  sources: {
+    pr: { status: 'verified', revision: 'e'.repeat(64), verifiedAt: '2026-08-25T00:00:00.000Z' },
+    escalation: { status: 'verified', revision: 'e'.repeat(64), verifiedAt: '2026-08-25T00:00:00.000Z' },
+    deployment: { status: 'verified', revision: 'e'.repeat(64), verifiedAt: '2026-08-25T00:00:00.000Z' },
+    assetPull: { status: 'verified', revision: 'e'.repeat(64), verifiedAt: '2026-08-25T00:00:00.000Z' },
+  },
+};
+
+/**
+ * The §8 two-daemon browser matrix [P6-C21] navigates a real Edge at each daemon's origin and asserts a
+ * RENDERED app shell with 0 console errors. Before this, the fixture served ONLY `/api/v1` + node routes,
+ * so `GET /` 404'd and no cell could ever reach the app. This registers the built SPA (`registerStatic`,
+ * same production module `server/static/routes.ts#registerStatic` uses) plus every boot route the shell
+ * fetches on load (`p5FixtureServer.ts`'s proven W6.5 boot-route set) — `/api/auth/context`,
+ * `/api/runtime/capabilities`, `/api/home`, `/api/attention`, plus `/api/inbox`/`/api/health` (the
+ * route-specific views) and `/events` SSE so no navigation 404s either. Registered on BOTH roles: each
+ * daemon process is its own dashboard instance with its own local UI, exactly as `startFixtureDaemon`'s
+ * per-role composition already gives each role its own port/origin.
+ */
+function registerShellAndBootRoutes(app: FastifyInstance): void {
+  app.get('/api/auth/context', async () => ({ mode: 'tailnet' }));
+  app.get('/api/runtime/capabilities', async () => BOOT_RUNTIME_CAPABILITIES);
+  app.get('/api/home', async () => p2Home(false));
+  app.get('/api/attention', async () => P2_ATTENTION);
+  app.get('/api/inbox', async () => BOOT_INBOX);
+  app.get('/api/health', async () => healthResponseFixture);
+  app.get('/events', (req, reply) => {
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive',
+    });
+    reply.raw.write(': connected\n\n');
+    const close = (): void => { if (!reply.raw.writableEnded) reply.raw.end(); };
+    req.raw.on('close', close);
+    req.raw.on('error', close);
+  });
+  // The built SPA shell (index.html + hashed assets), with the same GET-fallback-to-index.html behavior
+  // production serves — registered last so it never shadows the explicit routes above or the node/operator
+  // routes registered elsewhere in `composeDaemon`.
+  registerStatic(app);
+}
+
 export function buildFixtureDaemon(opts: FixtureDaemonOptions): FastifyInstance {
   const app = Fastify({ logger: false });
   composeDaemon(app, opts);
@@ -385,6 +442,7 @@ function composeDaemon(app: FastifyInstance, opts: FixtureDaemonOptions): void {
   stampPeerHook(app);
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/readyz', async () => ({ ok: true, role: opts.role }));
+  registerShellAndBootRoutes(app);
   if (opts.role === 'vm') {
     registerV1NodeRoutes(app, ctx);
     app.register(async (scope) => {
