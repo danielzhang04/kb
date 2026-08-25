@@ -6,6 +6,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { launchService, type LaunchServicePort, type LaunchServiceInput } from './launchService.ts';
 import type { LaunchOutcome } from '../control/launch.ts';
 
+// LaunchServicePort['withOpsTransaction'] is generic (<T>(fn: () => Promise<T>) => Promise<T>); a
+// vi.fn() mock closing over one concrete T can't satisfy that generic signature. This passthrough
+// keeps the mock's spy behaviour (call recording, toHaveBeenCalled*) while presenting the port's
+// real generic type. `onSpan` lets a test observe entry/exit of the transaction span.
+function opsTransactionMock(onSpan?: (inside: boolean) => void): LaunchServicePort['withOpsTransaction'] {
+  return vi.fn(async (fn: () => Promise<unknown>) => {
+    onSpan?.(true);
+    const result = await fn();
+    onSpan?.(false);
+    return result;
+  }) as LaunchServicePort['withOpsTransaction'];
+}
+
 const HASH = 'a'.repeat(64);
 const OTHER_HASH = 'b'.repeat(64);
 const PATH = 'orgs/kb-ops/workflows/demo.md';
@@ -128,9 +141,11 @@ describe('launchService ordering + refusal matrix', () => {
   });
 
   it('reaches launchDefinition with the constructed owner + executionHost, inside the ops transaction', async () => {
-    const launchDefinition = vi.fn(async () => ({ status: 202, body: { ok: true, runRef: 'r1' } }) as LaunchOutcome);
+    const launchDefinition = vi.fn<LaunchServicePort['launchDefinition']>(
+      async () => ({ status: 202, body: { ok: true, runRef: 'r1' } }) as LaunchOutcome,
+    );
     let insideTxn = false;
-    const withOpsTransaction = vi.fn(async (fn: () => Promise<LaunchOutcome>) => { insideTxn = true; const r = await fn(); insideTxn = false; return r; });
+    const withOpsTransaction = opsTransactionMock((inside) => { insideTxn = inside; });
     const out = await launchService(happyPort({ launchDefinition, withOpsTransaction }), base);
     expect(out).toEqual({ status: 202, body: { ok: true, runRef: 'r1' } });
     expect(withOpsTransaction).toHaveBeenCalledOnce();

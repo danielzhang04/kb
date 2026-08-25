@@ -13,6 +13,13 @@ const FIELDS = { humanName: 'H', purpose: 'P', model: 'm', profile: 'p', tools: 
 
 class BuilderFailure extends Error { constructor(readonly status: number, message: string) { super(message); } }
 
+// AmendPort['withOpsTransaction'] is generic (<T>(fn: () => Promise<T>) => Promise<T>); a vi.fn() mock
+// closing over one concrete T can't satisfy that generic signature. This passthrough keeps the mock's
+// spy behaviour (call recording, toHaveBeenCalled*) while presenting the port's real generic type.
+function opsTransactionMock(): AmendPort['withOpsTransaction'] {
+  return vi.fn((fn: () => Promise<unknown>) => fn()) as AmendPort['withOpsTransaction'];
+}
+
 describe('entityService reads', () => {
   it('returns 200 + ETag then 304 on a list read', () => {
     const port = { list: () => ({ revision: 'r1', kind: 'agent' as const }) };
@@ -92,7 +99,7 @@ describe('entityService amendWorkflowDefinition — the withOpsTransaction path'
 
   function port(over: Partial<AmendPort> = {}): AmendPort {
     return {
-      withOpsTransaction: vi.fn(async (fn: () => Promise<AmendPrepared>) => fn()),
+      withOpsTransaction: opsTransactionMock(),
       prepareAmendment: async () => preparedOk,
       durableWorktreeReady: true,
       auditAmendment: vi.fn(async () => {}),
@@ -110,7 +117,7 @@ describe('entityService amendWorkflowDefinition — the withOpsTransaction path'
   });
 
   it('wraps the amendment CAS in withOpsTransaction and returns a short-circuit outcome verbatim', async () => {
-    const withOpsTransaction = vi.fn(async (fn: () => Promise<AmendPrepared>) => fn());
+    const withOpsTransaction = opsTransactionMock();
     const outcome: AmendPrepared = { outcome: { status: 409, body: { error: 'assignment-no-change' } } };
     const out = await amendWorkflowDefinition(port({ withOpsTransaction, prepareAmendment: async () => outcome }), 'op', scanned, spec);
     expect(out).toEqual({ status: 409, body: { error: 'assignment-no-change' } });

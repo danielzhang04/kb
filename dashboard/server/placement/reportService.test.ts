@@ -161,8 +161,8 @@ describe('submitReport gate-opened (§3.5, §3.6 T3 host ban)', () => {
     expect(result).toEqual({ ok: true, requestRef: 'req-1' });
     expect(port.humanRequestsOpened).toBe(1);
     // Structural proof, not just behavioural: the port type has no respond/resolve method at all.
-    expect((port as Record<string, unknown>).respondHumanRequest).toBeUndefined();
-    expect((port as Record<string, unknown>).resolveHumanRequest).toBeUndefined();
+    expect((port as unknown as Record<string, unknown>).respondHumanRequest).toBeUndefined();
+    expect((port as unknown as Record<string, unknown>).resolveHumanRequest).toBeUndefined();
   });
 
   it('never calls openHumanRequest for a non-gate report kind', async () => {
