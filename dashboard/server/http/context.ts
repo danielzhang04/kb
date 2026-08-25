@@ -13,6 +13,9 @@ import type { BrowserSessionRefManager, SessionConfig } from '../auth/session.ts
 import type { AuthMode } from '../auth/mode.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
+import { lockout, rateLimit } from '../security/ratelimit.ts';
+import type { HostNodeMapLoad } from '../auth/hostNodeMap.ts';
+import type { V1SurfaceDeps } from '../api/v1/routes.ts';
 import type { WebAuthnConfig } from '../auth/webauthn.ts';
 import type { WebAuthnCredential } from '@simplewebauthn/server';
 import { appendAudit as realAppendAudit } from '../audit/log.ts';
@@ -116,6 +119,30 @@ export interface SurfaceContext {
   /** The independent GET/HEAD budget on the governed scope. A separate bucket by design: UI polling
    *  must never be able to spend the write budget or trip its lockout. See `middleware.ts`. */
   readRateGuard: LockoutGuard;
+  /**
+   * P6 W6.1 [P6-C33]: the v1 NODE scope's OWN rate-guard pair, never shared with the operator pair
+   * above. A renewing/reporting Desktop daemon — or a hostile node — spends only these buckets, so it can
+   * never trip Daniel's write-surface lockout. Sized ABOVE the intended node traffic [P6-C52] so a
+   * 204-on-timeout client that re-claims immediately after a 25-s long-poll never `429`s. Built in
+   * {@link makeNodeRateGuard}/{@link makeNodeReadRateGuard} beside the operator pair; absent only in the
+   * many test contexts that register no node scope.
+   */
+  nodeRateGuard?: LockoutGuard;
+  nodeReadRateGuard?: LockoutGuard;
+  /**
+   * P6 W6.1/W4 [P6-C46]: the attested `kb-node-proxy` uid the node scope's peer-uid topology guard proves
+   * against. `undefined` disables the node scope entirely (fail-closed: no node routes register). NEVER
+   * `0` and never equal to the operator proxy uid — `assertAuthModeBoot` refuses to boot otherwise.
+   */
+  nodeProxyUid?: number;
+  /** The boot-loaded root-owned host-node map (or its fail-closed sentinel), resolved once — not per request. */
+  loadHostNodeMap?: () => HostNodeMapLoad;
+  /**
+   * P6 W6.1: the injectable ports the v1 route surface is thin over. Production binds these to the extracted
+   * W2 services + the placement store adapters; route tests inject recording fakes exactly as every other
+   * governed route does. Absent leaves the v1 surface unregistered (fail-closed).
+   */
+  v1?: V1SurfaceDeps;
   /** Lazy — `auth/webauthn.ts#resolveWebAuthnConfig` THROWS when `DASHBOARD_RP_ORIGIN` is unset, so it
    *  is only ever called inside a handler (which the origin guard already blocked when the allowlist is
    *  empty), never at registration time. */
@@ -259,6 +286,25 @@ export function auditFn(ctx: SurfaceContext): AppendAuditFn {
  * on a given state root therefore shares one instance.
  */
 const registryByStateRoot = new Map<string, NamingRegistry>();
+
+/**
+ * P6 W6.1 [P6-C33, P6-C52]: the v1 NODE scope's write budget, its OWN `LockoutGuard` instance built
+ * beside the operator pair and never shared. Sized above the intended node traffic: claim 4/60 s, renew
+ * 6/120 s, report 60 burst then 10/s all coexist under one coarse per-peer bucket of 90 writes/min with
+ * a short 60-s lockout, so an immediate re-claim after a 25-s long-poll cannot `429`, while a genuine
+ * flood well above those budgets is still throttled — for that node's peer only, leaving the operator
+ * write surface (its own separate bucket) fully responsive.
+ */
+export function makeNodeRateGuard(): LockoutGuard {
+  return lockout(rateLimit({ limit: 90, windowMs: 60_000 }), { threshold: 20, lockoutMs: 60_000 });
+}
+
+/** The v1 node scope's read budget. There are no node GETs today, but the shared
+ *  `surfaceRateLimitHook(readGuard, writeGuard)` needs both halves; keeping it isolated preserves the
+ *  same "a read can never spend the write budget" split the operator pair has. */
+export function makeNodeReadRateGuard(): LockoutGuard {
+  return lockout(rateLimit({ limit: 300, windowMs: 60_000 }), { threshold: 20, lockoutMs: 60_000 });
+}
 
 /** The display-name registry a DTO builder should use for this context. */
 export function namingFor(ctx: SurfaceContext): NamingRegistry {

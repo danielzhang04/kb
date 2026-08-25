@@ -29,6 +29,8 @@ import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
+import { makeNodeRateGuard, makeNodeReadRateGuard } from './context.ts';
+import { registerV1NodeRoutes, registerV1Routes } from '../api/v1/routes.ts';
 import { registerAuthRoutes, registerBrowserSessionRoute } from '../auth/routes.ts';
 import { createActivationReader } from '../home/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
@@ -390,6 +392,16 @@ export function makeSurfaceContext(
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(activation.env),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
     readRateGuard: overrides.readRateGuard ?? makeDefaultReadRateGuard(),
+    // P6 W6.1 [P6-C33]: the v1 NODE scope's OWN rate-guard pair, built beside the operator pair and never
+    // shared. Always present so the node sibling scope can mount whenever node identity is configured.
+    nodeRateGuard: overrides.nodeRateGuard ?? makeNodeRateGuard(),
+    nodeReadRateGuard: overrides.nodeReadRateGuard ?? makeNodeReadRateGuard(),
+    // Node identity + the injectable v1 ports. Absent leaves the whole v1 surface unregistered
+    // (fail-closed); production binds these to the attested node uid, the root-owned map, and the
+    // extracted W2 services + placement store adapters.
+    nodeProxyUid: overrides.nodeProxyUid,
+    loadHostNodeMap: overrides.loadHostNodeMap,
+    v1: overrides.v1,
     // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
     // (which the origin guard has already blocked when the allowlist is empty), never at registration.
     webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
@@ -586,6 +598,16 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
       registerWriteRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);
       registerApprovalsRoutes(authenticated, ctx);
+      // P6 W6.1 [P6-C20]: v1 operator MUTATIONS join the operator authenticated scope — they SHOULD spend
+      // the operator write budget and prove the session. The scope's operatorRouteOnlyGuard refuses the
+      // node-proxy uid `403 operator-route-only`.
+      registerV1Routes(authenticated, ctx, 'operator-mutations');
     });
   });
+  // P6 W6.1 [P6-C20, P6-C33, P6-C46]: the four node routes as a SIBLING scope of the operator write scope,
+  // both children of `app`. Registered on `app` — NOT nested inside the operator scope — precisely so the
+  // operator rate hook above is never inherited by node traffic; the node scope installs its OWN
+  // origin+rate hooks and requireNodeIdentity in place of requireSession. Mounts nothing when node identity
+  // is unconfigured (fail-closed).
+  registerV1NodeRoutes(app, ctx);
 }

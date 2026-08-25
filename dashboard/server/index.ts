@@ -21,6 +21,7 @@ import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { requireSession, surfaceRateLimitHook } from './http/middleware.ts';
 import { registerWorkflows } from './workflows/routes.ts';
+import { registerV1Routes } from './api/v1/routes.ts';
 import { ScheduleService, registerScheduleRoutes } from './schedules/service.ts';
 import { resolveScheduleOwner } from './schedules/owners.ts';
 import { registerStatic } from './static/routes.ts';
@@ -224,6 +225,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
     registerBrainSearch(scope, { repoRoot });
     registerWorkflows(scope, surfaceCtx);
+    // P6 W6.1 [P6-C20]: v1 READS join the existing read scope, under the same originPlugin +
+    // surfaceRateLimitHook + requireSession this scope already applies. The operatorRouteOnlyGuard inside
+    // refuses the node-proxy uid `403 operator-route-only` — proven on the shared `/api/v1/runs/**` prefix.
+    registerV1Routes(scope, surfaceCtx, 'reads');
   });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
   // D15: workflow-definition registry (GET /api/workflows[/:id] read-only) + the governed one-step launch
