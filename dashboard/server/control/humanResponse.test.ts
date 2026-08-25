@@ -281,7 +281,7 @@ function ceremonyContext(overrides: Partial<DeployCeremonyContext> = {}): Deploy
   return {
     ceremony: { verify: async () => true },
     credentials: () => ['registered-credential'],
-    consume: async () => 'fresh',
+    consume: async (_grantKey: string): Promise<'fresh'> => 'fresh',
     now: () => Date.parse('2026-08-24T10:00:00.000Z'),
     ...overrides,
   };
@@ -355,7 +355,7 @@ describe('deploy-purpose T3 binding', () => {
   });
 
   it('refuses 409 on a replayed single-use grant', async () => {
-    const service = createDeployCeremonyService(ceremonyContext({ consume: async () => 'replayed' }));
+    const service = createDeployCeremonyService(ceremonyContext({ consume: async (_grantKey: string): Promise<'replayed'> => 'replayed' }));
     expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 409, error: 'ceremony-replayed' });
   });
 
@@ -365,7 +365,7 @@ describe('deploy-purpose T3 binding', () => {
       ceremonyContext({ credentials: () => [] }),
       ceremonyContext({ ceremony: { verify: async () => false } }),
       ceremonyContext({ now: () => Date.parse('2026-08-24T10:05:00.000Z') }),
-      ceremonyContext({ consume: async () => 'replayed' }),
+      ceremonyContext({ consume: async (_grantKey: string): Promise<'replayed'> => 'replayed' }),
     ];
     for (const context of contexts) {
       const outcome = await createDeployCeremonyService(context).verify(ceremonyRequest());

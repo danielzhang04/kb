@@ -11,7 +11,7 @@
 // route's job (W2/W6.1); this adapter owns only the store write.
 import type { DeployReadyCandidate } from './contracts.ts';
 import type { ControlPlaneStore } from '../control/store.ts';
-import type { Deployment } from '../control/types.ts';
+import type { ControlResult, Deployment } from '../control/types.ts';
 
 /** The subject attributed to every deploy-critical Deployment write. */
 export const DEPLOYMENT_SUBJECT = 'deployment';
@@ -30,7 +30,7 @@ export class DeploymentServiceError extends Error {
   readonly status: number;
   readonly code: DeploymentServiceCode;
 
-  constructor(status: number, code: DeploymentServiceCode, message = code) {
+  constructor(status: number, code: DeploymentServiceCode, message: string = code) {
     super(message);
     this.status = status;
     this.code = code;
@@ -55,7 +55,10 @@ export function deployReadyRef(targetSha: string): string {
   return `deploy-ready:${targetSha}`;
 }
 
-type StoreFail = { ok: false; reason: 'invalid' | 'not-found' | 'conflict' | 'idempotency-conflict'; detail: string };
+// Derived from the store's actual result type [P5-C46/C58 idiom, per quiescence.ts:50] rather than
+// hand-declared, so this stays total over every reason `ControlPlaneStore`'s Deployment methods can
+// ever return — not just the four this module's own writes happen to produce today.
+type StoreFail = Extract<ControlResult<Deployment>, { ok: false }>;
 
 function refuse(result: StoreFail): DeploymentServiceError {
   switch (result.reason) {
@@ -63,7 +66,13 @@ function refuse(result: StoreFail): DeploymentServiceError {
     case 'invalid': return new DeploymentServiceError(400, 'invalid', result.detail);
     case 'idempotency-conflict': return new DeploymentServiceError(409, 'idempotency-conflict', result.detail);
     case 'conflict': return new DeploymentServiceError(409, 'conflict', result.detail);
-    default: return new DeploymentServiceError(409, 'conflict', result.detail);
+    // `not-approved` / `limit` / `ineligible` belong to other control-plane subjects (proposals, run
+    // activation) and `createDeployment`/`transitionDeployment` never produce them; refused as a
+    // generic conflict so the mapping is total without minting a new Deployment service code.
+    case 'not-approved':
+    case 'limit':
+    case 'ineligible':
+      return new DeploymentServiceError(409, 'conflict', result.detail);
   }
 }
 

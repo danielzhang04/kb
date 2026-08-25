@@ -8,7 +8,7 @@
 // attempt count is hard-capped at 32. `settle()` lands the helper receipt. No swap, no activation —
 // every asset-pull write commits at ordinary durability in the store.
 import type { ControlPlaneStore } from '../control/store.ts';
-import type { AssetPullErrorCode, AssetPullIntent, CreateAssetPullIntentInput } from '../control/types.ts';
+import type { AssetPullErrorCode, AssetPullIntent, ControlResult, CreateAssetPullIntentInput } from '../control/types.ts';
 import { ASSET_PULL_MAX_ATTEMPTS } from '../control/assetPullState.ts';
 
 export type AssetPullServiceCode =
@@ -23,7 +23,7 @@ export class AssetPullServiceError extends Error {
   readonly status: number;
   readonly code: AssetPullServiceCode;
 
-  constructor(status: number, code: AssetPullServiceCode, message = code) {
+  constructor(status: number, code: AssetPullServiceCode, message: string = code) {
     super(message);
     this.status = status;
     this.code = code;
@@ -51,14 +51,24 @@ export function assetPullIdempotencyKey(intentRef: string, manifestDigest: strin
   return `pull-assets:${intentRef}:${manifestDigest}`;
 }
 
-type StoreFail = { ok: false; reason: 'invalid' | 'not-found' | 'conflict' | 'idempotency-conflict'; detail: string };
+// Derived from the store's actual result type [P5-C46/C58 idiom, per quiescence.ts:50] rather than
+// hand-declared, so this stays total over every reason `ControlPlaneStore`'s AssetPullIntent methods
+// can ever return — not just the four this module's own writes happen to produce today.
+type StoreFail = Extract<ControlResult<AssetPullIntent>, { ok: false }>;
 
 function refuse(result: StoreFail): AssetPullServiceError {
   switch (result.reason) {
     case 'not-found': return new AssetPullServiceError(404, 'not-found', result.detail);
     case 'invalid': return new AssetPullServiceError(400, 'invalid', result.detail);
     case 'idempotency-conflict': return new AssetPullServiceError(409, 'idempotency-conflict', result.detail);
-    default: return new AssetPullServiceError(409, 'conflict', result.detail);
+    case 'conflict': return new AssetPullServiceError(409, 'conflict', result.detail);
+    // `not-approved` / `limit` / `ineligible` belong to other control-plane subjects (proposals, run
+    // activation) and the AssetPullIntent store methods never produce them; refused as a generic
+    // conflict so the mapping is total without minting a new AssetPull service code.
+    case 'not-approved':
+    case 'limit':
+    case 'ineligible':
+      return new AssetPullServiceError(409, 'conflict', result.detail);
   }
 }
 
