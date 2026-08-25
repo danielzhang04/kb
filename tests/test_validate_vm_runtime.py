@@ -21,6 +21,8 @@ Environment=DASHBOARD_AUTH_MODE=tailnet
 Environment=DASHBOARD_TAILNET_HOST=kb.command.ts.net
 Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com
 Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN=https://kb-desk.command.ts.net
+Environment=DASHBOARD_TAILNET_PROXY_UID=0
+Environment=DASHBOARD_NODE_PROXY_UID=987
 """
 
 
@@ -260,9 +262,31 @@ def test_static_phase_accepts_the_tailnet_unit():
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
 
 
-@pytest.mark.parametrize("name", ["DASHBOARD_TAILNET_PROXY_UID"])
-def test_static_phase_accepts_the_optional_tailnet_names(name):
-    validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT + f"Environment={name}=x\n")
+def test_static_phase_requires_both_proxy_uid_envs_in_the_closed_set():
+    # dashboard-v3 P6 §3.3: both proxy-uid envs are now REQUIRED members of EXPECTED_UNIT_ENV, not optional.
+    assert "DASHBOARD_TAILNET_PROXY_UID" in validate_vm_runtime.EXPECTED_UNIT_ENV
+    assert "DASHBOARD_NODE_PROXY_UID" in validate_vm_runtime.EXPECTED_UNIT_ENV
+    for name in ("DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_NODE_PROXY_UID"):
+        text = VALID_UNIT_TEXT.replace(f"Environment={name}=", f"Environment=UNUSED_{name}=")
+        with pytest.raises(RuntimeError, match="assignment set is not closed"):
+            validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("node_uid,tailnet_uid,message", [
+    ("0", "0", "DASHBOARD_NODE_PROXY_UID"),          # node uid 0 lets root serve satisfy the node peer check
+    ("987", "0", None),                              # the valid pinned pair
+    ("1000", "1000", "DASHBOARD_TAILNET_PROXY_UID"), # non-zero tailnet uid is refused first (must be 0)
+    ("987", "1000", "DASHBOARD_TAILNET_PROXY_UID"),  # tailnet uid must be 0
+])
+def test_static_phase_enforces_the_pairwise_proxy_uid_rule(node_uid, tailnet_uid, message):
+    text = (VALID_UNIT_TEXT
+            .replace("Environment=DASHBOARD_NODE_PROXY_UID=987\n", f"Environment=DASHBOARD_NODE_PROXY_UID={node_uid}\n")
+            .replace("Environment=DASHBOARD_TAILNET_PROXY_UID=0\n", f"Environment=DASHBOARD_TAILNET_PROXY_UID={tailnet_uid}\n"))
+    if message is None:
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+    else:
+        with pytest.raises(RuntimeError, match=message):
+            validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
 def test_static_phase_rejects_dev_origin_under_ambient_tailnet_auth():
@@ -426,3 +450,183 @@ def test_live_phase_requires_service_cgroup_and_current_release_cwd(tmp_path):
             current,
             resolve_proc_cwd=lambda _path: tmp_path / "wrong" / "dashboard",
         )
+
+
+# --- P6 node-proxy + WhoIs frozen units + validators -------------------------------------------
+
+import stat as stat_module
+from types import SimpleNamespace
+
+SYSTEMD = REPO / "deploy/systemd"
+NODE_WHOIS_UNITS = {
+    "kb-node-proxy.service": validate_vm_runtime.validate_node_proxy_service,
+    "kb-whois.service": validate_vm_runtime.validate_whois_service,
+    "kb-whois.socket": validate_vm_runtime.validate_whois_socket,
+}
+
+
+@pytest.mark.parametrize("table_name", list(validate_vm_runtime.NODE_WHOIS_FROZEN_TABLES))
+def test_the_nine_frozen_tables_match_the_shipped_unit_section(table_name):
+    """Each of the nine frozen tables is set-equal to its unit-file section (pairwise-exact)."""
+    unit, section, expected = validate_vm_runtime.NODE_WHOIS_FROZEN_TABLES[table_name]
+    text = (SYSTEMD / unit).read_text(encoding="utf-8")
+    from_unit = dict(validate_vm_runtime.parse_unit(text)[section])
+    assert from_unit == dict(expected)
+
+
+@pytest.mark.parametrize("unit,validator", list(NODE_WHOIS_UNITS.items()))
+def test_the_shipped_node_whois_units_validate_clean(unit, validator):
+    validator((SYSTEMD / unit).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("unit,validator,injected", [
+    ("kb-node-proxy.service", validate_vm_runtime.validate_node_proxy_service, ("NoNewPrivileges=yes", "NoNewPrivileges=yes\nProtectClock=yes")),
+    ("kb-node-proxy.service", validate_vm_runtime.validate_node_proxy_service, ("ProtectHome=yes\n", "")),
+    ("kb-node-proxy.service", validate_vm_runtime.validate_node_proxy_service, ("[Install]", "[Install]\nAlias=x.service")),
+    ("kb-node-proxy.service", validate_vm_runtime.validate_node_proxy_service, ("[Unit]", "[Unit]\nOnFailure=kb-panic.service")),
+    ("kb-whois.service", validate_vm_runtime.validate_whois_service, ("RestrictAddressFamilies=AF_UNIX", "RestrictAddressFamilies=AF_UNIX AF_INET")),
+    ("kb-whois.service", validate_vm_runtime.validate_whois_service, ("ReadWritePaths=/run/kb-whois\n", "ReadWritePaths=/run/kb-whois\n\n[Install]\nWantedBy=multi-user.target")),
+    ("kb-whois.socket", validate_vm_runtime.validate_whois_socket, ("SocketMode=0660", "SocketMode=0666")),
+    ("kb-whois.socket", validate_vm_runtime.validate_whois_socket, ("Group=kb-node-proxy\n", "")),
+    ("kb-whois.socket", validate_vm_runtime.validate_whois_socket, ("DirectoryMode=0750\n", "")),
+])
+def test_an_added_or_dropped_directive_fails_each_frozen_table(unit, validator, injected):
+    text = (SYSTEMD / unit).read_text(encoding="utf-8").replace(*injected)
+    with pytest.raises(RuntimeError):
+        validator(text)
+
+
+def test_node_proxy_forbidden_set_is_directive_names_only_and_confinement_is_required():
+    forbidden = validate_vm_runtime.NODE_PROXY_SERVICE_FORBIDDEN
+    # NAMES only — a name=value member could never intersect present, so none may carry '='.
+    assert all("=" not in name for name in forbidden)
+    # The loopback-hop confinement is REQUIRED here, the inverse of the broker: it must NOT be forbidden.
+    for required in ("RestrictAddressFamilies", "IPAddressDeny", "IPAddressAllow"):
+        assert required not in forbidden
+        assert required in validate_vm_runtime.NODE_PROXY_SERVICE_DIRECTIVES
+    assert set(forbidden) == {"PrivateNetwork", "ListenStream", "SupplementaryGroups", "AmbientCapabilities"}
+
+
+def test_node_proxy_forbids_a_supplementary_group_join():
+    # A SupplementaryGroups= join is rejected. Every section is set-equality-frozen, so an added directive
+    # trips that check; the names-only forbidden tuple is the second wall (see the tuple-contents test).
+    text = (SYSTEMD / "kb-node-proxy.service").read_text(encoding="utf-8").replace(
+        "CapabilityBoundingSet=", "SupplementaryGroups=tailscale\nCapabilityBoundingSet=")
+    with pytest.raises(RuntimeError, match="drifted|forbidden"):
+        validate_vm_runtime.validate_node_proxy_service(text)
+
+
+def test_node_proxy_user_is_its_own_nologin_account_and_shim_pair_is_root_plus_group():
+    directives = validate_vm_runtime.NODE_PROXY_SERVICE_DIRECTIVES
+    assert directives["User"] == "kb-node-proxy" and directives["Group"] == "kb-node-proxy"
+    assert "SupplementaryGroups" not in directives
+    assert validate_vm_runtime.WHOIS_SERVICE_DIRECTIVES["User"] == "root"
+    socket = validate_vm_runtime.WHOIS_SOCKET_DIRECTIVES
+    assert (socket["User"], socket["Group"]) == ("root", "kb-node-proxy")
+    assert socket["SocketGroup"] == "kb-node-proxy" and socket["SocketMode"] == "0660"
+    assert socket["DirectoryMode"] == "0750"
+    # The nologin shell is asserted on the account at provisioning (bootstrap); the unit runs as that user.
+
+
+def test_whois_service_has_no_install_section_and_no_listener():
+    assert validate_vm_runtime.WHOIS_SERVICE_SECTIONS == {"Unit", "Service"}
+    text = (SYSTEMD / "kb-whois.service").read_text(encoding="utf-8")
+    sections = validate_vm_runtime.parse_unit(text)  # comments dropped, so directives only
+    assert set(sections) == {"Unit", "Service"}
+    directive_names = {key for pairs in sections.values() for key, _ in pairs}
+    assert "ListenStream" not in directive_names
+
+
+def test_shim_socket_path_is_pinned_in_the_frozen_service_table():
+    assert validate_vm_runtime.TAILSCALED_SOCKET_PATH == "/var/run/tailscale/tailscaled.sock"
+    assert validate_vm_runtime.TAILSCALED_SOCKET_PATH in validate_vm_runtime.WHOIS_SERVICE_DIRECTIVES["ExecStart"]
+
+
+def test_node_whois_units_absent_is_tolerated_but_a_drifted_trio_is_refused(tmp_path):
+    assert validate_vm_runtime.validate_node_proxy_units(tmp_path) is False
+    for name in NODE_WHOIS_UNITS:
+        (tmp_path / name).write_text((SYSTEMD / name).read_text(encoding="utf-8"), encoding="utf-8")
+    assert validate_vm_runtime.validate_node_proxy_units(tmp_path) is True
+    drifted = tmp_path / "kb-whois.socket"
+    drifted.write_text(drifted.read_text(encoding="utf-8").replace("SocketMode=0660", "SocketMode=0666"), encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        validate_vm_runtime.validate_node_proxy_units(tmp_path)
+
+
+def test_node_whois_units_must_be_installed_as_a_trio(tmp_path):
+    (tmp_path / "kb-node-proxy.service").write_text((SYSTEMD / "kb-node-proxy.service").read_text(encoding="utf-8"), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="trio"):
+        validate_vm_runtime.validate_node_proxy_units(tmp_path)
+
+
+def test_whois_runtime_dir_must_be_root_kb_node_proxy_0750_and_socket_0660():
+    gid = 987
+    validate_vm_runtime.validate_whois_runtime_dir(
+        SimpleNamespace(st_uid=0, st_gid=gid, st_mode=0o040750),
+        SimpleNamespace(st_uid=0, st_gid=gid, st_mode=stat_module.S_IFSOCK | 0o660), gid)
+    with pytest.raises(RuntimeError, match="0750"):
+        validate_vm_runtime.validate_whois_runtime_dir(
+            SimpleNamespace(st_uid=0, st_gid=0, st_mode=0o040750),
+            SimpleNamespace(st_uid=0, st_gid=gid, st_mode=stat_module.S_IFSOCK | 0o660), gid)
+    with pytest.raises(RuntimeError, match="0660"):
+        validate_vm_runtime.validate_whois_runtime_dir(
+            SimpleNamespace(st_uid=0, st_gid=gid, st_mode=0o040750),
+            SimpleNamespace(st_uid=0, st_gid=gid, st_mode=stat_module.S_IFSOCK | 0o666), gid)
+
+
+def test_pinned_tailscaled_socket_must_exist_and_be_a_socket():
+    validate_vm_runtime.validate_tailscaled_socket(SimpleNamespace(st_mode=stat_module.S_IFSOCK | 0o660))
+    with pytest.raises(RuntimeError, match="is not a socket"):
+        validate_vm_runtime.validate_tailscaled_socket(SimpleNamespace(st_mode=stat_module.S_IFREG | 0o644))
+
+
+@pytest.mark.parametrize("prefs,fails", [
+    ('{"OperatorUser":""}', False),
+    ('{"OperatorUser":"kb-node-proxy"}', True),
+    ("OperatorUser = kb-node-proxy", True),
+])
+def test_tailscale_prefs_must_show_no_operator_user(prefs, fails):
+    def run(argv, **kwargs):
+        assert argv[:3] == [validate_vm_runtime.TAILSCALE_BINARY, "debug", "prefs"]
+        return subprocess.CompletedProcess(argv, 0, stdout=prefs)
+    if fails:
+        with pytest.raises(RuntimeError, match="OperatorUser"):
+            validate_vm_runtime.validate_no_operator_pref(run=run)
+    else:
+        validate_vm_runtime.validate_no_operator_pref(run=run)
+
+
+def test_no_operator_grant_string_exists_anywhere_in_deploy():
+    """kb-node-proxy holds no tailnet rights: `tailscale set --operator` must appear nowhere in deploy/."""
+    for path in (REPO / "deploy").rglob("*"):
+        if path.is_file() and path.suffix in {".py", ".service", ".socket", ".sh"}:
+            assert "set --operator" not in path.read_text(encoding="utf-8", errors="ignore")
+
+
+VALID_SERVE_STATUS = {
+    "TCP": {"443": {"HTTPS": True}, "8444": {"HTTPS": True}},
+    "Web": {"kb.command.ts.net:8444": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:4319"}}}},
+}
+
+
+def test_listener_uid_validator_requires_two_listeners_and_a_matching_uid():
+    validate_vm_runtime.validate_node_listener_and_uid(VALID_SERVE_STATUS, node_proxy_uid=987, expected_node_uid=987)
+
+
+def test_listener_uid_validator_fails_a_single_listener_config():
+    single = {"TCP": {"443": {"HTTPS": True}}, "Web": {}}
+    with pytest.raises(RuntimeError, match="single-listener|two serve listeners"):
+        validate_vm_runtime.validate_node_listener_and_uid(single, node_proxy_uid=987, expected_node_uid=987)
+
+
+def test_listener_uid_validator_fails_a_wrong_backend_or_uid_mismatch():
+    wrong_backend = {"TCP": {"443": {}, "8444": {}}, "Web": {"h:8444": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:9999"}}}}}
+    with pytest.raises(RuntimeError, match="node proxy port"):
+        validate_vm_runtime.validate_node_listener_and_uid(wrong_backend, node_proxy_uid=987, expected_node_uid=987)
+    with pytest.raises(RuntimeError, match="uid does not match"):
+        validate_vm_runtime.validate_node_listener_and_uid(VALID_SERVE_STATUS, node_proxy_uid=1000, expected_node_uid=987)
+
+
+def test_main_static_phase_validates_the_node_proxy_units():
+    import inspect
+    assert "validate_node_proxy_units()" in inspect.getsource(validate_vm_runtime.main)

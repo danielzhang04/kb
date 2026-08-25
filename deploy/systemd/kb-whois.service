@@ -1,0 +1,34 @@
+# The root-owned WhoIs shim (dashboard-v3 P6 section 3.3 [P6-C47]). It runs as root ONLY so it has DAC access to
+# the tailscaled unix socket - it needs no capability, so CapabilityBoundingSet is emptied. It speaks to
+# exactly two unix sockets (its own activation socket on fd 3, and tailscaled) and must NEVER open a
+# network socket, so RestrictAddressFamilies=AF_UNIX and IPAddressDeny=any. It issues ONLY
+# `GET /localapi/v0/whois?addr=` and never forwards an unparsed client string. There is NO operator pref
+# anywhere: kb-node-proxy holds no tailnet rights; this shim is the whole grant, and it is one method.
+#
+# Deliberate ABSENCES, each load-bearing:
+#   * no [Install] - socket-activated ONLY; nothing enables the service, so WHOIS_SERVICE_SECTIONS = {Unit, Service}.
+#   * no ListenStream - kb-whois.socket owns the only listener and hands it over as fd 3.
+#   * no RuntimeDirectory - the socket unit provisions /run/kb-whois; a service-side one would chown it away.
+# The frozen set below is WHOIS_SERVICE_DIRECTIVES / _UNIT_SECTION in validate_vm_runtime.py. The pinned
+# --socket value /var/run/tailscale/tailscaled.sock is frozen HERE and nowhere else [P6-C79].
+[Unit]
+Description=kb WhoIs shim (root-owned LocalAPI WhoIs for kb-node-proxy)
+Requires=kb-whois.socket
+After=kb-whois.socket
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/kb-releases/current/deploy/kb_whois_shim.py --socket-fd=3 --socket /var/run/tailscale/tailscaled.sock
+Restart=on-failure
+KillMode=control-group
+TimeoutStopSec=30
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
+ReadWritePaths=/run/kb-whois

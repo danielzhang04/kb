@@ -1,0 +1,44 @@
+# The attested node-identity hop for the kb dashboard (dashboard-v3 P6 section 3.3). The frozen directive set
+# below IS the confinement contract; validate_vm_runtime.py parses this file and fails on any addition,
+# removal, or value drift (NODE_PROXY_SERVICE_DIRECTIVES / _UNIT_SECTION / _INSTALL_SECTION), and
+# tests/test_validate_vm_runtime.py compares the dict and this file pairwise.
+#
+# This process runs as its OWN unprivileged user kb-node-proxy - never kb-dashboard, never root - and
+# holds NO tailnet rights at all: no operator pref, no group, /usr/sbin/nologin. It fronts ONLY the 8444
+# `tailscale serve` node listener, proves its own upstream peer is root (uid 0) via /proc/net/tcp, strips
+# every inbound Tailscale-* and X-Forwarded-* header, resolves the node through the root-owned WhoIs shim,
+# and injects exactly one Tailscale-Node-ID. Operator traffic never traverses it.
+#
+# Deliberate PRESENCES, each load-bearing and inverted from the broker (which needs the provider network):
+#   * RestrictAddressFamilies / IPAddressDeny=any - this is a loopback-only hop that must never open an
+#     outward network socket, so the confinement the broker forbids is REQUIRED here.
+# Deliberate ABSENCES:
+#   * no SupplementaryGroups - there is no group for it to join, and adding one would be a grant.
+#   * no ListenStream - the proxy binds its own loopback listener in code; systemd owns no socket here.
+[Unit]
+Description=kb node proxy (node-identity hop for the kb dashboard)
+After=network-online.target kb-whois.socket
+Wants=kb-whois.socket
+
+[Service]
+Type=simple
+User=kb-node-proxy
+Group=kb-node-proxy
+ExecStart=/usr/bin/python3 /opt/kb-releases/current/deploy/kb_node_proxy.py --listen 127.0.0.1:4319 --upstream 127.0.0.1:4317 --whois /run/kb-whois/whois.sock
+Restart=on-failure
+KillMode=control-group
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressAllow=localhost
+IPAddressDeny=any
+CapabilityBoundingSet=
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
+
+[Install]
+WantedBy=multi-user.target

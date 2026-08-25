@@ -75,6 +75,9 @@ def release_source(root: Path) -> Path:
         "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/control_plane_schema.py", "deploy/export_tier0.py",
         "deploy/validate_vm_runtime.py", "deploy/systemd/kb-dashboard.service",
         "deploy/systemd/kb-shell-broker.service", "deploy/systemd/kb-shell-broker.socket",
+        "deploy/kb_node_proxy.py", "deploy/kb_whois_shim.py",
+        "deploy/systemd/kb-node-proxy.service", "deploy/systemd/kb-whois.service",
+        "deploy/systemd/kb-whois.socket",
         "HEARTBEAT.md", "orgs/kb-ops/HEARTBEAT.md", "orgs/atlas-prep/HEARTBEAT.md",
         "agents/hygiene.md", "agents/dispatcher-cloud.md",
     ):
@@ -213,6 +216,26 @@ def test_broker_archive_is_manifest_covered_by_its_own_digest(tmp_path: Path):
         assert f"{digest}  {BROKER_ARCHIVE}\n" in manifest
         assert "  deploy/systemd/kb-shell-broker.socket\n" in manifest
     assert assert_broker_archive(source, host_platform="linux") == digest
+
+
+def test_node_proxy_shim_and_three_units_are_packed_under_manifest(tmp_path: Path):
+    """dashboard-v3 P6 §3.3: the attested proxy + WhoIs shim + all three units ride the release tree, so
+    MANIFEST.sha256 covers them and validate_vm_runtime digest-verifies them at boot."""
+    source = release_source(tmp_path)
+    output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
+    build_release(source, VERSION, output, tmp_path / "attestation.json", host_platform="linux")
+    packed = (
+        "deploy/kb_node_proxy.py", "deploy/kb_whois_shim.py",
+        "deploy/systemd/kb-node-proxy.service", "deploy/systemd/kb-whois.service",
+        "deploy/systemd/kb-whois.socket",
+    )
+    with tarfile.open(output, "r:gz") as archive:
+        names = set(archive.getnames())
+        manifest = archive.extractfile("MANIFEST.sha256").read().decode("utf-8")
+    for rel in packed:
+        assert rel in names, rel
+        digest = hashlib.sha256((source / rel).read_bytes()).hexdigest()
+        assert f"{digest}  {rel}\n" in manifest, rel
 
 
 def test_a_non_linux_build_host_cannot_pack_a_linux_broker_archive_at_all(tmp_path: Path):

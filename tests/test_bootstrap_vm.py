@@ -401,14 +401,64 @@ def test_bootstrap_installs_the_repo_fragment_plus_exactly_two_injected_lines(tm
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
 
     fragment = (Path(bootstrap_vm.__file__).parent / "systemd/kb-dashboard.service").read_bytes()
+    # dashboard-v3 P6 §3.3: four injected lines now — the two tailnet lines plus the two pinned proxy uids.
     injected = (
         b"Environment=DASHBOARD_TAILNET_HOST=" + TAILNET_HOST.encode("ascii") + b"\n"
         + b"Environment=DASHBOARD_TAILNET_OPERATOR=" + TAILNET_OPERATOR.encode("ascii") + b"\n"
+        + b"Environment=DASHBOARD_TAILNET_PROXY_UID=0\n"
+        + b"Environment=DASHBOARD_NODE_PROXY_UID=987\n"
     )
     assert installed_unit == fragment.replace(
         b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n",
         b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n" + injected,
     )
+
+
+def test_bootstrap_injects_both_pinned_proxy_uid_lines(tmp_path):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    installed_unit = None
+
+    def run(argv, **kwargs):
+        nonlocal installed_unit
+        if argv[-1] == "/etc/systemd/system/kb-dashboard.service":
+            installed_unit = Path(argv[-2]).read_bytes()
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, run=run)
+    # DASHBOARD_NODE_PROXY_UID ∉ {0, DASHBOARD_TAILNET_PROXY_UID} holds by construction.
+    assert b"Environment=DASHBOARD_TAILNET_PROXY_UID=0\n" in installed_unit
+    assert b"Environment=DASHBOARD_NODE_PROXY_UID=987\n" in installed_unit
+    assert bootstrap_vm.NODE_PROXY_UID != 0 and bootstrap_vm.TAILNET_PROXY_UID == 0
+
+
+def test_provision_node_proxy_creates_a_pinned_nologin_account_and_installs_the_trio(tmp_path):
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.provision_node_proxy(run=run)
+    useradd = next(c for c in commands if c and c[0] == "useradd")
+    assert "--uid" in useradd and useradd[useradd.index("--uid") + 1] == str(bootstrap_vm.NODE_PROXY_UID)
+    assert useradd[useradd.index("--shell") + 1] == "/usr/sbin/nologin"
+    assert useradd[-1] == "kb-node-proxy"
+    for unit in bootstrap_vm.NODE_PROXY_UNITS:
+        assert any(c[:6] == ["install", "-o", "root", "-g", "root", "-m"] and c[-1] == f"/etc/systemd/system/{unit}" for c in commands)
+    assert ["systemctl", "enable", "kb-whois.socket"] in commands
+    assert ["systemctl", "enable", "kb-node-proxy.service"] in commands
+
+
+def test_bootstrap_provisions_the_node_proxy(tmp_path, monkeypatch):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    seen = []
+    monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *a, **k: None)
+    monkeypatch.setattr(bootstrap_vm, "provision_node_proxy", lambda run: seen.append("provisioned"))
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR,
+                           run=lambda argv, **k: subprocess.CompletedProcess(argv, 0, "", ""))
+    assert seen == ["provisioned"]
 
 
 @pytest.mark.parametrize("value", ["", "not-an-email", "has space@x.com"])

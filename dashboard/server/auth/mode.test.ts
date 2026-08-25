@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { assertAuthModeBoot, resolveAuthMode, resolveTailnetConfig, AuthModeError } from './mode.ts';
+import { assertAuthModeBoot, resolveAuthMode, resolveNodeProxyUid, resolveTailnetConfig, AuthModeError } from './mode.ts';
 
 const TAILNET = {
   DASHBOARD_AUTH_MODE: 'tailnet',
   DASHBOARD_TAILNET_HOST: 'kb.command.ts.net',
   DASHBOARD_TAILNET_OPERATOR: 'daniel.zhang.t1@gmail.com',
+  // P6 §3.3: the attested node-proxy uid, distinct from 0 and from the tailnet (root) proxy uid.
+  DASHBOARD_NODE_PROXY_UID: '1001',
 };
 
 describe('resolveAuthMode', () => {
@@ -103,5 +105,50 @@ describe('assertAuthModeBoot', () => {
     expect(assertAuthModeBoot({
       env: { DASHBOARD_RP_ORIGIN: 'https://x.ts.net' }, bindHost: '127.0.0.1', platform: 'linux',
     })).toBe('win32-desktop');
+  });
+
+  // P6 §3.3 [P6-C27, P6-C60, P6-C73] — the whole node-identity fix is the distinctness rule
+  //   DASHBOARD_NODE_PROXY_UID ∉ {0, DASHBOARD_TAILNET_PROXY_UID}, tailnet uid pinned to 0.
+  it('SECURITY: REFUSES to boot when DASHBOARD_NODE_PROXY_UID is 0 (root serve would satisfy the node peer check)', () => {
+    expect(() => assertAuthModeBoot({
+      env: { ...TAILNET, DASHBOARD_NODE_PROXY_UID: '0' }, bindHost: '127.0.0.1', platform: 'linux',
+    })).toThrow(/DASHBOARD_NODE_PROXY_UID/);
+  });
+
+  it('SECURITY: REFUSES to boot when DASHBOARD_TAILNET_PROXY_UID is anything but 0', () => {
+    // Node uid stays distinct (1001 vs 1000), so the ONLY failing condition is the tailnet uid ≠ 0 —
+    // this is the second of the two named refusal tests, not the equal-uids case [P6-C73].
+    expect(() => assertAuthModeBoot({
+      env: { ...TAILNET, DASHBOARD_TAILNET_PROXY_UID: '1000' }, bindHost: '127.0.0.1', platform: 'linux',
+    })).toThrow(/DASHBOARD_TAILNET_PROXY_UID=0/);
+  });
+
+  it('SECURITY: REFUSES to boot when the node-proxy uid env is absent (never a silent 0 default)', () => {
+    const { DASHBOARD_NODE_PROXY_UID: _omit, ...noNode } = TAILNET;
+    expect(() => assertAuthModeBoot({ env: noNode, bindHost: '127.0.0.1', platform: 'linux' }))
+      .toThrow(AuthModeError);
+  });
+
+  it('accepts a boot with a valid distinct node-proxy uid and a tailnet uid of 0', () => {
+    expect(assertAuthModeBoot({
+      env: { ...TAILNET, DASHBOARD_TAILNET_PROXY_UID: '0', DASHBOARD_NODE_PROXY_UID: '1001' },
+      bindHost: '127.0.0.1', platform: 'linux',
+    })).toBe('tailnet');
+  });
+});
+
+describe('resolveNodeProxyUid', () => {
+  it('reads the required node-proxy uid', () => {
+    expect(resolveNodeProxyUid({ DASHBOARD_NODE_PROXY_UID: '1001' })).toBe(1001);
+  });
+
+  it('SECURITY: REJECTS an absent node-proxy uid — there is no 0 default', () => {
+    expect(() => resolveNodeProxyUid({})).toThrow(AuthModeError);
+    expect(() => resolveNodeProxyUid({ DASHBOARD_NODE_PROXY_UID: '  ' })).toThrow(AuthModeError);
+  });
+
+  it('rejects a non-integer or negative node-proxy uid', () => {
+    expect(() => resolveNodeProxyUid({ DASHBOARD_NODE_PROXY_UID: 'root' })).toThrow(AuthModeError);
+    expect(() => resolveNodeProxyUid({ DASHBOARD_NODE_PROXY_UID: '-1' })).toThrow(AuthModeError);
   });
 });
