@@ -59,6 +59,7 @@ import { createRunEventService, type RunEventSource } from './runEventService.ts
 import { createRunEventStream } from './runEventStream.ts';
 import {
   createHumanResponseService,
+  deployChallenge,
   humanResponseChallenge,
   humanResponseDigest,
   type CeremonyVerificationInput,
@@ -66,6 +67,31 @@ import {
 } from './humanResponse.ts';
 import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
 import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
+import type { AuthMode } from '../auth/mode.ts';
+import {
+  parseDeploymentRef, quiescenceDigest,
+} from '../inbox/deploymentContracts.ts';
+import type { DeployT3Decision, DeployT3Preimage, DeployT3Subject } from '../deploy/contracts.ts';
+import { DEPLOY_T3_DECISIONS } from '../deploy/contracts.ts';
+
+/**
+ * P5 W6.3 [P5-C23, P5-C45]: the reachability gate for the SHIPPED WebAuthn ceremony — an EXHAUSTIVE
+ * switch over the closed `AuthMode` union whose `default` arm is a `never` assertion, so a future third
+ * auth mode fails to COMPILE rather than being auto-admitted. It loosens the P2-era `win32-desktop`-only
+ * restriction to `tailnet` as well, making T3 reachable on the tailnet Linux VM; it never loosens on
+ * credential possession (the caller still requires `credentials().length > 0`).
+ */
+export function ceremonyModeAdmits(mode: AuthMode): boolean {
+  switch (mode) {
+    case 'win32-desktop':
+    case 'tailnet':
+      return true;
+    default: {
+      const never: never = mode;
+      return never;
+    }
+  }
+}
 
 export function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -1821,7 +1847,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
         },
       },
-      ...(ctx.authMode === 'win32-desktop' && ctx.credentials().length > 0 ? {
+      ...(ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0 ? {
         ceremony: {
           async verify(input: CeremonyVerificationInput) {
             const assertion = record(input.assertion);
@@ -1855,7 +1881,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.post('/api/control/human-requests/:requestRef/respond/challenge', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (ctx.authMode !== 'win32-desktop' || ctx.credentials().length === 0) {
+    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
       return reply.code(403).send({ error: 'ceremony-unavailable' });
     }
     const requestRef = (req.params as { requestRef: string }).requestRef;
@@ -1882,6 +1908,67 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       requestRef, requestRevision: expectedRevision, responseDigest, action: decision,
       origin: config.origin, challengeExpiresAt,
     });
+    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
+    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
+    return reply.send({ ceremonyId, options, challengeExpiresAt });
+  });
+
+  // P5 W6.3 [P5-C20, P5-C23, P5-C45]: the deploy-purpose T3 challenge on the SHIPPED verifier — registered
+  // beside the human-requests challenge, on the SAME guarded scope, minting through the SAME `credentialStore`
+  // pending map and binding through the SAME deterministic-preimage path (`deployChallenge`, humanResponse.ts).
+  // It mints ONLY the four T3 decisions, each over the ref spelling its decision requires; the assertion is
+  // verified by the deploy action endpoint against a preimage RE-READ server-side (a client-carried
+  // revision/digest is only a mint-time nonce — an acknowledged oracle/DoS surface, never an authz change,
+  // since verification still needs the provisioned key). No new refusal code is minted: an unreachable
+  // ceremony is `403 ceremony-unavailable`, exactly as the shipped ladder — never a downgrade [P5-C45].
+  scope.post('/api/inbox/deployment/:ref/challenge', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
+      return reply.code(403).send({ error: 'ceremony-unavailable' });
+    }
+    let parsedRef: { kind: 'deploy-ready' | 'deployment'; ref: string };
+    try { parsedRef = parseDeploymentRef((req.params as { ref: string }).ref); }
+    catch { return reply.code(400).send({ error: 'invalid-ref' }); }
+    const body = record(req.body);
+    const decisionRaw = string(body.decision);
+    if (!(DEPLOY_T3_DECISIONS as readonly string[]).includes(decisionRaw)) {
+      return reply.code(400).send({ error: 'invalid-decision' });
+    }
+    const decision = decisionRaw as DeployT3Decision;
+    // Ref spelling each decision requires [P5-C49, P5-C58]: deploy ⇐ deploy-ready:<sha>; confirm ⇐ either
+    // member of the two-spelling union; abort/close-ptys-and-continue ⇐ deployment:<n> only.
+    const refOk =
+      decision === 'deploy' ? parsedRef.kind === 'deploy-ready'
+        : decision === 'confirm' ? true
+          : parsedRef.kind === 'deployment';
+    if (!refOk) return reply.code(400).send({ error: 'invalid-revision' });
+    const subjectKind: DeployT3Subject = decision === 'close-ptys-and-continue' ? 'pty-quiescence' : 'deployment';
+    const revision = string(body.revision);
+    if (revision.length === 0) return reply.code(400).send({ error: 'invalid-revision' });
+    // Binding digest: close-ptys-and-continue pins sha256(sorted session ids); every other decision carries
+    // the candidate/record attestation digest, re-read and re-bound at the action endpoint [§3.3].
+    let digest: string;
+    if (decision === 'close-ptys-and-continue') {
+      const rawIds = body.sessionIds;
+      if (!Array.isArray(rawIds) || rawIds.length === 0 || !rawIds.every((id) => typeof id === 'string')) {
+        return reply.code(400).send({ error: 'invalid-session-ids' });
+      }
+      digest = quiescenceDigest(rawIds as string[]);
+    } else {
+      digest = string(body.digest);
+      if (digest.length === 0) return reply.code(400).send({ error: 'invalid-digest' });
+    }
+    let config;
+    try { config = ctx.webAuthnConfig(); }
+    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
+    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
+    const preimage: DeployT3Preimage = { subject: subjectKind, ref: parsedRef.ref, revision, decision, digest };
+    let challenge: string;
+    try { challenge = deployChallenge(preimage); }
+    catch { return reply.code(400).send({ error: 'invalid-revision' }); }
+    const now = (ctx.now?.() ?? new Date()).getTime();
+    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
     const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
     const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
     return reply.send({ ceremonyId, options, challengeExpiresAt });

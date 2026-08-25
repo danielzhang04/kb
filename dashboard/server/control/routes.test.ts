@@ -4203,6 +4203,101 @@ describe('Dashboard v3 run and gate routes', () => {
 });
 
 /**
+ * P5 W6.3 — the deploy-purpose T3 challenge on the SHIPPED verifier, and the lifted `ceremonyModeAdmits`
+ * gate [P5-C20, P5-C23, P5-C45]. The gate is proved BOTH ways with an injected provisioned test credential:
+ * tailnet + one credential issues the challenge; tailnet + zero credentials refuses `403 ceremony-unavailable`
+ * with no fallback; and a registration ceremony ALONE (which only reports material for out-of-band
+ * provisioning) still leaves the challenge unavailable — the gate never downgrades on credential possession.
+ */
+describe('P5 W6.3 deploy-purpose T3 challenge + lifted ceremony gate', () => {
+  const CRED = { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 };
+  const DEPLOY_READY_REF = `deploy-ready:${'b'.repeat(40)}`;
+  const DEPLOY_READY_REVISION = `deploy-ready:${'c'.repeat(64)}`;
+  const ATTEST_DIGEST = 'a'.repeat(64);
+
+  function deployChallengeRequest(app: ReturnType<typeof Fastify>, token: string, over: Record<string, unknown> = {}) {
+    return app.inject({
+      method: 'POST', url: `/api/inbox/deployment/${DEPLOY_READY_REF}/challenge`,
+      headers: headers(token),
+      payload: { decision: 'deploy', revision: DEPLOY_READY_REVISION, digest: ATTEST_DIGEST, ...over },
+    });
+  }
+
+  it('tailnet + one provisioned credential issues the deploy challenge on the shipped verifier', async () => {
+    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [CRED] });
+    try {
+      const res = await deployChallengeRequest(app, token);
+      expect(res.statusCode, res.body).toBe(200);
+      const body = res.json();
+      expect(typeof body.ceremonyId).toBe('string');
+      expect(typeof body.challengeExpiresAt).toBe('string');
+      // The minted WebAuthn challenge decodes to the purpose-bound `kb.deploy-t3` preimage — never a plain
+      // opaque login nonce, so the generic sign-in route refuses this ceremonyId (see auth/routes.test.ts).
+      const decoded = Buffer.from(String(body.options.challenge), 'base64url').toString('utf8');
+      expect(decoded.startsWith('kb.deploy-t3')).toBe(true);
+    } finally { await app.close(); }
+  });
+
+  it('tailnet + ZERO provisioned credentials refuses 403 ceremony-unavailable with no fallback path', async () => {
+    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [] });
+    try {
+      const res = await deployChallengeRequest(app, token);
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'ceremony-unavailable' });
+    } finally { await app.close(); }
+  });
+
+  it('win32-desktop + one provisioned credential also issues the challenge (the gate loosened, not narrowed)', async () => {
+    const { app, token } = buildApp({ authMode: 'win32-desktop', credentials: () => [CRED] });
+    try {
+      const res = await deployChallengeRequest(app, token);
+      expect(res.statusCode, res.body).toBe(200);
+    } finally { await app.close(); }
+  });
+
+  it('a successful /api/auth/register/options ceremony ALONE still yields 403 — registration grants nothing [P5-C45]', async () => {
+    // credentials() resolves ONLY from DASHBOARD_WEBAUTHN_CREDENTIALS (resolveCredentials); the register
+    // ceremony merely REPORTS material for a human to provision out of band. Driving a registration here
+    // does not populate credentials(), so the deploy challenge stays unavailable — no runtime-registration
+    // path can create deploy authority, and the gate never downgrades on credential possession.
+    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [] });
+    try {
+      const register = await app.inject({
+        method: 'POST', url: '/api/auth/register/options', headers: headers(token), payload: {},
+      });
+      expect(register.statusCode, register.body).toBe(200);
+      const res = await deployChallengeRequest(app, token);
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'ceremony-unavailable' });
+    } finally { await app.close(); }
+  });
+
+  it('mints ONLY the four T3 decisions, each over the ref spelling it requires', async () => {
+    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [CRED] });
+    try {
+      // An unknown decision is refused before any mint.
+      const unknown = await deployChallengeRequest(app, token, { decision: 'purge' });
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json()).toEqual({ error: 'invalid-decision' });
+      // `abort` requires `deployment:<n>`, never the `deploy-ready:<sha>` ref.
+      const crossed = await app.inject({
+        method: 'POST', url: `/api/inbox/deployment/${DEPLOY_READY_REF}/challenge`,
+        headers: headers(token), payload: { decision: 'abort', revision: 'deployment:3', digest: ATTEST_DIGEST },
+      });
+      expect(crossed.statusCode).toBe(400);
+      expect(crossed.json()).toEqual({ error: 'invalid-revision' });
+      // `close-ptys-and-continue` binds sha256(sorted session ids) as its digest and mints for pty-quiescence.
+      const quiescence = await app.inject({
+        method: 'POST', url: `/api/inbox/deployment/deployment:7/challenge`,
+        headers: headers(token),
+        payload: { decision: 'close-ptys-and-continue', revision: 'deployment:7', sessionIds: ['s-2', 's-1'] },
+      });
+      expect(quiescence.statusCode, quiescence.body).toBe(200);
+    } finally { await app.close(); }
+  });
+});
+
+/**
  * Operator cross-subject authority, round 3 — the four remaining dead ends a route-surface audit found
  * after the mutation widening landed (2026-08-12).
  *

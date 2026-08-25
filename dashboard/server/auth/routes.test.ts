@@ -111,6 +111,23 @@ describe('auth ceremony routes', () => {
     expect(res.json()).toMatchObject({ error: 'bad-ceremony' });
   });
 
+  it('P5 W6.3: refuses a deploy-purpose (kb.deploy-t3) ceremonyId redeemed at the generic sign-in [P5-C20]', async () => {
+    // The deploy challenge mints a purpose-bound `kb.deploy-t3` preimage through the SAME pending map; a
+    // ceremonyId minted for the deploy purpose must never mint a full sign-in session. Refused at the
+    // namespace check, BEFORE any credential lookup — 400 bad-ceremony, not a downgrade.
+    ({ app } = buildApp({ credentials: () => [{ id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 }] }));
+    const deployChallenge = Buffer.from(
+      'kb.deploy-t3.v1.ZGVwbG95LXJlYWR5', 'utf8',
+    ).toString('base64url');
+    const { ceremonyId } = rememberChallenge(deployChallenge);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/assert/verify',
+      payload: { ceremonyId, response: { id: 'cred-1' } },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'bad-ceremony' });
+  });
+
   it('LOW (audit follow-up): refuses the same purpose-bound ceremony redeemed at registration', async () => {
     ({ app } = buildApp());
     const challenge = Buffer.from('kb.execution-unlock:operator:not-a-real-signature', 'utf8').toString('base64url');

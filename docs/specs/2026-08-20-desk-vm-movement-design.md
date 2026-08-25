@@ -259,6 +259,8 @@ T3 items declare `ceremony: webauthn`; this is the settled browser-ceremony carv
 
 Other actions are closed POST endpoints for card response, Human Request response, run resume, deploy confirm/deploy/abort/acknowledge, PTY close-and-continue, and asset-pull intent. PR open is a constructed GET redirect and is the only action with `external:true`; every same-origin/helper action is false, so the UI labels the one off-tailnet transition. `GET /api/v1/inbox` returns items, active fence/progress, and source health. Mutations require idempotency key and expected revision. The UI is one Claude-dark page with neutral hierarchy, hairlines, semantic status only, and no accents (`[cutover] dashboard/src/styles/app.css:3-35,63-86`).
 
+- **Dashboard v3 supersession (P5):** the canonical D10 projection (`[cutover] docs/specs/2026-08-20-dashboard-v3-design.md:373`) supersedes only the Runs bullet (`:253`) and its Respond/Resume Inbox endpoints — those run gates live and resolve in Run view — while the PR, Deploys, and Assets bullets above remain binding under it; the rendered deployment action set is exactly `[cutover] docs/specs/2026-08-20-dashboard-v3-design.md:264`'s closed Confirm/Deploy/Inspect/Abort/Acknowledge/Close-PTYs-and-continue, drawn from the entry verbs of `:254` and the closed POST enumeration of `:260`, so P5 adds no verb beyond that set.
+
 ## 5. VM production floor
 
 ### Assets home
