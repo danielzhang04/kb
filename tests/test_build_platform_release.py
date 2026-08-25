@@ -135,8 +135,8 @@ def test_release_attestation_uses_registry_metadata(tmp_path):
     assert value == {
         "archive": output.name, "schema": "kb.release-attestation/v2",
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-        "sourceCommit": VERSION, "stateSchema": "3",
-        "rollbackStateSchema": "2", "stateMigration": "breaking",
+        "sourceCommit": VERSION, "stateSchema": "4",
+        "rollbackStateSchema": "3", "stateMigration": "breaking",
         "workflow": "kb-platform-release",
     }
 
