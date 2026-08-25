@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuditEvent } from '../audit/log.ts';
 import { createHumanResponseService, type HumanResponseStorePort } from './humanResponse.ts';
 import type { HumanRequest } from './types.ts';
+import {
+  createDeployCeremonyService, deployChallenge, deployDigest,
+  type DeployCeremonyContext, type DeployCeremonyRequest,
+} from './humanResponse.ts';
+import { deployT3Digest } from '../deploy/contracts.ts';
+import type { DeployT3Preimage } from '../deploy/contracts.ts';
 
 function request(overrides: Partial<HumanRequest> = {}): HumanRequest {
   return {
@@ -255,5 +261,121 @@ describe('gate-kind-aware human response service', () => {
     expect(result).toEqual({ ok: false, status: 500, error: 'human-response-audit-required' });
     expect(h.requests.get('ask-1')?.state).toBe('open');
     expect(h.events).toEqual([]);
+  });
+});
+
+// =====================================================================================================
+// P5 W2 — deploy-purpose T3 binding [P5-C20, §3.3]. Exercises the ADDED deploy path only; the shipped
+// human-response suite above is unchanged.
+// =====================================================================================================
+
+const PREIMAGE: DeployT3Preimage = {
+  subject: 'deployment',
+  ref: 'deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  revision: 'deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e',
+  decision: 'deploy',
+  digest: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+};
+
+function ceremonyContext(overrides: Partial<DeployCeremonyContext> = {}): DeployCeremonyContext {
+  return {
+    ceremony: { verify: async () => true },
+    credentials: () => ['registered-credential'],
+    consume: async () => 'fresh',
+    now: () => Date.parse('2026-08-24T10:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function ceremonyRequest(overrides: Partial<DeployCeremonyRequest> = {}): DeployCeremonyRequest {
+  return {
+    preimage: PREIMAGE,
+    assertion: { id: 'assertion' },
+    origin: 'https://kb.command.ts.net',
+    challengeExpiresAt: '2026-08-24T10:01:00.000Z',
+    grantKey: 'deploy-grant-1',
+    ...overrides,
+  };
+}
+
+describe('deploy-purpose T3 binding', () => {
+  it('digest is the server-side sha256 of the closed binding preimage', () => {
+    expect(deployDigest(PREIMAGE)).toBe(deployT3Digest(PREIMAGE));
+  });
+
+  it('challenge is base64url of the recomputed preimage — never a client-supplied string', () => {
+    const challenge = deployChallenge(PREIMAGE);
+    expect(challenge.startsWith('kb.deploy-t3.v1.')).toBe(true);
+    const encoded = challenge.slice('kb.deploy-t3.v1.'.length);
+    const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+    expect(decoded.startsWith('kb.deploy-t3/v1 deployment ')).toBe(true);
+    expect(decoded.endsWith(PREIMAGE.digest)).toBe(true);
+  });
+
+  it('accepts a verified single-use assertion and returns the recomputed digest', async () => {
+    const service = createDeployCeremonyService(ceremonyContext());
+    expect(await service.verify(ceremonyRequest())).toEqual({ ok: true, status: 200, digest: deployDigest(PREIMAGE) });
+  });
+
+  it('refuses 403 ceremony-unavailable with no ceremony port', async () => {
+    const service = createDeployCeremonyService(ceremonyContext({ ceremony: undefined }));
+    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-unavailable' });
+  });
+
+  it('refuses 403 ceremony-unavailable with zero registered credentials — never downgrades', async () => {
+    const service = createDeployCeremonyService(ceremonyContext({ credentials: () => [] }));
+    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-unavailable' });
+  });
+
+  it('refuses 403 ceremony-invalid on a missing assertion', async () => {
+    const service = createDeployCeremonyService(ceremonyContext());
+    expect(await service.verify(ceremonyRequest({ assertion: null }))).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
+  });
+
+  it('refuses 403 ceremony-invalid on a wrong revision/digest — mints no new code', async () => {
+    const service = createDeployCeremonyService(ceremonyContext({
+      ceremony: { verify: async ({ challenge }) => challenge === deployChallenge(PREIMAGE) },
+    }));
+    const tampered = ceremonyRequest({
+      preimage: { ...PREIMAGE, digest: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' },
+    });
+    expect(await service.verify(tampered)).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
+  });
+
+  it('refuses 403 ceremony-invalid when verification throws', async () => {
+    const service = createDeployCeremonyService(ceremonyContext({
+      ceremony: { verify: async () => { throw new Error('verifier blew up'); } },
+    }));
+    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
+  });
+
+  it('refuses 403 ceremony-expired past the window', async () => {
+    const service = createDeployCeremonyService(ceremonyContext({ now: () => Date.parse('2026-08-24T10:05:00.000Z') }));
+    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-expired' });
+  });
+
+  it('refuses 409 on a replayed single-use grant', async () => {
+    const service = createDeployCeremonyService(ceremonyContext({ consume: async () => 'replayed' }));
+    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 409, error: 'ceremony-replayed' });
+  });
+
+  it('no refusal body carries key, signer, or challenge bytes', async () => {
+    const contexts: DeployCeremonyContext[] = [
+      ceremonyContext({ ceremony: undefined }),
+      ceremonyContext({ credentials: () => [] }),
+      ceremonyContext({ ceremony: { verify: async () => false } }),
+      ceremonyContext({ now: () => Date.parse('2026-08-24T10:05:00.000Z') }),
+      ceremonyContext({ consume: async () => 'replayed' }),
+    ];
+    for (const context of contexts) {
+      const outcome = await createDeployCeremonyService(context).verify(ceremonyRequest());
+      expect(outcome.ok).toBe(false);
+      const serialized = JSON.stringify(outcome);
+      expect(serialized).not.toContain('assertion');
+      expect(serialized).not.toContain('challenge');
+      expect(serialized).not.toContain('kb.deploy-t3');
+      expect(serialized).not.toContain('credential');
+      expect(Object.keys(outcome).sort()).toEqual(['error', 'ok', 'status']);
+    }
   });
 });

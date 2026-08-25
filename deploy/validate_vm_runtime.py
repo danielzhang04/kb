@@ -15,7 +15,12 @@ CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTI
 # DASHBOARD_AUTH_MODE is static in the repo unit; DASHBOARD_TAILNET_HOST is injected at bootstrap. Both are
 # REQUIRED — without the host the daemon refuses to start, and asserting it here turns that into one loud
 # ExecStartPre failure instead of a restart loop.
-EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR"}
+# DASHBOARD_DESKTOP_HELPER_ORIGIN (dashboard-v3 P5) is REQUIRED: it pins the one desktop-helper tailnet
+# address the deploy/asset-pull client speaks to. The dashboard reads it once at composition and refuses to
+# start when it is absent or not an https: tailnet origin, so asserting it here turns a missing helper
+# address into one loud ExecStartPre failure. It carries no credential (an origin, not a key), so
+# CREDENTIAL_ENV_NAME does not flag it; its format is validated dashboard-side, not here.
+EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR", "DASHBOARD_DESKTOP_HELPER_ORIGIN"}
 OPTIONAL_UNIT_ENV = {"DASHBOARD_TAILNET_PROXY_UID"}
 # DASHBOARD_TAILNET_OPERATOR is REQUIRED (Daniel, 2026-08-18), not optional: tailnet membership on this VM
 # is root-equivalent, so the operator identity must be pinned rather than defaulting to "any tailnet
