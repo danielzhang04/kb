@@ -126,7 +126,8 @@ function cronWords(source: string): string {
 export function normalizeCadenceInput(input: CadenceInput): { source: string; words: string } {
   if (validateScheduleCadence(input)) throw new ScheduleServiceError(400, 'invalid-cadence');
   if (input.kind === 'words') {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) throw new ScheduleServiceError(400, 'invalid-cadence');
+    // `validateScheduleCadence` above already rejected any malformed time with the same HH:MM regex, so
+    // the split below is the parse; a redundant re-test here could never throw.
     const [hour, minute] = input.time.split(':').map(Number);
     const words = input.words.trim().toLowerCase();
     let dayField: string;

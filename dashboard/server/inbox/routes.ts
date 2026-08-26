@@ -482,8 +482,8 @@ export function registerInboxActionRoutes(scope: FastifyInstance, ctx: SurfaceCo
     if (refusal) return reply.code(refusal.status).send({ error: refusal.code });
     const result = await closePtysAndContinue(ports.quiescence, { deploymentRef: ref, expectedRevision: revision, sessionIds });
     if (!result.ok) {
-      const status = result.refusal === 'pty-set-changed' || result.refusal === 'pty-not-confirmed' ? 409 : 409;
-      return reply.code(status).send({ error: result.refusal });
+      // Every refusal this path can return maps to 409 (both former ternary arms were 409).
+      return reply.code(409).send({ error: result.refusal });
     }
     return reply.code(200).send({ deployment: result.deployment, closed: result.closed });
   });

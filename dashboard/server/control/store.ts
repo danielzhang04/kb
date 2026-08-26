@@ -7256,6 +7256,13 @@ export function createFileControlPlaneStore(
     }
   }
   let acceptedMaxBytes = maxBytes;
+  // The one post-hydration validation triad every load path runs: full-document schema check, then the
+  // generic iteration-bundle check on the document and each quarantined bundle.
+  const assertHydrated = (document: StoreDocument): void => {
+    validateStoreDocument(document);
+    validateGenericIterationBundle(document);
+    for (const bundle of document.quarantine) validateGenericIterationBundle(bundle);
+  };
   if (access.mode === 'already-locked') assertWriterLeaseForRoot(access.lease, stateRoot);
   if (access.mode === 'read-only-harness') {
     const loadReadOnly = (): StoreDocument => {
@@ -7269,9 +7276,7 @@ export function createFileControlPlaneStore(
         throw new ControlStoreReadOnlyError();
       }
       const document = parsed as StoreDocument;
-      validateStoreDocument(document);
-      validateGenericIterationBundle(document);
-      for (const bundle of document.quarantine) validateGenericIterationBundle(bundle);
+      assertHydrated(document);
       return clone(document);
     };
     loadReadOnly();
@@ -7315,9 +7320,7 @@ export function createFileControlPlaneStore(
   };
   const hydrate = (encoded: string): StoreDocument => {
     const migrated = migrateDocument(encoded, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(encoded)).document;
-    validateStoreDocument(migrated);
-    validateGenericIterationBundle(migrated);
-    for (const bundle of migrated.quarantine) validateGenericIterationBundle(bundle);
+    assertHydrated(migrated);
     return migrated;
   };
   const load = (): StoreDocument => {
@@ -7388,9 +7391,7 @@ export function createFileControlPlaneStore(
       && requiresGenericRewrite(parsed as Record<string, unknown>);
     const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(source));
     recovered = initial.document;
-    validateStoreDocument(recovered);
-    validateGenericIterationBundle(recovered);
-    for (const bundle of recovered.quarantine) validateGenericIterationBundle(bundle);
+    assertHydrated(recovered);
     migrated = initial.applied.length > 0;
     // P6 [P6-C32]: capture the exact preimage for ANY applied edge, not only v2 -> v3. `from` is the
     // on-disk source version; `to` is the schema version we migrated up to.

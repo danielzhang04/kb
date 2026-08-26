@@ -853,6 +853,10 @@ export class AutomaticExecutionEngine {
     const startedStageIds: string[] = [];
     const completedStageIds: string[] = [];
     const waitingStageIds: string[] = [];
+    // Every boundary/blocked return builds the identical accumulator triple around the run's current
+    // lifecycle kind; this closure is that one object so the shape can never drift return-to-return.
+    const blockedOutcome = (state: RunLifecycleKind): ExecutionOutcome =>
+      ({ state, startedStageIds, completedStageIds, waitingStageIds });
     try {
       this.assertRunBinding(input);
       // Resolve only after the immutable run/proposal binding is proven. In particular, an arbitrary
@@ -864,11 +868,11 @@ export class AutomaticExecutionEngine {
       if (initialIterationWait.length > 0) {
         waitingStageIds.push(...initialIterationWait);
         if (hasRunWideBlockingBoundary(this.detail(input))) {
-          return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
         }
       }
       if (!(await this.ensureManager(input, policy, resolvedAgents.manager))) {
-        return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+        return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
       }
       // BigInt keeps every safe-integer declaration exact; no old fixed cap or lossy product can
       // truncate a valid high bound. Each compiled schedule step can consume one durable worker pass,
@@ -881,31 +885,31 @@ export class AutomaticExecutionEngine {
       for (let pass = 0n; pass <= reconciliationPasses; pass += 1n) {
         const detail = this.detail(input);
         if (this.cancellingRuns.has(lockKey)) {
-          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(detail.run.lifecycle));
         }
         if (['succeeded', 'failed', 'stopped', 'stopping'].includes(runLifecycleKind(detail.run.lifecycle))) {
-          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(detail.run.lifecycle));
         }
         if (runLifecycleKind(detail.run.lifecycle) === 'interrupted'
           && detail.humanRequests.some((request) => request.state === 'open')) {
-          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(detail.run.lifecycle));
         }
         const iterationWait = await this.reconcileIterationRuntime(input);
         if (iterationWait.length > 0) {
           for (const stageId of iterationWait) if (!waitingStageIds.includes(stageId)) waitingStageIds.push(stageId);
           if (hasRunWideBlockingBoundary(this.detail(input))) {
-            return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+            return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
           }
         }
         this.releaseDependents(input, this.detail(input));
         await this.scheduleIterationTurns(input);
         const refreshed = this.detail(input);
         if (hasRunWideBlockingBoundary(refreshed)) {
-          return { state: runLifecycleKind(refreshed.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(refreshed.run.lifecycle));
         }
         if (refreshed.stages.some((stage) => stage.state === 'failed' || stage.state === 'stopped')) {
           const state = runLifecycleKind(this.transitionRun(input, 'failed').lifecycle);
-          return { state, startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(state);
         }
         const candidates: Array<{ stage: Stage; proposalStage: ProposalStage }> = [];
         for (const stage of [...refreshed.stages].sort((left, right) => left.stageId.localeCompare(right.stageId))) {
@@ -915,14 +919,14 @@ export class AutomaticExecutionEngine {
           if (boundary === 'waiting') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
             if (hasRunWideBlockingBoundary(this.detail(input))) {
-              return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+              return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
             }
             continue;
           }
           if (boundary === 'refused') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
             if (hasRunWideBlockingBoundary(this.detail(input))) {
-              return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+              return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
             }
             continue;
           }
@@ -941,7 +945,7 @@ export class AutomaticExecutionEngine {
         const batch = candidates.slice(0, available);
         if (batch.length === 0) {
           const settled = await this.settleRunState(input);
-          return { state: runLifecycleKind(settled.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(settled.lifecycle));
         }
         const prepared = batch
           .map(({ stage, proposalStage }) => this.prepareOrContain(
@@ -964,7 +968,7 @@ export class AutomaticExecutionEngine {
         if (results.some((result) => result.state === 'waiting-human')
           && runLifecycleKind(this.detail(input).run.lifecycle) === 'waiting-human'
           && hasRunWideBlockingBoundary(this.detail(input))) {
-          return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
         }
       }
       throw new AutomaticExecutionError('DAG reconciliation exceeded its deterministic pass bound');
@@ -1749,16 +1753,22 @@ export class AutomaticExecutionEngine {
         return 'refused';
       }
     }
-    const actionClassification = classifyActionRisk(proposalStage.action);
-    if (actionClassification.disposition === 'forbidden') {
-      const reason = actionClassification.reason;
+    // The mechanical tail every policy rung below shares: mint the stage's policy boundary under its
+    // stable title if absent (else re-park the stage), then return refused/waiting by disposition. Only
+    // the tail folds — the gate/action-risk/restricted-intent/policy ladder above and the
+    // capability-mismatch rung below keep their exact ordering and their own distinct bodies.
+    const mintOrWaitPolicyBoundary = (reason: string, refuse: boolean): 'waiting' | 'refused' => {
       const title = stableHumanTitle('policy', stage.stageId, reason);
       if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(input, stage, 'governance-refusal', title, reason);
+        this.createBoundary(input, stage, refuse ? 'governance-refusal' : 'approval', title, reason);
       } else {
         this.ensureStageWaiting(input, stage.stageRef);
       }
-      return 'refused';
+      return refuse ? 'refused' : 'waiting';
+    };
+    const actionClassification = classifyActionRisk(proposalStage.action);
+    if (actionClassification.disposition === 'forbidden') {
+      return mintOrWaitPolicyBoundary(actionClassification.reason, true);
     }
     // Resolved once and shared by the restricted-intent scan and the policy call below, so a stage cannot
     // clear one and park on the other.
@@ -1772,19 +1782,7 @@ export class AutomaticExecutionEngine {
       && restricted.reason === 'external-publication-intent-requires-human-approval'
       && publicationAuthorization === 'approved';
     if (restricted && !restrictedReleased) {
-      const title = stableHumanTitle('policy', stage.stageId, restricted.reason);
-      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(
-          input,
-          stage,
-          restricted.kind === 'refuse' ? 'governance-refusal' : 'approval',
-          title,
-          restricted.reason,
-        );
-      } else {
-        this.ensureStageWaiting(input, stage.stageRef);
-      }
-      return restricted.kind === 'refuse' ? 'refused' : 'waiting';
+      return mintOrWaitPolicyBoundary(restricted.reason, restricted.kind === 'refuse');
     }
     const routing = effectiveWorkerRouting(detail, stage, proposalStage);
     const iterationVerdictTurn = [...detail.iterationRequests].reverse().some((request) => {
@@ -1817,13 +1815,7 @@ export class AutomaticExecutionEngine {
       ...(publicationAuthorization === 'none' ? {} : { requestsPublication: true, publicationAuthorization }),
     }, policy);
     if (decision.disposition !== 'allow') {
-      const title = stableHumanTitle('policy', stage.stageId, decision.reason);
-      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(input, stage, decision.disposition === 'refuse' ? 'governance-refusal' : 'approval', title, decision.reason);
-      } else {
-        this.ensureStageWaiting(input, stage.stageRef);
-      }
-      return decision.disposition === 'refuse' ? 'refused' : 'waiting';
+      return mintOrWaitPolicyBoundary(decision.reason, decision.disposition === 'refuse');
     }
     if (!decision.profile || REQUIRED_WORKER_CAPABILITIES.some((capability) => !decision.profile?.capabilities.includes(capability))) {
       const title = stableHumanTitle('policy', stage.stageId, 'profile-capability-mismatch');
