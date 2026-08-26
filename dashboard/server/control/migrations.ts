@@ -1220,6 +1220,34 @@ function downV4ToV3(source: RawDocument): RawDocument {
   return source;
 }
 
+// The single edge table for the {1<->2, 2<->3, 3<->4} ladder. It drives all three former hand-rolled
+// encodings — `applyMigrationEdgeForTest`, the up-ladder, and the down-ladder — so the edge set is
+// declared once. `breaking` mirrors the former per-site literals: up edges take the generated registry
+// flag (`breakingFlagForUpEdge`, evaluated once here; the registry import is already resolved and its
+// value is constant), down edges are always `true`. Down edges live in their own `DOWN_EDGES` array so
+// a later slice (H) that drops the down ladder deletes that array and the `...DOWN_EDGES` spread as one
+// clean edit. `fn` is called with `(document, context)`; edges that ignore `context` simply drop it.
+interface MigrationEdge {
+  from: number;
+  to: number;
+  fn: (document: RawDocument, context: MigrationContext) => RawDocument;
+  breaking: boolean;
+}
+
+const UP_EDGES: readonly MigrationEdge[] = [
+  { from: 1, to: 2, fn: upV1ToV2, breaking: breakingFlagForUpEdge(1, 2) },
+  { from: 2, to: 3, fn: upV2ToV3, breaking: breakingFlagForUpEdge(2, 3) },
+  { from: 3, to: 4, fn: upV3ToV4, breaking: breakingFlagForUpEdge(3, 4) },
+];
+
+const DOWN_EDGES: readonly MigrationEdge[] = [
+  { from: 4, to: 3, fn: downV4ToV3, breaking: true },
+  { from: 3, to: 2, fn: downV3ToV2, breaking: true },
+  { from: 2, to: 1, fn: downV2ToV1, breaking: true },
+];
+
+const EDGES: readonly MigrationEdge[] = [...UP_EDGES, ...DOWN_EDGES];
+
 export function applyMigrationEdgeForTest(
   source: unknown,
   target: 1 | 2 | 3 | 4,
@@ -1227,13 +1255,9 @@ export function applyMigrationEdgeForTest(
 ): unknown {
   assertMigrationEnvelope(source);
   const document = clone(source);
-  if (document.version === 1 && target === 2) return upV1ToV2(document, context);
-  if (document.version === 2 && target === 1) return downV2ToV1(document);
-  if (document.version === 2 && target === 3) return upV2ToV3(document, context);
-  if (document.version === 3 && target === 2) return downV3ToV2(document);
-  if (document.version === 3 && target === 4) return upV3ToV4(document);
-  if (document.version === 4 && target === 3) return downV4ToV3(document);
-  throw new Error(`no control-plane migration edge ${document.version}->${target}`);
+  const edge = EDGES.find((candidate) => candidate.from === document.version && candidate.to === target);
+  if (!edge) throw new Error(`no control-plane migration edge ${document.version}->${target}`);
+  return edge.fn(document, context);
 }
 
 export function migrateControlDocument(
@@ -1250,28 +1274,16 @@ export function migrateControlDocument(
   // P6 [P6-C32]: the ladder chains every up edge so v1 -> v4 and v2 -> v4 reach the target in one call
   // (each `up*`/`down*` advances `document.version`, so the loop steps one edge at a time).
   while (document.version < target) {
-    if (document.version === 1) {
-      upV1ToV2(document, context);
-      applied.push({ from: 1, to: 2, breaking: breakingFlagForUpEdge(1, 2), down: 'present' });
-    } else if (document.version === 2) {
-      upV2ToV3(document, context);
-      applied.push({ from: 2, to: 3, breaking: breakingFlagForUpEdge(2, 3), down: 'present' });
-    } else if (document.version === 3) {
-      upV3ToV4(document);
-      applied.push({ from: 3, to: 4, breaking: breakingFlagForUpEdge(3, 4), down: 'present' });
-    } else break;
+    const edge = UP_EDGES.find((candidate) => candidate.from === document.version);
+    if (!edge) break;
+    edge.fn(document, context);
+    applied.push({ from: edge.from, to: edge.to, breaking: edge.breaking, down: 'present' });
   }
   while (document.version > target) {
-    if (document.version === 4) {
-      downV4ToV3(document);
-      applied.push({ from: 4, to: 3, breaking: true, down: 'present' });
-    } else if (document.version === 3) {
-      downV3ToV2(document);
-      applied.push({ from: 3, to: 2, breaking: true, down: 'present' });
-    } else if (document.version === 2) {
-      downV2ToV1(document);
-      applied.push({ from: 2, to: 1, breaking: true, down: 'present' });
-    } else break;
+    const edge = DOWN_EDGES.find((candidate) => candidate.from === document.version);
+    if (!edge) break;
+    edge.fn(document, context);
+    applied.push({ from: edge.from, to: edge.to, breaking: edge.breaking, down: 'present' });
   }
   if (document.version !== target) {
     throw new Error(`no control-plane migration path ${document.version}->${target}`);
