@@ -46,7 +46,7 @@ import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
-import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
+import { acceptsBoundary, compiledPolicyUnchanged, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
 import { selectPlacementHost } from '../placement/select.ts';
 import type { CapabilityRequirement } from '../placement/contracts.ts';
 import type { EntityDisplay } from '../naming.ts';
@@ -2344,17 +2344,8 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
         throw new Error('run activation state changed before canonical root activation');
       }
     };
-    const currentPolicyMatches = (): boolean => {
-      const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-      const currentCompiled = currentProposal.ok
-        ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
-            policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-            defaultWorkers: defaultWorkers(ctx.repoRoot),
-          })
-        : null;
-      return !!currentCompiled?.ok
-        && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(compiled.value.stagePolicies);
-    };
+    const currentPolicyMatches = (): boolean =>
+      compiledPolicyUnchanged(ctx, stored.value, compiled.value.stagePolicies);
     const reassertActivationAuthorization = (): void => {
       assertCurrentState();
       if (!currentPolicyMatches()) {

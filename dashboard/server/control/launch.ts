@@ -20,6 +20,7 @@ import { loadPolicy } from '../routing/policy.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { validateServerCompiledPlanProposal } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
+import type { CompiledStagePolicy } from './compiler.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
@@ -131,6 +132,34 @@ export function defaultWorkers(repoRoot: string): Record<string, string> {
   return Object.fromEntries(Object.entries(loadPolicy(repoRoot).runtimes ?? {})
     .filter((entry): entry is [string, { default_worker: string }] => typeof entry[1].default_worker === 'string' && entry[1].default_worker.length > 0)
     .map(([runtime, spec]) => [runtime, spec.default_worker]));
+}
+
+/**
+ * The ONE compiled-policy re-proof shared by both root-activation ceremonies: recompile the stored
+ * proposal against the CURRENT canonical head and confirm its `stagePolicies` still serialise byte-for
+ * byte to the `baseline` the caller compiled earlier. Returns `true` when unchanged.
+ *
+ * Called after any git step that moved the local checkout onto a newer head (the reconciling
+ * `pull --rebase` of a rejected push, and the managed-root activation's own post-prepare gate), so a
+ * routing decision is never published against a head whose policy silently differs. Both callers wrap
+ * it identically — `launch.ts#executeApprovedLaunch` throws on a `false` to park the run, and
+ * `routes.ts#activateRunUnderOwner` reads the boolean directly — but the recompile-and-compare itself
+ * is one body so the two can never drift.
+ */
+export function compiledPolicyUnchanged(
+  ctx: SurfaceContext,
+  stored: { snapshot: JsonObject; hash: string },
+  baseline: CompiledStagePolicy[],
+): boolean {
+  const currentProposal = validateServerCompiledPlanProposal(stored.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+  const currentCompiled = currentProposal.ok
+    ? compileApprovedProposal(currentProposal.value, stored.hash, stored.hash, {
+        policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
+        defaultWorkers: defaultWorkers(ctx.repoRoot),
+      })
+    : null;
+  return !!currentCompiled?.ok
+    && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(baseline);
 }
 
 /**
@@ -407,15 +436,7 @@ export async function executeApprovedLaunch(
      * policy differs. A change throws, which parks the run exactly as a bare failure would have.
      */
     const reassertCompiledPolicy = (): void => {
-      const currentProposal = validateServerCompiledPlanProposal(snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-      const currentCompiled = currentProposal.ok
-        ? compileApprovedProposal(currentProposal.value, storedHash, storedHash, {
-            policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-            defaultWorkers: defaultWorkers(ctx.repoRoot),
-          })
-        : null;
-      if (!currentCompiled?.ok
-        || JSON.stringify(currentCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
+      if (!compiledPolicyUnchanged(ctx, { snapshot, hash: storedHash }, compiled.value.stagePolicies)) {
         throw new Error('managed root activation policy changed');
       }
     };
