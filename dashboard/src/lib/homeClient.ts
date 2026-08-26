@@ -1,5 +1,6 @@
 import type { HomeResponse, HomeUnavailableReason } from '../../server/home/contracts.ts';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient.ts';
+import { record, exactKeys } from './decodeGuards.ts';
 
 export type HomeFetch = typeof fetch;
 
@@ -11,16 +12,6 @@ const OUTCOMES = new Set(['ok', 'failed', 'stopped', 'interrupted', 'abandoned']
 const UNAVAILABLE_REASONS = new Set<HomeUnavailableReason>([
   'attention-unavailable', 'inbox-unavailable', 'schedules-unavailable', 'release-unavailable', 'outcomes-unavailable',
 ]);
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const expected = [...keys].sort();
-  const actual = Object.keys(value).sort();
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
 
 function allowedKeys(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = []): boolean {
   const keys = Object.keys(value);

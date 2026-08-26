@@ -2,6 +2,7 @@ import type { EntityBrief, EntityBuilderRequest, EntityDetail, EntityDetails, En
 import type { EntitySummary, OutputRef, RunRow, RunnableRef, ScheduleOccurrence } from '../../server/control/p2Contracts.ts';
 import { RUN_LIFECYCLE_KINDS } from '../../server/control/runLifecycle.ts';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient.ts';
+import { record } from './decodeGuards.ts';
 
 export type EntityCollection = 'agents' | 'workflows';
 export type EntityRequestScope = 'list' | 'detail';
@@ -16,10 +17,6 @@ export class EntityClientFailure extends Error {
     this.scope = scope;
     this.name = 'EntityClientFailure';
   }
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function exactKeys(value: Record<string, unknown>, required: readonly string[], optional: readonly string[] = []): boolean {

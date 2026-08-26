@@ -12,7 +12,12 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { renderMarkdown } from '../lib/markdown';
+import { getJson } from '../lib/http.ts';
 import '../styles/views/folder.css';
+
+// `getJson` now lives in `../lib/http.ts`; re-exported here so existing importers (Projects.tsx) are
+// byte-untouched.
+export { getJson };
 
 export interface TreeEntry {
   name: string;
@@ -31,12 +36,6 @@ interface TreeListing {
   entries: TreeEntry[];
 }
 
-/** GET a JSON endpoint, throwing on a non-2xx so callers can degrade gracefully. */
-export async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
-}
 
 // Endpoint URL builders — exported so views (and tests) share the exact query shape.
 export const treeUrl = (path: string): string => `/api/kb/tree?path=${encodeURIComponent(path)}`;

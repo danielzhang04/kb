@@ -1,4 +1,5 @@
 import type { HealthResponse, HealthRow, HealthSectionId, UnavailableRow } from '../../server/health/service.ts';
+import { record, exactKeys } from './decodeGuards.ts';
 
 // The closed §3.5 Deployment state union, duplicated here (never imported at runtime) the same way
 // `inboxClient.ts#DEPLOYMENT_ITEM_STATES` keeps the browser bundle free of server-only modules.
@@ -9,14 +10,6 @@ const DEPLOY_ROW_STATES = [
 
 export type HealthFetch = typeof fetch;
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  return actual.length === keys.length && actual.every((key, index) => key === [...keys].sort()[index]);
-}
 
 function string(value: unknown): value is string { return typeof value === 'string'; }
 function number(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }

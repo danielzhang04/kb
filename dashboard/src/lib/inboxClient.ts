@@ -6,6 +6,8 @@
 // P5 W6.1: the FOUR-source envelope. The decoder validates SHAPE only (it never recomputes the server's
 // sha256 revisions) and admits the two new item arms `deployment` + `asset-pull` (plus the projected
 // `deployment-escalation` subject). No compatibility union or adapter remains [P5-C22].
+import { record, exactKeys } from './decodeGuards.ts';
+
 export type InboxSourceKind = 'pr' | 'escalation' | 'deployment' | 'assetPull';
 export type InboxSourceErrorCode = 'unavailable' | 'timeout' | 'overflow' | 'invalid';
 const SOURCE_ERROR_CODES: readonly InboxSourceErrorCode[] = ['unavailable', 'timeout', 'overflow', 'invalid'];
@@ -87,15 +89,6 @@ export interface InboxResponse {
 
 export type FetchLike = typeof fetch;
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const wanted = [...keys].sort();
-  return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
-}
 
 function hex64(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
