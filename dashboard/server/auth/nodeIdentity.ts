@@ -21,7 +21,8 @@
  * No refusal body names any map contents — echoing the enrolled ids to an unauthenticated caller would
  * defeat the whole point of a root-owned map.
  */
-import { findPeerUid, readProcNetTables, type PeerUidResult } from './peerUid.ts';
+import { readProcNetTables, resolvePeerUid, type PeerUidResult } from './peerUid.ts';
+import { headerFirstValue } from '../shared/decode.ts';
 import { NODE_ID, isRevokedNode, resolveHostForNode, type HostNodeMap } from './hostNodeMapContracts.ts';
 import type { HostNodeMapLoad } from './hostNodeMap.ts';
 import type { HostKind } from '../control/p2Contracts.ts';
@@ -57,16 +58,7 @@ function failure(reason: NodeIdentityReason): NodeIdentityResult {
 }
 
 function header(req: NodeRequestLike, name: string): string | undefined {
-  const raw = req.headers[name];
-  return Array.isArray(raw) ? raw[0] : raw;
-}
-
-/**
- * Exactly loopback, nothing else in 127/8 — the same tight set the operator authenticator uses, for the
- * same reason: `startsWith('127.')` would admit `127.0.0.2`, the source-address spoof `peerUid.ts` guards.
- */
-function isLoopbackAddress(address: string | undefined): boolean {
-  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+  return headerFirstValue(req.headers[name]);
 }
 
 export interface NodePeerDeps {
@@ -80,20 +72,7 @@ export interface NodePeerDeps {
  */
 export function resolveNodePeer(req: NodeRequestLike, deps: NodePeerDeps = {}): PeerUidResult {
   const readTables = deps.readTables ?? (() => readProcNetTables());
-  const socket = req.socket;
-  const remoteAddress = socket?.remoteAddress;
-  const localAddress = socket?.localAddress;
-  const remotePort = socket?.remotePort;
-  const localPort = socket?.localPort;
-  if (!isLoopbackAddress(remoteAddress) || !isLoopbackAddress(localAddress)
-    || !Number.isInteger(remotePort) || !Number.isInteger(localPort)) {
-    return { ok: false, reason: 'peer-socket-not-found' };
-  }
-  return findPeerUid({
-    localAddress: localAddress!, localPort: localPort!,
-    remoteAddress: remoteAddress!, remotePort: remotePort!,
-    tables: readTables(),
-  });
+  return resolvePeerUid(req, readTables);
 }
 
 /**
