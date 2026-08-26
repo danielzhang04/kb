@@ -9,6 +9,9 @@ import type {
   CreateAssetPullIntentInput,
   UpdateAssetPullIntentInput,
 } from './types.ts';
+import { hasExactKeys, isCanonicalTimestamp, isNonEmpty, isPlainRecord } from './recordShape.ts';
+
+export { isCanonicalTimestamp };
 
 export const ASSET_PULL_STATES = [
   'pending', 'in-flight', 'succeeded', 'failed', 'offline',
@@ -44,27 +47,6 @@ const ASSET_PULL_RESULT_KEYS = ['outcome', 'receiptAt', 'errorCode'] as const;
 
 const INTENT_REF_RE = /^assetpull-[0-9a-f]{32}$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    && Object.getPrototypeOf(value) === Object.prototype;
-}
-
-function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const keys = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return keys.length === sortedExpected.length
-    && keys.every((key, index) => key === sortedExpected[index]);
-}
-
-function isNonEmpty(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0 && !value.includes('\0');
-}
-
-export function isCanonicalTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value))
-    && new Date(value).toISOString() === value;
-}
 
 function isAttempts(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= ASSET_PULL_MAX_ATTEMPTS;

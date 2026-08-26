@@ -8,6 +8,9 @@ import type {
   TransitionDeploymentInput,
 } from './types.ts';
 import { MAX_DEPLOYMENT_OPERATION_RECEIPTS } from './controlPlaneLimits.ts';
+import { hasExactKeys, isCanonicalTimestamp, isNonEmpty, isPlainRecord } from './recordShape.ts';
+
+export { isCanonicalTimestamp };
 
 export const DEPLOYMENT_STATES = [
   'waiting-confirmation',
@@ -61,27 +64,6 @@ const PATCH_FIELDS = [
 
 function assertNever(value: never): never {
   throw new Error(`unhandled deployment state ${String(value)}`);
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    && Object.getPrototypeOf(value) === Object.prototype;
-}
-
-function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const keys = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return keys.length === sortedExpected.length
-    && keys.every((key, index) => key === sortedExpected[index]);
-}
-
-function isNonEmpty(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0 && !value.includes('\0');
-}
-
-export function isCanonicalTimestamp(value: unknown): value is string {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value))
-    && new Date(value).toISOString() === value;
 }
 
 function isNullableTimestamp(value: unknown): value is string | null {
