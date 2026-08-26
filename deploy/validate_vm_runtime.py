@@ -119,7 +119,7 @@ BROKER_LISTEN_DIRECTIVES = ("ListenStream", "ListenDatagram", "ListenSequentialP
 BROKER_PRIVILEGE_TOKENS = ("sudo", "setuid", "setgid", "pkexec", "su ")
 
 # --- P6 node-proxy + WhoIs shim units (dashboard-v3 §3.3) -------------------------------------
-# Nine frozen tables, set-equality-checked per section by `_exact_directives` and pairwise-equal to the
+# Eight frozen tables, set-equality-checked per section by `_exact_directives` and pairwise-equal to the
 # shipped unit files, following the broker's vocabulary exactly. An unlisted section is an unfrozen section.
 NODE_PROXY_SERVICE_UNIT = "kb-node-proxy.service"
 WHOIS_SERVICE_UNIT = "kb-whois.service"
@@ -212,14 +212,13 @@ WHOIS_SOCKET_UNIT_SECTION = {
 }
 WHOIS_SOCKET_INSTALL_SECTION = {"WantedBy": "sockets.target"}
 
-# The nine frozen tables, keyed for pairwise (unit-file vs dict) testing.
+# The eight frozen tables, keyed for pairwise (unit-file vs dict) testing.
 NODE_WHOIS_FROZEN_TABLES = {
     "NODE_PROXY_SERVICE_DIRECTIVES": (NODE_PROXY_SERVICE_UNIT, "Service", NODE_PROXY_SERVICE_DIRECTIVES),
     "NODE_PROXY_SERVICE_UNIT_SECTION": (NODE_PROXY_SERVICE_UNIT, "Unit", NODE_PROXY_SERVICE_UNIT_SECTION),
     "NODE_PROXY_SERVICE_SECTIONS": (NODE_PROXY_SERVICE_UNIT, "Install", NODE_PROXY_SERVICE_INSTALL_SECTION),
     "WHOIS_SERVICE_DIRECTIVES": (WHOIS_SERVICE_UNIT, "Service", WHOIS_SERVICE_DIRECTIVES),
     "WHOIS_SERVICE_UNIT_SECTION": (WHOIS_SERVICE_UNIT, "Unit", WHOIS_SERVICE_UNIT_SECTION),
-    "WHOIS_SERVICE_SECTIONS": (WHOIS_SERVICE_UNIT, "Service", WHOIS_SERVICE_DIRECTIVES),
     "WHOIS_SOCKET_DIRECTIVES": (WHOIS_SOCKET_UNIT, "Socket", WHOIS_SOCKET_DIRECTIVES),
     "WHOIS_SOCKET_UNIT_SECTION": (WHOIS_SOCKET_UNIT, "Unit", WHOIS_SOCKET_UNIT_SECTION),
     "WHOIS_SOCKET_INSTALL_SECTION": (WHOIS_SOCKET_UNIT, "Install", WHOIS_SOCKET_INSTALL_SECTION),

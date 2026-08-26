@@ -466,8 +466,8 @@ NODE_WHOIS_UNITS = {
 
 
 @pytest.mark.parametrize("table_name", list(validate_vm_runtime.NODE_WHOIS_FROZEN_TABLES))
-def test_the_nine_frozen_tables_match_the_shipped_unit_section(table_name):
-    """Each of the nine frozen tables is set-equal to its unit-file section (pairwise-exact)."""
+def test_the_eight_frozen_tables_match_the_shipped_unit_section(table_name):
+    """Each of the eight frozen tables is set-equal to its unit-file section (pairwise-exact)."""
     unit, section, expected = validate_vm_runtime.NODE_WHOIS_FROZEN_TABLES[table_name]
     text = (SYSTEMD / unit).read_text(encoding="utf-8")
     from_unit = dict(validate_vm_runtime.parse_unit(text)[section])
