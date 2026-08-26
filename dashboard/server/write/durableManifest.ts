@@ -2,8 +2,12 @@
 // `routeDurable` receipt union [P4-C13, P4-C21, P4-C30, P4-C32]. Types and strict decoders ONLY —
 // W0 adds no publisher, no worktree preparation, and no git capability here. W2 extends
 // `write/branch.ts#routeDurable` in place to consume these types.
-import { createHash } from 'node:crypto';
 import type { AsyncPrResult } from './asyncGit.ts';
+// The four generic primitives below now live in the shared-primitives home; imported for this module's
+// own internal use and re-exported so durableManifest's 15 existing importers stay byte-untouched.
+import { ContractDecodeError } from '../shared/contractDecodeError.ts';
+import { sha256Hex, isCommitSha, isDigestSha256 } from '../shared/hashing.ts';
+export { ContractDecodeError, sha256Hex, isCommitSha, isDigestSha256 };
 
 export const DURABLE_PATH_MANIFEST_SCHEMA = 'kb.durable-path-manifest/v1';
 export const MAX_MANIFEST_RELPATHS = 32;
@@ -62,29 +66,6 @@ void _pinnedIsAsyncPrResult;
 export type RouteDurableReceipt =
   | { readonly mode: 'pr'; readonly branch: string; readonly pr: PinnedAsyncPrResult }
   | { readonly mode: 'coordination'; readonly branch: typeof OPS_BRANCH; readonly commit: string };
-
-export class ContractDecodeError extends Error {
-  readonly field: string;
-  constructor(field: string, detail: string) {
-    super(`${field}: ${detail}`);
-    this.name = 'ContractDecodeError';
-    this.field = field;
-  }
-}
-
-export function sha256Hex(input: string): string {
-  return createHash('sha256').update(input, 'utf8').digest('hex');
-}
-
-const HEX40 = /^[0-9a-f]{40}$/;
-const HEX64 = /^[0-9a-f]{64}$/;
-
-export function isCommitSha(value: unknown): value is string {
-  return typeof value === 'string' && HEX40.test(value);
-}
-export function isDigestSha256(value: unknown): value is string {
-  return typeof value === 'string' && HEX64.test(value);
-}
 
 export function purposeMode(purpose: DurableManifestPurpose): DurableManifestMode {
   return COORDINATION_PURPOSES.includes(purpose) ? 'coordination' : 'pr';
