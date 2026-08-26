@@ -38,12 +38,14 @@ import {
 } from '../schedules/seedImport.ts';
 import type {
   IterationLoop,
-  IterationRequest,
   JsonObject,
   JsonValue,
   RunLifecycle,
 } from './types.ts';
 import type { ProposalIterationGroup, ProposalReview } from './proposal.ts';
+import {
+  canonicalJson, clone, isPlainRecord, iterationDefinitionHash, iterationRequestFingerprint, sha256,
+} from './controlHashing.ts';
 import type {
   QuarantinedRunBundle,
   StoreDocument,
@@ -191,24 +193,6 @@ type LegacyStoreMigrationBundle = Pick<StoreDocument,
     reviewLoops?: LegacyStoreReviewLoopMigrationRow[];
     reviewReceipts?: LegacyStoreReviewReceiptMigrationRow[];
   };
-
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
-
-function canonicalJson(value: JsonValue): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
-}
-
-function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-}
 
 function validNonEmpty(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max && !value.includes('\0');
@@ -463,20 +447,6 @@ function prepareLegacyStoreMigration(document: StoreDocument): boolean {
     }
   }
   return changed;
-}
-
-function iterationDefinitionHash(group: ProposalIterationGroup): string {
-  return sha256(canonicalJson(group as unknown as JsonValue));
-}
-
-function iterationRequestBody(request: StoredIterationRequest): IterationRequest {
-  const { subject: _subject, runRef: _runRef, operationKey: _operationKey,
-    operationFingerprint: _operationFingerprint, ...body } = request;
-  return body;
-}
-
-function iterationRequestFingerprint(request: StoredIterationRequest): string {
-  return sha256(canonicalJson(iterationRequestBody(request) as unknown as JsonValue));
 }
 
 export function legacyGroupForStages(

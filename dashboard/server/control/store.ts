@@ -8,6 +8,9 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
+import {
+  canonicalJson, clone, isPlainRecord, iterationDefinitionHash, iterationRequestFingerprint, sha256,
+} from './controlHashing.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import {
   persistControlDocumentSync,
@@ -1217,22 +1220,12 @@ export function emptyStoreDocumentForTest(): StoreDocument {
   };
 }
 
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
-
 function ok<T>(value: T, replayed?: boolean): ControlResult<T> {
   return replayed ? { ok: true, value, replayed: true } : { ok: true, value };
 }
 
 function fail<T>(reason: Extract<ControlResult<T>, { ok: false }>['reason'], detail: string): ControlResult<T> {
   return { ok: false, reason, detail };
-}
-
-function canonicalJson(value: JsonValue): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
 }
 
 /** Windows production invocation: `py -3 deploy/control_plane_schema.py --round-trip-v3` (stdin JSON). */
@@ -1263,10 +1256,6 @@ export function validateGeneratedPythonControlPlaneRoundTrip(document: StoreDocu
   if (canonicalJson(restored as JsonValue) !== canonicalJson(genericPersistenceDocument(document) as unknown as JsonValue)) {
     throw new Error('generated Python control-plane round trip changed the migrated document');
   }
-}
-
-function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 export function proposalSnapshotHash(snapshot: JsonObject): string {
@@ -1314,10 +1303,6 @@ function validIterationArtifactSnapshot(
       : value.afterSize === null && value.afterSha256 === null)
     && value.byteIdentical === (value.regularFile && value.afterRegularFile
       && value.size === value.afterSize && value.sha256 === value.afterSha256);
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 }
 
 /**
@@ -2573,20 +2558,6 @@ function validateStoreDocument(document: StoreDocument): void {
     validateAuthorized20260731RecoveryDurability(bundle.humanRequests, bundle.events);
     validateAuthorized20260801FailedRunDurability(bundle.events, bundle.run);
   }
-}
-
-function iterationDefinitionHash(group: ProposalIterationGroup): string {
-  return sha256(canonicalJson(group as unknown as JsonValue));
-}
-
-function iterationRequestBody(request: StoredIterationRequest): IterationRequest {
-  const { subject: _subject, runRef: _runRef, operationKey: _operationKey,
-    operationFingerprint: _operationFingerprint, ...body } = request;
-  return body;
-}
-
-function iterationRequestFingerprint(request: StoredIterationRequest): string {
-  return sha256(canonicalJson(iterationRequestBody(request) as unknown as JsonValue));
 }
 
 function iterationResidue(
