@@ -177,6 +177,22 @@ function renderEscalationCard(intent: EscalationCardIntent, cardId: string, crea
  * the publisher — `createReconciliationPublisher` binds these into the composed publisher the surface
  * exposes for step 2.
  */
+/**
+ * Resolve the store's receipt port LAZILY: composition must stay side-effect free for every context —
+ * including tests that inject a partial control-store stub — so the store method is only reached once a
+ * caller actually reads/prepares/publishes an intent. Verbatim of the two former inline wrappers.
+ */
+function lazyReceiptPort(store: ControlPlaneStore): ReconciliationReceiptPort {
+  let receiptsPort: ReconciliationReceiptPort | null = null;
+  const resolveReceipts = (): ReconciliationReceiptPort =>
+    (receiptsPort ??= store.reconciliationReceiptPort());
+  return {
+    read: (key) => resolveReceipts().read(key),
+    prepare: (receipt) => resolveReceipts().prepare(receipt),
+    publish: (receipt) => resolveReceipts().publish(receipt),
+  };
+}
+
 export function createReconciliationRealPorts(deps: ReconciliationRealPortDeps): ReconciliationPublisherPorts {
   const runGit = deps.runGit ?? defaultGitRunner;
   const now = deps.now ?? (() => new Date().toISOString());
@@ -314,14 +330,7 @@ export function createReconciliationRealPorts(deps: ReconciliationRealPortDeps):
   // Resolve the store's receipt port LAZILY: composition (`makeSurfaceContext`) must stay side-effect
   // free for every context — including tests that inject a partial control-store stub — and step 1 never
   // calls the publisher, so the store method is only reached once step 2 actually publishes an intent.
-  let receiptsPort: ReconciliationReceiptPort | null = null;
-  const resolveReceipts = (): ReconciliationReceiptPort =>
-    (receiptsPort ??= deps.store.reconciliationReceiptPort());
-  const receipts: ReconciliationReceiptPort = {
-    read: (key) => resolveReceipts().read(key),
-    prepare: (receipt) => resolveReceipts().prepare(receipt),
-    publish: (receipt) => resolveReceipts().publish(receipt),
-  };
+  const receipts = lazyReceiptPort(deps.store);
 
   return {
     receipts,
@@ -392,13 +401,6 @@ export function createLearningRecordRetire(
 ): (input: LearningRecordRetireInput) => Promise<ReconciliationResult> {
   const now = deps.now ?? (() => new Date().toISOString());
   const retire = createDurableRetirePort(deps);
-  let receiptsPort: ReconciliationReceiptPort | null = null;
-  const resolveReceipts = (): ReconciliationReceiptPort =>
-    (receiptsPort ??= deps.store.reconciliationReceiptPort());
-  const receipts: ReconciliationReceiptPort = {
-    read: (key) => resolveReceipts().read(key),
-    prepare: (receipt) => resolveReceipts().prepare(receipt),
-    publish: (receipt) => resolveReceipts().publish(receipt),
-  };
+  const receipts = lazyReceiptPort(deps.store);
   return (input) => retireLearningRecords(input, { receipts, retire, clock: { now } });
 }
