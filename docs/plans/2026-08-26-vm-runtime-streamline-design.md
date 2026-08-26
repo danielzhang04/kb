@@ -155,3 +155,79 @@ call each out explicitly at execution.
 coherent `shared/` home and a sub-foldered `control/`. All behavior-identical. The pass also produced
 the P7 map: the placement-lease adapter (#3 non-goal) is the concrete thing to wire, and the
 W0-contract gap (#1) rides with it.
+
+
+## 8. Complexity-lens addendum (2026-08-26, second pass)
+
+A second 6-agent opus read (over-engineering lens, not dead/dup) confirmed: the server is
+**dense-but-load-bearing, not bloated** — it is a fail-closed, adversarially-reviewed control plane,
+and the "redundant"-looking defensive layers are intentional. Two real reducible buckets emerged.
+
+### Slice G - complexity condensation (behavior-identical; ~280-390 lines)
+- `agents/roster.ts` - remove the dead `io`/`defaults` advisory model (~50L): a second YAML pass +
+  decimal-normalization + deep-copy threading that NO route maps into `EntityDetails` and `src/`
+  never reads. The cleanest cut in the whole audit. (behavior-affecting only in that it drops
+  unread metadata; no observable behavior.)
+- `control/proposal.ts` - fold the 6 hand-repeated object-array validators (`validateArtifacts`/
+  `Checkpoints`/`HumanGates`/criteria/participants/routes) into one generic
+  `validateObjectArray(value,label,max,fields,itemFn)` twin of the existing `validateUniqueStringArray`
+  (~40-60L, error strings preserved). Do NOT touch the `StrictJsonReader` depth/dup-key control.
+- **launch <-> activation dedup** - `routes.ts activateRunUnderOwner` (~307L) and
+  `launch.ts executeApprovedLaunch` are two hand-parallel copies of the same
+  reconcile->compile->activate-roots->audit->dispatch ceremony, with the policy re-proof
+  (`reassertCompiledPolicy` == `currentPolicyMatches`) triplicated. Extract one shared
+  `reconcileCompileActivateRoots` body + one `compiledPolicyUnchanged` helper (~100-160L net).
+  This is EXTRACTION of a load-bearing security re-proof (makes "the two can never drift"
+  structural instead of manual), never deletion of a defense - do it under the 183KB execution test
+  suite, treat as the security-critical slice of this pass. (Pairs with Slice E's relocation of that
+  same block off `routes.ts`.)
+- Small idiom folds (behavior-identical, low risk): `execution.ts runToBoundary` blocked-outcome
+  closure (~15L) + `stageBoundary` mechanical mint-or-wait tail ONLY (keep the gate ladder, ~20L);
+  `store.ts` triple hydration-validation triad -> `assertHydrated` (~8L); `inbox/routes.ts:488` dead
+  `?409:409` ternary (~2L); `schedules/service.ts:126` re-throw of an already-unreachable validity
+  error (~4L).
+- Radar (dead-code lens, verify at Slice F): the inbox agent flagged **three coexisting Inbox
+  projection generations** (a P4 one reachable only by tests) - confirm and cut the superseded one
+  if truly orphaned.
+
+### Slice H - remove the bidirectional down-migration subsystem (APPROVED behavior-affecting)
+The one genuine large fat deposit, and the **only behavior-affecting slice in this pass** (Daniel
+approved 2026-08-26). Production ONLY ever migrates UP to `CONTROL_PLANE_SCHEMA_VERSION`
+(`store.ts:7314-7346,7418`); grep-confirmed **zero** non-test callers of any `downV*` edge,
+`applyMigrationEdgeForTest`, `restoreDownCarrier`, or `restoreP2DownCarrier`. The lossless-downgrade
+"carrier" trick (`downV2ToV1` stashes v2-only fields in a synthetic `__control-plane-migration__`
+event that `upV1ToV2` pops back) is a closed dead loop, and rollback is already served
+byte-identically by the exact-preimage backup (`persistence.ts:161`
+`writeControlPlaneMigrationBackupSync`/`restore...`), which is strictly better than a lossy
+down-migrate.
+- Remove: the down edges (`downV2ToV1` 887-925, `downV3ToV2` 1200-1233, `downV4ToV3` 1247-1251), both
+  carrier restorers + the carrier-push branches + the up-path carrier-*reads* (delete in lockstep),
+  the down while-loop in `migrateControlDocument` (1294-1305), the `applyMigrationEdgeForTest` down
+  branches, and the dedicated round-trip test surface.
+- Commit the policy explicitly in-code + in the schema docs: **"migrations are up-only; rollback is
+  restore-from-backup, never down-migrate."**
+- **Extra gating (not behavior-identical):** this is the ONE slice exempt from the "no behavior
+  change" success condition (it removes an unused capability + its tests). Requires: its own opus
+  adversarial review confirming no production path invokes any removed symbol; the full migration
+  ladder still chains v1->v4 up; a v3-doc + a fresh-doc both still load; the backup->restore rollback
+  path still works end-to-end; and a note that the P6 `test_migrate_schema_versions.py` /
+  `test_control_plane_schema.py` expectations are updated for up-only, never weakened to pass.
+
+### Kept by decision (do NOT cut - recorded so it is not re-litigated)
+- **Authored iteration-group DSL** (`workflows/defs.ts`, ~395L: the `iterationGroups:` grammar +
+  `validateIterationGroups`) - a hand-authoring surface for N-party agent-debate loops that every
+  production workflow bypasses via the 2-field `review:` shorthand. It is speculative generality but
+  a **deliberate product bet** (Daniel, 2026-08-26: KEEP). Fully wired + tested; the
+  `review:`->engine path is independent. Not fat to cut.
+- The `canonicalResultIntegrator` legacy-journal reader (~150-190L) and `proposal.ts`
+  `isLegacyCompilerAlias` - removable ONLY if the VM provably holds zero pre-cutover records;
+  unverifiable read-only, so KEEP under the skeptic rule (revisit if a records audit ever proves the
+  store is clean).
+
+### Updated impact
+- Behavior-identical net (Slice A-G): **~1,900-2,400 lines** cleaner + store.ts 7,474 -> ~6,000.
+- Plus the approved Slice H (behavior-affecting, up-only migrations): **~200 more prod lines** + a
+  large round-trip test surface removed.
+- Combined: **~2,100-2,600 net fewer lines** (~2-2.5% of the ~113K runtime), plus a genuinely
+  simpler migration story. Server is confirmed dense-not-bloated; this is the honest ceiling of
+  safe reduction without dropping built-ahead P6/P7 capability.
