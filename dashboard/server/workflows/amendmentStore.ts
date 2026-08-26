@@ -1,6 +1,6 @@
 /** Durable, dashboard-owned state for workflow definition amendments. This is deliberately outside
  * the repository: a pending PR is runtime control state, not canonical workflow content. */
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { renameWithRetrySync } from '../atomicRename.ts';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -42,7 +42,7 @@ function isSafePrUrl(value: unknown): value is string {
 }
 
 function key(workflowPath: string): string {
-  return createHash('sha256').update(workflowPath, 'utf8').digest('hex');
+  return sha256Hex(workflowPath);
 }
 
 function validate(value: unknown, workflowPath: string): PendingDefinitionAmendment | null {

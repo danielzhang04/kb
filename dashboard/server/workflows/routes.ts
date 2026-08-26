@@ -16,7 +16,7 @@
  * injected (production state), the run publishes canonical cards and then stalls at the existing
  * activation gate (`activationGated: true`), exactly like a manual proposal launch does today.
  */
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -1008,11 +1008,11 @@ function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRu
 }
 
 function workflowRevision(ctx: SurfaceContext, scanned: readonly ScannedDef[]): string {
-  return createHash('sha256').update(JSON.stringify({
+  return sha256Hex(JSON.stringify({
     documentRevision: ctx.controlStore.getControlDocumentMetadata().documentRevision,
     scheduleCollectionRevision: ctx.controlStore.getScheduleSnapshot().collectionRevision,
     definitions: scanned.map((item) => [item.entry.ref, item.entry.sourceHash]),
-  })).digest('hex');
+  }));
 }
 
 function workflowList(ctx: SurfaceContext): EntityList {

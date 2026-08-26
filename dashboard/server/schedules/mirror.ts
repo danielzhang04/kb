@@ -6,7 +6,7 @@
 // bytes, renderer process, merge proof) arrives as an injected port.
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type {
   ScheduleMirrorFilePort,
   ScheduleMirrorMergeProofPort,
@@ -68,7 +68,7 @@ export function scheduleMirrorSnapshotDigest(rows: readonly ScheduleMirrorRow[])
       agent: row.agent, armed: row.armed, mirrorPath: row.mirrorPath,
     }))
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
-  return createHash('sha256').update(`schedule-mirror-snapshot\u0000${JSON.stringify(canonical)}`).digest('hex');
+  return sha256Hex(`schedule-mirror-snapshot\u0000${JSON.stringify(canonical)}`);
 }
 
 export function createPythonScheduleMirrorRenderer(options: {

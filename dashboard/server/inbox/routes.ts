@@ -48,7 +48,6 @@ import { DeploymentService, DeploymentServiceError } from '../deploy/deploymentS
 import { AssetPullService, AssetPullServiceError } from '../deploy/assetPullService.ts';
 import { closePtysAndContinue, type CloseAndContinuePorts } from '../deploy/quiescence.ts';
 import type { ActivationReaderPort } from '../home/project.ts';
-import { createHash } from 'node:crypto';
 
 /** The ports the route reads through; every side effect is injectable so tests reach no real `gh`/tree. */
 export interface InboxRoutePorts {
@@ -117,9 +116,7 @@ export function createGhSubprocessPort(repoRoot: string): SubprocessPort {
 function escalationRead(ports: InboxRoutePorts, repoRoot: string): EscalationRead {
   const index = (ports.indexRepo ?? indexRepo)(repoRoot);
   const items = projectEscalationSubjects(index);
-  const revision = createHash('sha256')
-    .update(items.map((item) => `${item.id}\u0000${item.revision}`).join(''), 'utf8')
-    .digest('hex');
+  const revision = sha256Hex(items.map((item) => `${item.id}\u0000${item.revision}`).join(''));
   return { items, state: { status: 'verified', revision, verifiedAt: ports.now() } };
 }
 
@@ -480,7 +477,7 @@ export function registerInboxActionRoutes(scope: FastifyInstance, ctx: SurfaceCo
       return reply.code(400).send({ error: 'invalid-session-ids' });
     }
     const sessionIds = rawIds as string[];
-    const digest = createHash('sha256').update([...sessionIds].sort().join('\u0000')).digest('hex');
+    const digest = sha256Hex([...sessionIds].sort().join('\u0000'));
     const refusal = gateCeremony(ports, { decision: 'close-ptys-and-continue', subject: 'pty-quiescence', ref, revision: `deployment:${revision}`, digest, request });
     if (refusal) return reply.code(refusal.status).send({ error: refusal.code });
     const result = await closePtysAndContinue(ports.quiescence, { deploymentRef: ref, expectedRevision: revision, sessionIds });

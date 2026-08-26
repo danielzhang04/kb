@@ -6,7 +6,7 @@
 // superset, subset, or re-derived set; any non-`ok` `closeAndWait` result (including a timeout) refuses
 // the whole action and leaves the Deployment revision untouched; only an exact confirmed close advances
 // the state, recorded under the `human-operator` actor.
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type { ControlResult, Deployment } from '../control/types.ts';
 import type { DeploymentSessionCloser } from '../pty/sessionRecord.ts';
 
@@ -62,7 +62,7 @@ function sameIdSet(left: readonly string[], right: readonly string[]): boolean {
 }
 
 function sortedIdsDigest(ids: readonly string[]): string {
-  return createHash('sha256').update(JSON.stringify([...ids].sort())).digest('hex');
+  return sha256Hex(JSON.stringify([...ids].sort()));
 }
 
 /**

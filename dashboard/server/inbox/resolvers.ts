@@ -7,7 +7,7 @@
 //
 // The run and STOP resolvers create or link escalation cards. Runs and STOP are never Inbox
 // subjects (`design:244-273,597`), so nothing here emits an item kind, a next-fire, or a run gate.
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type { RepositoryPin } from '../runtime/repoPin.ts';
 import {
   PR_LIST_ROW_LIMIT, PR_LIST_TIMEOUT_MS, ghPrListArgv, inboxItemId, prHref, prSubjectKeyString,
@@ -28,7 +28,7 @@ export interface SubprocessResult {
 export type SubprocessPort = (request: SubprocessRequest) => Promise<SubprocessResult>;
 
 function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
+  return sha256Hex(value);
 }
 
 function failed(errorCode: InboxSourceErrorCode): PrRead {

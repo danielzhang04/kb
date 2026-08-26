@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { existsSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, fsyncSync, closeSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -75,7 +75,7 @@ export function canonicalJson(value: unknown): string {
   return `${JSON.stringify(sorted(value)).replace(/[^\x00-\x7f]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`)}\n`;
 }
 
-function sha256(value: string): string { return createHash('sha256').update(value, 'utf8').digest('hex'); }
+function sha256(value: string): string { return sha256Hex(value); }
 function sameKeys(value: unknown, expected: Set<string>): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value as Record<string, unknown>).length === expected.size

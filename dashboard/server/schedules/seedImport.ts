@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { RunnableRef } from '../control/p2Contracts.ts';
@@ -154,9 +154,7 @@ function normalizedHeartbeatPath(path: HeartbeatSeedPath): HeartbeatSeedPath {
 }
 
 export function seedScheduleId(path: HeartbeatSeedPath, cadenceName: string): string {
-  return createHash('sha256')
-    .update(`schedule\0${normalizedHeartbeatPath(path)}\0${cadenceName}`, 'utf8')
-    .digest('hex');
+  return sha256Hex(`schedule\0${normalizedHeartbeatPath(path)}\0${cadenceName}`);
 }
 
 function wordsFor(source: string): string | null {
@@ -295,12 +293,12 @@ export async function importHeartbeatScheduleSeedsV1(
       owner,
       cadence: { source: seed.schedule ?? '', words: words ?? seed.schedule ?? '' },
       sourceBytes: seed.sourceBytes,
-      sourceDigest: createHash('sha256').update(seed.sourceBytes, 'utf8').digest('hex'),
+      sourceDigest: sha256Hex(seed.sourceBytes),
       armed: loaded.protectedMain && seed.sourceArmed !== false && supported,
       disarmedReason: !supported ? 'seed-cadence-unsupported' : !loaded.protectedMain ? 'seed-not-on-protected-main' : null,
     };
   }).sort((left, right) => left.path.localeCompare(right.path) || left.name.localeCompare(right.name));
-  const seedDigest = createHash('sha256').update(seeds.map((seed) => `${seed.id}\0${seed.sourceDigest}`).join('\0'), 'utf8').digest('hex');
+  const seedDigest = sha256Hex(seeds.map((seed) => `${seed.id}\0${seed.sourceDigest}`).join('\0'));
   const marker: ScheduleSeedImportMarker = {
     version: 1,
     releaseSha: loaded.releaseSha,

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { registerRunPtyRoutes } from './runPtyRoutes.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
@@ -1823,7 +1823,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         appendResponseEvent(actorSubject, request) {
           const key = request.response?.idempotencyKey;
           if (!key) throw new Error('human response event requires a committed response');
-          const identity = createHash('sha256').update(`${request.requestRef}\u0000${key}`).digest('hex');
+          const identity = sha256Hex(`${request.requestRef}\u0000${key}`);
           const marker = `human-response:${identity}`;
           if (hasEventMarker(actorSubject, request.runRef, marker)) return;
           const event = ctx.controlStore.appendEvent(actorSubject, request.runRef, {
@@ -1837,7 +1837,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         resumeRunAfterBoundaryAccepted(actorSubject, runRef, answeredRequest) {
           const key = answeredRequest.response?.idempotencyKey;
           if (!key) throw new Error('human response resume requires a committed response');
-          const identity = createHash('sha256').update(`${answeredRequest.requestRef}\u0000${key}`).digest('hex');
+          const identity = sha256Hex(`${answeredRequest.requestRef}\u0000${key}`);
           const marker = `human-response-resume:${identity}`;
           if (hasEventMarker(actorSubject, runRef, marker)) return;
           const intent = ctx.controlStore.appendEvent(actorSubject, runRef, {

@@ -67,7 +67,7 @@
  *     (throws) anything that doesn't decode to exactly a 4-element string array — fail closed on a
  *     malformed challenge rather than silently accepting a partial one.
  */
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 // `workOrderOf` lives in its own pure module (no node builtins) so the browser Approvals corroboration
 // panel can import it WITHOUT pulling this file's `node:crypto` into the client bundle. Re-exported
 // below so server-side callers of `workOrderOf` from `challenge.ts` keep working unchanged.
@@ -102,7 +102,7 @@ export function canonicalCardPayload(card: CanonicalCard, body: string): string 
 
 /** SHA-256 of the UTF-8 bytes of `payload`, as lowercase hex. */
 export function contentHash(payload: string): string {
-  return createHash('sha256').update(payload, 'utf-8').digest('hex');
+  return sha256Hex(payload);
 }
 
 export interface ChallengeParts {

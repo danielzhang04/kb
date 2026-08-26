@@ -8,7 +8,7 @@
  * is a stable, deterministic function of the definition content, so the same definition always compiles
  * to the same proposal identity.
  */
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
 import {
   ARTIFACT_PRODUCING_REQUEST_KINDS,
@@ -104,7 +104,7 @@ function deriveProposalId(
     ...(iterationGroups.length > 0 ? { iterationGroups } : {}),
     ...(def.manager ? { manager: { agentId: def.manager.agentId, profileId: def.manager.profileId } } : {}),
   });
-  const hash = createHash('sha256').update(preimage, 'utf8').digest('hex');
+  const hash = sha256Hex(preimage);
   return `wf-${hash.slice(0, 48)}`;
 }
 

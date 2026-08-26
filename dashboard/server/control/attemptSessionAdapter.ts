@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import {
   boundSummary,
   DEFAULT_MAX_OUTPUT_BYTES,
@@ -294,7 +294,7 @@ function canonical(value: unknown): unknown {
 }
 
 export function attemptDeclarationFingerprint(input: ApprovedAttemptDeclaration): string {
-  return createHash('sha256').update(JSON.stringify(canonical(input))).digest('hex');
+  return sha256Hex(JSON.stringify(canonical(input)));
 }
 
 function attemptAgentId(input: ApprovedAttemptDeclaration): string {

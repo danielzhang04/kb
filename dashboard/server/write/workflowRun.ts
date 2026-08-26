@@ -5,7 +5,8 @@
  * intent and dependencies; the server supplies card ids, the workflow run id, claim tokens, and routing.
  * Every card is prepared and published by one fixed Python subprocess through scripts/cards.py.
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verifySession, isInternalServiceCaller } from '../auth/session.ts';
@@ -341,7 +342,7 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
 
 /** Stable per-run/stage card identity permits exact crash reconciliation without trusting filenames. */
 export function workflowCardId(runId: string, stageId: string): string {
-  return `wf-${createHash('sha256').update(`${runId}\0${stageId}`, 'utf8').digest('hex').slice(0, 24)}`;
+  return `wf-${sha256Hex(`${runId}\0${stageId}`).slice(0, 24)}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

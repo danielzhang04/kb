@@ -1,7 +1,7 @@
 import type { ConnectorGrant, CreateEntityRequest, EntityBuilderRequest, RunnableSelector } from './contracts.ts';
 import type { RunnableRef } from '../control/p2Contracts.ts';
 import type { HostAdvertisement } from '../placement/contracts.ts';
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 
 export interface EntityBuilderCatalog {
   models: readonly string[];
@@ -90,7 +90,7 @@ export function assertCapabilitiesAdvertised(
 }
 
 export function builderRequestFingerprint(ref: RunnableRef, expectedSourceRevision: string, request: EntityBuilderMaterialization): string {
-  return createHash('sha256').update(JSON.stringify({ ref, expectedSourceRevision, request })).digest('hex');
+  return sha256Hex(JSON.stringify({ ref, expectedSourceRevision, request }));
 }
 
 function trustedSelector(value: RunnableSelector): RunnableSelector {

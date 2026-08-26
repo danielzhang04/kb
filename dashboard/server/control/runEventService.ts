@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import {
   mapCodexStreamLine,
   mapStreamLine as mapClaudeStreamLine,
@@ -208,7 +208,7 @@ function normalizedSources(sources: readonly RunEventSource[]): RunEvent[] {
 }
 
 function revisionOf(items: readonly RunEvent[]): string {
-  return createHash('sha256').update(JSON.stringify(items)).digest('hex');
+  return sha256Hex(JSON.stringify(items));
 }
 
 export function createRunEventService(port: RunEventSourcePort): RunEventService {

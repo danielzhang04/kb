@@ -7,7 +7,7 @@
  * every layout it cannot prove safe.
  */
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import { parseWorkflowDef, type WorkflowDef } from './defs.ts';
@@ -35,7 +35,7 @@ export function builderAmendmentFingerprint(input: {
   baseSourceHash: string;
   request: unknown;
 }): string {
-  return createHash('sha256').update(JSON.stringify(canonicalValue(input)), 'utf8').digest('hex');
+  return sha256Hex(JSON.stringify(canonicalValue(input)));
 }
 
 /** The single durable effect gate for Agent and Workflow builder create/edit operations. */

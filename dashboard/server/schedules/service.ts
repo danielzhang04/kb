@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from 'fastify';
 import { OPERATOR_SUBJECT } from '../auth/operator.ts';
 import { verifiedSession } from '../http/middleware.ts';
@@ -144,9 +144,7 @@ export function normalizeCadenceInput(input: CadenceInput): { source: string; wo
 }
 
 export function operatorScheduleId(owner: Pick<RunnableRef, 'type' | 'id'>, clientIdempotencyKey: string): string {
-  return createHash('sha256')
-    .update(`schedule\0operator\0${owner.type}\0${owner.id}\0${clientIdempotencyKey}`, 'utf8')
-    .digest('hex');
+  return sha256Hex(`schedule\0operator\0${owner.type}\0${owner.id}\0${clientIdempotencyKey}`);
 }
 
 function sameOwner(left: RunnableRef, right: RunnableRef): boolean {
@@ -162,9 +160,7 @@ function canonicalValue(value: unknown): unknown {
 }
 
 function mutationFingerprint(key: ScheduleMutationReceiptKey, input: unknown): string {
-  return createHash('sha256')
-    .update(`schedule-mutation\0${key.operation}\0${key.target}\0${JSON.stringify(canonicalValue(input))}`, 'utf8')
-    .digest('hex');
+  return sha256Hex(`schedule-mutation\0${key.operation}\0${key.target}\0${JSON.stringify(canonicalValue(input))}`);
 }
 
 function replayedReceipt<T extends ScheduleMutationReceipt | DeleteScheduleReceipt>(

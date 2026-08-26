@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { WAKE_ACTION } from '../approvals/cardActions.ts';
 import type { CardProjection } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
@@ -44,7 +43,7 @@ function workOrder(card: CardProjection): string {
 
 function revision(card: CardProjection): string {
   const entries = Object.entries(card.meta).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-  return createHash('sha256').update(JSON.stringify([entries, card.body]), 'utf8').digest('hex');
+  return sha256Hex(JSON.stringify([entries, card.body]));
 }
 
 function projects(card: CardProjection): boolean {
@@ -60,7 +59,7 @@ function item(card: CardProjection): EscalationInboxItem {
   const runRef = text(card.meta['run-ref']);
   const stopEvent = text(card.meta['stop-event']);
   return {
-    id: createHash('sha256').update(`escalation\0${cardId}`, 'utf8').digest('hex'),
+    id: sha256Hex(`escalation\0${cardId}`),
     createdAt: new Date(epochSeconds * 1000).toISOString(),
     revision: revision(card),
     kind: 'escalation',

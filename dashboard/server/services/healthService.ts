@@ -15,7 +15,7 @@
 // so `src/views/Health.tsx`'s `row.value.code` render is untouched. No other section changes. W6.2 serves
 // these rows and owns the `healthClient` wall edit; W2 only BUILDS the service + its test. No route edited.
 
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type { HealthResponse } from '../health/service.ts';
 import type { ServiceReply } from './scheduleService.ts';
 
@@ -111,9 +111,7 @@ export async function readHealth(port: HealthServicePort, ifNoneMatch: string | 
     ...section,
     rows: section.rows.map(({ observedAt: _observedAt, ...row }) => row),
   }));
-  const revision = createHash('sha256')
-    .update(JSON.stringify({ scheduleCollectionRevision, sections: stableSections }))
-    .digest('hex');
+  const revision = sha256Hex(JSON.stringify({ scheduleCollectionRevision, sections: stableSections }));
   const etag = `"health:${revision}"`;
   if (ifNoneMatch === etag) return { status: 304, etag };
   return { status: 200, etag, body: response };

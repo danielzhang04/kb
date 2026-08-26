@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import {
   existsSync,
   lstatSync,
@@ -469,7 +470,7 @@ function canonical(value: unknown): string {
 }
 
 function digest(value: unknown): string {
-  return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
+  return sha256Hex(canonical(value));
 }
 
 function validCanonicalCardRef(operationKey: string, runRef: string, stageId: string, cardRef: string | null): boolean {

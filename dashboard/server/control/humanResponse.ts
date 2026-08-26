@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type { AuditEvent } from '../audit/log.ts';
 import type { RespondHumanRequestInput } from './store.ts';
 import type { HumanRequest, HumanRequestDecision } from './types.ts';
@@ -72,10 +72,10 @@ export interface HumanResponseService {
 const T3_KINDS = new Set<HumanRequest['kind']>(['approval', 'review', 'governance-refusal']);
 
 export function humanResponseDigest(input: Pick<HumanResponseInput, 'decision' | 'response'>): string {
-  return createHash('sha256').update(JSON.stringify({
+  return sha256Hex(JSON.stringify({
     decision: input.decision,
     response: input.response ?? null,
-  })).digest('hex');
+  }));
 }
 
 /** Purpose-bound preimage signed by WebAuthn. The wire challenge is base64url(UTF8(this string)). */
@@ -209,7 +209,7 @@ export function createHumanResponseService(options: {
 
 /** Server-side response digest for the deploy purpose: sha256 of the recomputed binding preimage. */
 export function deployDigest(preimage: DeployT3Preimage): string {
-  return createHash('sha256').update(deployT3Preimage(preimage), 'utf8').digest('hex');
+  return sha256Hex(deployT3Preimage(preimage));
 }
 
 /** Purpose-bound deploy challenge; the wire challenge is base64url(UTF8(the recomputed preimage)). */

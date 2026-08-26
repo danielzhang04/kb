@@ -4,7 +4,7 @@
  * Assistant text is untrusted process output. This module admits only one closed, versioned JSON
  * document and deliberately has no execution, filesystem, route, or persistence capability.
  */
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 
 export const PLAN_PROPOSAL_SCHEMA = 'kb.plan-proposal/v1' as const;
 export const PLAN_PROPOSAL_DIFF_SCHEMA = 'kb.plan-proposal-diff/v1' as const;
@@ -1541,7 +1541,7 @@ export function canonicalProposal(value: PlanProposal): string {
 }
 
 export function proposalContentHash(value: PlanProposal): string {
-  return createHash('sha256').update(canonicalProposal(value), 'utf8').digest('hex');
+  return sha256Hex(canonicalProposal(value));
 }
 
 /** Compute a detached, deeply immutable diff DTO directly from two validated proposal snapshots. */

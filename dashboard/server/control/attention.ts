@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import type { AttentionEnvelope, RunnableRef } from './p2Contracts.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
 
@@ -50,7 +50,7 @@ export function projectRunAttention(snapshot: RunAttentionSnapshot): AttentionEn
     else bump(workflows, ownerKey(item.owner));
   }
   return {
-    revision: createHash('sha256').update(JSON.stringify(pairs)).digest('hex'),
+    revision: sha256Hex(JSON.stringify(pairs)),
     pairs,
     agents,
     workflows,

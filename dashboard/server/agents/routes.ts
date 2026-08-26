@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -124,9 +124,7 @@ function projectionInput(ctx: SurfaceContext, declaration: DeclaredAgentDetail, 
 
 function entityRevision(ctx: SurfaceContext, declarations: readonly DeclaredAgentDetail[]): string {
   const store = ctx.controlStore.getControlDocumentMetadata();
-  return createHash('sha256')
-    .update(JSON.stringify({ documentRevision: store.documentRevision, scheduleCollectionRevision: ctx.controlStore.getScheduleSnapshot().collectionRevision, declarations: declarations.map((item) => [item.id, item.sourceHash]) }))
-    .digest('hex');
+  return sha256Hex(JSON.stringify({ documentRevision: store.documentRevision, scheduleCollectionRevision: ctx.controlStore.getScheduleSnapshot().collectionRevision, declarations: declarations.map((item) => [item.id, item.sourceHash]) }));
 }
 
 function agentList(ctx: SurfaceContext): EntityList {
@@ -240,7 +238,7 @@ function agentBuilderPort(ctx: SurfaceContext): EntityBuilderPort {
       let content: string;
       if (exists) {
         const source = readFileSync(activePath, 'utf8');
-        const revision = createHash('sha256').update(source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')).digest('hex');
+        const revision = sha256Hex(source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'));
         if (revision !== input.expectedSourceRevision) throw new AgentBuilderFailure(409, 'stale-source-revision');
         const patched = patchEntityBuilderSource('agent', source, input.request);
         if (!patched) throw new AgentBuilderFailure(409, 'agent-layout-unsupported');
@@ -249,7 +247,7 @@ function agentBuilderPort(ctx: SurfaceContext): EntityBuilderPort {
         if (input.expectedSourceRevision !== agentList(ctx).revision) throw new AgentBuilderFailure(409, 'stale-collection-revision');
         content = renderAgentBuilderSource(input.ref.id, input.request);
       }
-      const proposedSourceHash = createHash('sha256').update(content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')).digest('hex');
+      const proposedSourceHash = sha256Hex(content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'));
       return runBuilderAmendment(ctx.definitionAmendmentStore, {
         kind: exists ? 'agent-builder-edit' : 'agent-builder-create', entityPath: input.sourcePath,
         idempotencyKey: input.idempotencyKey, baseSourceHash: input.expectedSourceRevision, proposedSourceHash,

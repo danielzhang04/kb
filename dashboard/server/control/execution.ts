@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { createReadStream } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -520,9 +521,9 @@ export function canonicalStageResultHash(
   };
   const payload = { summary: result.summary, artifacts, changed, checkpoints };
   if (result.iterationOutcome !== undefined) {
-    return createHash('sha256').update(JSON.stringify({ ...payload, iterationOutcome }), 'utf8').digest('hex');
+    return sha256Hex(JSON.stringify({ ...payload, iterationOutcome }));
   }
-  return createHash('sha256').update(JSON.stringify({ ...payload, iterationOutcome }), 'utf8').digest('hex');
+  return sha256Hex(JSON.stringify({ ...payload, iterationOutcome }));
 }
 
 function validatedIterationOutcome(contract: IterationOutcomeContract, outcome: IterationOutcome): IterationOutcome | null {
