@@ -158,9 +158,18 @@ export class PreparedCoordinationCommitError extends Error {
   }
 }
 
+/**
+ * Parse a git `-z`/NUL-delimited porcelain payload into its non-empty entries. This folds ONLY the
+ * split-transform of the former `(await runGit(...)).split('\0').filter(len>0)` idiom — the `runGit`
+ * call with its exact argv stays at every call site (tests assert the argv). Callers that need the
+ * normalized, sorted path set append `.map(normalize).sort()` as before.
+ */
+function splitZ(raw: string): string[] {
+  return raw.split('\0').filter((entry) => entry.length > 0);
+}
+
 async function assertCleanIndex(repoRoot: string, runGit: GitRunner): Promise<void> {
-  const paths = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '-z']))
-    .split('\0').filter((path) => path.length > 0);
+  const paths = splitZ(await runGit(repoRoot, ['diff', '--cached', '--name-only', '-z']));
   if (paths.length > 0) throw new DirtyIndexError(paths);
 }
 
@@ -596,7 +605,7 @@ async function assertStagedSetMatches(
   runGit: GitRunner,
 ): Promise<void> {
   const raw = await runGit(repoRoot, ['diff', '--cached', '--name-status', '-z']);
-  const tokens = raw.split('\0').filter((token) => token.length > 0);
+  const tokens = splitZ(raw);
   const staged: Array<{ status: string; path: string }> = [];
   for (let index = 0; index < tokens.length;) {
     const status = tokens[index]!.trim();
@@ -1083,7 +1092,7 @@ export async function commitPreparedCoordination(
 
   if ((options.publication ?? 'direct') === 'outbox') {
     const head = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
-    if (!/^[a-f0-9]{40}$/.test(head)) {
+    if (!isCommitSha(head)) {
       throw new PreparedCoordinationCommitError('local coordination commit identity is invalid');
     }
     await recoverUnspooledCoordinationCommits({
@@ -1139,15 +1148,15 @@ export async function createPreparedCoordinationCommit(
   }
   return withOpsTransaction(async () => {
     await assertCoordinationCheckout(repoRoot, runGit);
-    let staged = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '--no-renames', '-z']))
-      .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+    let staged = splitZ(await runGit(repoRoot, ['diff', '--cached', '--name-only', '--no-renames', '-z']))
+      .map(normalize).sort();
     if (staged.length > 0 && JSON.stringify(staged) !== JSON.stringify(expectedPaths)) {
       throw new DirtyIndexError(staged);
     }
     if (staged.length === 0) {
       await runGit(repoRoot, ['add', '--', ...expectedPaths]);
-      staged = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '--no-renames', '-z']))
-        .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+      staged = splitZ(await runGit(repoRoot, ['diff', '--cached', '--name-only', '--no-renames', '-z']))
+        .map(normalize).sort();
     }
     if (JSON.stringify(staged) !== JSON.stringify(expectedPaths)) {
       throw new PreparedCoordinationCommitError('local settlement staging did not match the exact path set');
@@ -1156,7 +1165,7 @@ export async function createPreparedCoordinationCommit(
     await runGit(repoRoot, ['commit', '-m', options.message, '--only', '--', ...expectedPaths]);
     await assertCleanIndex(repoRoot, runGit);
     const commit = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
-    if (!/^[a-f0-9]{40}$/.test(commit)) {
+    if (!isCommitSha(commit)) {
       throw new PreparedCoordinationCommitError('local settlement commit identity is invalid');
     }
     return commit;
@@ -1226,17 +1235,16 @@ async function rollbackUnpublishedPreparedCommit(
   expectedPaths: string[],
 ): Promise<void> {
   try {
-    const dirty = (await runGit(repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']))
-      .split('\0').filter((entry) => entry.length > 0);
+    const dirty = splitZ(await runGit(repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']));
     if (dirty.length > 0) return;
     if ((await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim() !== commit) return;
-    const paths = (await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commit]))
-      .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+    const paths = splitZ(await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commit]))
+      .map(normalize).sort();
     if (JSON.stringify(paths) !== JSON.stringify(expectedPaths)) return;
     const remote = (await runGit(repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
-    if (/^[a-f0-9]{40}$/.test(remote) && await isAncestor(runGit, repoRoot, commit, remote)) return;
+    if (isCommitSha(remote) && await isAncestor(runGit, repoRoot, commit, remote)) return;
     const parent = (await runGit(repoRoot, ['rev-parse', `${commit}^`])).trim();
-    if (!/^[a-f0-9]{40}$/.test(parent)) return;
+    if (!isCommitSha(parent)) return;
     await runGit(repoRoot, ['reset', '--hard', parent]);
   } catch { /* never mask the refusal that triggered this rollback */ }
 }
@@ -1261,7 +1269,7 @@ export async function publishPreparedCoordinationCommit(
   expectedCommit: string,
   options: PublishPreparedCoordinationCommitOptions,
 ): Promise<string> {
-  if (!/^[a-f0-9]{40}$/.test(expectedCommit)) {
+  if (!isCommitSha(expectedCommit)) {
     throw new PreparedCoordinationCommitError('expectedCommit must be a full lowercase SHA-1');
   }
   const runGit = options.runGit ?? defaultGitRunner;
@@ -1280,13 +1288,12 @@ export async function publishPreparedCoordinationCommit(
     try {
       await assertCoordinationCheckout(repoRoot, runGit);
       await assertCleanIndex(repoRoot, runGit);
-      const dirty = (await runGit(repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']))
-        .split('\0').filter((entry) => entry.length > 0);
+      const dirty = splitZ(await runGit(repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']));
       if (dirty.length > 0) throw new PreparedCoordinationCommitError(`working tree has ${dirty.length} changed entr${dirty.length === 1 ? 'y' : 'ies'}`);
       const head = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
       if (head !== expectedCommit) throw new PreparedCoordinationCommitError('local ops HEAD is not the prepared commit');
-      const actualPaths = (await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', expectedCommit]))
-        .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+      const actualPaths = splitZ(await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', expectedCommit]))
+        .map(normalize).sort();
       if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)) {
         throw new PreparedCoordinationCommitError('prepared commit changed an unexpected path set');
       }
@@ -1331,8 +1338,8 @@ export async function publishPreparedCoordinationCommit(
             throw error;
           }
           reconciliationCommit = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
-          const rebasedPaths = (await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', reconciliationCommit]))
-            .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+          const rebasedPaths = splitZ(await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', reconciliationCommit]))
+            .map(normalize).sort();
           if (JSON.stringify(rebasedPaths) !== JSON.stringify(expectedPaths)) {
             throw new PreparedCoordinationCommitError('rebased commit changed an unexpected path set');
           }
