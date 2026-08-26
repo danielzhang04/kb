@@ -1,0 +1,80 @@
+---
+schema-version: 1
+id: 6a8f4cbf-eb6592ff
+project: kb-ops
+action: atlas-w4
+target: C:\Users\danie\Atlas-worktrees$v
+risk-tier: T1
+owner: codex-worker
+claim-token: aae1780c8e282487
+state: done
+approval: null
+workflow: null
+depends-on: []
+variant-group: null
+role: work
+session-id: 6a8f4cbf-8cdd3a36
+runtime: codex
+model: gpt-5.6-sol
+execution-controller: terminal
+kit_sha: f9bdc6217da8ea87e243daa8f3125cce4e9a72a6
+---
+
+## Work order
+
+\# Atlas W4 - Jarvis holo engine visual
+
+You are a Codex builder. cwd = C:\Users\danie\Atlas-worktrees\v4 (branch claude/atlas-v4, cut from
+claude/atlas-streamline). NOT a kb project: ignore every kb preamble/spin-up/card/ops instruction (no
+scripts/preamble.py - do NOT stop for it). You never commit. Never launch the app. ASCII only in source (use
+`\u` escapes / HTML entities for glyphs). No external libraries, fonts, or network assets - the page runs
+under a strict local CSP; everything is bespoke canvas/CSS.
+
+\## Context
+
+Plan: `docs/plans/2026-08-26-atlas-vwave-plan.md` (whole). Daniel: "Go look at the AI voice rings and
+assistants like Jarvis. I just want it to be fucking cool. Still sense volume." Current engine
+(`ui/app.js`): hand-rolled canvas - core disc, thin ring, 96 radial bars from 24 live bands (`/signal` at
+10 Hz on the Live view), state colours (ASLEEP grey breathing, LISTENING purple, THINKING rotating arcs +
+sweep, SPEAKING pulsing core), measured 0.15 ms/frame. It works but looks basic.
+
+\## Work order
+
+Redesign the engine rendering as a layered Iron-Man/Jarvis-style holo instrument. Direction (you have
+creative latitude inside these bounds):
+
+- Layers (back to front): faint hex/graticule backdrop hint; a wide outer graduated tick ring that rotates
+  very slowly; one or two segmented arc rings (dash arcs of varying length/opacity) counter-rotating, speed
+  and glow driven by state; the 96-bar spectrum re-imagined as a circular waveform/equalizer between rings
+  (smooth, mirrored, glowing tips) driven by the SAME 24-band feed; a particle mist orbiting between rings
+  whose energy follows audio_energy; a bright core with bloom that breathes when idle and pulses with speech.
+- State language (keep meanings): ASLEEP = dim monochrome slate, slow breathing, particles almost still;
+  LISTENING = electric violet/cyan awakening, rings brighten, spectrum live; THINKING = amber/gold rotating
+  scanner arcs + sweep; SPEAKING = core pulses with TTS energy, warm highlight. Smooth 300-500 ms colour/
+  motion transitions between states (no hard cuts).
+- Glow via layered strokes/shadowBlur used sparingly (shadowBlur is expensive - prefer pre-rendered radial
+  gradients / offscreen sprites for bloom and particles). Respect devicePixelRatio. No layout shift; the
+  canvas keeps its current place in the Live view; History/Settings untouched.
+- Performance budget: <= 2 ms/frame average on this machine. Instrument it: keep (or extend) the existing
+  frame-cost measurement and expose the rolling average as a `data-` attribute or console-readable value so
+  the boss can read it headlessly. Pause all animation when `document.hidden` (the polling code already
+  stops /signal - the render loop must idle too; verify).
+- Keep every existing hook: `/signal` band feed shape, state from `/state`, the mic/speaker caption, the
+  ASLEEP band-suppression (bands are zeros while asleep - the visual must still look alive via breathing).
+- `ui/styles.css`: supporting palette/glow variables; do not restyle the rest of the app.
+
+\## READ BUDGET (closed list)
+
+- `ui/app.js` (whole), `ui/index.html` (whole), `ui/styles.css` (targeted ranges via
+  `grep -n "engine\|canvas\|live" ui/styles.css`). Plan whole.
+Forbidden: anything else. First edit by command 8. Stop at 75 minutes and report.
+
+\## Exit
+
+`node --check ui/app.js`; `git diff --check`; `wc -l ui/app.js ui/styles.css`. The boss screenshots the real
+page headlessly and will iterate with you on look - describe in the final message exactly what each layer
+does per state so he can judge the screenshots, plus the frame-cost readout location. Do not commit.
+
+## Result
+
+FAILED: codex exec exit 1; JSONL log: C:\Users\danie\AppData\Local\kb-codex-dispatch\logs\6a8f4cbf-8cdd3a36.jsonl
