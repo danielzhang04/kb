@@ -3,6 +3,7 @@
 // splits at the decoder: W0 owns THIS file; W1 owns the `v1Idempotency` store collection, the v4
 // migration that adds it, and the 24 h TTL sweep, importing this decoder and writing none of its own.
 import { ContractDecodeError, sha256Hex } from '../../write/durableManifest.ts';
+import { record as asRecord } from '../../shared/decode.ts';
 
 /** `Idempotency-Key` grammar [§3.4:205]. */
 export const IDEMPOTENCY_KEY = /^[A-Za-z0-9_.:-]{16,128}$/;
@@ -67,11 +68,6 @@ export function idempotencyRecordKey(
   return `${parts.actorOrNodeId}${parts.method}${parts.uri}${parts.key}`;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
 
 /** The exact-key wall over a stored row: precisely the frozen fields, each validated. */
 export function decodeV1IdempotencyRecord(value: unknown): V1IdempotencyRecord {

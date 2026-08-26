@@ -9,6 +9,7 @@ import type {
   ScheduleOccurrenceClaim,
   ScheduleStorePort,
 } from './contracts.ts';
+import { record, exactKeys } from '../shared/decode.ts';
 
 const nodeRequire = createRequire(import.meta.url);
 const PROTOCOL_VERSION = 1 as const;
@@ -79,15 +80,6 @@ export function scheduleSocketRuntimeCapability(): ScheduleSocketRuntimeCapabili
     : { available: false, reason: 'linux-so-peercred-required' };
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const sorted = [...expected].sort();
-  return actual.length === sorted.length && actual.every((key, index) => key === sorted[index]);
-}
 
 function validIso(value: unknown): value is string {
   return typeof value === 'string' && value !== '' && !Number.isNaN(Date.parse(value));

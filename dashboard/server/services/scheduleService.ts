@@ -7,6 +7,7 @@
 import type {
   CreateScheduleInput, DeleteScheduleInput, ScheduleSnapshot, SetScheduleArmedInput,
 } from '../schedules/contracts.ts';
+import { record, exactKeys } from '../shared/decode.ts';
 
 /** The service surface the routes drive; a structural subset of the shipped `ScheduleService`. */
 export interface ScheduleServicePort {
@@ -21,15 +22,6 @@ export interface ServiceReply {
   readonly status: number;
   readonly body?: unknown;
   readonly etag?: string;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function exactKeys(body: Record<string, unknown>, keys: readonly string[]): boolean {
-  const set = new Set(keys);
-  return Object.keys(body).length === keys.length && Object.keys(body).every((key) => set.has(key));
 }
 
 function idempotencyKey(value: unknown): value is string {

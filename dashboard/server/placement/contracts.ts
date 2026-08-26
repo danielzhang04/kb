@@ -4,6 +4,7 @@
 // name normaliser, `match()`, and `capabilityHash()` live in `./normalize.ts` [plan §3.2].
 import type { HostKind } from '../control/p2Contracts.ts';
 import { ContractDecodeError } from '../write/durableManifest.ts';
+import { record, isoUtc } from '../shared/decode.ts';
 
 export type { HostKind };
 
@@ -101,12 +102,6 @@ export const CAPABILITY_REQUIREMENT_FIELDS: readonly string[] = [
   'connectors', 'skills', 'filesystemRoots', 'pty', 'gpu', 'clis',
 ];
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 /** Exact-key wall: the object has PRECISELY these keys, no more and no fewer. */
 export function assertExactKeys(field: string, value: Record<string, unknown>, keys: readonly string[]): void {
   for (const key of Object.keys(value)) {
@@ -117,11 +112,6 @@ export function assertExactKeys(field: string, value: Record<string, unknown>, k
   }
 }
 
-function isoUtc(value: unknown): value is string {
-  return typeof value === 'string'
-    && Number.isFinite(Date.parse(value))
-    && new Date(value).toISOString() === value;
-}
 
 /** A sorted, unique array of canonical ids under a bound; over-bound or non-canonical throws. */
 function decodeIdArray(field: string, value: unknown, max: number): string[] {

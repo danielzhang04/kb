@@ -20,6 +20,7 @@ import {
   MAX_PTY_DOCUMENT_BYTES,
 } from './sessionPersistence.ts';
 import type { SessionRunRecord } from './sessionRuns.ts';
+import { exactKeys } from '../shared/decode.ts';
 
 export const PTY_SESSION_MIGRATION_REQUIRED = 'pty-session-migration-required' as const;
 export type PtySessionMigrationStage = 'directory' | 'mutex' | 'source-read' | 'backup'
@@ -85,11 +86,6 @@ const DEFAULT_FS: PtySessionMigrationFs = {
   remove: (path) => { rmSync(path, { force: true }); },
 };
 
-function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const keys = Object.keys(value).sort();
-  const sorted = [...expected].sort();
-  return keys.length === sorted.length && keys.every((key, index) => key === sorted[index]);
-}
 
 function object(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

@@ -3,6 +3,7 @@
 // `/etc/kb-dashboard/host-nodes.json`, applies the Linux 0444/uid-0 stat, and imports this decoder.
 import type { HostKind } from '../control/p2Contracts.ts';
 import { ContractDecodeError } from '../write/durableManifest.ts';
+import { record as asRecord, isoUtc } from '../shared/decode.ts';
 
 export const HOST_NODE_MAP_SCHEMA = 'kb.host-node-map/v1';
 
@@ -18,11 +19,6 @@ export interface HostNodeMap {
 
 export const HOST_NODE_MAP_FIELDS: readonly string[] = ['schema', 'revision', 'hosts', 'revoked'];
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
 function exact(field: string, value: Record<string, unknown>, keys: readonly string[]): void {
   for (const k of Object.keys(value)) {
     if (!keys.includes(k)) throw new ContractDecodeError(field, `unknown key ${JSON.stringify(k)}`);
@@ -30,11 +26,6 @@ function exact(field: string, value: Record<string, unknown>, keys: readonly str
   for (const k of keys) {
     if (!Object.hasOwn(value, k)) throw new ContractDecodeError(field, `missing key ${JSON.stringify(k)}`);
   }
-}
-function isoUtc(value: unknown): value is string {
-  return typeof value === 'string'
-    && Number.isFinite(Date.parse(value))
-    && new Date(value).toISOString() === value;
 }
 function decodeNode(field: string, value: unknown): { nodeId: string } {
   const item = asRecord(value);

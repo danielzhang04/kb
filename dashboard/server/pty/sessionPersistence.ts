@@ -17,6 +17,7 @@ import { renameWithRetrySync } from '../atomicRename.ts';
 import { createAtomicJsonDocument } from '../control/atomicJsonDocument.ts';
 import type { AtomicJsonDocument } from '../control/atomicJsonDocument.ts';
 import { decodeRunnableRef } from '../control/p2Decoders.ts';
+import { exactKeys } from '../shared/decode.ts';
 import type {
   ArchiveKeyEntry,
   AttemptBinding,
@@ -81,11 +82,6 @@ function object(value: unknown): Record<string, unknown> | null {
     ? value as Record<string, unknown> : null;
 }
 
-function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
 
 function safeInteger(value: unknown, minimum = 0, maximum = Number.MAX_SAFE_INTEGER): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= minimum && value <= maximum;

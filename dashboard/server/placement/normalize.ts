@@ -8,6 +8,7 @@ import {
   MAX_FILESYSTEM_ROOTS, MAX_SKILLS, MAX_TOOLS_PER_CONNECTOR, assertExactKeys,
 } from './contracts.ts';
 import { sha256Hex } from '../write/durableManifest.ts';
+import { record as asRecord } from '../shared/decode.ts';
 
 /**
  * Normalise one capability name to its canonical form [§3.2, `design:637`]: NFC, trim, lowercase ASCII,
@@ -52,11 +53,6 @@ function sortedUnique(field: string, names: string[], max: number): string[] {
   return out;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
 
 /**
  * Normalise and decode a raw declared requirement into the canonical `CapabilityRequirement`. The

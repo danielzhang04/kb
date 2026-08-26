@@ -3,6 +3,7 @@
 // relation union; the claim/renew/report DTOs [§3.5]; and the node-identity refusal-code union [§3.3].
 // There is NO generic `compareRevision` and NO shared `revision` field — that is the whole point.
 import { ContractDecodeError } from '../../write/durableManifest.ts';
+import { record as asRecord } from '../../shared/decode.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -159,11 +160,6 @@ export const REPORT_FORBIDDEN_PAYLOAD_KEYS: readonly string[] = [
   'decision', 'assertion', 'authorization', 'expectedRequestRevision', 'credential', 'signature',
 ];
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
 function exact(field: string, value: Record<string, unknown>, keys: readonly string[]): void {
   for (const key of Object.keys(value)) {
     if (!keys.includes(key)) throw new ContractDecodeError(field, `unknown key ${JSON.stringify(key)}`);

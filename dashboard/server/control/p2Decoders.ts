@@ -2,6 +2,7 @@ import type { HostKind, RunIdentityFields, RunnableRef } from './p2Contracts.ts'
 import { RUN_LIFECYCLE_KINDS } from './runLifecycle.ts';
 import type { Run } from './types.ts';
 import type { StoredRun } from './store.ts';
+import { record, exactKeys } from '../shared/decode.ts';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const OUTCOMES = new Set(['ok', 'failed', 'stopped', 'interrupted', 'abandoned']);
@@ -20,15 +21,6 @@ const STORED_RUN_OPTIONAL_KEYS = [
 ] as const;
 const HASH = /^[a-f0-9]{64}$/;
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
-}
 
 function safeId(value: unknown): value is string {
   return typeof value === 'string' && SAFE_ID.test(value);
