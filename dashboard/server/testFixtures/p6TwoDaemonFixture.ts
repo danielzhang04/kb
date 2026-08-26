@@ -37,6 +37,7 @@ import { registerV1NodeRoutes, operatorRouteOnlyGuard, type V1SurfaceDeps } from
 import { registerStatic } from '../static/routes.ts';
 import { healthResponseFixture } from '../health/__fixtures__/health.ts';
 import { p2Home, P2_ATTENTION } from './p2BrowserFixtureData.ts';
+import type { LifecycleChild, LifecycleSpawn } from './lifecycleTypes.ts';
 import {
   type HostAdvertisement, type HostKind, type PlacementLease, type CapabilityRequirement,
   decodeHostAdvertisement, isAdvertisementFresh, ADVERTISEMENT_FRESHNESS_MS, LEASE_TTL_MS,
@@ -504,13 +505,7 @@ function composeDaemon(app: FastifyInstance, opts: FixtureDaemonOptions): void {
 // -------------------------------------------------------------------------------------------------
 // The two-daemon lifecycle wrapper (mirrors p3FixtureLifecycle for TWO children).
 // -------------------------------------------------------------------------------------------------
-export interface LifecycleChild {
-  readonly pid?: number | undefined;
-  kill(signal?: NodeJS.Signals): boolean;
-  once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  once(event: 'error', listener: (error: Error) => void): unknown;
-}
-export type LifecycleSpawn = (command: string, args: readonly string[]) => LifecycleChild;
+export type { LifecycleChild, LifecycleSpawn };
 export type ReadyProbe = (origin: string) => Promise<boolean>;
 
 export interface TwoDaemonLifecycleOptions {

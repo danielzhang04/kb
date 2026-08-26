@@ -1,8 +1,6 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createServer as createSecureServer } from 'node:https';
-import type { AddressInfo } from 'node:net';
-import { extname, resolve, sep } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { healthResponseFixture } from '../health/__fixtures__/health.ts';
 import type { HealthResponse } from '../health/service.ts';
@@ -27,9 +25,7 @@ import {
   p3SessionListing,
 } from './p2BrowserFixtureData.ts';
 import { BROWSER_SESSION_COOKIE_NAME, parseBrowserSessionCookie } from '../auth/browserSessionRef.ts';
-import {
-  createLoopbackTlsMaterial, publishLoopbackCertificate, revokeLoopbackCertificate,
-} from './p3LoopbackTls.ts';
+import { CONTENT_TYPES, safeStaticFile, startLoopbackHttpServer } from './staticHttpServer.ts';
 
 export const P1_BROWSER_SCENARIOS = [
   'inbox-populated',
@@ -213,18 +209,6 @@ const FIXTURE_RUNTIME_CAPABILITIES = {
   localTranscripts: false,
 };
 
-const CONTENT_TYPES: Record<string, string> = {
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.map': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.webmanifest': 'application/manifest+json; charset=utf-8',
-  '.woff2': 'font/woff2',
-};
-
 function isScenario(value: string): value is P1BrowserScenario {
   return P1_BROWSER_SCENARIOS.includes(value as P1BrowserScenario);
 }
@@ -242,25 +226,6 @@ function degradedHealth(): HealthResponse {
     observedAt: '2026-08-21T12:00:00.000Z', source: 'error',
   }];
   return health;
-}
-
-function safeStaticFile(distDir: string, pathname: string): string | null {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-  if (decoded === '/') decoded = '/index.html';
-  if (!decoded.startsWith('/') || decoded.includes('\\') || decoded.split('/').includes('..')) return null;
-  const root = resolve(distDir);
-  const target = resolve(root, decoded.slice(1));
-  if (target !== root && !target.startsWith(`${root}${sep}`)) return null;
-  try {
-    return statSync(target).isFile() ? target : null;
-  } catch {
-    return null;
-  }
 }
 
 /** Start the bounded, read-only P1 browser harness. This module is never registered by production. */
@@ -292,7 +257,6 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
   const pendingInbox = new Set<() => void>();
   const streams = new Set<ServerResponse>();
   const timers = new Set<NodeJS.Timeout>();
-  let closed = false;
   const schedules = [structuredClone(P2_SCHEDULE)] as Array<Record<string, any>>;
   let scheduleCollectionRevision = P2_SCHEDULE_COLLECTION.scheduleCollectionRevision;
   const scheduleReplays = new Map<string, Record<string, any>>();
@@ -705,47 +669,27 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
     return json(reply, 404, { error: 'not found' });
   };
 
-  const wrapped = (request: IncomingMessage, reply: ServerResponse): void => {
-    void handler(request, reply);
-  };
-  const tls = options.https === true ? await createLoopbackTlsMaterial() : null;
-  const server = tls === null
-    ? createServer(wrapped)
-    : createSecureServer({ cert: tls.cert, key: tls.key }, wrapped);
-
-  await new Promise<void>((resolveListen, rejectListen) => {
-    const fail = (error: Error): void => rejectListen(error);
-    server.once('error', fail);
-    server.listen({ host, port }, () => {
-      server.off('error', fail);
-      resolveListen();
-    });
-  });
-  const address = server.address() as AddressInfo;
-
-  const origin = `${tls === null ? 'http' : 'https'}://127.0.0.1:${address.port}`;
-  // Publish the PUBLIC certificate so the lifecycle probe and the browser/smoke clients can pin it.
-  if (tls !== null) publishLoopbackCertificate(address.port, tls.cert);
+  // Publish the PUBLIC certificate so the lifecycle probe and the browser/smoke clients can pin it —
+  // handled inside `startLoopbackHttpServer` for both the initial publish and the close-time revoke.
+  const loopback = await startLoopbackHttpServer({ host: '127.0.0.1', port, https: options.https }, handler);
 
   return {
-    address: { host: '127.0.0.1', port: address.port },
-    origin,
+    address: loopback.address,
+    origin: loopback.origin,
     state,
-    certificate: tls === null ? null : tls.cert,
-    contextUrls: { a: `${origin}/fixture/context-a`, b: `${origin}/fixture/context-b` },
+    certificate: loopback.certificate,
+    contextUrls: { a: `${loopback.origin}/fixture/context-a`, b: `${loopback.origin}/fixture/context-b` },
     releaseInbox(): void {
       releasePendingInbox();
     },
-    async close(): Promise<void> {
-      if (closed) return;
-      closed = true;
-      if (tls !== null) revokeLoopbackCertificate(address.port);
-      for (const timer of timers) clearTimeout(timer);
-      timers.clear();
-      releasePendingInbox();
-      for (const stream of streams) stream.destroy();
-      streams.clear();
-      await new Promise<void>((resolveClose, rejectClose) => server.close((error) => error ? rejectClose(error) : resolveClose()));
+    close(): Promise<void> {
+      return loopback.close(() => {
+        for (const timer of timers) clearTimeout(timer);
+        timers.clear();
+        releasePendingInbox();
+        for (const stream of streams) stream.destroy();
+        streams.clear();
+      });
     },
   };
 }

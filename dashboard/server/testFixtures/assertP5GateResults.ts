@@ -22,8 +22,19 @@
  * Exit codes: 0 clean, 1 violations (each printed), 2 usage error.
  */
 import { readFileSync, readdirSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  type BaseAttackArtifact,
+  collectArtifactBaseViolations,
+  collectAttackIdDriftViolations,
+  collectResultsViolationsCore,
+  toDashboardRelative,
+  type VitestJsonResults,
+} from './gateResultsCore.ts';
+
+export { toDashboardRelative };
+export type { VitestJsonResults };
 
 export const P5_GATE_EXIT = { ok: 0, violations: 1, usage: 2 } as const;
 export type P5GateExitCode = (typeof P5_GATE_EXIT)[keyof typeof P5_GATE_EXIT];
@@ -83,30 +94,10 @@ export function parseAssertP5GateArgs(argv: readonly string[]): AssertP5GateArgs
 export interface P5AttackManifestEntry { id: string; suite: string; title: string; summary: string }
 export interface P5AttackManifest { note: string; gateFiles: string[]; attacks: P5AttackManifestEntry[] }
 
-export interface VitestAssertionResult { fullName?: string; title?: string; status?: string }
-export interface VitestFileResult { name?: string; status?: string; message?: string; assertionResults?: VitestAssertionResult[] }
-export interface VitestJsonResults {
-  numFailedTests?: number;
-  numPendingTests?: number;
-  numTodoTests?: number;
-  numTotalTests?: number;
-  testResults?: VitestFileResult[];
-}
-
-/** Vitest reports absolute OS paths; the manifest speaks repo-relative POSIX ones. */
-export function toDashboardRelative(dashboardRoot: string, name: string): string {
-  const absolute = isAbsolute(name) ? name : resolve(dashboardRoot, name);
-  return relative(dashboardRoot, absolute).split(sep).join('/');
-}
-
-const SKIPPED_STATUSES = new Set(['skipped', 'pending', 'todo']);
-
 export function collectManifestViolations(manifest: P5AttackManifest): string[] {
-  const violations: string[] = [];
-  if (JSON.stringify(manifest.attacks.map((a) => a.id)) !== JSON.stringify([...P5_ATTACK_IDS])) {
-    violations.push('manifest attack ids drift from the frozen section-9 list');
-  }
-  return violations;
+  return collectAttackIdDriftViolations(
+    manifest.attacks.map((a) => a.id), P5_ATTACK_IDS, 'the frozen section-9 list',
+  );
 }
 
 export function collectResultsViolations(
@@ -114,101 +105,18 @@ export function collectResultsViolations(
   manifest: P5AttackManifest,
   options: { dashboardRoot: string },
 ): string[] {
-  const violations: string[] = [];
-  const files = results.testResults ?? [];
-  if (files.length === 0) violations.push('results contain no test files at all');
-
-  const byRelPath = new Map<string, VitestFileResult>();
-  for (const file of files) {
-    const relPath = toDashboardRelative(options.dashboardRoot, file.name ?? '');
-    byRelPath.set(relPath, file);
-    const assertions = file.assertionResults ?? [];
-    if (assertions.length === 0) {
-      violations.push(`zero-test suite: ${relPath}${file.message ? ` (${file.message.split('\n')[0]})` : ''}`);
-    }
-    if (file.status === 'failed' && assertions.every((a) => a.status === 'passed')) {
-      violations.push(`suite file failed with all tests passing: ${relPath}`);
-    }
-    for (const assertion of assertions) {
-      const name = assertion.fullName ?? assertion.title ?? '<unnamed test>';
-      const status = assertion.status ?? 'unknown';
-      if (status === 'failed') violations.push(`failed test: ${relPath} > ${name}`);
-      else if (SKIPPED_STATUSES.has(status)) violations.push(`${status} test: ${relPath} > ${name}`);
-      else if (status !== 'passed') violations.push(`test in state '${status}': ${relPath} > ${name}`);
-    }
-  }
-
-  if ((results.numFailedTests ?? 0) > 0) violations.push(`numFailedTests = ${results.numFailedTests}`);
-  if ((results.numPendingTests ?? 0) > 0) violations.push(`numPendingTests = ${results.numPendingTests}`);
-  if ((results.numTodoTests ?? 0) > 0) violations.push(`numTodoTests = ${results.numTodoTests}`);
-
-  // Gate-file set equality: a MISSING or EXTRA test file both fail.
-  const gate = new Set(manifest.gateFiles);
-  for (const gateFile of manifest.gateFiles) {
-    if (!byRelPath.has(gateFile)) violations.push(`manifest gate file missing from results: ${gateFile}`);
-  }
-  for (const relPath of byRelPath.keys()) {
-    if (!gate.has(relPath)) violations.push(`results ran a file not in the manifest gate: ${relPath}`);
-  }
-
-  // Attack ownership: each attack's suite ran a passing test with the exact title.
-  for (const attack of manifest.attacks) {
-    const file = byRelPath.get(attack.suite);
-    if (file === undefined) {
-      violations.push(`attack '${attack.id}': owning suite absent from results: ${attack.suite}`);
-      continue;
-    }
-    const owning = (file.assertionResults ?? []).filter((a) => (
-      a.title === undefined ? (a.fullName ?? '') === attack.title : a.title === attack.title
-    ));
-    if (owning.length === 0) {
-      violations.push(`attack '${attack.id}': no test titled '${attack.title}' ran in ${attack.suite}`);
-      continue;
-    }
-    for (const assertion of owning) {
-      if (assertion.status !== 'passed') {
-        violations.push(`attack '${attack.id}': owning test is '${assertion.status}' in ${attack.suite}`);
-      }
-    }
-  }
-
-  return violations;
+  return collectResultsViolationsCore(results, manifest, { ...options, requireZeroSkips: true });
 }
 
-export interface P5AttackArtifact {
-  id?: unknown;
-  passed?: unknown;
-  assertion?: unknown;
-  artifactPath?: unknown;
-}
+export type P5AttackArtifact = BaseAttackArtifact;
 
 export function collectArtifactViolations(
   manifest: P5AttackManifest,
   artifacts: Map<string, P5AttackArtifact>,
 ): string[] {
-  const violations: string[] = [];
-  const expected = manifest.attacks.length;
-
-  for (const attack of manifest.attacks) {
-    const artifact = artifacts.get(attack.id);
-    if (artifact === undefined) {
-      violations.push(`attack '${attack.id}': no artifact found in the attack root`);
-      continue;
-    }
-    if (artifact.id !== attack.id) violations.push(`attack '${attack.id}': artifact id mismatch (${String(artifact.id)})`);
-    if (artifact.passed !== true) violations.push(`attack '${attack.id}': passed is not true (${String(artifact.passed)})`);
-    if (typeof artifact.assertion !== 'string' || artifact.assertion.trim().length === 0) {
-      violations.push(`attack '${attack.id}': empty assertion`);
-    }
-    if (typeof artifact.artifactPath !== 'string' || artifact.artifactPath.length === 0) {
-      violations.push(`attack '${attack.id}': missing artifact path`);
-    }
-  }
-
-  for (const id of artifacts.keys()) {
-    if (!manifest.attacks.some((a) => a.id === id)) violations.push(`artifact '${id}' has no manifest entry`);
-  }
+  const violations = collectArtifactBaseViolations(manifest.attacks.map((a) => a.id), artifacts);
   // --require-exact: the count must equal the frozen twelve exactly.
+  const expected = manifest.attacks.length;
   if (artifacts.size !== expected) {
     violations.push(`found ${artifacts.size} artifacts, --require-exact expects ${expected}`);
   }

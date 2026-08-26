@@ -16,16 +16,10 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { fileURLToPath } from 'node:url';
 import { readLoopbackCertificate } from './p3LoopbackTls.ts';
+import type { LifecycleChild, LifecycleSpawn } from './lifecycleTypes.ts';
 
-/** The bounded child this wrapper drives. A real ChildProcess satisfies it structurally. */
-export interface LifecycleChild {
-  readonly pid?: number | undefined;
-  kill(signal?: NodeJS.Signals): boolean;
-  once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  once(event: 'error', listener: (error: Error) => void): unknown;
-}
+export type { LifecycleChild, LifecycleSpawn };
 
-export type LifecycleSpawn = (command: string, args: readonly string[]) => LifecycleChild;
 export type ReadyProbe = (url: string) => Promise<boolean>;
 export type SleepFn = (ms: number) => Promise<void>;
 

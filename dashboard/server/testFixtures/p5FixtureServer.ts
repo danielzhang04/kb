@@ -8,18 +8,14 @@
 // app shell fetches — `/api/auth/context`, `/api/runtime/capabilities`, `/api/home`, `/api/attention`,
 // `/api/inbox`, `/api/health` — for ALL seven scenarios, plus `404` for `/api/deploy` and `/api/deploys`
 // (the no-deploy-destination proof), so every cell reaches the app with no boot 404.
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createServer as createSecureServer } from 'node:https';
-import type { AddressInfo } from 'node:net';
-import { extname, resolve, sep } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { healthResponseFixture } from '../health/__fixtures__/health.ts';
 import type { HealthResponse } from '../health/service.ts';
 import { P2_ATTENTION, p2Home } from './p2BrowserFixtureData.ts';
-import {
-  createLoopbackTlsMaterial, publishLoopbackCertificate, revokeLoopbackCertificate,
-} from './p3LoopbackTls.ts';
+import { CONTENT_TYPES, safeStaticFile, startLoopbackHttpServer } from './staticHttpServer.ts';
 import {
   P5_SCENARIOS, isP5FixtureKind, isP5Scenario, p5ScenarioProfile,
   type P5FixtureKind, type P5Scenario,
@@ -43,18 +39,6 @@ export interface P5FixtureServerOptions {
   https?: boolean;
 }
 
-const CONTENT_TYPES: Record<string, string> = {
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.map': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.webmanifest': 'application/manifest+json; charset=utf-8',
-  '.woff2': 'font/woff2',
-};
-
 /** The daemon hosts no PTY — the closed unavailable capability, matching `p1BrowserFixture.ts`. */
 const FIXTURE_RUNTIME_CAPABILITIES = {
   pty: false as const,
@@ -65,17 +49,6 @@ const FIXTURE_RUNTIME_CAPABILITIES = {
 function json(reply: ServerResponse, status: number, body: unknown): void {
   reply.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   reply.end(JSON.stringify(body));
-}
-
-function safeStaticFile(distDir: string, pathname: string): string | null {
-  let decoded: string;
-  try { decoded = decodeURIComponent(pathname); } catch { return null; }
-  if (decoded === '/') decoded = '/index.html';
-  if (!decoded.startsWith('/') || decoded.includes('\\') || decoded.split('/').includes('..')) return null;
-  const root = resolve(distDir);
-  const target = resolve(root, decoded.slice(1));
-  if (target !== root && !target.startsWith(`${root}${sep}`)) return null;
-  try { return statSync(target).isFile() ? target : null; } catch { return null; }
 }
 
 /**
@@ -150,7 +123,6 @@ export async function startP5FixtureServer(options: P5FixtureServerOptions): Pro
 
   const profile = p5ScenarioProfile(options.scenario);
   const streams = new Set<ServerResponse>();
-  let closed = false;
 
   const handler = (request: IncomingMessage, reply: ServerResponse): void => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
@@ -210,31 +182,19 @@ export async function startP5FixtureServer(options: P5FixtureServerOptions): Pro
     return json(reply, 404, { error: 'not-found' });
   };
 
-  const tls = options.https === true ? await createLoopbackTlsMaterial() : null;
-  const server = tls === null ? createServer(handler) : createSecureServer({ cert: tls.cert, key: tls.key }, handler);
-
-  await new Promise<void>((resolveListen, rejectListen) => {
-    const fail = (error: Error): void => rejectListen(error);
-    server.once('error', fail);
-    server.listen({ host, port }, () => { server.off('error', fail); resolveListen(); });
-  });
-  const address = server.address() as AddressInfo;
-  const origin = `${tls === null ? 'http' : 'https'}://127.0.0.1:${address.port}`;
-  if (tls !== null) publishLoopbackCertificate(address.port, tls.cert);
+  const loopback = await startLoopbackHttpServer({ host: '127.0.0.1', port, https: options.https }, handler);
 
   return {
-    address: { host: '127.0.0.1', port: address.port },
-    origin,
-    certificate: tls === null ? null : tls.cert,
+    address: loopback.address,
+    origin: loopback.origin,
+    certificate: loopback.certificate,
     scenario: options.scenario,
     fixtureKind: options.fixtureKind,
-    async close(): Promise<void> {
-      if (closed) return;
-      closed = true;
-      if (tls !== null) revokeLoopbackCertificate(address.port);
-      for (const stream of streams) stream.destroy();
-      streams.clear();
-      await new Promise<void>((resolveClose, rejectClose) => server.close((error) => error ? rejectClose(error) : resolveClose()));
+    close(): Promise<void> {
+      return loopback.close(() => {
+        for (const stream of streams) stream.destroy();
+        streams.clear();
+      });
     },
   };
 }

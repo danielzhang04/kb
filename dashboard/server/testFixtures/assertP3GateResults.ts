@@ -14,7 +14,17 @@
  */
 import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
+import {
+  SKIPPED_STATUSES,
+  toDashboardRelative,
+  type VitestAssertionResult,
+  type VitestFileResult,
+  type VitestJsonResults as VitestJsonResultsBase,
+} from './gateResultsCore.ts';
+
+export { toDashboardRelative };
+export type { VitestAssertionResult, VitestFileResult };
 
 export const GATE_RESULT_EXIT = { ok: 0, violations: 1, usage: 2 } as const;
 export type GateResultExitCode = (typeof GATE_RESULT_EXIT)[keyof typeof GATE_RESULT_EXIT];
@@ -61,34 +71,15 @@ export function parseAssertP3GateResultsArgs(argv: readonly string[]): AssertP3G
   return { resultsPath, requireZeroSkipped, manifestPath };
 }
 
-/** The subset of the Vitest JSON reporter document this asserter reads. */
-export interface VitestAssertionResult { fullName?: string; title?: string; status?: string }
-export interface VitestFileResult {
-  name?: string;
-  status?: string;
-  message?: string;
-  assertionResults?: VitestAssertionResult[];
-}
-export interface VitestJsonResults {
+/** The subset of the Vitest JSON reporter document this asserter reads. P3 alone needs `startTime`, its
+ *  freshness anchor, so it extends the shared base rather than using it as-is. */
+export interface VitestJsonResults extends VitestJsonResultsBase {
   /** Epoch ms the run started. The gate's freshness anchor: a results document older than the code it
    *  claims to have proved is a stale green, and satisfies every other check verbatim. */
   startTime?: number;
-  numFailedTests?: number;
-  numPendingTests?: number;
-  numTodoTests?: number;
-  numTotalTests?: number;
-  testResults?: VitestFileResult[];
 }
 
 export interface GateManifest { gateFiles: string[]; attacks: { id: string; suite: string; title: string }[] }
-
-/** Vitest reports absolute OS paths; the manifest speaks repo-relative POSIX ones. */
-export function toDashboardRelative(dashboardRoot: string, name: string): string {
-  const absolute = isAbsolute(name) ? name : resolve(dashboardRoot, name);
-  return relative(dashboardRoot, absolute).split(sep).join('/');
-}
-
-const SKIPPED_STATUSES = new Set(['skipped', 'pending', 'todo']);
 
 /**
  * Returns one human-readable line per violation. An empty array means the gate genuinely proved

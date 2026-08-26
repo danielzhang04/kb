@@ -31,14 +31,9 @@ import { fileURLToPath } from 'node:url';
 import {
   P3_CONTEXT_PATH_ENV, P3_SESSION_TOKEN_ENV, readFixturePrincipal, readLoopbackCertificate,
 } from './p3LoopbackTls.ts';
+import type { LifecycleChild } from './lifecycleTypes.ts';
 
-/** The bounded child this wrapper drives. A real {@link ChildProcess} satisfies it structurally. */
-export interface LifecycleChild {
-  readonly pid?: number | undefined;
-  kill(signal?: NodeJS.Signals): boolean;
-  once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
-  once(event: 'error', listener: (error: Error) => void): unknown;
-}
+export type { LifecycleChild };
 
 /**
  * `env` carries ADDITIONS to the child's environment, never a replacement: the client still needs
