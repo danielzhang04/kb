@@ -56,7 +56,7 @@ import {
   type EntityListPort, type WorkflowDetailPort, type SubmitBuilderPort, type Revisioned,
   type AmendPort, type AmendPrepared,
 } from '../services/entityService.ts';
-import type { ServiceReply } from '../services/scheduleService.ts';
+import { sendServiceReply } from '../http/serviceReply.ts';
 import { DEFAULT_WORK_BRANCH, DurableRouteError, defaultGitRunner, resolveBaseCommit, routeDurable } from '../write/branch.ts';
 import { buildWorkflowAmendmentManifest } from '../write/durableManifestService.ts';
 import { save as governedSave } from '../write/governedSave.ts';
@@ -1086,13 +1086,6 @@ function workflowDetail(ctx: SurfaceContext, scanned: ScannedDef & { def: Workfl
       })(),
     },
   };
-}
-
-/** P6 W6.2 [design:435]: sends a `services/entityService.ts` `ServiceReply` byte-for-byte the way the
- *  route's own `sendEntity` did — the etag header, then a bodiless 304 or the body at its status. */
-function sendServiceReply(reply: FastifyReply, result: ServiceReply): FastifyReply {
-  if (result.etag) reply.header('etag', result.etag);
-  return result.status === 304 ? reply.code(304).send() : reply.code(result.status).send(result.body);
 }
 
 class WorkflowBuilderFailure extends Error {

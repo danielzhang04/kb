@@ -25,7 +25,7 @@ import {
   readEntityList, readAgentDetail, createAgent as createAgentEntity, updateAgent as updateAgentEntity,
   type EntityListPort, type AgentDetailPort, type SubmitBuilderPort, type Revisioned,
 } from '../services/entityService.ts';
-import type { ServiceReply } from '../services/scheduleService.ts';
+import { sendServiceReply } from '../http/serviceReply.ts';
 
 const BULLET = '\u00b7';
 
@@ -190,13 +190,6 @@ function agentDetail(ctx: SurfaceContext, declaration: DeclaredAgentDetail): Ent
       })(),
     },
   };
-}
-
-/** P6 W6.2 [design:435]: sends a `services/entityService.ts` `ServiceReply` byte-for-byte the way the
- *  route's own `sendRevisioned` did — the etag header, then a bodiless 304 or the body at its status. */
-function sendServiceReply(reply: FastifyReply, result: ServiceReply): FastifyReply {
-  if (result.etag) reply.header('etag', result.etag);
-  return result.status === 304 ? reply.code(304).send() : reply.code(result.status).send(result.body);
 }
 
 class AgentBuilderFailure extends Error {

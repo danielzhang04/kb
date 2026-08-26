@@ -1,5 +1,5 @@
 import { sha256Hex } from '../shared/hashing.ts';
-import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from 'fastify';
+import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { OPERATOR_SUBJECT } from '../auth/operator.ts';
 import { verifiedSession } from '../http/middleware.ts';
 import { validateScheduleCadence } from '../../src/lib/scheduleWords.ts';
@@ -19,8 +19,9 @@ import type {
   SetScheduleArmedInput,
 } from './contracts.ts';
 import {
-  listSchedules, createSchedule, setScheduleArmed, deleteSchedule, type ServiceReply,
+  listSchedules, createSchedule, setScheduleArmed, deleteSchedule,
 } from '../services/scheduleService.ts';
+import { sendServiceReply } from '../http/serviceReply.ts';
 
 export class ScheduleServiceError extends Error {
   readonly status: number;
@@ -294,12 +295,6 @@ function record(value: unknown): Record<string, unknown> | null {
  *  the closed body walls, the ETag/304 read, and the `ScheduleServiceError`-to-HTTP mapping are all the
  *  service's, driven only through this `ScheduleService` instance (which already structurally satisfies
  *  `ScheduleServicePort`). No byte of the request/response contract changed; no route logic duplicated. */
-function sendServiceReply(res: FastifyReply, result: ServiceReply): void {
-  if (result.etag) res.header('etag', result.etag);
-  if (result.status === 304) { res.code(304).send(); return; }
-  res.code(result.status).send(result.body);
-}
-
 /** Closed P2 browser surface. Authentication/origin gates are owned by the enclosing server scope. */
 export function registerScheduleRoutes(
   app: FastifyInstance,
