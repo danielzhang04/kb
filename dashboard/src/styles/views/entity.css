@@ -113,6 +113,12 @@
   gap: var(--space-2);
 }
 
+.entity-detail__action-note {
+  flex-basis: 100%;
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+}
+
 /* An input the action itself needs (a workflow's declared parameters), sitting beside the button that
  * consumes it rather than in a separate tab the operator has to visit first. */
 .entity-detail__param {

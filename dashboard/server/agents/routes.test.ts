@@ -86,7 +86,8 @@ describe('Agent P2 routes', () => {
     });
     expect((await app.inject({ method: 'GET', url: '/api/agents', headers: { 'if-none-match': listed.headers.etag! } })).statusCode).toBe(304);
     const detail = await app.inject({ method: 'GET', url: '/api/agents/research-worker' });
-    expect(detail.json()).toMatchObject({ revision: expect.any(String), summary: { ref: { type: 'agent', id: 'research-worker' } }, brief: { purpose: 'Checks research.', outputs: [] }, details: { sourcePath: 'agents/research-worker.md', sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/) } });
+    expect(detail.json()).toMatchObject({ revision: expect.any(String), summary: { ref: { type: 'agent', id: 'research-worker' } }, brief: { purpose: 'Checks research.', outputs: [] }, details: { sourcePath: 'agents/research-worker.md', sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/), launchable: true } });
+    expect((await app.inject({ method: 'GET', url: '/api/agents/system-sweeper' })).json()).toMatchObject({ details: { launchable: false } });
   });
 
   it('keeps a projectless agent in the Undeclared group without failing the roster', async () => {

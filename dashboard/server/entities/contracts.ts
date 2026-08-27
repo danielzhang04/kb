@@ -43,6 +43,8 @@ export interface EntityDetails {
   lineage: string[];
   grades: string[];
   ids: string[];
+  /** Agent-only launch gate projection. Omitted by older servers and workflow details. */
+  launchable?: boolean;
   /** Workflow-only, server-projected definition data. Agents omit this member. */
   workflow?: {
     stepDag: {

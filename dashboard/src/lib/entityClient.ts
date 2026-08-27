@@ -139,10 +139,11 @@ function builderRequest(value: unknown): EntityBuilderRequest | null {
 function details(value: unknown, ref: RunnableRef): EntityDetails | null {
   const row = record(value);
   const required = ['sourcePath', 'sourceRevision', 'tools', 'declaredCeiling', 'replaces', 'buildsOn', 'knowledgeSources', 'skills', 'schemas', 'lineage', 'grades', 'ids'];
-  if (!row || !exactKeys(row, required, ['workflow', 'builder']) || row.sourcePath !== ref.sourcePath
+  if (!row || !exactKeys(row, required, ['workflow', 'builder', 'launchable']) || row.sourcePath !== ref.sourcePath
     || typeof row.sourceRevision !== 'string' || !/^[a-f0-9]{64}$/.test(row.sourceRevision) || !strings(row.tools)
     || typeof row.declaredCeiling !== 'string' || !strings(row.replaces) || !strings(row.buildsOn) || !strings(row.knowledgeSources)
-    || !strings(row.skills) || !strings(row.schemas) || !strings(row.lineage) || !strings(row.grades) || !strings(row.ids)) return null;
+    || !strings(row.skills) || !strings(row.schemas) || !strings(row.lineage) || !strings(row.grades) || !strings(row.ids)
+    || (row.launchable !== undefined && typeof row.launchable !== 'boolean')) return null;
   let workflow: EntityDetails['workflow'];
   if (row.workflow !== undefined) {
     const value = record(row.workflow); const dag = value ? record(value.stepDag) : null;
@@ -181,6 +182,7 @@ function details(value: unknown, ref: RunnableRef): EntityDetails | null {
     sourcePath: ref.sourcePath, sourceRevision: row.sourceRevision, tools: row.tools, declaredCeiling: row.declaredCeiling,
     replaces: row.replaces, buildsOn: row.buildsOn, knowledgeSources: row.knowledgeSources, skills: row.skills,
     schemas: row.schemas, lineage: row.lineage, grades: row.grades, ids: row.ids,
+    ...(typeof row.launchable === 'boolean' ? { launchable: row.launchable } : {}),
     ...(workflow ? { workflow } : {}), ...(builder ? { builder } : {}),
   };
 }

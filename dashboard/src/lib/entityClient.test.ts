@@ -47,6 +47,8 @@ describe('entity client', () => {
       details: { sourcePath: 'agents/grader.md', sourceRevision: 'a'.repeat(64), tools: [], declaredCeiling: 'T2', replaces: [], buildsOn: [], knowledgeSources: [], skills: [], schemas: [], lineage: [], grades: [], ids: ['grader'] },
     };
     expect(decodeEntityDetail(detail)).toMatchObject({ summary: { ref: { id: 'grader' } } });
+    expect(decodeEntityDetail({ ...detail, details: { ...detail.details, launchable: false } })).toMatchObject({ details: { launchable: false } });
+    expect(() => decodeEntityDetail({ ...detail, details: { ...detail.details, launchable: 'false' } })).toThrow('Invalid Entity detail response');
     expect(() => decodeEntityDetail({ ...detail, details: { ...detail.details, owner: 'operator' } })).toThrow('Invalid Entity detail response');
   });
 });

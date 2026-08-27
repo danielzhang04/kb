@@ -29,6 +29,12 @@ function DetailValues({ detail }: { detail: EntityDetailDto }): React.JSX.Elemen
   return <dl className="entity-technical-list">{values.map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="mc-mono">{value}</dd></div>)}</dl>;
 }
 
+function launchRefusalMessage(error: string | undefined): string {
+  if (error === 'agent-not-launchable') return "This agent isn't activated to run yet.";
+  if (error === 'no-complete-placement') return 'No host is available to run this right now.';
+  return error ?? 'Launch refused';
+}
+
 export interface AgentsProps {
   filter?: 'attention';
   focusAgentId?: string | null;
@@ -95,7 +101,7 @@ export function Agents({
     if (focusAgentId) onBack?.();
   };
   const launch = async (): Promise<void> => {
-    if (!detail || launching) return;
+    if (!detail || launching || detail.details.launchable === false) return;
     setLaunching(true);
     setLaunchStatus(null);
     try {
@@ -108,7 +114,7 @@ export function Agents({
       });
       const body = await response.json() as { run?: { runRef?: string }; runRef?: string; error?: string };
       const runRef = body.run?.runRef ?? body.runRef;
-      if (!response.ok) setLaunchStatus(body.error ?? 'Launch refused');
+      if (!response.ok) setLaunchStatus(launchRefusalMessage(body.error));
       else if (runRef) onNavigate?.({ view: 'workflows', focus: { kind: 'run', id: runRef } });
       else setLaunchStatus('Launch accepted');
     } catch {
@@ -149,7 +155,8 @@ export function Agents({
       activeSectionId={activeSectionId}
       onSectionChange={onSectionChange}
       actions={detail ? <>
-        <button type="button" disabled={launching} onClick={() => void launch()}>{launching ? 'Starting…' : 'Run now'}</button>
+        <button type="button" disabled={launching || detail.details.launchable === false} onClick={() => void launch()}>{launching ? 'Starting…' : detail.details.launchable === false ? 'Not activated' : 'Run now'}</button>
+        {detail.details.launchable === false ? <span className="entity-detail__action-note">This agent is declared but not activated to run — set <code>runner-bound: true</code> in its file to enable.</span> : null}
         <button type="button" onClick={() => onNavigate?.({ view: 'schedules', section: 'new', scheduleOwner: detail.summary.ref })}>Schedule</button>
         <button type="button" onClick={() => setEditing((value) => !value)}>Edit</button>
         <button type="button" onClick={() => onOpenTerminal?.({ id: openId })}>Open terminal</button>

@@ -678,6 +678,21 @@ function parseGovernanceAmendmentBody(body: unknown): { expectedSourceHash: stri
   return isSafeGovernanceValue(governance) ? { expectedSourceHash: value.expectedSourceRevision, idempotencyKey: value.idempotencyKey, governance } : null;
 }
 
+/**
+ * The declaration-level launch gate shared by the Agent detail projection and launch endpoint.
+ * Keep this separate from host placement: placement can still refuse an otherwise launchable agent.
+ */
+export function declaredAgentIsLaunchable(
+  declaration: DeclaredAgentDetail,
+  executionProfiles: readonly { id: string }[],
+): boolean {
+  const project = [...declaration.projects].sort()[0];
+  const profileId = declaration.defaultProfile;
+  return !!project && declaration.runnerBound && !!profileId
+    && (declaration.allowedProfiles ?? []).includes(profileId)
+    && executionProfiles.some((profile) => profile.id === profileId);
+}
+
 /** Launch one declared Agent through the same compiler/import/approval/Run transaction as a Workflow. */
 export async function launchDeclaredAgent(
   ctx: SurfaceContext,
@@ -688,11 +703,12 @@ export async function launchDeclaredAgent(
 ): Promise<LaunchOutcome> {
   const project = [...declaration.projects].sort()[0];
   const profileId = declaration.defaultProfile;
-  if (!project || !declaration.runnerBound || !profileId || !(declaration.allowedProfiles ?? []).includes(profileId)) {
+  const executionProfiles = loadExecutionProfiles(ctx.repoRoot);
+  if (!declaredAgentIsLaunchable(declaration, executionProfiles)) {
     return { status: 409, body: { error: 'agent-not-launchable' } };
   }
-  const executionProfile = loadExecutionProfiles(ctx.repoRoot).find((profile) => profile.id === profileId);
-  if (!executionProfile) return { status: 409, body: { error: 'agent-not-launchable' } };
+  const executionProfile = executionProfiles.find((profile) => profile.id === profileId);
+  if (!project || !profileId || !executionProfile) return { status: 409, body: { error: 'agent-not-launchable' } };
   const assignment = { agentId: declaration.id, profileId };
   const definition: WorkflowDef = {
     schemaVersion: 1,

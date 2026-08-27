@@ -17,7 +17,7 @@ import type { AttentionEnvelope, HostKind, RunOutcome, RunRow, RunnableRef } fro
 import type { RunMetadata } from '../control/types.ts';
 import { loadExecutionProfiles } from '../control/environment.ts';
 import { save as governedSave } from '../write/governedSave.ts';
-import { launchDeclaredAgent } from '../workflows/routes.ts';
+import { declaredAgentIsLaunchable, launchDeclaredAgent } from '../workflows/routes.ts';
 import { runBuilderAmendment } from '../workflows/amendments.ts';
 import { readAgentDeclarationProblems, readDeclaredAgentDetails, type DeclaredAgentDetail } from './roster.ts';
 import { nextScheduleOccurrence } from '../schedules/service.ts';
@@ -188,6 +188,7 @@ function agentDetail(ctx: SurfaceContext, declaration: DeclaredAgentDetail): Ent
       lineage: [...(declaration.buildsOn ?? [])],
       grades: [],
       ids: [declaration.id],
+      launchable: declaredAgentIsLaunchable(declaration, loadExecutionProfiles(ctx.repoRoot)),
       builder: (() => {
         const catalog = builderCatalog(ctx);
         return {

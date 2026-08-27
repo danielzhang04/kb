@@ -159,6 +159,49 @@ describe('Agents P2 roster', () => {
     expect(document.activeElement).toBe(card);
   });
 
+  it('disables Run for a declared agent that is not activated', async () => {
+    const inactiveDetail: EntityDetail = { ...detail, details: { ...detail.details, launchable: false } };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? inactiveDetail : list), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await renderWithTestSession(<Agents />);
+    fireEvent.click(await screen.findByTestId('entity-card'));
+
+    const run = await screen.findByRole('button', { name: 'Not activated' });
+    expect((run as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/This agent is declared but not activated to run/)).toBeTruthy();
+    fireEvent.click(run);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses friendly copy for known launch refusals', async () => {
+    const launchableDetail: EntityDetail = { ...detail, details: { ...detail.details, launchable: true } };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify({ error: 'agent-not-launchable' }), { status: 409 });
+      return new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? launchableDetail : list), { status: 200 });
+    }));
+
+    await renderWithTestSession(<Agents />, { signIn: async () => ({ token: 'session-token', expiresAt: Date.now() + 60_000 }) });
+    fireEvent.click(await screen.findByTestId('entity-card'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
+
+    expect(await screen.findByText("This agent isn't activated to run yet.")).toBeTruthy();
+  });
+
+  it('uses friendly copy when no host can run an agent', async () => {
+    const launchableDetail: EntityDetail = { ...detail, details: { ...detail.details, launchable: true } };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify({ error: 'no-complete-placement' }), { status: 409 });
+      return new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? launchableDetail : list), { status: 200 });
+    }));
+
+    await renderWithTestSession(<Agents />, { signIn: async () => ({ token: 'session-token', expiresAt: Date.now() + 60_000 }) });
+    fireEvent.click(await screen.findByTestId('entity-card'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
+
+    expect(await screen.findByText('No host is available to run this right now.')).toBeTruthy();
+  });
+
   it('explains curated capabilities and keeps the server-provided selection', async () => {
     const editableDetail: EntityDetail = {
       ...detail,
