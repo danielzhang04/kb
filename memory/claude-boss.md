@@ -93,3 +93,21 @@
 - HAZARD: codex sandboxes cannot run Flutter (SDK cache lockfile outside cwd) and a scoped `dart analyze` hides breaks elsewhere — require whole-tree `dart analyze lib test` in every Flutter brief and run the repo runner yourself; fresh Flutter worktrees need the untracked `telephony_plus/`, `.dart_tool/`, `objectbox.dll` copied and `rustpush/` + a `rust\target` junction (34 GB cache) to build. Sandbox runs also churn generated plugin registrants (line endings) — `git checkout -- linux/ macos/ windows/flutter/` before each commit.
 - HAZARD: keep-awake pid-only leases per dispatch + one on the boss claude pid kept the box up all evening; pytest in a read-only codex sandbox needs `--basetemp=.pytest-tmp`, and those `.pytest-tmp` dirs are ACL-locked afterwards (worktree removal needs an elevated delete).
 - REMAINS: Daniel's gates — spoken Atlas acceptance; `tool\phone_bridge_install.ps1 -InstallPackage -Confirm` for the signed MSIX; deferring Phone Bridge notifications/intents needs a readiness queue (next wave); C++ listener plugin untouched.
+
+## 2026-08-27 boss run: Atlas X-wave + kb atlas-bridge (lessons)
+
+- Live smoke beats fakes: the atlas-bridge (dashboard/atlas-bridge, branch claude/atlas-bridge) passed 11-31
+  vitest fakes while FOUR live bugs hid: legacy daemon gated as session_required (test helper pre-set a token),
+  /api/index = 9.3 MB vs 2 MB cap failing negotiation globally, oversize lists degrading to a bare marker,
+  legacy workflow id is `ref`. Rule: smoke every MCP bridge against the real endpoint before commit.
+- Say "environment" when you mean environment: rule text "take exactly their named entry" was implemented as
+  exact child ENV for from_claude_config MCP servers -> google/chrome-devtools spawned with no PATH after deploy;
+  552 unit tests stayed green. Deploy gate must include live /health showing every MCP server connected.
+- Bench probes that launch-and-kill (hangprobe/styleprobe) must never run against the live app - they shut it
+  down. Live checks = curl /health + /state + desktop.log only.
+- Read-only codex sandboxes cannot run vitest/pytest (no writable temp) - reviewers report it; boss runs suites.
+- Parallel Bash calls drift cwd: prefix every git/npm command with an explicit cd.
+- Fresh kb worktrees need `python scripts/sync_skills.py` before the pre-commit hook passes (regenerates
+  ignored kit/.rendered; touches nothing tracked).
+- Adversarial reviews returned REWORK on 5/5 units this wave; the blockers were real (HWND-unbound delete
+  confirm, open mutation DTOs passing T4 payloads, caller-trusted T3 kind). Keep the review step mandatory.
