@@ -18,6 +18,13 @@ function relativeTime(value: string, now: Date): string {
   return hours < 1 ? 'just now' : `${hours}h ago`;
 }
 
+/** Human, non-alarming copy for an unavailable section — never the raw reason code. `release-unavailable`
+ * is the expected state off the deployed VM (no /opt/kb-releases symlink), so it reads as a quiet fact,
+ * not an error; the rest are transient load failures. */
+function unavailableMessage(reason: HomeUnavailableReason): string {
+  return reason === 'release-unavailable' ? 'No deployed release detected.' : "Couldn't load right now.";
+}
+
 function Unavailable({ label, reason, retryTarget, onRetry }: {
   label: string;
   reason: HomeUnavailableReason;
@@ -27,7 +34,7 @@ function Unavailable({ label, reason, retryTarget, onRetry }: {
   return (
     <section aria-label={label} className="d13-home__section">
       <h2>{label}</h2>
-      <p>Unavailable: {reason}</p>
+      <p className="d13-home__muted">{unavailableMessage(reason)}</p>
       {onRetry ? <button type="button" onClick={() => onRetry(retryTarget)}>Retry {label}</button> : null}
     </section>
   );

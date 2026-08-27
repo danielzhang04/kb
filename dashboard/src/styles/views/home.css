@@ -57,3 +57,7 @@
     transition: none;
   }
 }
+
+.d13-home__muted {
+  color: var(--fg-dim);
+}

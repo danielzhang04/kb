@@ -40,8 +40,8 @@ describe('Home D13 live view', () => {
     const retry = vi.fn();
     await renderWithTestSession(<Home response={partialResponse()} onRetry={retry} />);
 
-    expect(screen.getByText('Unavailable: attention-unavailable')).toBeTruthy();
-    expect(screen.getByText('Unavailable: release-unavailable')).toBeTruthy();
+    expect(screen.getByText("Couldn't load right now.")).toBeTruthy();
+    expect(screen.getByText('No deployed release detected.')).toBeTruthy();
     expect(screen.queryByText('0 Agents gates')).toBeNull();
     expect(screen.getByRole('button', { name: 'Hygiene' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry Needs you' }));
