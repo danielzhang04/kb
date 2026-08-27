@@ -132,7 +132,14 @@ function agentList(ctx: SurfaceContext): EntityList {
   const runs = ctx.controlStore.listRuns('operator', 'all-subjects');
   const now = ctx.now?.() ?? new Date();
   const attention = attentionForRuns(ctx, runs);
-  return projectEntityList(entityRevision(ctx, declarations), 'agent', declarations.map((declaration) => projectionInput(ctx, declaration, runs, attention, now)));
+  return projectEntityList(
+    entityRevision(ctx, declarations),
+    'agent',
+    declarations.map((declaration) => projectionInput(ctx, declaration, runs, attention, now)),
+    // The roster is observability, not a project-required execution path. Keep malformed declarations
+    // visible without allowing one missing/invalid project assignment to break the complete read.
+    { fallbackGroup: () => 'undeclared' },
+  );
 }
 
 function purposeOf(declaration: DeclaredAgentDetail): string {

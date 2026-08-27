@@ -89,6 +89,21 @@ describe('Agent P2 routes', () => {
     expect(detail.json()).toMatchObject({ revision: expect.any(String), summary: { ref: { type: 'agent', id: 'research-worker' } }, brief: { purpose: 'Checks research.', outputs: [] }, details: { sourcePath: 'agents/research-worker.md', sourceRevision: expect.stringMatching(/^[a-f0-9]{64}$/) } });
   });
 
+  it('keeps a projectless agent in the Undeclared group without failing the roster', async () => {
+    const projectless = readFileSync(join(root, 'agents', 'research-worker.md'), 'utf8')
+      .replace('id: research-worker', 'id: projectless-agent')
+      .replace('projects: [kb-ops]', 'projects: []');
+    writeFileSync(join(root, 'agents', 'projectless-agent.md'), projectless, 'utf8');
+
+    const listed = await app.inject({ method: 'GET', url: '/api/agents' });
+
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'kb-ops', items: expect.arrayContaining([expect.objectContaining({ ref: expect.objectContaining({ id: 'research-worker' }) })]) }),
+      expect.objectContaining({ id: 'undeclared', label: 'Undeclared', items: expect.arrayContaining([expect.objectContaining({ ref: expect.objectContaining({ id: 'projectless-agent' }) })]) }),
+    ]));
+  });
+
   it('projects an armed owned schedule into list, Brief, status, and ETag revision', async () => {
     let collectionRevision = 4;
     store.getScheduleSnapshot = () => ({ collectionRevision, schedules: [{

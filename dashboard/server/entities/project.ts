@@ -19,6 +19,11 @@ export interface EntityGroupProjectionInput extends EntityProjectionInput {
   group?: 'system';
 }
 
+/** An opt-in list-reader escape hatch for declarations that cannot be assigned to a normal group. */
+export interface EntityListProjectionOptions {
+  fallbackGroup?(input: EntityGroupProjectionInput, error: Error): string | null;
+}
+
 export interface EntityBriefProjectionInput {
   purpose: string;
   doingNow: string;
@@ -129,11 +134,23 @@ function groupLabel(group: string): string {
   return group === SYSTEM_ENTITY_GROUP_ID ? group : humanizeEntityId(group);
 }
 
-export function projectEntityList(revision: string, kind: 'agent' | 'workflow', inputs: EntityGroupProjectionInput[]): EntityList {
+export function projectEntityList(
+  revision: string,
+  kind: 'agent' | 'workflow',
+  inputs: EntityGroupProjectionInput[],
+  options: EntityListProjectionOptions = {},
+): EntityList {
   const byGroup = new Map<string, EntitySummary[]>();
   for (const input of inputs) {
     if (input.ref.type !== kind) throw new Error('runnable-type-mismatch');
-    const group = groupFor(kind, input);
+    let group: string;
+    try {
+      group = groupFor(kind, input);
+    } catch (error) {
+      const fallback = error instanceof Error ? options.fallbackGroup?.(input, error) : null;
+      if (!fallback) throw error;
+      group = fallback;
+    }
     const items = byGroup.get(group) ?? [];
     items.push(projectEntitySummary(input));
     byGroup.set(group, items);
