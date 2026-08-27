@@ -48,7 +48,7 @@ const INTEGRATION_INPUT_KEYS = new Set([
 /** The one branch a coordination write may ever run git against (CLAUDE.md's Branch rules). */
 const COORDINATION_BRANCH = 'ops';
 /** Named, greppable refusal so every guarded coordination call is findable in the daemon log. */
-export const COORDINATION_GIT_GUARD_REASON = 'canonical-coordination-git-guard';
+const COORDINATION_GIT_GUARD_REASON = 'canonical-coordination-git-guard';
 
 export class CanonicalResultIntegrationError extends Error {}
 

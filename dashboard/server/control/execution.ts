@@ -585,7 +585,7 @@ export function stableHumanTitle(kind: 'gate' | 'policy' | 'budget' | 'execution
  * states. Deliberately carries no attemptRef: the condition belongs to the stranded record, not to any one
  * attempt, so repeated encounters reuse the one open boundary instead of stacking byte-identical parks.
  */
-export function strandedIntegrationTitle(stageId: string): string {
+function strandedIntegrationTitle(stageId: string): string {
   return stableHumanTitle('execution', stageId, 'canonical-integration-incomplete');
 }
 
