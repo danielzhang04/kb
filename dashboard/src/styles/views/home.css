@@ -1,7 +1,8 @@
 .d13-home {
   display: grid;
   gap: var(--section-gap);
-  max-width: 1120px;
+  /* Full content width, consistent with the Agents/Workflows views (was capped at 1120px). */
+  width: 100%;
 }
 
 .d13-home > h1 {

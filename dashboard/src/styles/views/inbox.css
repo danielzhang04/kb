@@ -2,7 +2,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--section-gap);
-  width: min(100%, 1120px);
+  /* Full content width, consistent with the Agents/Workflows views (was capped at 1120px). */
+  width: 100%;
   color: var(--fg-primary);
 }
 
