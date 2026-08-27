@@ -14,15 +14,20 @@ function rulesFor(css: string, selector: string): string[] {
   return bodies;
 }
 
+// Tasks intentionally departs from the dense 36–44px single-line vocabulary: U5 made its rows a
+// taller, variable-height (`height: auto`) human-first row — plain title + "what's next" line, with
+// technical metadata demoted — because Daniel's acceptance called Tasks confusing/hard-to-skim. It
+// KEEPS every other row invariant (one hairline separator, cursor:pointer, row-as-primary-action).
+// Projects/Files/folder remain the dense 36–44px vocabulary.
 const ROWS = [
-  { name: 'Tasks', file: 'views/tasks.css', selector: '.v-tasks__row', height: /height\s*:\s*40px/ },
-  { name: 'Projects', file: 'views/projects.css', selector: '.v-projects__card', height: /min-height\s*:\s*36px[\s\S]*max-height\s*:\s*44px/ },
-  { name: 'folder', file: 'views/folder.css', selector: '.v-folder__row', height: /min-height\s*:\s*36px[\s\S]*max-height\s*:\s*44px/ },
+  { name: 'Tasks', file: 'views/tasks.css', selector: '.v-tasks__row', height: /height\s*:\s*auto/, shape: 'a variable-height human-first row' },
+  { name: 'Projects', file: 'views/projects.css', selector: '.v-projects__card', height: /min-height\s*:\s*36px[\s\S]*max-height\s*:\s*44px/, shape: 'a 36–44 px row' },
+  { name: 'folder', file: 'views/folder.css', selector: '.v-folder__row', height: /min-height\s*:\s*36px[\s\S]*max-height\s*:\s*44px/, shape: 'a 36–44 px row' },
 ] as const;
 
 describe('Tasks, Projects, Files, and folder row vocabulary', () => {
   for (const row of ROWS) {
-    it(`${row.name} uses a 36–44 px row, one hairline separator, and the row as primary action`, () => {
+    it(`${row.name} uses ${row.shape}, one hairline separator, and the row as primary action`, () => {
       const css = readFileSync(resolve(here, row.file), 'utf8');
       const body = rulesFor(css, row.selector)[0] ?? '';
       expect(body).toMatch(row.height);
