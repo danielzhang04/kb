@@ -44,16 +44,36 @@ describe('P1 application tokens', () => {
     }
   });
 
-  it('pins the three exact system stacks and five type roles', () => {
+  it('pins one neutral system sans stack and five type roles', () => {
     const root = blocks(':root')[0] ?? '';
-    expect(declaration(root, '--font-header')).toBe('"Arial Narrow","Aptos Narrow","Roboto Condensed","Helvetica Neue Condensed",sans-serif');
-    expect(declaration(root, '--font-body')).toBe('"Geist","Geist Sans",-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",sans-serif');
+    expect(declaration(root, '--font-sans')).toBe('-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif');
+    expect(declaration(root, '--font-header')).toBe('var(--font-sans)');
+    expect(declaration(root, '--font-body')).toBe('var(--font-sans)');
     expect(declaration(root, '--font-mono')).toBe('"Geist Mono",ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace');
-    expect(declaration(root, '--type-title')).toBe('600 24px/28px var(--font-header)');
-    expect(declaration(root, '--type-section')).toBe('600 16px/20px var(--font-header)');
+    expect(declaration(root, '--text-xl')).toBe('22px');
+    expect(declaration(root, '--text-lg')).toBe('15px');
+    expect(declaration(root, '--type-title')).toBe('600 22px/28px var(--font-header)');
+    expect(declaration(root, '--type-section')).toBe('600 15px/20px var(--font-header)');
     expect(declaration(root, '--type-body')).toBe('400 13px/18px var(--font-body)');
     expect(declaration(root, '--type-meta')).toBe('400 12px/16px var(--font-body)');
     expect(declaration(root, '--type-mono')).toBe('400 12px/18px var(--font-mono)');
+    expect(declaration(root, '--type-title-size')).toBe('22px');
+    expect(declaration(root, '--type-title-weight')).toBe('600');
+    expect(declaration(root, '--type-title-line')).toBe('28px');
+    expect(declaration(root, '--type-section-size')).toBe('15px');
+    expect(declaration(root, '--type-section-weight')).toBe('600');
+    expect(declaration(root, '--type-section-line')).toBe('20px');
+  });
+
+  it('pins the shared content, section, and card rhythm plus both viewport breakpoints', () => {
+    const root = blocks(':root')[0] ?? '';
+    expect(declaration(root, '--content-pad')).toBe('var(--space-6)');
+    expect(declaration(root, '--content-pad-compact')).toBe('var(--space-4)');
+    expect(declaration(root, '--section-gap')).toBe('var(--space-6)');
+    expect(declaration(root, '--card-gap')).toBe('var(--space-3)');
+    expect(declaration(root, '--card-pad')).toBe('var(--space-4)');
+    expect(css).toContain('@media (max-width: 899px)');
+    expect(css).toContain('@media (max-width: 599px)');
   });
 
   it('rejects every legacy color variable declaration or use', () => {

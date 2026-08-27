@@ -19,7 +19,7 @@
 .v-tasks {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
-  gap: var(--space-6);
+  gap: var(--section-gap);
   align-items: start;
   min-width: 0;
 }
@@ -28,7 +28,7 @@
 .v-tasks__groups {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--section-gap);
   min-width: 0;
 }
 
@@ -175,6 +175,24 @@
   font-size: var(--type-meta-size);
   color: var(--fg-primary);
   word-break: break-word;
+}
+
+@media (max-width: 899px) {
+  .v-tasks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v-tasks__detail,
+  .v-tasks__placeholder {
+    position: static;
+  }
+}
+
+@media (max-width: 599px) {
+  .v-tasks__fm-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
 }
 
 /* ---- Rendered card body (inert) --------------------------------------- */

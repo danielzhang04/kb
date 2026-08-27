@@ -19,7 +19,7 @@
 .v-folder {
   display: grid;
   grid-template-columns: minmax(200px, 300px) 1fr;
-  gap: var(--space-6);
+  gap: var(--section-gap);
   align-items: start;
   min-width: 0;
 }
@@ -162,6 +162,18 @@
   line-height: 1.6;
   color: var(--fg-primary);
   max-width: 78ch;
+}
+
+@media (max-width: 899px) {
+  .v-folder {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .v-folder__content {
+    padding: var(--space-3);
+  }
 }
 
 .v-folder__markdown h1,

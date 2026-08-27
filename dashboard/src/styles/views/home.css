@@ -1,6 +1,6 @@
 .d13-home {
   display: grid;
-  gap: var(--space-6);
+  gap: var(--section-gap);
   max-width: 1120px;
 }
 
@@ -11,11 +11,11 @@
 
 .d13-home__section {
   border-top: 1px solid var(--hairline);
-  padding-top: var(--space-3);
+  padding-top: var(--card-gap);
 }
 
 .d13-home__section h2 {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--card-gap);
   font: var(--type-section);
 }
 

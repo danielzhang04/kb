@@ -454,11 +454,11 @@
 .entity-roster-controls input { min-height: 36px; flex: 1; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
 .entity-roster-controls button { min-height: 36px; font: inherit; color: var(--fg-primary); background: transparent; border: 1px solid var(--border); cursor: pointer; }
 
-.entity-card-groups, .entity-card-group { display: flex; flex-direction: column; gap: var(--space-3); }
+.entity-card-groups, .entity-card-group { display: flex; flex-direction: column; gap: var(--card-gap); }
 .entity-card-group__toggle { width: 100%; min-height: 36px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--fg-primary); text-align: left; cursor: pointer; }
-.entity-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
+.entity-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--card-gap); min-width: 0; }
 .entity-card-groups--list .entity-card-grid { display: flex; flex-direction: column; }
-.entity-card { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2); min-height: 96px; padding: var(--space-3); border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); text-align: left; cursor: pointer; }
+.entity-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); min-width: 0; min-height: 96px; padding: var(--card-pad); border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); text-align: left; cursor: pointer; }
 .entity-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .entity-card__name { font-weight: 600; }
 .entity-card__status { padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-sm); }
@@ -575,4 +575,18 @@
   color: var(--fg-faint);
   font-size: var(--type-meta-size);
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 599px) {
+  .entity-detail__facts,
+  .entity-kv,
+  .entity-card-grid,
+  .entity-card,
+  .entity-technical-list > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .entity-card {
+    padding: var(--space-3);
+  }
 }

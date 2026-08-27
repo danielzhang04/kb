@@ -39,6 +39,24 @@ const DISABLED_SSE_FACTORY: SseFactory = () => ({
   addEventListener: () => undefined,
   close: () => undefined,
 });
+const NARROW_VIEWPORT_QUERY = '(max-width: 899px)';
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => (
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(query).matches
+  ));
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(query);
+    const update = (): void => setMatches(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, [query]);
+  return matches;
+}
 
 function useInboxCount(enabled: boolean, tick: number): number {
   const [count, setCount] = useState(0);
@@ -133,10 +151,11 @@ function BootingView(): React.JSX.Element {
   return <main className="mc-main"><section className="code-view" aria-label="Starting dashboard" aria-live="polite"><h2>Starting dashboard</h2></section></main>;
 }
 
-function Sidebar({ active, onSelect, rail, onToggleRail, badges }: {
+function Sidebar({ active, onSelect, rail, railForced, onToggleRail, badges }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
   rail: boolean;
+  railForced: boolean;
   onToggleRail: () => void;
   badges: Partial<Record<'inbox' | 'agents' | 'workflows', number>>;
 }): React.JSX.Element {
@@ -144,7 +163,7 @@ function Sidebar({ active, onSelect, rail, onToggleRail, badges }: {
     <nav className="mc-sidebar" aria-label="Primary navigation">
       <div className="mc-sidebar__brand">
         <span className="mc-sidebar__brand-text">kb</span>
-        <button type="button" className="mc-sidebar__collapse-toggle" aria-label={rail ? 'Expand sidebar' : 'Collapse sidebar'} aria-pressed={rail} onClick={onToggleRail}>{rail ? '»' : '«'}</button>
+        <button type="button" className="mc-sidebar__collapse-toggle" aria-label={rail ? 'Expand sidebar' : 'Collapse sidebar'} aria-pressed={rail} hidden={railForced} onClick={onToggleRail}>{rail ? '»' : '«'}</button>
       </div>
       <div className="mc-nav">
         {NAV_SECTIONS.map((section, sectionIndex) => (
@@ -204,10 +223,12 @@ function AuthenticatedAppShell(): React.JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const [runtimeCapabilities, setRuntimeCapabilities] = useState<ClientRuntimeCapabilities>(UNAVAILABLE_RUNTIME_CAPABILITIES);
+  const viewportForcesRail = useMediaQuery(NARROW_VIEWPORT_QUERY);
   const { count: controlTick } = useSse('/events', session?.token ? undefined : DISABLED_SSE_FACTORY);
   const inboxCount = useInboxCount(view !== 'inbox', controlTick);
   const attention = useAttentionCounts(session?.token, controlTick);
   const terminalVisible = view === 'terminal';
+  const railMode = rail || viewportForcesRail;
 
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
@@ -273,8 +294,8 @@ function AuthenticatedAppShell(): React.JSX.Element {
 
   return (
     <RuntimeCapabilitiesProvider value={runtimeCapabilities}>
-      <div className={`app-shell${rail ? ' app-shell--rail' : ''}`}>
-        <Sidebar active={view} onSelect={goTo} rail={rail} onToggleRail={() => setRail((value) => !value)} badges={{
+      <div className={`app-shell${railMode ? ' app-shell--rail' : ''}`}>
+        <Sidebar active={view} onSelect={goTo} rail={railMode} railForced={viewportForcesRail} onToggleRail={() => setRail((value) => !value)} badges={{
           inbox: inboxCount, agents: attention.agents, workflows: attention.workflows,
         }} />
         <header className="mc-topbar">

@@ -129,6 +129,45 @@ describe('App P1 shell', () => {
     expect(document.querySelector('.app-shell')?.classList.contains('app-shell--rail')).toBe(false);
   });
 
+  it('forces the sidebar rail in a narrow viewport without overwriting the wider manual choice', async () => {
+    let narrow = true;
+    let changeListener: EventListener | null = null;
+    const queryList = {
+      get matches() { return narrow; },
+      media: '(max-width: 899px)',
+      onchange: null,
+      addEventListener: vi.fn((_type: string, listener: EventListener) => { changeListener = listener; }),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    } as unknown as MediaQueryList;
+    vi.stubGlobal('matchMedia', vi.fn(() => queryList));
+
+    await renderApp();
+    const shell = document.querySelector('.app-shell');
+    const toggle = document.querySelector<HTMLButtonElement>('.mc-sidebar__collapse-toggle');
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+    expect(toggle?.hidden).toBe(true);
+
+    const resizeTo = (matches: boolean): void => {
+      narrow = matches;
+      act(() => { changeListener?.(new Event('change')); });
+    };
+    resizeTo(false);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
+    expect(toggle?.hidden).toBe(false);
+
+    fireEvent.click(toggle!);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+    resizeTo(true);
+    resizeTo(false);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+
+    fireEvent.click(toggle!);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
+  });
+
   it('persists an explicit theme across destination changes', async () => {
     await renderApp();
     fireEvent.click(screen.getByRole('button', { name: 'Switch to light theme' }));
