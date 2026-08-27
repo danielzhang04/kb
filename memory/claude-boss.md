@@ -111,3 +111,17 @@
   ignored kit/.rendered; touches nothing tracked).
 - Adversarial reviews returned REWORK on 5/5 units this wave; the blockers were real (HWND-unbound delete
   confirm, open mutation DTOs passing T4 payloads, caller-trusted T3 kind). Keep the review step mandatory.
+
+## 2026-08-27 boss run: Atlas Y-wave (lessons)
+
+- Six parallel codex units -> six adversarial reviews -> six REWORKs with real defects (hook override, event-loop
+  blocking on SQLite, Authenticode checks on every poll, CWD-resolved ruff.cmd, concurrent-tool state clearing,
+  typed input bypassing addressing guards). The review step keeps paying for itself; never skip it.
+- Parallel units that touch the same files WILL conflict at merge. Codex "resolver" dispatches into the mid-merge
+  tree (brief: never run git, only edit + test, both sides must survive, report exact test count) resolved 3/3
+  cleanly; the boss commits the merge after re-running the suite. Cheaper than serializing the builds.
+- Sandbox limits to plan around: no pip/PyPI, no writes under .codex/ - do those in the boss env and have the
+  unit ship an installer script + root config file instead.
+- Heredoc mega-batches (6 briefs in one bash command) fail to parse silently; write briefs with the Write tool,
+  dispatch one per command.
+- Before assuming a live-app crash, read desktop.log: Daniel closes Atlas himself.
