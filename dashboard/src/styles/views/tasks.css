@@ -2,8 +2,8 @@
  * ============================================================================
  * TASKS view (U3) — the whole card queue, state-grouped, with a detail pane
  * ============================================================================
- * Layout: LEFT a scrollable column of state groups (each a dense table); RIGHT
- * a sticky detail pane (frontmatter key/value + rendered card body). Tokens
+ * Layout: LEFT a scrollable column of state groups with human-first summaries;
+ * RIGHT a sticky detail pane with the task brief before optional technical data. Tokens
  * only (docs/design-brief.md §A–F); dark is default, the light remap in app.css
  * carries through every var().
  *
@@ -36,11 +36,24 @@
   min-width: 0;
 }
 
+.v-tasks__group--priority {
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
 .v-tasks__group-head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin: 0 0 var(--space-2);
+}
+
+.v-tasks__group-copy {
+  flex: 1;
+  min-width: 0;
 }
 
 .v-tasks__group-title {
@@ -49,6 +62,29 @@
   font-weight: var(--type-section-weight);
   letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
+}
+
+.v-tasks__group--priority .v-tasks__group-title {
+  color: var(--fg-primary);
+}
+
+.v-tasks__group-description {
+  margin: var(--space-1) 0 0;
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
+  line-height: 1.4;
+}
+
+.v-tasks__needs-you {
+  flex: none;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-quiet);
+  color: var(--fg-primary);
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-section-weight);
+  white-space: nowrap;
 }
 
 /* A count, not a hue — tabular in a quiet pill. */
@@ -66,7 +102,7 @@
  * .mc-table / .mc-table--boxed geometry in app.css. Only the selection rail and the task-specific
  * cells live here, so this table cannot drift from the Agents/Workflows/Home ones. ---- */
 .v-tasks__row {
-  height: 40px;
+  height: auto;
   border-bottom: 1px solid var(--border);
   /* 2px transparent left rail keeps geometry stable; only selection paints it. */
   border-left: 2px solid transparent;
@@ -85,21 +121,56 @@
   border-left-color: var(--accent);
 }
 
-.v-tasks__cell-id {
-  font-size: var(--type-meta-size);
-  color: var(--fg-primary);
-  white-space: nowrap;
+.v-tasks__cell-summary {
+  width: 100%;
+  min-width: 0;
 }
 
-.v-tasks__cell-action {
-  color: var(--fg-primary);
+.v-tasks__task-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-.v-tasks__cell-owner,
-.v-tasks__cell-project {
-  font-size: var(--type-meta-size);
+.v-tasks__task-title {
+  color: var(--fg-primary);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.v-tasks__action-cue {
+  flex: none;
   color: var(--fg-dim);
-  white-space: nowrap;
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+}
+
+.v-tasks__action-cue--needed {
+  color: var(--accent);
+}
+
+.v-tasks__task-summary {
+  margin: var(--space-1) 0 0;
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1.45;
+}
+
+.v-tasks__task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
+  font-size: var(--type-meta-size);
+  color: var(--fg-faint);
+}
+
+.v-tasks__task-meta .mc-mono {
+  overflow-wrap: anywhere;
 }
 
 .v-tasks__cell--faint {
@@ -130,18 +201,83 @@
   color: var(--fg-faint);
 }
 
-.v-tasks__detail-id {
-  margin: 0 0 var(--space-1);
+.v-tasks__back {
+  margin-bottom: var(--space-4);
+}
+
+.v-tasks__detail-head {
+  margin-bottom: var(--space-4);
+}
+
+.v-tasks__detail-title {
+  margin: 0 0 var(--space-2);
   font-size: var(--type-title-size);
   font-weight: var(--type-title-weight);
   line-height: 1.2;
   word-break: break-word;
 }
 
+.v-tasks__detail-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1.5;
+}
+
+.v-tasks__detail-summary strong {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+}
+
 .v-tasks__detail-caption {
   margin: 0 0 var(--space-4);
   font-size: var(--type-meta-size);
   color: var(--fg-dim);
+}
+
+.v-tasks__brief {
+  margin-bottom: var(--space-4);
+}
+
+.v-tasks__advanced {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.v-tasks__advanced > summary {
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+}
+
+.v-tasks__advanced[open] > summary {
+  margin-bottom: var(--space-3);
+  color: var(--fg-primary);
+}
+
+.v-tasks__advanced > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: var(--space-1);
+}
+
+.v-tasks__technical-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.v-tasks__technical-label {
+  flex: none;
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
 }
 
 /* ---- Frontmatter key/value block (mono, aligned) ---------------------- */
@@ -189,6 +325,16 @@
 }
 
 @media (max-width: 599px) {
+  .v-tasks__group-head {
+    flex-wrap: wrap;
+  }
+
+  .v-tasks__detail-summary,
+  .v-tasks__technical-id {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .v-tasks__fm-row {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);

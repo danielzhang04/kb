@@ -52,12 +52,16 @@ describe('Tasks view', () => {
     // Primary buckets present as labelled groups.
     expect(screen.getByLabelText('Inbox cards')).toBeTruthy();
     expect(screen.getByLabelText('Working cards')).toBeTruthy();
-    expect(screen.getByLabelText('Approvals cards')).toBeTruthy();
+    expect(screen.getByLabelText('Needs your action cards')).toBeTruthy();
     // Cards land under the right group.
-    // Rows are named, not id-printed: the group holds the card's action, and its id is a tooltip.
-    expect(within(screen.getByLabelText('Inbox cards')).getAllByText('draft-plan').length).toBeGreaterThan(0);
-    expect(within(screen.getByLabelText('Working cards')).getAllByText('run-build').length).toBeGreaterThan(0);
-    expect(within(screen.getByLabelText('Approvals cards')).getAllByText('push-remote').length).toBeGreaterThan(0);
+    // Human-readable task names lead; the exact action strings stay in muted metadata.
+    expect(within(screen.getByLabelText('Inbox cards')).getByText('Draft Plan')).toBeTruthy();
+    expect(within(screen.getByLabelText('Working cards')).getByText('Run Build')).toBeTruthy();
+    const actionGroup = screen.getByLabelText('Needs your action cards');
+    expect(within(actionGroup).getByText('Push Remote')).toBeTruthy();
+    expect(within(actionGroup).getByText('Review')).toBeTruthy();
+    expect(within(actionGroup).getByText('Review the scope and decide what can move forward.')).toBeTruthy();
+    expect(within(actionGroup).getByText('Action push-remote')).toBeTruthy();
     expect(within(screen.getByLabelText('Inbox cards')).queryByText('card-100')).toBeNull();
   });
 
@@ -70,7 +74,7 @@ describe('Tasks view', () => {
   it('opens the detail pane on selection: frontmatter key/value + rendered body', () => {
     render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
     // Nothing selected -> placeholder prompt.
-    expect(screen.getByText('Select a card to see its frontmatter and body.')).toBeTruthy();
+    expect(screen.getByText('Select a task to see what it needs and why.')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('task-row-card-300'));
 
@@ -84,6 +88,32 @@ describe('Tasks view', () => {
     // Body rendered through the safe markdown renderer (heading + list item become real elements).
     expect(within(detail).getByRole('heading', { name: 'Work order' })).toBeTruthy();
     expect(within(detail).getByText('step one')).toBeTruthy();
+    const advanced = within(detail).getByText('Advanced details').closest('details');
+    expect(advanced?.hasAttribute('open')).toBe(false);
+  });
+
+  it('closes detail by Back, Escape, outside click, or selecting the same row again', () => {
+    render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
+    const approvalRow = screen.getByTestId('task-row-card-300');
+    const workingRow = screen.getByTestId('task-row-card-200');
+
+    fireEvent.click(approvalRow);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to tasks' }));
+    expect(screen.getByText('Select a task to see what it needs and why.')).toBeTruthy();
+
+    fireEvent.click(approvalRow);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByText('Select a task to see what it needs and why.')).toBeTruthy();
+
+    fireEvent.click(approvalRow);
+    fireEvent.click(screen.getByRole('heading', { name: 'Inbox' }));
+    expect(screen.getByText('Select a task to see what it needs and why.')).toBeTruthy();
+
+    fireEvent.click(approvalRow);
+    fireEvent.click(workingRow);
+    expect(within(screen.getByLabelText('Card detail')).getByRole('heading', { name: 'Run Build' })).toBeTruthy();
+    fireEvent.click(workingRow);
+    expect(screen.getByText('Select a task to see what it needs and why.')).toBeTruthy();
   });
 
   it('body content is escaped, never interpreted as live markup', () => {
@@ -184,7 +214,7 @@ describe('Tasks view', () => {
     expect(screen.getByLabelText('Tasks view')).toBeTruthy();
     expect(screen.getByText('Nothing in inbox.')).toBeTruthy();
     expect(screen.getByText('Nothing in working.')).toBeTruthy();
-    expect(screen.getByText('Nothing in approvals.')).toBeTruthy();
+    expect(screen.getByText('Nothing needs your action.')).toBeTruthy();
     expect(screen.getByText('Nothing in done.')).toBeTruthy();
     // Non-primary states stay hidden when empty.
     expect(screen.queryByLabelText('Blocked cards')).toBeNull();
@@ -235,7 +265,7 @@ describe('Tasks view — the card gate', () => {
     // The decision sits beside the work order it covers — the context the Inbox row deliberately lacks.
     expect(screen.getByLabelText('Card detail').textContent).toContain('Push the ops branch.');
 
-    fireEvent.click(within(screen.getByLabelText('Inbox cards')).getAllByText('noop')[0]);
+    fireEvent.click(screen.getByTestId('task-row-card-quiet'));
     expect(screen.queryByTestId('card-gate')).toBeNull();
   });
 

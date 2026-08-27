@@ -1,10 +1,9 @@
 /**
  * Tasks view (U3) — the whole card queue on one surface: every card across the four physical queue
  * dirs, grouped by lifecycle state (inbox / working / approvals / done, plus blocked / approved /
- * rejected when populated). A two-pane layout: LEFT a dense state-grouped table (mono id, action, tier
- * badge, owner, project, a per-state status dot); RIGHT a detail pane that opens on selection showing
- * the card's full frontmatter as a mono key/value block and its body sections rendered through the
- * existing safe markdown renderer.
+ * rejected when populated). A two-pane layout: LEFT a state-grouped, human-first task list; RIGHT a
+ * detail pane that opens on selection with the next human action and work order first, while routing
+ * and full frontmatter remain available as advanced details.
  *
  * SECURITY: a card's body — `## Work order` / `## Evidence` / `## Result` — is INERT data. It is passed
  * verbatim to {@link renderMarkdown}, which HTML-escapes the whole source before applying any transform,
@@ -19,6 +18,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { CardProjection, ParsedCard, CardFieldValue } from '../../server/planeA/cards';
 import { EntityName } from '../components/EntityName';
+import { humanizeEntityId } from '../entity/humanizeEntityId';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import { useSession } from '../lib/sessionContext';
 import {
@@ -44,22 +44,36 @@ export type CardsByState = Record<string, CardProjection[]>;
 
 type DotKind = 'idle' | 'running' | 'blocked' | 'done' | 'error';
 
+interface StateMeta {
+  label: string;
+  description: string;
+  empty: string;
+  dot: DotKind;
+  priority?: boolean;
+}
+
 /** Canonical render order + per-state label/status-dot. Escalating along the lifecycle. */
-const STATE_META: Record<string, { label: string; dot: DotKind }> = {
-  inbox: { label: 'Inbox', dot: 'idle' },
-  working: { label: 'Working', dot: 'running' },
-  blocked: { label: 'Blocked', dot: 'blocked' },
-  approvals: { label: 'Approvals', dot: 'running' },
-  approved: { label: 'Approved', dot: 'done' },
-  rejected: { label: 'Rejected', dot: 'error' },
-  done: { label: 'Done', dot: 'done' },
-  'stop-requested': { label: 'Stop requested', dot: 'running' },
-  halting: { label: 'Halting', dot: 'running' },
-  halted: { label: 'Halted', dot: 'error' },
+const STATE_META: Record<string, StateMeta> = {
+  approvals: {
+    label: 'Needs your action',
+    description: 'Review the scope and decide what can move forward.',
+    empty: 'Nothing needs your action.',
+    dot: 'running',
+    priority: true,
+  },
+  inbox: { label: 'Inbox', description: 'Ready to be assigned or picked up.', empty: 'Nothing in inbox.', dot: 'idle' },
+  working: { label: 'Working', description: 'Work currently underway.', empty: 'Nothing in working.', dot: 'running' },
+  blocked: { label: 'Blocked', description: 'Waiting for a dependency or guidance.', empty: 'Nothing is blocked.', dot: 'blocked' },
+  approved: { label: 'Approved', description: 'Decisions already approved.', empty: 'Nothing is approved.', dot: 'done' },
+  rejected: { label: 'Rejected', description: 'Decisions that did not proceed.', empty: 'Nothing is rejected.', dot: 'error' },
+  done: { label: 'Done', description: 'Finished work kept for reference.', empty: 'Nothing in done.', dot: 'done' },
+  'stop-requested': { label: 'Stop requested', description: 'Work winding down after a stop request.', empty: 'No stop requests are pending.', dot: 'running' },
+  halting: { label: 'Halting', description: 'Workers currently shutting down.', empty: 'Nothing is halting.', dot: 'running' },
+  halted: { label: 'Halted', description: 'Stopped work that may need review.', empty: 'Nothing is halted.', dot: 'error' },
 };
 
-/** The order groups appear in. */
-const STATE_ORDER = ['inbox', 'working', 'stop-requested', 'halting', 'halted', 'blocked', 'approvals', 'approved', 'rejected', 'done'];
+/** Human decisions lead; the remaining lifecycle buckets follow in operational order. */
+const STATE_ORDER = ['approvals', 'inbox', 'working', 'stop-requested', 'halting', 'halted', 'blocked', 'approved', 'rejected', 'done'];
 
 /** Operational buckets that ALWAYS render a header (with a calm empty line when they hold nothing) —
  *  the operator should always see the shape of the queue. Others appear only when populated. */
@@ -100,6 +114,75 @@ function fieldStr(v: CardFieldValue | undefined): string {
   return String(v);
 }
 
+const CONTROL_PREFIX = /^(?:wake-me|needs?-?input|human-?input|input-?required|question|human-?review|review-?required|approve|decide|cadence)$/i;
+
+interface TaskPresentation {
+  title: string;
+  cue: 'Review' | 'Reply' | 'Resolve' | 'Decide' | 'Watch' | 'Waiting' | null;
+  needsAction: boolean;
+  summary: string;
+  gate: CardGateItem | null;
+}
+
+/** Turn the dispatcher action phrase into a readable title without changing its stored value. */
+function plainTaskTitle(card: CardProjection): string {
+  const raw = card.displayName.trim() || fieldStr(card.meta.action);
+  const [prefix, ...rest] = raw.split(':');
+  const subject = rest.length > 0 && CONTROL_PREFIX.test(prefix) ? rest.join(' ') : raw;
+  const readable = humanizeEntityId(subject.replace(/[:/.]+/g, '-'));
+  return readable || 'Untitled task';
+}
+
+function calmStateSummary(state: string): string {
+  switch (state) {
+    case 'inbox': return 'Queued and ready to start.';
+    case 'working': return 'Work is underway.';
+    case 'blocked': return 'Waiting for a dependency or guidance.';
+    case 'approved': return 'Approved and ready for its next stage.';
+    case 'rejected': return 'Stopped at a decision boundary.';
+    case 'done': return 'Work is complete.';
+    case 'stop-requested':
+    case 'halting': return 'A requested stop is still winding down.';
+    case 'halted': return 'The run stopped and is ready for review.';
+    default: return `Currently ${humanizeEntityId(state)}.`;
+  }
+}
+
+function plainGateSummary(gate: CardGateItem, state: string, cue: TaskPresentation['cue']): string {
+  if (cue === 'Review') return 'This task is waiting for your decision.';
+  if (cue === 'Reply') return 'The owner needs your input before work can continue.';
+  if (cue === 'Resolve' && state === 'halted') return 'This stopped run needs your review and resolution.';
+  if (cue === 'Resolve') return 'An agent needs your guidance before work can continue.';
+  if (cue === 'Decide') return 'No agent can move this task until you decide.';
+  if (cue === 'Waiting') return 'Your reply is recorded; the owner still needs to pick it up.';
+  if (cue === 'Watch') return gate.status;
+  return gate.reason;
+}
+
+/** One presentation vocabulary for both the list row and selected-card summary. */
+function presentTask(card: CardProjection): TaskPresentation {
+  const state = String(card.meta.state).toLowerCase();
+  const gate = classifyCardGate(card);
+  let cue: TaskPresentation['cue'] = null;
+
+  if (gate) {
+    if (gate.status === 'Reply recorded') cue = 'Waiting';
+    else if (state === 'approvals') cue = 'Review';
+    else if (gate.respond === 'reply') cue = 'Reply';
+    else if (gate.respond === 'resolve') cue = 'Resolve';
+    else if (gate.label === 'Gate') cue = 'Decide';
+    else cue = 'Watch';
+  }
+
+  return {
+    title: plainTaskTitle(card),
+    cue,
+    needsAction: cue !== null && cue !== 'Watch' && cue !== 'Waiting',
+    summary: gate ? plainGateSummary(gate, state, cue) : calmStateSummary(state),
+    gate,
+  };
+}
+
 /** Ordered [key, value] pairs for the frontmatter block: preferred keys first, then the rest. */
 function orderedFields(card: ParsedCard): Array<[string, string]> {
   const seen = new Set<string>();
@@ -130,6 +213,7 @@ function CardRow({
   const owner = card.meta.owner;
   const project = fieldStr(card.meta.project);
   const cls = tierClass(tier);
+  const presentation = presentTask(card);
   return (
     <tr
       role="button"
@@ -145,18 +229,26 @@ function CardRow({
         }
       }}
     >
-      {/* The card's name, not its id: the id stays reachable through the tooltip + copy affordance. */}
-      <td className="v-tasks__cell-id">
-        <EntityName kind="card" id={id} displayName={card.displayName} shortRef={card.shortRef} />
+      <td className="v-tasks__cell-summary">
+        <div className="v-tasks__task-line">
+          {presentation.cue ? (
+            <span className={`v-tasks__action-cue${presentation.needsAction ? ' v-tasks__action-cue--needed' : ''}`}>
+              {presentation.cue}
+            </span>
+          ) : null}
+          <span className="v-tasks__task-title">{presentation.title}</span>
+        </div>
+        <p className="v-tasks__task-summary">{presentation.summary}</p>
+        <div className="v-tasks__task-meta" aria-label="Technical task metadata">
+          <span className="mc-mono" title={id}>#{card.shortRef}</span>
+          <span className="mc-mono">Action {fieldStr(card.meta.action)}</span>
+          <span className="mc-mono">Project {project}</span>
+          <span className={`mc-mono${owner == null ? ' v-tasks__cell--faint' : ''}`}>
+            Owner {owner == null ? 'unassigned' : String(owner)}
+          </span>
+          {cls ? <span className={`mc-badge ${cls}`}>{tier}</span> : null}
+        </div>
       </td>
-      <td className="v-tasks__cell-action">{fieldStr(card.meta.action)}</td>
-      <td className="v-tasks__cell-tier">
-        {cls ? <span className={`mc-badge ${cls}`}>{tier}</span> : null}
-      </td>
-      <td className={`v-tasks__cell-owner mc-mono${owner == null ? ' v-tasks__cell--faint' : ''}`}>
-        {owner == null ? '—' : String(owner)}
-      </td>
-      <td className="v-tasks__cell-project mc-mono">{project}</td>
     </tr>
   );
 }
@@ -172,26 +264,37 @@ function StateGroup({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
-  const meta = STATE_META[state] ?? { label: state, dot: 'idle' as DotKind };
+  const meta: StateMeta = STATE_META[state] ?? {
+    label: humanizeEntityId(state),
+    description: 'Tasks in this lifecycle state.',
+    empty: `Nothing in ${humanizeEntityId(state).toLowerCase()}.`,
+    dot: 'idle' as DotKind,
+  };
+  const actionCount = cards.filter((card) => presentTask(card).needsAction).length;
+  const priority = cards.length > 0 && (meta.priority || actionCount > 0);
   return (
-    <section className="v-tasks__group" aria-label={`${meta.label} cards`}>
+    <section
+      className={`v-tasks__group${priority ? ' v-tasks__group--priority' : ''}`}
+      aria-label={`${meta.label} cards`}
+    >
       <header className="v-tasks__group-head">
         <span className={`mc-status-dot mc-status-dot--${meta.dot}`} aria-hidden="true" />
-        <h3 className="v-tasks__group-title">{meta.label}</h3>
+        <div className="v-tasks__group-copy">
+          <h3 className="v-tasks__group-title">{meta.label}</h3>
+          <p className="v-tasks__group-description">{meta.description}</p>
+        </div>
+        {actionCount > 0 ? (
+          <span className="v-tasks__needs-you">{actionCount} {actionCount === 1 ? 'needs' : 'need'} you</span>
+        ) : null}
         <span className="v-tasks__group-count mc-num">{cards.length}</span>
       </header>
       {cards.length === 0 ? (
-        <p className="mc-empty">Nothing in {meta.label.toLowerCase()}.</p>
+        <p className="mc-empty">{meta.empty}</p>
       ) : (
         <table className="mc-table mc-table--boxed">
           <thead>
             <tr>
-              {/* The card's NAME now leads this column; its id lives in the EntityName tooltip. */}
-              <th>Card</th>
-              <th>Action</th>
-              <th>Tier</th>
-              <th>Owner</th>
-              <th>Project</th>
+              <th>Task and next step</th>
             </tr>
           </thead>
           <tbody>
@@ -352,61 +455,85 @@ function CardGate({
 
 function DetailPane({
   card,
+  presentation,
   gate,
   routingView,
   registry,
   onApplyRouting,
   onClearRouting,
+  onClose,
 }: {
   card: CardProjection;
+  presentation: TaskPresentation;
   /** The gate block, when this card is one of the things waiting on a person. */
   gate: React.ReactNode;
   routingView: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
   onApplyRouting: (cardId: string, runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
   onClearRouting: (cardId: string) => Promise<{ ok: boolean; reason?: string }>;
+  onClose: () => void;
 }): React.JSX.Element {
   const fields = orderedFields(card);
   const body = card.body.trim();
   const cardId = String(card.meta.id);
   return (
     <aside className="v-tasks__detail" aria-label="Card detail">
-      <h2 className="v-tasks__detail-id">
-        <EntityName kind="card" id={cardId} displayName={card.displayName} shortRef={card.shortRef} />
-      </h2>
-      <p className="v-tasks__detail-caption">Card content below is rendered as inert data.</p>
+      <button type="button" className="v-tasks__back mc-btn" onClick={onClose}>
+        <span aria-hidden="true">←</span> Back to tasks
+      </button>
+
+      <header className="v-tasks__detail-head">
+        <h2 className="v-tasks__detail-title">{presentation.title}</h2>
+        <p className="v-tasks__detail-summary">
+          {presentation.cue ? <strong>{presentation.cue}</strong> : null}
+          <span>{presentation.summary}</span>
+        </p>
+      </header>
 
       {gate}
 
-      <CardRoutingBar
-        cardId={cardId}
-        cardName={card.displayName}
-        cardState={String(card.meta.state)}
-        cardOwner={card.meta.owner}
-        view={routingView}
-        registry={registry}
-        onApply={(runtime, model) => onApplyRouting(cardId, runtime, model)}
-        onClear={() => onClearRouting(cardId)}
-      />
-
-      <dl className="v-tasks__frontmatter">
-        {fields.map(([key, value]) => (
-          <div key={key} className="v-tasks__fm-row">
-            <dt className="v-tasks__fm-key mc-mono">{key}</dt>
-            <dd className="v-tasks__fm-val mc-mono">{value}</dd>
-          </div>
-        ))}
-      </dl>
-
       {body ? (
-        <div
-          className="v-tasks__body"
-          // Inert: renderMarkdown HTML-escapes the whole source before any transform (see markdown.ts).
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(card.body) }}
-        />
+        <section className="v-tasks__brief" aria-label="Task brief">
+          <div
+            className="v-tasks__body"
+            // Inert: renderMarkdown HTML-escapes the whole source before any transform (see markdown.ts).
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(card.body) }}
+          />
+        </section>
       ) : (
         <p className="mc-empty">This card has no body.</p>
       )}
+
+      <details className="v-tasks__advanced">
+        <summary>Advanced details</summary>
+        <div className="v-tasks__technical-id">
+          <span className="v-tasks__technical-label">Internal card</span>
+          <EntityName kind="card" id={cardId} displayName={card.displayName} shortRef={card.shortRef} muted />
+        </div>
+        <p className="v-tasks__detail-caption">
+          Routing, internal identifiers, and complete metadata. Card content is rendered as inert data.
+        </p>
+
+        <CardRoutingBar
+          cardId={cardId}
+          cardName={card.displayName}
+          cardState={String(card.meta.state)}
+          cardOwner={card.meta.owner}
+          view={routingView}
+          registry={registry}
+          onApply={(runtime, model) => onApplyRouting(cardId, runtime, model)}
+          onClear={() => onClearRouting(cardId)}
+        />
+
+        <dl className="v-tasks__frontmatter">
+          {fields.map(([key, value]) => (
+            <div key={key} className="v-tasks__fm-row">
+              <dt className="v-tasks__fm-key mc-mono">{key}</dt>
+              <dd className="v-tasks__fm-val mc-mono">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
     </aside>
   );
 }
@@ -435,6 +562,10 @@ export function Tasks({
   const [gateDraft, setGateDraft] = useState('');
   const [gateBusy, setGateBusy] = useState(false);
   const [gateOutcome, setGateOutcome] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const closeDetail = useCallback(() => setSelectedId(null), []);
+  const selectTask = useCallback((id: string) => {
+    setSelectedId((current) => current === id ? null : id);
+  }, []);
 
   useEffect(() => {
     if (data) return;
@@ -500,6 +631,15 @@ export function Tasks({
 
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
 
+  useEffect(() => {
+    if (!selectedId) return;
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') closeDetail();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [closeDetail, selectedId]);
+
   // A fresh selection clears any half-typed response — the box is always scoped to the visible card.
   useEffect(() => {
     setGateDraft('');
@@ -512,10 +652,8 @@ export function Tasks({
    * Answered by the SAME projection the Inbox lists from, run over this one card — a second predicate
    * here is exactly how the two surfaces would come to disagree about what needs Daniel.
    */
-  const gateItem = useMemo((): CardGateItem | null => {
-    if (!selected) return null;
-    return classifyCardGate(selected);
-  }, [selected]);
+  const selectedPresentation = useMemo(() => selected ? presentTask(selected) : null, [selected]);
+  const gateItem = selectedPresentation?.gate ?? null;
 
   /**
    * One governed click on a card gate: reuse the live bearer, else run the app's ONE passkey ceremony,
@@ -575,7 +713,17 @@ export function Tasks({
   );
 
   return (
-    <div className="v-tasks" aria-label="Tasks view">
+    <div
+      className="v-tasks"
+      aria-label="Tasks view"
+      onClick={(event) => {
+        if (!selected) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest('.v-tasks__detail, .v-tasks__row')) return;
+        closeDetail();
+      }}
+    >
       <div className="v-tasks__groups">
         {groups.map((state) => (
           <StateGroup
@@ -583,14 +731,15 @@ export function Tasks({
             state={state}
             cards={cards[state] ?? []}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={selectTask}
           />
         ))}
       </div>
 
-      {selected ? (
+      {selected && selectedPresentation ? (
         <DetailPane
           card={selected}
+          presentation={selectedPresentation}
           gate={gateItem ? (
             <>
               {gateOutcome ? (
@@ -617,10 +766,11 @@ export function Tasks({
           registry={routingSnap.policy.runtimes}
           onApplyRouting={applyCardRouting}
           onClearRouting={clearCardRouting}
+          onClose={closeDetail}
         />
       ) : (
         <aside className="v-tasks__placeholder" aria-label="Card detail">
-          Select a card to see its frontmatter and body.
+          Select a task to see what it needs and why.
         </aside>
       )}
     </div>
