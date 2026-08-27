@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 MARKER_END = "<!-- projects:end -->"
-FILES = ("_index.md", "STATE.md", "contract.md", "HEARTBEAT.md")
-DIRS = ("raw", "wiki", "output")
+FILES = ("_index.md", "STATE.md", "contract.md", "HEARTBEAT.md", "CLAUDE.md")
+DIRS = ("raw", "wiki", "output", "workflows", "scripts")
 
 
 def create(repo_root: Path, name: str, today: datetime.date | None = None) -> Path:
