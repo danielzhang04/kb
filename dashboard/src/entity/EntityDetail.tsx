@@ -120,7 +120,7 @@ export function EntityDetail({
   onCloseRef.current = onClose;
   entityRef.current = entity;
   const allSections: DetailSection[] = sections.some((section) => section.id === 'details') ? sections : [...sections, {
-    id: 'details', label: 'Details', render: () => <details data-testid="entity-detail-disclosure"><summary>Details</summary>{detailsContent ?? 'No additional loaded details.'}</details>,
+    id: 'details', label: 'Details', render: () => <div data-testid="entity-detail-disclosure">{detailsContent ?? 'No additional loaded details.'}</div>,
   }];
   const selectedId = activeSectionId ?? internalSectionId;
   const active = allSections.find((section) => section.id === selectedId) ?? allSections[0];

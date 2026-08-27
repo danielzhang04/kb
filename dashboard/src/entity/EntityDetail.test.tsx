@@ -48,7 +48,7 @@ describe('EntityDetail', () => {
     expect(screen.getByRole('tab', { name: 'Brief' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Details' })).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
-    expect(screen.getByTestId('entity-detail-disclosure').hasAttribute('open')).toBe(false);
+    expect(screen.getByTestId('entity-detail-disclosure').tagName).toBe('DIV');
     expect(screen.getByText('No additional loaded details.')).toBeTruthy();
   });
 });

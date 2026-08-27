@@ -371,6 +371,36 @@
   line-height: 1.5;
 }
 
+/* Brief: lead with purpose, then separate compact facts from recent activity. */
+.entity-brief {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.entity-brief__purpose {
+  max-width: 65ch;
+}
+
+.entity-brief__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.entity-brief__heading {
+  margin: 0;
+  color: var(--fg-dim);
+  font: var(--type-section);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+.entity-brief__timestamp {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .entity-empty-value {
   color: var(--fg-faint);
 }
@@ -455,6 +485,7 @@
   box-shadow: var(--shadow-raised);
 }
 .entity-detail__close, .entity-detail__details { font: inherit; color: var(--fg-primary); background: transparent; border: 1px solid var(--border); padding: var(--space-1) var(--space-2); cursor: pointer; }
+.entity-detail__close { margin-bottom: var(--space-4); }
 .entity-detail__details { margin-top: var(--space-4); }
 .entity-detail__details-body { margin-top: var(--space-2); color: var(--fg-dim); }
 .entity-roster {

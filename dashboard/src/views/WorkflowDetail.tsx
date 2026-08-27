@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { EntityDetail } from '../../server/entities/contracts.ts';
 import type { RunRow } from '../../server/control/p2Contracts.ts';
-import { outputHref } from '../../server/entities/outputs.ts';
 import { AdvancedDisclosure } from '../entity/AdvancedDisclosure';
+import { EntityBrief } from '../entity/EntityBrief';
 import { WorkflowStepGraph } from '../entity/WorkflowStepGraph';
 import { stepDagFromRun } from '../control/runGraph';
 import type { NavTarget } from '../nav/stack';
@@ -28,19 +28,14 @@ export interface WorkflowDetailBodyProps {
 export function WorkflowDetailBody({ detail, surface = 'live', onOpenRun, onNavigate }: WorkflowDetailBodyProps): React.JSX.Element {
   const [selectedStageRef, setSelectedStageRef] = useState<string | null>(null);
   if (surface === 'brief') {
-    const brief = detail.brief;
-    return <div className="entity-brief" data-testid="workflow-brief">
-      <p>{brief.purpose}</p>
-      <p>{brief.doingNow}</p>
-      <p>{brief.autonomyTier}. {brief.pendingGates} pending {brief.pendingGates === 1 ? 'gate' : 'gates'}.</p>
-      <p>{brief.schedule ? `Next scheduled ${brief.schedule.nextAt}.` : 'No schedule.'}</p>
-      <h3>Recent runs</h3>
-      {brief.recentRuns.length ? <ul className="entity-list">{brief.recentRuns.map((run) => <li key={run.runRef}>
-        <button type="button" className="entity-row entity-row--link" onClick={() => { onOpenRun?.(run.runRef); onNavigate?.({ view: 'workflows', focus: { kind: 'run', id: run.runRef } }); }}>{runText(run)}</button>
-      </li>)}</ul> : <p>No runs yet</p>}
-      <h3>Recent outputs</h3>
-      {brief.outputs.length ? <ul>{brief.outputs.map((output) => <li key={`${output.kind}:${output.label}`}><a href={outputHref(output)}>{output.label}</a></li>)}</ul> : <p>No recent outputs</p>}
-    </div>;
+    return <EntityBrief
+      brief={detail.brief}
+      testId="workflow-brief"
+      onSelectRun={(runRef) => {
+        onOpenRun?.(runRef);
+        onNavigate?.({ view: 'workflows', focus: { kind: 'run', id: runRef } });
+      }}
+    />;
   }
 
   const workflow = detail.details.workflow;

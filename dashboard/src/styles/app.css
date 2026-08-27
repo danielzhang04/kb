@@ -766,6 +766,23 @@ select option {
   display: none;
 }
 
+/* ---- Shared view heading chrome ---- */
+.page-header {
+  margin: 0 0 var(--space-4);
+}
+
+.page-eyebrow {
+  margin: 0 0 var(--space-1);
+  color: var(--fg-dim);
+  font: var(--type-meta);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
 /* Terminal destination: the workspace OWNS the main viewport. The main area drops its page padding and
  * its own scroll entirely and becomes a viewport-bounded flex column, so the only scrollable region on
  * this destination is the xterm viewport inside the selected console. Nothing here may scroll: a second
