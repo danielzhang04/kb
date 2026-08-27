@@ -233,16 +233,29 @@ describe('control-store schedule authority', () => {
 });
 
 // Production migrations are up-only (rollback is restore-from-backup, never down-migrate), so this
-// test helper hand-builds a genuine legacy on-disk v1 document to exercise the store's
-// up-migration-on-load path. A real legacy v1 document carries per-run `state` and, as valid v1
-// residue, the run-identity fields the up path re-validates on load; it holds none of the v2/v3/v4
-// collections and no migration carrier event (a real old v1 doc never had one).
+// test helper hand-builds a legacy on-disk v1 document to exercise the store's up-migration-on-load
+// path. It converts each run's `lifecycle` back to a v1 `state` and drops the v2/v3/v4 collections and
+// the migration carrier event (a real old v1 doc never had one). It KEEPS each run's already-valid
+// identity fields: these are v4-native runs whose owner was set from their proposal at creation, so
+// they carry no legacy agentWorkspaceLaunch/workflow-audit evidence and the v2->v3 up edge could not
+// re-derive identity from the empty unit-test migration context — the old down-migration preserved
+// identity through a carrier the up path restored, and up-only migration re-validates the retained
+// identity idempotently instead. See toV1Run for the executionHost pinning that the re-proof needs.
 function persistedV1(value: unknown): any {
   const doc = structuredClone(value) as Record<string, any>;
   const toV1Run = (run: Record<string, any>): void => {
     if (isPlainObject(run.lifecycle)) {
       run.state = (run.lifecycle as Record<string, unknown>).kind;
       delete run.lifecycle;
+    }
+    // A v4-native run (owner derived from its proposal at creation) carries no legacy
+    // agentWorkspaceLaunch/workflow-audit evidence, so the v2->v3 up edge cannot re-derive its
+    // identity from an empty migration context — the old down-migration preserved identity through a
+    // carrier the up path restored. With migrations up-only (carrier removed), the on-disk legacy doc
+    // keeps its already-valid identity, which the up edge re-validates idempotently. The store's
+    // migration re-proof binds executionHost to the running host, so pin it to this platform's value.
+    if (Object.hasOwn(run, 'executionHost')) {
+      run.executionHost = process.platform === 'win32' ? 'desktop' : 'vm';
     }
   };
   for (const run of (doc.runs ?? []) as Array<Record<string, any>>) toV1Run(run);
