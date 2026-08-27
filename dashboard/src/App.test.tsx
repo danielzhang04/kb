@@ -88,7 +88,9 @@ describe('App P1 shell', () => {
     window.history.replaceState(null, '', '/?view=agents&filter=attention');
     await renderApp();
     await waitFor(() => expect(window.location.search).toBe('?view=agents&filter=attention'));
-    expect(screen.getByLabelText('Agents')).toBeTruthy();
+    // U8: nav buttons now carry aria-labels (for the rail corner badges), so 'Agents' also matches the
+    // nav item — target the Agents view region specifically to prove the deep link landed on the roster.
+    expect(screen.getByRole('region', { name: 'Agents' })).toBeTruthy();
   });
 
   it('loads the registered D13 Home projection instead of the retired index rollup', async () => {
@@ -116,53 +118,51 @@ describe('App P1 shell', () => {
     }
   });
 
-  it('keeps Terminal mounted across destinations and enforces the Terminal rail policy', async () => {
+  it('keeps Terminal mounted without changing the manual sidebar state', async () => {
     window.history.replaceState(null, '', '/?view=terminal');
     await renderApp();
     const terminal = screen.getByTestId('persistent-terminal-surface') as HTMLDivElement;
+    const shell = document.querySelector('.app-shell');
     expect(terminal.hidden).toBe(false);
-    expect(document.querySelector('.app-shell')?.classList.contains('app-shell--rail')).toBe(true);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
     await waitFor(() => expect(window.location.search).toBe('?view=home'));
     expect(screen.getByTestId('persistent-terminal-surface')).toBe(terminal);
     expect(terminal.hidden).toBe(true);
-    expect(document.querySelector('.app-shell')?.classList.contains('app-shell--rail')).toBe(false);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+
+    window.history.pushState(null, '', '/?view=terminal');
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+    await waitFor(() => expect(terminal.hidden).toBe(false));
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
   });
 
-  it('forces the sidebar rail in a narrow viewport without overwriting the wider manual choice', async () => {
-    let narrow = true;
-    let changeListener: EventListener | null = null;
-    const queryList = {
-      get matches() { return narrow; },
+  it('does not auto-rail in a narrow viewport and keeps the manual toggle live', async () => {
+    const matchMedia = vi.fn(() => ({
+      matches: true,
       media: '(max-width: 899px)',
       onchange: null,
-      addEventListener: vi.fn((_type: string, listener: EventListener) => { changeListener = listener; }),
+      addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       addListener: vi.fn(),
       removeListener: vi.fn(),
       dispatchEvent: vi.fn(() => true),
-    } as unknown as MediaQueryList;
-    vi.stubGlobal('matchMedia', vi.fn(() => queryList));
+    } as unknown as MediaQueryList));
+    vi.stubGlobal('matchMedia', matchMedia);
 
     await renderApp();
     const shell = document.querySelector('.app-shell');
     const toggle = document.querySelector<HTMLButtonElement>('.mc-sidebar__collapse-toggle');
-    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
-    expect(toggle?.hidden).toBe(true);
-
-    const resizeTo = (matches: boolean): void => {
-      narrow = matches;
-      act(() => { changeListener?.(new Event('change')); });
-    };
-    resizeTo(false);
     expect(shell?.classList.contains('app-shell--rail')).toBe(false);
     expect(toggle?.hidden).toBe(false);
 
     fireEvent.click(toggle!);
     expect(shell?.classList.contains('app-shell--rail')).toBe(true);
-    resizeTo(true);
-    resizeTo(false);
-    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+    expect(toggle?.hidden).toBe(false);
 
     fireEvent.click(toggle!);
     expect(shell?.classList.contains('app-shell--rail')).toBe(false);
@@ -207,16 +207,23 @@ describe('App P1 shell', () => {
     authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
     await renderApp();
     await waitFor(() => {
-      const agents = screen.getByText('Agents').closest('button')!;
-      const workflows = screen.getByText('Workflows').closest('button')!;
-      expect(within(agents).getByLabelText('1 pending')).toBeTruthy();
-      expect(within(workflows).getByLabelText('1 pending')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Inbox, 1 pending' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Agents, 1 pending' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Workflows, 1 pending' })).toBeTruthy();
     });
+    expect(screen.getByRole('button', { name: 'Inbox, 1 pending' }).title).toBe('Inbox, 1 pending');
     const badged = [...document.querySelectorAll('.mc-nav-item')]
       .filter((item) => item.querySelector('.mc-nav-item__badge'))
       .map((item) => item.querySelector('.mc-nav-item__label')?.textContent);
     expect(badged).toEqual(['Inbox', 'Agents', 'Workflows']);
     expect(badged.every((label) => ['Inbox', 'Agents', 'Workflows'].includes(label ?? ''))).toBe(true);
+    expect(document.querySelectorAll('.mc-nav-item__badge--inline')).toHaveLength(3);
+    expect(document.querySelectorAll('.mc-nav-item__badge--corner')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(document.querySelectorAll('.mc-nav-item__badge--inline')).toHaveLength(0);
+    expect(document.querySelectorAll('.mc-nav-item__badge--corner')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: 'Inbox, 1 pending' }).title).toBe('Inbox, 1 pending');
   });
 
   it('starts one Inbox request when a browser fixture opens the Inbox deep link', async () => {

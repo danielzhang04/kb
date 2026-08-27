@@ -39,24 +39,6 @@ const DISABLED_SSE_FACTORY: SseFactory = () => ({
   addEventListener: () => undefined,
   close: () => undefined,
 });
-const NARROW_VIEWPORT_QUERY = '(max-width: 899px)';
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => (
-    typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia(query).matches
-  ));
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia(query);
-    const update = (): void => setMatches(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, [query]);
-  return matches;
-}
 
 function useInboxCount(enabled: boolean, tick: number): number {
   const [count, setCount] = useState(0);
@@ -100,26 +82,33 @@ function useAttentionCounts(token: string | undefined, tick: number): { agents: 
   return counts;
 }
 
-export function NavItem({ item, active, badge, onSelect }: {
+export function NavItem({ item, active, badge, rail = false, onSelect }: {
   item: NavDestination;
   active: DestinationId;
   badge?: number;
+  rail?: boolean;
   onSelect: (id: DestinationId) => void;
 }): React.JSX.Element {
   const disabled = !isLive(item);
+  const pending = badge ?? 0;
+  const accessibleLabel = pending > 0 ? `${item.label}, ${pending} pending` : item.label;
   return (
     <li className="mc-nav-item__li">
       <button
         type="button"
         className={`mc-nav-item${active === item.id ? ' mc-nav-item--active' : ''}${disabled ? ' mc-nav-item--disabled' : ''}`}
-        title={item.label}
+        title={accessibleLabel}
+        aria-label={accessibleLabel}
         aria-current={active === item.id ? 'page' : undefined}
         disabled={disabled}
         onClick={() => onSelect(item.id)}
       >
-        <span className="mc-nav-item__icon mc-mono" aria-hidden="true">{item.icon}</span>
+        <span className="mc-nav-item__icon-wrap" aria-hidden="true">
+          <span className="mc-nav-item__icon mc-mono">{item.icon}</span>
+          {rail && pending > 0 ? <span className="mc-nav-item__badge mc-nav-item__badge--corner mc-mono">{pending}</span> : null}
+        </span>
         <span className="mc-nav-item__label">{item.label}</span>
-        {badge && badge > 0 ? <span className="mc-nav-item__badge mc-mono" aria-label={`${badge} pending`}>{badge}</span> : null}
+        {!rail && pending > 0 ? <span className="mc-nav-item__badge mc-nav-item__badge--inline mc-mono" aria-hidden="true">{pending}</span> : null}
       </button>
     </li>
   );
@@ -151,11 +140,10 @@ function BootingView(): React.JSX.Element {
   return <main className="mc-main"><section className="code-view" aria-label="Starting dashboard" aria-live="polite"><h2>Starting dashboard</h2></section></main>;
 }
 
-function Sidebar({ active, onSelect, rail, railForced, onToggleRail, badges }: {
+function Sidebar({ active, onSelect, rail, onToggleRail, badges }: {
   active: DestinationId;
   onSelect: (id: DestinationId) => void;
   rail: boolean;
-  railForced: boolean;
   onToggleRail: () => void;
   badges: Partial<Record<'inbox' | 'agents' | 'workflows', number>>;
 }): React.JSX.Element {
@@ -163,7 +151,7 @@ function Sidebar({ active, onSelect, rail, railForced, onToggleRail, badges }: {
     <nav className="mc-sidebar" aria-label="Primary navigation">
       <div className="mc-sidebar__brand">
         <span className="mc-sidebar__brand-text">kb</span>
-        <button type="button" className="mc-sidebar__collapse-toggle" aria-label={rail ? 'Expand sidebar' : 'Collapse sidebar'} aria-pressed={rail} hidden={railForced} onClick={onToggleRail}>{rail ? '»' : '«'}</button>
+        <button type="button" className="mc-sidebar__collapse-toggle" aria-label={rail ? 'Expand sidebar' : 'Collapse sidebar'} aria-pressed={rail} onClick={onToggleRail}>{rail ? '»' : '«'}</button>
       </div>
       <div className="mc-nav">
         {NAV_SECTIONS.map((section, sectionIndex) => (
@@ -171,7 +159,7 @@ function Sidebar({ active, onSelect, rail, railForced, onToggleRail, badges }: {
             {sectionIndex > 0 ? <div className="mc-nav__divider" role="separator" /> : null}
             <ul className="mc-nav-section__items">
               {section.items.map((item) => (
-                <NavItem key={item.id} item={item} active={active} badge={item.id === 'inbox' || item.id === 'agents' || item.id === 'workflows' ? badges[item.id] : undefined} onSelect={onSelect} />
+                <NavItem key={item.id} item={item} active={active} badge={item.id === 'inbox' || item.id === 'agents' || item.id === 'workflows' ? badges[item.id] : undefined} rail={rail} onSelect={onSelect} />
               ))}
             </ul>
           </Fragment>
@@ -219,23 +207,21 @@ function AuthenticatedAppShell(): React.JSX.Element {
   const [stack, setStack] = useState<NavEntry[]>(() => typeof window === 'undefined' ? goToStack(DEFAULT_DESTINATION) : parseNavigationSearch(window.location.search));
   const current = stack.at(-1) ?? { view: DEFAULT_DESTINATION };
   const view = current.view;
-  const [rail, setRail] = useState(view === 'terminal');
+  const [rail, setRail] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   const [runtimeCapabilities, setRuntimeCapabilities] = useState<ClientRuntimeCapabilities>(UNAVAILABLE_RUNTIME_CAPABILITIES);
-  const viewportForcesRail = useMediaQuery(NARROW_VIEWPORT_QUERY);
   const { count: controlTick } = useSse('/events', session?.token ? undefined : DISABLED_SSE_FACTORY);
   const inboxCount = useInboxCount(view !== 'inbox', controlTick);
   const attention = useAttentionCounts(session?.token, controlTick);
   const terminalVisible = view === 'terminal';
-  const railMode = rail || viewportForcesRail;
+  const railMode = rail;
 
   useEffect(() => applyTheme(theme), [theme]);
   useEffect(() => {
     const onPopState = (): void => {
       const next = parseNavigationSearch(window.location.search);
       setStack(next);
-      setRail(next.at(-1)?.view === 'terminal');
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -274,11 +260,9 @@ function AuthenticatedAppShell(): React.JSX.Element {
 
   const goTo = (id: DestinationId): void => {
     setStack(goToStack(id));
-    setRail(id === 'terminal');
   };
   const push = (target: NavTarget): void => {
     setStack((currentStack) => pushStack(currentStack, target));
-    setRail(target.view === 'terminal');
   };
   const navigateTo = (target: NavTarget): void => push(target);
   // "Open terminal" from a roster row is a NAVIGATION, not a spawn: the v2 grammar has no agent- or
@@ -295,7 +279,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
   return (
     <RuntimeCapabilitiesProvider value={runtimeCapabilities}>
       <div className={`app-shell${railMode ? ' app-shell--rail' : ''}`}>
-        <Sidebar active={view} onSelect={goTo} rail={railMode} railForced={viewportForcesRail} onToggleRail={() => setRail((value) => !value)} badges={{
+        <Sidebar active={view} onSelect={goTo} rail={railMode} onToggleRail={() => setRail((value) => !value)} badges={{
           inbox: inboxCount, agents: attention.agents, workflows: attention.workflows,
         }} />
         <header className="mc-topbar">

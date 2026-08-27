@@ -414,7 +414,7 @@ select option {
  * (and `.mc-nav`), never on <body>. */
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   grid-template-rows: var(--topbar-h) 1fr;
   grid-template-areas:
     'sidebar topbar'
@@ -426,7 +426,7 @@ select option {
 }
 
 .app-shell--rail {
-  grid-template-columns: var(--sidebar-w-rail) 1fr;
+  grid-template-columns: var(--sidebar-w-rail) minmax(0, 1fr);
 }
 
 /* ---- Sidebar ---- */
@@ -559,9 +559,17 @@ select option {
   cursor: not-allowed;
 }
 
-.mc-nav-item__icon {
+.mc-nav-item__icon-wrap {
+  position: relative;
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 1.1em;
+}
+
+.mc-nav-item__icon {
+  width: 100%;
   text-align: center;
   font-family: var(--font-mono);
   color: var(--fg-faint);
@@ -600,6 +608,20 @@ select option {
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
   line-height: 1.4;
+}
+
+/* In the 48px rail the pending count becomes a superscript on the icon instead of consuming a second
+ * flex column. The button owns the accessible name; this compact duplicate is purely visual. */
+.mc-nav-item__badge--corner {
+  position: absolute;
+  top: -0.65em;
+  right: -0.9em;
+  z-index: 1;
+  min-width: 1.5em;
+  padding: 0 0.25em;
+  border-radius: 999px;
+  font-size: calc(var(--text-xs) * 0.75);
+  line-height: 1.35;
 }
 
 /* ---- Rail mode: icon-only 48px sidebar, labels/section chrome collapse away (icons keep a
@@ -1422,10 +1444,6 @@ select option {
 }
 
 @media (max-width: 899px) {
-  .app-shell {
-    grid-template-columns: var(--sidebar-w-rail) minmax(0, 1fr);
-  }
-
   .mc-main {
     padding: var(--content-pad-compact);
     overflow-x: hidden;
@@ -1444,6 +1462,10 @@ select option {
   .mc-table th,
   .mc-table td {
     white-space: nowrap;
+  }
+
+  .mc-topbar__glance {
+    display: none;
   }
 
   .run-v3__body {

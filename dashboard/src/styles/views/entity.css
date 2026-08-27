@@ -13,6 +13,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  min-width: 0;
   color: var(--fg-primary);
 }
 
@@ -438,8 +439,8 @@
   position: absolute;
   top: 0;
   right: 0;
-  width: min(100vw, 720px);
-  max-width: 720px;
+  width: min(100%, 45rem);
+  max-width: 100%;
   height: 100vh;
   overflow: auto;
   padding: var(--space-4);
@@ -457,12 +458,12 @@
   min-width: 0;
 }
 
-.entity-roster-controls { display: flex; align-items: center; }
-.entity-roster-controls input { min-height: 36px; width: 100%; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
+.entity-roster-controls { display: flex; align-items: center; min-width: 0; }
+.entity-roster-controls input { min-width: 0; max-width: 100%; min-height: 36px; width: 100%; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
 
-.entity-card-groups, .entity-card-group { display: flex; flex-direction: column; gap: var(--card-gap); }
+.entity-card-groups, .entity-card-group { display: flex; flex-direction: column; gap: var(--card-gap); min-width: 0; }
 .entity-card-group__toggle { width: 100%; min-height: 36px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--fg-primary); text-align: left; cursor: pointer; }
-.entity-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--card-gap); min-width: 0; }
+.entity-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--card-gap); min-width: 0; }
 .entity-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

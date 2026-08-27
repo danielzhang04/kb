@@ -65,7 +65,7 @@ describe('P1 application tokens', () => {
     expect(declaration(root, '--type-section-line')).toBe('20px');
   });
 
-  it('pins the shared content, section, and card rhythm plus both viewport breakpoints', () => {
+  it('pins the shared rhythm and fluid manual-only shell across both viewport breakpoints', () => {
     const root = blocks(':root')[0] ?? '';
     expect(declaration(root, '--content-pad')).toBe('var(--space-6)');
     expect(declaration(root, '--content-pad-compact')).toBe('var(--space-4)');
@@ -74,6 +74,10 @@ describe('P1 application tokens', () => {
     expect(declaration(root, '--card-pad')).toBe('var(--space-4)');
     expect(css).toContain('@media (max-width: 899px)');
     expect(css).toContain('@media (max-width: 599px)');
+    const shell = blocks('.app-shell');
+    expect(shell).toHaveLength(1);
+    expect(declaration(shell[0], 'grid-template-columns')).toBe('var(--sidebar-w) minmax(0, 1fr)');
+    expect(declaration(blocks('.app-shell--rail')[0] ?? '', 'grid-template-columns')).toBe('var(--sidebar-w-rail) minmax(0, 1fr)');
   });
 
   it('rejects every legacy color variable declaration or use', () => {
