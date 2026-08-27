@@ -17,12 +17,12 @@ import {
 } from '../runtime/repoPin.ts';
 import { runTrackedProcess } from '../write/asyncGit.ts';
 import { indexRepo, type PlaneAIndex } from '../planeA/indexer.ts';
-import { ContractDecodeError, sha256Hex } from '../write/durableManifest.ts';
+import { sha256Hex } from '../write/durableManifest.ts';
 import { readInboxRoute } from '../services/inboxService.ts';
 import type { SourceState } from './contracts.ts';
 import {
   projectEscalationSubjects, projectP5Inbox,
-  type P5InboxResponse, type P5InboxSourceKind,
+  type P5InboxResponse,
 } from './project.ts';
 import { readOpenPullRequests, type SubprocessPort } from './resolvers.ts';
 import {
@@ -80,16 +80,6 @@ export interface InboxRoutePorts {
   readonly p5Budget: P5SourceBudget;
   /** Monotonic ms clock for the 30s budget window. */
   readonly nowMs: () => number;
-}
-
-/** The four source kinds `?refresh=` accepts; `400` on any other value [P5-C31]. */
-const P5_REFRESH_SOURCES: readonly P5InboxSourceKind[] = ['deployment', 'assetPull', 'pr', 'escalation'];
-export function decodeP5InboxRefreshParam(value: unknown): P5InboxSourceKind | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value === 'string' && (P5_REFRESH_SOURCES as readonly string[]).includes(value)) {
-    return value as P5InboxSourceKind;
-  }
-  throw new ContractDecodeError('refresh', 'deployment | assetPull | pr | escalation');
 }
 
 /** One stable clock reference so repeated `createInboxRoutePorts` calls share the ONE process cache

@@ -5,8 +5,19 @@
 // a thin caller; W2 only BUILDS the service + its characterization test. No route file edited.
 
 import { ContractDecodeError } from '../write/durableManifest.ts';
-import { decodeP5InboxRefreshParam } from '../inbox/routes.ts';
+import type { P5InboxSourceKind } from '../inbox/project.ts';
 import type { ServiceReply } from './scheduleService.ts';
+
+/** The four source kinds `?refresh=` accepts; `400` on any other value [P5-C31]. Owned here (not
+ *  `inbox/routes.ts`) so this service does not depend upward on its own route module. */
+const P5_REFRESH_SOURCES: readonly P5InboxSourceKind[] = ['deployment', 'assetPull', 'pr', 'escalation'];
+export function decodeP5InboxRefreshParam(value: unknown): P5InboxSourceKind | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && (P5_REFRESH_SOURCES as readonly string[]).includes(value)) {
+    return value as P5InboxSourceKind;
+  }
+  throw new ContractDecodeError('refresh', 'deployment | assetPull | pr | escalation');
+}
 
 /** The invalidation + composition surface the handler drives; injected so tests reach no real `gh`/tree. */
 export interface InboxServicePort {
