@@ -56,6 +56,9 @@ describe('Inbox card approvals', () => {
     expect(within(list).queryByText('Run Build')).toBeNull();
     expect(within(list).queryByText('Future Stage')).toBeNull();
     expect(within(list).getAllByText(/Updated recently/)).toHaveLength(2);
+    expect(within(list).getByLabelText('Low risk').textContent).toBe('Low risk');
+    expect(within(list).getByLabelText('High risk').textContent).toBe('High risk');
+    expect(within(list).queryByText('Card #1')).toBeNull();
   });
 
   it('does not recreate lifecycle sub-sections inside the Inbox section', () => {
@@ -88,15 +91,31 @@ describe('Inbox card approvals', () => {
     const detail = screen.getByLabelText('Card detail');
     // Frontmatter block: key + value pairs.
     expect(within(detail).getByText('risk-tier')).toBeTruthy();
-    expect(within(detail).getByText('T3')).toBeTruthy();
+    expect(within(detail).getByText('High risk')).toBeTruthy();
+    expect(within(detail).queryByText('T3')).toBeNull();
     // Cards keep their server-owned display identity; the raw id stays behind the identity affordance.
     expect(within(detail).queryByText('Card 300')).toBeNull();
     expect(within(detail).getAllByText('push-remote')).toHaveLength(2);
     // Body rendered through the safe markdown renderer (heading + list item become real elements).
     expect(within(detail).getByRole('heading', { name: 'Work order' })).toBeTruthy();
     expect(within(detail).getByText('step one')).toBeTruthy();
-    expect(within(detail).getByRole('heading', { name: 'Card metadata' })).toBeTruthy();
+    expect(within(detail).getByRole('heading', { name: 'Card details' })).toBeTruthy();
+    expect(within(detail).getByText('Card reference')).toBeTruthy();
+    expect(within(detail).getByText(/shown as read-only text/)).toBeTruthy();
     expect(detail.querySelector('details')).toBeNull();
+  });
+
+  it('maps medium risk, keeps an unknown tier unchanged, and uses calm copy when no owner is assigned', () => {
+    const medium = card({ id: 'card-medium', action: 'needs-input:medium-risk', 'risk-tier': 'T2', owner: 'codex-worker', state: 'inbox' });
+    const unknown = card({ id: 'card-unknown', action: 'needs-input:assign-owner', 'risk-tier': 'T4', owner: null, state: 'inbox' });
+    render(<SessionProvider><CardApprovals data={{ inbox: [medium, unknown] }} /></SessionProvider>);
+    expect(screen.getByLabelText('Medium risk').textContent).toBe('Medium risk');
+    const row = screen.getByTestId('task-row-card-unknown');
+    expect(within(row).getByLabelText('T4').textContent).toBe('T4');
+    expect(within(row).getByText('No one assigned yet')).toBeTruthy();
+    expect(within(row).queryByText('Owner Unassigned')).toBeNull();
+    fireEvent.click(row);
+    expect(within(screen.getByLabelText('Card detail')).getByText('T4')).toBeTruthy();
   });
 
   it('closes detail by Back, Escape, outside click, or selecting the same row again', () => {
@@ -259,6 +278,8 @@ describe('Inbox card approvals — governed gate', () => {
 
     expect(screen.getByTestId('card-gate')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i })).toBeTruthy();
+    expect(screen.getByRole('note').textContent)
+      .toBe("Verifying evidence only records your check — it doesn't start or finish the work.");
     // T3-novel: possession is unavailable and is ABSENT, not a disabled ghost.
     expect(screen.queryByRole('button', { name: /Verify evidence \(possession\)/i })).toBeNull();
     // The decision sits beside the work order it covers — the context the Inbox row deliberately lacks.

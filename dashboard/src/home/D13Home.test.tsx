@@ -26,6 +26,7 @@ describe('D13Home', () => {
 
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
       .toEqual(['Running now', 'Needs you', 'Next schedules', 'Version', 'Recent outcomes']);
+    expect(screen.getByRole('button', { name: '6 things need you' })).toBeTruthy();
     expect(screen.getByText('VM \u00b7 64fb3d02 \u00b7 2h ago')).toBeTruthy();
     expect(screen.queryByText(/Fleet KPIs|Projects|Usage|Recent runs/i)).toBeNull();
   });
@@ -36,12 +37,14 @@ describe('D13Home', () => {
       ...response,
       sections: [
         { state: 'ready', data: { section: 'running-now', runs: [] } },
-        response.sections[1], { state: 'ready', data: { section: 'next-schedules', occurrences: [] } }, response.sections[3],
+        { state: 'ready', data: { section: 'attention-counts', agents: 0, workflows: 0, inbox: 0 } },
+        { state: 'ready', data: { section: 'next-schedules', occurrences: [] } }, response.sections[3],
         { state: 'ready', data: { section: 'recent-outcomes', outcomes: [] } },
       ],
     };
     await renderWithTestSession(<D13Home response={empty} onRetry={retry} />);
     expect(screen.getByText('Nothing running')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Nothing needs you right now' })).toBeTruthy();
     expect(screen.getByText('No schedules')).toBeTruthy();
     expect(screen.getByText('No runs yet')).toBeTruthy();
 
@@ -56,6 +59,19 @@ describe('D13Home', () => {
     }} onRetry={retry} />);
     fireEvent.click(screen.getByRole('button', { name: 'Retry Needs you' }));
     expect(retry).toHaveBeenCalledWith('attention-counts');
-    expect(screen.queryByText('0 Agents gates')).toBeNull();
+    expect(screen.queryByText('Nothing needs you right now')).toBeNull();
+  });
+
+  it('uses singular copy when exactly one thing needs the operator', async () => {
+    const singular: HomeResponse = {
+      ...response,
+      sections: [
+        response.sections[0],
+        { state: 'ready', data: { section: 'attention-counts', agents: 0, workflows: 1, inbox: 0 } },
+        response.sections[2], response.sections[3], response.sections[4],
+      ],
+    };
+    await renderWithTestSession(<D13Home response={singular} />);
+    expect(screen.getByRole('button', { name: '1 thing needs you' })).toBeTruthy();
   });
 });

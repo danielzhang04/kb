@@ -60,10 +60,7 @@ export function Home({
     <D13Home
       response={home}
       onOpenRun={(runRef) => onNavigateTarget?.(runLink(runRef))}
-      onOpenAttention={(destination) => {
-        if (destination === 'inbox') onNavigateTarget?.({ view: 'inbox' });
-        else onNavigateTarget?.({ view: destination, filter: 'attention' });
-      }}
+      onOpenAttention={() => onNavigateTarget?.({ view: 'inbox' })}
       onOpenSchedule={(owner) => onNavigateTarget?.(focusTarget({ kind: owner.type, id: owner.id }))}
       onRetry={retry}
     />

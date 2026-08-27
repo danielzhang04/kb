@@ -65,6 +65,16 @@ function tierClass(tier: string): '' | 'mc-badge--t1' | 'mc-badge--t2' | 'mc-bad
   return '';
 }
 
+const RISK_TIER_LABELS = {
+  T1: 'Low risk',
+  T2: 'Medium risk',
+  T3: 'High risk',
+} as const;
+
+function riskTierLabel(tier: string): string {
+  return RISK_TIER_LABELS[tier as keyof typeof RISK_TIER_LABELS] ?? tier;
+}
+
 function fieldStr(v: CardFieldValue | undefined): string {
   if (v === null || v === undefined) return '—';
   if (Array.isArray(v)) return v.length ? v.join(', ') : '[]';
@@ -160,7 +170,8 @@ function orderedFields(card: ParsedCard): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   for (const key of FIELD_ORDER) {
     if (key in card.meta) {
-      out.push([key, fieldStr(card.meta[key])]);
+      const value = fieldStr(card.meta[key]);
+      out.push([key, key === 'risk-tier' ? riskTierLabel(value) : value]);
       seen.add(key);
     }
   }
@@ -181,9 +192,12 @@ function CardRow({
 }): React.JSX.Element {
   const id = String(card.meta.id);
   const tier = fieldStr(card.meta['risk-tier']);
+  const tierLabel = riskTierLabel(tier);
   const cls = tierClass(tier);
   const presentation = presentTask(card);
-  const owner = card.meta.owner == null ? 'Unassigned' : humanizeEntityId(String(card.meta.owner));
+  const owner = card.meta.owner == null || String(card.meta.owner).trim() === ''
+    ? null
+    : humanizeEntityId(String(card.meta.owner));
   return (
     <li
       role="button"
@@ -209,11 +223,12 @@ function CardRow({
           <span className="v-tasks__task-title">{presentation.title}</span>
         </div>
         <p className="v-tasks__task-summary">{presentation.summary}</p>
-        <div className="inbox__meta v-tasks__task-meta" aria-label="Card source and recency">
+        <div className="inbox__meta v-tasks__task-meta" aria-label="Card recency, owner, and risk">
           <span>{recencyLabel('Updated', card.updatedAt)}</span>
-          <span>Card #{card.shortRef}</span>
-          <span>Owner {owner}</span>
-          {cls ? <span className={`mc-badge ${cls}`}>{tier}</span> : null}
+          <span>{owner ? `Owner ${owner}` : 'No one assigned yet'}</span>
+          {tier && tier !== '—' ? (
+            <span className={`mc-badge${cls ? ` ${cls}` : ''}`} aria-label={tierLabel}>{tierLabel}</span>
+          ) : null}
         </div>
       </div>
     </li>
@@ -253,7 +268,7 @@ export function CardRoutingBar({
           {stamped.runtime ?? '—'} / {stamped.model ?? '—'}
         </span>
       ) : (
-        <span className="v-routing-bar__unrouted mc-mono">unrouted (legacy)</span>
+        <span className="v-routing-bar__unrouted mc-mono">not routed</span>
       )}
       <span className="v-routing-bar__label">effective routing</span>
       <RoutingControl
@@ -334,7 +349,7 @@ export function CardGate({
       {item.buttons ? (
         <>
           <p className="v-tasks__truth-note" role="note">
-            Evidence verification records/checks an approval. It does not itself start, resume, or complete this workflow.
+            Verifying evidence only records your check — it doesn't start or finish the work.
           </p>
           <div className="v-tasks__buttons">
             {item.buttons.signed ? (
@@ -410,14 +425,14 @@ function DetailPane({
         <p className="mc-empty">This card has no body.</p>
       )}
 
-      <section className="v-tasks__metadata" aria-label="Card metadata">
-        <h3 className="v-tasks__metadata-title">Card metadata</h3>
+      <section className="v-tasks__metadata" aria-label="Card details">
+        <h3 className="v-tasks__metadata-title">Card details</h3>
         <div className="v-tasks__technical-id">
-          <span className="v-tasks__technical-label">Internal card</span>
+          <span className="v-tasks__technical-label">Card reference</span>
           <EntityName kind="card" id={cardId} displayName={card.displayName} shortRef={card.shortRef} muted />
         </div>
         <p className="v-tasks__detail-caption">
-          Routing, internal identifiers, and complete metadata. Card content is rendered as inert data.
+          Routing, card identifiers, and all stored details. Card content is shown as read-only text.
         </p>
 
         <CardRoutingBar

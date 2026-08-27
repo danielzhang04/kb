@@ -32,6 +32,7 @@ describe('Home D13 live view', () => {
 
     expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent))
       .toEqual(['Running now', 'Needs you', 'Next schedules', 'Version', 'Recent outcomes']);
+    expect(screen.getByRole('button', { name: '6 things need you' })).toBeTruthy();
     expect(screen.getByText('VM \u00b7 64fb3d02 \u00b7 2h ago')).toBeTruthy();
     expect(screen.queryByText(/Fleet KPIs|Projects|Usage|Recent runs/i)).toBeNull();
   });
@@ -42,7 +43,7 @@ describe('Home D13 live view', () => {
 
     expect(screen.getByText("Couldn't load right now.")).toBeTruthy();
     expect(screen.getByText('No deployed release detected.')).toBeTruthy();
-    expect(screen.queryByText('0 Agents gates')).toBeNull();
+    expect(screen.queryByText('Nothing needs you right now')).toBeNull();
     expect(screen.getByRole('button', { name: 'Hygiene' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry Needs you' }));
     expect(retry).toHaveBeenCalledWith('attention-counts');
@@ -62,6 +63,7 @@ describe('Home D13 live view', () => {
     await renderWithTestSession(<Home response={empty} />);
 
     expect(screen.getByText('Nothing running')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Nothing needs you right now' })).toBeTruthy();
     expect(screen.getByText('No schedules')).toBeTruthy();
     expect(screen.getByText('No runs yet')).toBeTruthy();
   });
@@ -82,16 +84,12 @@ describe('Home D13 live view', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Hygiene' }));
     expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'run', id: 'run-1' } });
-    fireEvent.click(screen.getByRole('button', { name: '2 Agents gates' }));
-    expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'agents', filter: 'attention' });
-    fireEvent.click(screen.getByRole('button', { name: '1 Workflows gates' }));
-    expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'workflows', filter: 'attention' });
-    fireEvent.click(screen.getByRole('button', { name: '3 Inbox items' }));
+    fireEvent.click(screen.getByRole('button', { name: '6 things need you' }));
     expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'inbox' });
     fireEvent.click(screen.getByRole('button', { name: '2026-08-21T14:00:00.000Z' }));
     expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'agents', focus: { kind: 'agent', id: 'hygiene' } });
     fireEvent.click(screen.getByRole('button', { name: 'Grader \u00b7 ok' }));
     expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'run', id: 'run-0' } });
-    expect(onNavigateTarget).toHaveBeenCalledTimes(6);
+    expect(onNavigateTarget).toHaveBeenCalledTimes(4);
   });
 });

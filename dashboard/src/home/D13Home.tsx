@@ -6,7 +6,7 @@ export type D13RetryTarget = 'running-now' | 'attention-counts' | 'next-schedule
 export interface D13HomeProps {
   response: HomeResponse;
   onOpenRun?: (runRef: string) => void;
-  onOpenAttention?: (target: 'agents' | 'workflows' | 'inbox') => void;
+  onOpenAttention?: () => void;
   onOpenSchedule?: (owner: RunnableRef) => void;
   onRetry?: (target: D13RetryTarget) => void;
 }
@@ -43,6 +43,12 @@ function Unavailable({ label, reason, retryTarget, onRetry }: {
 /** Presentational D13 Home. The shell continues to own fetching and navigation wiring. */
 export function D13Home({ response, onOpenRun, onOpenAttention, onOpenSchedule, onRetry }: D13HomeProps): React.JSX.Element {
   const [running, attention, schedules, version, outcomes] = response.sections;
+  const attentionTotal = attention.state === 'ready'
+    ? attention.data.agents + attention.data.workflows + attention.data.inbox
+    : 0;
+  const attentionLabel = attentionTotal === 0
+    ? 'Nothing needs you right now'
+    : attentionTotal === 1 ? '1 thing needs you' : `${attentionTotal} things need you`;
   return (
     <main aria-label="Home" className="d13-home">
       {running.state === 'unavailable' ? <Unavailable label="Running now" reason={running.reason} retryTarget="running-now" onRetry={onRetry} /> : (
@@ -52,9 +58,7 @@ export function D13Home({ response, onOpenRun, onOpenAttention, onOpenSchedule, 
       )}
       {attention.state === 'unavailable' ? <Unavailable label="Needs you" reason={attention.reason} retryTarget="attention-counts" onRetry={onRetry} /> : (
         <section aria-label="Needs you" className="d13-home__section"><h2>Needs you</h2><div>
-          <button type="button" onClick={() => onOpenAttention?.('agents')}>{attention.data.agents} Agents gates</button>
-          <button type="button" onClick={() => onOpenAttention?.('workflows')}>{attention.data.workflows} Workflows gates</button>
-          <button type="button" onClick={() => onOpenAttention?.('inbox')}>{attention.data.inbox} Inbox items</button>
+          <button type="button" onClick={() => onOpenAttention?.()}>{attentionLabel}</button>
         </div></section>
       )}
       {schedules.state === 'unavailable' ? <Unavailable label="Next schedules" reason={schedules.reason} retryTarget="next-schedules" onRetry={onRetry} /> : (

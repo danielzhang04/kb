@@ -119,6 +119,10 @@ describe('Inbox', () => {
     expect(within(approvals).queryByTestId('inbox-escalation')).toBeNull();
     expect(within(approvals).getByTestId('card-gate')).toBeTruthy();
     expect(within(approvals).getByText(/Updated /)).toBeTruthy();
+    expect(screen.getByText('Things waiting on your decision.')).toBeTruthy();
+    expect(screen.getByText('Releases waiting for you to confirm or check.')).toBeTruthy();
+    expect(screen.getByText('Code changes waiting for your review.')).toBeTruthy();
+    expect(screen.getByText('Files waiting to be pulled in or retried.')).toBeTruthy();
     expect(Array.from(document.querySelectorAll('.inbox__section-title')).map((heading) => heading.textContent)).toEqual([
       'Approvals / cards', 'Deploys', 'Pull requests', 'Asset pulls',
     ]);
@@ -292,12 +296,15 @@ describe('Inbox', () => {
     });
   }
 
-  it('a pre-swap deployment with live blocking PTYs shows Close PTYs and continue (and no deploy-ready ever does)', async () => {
-    const blocked = deployment('parked', { blockingPtyIds: [`pty-${'a'.repeat(32)}`] });
+  it('a pre-swap deployment with open terminals offers to close them (and no deploy-ready ever does)', async () => {
+    const blocked = deployment('parked', {
+      blockingPtyIds: [`pty-${'a'.repeat(32)}`, `pty-${'b'.repeat(32)}`],
+    });
     const fetchImpl = fetchFor(envelope([blocked]));
     const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
     const control = await screen.findByTestId('inbox-deploy-control');
-    expect(control.textContent).toBe('Close PTYs and continue');
+    expect(control.textContent).toBe('Close terminals and continue');
+    expect(screen.getByText(/2 open terminals$/)).toBeTruthy();
     expect(view.container.querySelectorAll('.inbox__action--mutating').length).toBe(1);
   });
 

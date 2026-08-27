@@ -42,7 +42,7 @@ export function resolveDeploymentControl(
   state: DeploymentItemState, blockingPtyIds: readonly string[], breaking: boolean,
 ): DeploymentControl | null {
   if (state !== 'deploy-ready' && blockingPtyIds.length > 0) {
-    return { verb: 'close-ptys-and-continue', label: 'Close PTYs and continue', t3: true };
+    return { verb: 'close-ptys-and-continue', label: 'Close terminals and continue', t3: true };
   }
   switch (state) {
     case 'waiting-confirmation': return { verb: 'confirm', label: 'Confirm', t3: true };
@@ -245,7 +245,7 @@ export function Inbox({ fetchImpl, sseFactory, onNavigate, initialSelectedId }: 
 
       {allVerifiedEmpty ? <p className="inbox__empty">Nothing needs you</p> : (
         <div className="inbox__sections">
-          <InboxSection title="Approvals / cards" description="Decisions and guidance that no agent can supply."
+          <InboxSection title="Approvals / cards" description="Things waiting on your decision."
             count={approvalCount} revealWhenEmpty={focusedCardExists}>
             {(attentionCards.length > 0 || focusedCardExists) && cards ? (
               <CardApprovals data={cards} initialSelectedId={initialSelectedId} fetchImpl={fetchImpl} onRefresh={refreshAll} />
@@ -259,19 +259,19 @@ export function Inbox({ fetchImpl, sseFactory, onNavigate, initialSelectedId }: 
             ) : null}
           </InboxSection>
 
-          <InboxSection title="Deploys" description="Release transitions that need confirmation or inspection." count={deploys.length}>
+          <InboxSection title="Deploys" description="Releases waiting for you to confirm or check." count={deploys.length}>
             <ul className="inbox__list">
               {deploys.map((item) => <InboxRow key={item.id} item={item} onNavigate={onNavigate} onMutate={runMutation} />)}
             </ul>
           </InboxSection>
 
-          <InboxSection title="Pull requests" description="Open repository changes waiting for review." count={pullRequests.length}>
+          <InboxSection title="Pull requests" description="Code changes waiting for your review." count={pullRequests.length}>
             <ul className="inbox__list">
               {pullRequests.map((item) => <InboxRow key={item.id} item={item} onNavigate={onNavigate} onMutate={runMutation} />)}
             </ul>
           </InboxSection>
 
-          <InboxSection title="Asset pulls" description="Artifacts waiting to move home or retry." count={assetPulls.length}>
+          <InboxSection title="Asset pulls" description="Files waiting to be pulled in or retried." count={assetPulls.length}>
             <ul className="inbox__list">
               {assetPulls.map((item) => <InboxRow key={item.id} item={item} onNavigate={onNavigate} onMutate={runMutation} />)}
             </ul>
@@ -365,7 +365,9 @@ function InboxRow({ item, onNavigate, onMutate }: {
   return (
     <li className="inbox__row" data-testid={`inbox-deployment-${item.state}${breaking ? '-breaking' : ''}`}>
       <ItemCopy cue={control?.label ?? 'Inspect'} title={item.title}
-        reason={`${stateLabel}${item.blockingPtyIds.length > 0 ? ` · ${item.blockingPtyIds.length} live PTY` : ''}`} item={item} />
+        reason={`${stateLabel}${item.blockingPtyIds.length > 0
+          ? ` · ${item.blockingPtyIds.length} open terminal${item.blockingPtyIds.length === 1 ? '' : 's'}`
+          : ''}`} item={item} />
       <div className="inbox__actions">
         {control ? (
           <button type="button" className="inbox__action inbox__action--mutating" data-testid="inbox-deploy-control"
