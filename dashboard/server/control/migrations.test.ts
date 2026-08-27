@@ -101,7 +101,7 @@ describe('control document migrations', () => {
     })).toThrow(/run-outcome-migration-required/);
   });
 
-  it('migrates v2 to v3 and round-trips every P2 addition through the checksummed down carrier', () => {
+  it('migrates v2 to v3, initializing the empty schedule collections', () => {
     const source = fixture('v2-empty.json') as Record<string, any>;
     const migrated = migrateControlDocument(source, 3, {
       stamp: '2026-08-21T00:00:00.000Z',
@@ -111,24 +111,6 @@ describe('control document migrations', () => {
     expect(migrated.scheduleTombstones).toEqual([]);
     expect(migrated.scheduleOccurrenceClaims).toEqual([]);
     expect(migrated.scheduleSeedImports).toEqual([]);
-
-    const identity = {
-      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
-      executionHost: 'desktop', terminalOutcome: 'interrupted',
-      completedAt: '2026-08-21T00:00:00.000Z', archivedFrom: 'interrupted',
-    };
-    migrated.runs.push({ runRef: 'run-active', ...identity });
-    migrated.quarantine.push({ run: { runRef: 'run-quarantined', ...identity } });
-    migrated.scheduleCollectionRevision = 4;
-    migrated.schedules.push({ id: 'schedule-one', privateSeedBytes: 'exact-bytes' });
-    const down = applyMigrationEdgeForTest(migrated, 2, {
-      stamp: '2026-08-21T00:00:00.000Z',
-    }) as Record<string, any>;
-    expect(down.version).toBe(2);
-    expect(down).not.toHaveProperty('schedules');
-    expect(down.events.at(-1).summary).toMatch(/^kb\.control-plane-v3-down-carrier\/v1:/);
-    expect(applyMigrationEdgeForTest(down, 3, { stamp: '2026-08-21T00:00:00.000Z' }))
-      .toEqual(migrated);
   });
 
   it('migrates v1 to v2 once and is repeat-safe', () => {
@@ -150,11 +132,18 @@ describe('control document migrations', () => {
     expect(future).toEqual(before);
   });
 
-  // ---- P6 W1: the additive v3 -> v4 placement migration, its byte-identical rollback, and the
-  // ---- chained ladder that reaches v4 from v1 and v2 [P6-C23, P6-C32, P6-C37, P6-C48]. -------------
+  // ---- P6 W1: the additive v3 -> v4 placement migration and the chained ladder that reaches v4 from
+  // ---- v1 and v2 [P6-C23, P6-C32, P6-C37, P6-C48]. Migrations are up-only; rollback is
+  // ---- restore-from-backup, never down-migrate. --------------------------------------------------
   const ctx = { stamp: '2026-08-24T00:00:00.000Z' };
-  const emptyV3 = (): Record<string, any> =>
-    applyMigrationEdgeForTest(emptyControlPlaneDocument(), 3, ctx) as Record<string, any>;
+  // A genuine pre-P6 v3 document, hand-built by dropping the three additive v4 placement collections
+  // from an empty current document (the up-only ladder no longer offers a v4 -> v3 edge).
+  const emptyV3 = (): Record<string, any> => {
+    const doc = emptyControlPlaneDocument() as unknown as Record<string, any>;
+    for (const key of ['hostAdvertisements', 'placementLeases', 'v1Idempotency']) delete doc[key];
+    doc.version = 3;
+    return doc;
+  };
 
   it('migrates a pre-P6 v3 document to v4 with three empty placement collections, advancing once', () => {
     const v3 = emptyV3();
@@ -221,22 +210,10 @@ describe('control document migrations', () => {
     expect(() => assertDocumentInvariant(v4)).not.toThrow();
   });
 
-  it('rolls a v4 document back to a BYTE-IDENTICAL v3 through the paired down edge', () => {
-    const v3 = emptyV3();
-    const before = JSON.stringify(v3);
-    const v4 = applyMigrationEdgeForTest(structuredClone(v3), 4, ctx);
-    expect((v4 as Record<string, any>).version).toBe(4);
-    const back = applyMigrationEdgeForTest(v4, 3, ctx);
-    expect(JSON.stringify(back)).toBe(before);
-  });
-
-  it('exposes the single-step 3->4 and 4->3 migration edges', () => {
+  it('exposes the single-step 3->4 migration edge', () => {
     const up = applyMigrationEdgeForTest(emptyV3(), 4, ctx) as Record<string, any>;
     expect(up.version).toBe(4);
     expect(Object.keys(up).slice(-3)).toEqual(['hostAdvertisements', 'placementLeases', 'v1Idempotency']);
-    const down = applyMigrationEdgeForTest(up, 3, ctx) as Record<string, any>;
-    expect(down.version).toBe(3);
-    expect(down).not.toHaveProperty('placementLeases');
   });
 
   it('chains v1 -> v4 in one call (fails today with no control-plane migration path)', () => {
@@ -334,75 +311,6 @@ describe('control document migrations', () => {
       .toBeGreaterThan(Buffer.byteLength(JSON.stringify(source), 'utf8'));
   });
 
-  it('round-trips a terminal deployment through the present v2 down edge', () => {
-    const source = fixture('v2-empty.json') as Record<string, any>;
-    source.documentRevision = 7;
-    source.nextEventCursor = 3;
-    source.runs = [{
-      subject: 'alice',
-      runRef: 'run-interrupted',
-      predecessorRunRef: null,
-      title: 'Interrupted migration run',
-      proposalRef: 'proposal-one',
-      proposalRevision: 1,
-      proposalHash: 'a'.repeat(64),
-      publicationState: 'published',
-      lifecycle: { kind: 'interrupted', deployPause: null },
-      version: 4,
-      managerSessionRef: 'session-manager',
-      managerGeneration: 1,
-      managerAssignment: null,
-      agentWorkspaceLaunch: null,
-      activationReceipts: [],
-      authorizedFailedRunReconciliation: null,
-      createdAt: '2026-08-20T00:00:00.000Z',
-      updatedAt: '2026-08-20T00:02:00.000Z',
-    }];
-    source.events = [1, 2].map((cursor) => ({
-      subject: 'alice', cursor, runRef: 'run-interrupted', kind: 'lifecycle', source: 'system',
-      stageRef: null, attemptRef: null, sessionRef: null,
-      status: cursor === 1 ? 'running' : 'interrupted',
-      summary: cursor === 1 ? 'run started' : 'run interrupted',
-      command: null, toolName: null, path: null, diff: null, checkpoint: null,
-      createdAt: `2026-08-20T00:0${cursor}:00.000Z`,
-    }));
-    source.deployments = [{
-      deploymentRef: 'deploy-terminal', revision: 3, state: 'succeeded', operationReceipts: [],
-    }];
-    const down = applyMigrationEdgeForTest(source, 1, {
-      stamp: '2026-08-20T00:00:00.000Z',
-    }) as Record<string, any>;
-    expect(down.runs[0].state).toBe('interrupted');
-    expect(down.runs[0]).not.toHaveProperty('lifecycle');
-    expect(down.events.map((event: Record<string, unknown>) => event.cursor)).toEqual([1, 2, 3]);
-    expect(down.events.at(-1).runRef).toBe('__control-plane-migration__');
-    const restored = applyMigrationEdgeForTest(down, 2, { stamp: '2026-08-20T00:00:00.000Z' });
-    expect(restored).toEqual(source);
-  });
-
-  it('refuses the v2 down edge for nonterminal deployments and paused runs', () => {
-    const nonterminal = fixture('v2-empty.json') as Record<string, any>;
-    nonterminal.deployments = [{
-      deploymentRef: 'deploy-live', revision: 1, state: 'requested', operationReceipts: [],
-    }];
-    expect(() => applyMigrationEdgeForTest(nonterminal, 1, {
-      stamp: '2026-08-20T00:00:00.000Z',
-    })).toThrow(/nonterminal deployment/);
-
-    const paused = fixture('v2-empty.json') as Record<string, any>;
-    paused.runs = [{
-      lifecycle: {
-        kind: 'paused-for-deploy',
-        deployPause: {
-          deploymentRef: 'deploy-live', pausedAt: '2026-08-20T00:00:00.000Z', priorKind: 'running',
-          resumeStreak: 0, lastResumeAttemptCursor: null, resumeClaim: null,
-        },
-      },
-    }];
-    expect(() => applyMigrationEdgeForTest(paused, 1, {
-      stamp: '2026-08-20T00:00:00.000Z',
-    })).toThrow(/paused run/);
-  });
 });
 
 describe('P5 asset-pull intents are additive with no version bump [P5-C34]', () => {

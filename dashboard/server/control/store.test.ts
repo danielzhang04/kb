@@ -25,7 +25,7 @@ import {
   createExistingRootFileStoreHarnessForTest, createLeasedFileStoreForTest,
 } from './test-fixtures/controlStore.ts';
 import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
-import { applyMigrationEdgeForTest, loadAndMigrate, migrateControlDocument } from './migrations.ts';
+import { applyMigrationEdgeForTest, loadAndMigrate } from './migrations.ts';
 import { createNodePersistenceDeps } from './persistence.ts';
 import { acquireWriterLease } from './writerLease.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
@@ -232,8 +232,33 @@ describe('control-store schedule authority', () => {
   });
 });
 
+// Production migrations are up-only (rollback is restore-from-backup, never down-migrate), so this
+// test helper hand-builds a genuine legacy on-disk v1 document to exercise the store's
+// up-migration-on-load path. A real legacy v1 document carries per-run `state` and, as valid v1
+// residue, the run-identity fields the up path re-validates on load; it holds none of the v2/v3/v4
+// collections and no migration carrier event (a real old v1 doc never had one).
 function persistedV1(value: unknown): any {
-  return migrateControlDocument(value, 1, { stamp: '2026-08-20T00:00:00.000Z' }).document;
+  const doc = structuredClone(value) as Record<string, any>;
+  const toV1Run = (run: Record<string, any>): void => {
+    if (isPlainObject(run.lifecycle)) {
+      run.state = (run.lifecycle as Record<string, unknown>).kind;
+      delete run.lifecycle;
+    }
+  };
+  for (const run of (doc.runs ?? []) as Array<Record<string, any>>) toV1Run(run);
+  for (const bundle of (doc.quarantine ?? []) as Array<Record<string, any>>) toV1Run(bundle.run);
+  for (const key of [
+    'deployments', 'documentRevision',
+    'scheduleCollectionRevision', 'schedules', 'scheduleTombstones',
+    'scheduleOccurrenceClaims', 'scheduleSeedImports',
+    'hostAdvertisements', 'placementLeases', 'v1Idempotency',
+  ]) delete doc[key];
+  doc.version = 1;
+  return doc;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
@@ -4702,7 +4727,13 @@ describe('Human Request auto-close', () => {
     const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as { runs: Array<Record<string, unknown>> };
     const record = document.runs.find((candidate) => candidate.runRef === run.runRef);
     if (!record) throw new Error('seeded run missing from the raw document');
+    // A consistent legacy terminal shape: the run is `failed` on disk with matching outcome residue
+    // (up-migration re-validates it), yet its human request never went through the patched close path
+    // and is still open — the zombie the sweep must reap.
     record.state = 'failed';
+    record.terminalOutcome = 'failed';
+    record.completedAt = record.updatedAt;
+    record.archivedFrom = null;
     writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
 
     const reopened = createFileControlPlaneStore(root, deterministicOptions());

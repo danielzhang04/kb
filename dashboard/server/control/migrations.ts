@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-import { deflateSync, inflateSync } from 'node:zlib';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_MIGRATIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
 import { assertDeploymentCollection } from './deploymentState.ts';
@@ -66,10 +64,6 @@ const CANONICAL_COMMIT_RE = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ACTIVATION_PHASES = new Set(['claimed', 'roots-activated', 'dispatched', 'failed']);
 const ORDINARY_RUN_KINDS = new Set(RUN_LIFECYCLE_KINDS.filter((kind) => kind !== 'paused-for-deploy'));
-const TERMINAL_DEPLOYMENT_STATES = new Set(['succeeded', 'aborted', 'failed', 'acknowledged']);
-const CARRIER_PREFIX = 'kb.control-plane-v2-down-carrier/v1:';
-const P2_CARRIER_PREFIX = 'kb.control-plane-v3-down-carrier/v1:';
-const MAX_P2_CARRIER_BYTES = 64 * 1024 * 1024;
 const V2_COLLECTIONS = [
   'proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events',
   'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts',
@@ -803,24 +797,6 @@ function normalizeLegacyFields(document: RawDocument): void {
   }
 }
 
-function restoreDownCarrier(document: RawDocument): boolean {
-  const carrier = document.events.at(-1);
-  if (!isPlainRecord(carrier) || carrier.kind !== 'lifecycle' || carrier.source !== 'system'
-    || typeof carrier.summary !== 'string' || !carrier.summary.startsWith(CARRIER_PREFIX)) return false;
-  const encoded = carrier.summary.slice(CARRIER_PREFIX.length);
-  const payload = JSON.parse(encoded) as unknown;
-  if (!isPlainRecord(payload) || canonicalJson(payload as JsonValue) !== encoded
-    || !Array.isArray(payload.deployments) || !Number.isSafeInteger(payload.documentRevision)
-    || !Number.isSafeInteger(payload.nextEventCursor) || carrier.cursor !== payload.nextEventCursor) {
-    throw new Error('invalid control-plane down-migration carrier');
-  }
-  document.events.pop();
-  document.deployments = payload.deployments;
-  document.documentRevision = payload.documentRevision;
-  document.nextEventCursor = payload.nextEventCursor;
-  return true;
-}
-
 function upV1ToV2(source: RawDocument, context: MigrationContext): RawDocument {
   const document = source as unknown as StoreDocument;
   prepareLegacyStoreMigration(document);
@@ -839,59 +815,18 @@ function upV1ToV2(source: RawDocument, context: MigrationContext): RawDocument {
   }
   decodeLegacyStoreRows(document);
   const raw = document as unknown as RawDocument;
-  const restored = restoreDownCarrier(raw);
   for (const run of [...raw.runs, ...raw.quarantine.map((bundle: RawDocument) => bundle.run)]) {
     if (Object.hasOwn(run, 'state')) {
       run.lifecycle = lifecycleForKind(run.state, null);
       delete run.state;
     }
   }
-  if (!restored) {
-    raw.documentRevision = 0;
-    raw.deployments = [];
-  }
+  // Migrations are up-only: a genuine pre-existing v1 document carries no v2 fields, so v2's
+  // deployment ledger starts empty at revision 0 (rollback is restore-from-backup, never down-migrate).
+  raw.documentRevision = 0;
+  raw.deployments = [];
   raw.version = 2;
   return raw;
-}
-
-function downV2ToV1(source: RawDocument): RawDocument {
-  for (const run of [...source.runs, ...source.quarantine.map((bundle: RawDocument) => bundle.run)]) {
-    if (run.lifecycle?.kind === 'paused-for-deploy') throw new Error('cannot migrate a paused run to control-plane v1');
-  }
-  if (source.deployments.some((deployment: RawDocument) => !TERMINAL_DEPLOYMENT_STATES.has(String(deployment.state)))) {
-    throw new Error('cannot migrate a nonterminal deployment to control-plane v1');
-  }
-  const carrierPayload = {
-    deployments: source.deployments,
-    documentRevision: source.documentRevision,
-    nextEventCursor: source.nextEventCursor,
-  };
-  source.events.push({
-    cursor: source.nextEventCursor,
-    runRef: '__control-plane-migration__',
-    kind: 'lifecycle',
-    source: 'system',
-    stageRef: null,
-    attemptRef: null,
-    sessionRef: null,
-    status: 'success',
-    summary: `${CARRIER_PREFIX}${canonicalJson(carrierPayload as unknown as JsonValue)}`,
-    command: null,
-    toolName: null,
-    path: null,
-    diff: null,
-    checkpoint: null,
-    createdAt: '1970-01-01T00:00:00.000Z',
-  });
-  source.nextEventCursor += 1;
-  for (const run of [...source.runs, ...source.quarantine.map((bundle: RawDocument) => bundle.run)]) {
-    run.state = runLifecycleKind(run.lifecycle as RunLifecycle);
-    delete run.lifecycle;
-  }
-  delete source.deployments;
-  delete source.documentRevision;
-  source.version = 1;
-  return source;
 }
 
 interface P2LocatedRun {
@@ -1094,111 +1029,17 @@ function applyP2RunMigration(document: RawDocument, context: MigrationContext): 
   for (const item of reported.outcomes) Object.assign(byLocation.get(item.location)!, clone(item.value));
 }
 
-function p2CarrierSummary(payload: JsonValue): string {
-  const canonical = canonicalJson(payload);
-  const digest = createHash('sha256').update(canonical, 'utf8').digest('hex');
-  const compressed = deflateSync(Buffer.from(canonical, 'utf8'));
-  return `${P2_CARRIER_PREFIX}${digest}:${compressed.toString('base64url')}`;
-}
-
-function p2IdentityRows(document: RawDocument): JsonValue {
-  return {
-    runs: document.runs.map((run: RawDocument) => ({ runRef: run.runRef, ...identityFieldsFromRun(run)! })),
-    quarantine: document.quarantine.map((bundle: RawDocument) => ({ runRef: bundle.run.runRef, ...identityFieldsFromRun(bundle.run)! })),
-  } as unknown as JsonValue;
-}
-
-function restoreP2DownCarrier(document: RawDocument): boolean {
-  const carrier = document.events.at(-1);
-  if (!isPlainRecord(carrier) || carrier.kind !== 'lifecycle' || carrier.source !== 'system'
-    || typeof carrier.summary !== 'string' || !carrier.summary.startsWith(P2_CARRIER_PREFIX)) return false;
-  const [digest, encoded, ...extra] = carrier.summary.slice(P2_CARRIER_PREFIX.length).split(':');
-  if (!/^[a-f0-9]{64}$/.test(digest) || !encoded || extra.length > 0) throw new Error('invalid control-plane v3 down carrier');
-  const inflated = inflateSync(Buffer.from(encoded, 'base64url'), { maxOutputLength: MAX_P2_CARRIER_BYTES });
-  const canonical = inflated.toString('utf8');
-  if (createHash('sha256').update(canonical, 'utf8').digest('hex') !== digest) {
-    throw new Error('invalid control-plane v3 down carrier checksum');
-  }
-  const payload = JSON.parse(canonical) as RawDocument;
-  if (!isPlainRecord(payload) || canonicalJson(payload as JsonValue) !== canonical
-    || Object.keys(payload).sort().join(',') !== [
-      'documentRevision', 'nextEventCursor', 'runIdentity', 'scheduleCollectionRevision',
-      'scheduleOccurrenceClaims', 'scheduleSeedImports', 'scheduleTombstones', 'schedules',
-    ].sort().join(',')
-    || !isPlainRecord(payload.runIdentity)
-    || !Array.isArray(payload.runIdentity.runs) || !Array.isArray(payload.runIdentity.quarantine)
-    || carrier.cursor !== payload.nextEventCursor) {
-    throw new Error('invalid control-plane v3 down carrier');
-  }
-  const restore = (runs: RawDocument[], rows: RawDocument[]): void => {
-    if (runs.length !== rows.length) throw new Error('invalid control-plane v3 down carrier run set');
-    for (let index = 0; index < runs.length; index += 1) {
-      const { runRef, ...fields } = rows[index];
-      if (runs[index].runRef !== runRef || !decodeRunIdentityFields(fields)) {
-        throw new Error('invalid control-plane v3 down carrier run identity');
-      }
-      Object.assign(runs[index], fields);
-    }
-  };
-  restore(document.runs, payload.runIdentity.runs as RawDocument[]);
-  restore(document.quarantine.map((bundle: RawDocument) => bundle.run), payload.runIdentity.quarantine as RawDocument[]);
-  document.events.pop();
-  document.documentRevision = payload.documentRevision;
-  document.nextEventCursor = payload.nextEventCursor;
-  document.scheduleCollectionRevision = payload.scheduleCollectionRevision;
-  document.schedules = payload.schedules;
-  document.scheduleTombstones = payload.scheduleTombstones;
-  document.scheduleOccurrenceClaims = payload.scheduleOccurrenceClaims;
-  document.scheduleSeedImports = payload.scheduleSeedImports;
-  return true;
-}
-
 function upV2ToV3(source: RawDocument, context: MigrationContext): RawDocument {
-  const restored = restoreP2DownCarrier(source);
-  if (!restored) {
-    applyP2RunMigration(source, context);
-    source.scheduleCollectionRevision = 0;
-    source.schedules = [];
-    source.scheduleTombstones = [];
-    source.scheduleOccurrenceClaims = [];
-    source.scheduleSeedImports = [];
-  }
+  // Migrations are up-only: a genuine pre-existing v2 document carries no v3 run-identity or schedule
+  // fields, so the real P2 run migration always runs and the schedule collections start empty
+  // (rollback is restore-from-backup, never down-migrate).
+  applyP2RunMigration(source, context);
+  source.scheduleCollectionRevision = 0;
+  source.schedules = [];
+  source.scheduleTombstones = [];
+  source.scheduleOccurrenceClaims = [];
+  source.scheduleSeedImports = [];
   source.version = 3;
-  return source;
-}
-
-function downV3ToV2(source: RawDocument): RawDocument {
-  const runIdentity = p2IdentityRows(source);
-  const payload = {
-    documentRevision: source.documentRevision,
-    nextEventCursor: source.nextEventCursor,
-    runIdentity,
-    scheduleCollectionRevision: source.scheduleCollectionRevision,
-    schedules: source.schedules,
-    scheduleTombstones: source.scheduleTombstones,
-    scheduleOccurrenceClaims: source.scheduleOccurrenceClaims,
-    scheduleSeedImports: source.scheduleSeedImports,
-  } as unknown as JsonValue;
-  source.events.push({
-    subject: 'system', cursor: source.nextEventCursor, runRef: '__control-plane-v3-migration__',
-    kind: 'lifecycle', source: 'system', stageRef: null, attemptRef: null, sessionRef: null,
-    status: 'success', summary: p2CarrierSummary(payload), command: null, toolName: null,
-    path: null, diff: null, checkpoint: null, createdAt: '1970-01-01T00:00:00.000Z',
-  });
-  source.nextEventCursor += 1;
-  for (const run of [...source.runs, ...source.quarantine.map((bundle: RawDocument) => bundle.run)]) {
-    delete run.owner;
-    delete run.executionHost;
-    delete run.terminalOutcome;
-    delete run.completedAt;
-    delete run.archivedFrom;
-  }
-  delete source.scheduleCollectionRevision;
-  delete source.schedules;
-  delete source.scheduleTombstones;
-  delete source.scheduleOccurrenceClaims;
-  delete source.scheduleSeedImports;
-  source.version = 2;
   return source;
 }
 
@@ -1214,19 +1055,12 @@ function upV3ToV4(source: RawDocument): RawDocument {
   return source;
 }
 
-function downV4ToV3(source: RawDocument): RawDocument {
-  for (const collection of V4_NEW_COLLECTIONS) delete source[collection];
-  source.version = 3;
-  return source;
-}
-
-// The single edge table for the {1<->2, 2<->3, 3<->4} ladder. It drives all three former hand-rolled
-// encodings — `applyMigrationEdgeForTest`, the up-ladder, and the down-ladder — so the edge set is
-// declared once. `breaking` mirrors the former per-site literals: up edges take the generated registry
-// flag (`breakingFlagForUpEdge`, evaluated once here; the registry import is already resolved and its
-// value is constant), down edges are always `true`. Down edges live in their own `DOWN_EDGES` array so
-// a later slice (H) that drops the down ladder deletes that array and the `...DOWN_EDGES` spread as one
-// clean edit. `fn` is called with `(document, context)`; edges that ignore `context` simply drop it.
+// The single edge table for the {1->2, 2->3, 3->4} up-only ladder. It drives both former hand-rolled
+// encodings — `applyMigrationEdgeForTest` and the up-ladder — so the edge set is declared once.
+// Migrations are up-only; rollback is restore-from-backup, never down-migrate. `breaking` takes the
+// generated registry flag (`breakingFlagForUpEdge`, evaluated once here; the registry import is already
+// resolved and its value is constant). `fn` is called with `(document, context)`; edges that ignore
+// `context` simply drop it.
 interface MigrationEdge {
   from: number;
   to: number;
@@ -1240,14 +1074,6 @@ const UP_EDGES: readonly MigrationEdge[] = [
   { from: 3, to: 4, fn: upV3ToV4, breaking: breakingFlagForUpEdge(3, 4) },
 ];
 
-const DOWN_EDGES: readonly MigrationEdge[] = [
-  { from: 4, to: 3, fn: downV4ToV3, breaking: true },
-  { from: 3, to: 2, fn: downV3ToV2, breaking: true },
-  { from: 2, to: 1, fn: downV2ToV1, breaking: true },
-];
-
-const EDGES: readonly MigrationEdge[] = [...UP_EDGES, ...DOWN_EDGES];
-
 export function applyMigrationEdgeForTest(
   source: unknown,
   target: 1 | 2 | 3 | 4,
@@ -1255,7 +1081,7 @@ export function applyMigrationEdgeForTest(
 ): unknown {
   assertMigrationEnvelope(source);
   const document = clone(source);
-  const edge = EDGES.find((candidate) => candidate.from === document.version && candidate.to === target);
+  const edge = UP_EDGES.find((candidate) => candidate.from === document.version && candidate.to === target);
   if (!edge) throw new Error(`no control-plane migration edge ${document.version}->${target}`);
   return edge.fn(document, context);
 }
@@ -1272,15 +1098,10 @@ export function migrateControlDocument(
   const document = clone(source);
   const applied: AppliedMigration[] = [];
   // P6 [P6-C32]: the ladder chains every up edge so v1 -> v4 and v2 -> v4 reach the target in one call
-  // (each `up*`/`down*` advances `document.version`, so the loop steps one edge at a time).
+  // (each `up*` advances `document.version`, so the loop steps one edge at a time). Migrations are
+  // up-only; rollback is restore-from-backup, never down-migrate.
   while (document.version < target) {
     const edge = UP_EDGES.find((candidate) => candidate.from === document.version);
-    if (!edge) break;
-    edge.fn(document, context);
-    applied.push({ from: edge.from, to: edge.to, breaking: edge.breaking, down: 'present' });
-  }
-  while (document.version > target) {
-    const edge = DOWN_EDGES.find((candidate) => candidate.from === document.version);
     if (!edge) break;
     edge.fn(document, context);
     applied.push({ from: edge.from, to: edge.to, breaking: edge.breaking, down: 'present' });
