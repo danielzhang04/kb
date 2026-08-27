@@ -498,6 +498,14 @@
 .entity-detail__editor, .entity-builder { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); background: var(--bg-panel); }
 .entity-builder label { display: grid; gap: var(--space-1); color: var(--fg-dim); }
 .entity-builder input, .entity-builder textarea, .entity-builder select { min-height: 36px; padding: var(--space-1) var(--space-2); border: 1px solid var(--border); background: var(--bg-page); color: var(--fg-primary); font: inherit; }
+.entity-builder__capabilities { display: flex; flex-direction: column; gap: var(--space-3); }
+.entity-builder__capabilities h3 { margin: 0 0 var(--space-1); font-size: var(--type-body-size); }
+.entity-builder__capabilities fieldset { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.entity-builder__capabilities legend { padding: 0 var(--space-1); color: var(--fg-primary); font-weight: var(--type-section-weight); }
+.entity-builder__capabilities fieldset > label { display: flex; align-items: center; gap: var(--space-2); }
+.entity-builder__capabilities input[type="checkbox"] { width: auto; min-height: auto; padding: 0; }
+.entity-builder__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.entity-builder__save-note { margin-top: calc(-1 * var(--space-1)); }
 .entity-technical-list { display: grid; gap: var(--space-2); margin: 0; }
 .entity-technical-list > div { display: grid; grid-template-columns: minmax(8rem, .35fr) 1fr; gap: var(--space-2); }
 .entity-technical-list dt { color: var(--fg-faint); }

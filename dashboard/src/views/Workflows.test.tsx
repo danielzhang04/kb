@@ -64,7 +64,12 @@ describe('Workflows P2 roster', () => {
     const card = await screen.findByTestId('entity-card');
     expect(card.textContent).toContain('Research Brief');
     fireEvent.click(card);
-    expect(await screen.findByTestId('workflow-step-graph')).toBeTruthy();
+    expect((await screen.findByTestId('workflow-summary')).textContent).toBe('Produce a cited brief.');
+    expect(screen.queryByTestId('workflow-step-graph')).toBeNull();
+    const advanced = screen.getByRole('button', { name: 'Advanced workflow steps' });
+    expect(advanced.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(advanced);
+    expect(screen.getByTestId('workflow-step-graph')).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(['/api/workflows', '/api/workflows/research-brief']);
   });
@@ -98,6 +103,8 @@ describe('Workflows P2 roster', () => {
     expect(screen.getAllByRole('tab').map((tab) => tab.querySelector('span')?.textContent)).toEqual(['Live', 'Brief', 'Details']);
     fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
     expect((await screen.findByRole('status')).textContent).toContain('Run refused: provide required parameters: Channel.');
+    expect(screen.getByRole('button', { name: 'Advanced run inputs' }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('textbox', { name: 'Channel (required)' })).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
     expect(navigate).toHaveBeenCalledWith({ view: 'schedules', section: 'new', scheduleOwner: summary.ref });

@@ -159,6 +159,33 @@ describe('Agents P2 roster', () => {
     expect(document.activeElement).toBe(card);
   });
 
+  it('explains curated capabilities and keeps the server-provided selection', async () => {
+    const editableDetail: EntityDetail = {
+      ...detail,
+      details: {
+        ...detail.details,
+        builder: {
+          models: ['claude-sonnet-5'], profiles: ['read-only'], tools: ['read', 'write'], skills: [], connectors: [], filesystemRoots: ['orgs/faceless-youtube'], projects: [],
+          value: { humanName: summary.humanName, purpose: detail.brief.purpose, model: 'claude-sonnet-5', profile: 'read-only', tools: ['read'], skills: [], connectors: [], filesystemRoots: [] },
+        },
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? editableDetail : list), { status: 200 })));
+
+    await renderWithTestSession(<Agents />);
+    fireEvent.click(await screen.findByTestId('entity-card'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+    expect(screen.getByText(/Give this agent only what it needs/)).toBeTruthy();
+    const selectedTool = screen.getByRole('checkbox', { name: 'read' }) as HTMLInputElement;
+    expect(selectedTool.checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: 'write' }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(selectedTool);
+    expect(screen.getByText('No tools selected — this agent cannot take tool actions until you add some.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save as proposal' })).toBeTruthy();
+    expect(screen.getByText('Saved changes go to your Inbox for approval before they take effect.')).toBeTruthy();
+  });
+
   it('restores focus to the matching card when Escape closes a deep-linked detail', async () => {
     const back = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? detail : list), { status: 200 })));

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { EntityDetail as EntityDetailDto, EntityGroup } from '../../server/entities/contracts.ts';
+import { AdvancedDisclosure } from '../entity/AdvancedDisclosure';
 import { EntityCard } from '../entity/EntityCard';
 import { EntityDetail } from '../entity/EntityDetail';
 import { EntityBuilderForm } from '../entity/EntityBuilderForm';
@@ -48,6 +49,7 @@ export function Workflows({
   const [parameters, setParameters] = useState<Record<string, string>>({});
   const [launching, setLaunching] = useState(false);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+  const [launchAdvancedOpen, setLaunchAdvancedOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const openId = focusWorkflowId ?? localOpen;
 
@@ -59,6 +61,7 @@ export function Workflows({
     setDetail(null);
     setDetailError(false);
     setParameters({});
+    setLaunchAdvancedOpen(false);
     void fetchEntityDetail('workflows', id).then(setDetail).catch(() => setDetailError(true));
   }, []);
   useEffect(loadList, [loadList]);
@@ -81,6 +84,7 @@ export function Workflows({
     if (!detail || launching) return;
     const missing = (detail.details.workflow?.parameters ?? []).filter((name) => !(parameters[name] ?? '').trim());
     if (missing.length > 0) {
+      setLaunchAdvancedOpen(true);
       setLaunchStatus(`Run refused: provide required parameters: ${missing.map(humanizeEntityId).join(', ')}.`);
       return;
     }
@@ -134,8 +138,14 @@ export function Workflows({
       ] : [{ id: 'live', label: 'Live', render: () => detailError ? <p role="status">Workflow detail unavailable <button type="button" onClick={() => loadDetail(openId)}>Retry</button></p> : <p role="status">Loading workflow…</p> }]}
       activeSectionId={activeSectionId} onSectionChange={onSectionChange}
       actions={detail ? <>
-        {requiredParameters.map((name) => <label key={name}>{humanizeEntityId(name)}<input value={parameters[name] ?? ''} onChange={(event) => setParameters((value) => ({ ...value, [name]: event.target.value }))} /></label>)}
         <button type="button" disabled={launching} onClick={() => void launch()}>{launching ? 'Starting…' : 'Run now'}</button>
+        {requiredParameters.length ? <span className="entity-note workflow-launch-hint">{requiredParameters.length} required {requiredParameters.length === 1 ? 'input' : 'inputs'} in Advanced</span> : null}
+        {requiredParameters.length ? <AdvancedDisclosure className="workflow-advanced--launch" accessibleLabel="Advanced run inputs" expanded={launchAdvancedOpen} onExpandedChange={setLaunchAdvancedOpen}>
+          <p className="entity-note">Required for this run. Labels are shown in plain language; the workflow still receives the original parameter names.</p>
+          <div className="workflow-parameters">
+            {requiredParameters.map((name) => <label className="entity-detail__param" key={name}><span>{humanizeEntityId(name)} (required)</span><input required value={parameters[name] ?? ''} onChange={(event) => setParameters((value) => ({ ...value, [name]: event.target.value }))} /></label>)}
+          </div>
+        </AdvancedDisclosure> : null}
         <button type="button" onClick={() => onNavigate?.({ view: 'schedules', section: 'new', scheduleOwner: detail.summary.ref })}>Schedule</button>
         <button type="button" onClick={() => setEditing((value) => !value)}>Edit</button>
         <button type="button" onClick={() => onOpenTerminal?.({ id: openId })}>Open terminal</button>

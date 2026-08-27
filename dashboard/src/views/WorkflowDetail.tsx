@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { EntityDetail } from '../../server/entities/contracts.ts';
 import type { RunRow } from '../../server/control/p2Contracts.ts';
 import { outputHref } from '../../server/entities/outputs.ts';
+import { AdvancedDisclosure } from '../entity/AdvancedDisclosure';
 import { WorkflowStepGraph } from '../entity/WorkflowStepGraph';
 import { stepDagFromRun } from '../control/runGraph';
 import type { NavTarget } from '../nav/stack';
@@ -48,13 +49,16 @@ export function WorkflowDetailBody({ detail, surface = 'live', onOpenRun, onNavi
   const dag = projected ? { nodes: projected.nodes, edges: projected.edges } : workflow?.stepDag ?? { nodes: [], edges: [] };
   const selectedEvents = projected?.eventsFor(selectedStageRef) ?? [];
   return <div className="workflow-live" data-testid="workflow-live">
-    {dag.nodes.length ? <WorkflowStepGraph dag={dag} selectedStageRef={selectedStageRef} onSelectStage={setSelectedStageRef} /> : <p className="entity-note">This workflow has no steps yet.</p>}
+    <p className="entity-prose" data-testid="workflow-summary">{detail.brief.purpose}</p>
     {detail.summary.activeRuns.length ? <ul className="entity-list">{detail.summary.activeRuns.map((run) => <li key={run.runRef}>
       <button type="button" className="entity-row entity-row--link" onClick={() => { onOpenRun?.(run.runRef); onNavigate?.({ view: 'workflows', focus: { kind: 'run', id: run.runRef } }); }}>
         <span className="entity-row__main">{runText(run)} {'\u00b7'} {elapsed(run.elapsedMs)} {'\u00b7'} {run.toolsCalled ?? 0} tools {'\u00b7'} {run.lastLine ?? run.lifecycle}{run.gateBadge ? ` \u00b7 ${run.gateBadge}` : ''}</span>
       </button>
     </li>)}</ul> : <p className="entity-note">{detail.summary.temporalLabel}</p>}
-    {runGraph ? <section aria-label="Selected step activity"><h3>Activity</h3>{selectedEvents.length ? <ol>{selectedEvents.map((event) => <li key={event.cursor}>{'summary' in event && typeof event.summary === 'string' ? event.summary : `Event ${event.cursor}`}</li>)}</ol> : <p>No activity for this step.</p>}</section> : null}
+    <AdvancedDisclosure accessibleLabel="Advanced workflow steps">
+      {dag.nodes.length ? <WorkflowStepGraph dag={dag} selectedStageRef={selectedStageRef} onSelectStage={setSelectedStageRef} /> : <p className="entity-note">This workflow has no steps yet.</p>}
+      {runGraph ? <section aria-label="Selected step activity"><h3>Activity</h3>{selectedEvents.length ? <ol>{selectedEvents.map((event) => <li key={event.cursor}>{'summary' in event && typeof event.summary === 'string' ? event.summary : `Event ${event.cursor}`}</li>)}</ol> : <p>No activity for this step.</p>}</section> : null}
+    </AdvancedDisclosure>
   </div>;
 }
 

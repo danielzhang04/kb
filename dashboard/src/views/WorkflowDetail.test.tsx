@@ -34,6 +34,8 @@ describe('WorkflowDetailBody', () => {
   it('renders immutable run stages, filters their ordered event stream, and opens the exact Live row', () => {
     const open = vi.fn();
     render(<WorkflowDetailBody detail={detail} onOpenRun={open} />);
+    // U4: the step graph + activity now live under the collapsed "Advanced" disclosure; open it first.
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced workflow steps' }));
     expect(screen.getByTestId('workflow-step-graph')).toBeTruthy();
     expect(screen.getByText('Brief completed.')).toBeTruthy();
     expect(screen.getByText('Reviewing citations.')).toBeTruthy();
