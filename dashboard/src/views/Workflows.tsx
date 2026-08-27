@@ -4,7 +4,6 @@ import { EntityCard } from '../entity/EntityCard';
 import { EntityDetail } from '../entity/EntityDetail';
 import { EntityBuilderForm } from '../entity/EntityBuilderForm';
 import { humanizeEntityId } from '../entity/humanizeEntityId';
-import { persistEntityLayout, readEntityLayout, type EntityLayout } from '../entity/entityLayout';
 import { fetchEntityDetail, fetchEntityList } from '../lib/entityClient';
 import { useSession } from '../lib/sessionContext';
 import type { NavTarget } from '../nav/stack';
@@ -45,7 +44,6 @@ export function Workflows({
   const [detailError, setDetailError] = useState(false);
   const [localOpen, setLocalOpen] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('workflows'));
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [parameters, setParameters] = useState<Record<string, string>>({});
   const [launching, setLaunching] = useState(false);
@@ -79,7 +77,6 @@ export function Workflows({
 
   const open = (id: string): void => { setLocalOpen(id); onOpenWorkflow?.(id); };
   const close = (): void => { setLocalOpen(null); setEditing(false); if (focusWorkflowId) onBack?.(); };
-  const changeLayout = (next: EntityLayout): void => { setLayout(next); persistEntityLayout('workflows', next); };
   const launch = async (): Promise<void> => {
     if (!detail || launching) return;
     const missing = (detail.details.workflow?.parameters ?? []).filter((name) => !(parameters[name] ?? '').trim());
@@ -111,16 +108,14 @@ export function Workflows({
 
   const requiredParameters = detail?.details.workflow?.parameters ?? [];
 
-  return <section className="code-view entity-roster" aria-label="Workflows view">
+  return <section className="entity-roster" aria-label="Workflows view">
     <header className="page-header"><div><p className="page-eyebrow">Automation</p><h2>Workflows</h2></div></header>
     <div className="entity-roster-controls">
       <input aria-label="Search workflows" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search workflows" />
-      <button type="button" aria-pressed={layout === 'grid'} onClick={() => changeLayout('grid')}>Grid</button>
-      <button type="button" aria-pressed={layout === 'list'} onClick={() => changeLayout('list')}>List</button>
     </div>
     {listError ? <div className="entity-row" role="status">Workflows unavailable <button type="button" onClick={loadList}>Retry</button></div> : null}
     {!list && !listError ? <p role="status">Loading workflows…</p> : null}
-    <div className={`entity-card-groups entity-card-groups--${layout}`}>
+    <div className="entity-card-groups entity-card-groups--grid">
       {groups.map((group) => {
         const isCollapsed = collapsed.has(group.id);
         return <section key={group.id} className="entity-card-group">

@@ -450,24 +450,51 @@
 .entity-detail__close, .entity-detail__details { font: inherit; color: var(--fg-primary); background: transparent; border: 1px solid var(--border); padding: var(--space-1) var(--space-2); cursor: pointer; }
 .entity-detail__details { margin-top: var(--space-4); }
 .entity-detail__details-body { margin-top: var(--space-2); color: var(--fg-dim); }
-.entity-roster-controls { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
-.entity-roster-controls input { min-height: 36px; flex: 1; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
-.entity-roster-controls button { min-height: 36px; font: inherit; color: var(--fg-primary); background: transparent; border: 1px solid var(--border); cursor: pointer; }
+.entity-roster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.entity-roster-controls { display: flex; align-items: center; }
+.entity-roster-controls input { min-height: 36px; width: 100%; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
 
 .entity-card-groups, .entity-card-group { display: flex; flex-direction: column; gap: var(--card-gap); }
 .entity-card-group__toggle { width: 100%; min-height: 36px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--fg-primary); text-align: left; cursor: pointer; }
 .entity-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--card-gap); min-width: 0; }
-.entity-card-groups--list .entity-card-grid { display: flex; flex-direction: column; }
-.entity-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); min-width: 0; min-height: 96px; padding: var(--card-pad); border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); text-align: left; cursor: pointer; }
+.entity-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name status"
+    "model host"
+    "temporal gates";
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  min-width: 0;
+  min-height: 96px;
+  padding: var(--card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  color: var(--fg-primary);
+  text-align: left;
+  cursor: pointer;
+}
 .entity-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.entity-card__name { font-weight: 600; }
-.entity-card__status { padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-sm); }
+.entity-card__name { grid-area: name; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.entity-card__status { grid-area: status; justify-self: end; display: inline-flex; align-items: center; min-height: 24px; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-sm); font-size: var(--type-section-size); line-height: 1; white-space: nowrap; }
 .entity-card__status--running { color: var(--success); }
 .entity-card__status--needs-you, .entity-card__status--scheduled { color: var(--warning); }
 .entity-card__status--failed { color: var(--error); }
 .entity-card__status--idle { color: var(--fg-faint); }
-.entity-card__model, .entity-card__host, .entity-card__gates { color: var(--fg-dim); }
-.entity-card__temporal { grid-column: 1 / -1; color: var(--fg-faint); }
+.entity-card__model, .entity-card__host, .entity-card__gates, .entity-card__temporal { font-size: var(--type-meta-size); line-height: 1.4; }
+.entity-card__model { grid-area: model; min-width: 0; color: var(--fg-dim); overflow-wrap: anywhere; }
+.entity-card__host { grid-area: host; justify-self: end; color: var(--fg-dim); }
+.entity-card__temporal { grid-area: temporal; min-width: 0; color: var(--fg-faint); overflow-wrap: anywhere; }
+.entity-card__gates { grid-area: gates; justify-self: end; color: var(--fg-dim); }
 .entity-detail__editor, .entity-builder { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); background: var(--bg-panel); }
 .entity-builder label { display: grid; gap: var(--space-1); color: var(--fg-dim); }
 .entity-builder input, .entity-builder textarea, .entity-builder select { min-height: 36px; padding: var(--space-1) var(--space-2); border: 1px solid var(--border); background: var(--bg-page); color: var(--fg-primary); font: inherit; }
@@ -588,5 +615,12 @@
 
   .entity-card {
     padding: var(--space-3);
+    grid-template-areas:
+      "name"
+      "status"
+      "model"
+      "host"
+      "temporal"
+      "gates";
   }
 }

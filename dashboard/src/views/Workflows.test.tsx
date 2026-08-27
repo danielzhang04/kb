@@ -24,6 +24,19 @@ const detail: EntityDetail = {
 };
 
 describe('Workflows P2 roster', () => {
+  it('renders the search and card groups as grid-only', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(list), { status: 200 })));
+
+    const { container } = await renderWithTestSession(<Workflows />);
+
+    await screen.findByTestId('entity-card');
+    expect(screen.getByRole('textbox', { name: 'Search workflows' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Grid' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'List' })).toBeNull();
+    expect(container.querySelector('.entity-card-groups--grid')).toBeTruthy();
+    expect(container.querySelector('.code-view')).toBeNull();
+  });
+
   it('retains only summaries with gated runs for the closed attention filter', async () => {
     const gated: EntitySummary = {
       ...summary,

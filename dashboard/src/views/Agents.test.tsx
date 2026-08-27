@@ -39,6 +39,19 @@ function HistoryAgents(): React.JSX.Element {
 }
 
 describe('Agents P2 roster', () => {
+  it('renders the search and card groups as grid-only', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(list), { status: 200 })));
+
+    const { container } = await renderWithTestSession(<Agents />);
+
+    await screen.findByTestId('entity-card');
+    expect(screen.getByRole('textbox', { name: 'Search agents' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Grid' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'List' })).toBeNull();
+    expect(container.querySelector('.entity-card-groups--grid')).toBeTruthy();
+    expect(container.querySelector('.code-view')).toBeNull();
+  });
+
   it('starts only the System group collapsed and keeps it last', async () => {
     const systemSummary = {
       ...summary,

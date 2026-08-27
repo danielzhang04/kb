@@ -4,7 +4,6 @@ import { EntityCard } from '../entity/EntityCard';
 import { EntityDetail } from '../entity/EntityDetail';
 import { EntityBuilderForm } from '../entity/EntityBuilderForm';
 import { humanizeEntityId } from '../entity/humanizeEntityId';
-import { persistEntityLayout, readEntityLayout, type EntityLayout } from '../entity/entityLayout';
 import { fetchAgentDetail, fetchAgentList } from '../lib/agentClient';
 import { useSession } from '../lib/sessionContext';
 import type { NavTarget } from '../nav/stack';
@@ -58,7 +57,6 @@ export function Agents({
   const [detailError, setDetailError] = useState(false);
   const [localOpen, setLocalOpen] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [layout, setLayout] = useState<EntityLayout>(() => readEntityLayout('agents'));
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set([SYSTEM_ENTITY_GROUP_ID]));
   const [launching, setLaunching] = useState(false);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
@@ -96,10 +94,6 @@ export function Agents({
     setEditing(false);
     if (focusAgentId) onBack?.();
   };
-  const changeLayout = (next: EntityLayout): void => {
-    setLayout(next);
-    persistEntityLayout('agents', next);
-  };
   const launch = async (): Promise<void> => {
     if (!detail || launching) return;
     setLaunching(true);
@@ -124,16 +118,14 @@ export function Agents({
     }
   };
 
-  return <section className="code-view entity-roster" aria-label="Agents">
+  return <section className="entity-roster" aria-label="Agents">
     <header className="page-header"><div><p className="page-eyebrow">Fleet</p><h2>Agents</h2></div></header>
     <div className="entity-roster-controls">
       <input aria-label="Search agents" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search agents" />
-      <button type="button" aria-pressed={layout === 'grid'} onClick={() => changeLayout('grid')}>Grid</button>
-      <button type="button" aria-pressed={layout === 'list'} onClick={() => changeLayout('list')}>List</button>
     </div>
     {listError ? <div className="entity-row" role="status">Agents unavailable <button type="button" onClick={loadList}>Retry</button></div> : null}
     {!list && !listError ? <p role="status">Loading agents…</p> : null}
-    <div className={`entity-card-groups entity-card-groups--${layout}`}>
+    <div className="entity-card-groups entity-card-groups--grid">
       {groups.map((group) => {
         const isCollapsed = collapsed.has(group.id);
         return <section key={group.id} className="entity-card-group">
