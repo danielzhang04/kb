@@ -19,12 +19,22 @@ def make_repo(tmp_path):
 def test_create_scaffolds_everything(tmp_path):
     repo = make_repo(tmp_path)
     p = new_project.create(repo, "demo", today=datetime.date(2026, 7, 15))
-    for f in ("_index.md", "STATE.md", "contract.md", "HEARTBEAT.md"):
+    for f in ("_index.md", "STATE.md", "contract.md", "HEARTBEAT.md", "CLAUDE.md"):
         assert (p / f).exists()
-    for d in ("raw", "wiki", "output"):
+    for d in ("raw", "wiki", "output", "workflows", "scripts"):
         assert (p / d).is_dir()
     assert "demo" in (p / "STATE.md").read_text(encoding="utf-8")
     assert "2026-07-15" in (p / "STATE.md").read_text(encoding="utf-8")
+
+
+def test_create_scaffolds_project_router(tmp_path):
+    repo = make_repo(tmp_path)
+    p = new_project.create(repo, "demo", today=datetime.date(2026, 7, 15))
+    claude_md = (p / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "{{name}}" not in claude_md
+    assert "demo" in claude_md
+    assert "workflows/*.md" in claude_md
+    assert "projects: [demo]" in claude_md
 
 
 def test_create_registers_in_master_index(tmp_path):
