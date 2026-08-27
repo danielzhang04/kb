@@ -99,10 +99,10 @@ describe('App P1 shell', () => {
     expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/index')).toBe(false);
   });
 
-  it('renders the exact ten destinations, two dividers, and no retired destination', async () => {
+  it('renders the exact nine destinations, two dividers, and no retired destination', async () => {
     await renderApp();
     expect([...document.querySelectorAll('.mc-nav-item__label')].map((node) => node.textContent)).toEqual([
-      'Home', 'Inbox', 'Schedules', 'Terminal', 'Agents', 'Workflows', 'Tasks', 'Projects', 'Files', 'Health',
+      'Home', 'Inbox', 'Schedules', 'Terminal', 'Agents', 'Workflows', 'Projects', 'Files', 'Health',
     ]);
     expect(screen.getAllByRole('separator')).toHaveLength(2);
   });
@@ -226,7 +226,7 @@ describe('App P1 shell', () => {
     expect(screen.getByRole('button', { name: 'Inbox, 1 pending' }).title).toBe('Inbox, 1 pending');
   });
 
-  it('starts one Inbox request when a browser fixture opens the Inbox deep link', async () => {
+  it('starts one external and one card projection request when a browser fixture opens the Inbox deep link', async () => {
     window.history.replaceState(null, '', '/?view=inbox');
     authContext.restore();
     const inboxResponse = new Response(JSON.stringify({ items: [{
@@ -238,12 +238,17 @@ describe('App P1 shell', () => {
       deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
       assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
     } }), { status: 200 });
-    fetchStub = vi.fn((input: RequestInfo | URL) => String(input) === '/api/inbox' ? Promise.resolve(inboxResponse.clone()) : new Promise<Response>(() => undefined));
+    fetchStub = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/inbox') return Promise.resolve(inboxResponse.clone());
+      if (String(input) === '/api/index') return Promise.resolve(new Response(JSON.stringify({ cards: {} }), { status: 200 }));
+      return new Promise<Response>(() => undefined);
+    });
     vi.stubGlobal('fetch', fetchStub);
     authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
     await renderApp();
-    expect(await screen.findByText('Needs you')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeTruthy();
     expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/inbox')).toHaveLength(1);
+    expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/index')).toHaveLength(1);
   });
 
   it('bounds a five-frame Inbox burst to one in-flight and one trailing request', async () => {
@@ -333,7 +338,7 @@ describe('App P1 shell', () => {
     cleanup();
 
     const rawInbox = 'wake-me_runner-failed';
-    const inboxFetch = vi.fn(async () => new Response(JSON.stringify({ items: [{
+    const inboxPayload = { items: [{
       id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
       subject: { cardId: '68a70000-card' }, related: {}, title: rawInbox, reason: 'Needs you',
     }], revision: 'e'.repeat(64), sources: {
@@ -341,7 +346,11 @@ describe('App P1 shell', () => {
       escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
       deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
       assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
-    } }), { status: 200 }));
+    } };
+    const inboxFetch = vi.fn(async (input: RequestInfo | URL) => new Response(
+      JSON.stringify(String(input) === '/api/index' ? { cards: {} } : inboxPayload),
+      { status: 200 },
+    ));
     render(<SessionProvider><Inbox fetchImpl={inboxFetch} sseFactory={() => ({ addEventListener: () => undefined, close: () => undefined })} /></SessionProvider>);
     const inboxLabel = await screen.findByText('Wake Me Runner Failed');
     // The raw id is preserved for hover via the `title` attribute; it is NOT also exposed as a

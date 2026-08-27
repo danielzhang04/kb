@@ -13,7 +13,7 @@
  *   ── (divider, below the [+ New] menu) ──
  *   Home · Inbox · Schedules · Terminal
  *   ── (divider) ──
- *   Agents · Workflows · Tasks · Projects · Files
+ *   Agents · Workflows · Projects · Files
  *   ── (divider) ──
  *   Health
  *
@@ -38,7 +38,6 @@ export type DestinationId =
   | 'terminal'
   | 'agents'
   | 'workflows'
-  | 'tasks'
   | 'projects'
   | 'files'
   | 'health';
@@ -83,7 +82,6 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
-      { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
       { id: 'files', label: 'Files', icon: '🗀', status: 'live' },
     ],

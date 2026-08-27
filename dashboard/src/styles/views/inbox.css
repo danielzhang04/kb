@@ -1,142 +1,289 @@
 .inbox {
-  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+  width: min(100%, 1120px);
+  color: var(--fg-primary);
 }
 
-.inbox__list {
+.inbox__intro {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.inbox__eyebrow,
+.inbox__heading,
+.inbox__lede,
+.inbox__section-title,
+.inbox__section-description,
+.inbox__lead,
+.inbox__reason,
+.inbox__meta,
+.inbox__empty,
+.inbox__section-empty,
+.inbox__loading,
+.inbox__error,
+.inbox__source-reason {
+  margin: 0;
+}
+
+.inbox__eyebrow {
+  color: var(--accent);
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-section-weight);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.inbox__heading {
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
+  line-height: 1.2;
+}
+
+.inbox__lede,
+.inbox__loading,
+.inbox__section-empty {
+  color: var(--fg-dim);
+  font-size: var(--type-body-size);
+}
+
+.inbox__sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+
+.inbox__section {
+  min-width: 0;
+  border-top: 1px solid var(--border-strong);
+  padding-top: var(--space-3);
+}
+
+.inbox__section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.inbox__section-title {
+  font-size: var(--type-section-size);
+  font-weight: var(--type-title-weight);
+  color: var(--fg-primary);
+}
+
+.inbox__section-description {
+  margin-top: var(--space-1);
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
+  line-height: 1.45;
+}
+
+.inbox__section-count {
+  flex: none;
+  min-width: 1.75rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-dim);
+  background: var(--bg-elevated);
+  text-align: center;
+  font-size: var(--type-meta-size);
+}
+
+.inbox__list,
+.inbox__sources {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .inbox__row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 44px;
-  border-bottom: 1px solid var(--hairline);
+  gap: var(--space-4);
+  min-height: 64px;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
 }
 
-/* The text column must be allowed to shrink and wrap so a long PR title never forces the row (and thus
- * the page) to scroll horizontally at any width. */
-.inbox__row > div {
+.inbox__row--card {
+  height: auto;
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid transparent;
+  padding-inline: var(--space-3);
+  cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.inbox__row--card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.inbox__row--selected {
+  border-left-color: var(--accent);
+  background: var(--accent-quiet);
+}
+
+.inbox__row-main {
   min-width: 0;
 }
 
-.inbox__title {
-  overflow-wrap: anywhere;
+.inbox__lead,
+.v-tasks__task-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.inbox__cue,
+.v-tasks__action-cue {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
 }
 
 .inbox__title,
-.inbox__reason,
-.inbox__empty,
-.inbox__loading,
-.inbox__error {
-  margin: 0;
-}
-
-.inbox__title {
-  font-weight: 600;
+.v-tasks__task-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--fg-primary);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
+  line-height: 1.35;
 }
 
 .inbox__reason,
-.inbox__loading {
-  color: var(--muted);
+.v-tasks__task-summary {
+  margin-top: var(--space-1);
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1.45;
 }
 
-.inbox__error {
-  color: var(--failure);
+.inbox__meta,
+.v-tasks__task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
 }
 
-/* One action per row: escalations get a button, PRs an external link. No accents (dashboard doctrine). */
-.inbox__action {
+.inbox__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.inbox__action,
+.inbox__retry {
   flex: none;
-  color: var(--text);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
   background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 6px 12px;
   font: inherit;
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.inbox__action:hover:not(:disabled),
+.inbox__retry:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-quiet);
+}
+
+.inbox__action:disabled {
+  cursor: not-allowed;
+  color: var(--fg-faint);
+  border-color: var(--border);
 }
 
 .inbox__action--external {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
-/* The explicit external marker required by design:264. */
 .inbox__external-label {
-  color: var(--muted);
-  font-size: var(--type-meta-size, 0.85em);
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
 }
 
-/* Per-source health: a failed source keeps the healthy half visible and offers a scoped retry. */
 .inbox__sources {
-  margin: 0 0 8px;
-  padding: 0;
-  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
 }
 
 .inbox__source-health {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 44px;
-  border-bottom: 1px solid var(--hairline);
+  gap: var(--space-4);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.inbox__source-health:last-child {
+  border-bottom: 0;
 }
 
 .inbox__source-reason {
-  margin: 0;
-  color: var(--muted);
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1.45;
 }
 
-.inbox__retry {
-  flex: none;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  padding: 6px 12px;
-  font: inherit;
-  cursor: pointer;
+.inbox__error {
+  color: var(--failure);
+  font-size: var(--type-meta-size);
 }
 
-/* Responsive layout for the three checkpoint widths (375 / 768 / 1440).
- * Phone (<= 480px, covers 375): stack each row so title and action share the full width and the action
- * spans it, so nothing overflows horizontally. */
-@media (max-width: 480px) {
-  .inbox__row,
-  .inbox__source-health {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-    padding: 8px 0;
+.inbox__empty {
+  padding: var(--space-8) 0;
+  color: var(--fg-dim);
+  font-size: var(--type-body-size);
+}
+
+@media (max-width: 640px) {
+  .inbox__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .inbox__actions {
+    justify-content: stretch;
   }
 
   .inbox__action,
   .inbox__retry {
-    align-self: stretch;
+    flex: 1;
     text-align: center;
   }
-}
 
-/* Tablet (481–1024px, covers 768): keep the two-column row, tighten the gap. */
-@media (min-width: 481px) and (max-width: 1024px) {
-  .inbox__row,
   .inbox__source-health {
-    gap: 12px;
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
-/* Desktop (>= 1025px, covers 1440): cap the reading measure so rows do not stretch edge to edge. */
 @media (min-width: 1025px) {
-  .inbox__list,
-  .inbox__sources {
-    max-width: 960px;
+  .inbox__section-description {
+    max-width: 64ch;
   }
 }

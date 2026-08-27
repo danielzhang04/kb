@@ -7,19 +7,19 @@ describe('nav/config', () => {
   it('pins the exact P1 ids, order, and two divider boundaries', () => {
     expect(NAV_SECTIONS.map((section) => section.items.map((destination) => destination.id))).toEqual([
       ['home', 'inbox', 'schedules', 'terminal'],
-      ['agents', 'workflows', 'tasks', 'projects', 'files'],
+      ['agents', 'workflows', 'projects', 'files'],
       ['health'],
     ]);
     expect(ALL.map((destination) => destination.label)).toEqual([
-      'Home', 'Inbox', 'Schedules', 'Terminal', 'Agents', 'Workflows', 'Tasks', 'Projects', 'Files', 'Health',
+      'Home', 'Inbox', 'Schedules', 'Terminal', 'Agents', 'Workflows', 'Projects', 'Files', 'Health',
     ]);
   });
 
   it('uses three unlabelled sections and unique live destinations', () => {
     expect(NAV_SECTIONS.map((section) => section.id)).toEqual(['primary', 'entities', 'system']);
     expect(NAV_SECTIONS.every((section) => !('label' in section))).toBe(true);
-    expect(new Set(ALL.map((destination) => destination.id)).size).toBe(10);
-    expect(new Set(ALL.map((destination) => destination.icon)).size).toBe(10);
+    expect(new Set(ALL.map((destination) => destination.id)).size).toBe(9);
+    expect(new Set(ALL.map((destination) => destination.icon)).size).toBe(9);
     expect(ALL.every(isLive)).toBe(true);
   });
 

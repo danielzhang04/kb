@@ -35,7 +35,7 @@ export function agentLink(agentId: string): NavTarget {
   return focusTarget({ kind: 'agent', id: agentId });
 }
 
-/** Open a queue card in the Tasks detail pane. */
+/** Open a queue card in the unified Inbox detail pane. */
 export function cardLink(cardId: string): NavTarget {
   return focusTarget({ kind: 'card', id: cardId });
 }

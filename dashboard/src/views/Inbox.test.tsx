@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SseFactory, SseSource } from '../lib/sseClient.ts';
 import { renderWithTestSession } from '../test/session.tsx';
 import { Inbox } from './Inbox.tsx';
+import type { CardProjection } from '../../server/planeA/cards.ts';
 
 const ISO = '2024-01-12T16:57:07.000Z';
 const verified = { status: 'verified' as const, revision: 'f'.repeat(64), verifiedAt: ISO };
@@ -44,6 +45,24 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
 }
 
+function fetchFor(inbox: unknown, cards: Record<string, CardProjection[]> = {}) {
+  return vi.fn(async (input: RequestInfo | URL) =>
+    String(input) === '/api/index' ? json({ cards }) : json(inbox));
+}
+
+function approvalCard(id: string = escalation.subject.cardId): CardProjection {
+  return {
+    meta: {
+      id, project: 'kb', action: 'wake-me:runner-failed', target: '.', 'risk-tier': 'T1',
+      owner: 'codex-worker', state: 'inbox',
+    },
+    body: '## Work order\n\nReview the stopped runner.\n',
+    displayName: 'wake-me:runner-failed',
+    shortRef: 12,
+    updatedAt: '2026-08-26T12:00:00.000Z',
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((yes) => { resolve = yes; });
@@ -66,27 +85,61 @@ describe('Inbox', () => {
   afterEach(cleanup);
 
   it('renders loading, then Nothing needs you only when both sources are freshly verified and empty', async () => {
-    const pending = deferred<Response>();
-    const fetchImpl = vi.fn(() => pending.promise);
+    const pendingInbox = deferred<Response>();
+    const pendingCards = deferred<Response>();
+    const fetchImpl = vi.fn((input: RequestInfo | URL) =>
+      String(input) === '/api/index' ? pendingCards.promise : pendingInbox.promise);
     const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
     expect(screen.getByText('Loading Inbox…')).toBeTruthy();
-    await act(async () => { pending.resolve(json(envelope([]))); });
+    await act(async () => {
+      pendingInbox.resolve(json(envelope([])));
+      pendingCards.resolve(json({ cards: {} }));
+    });
     expect(await screen.findByText('Nothing needs you')).toBeTruthy();
     expect(view.container.querySelector('.inbox__empty')?.textContent).toBe('Nothing needs you');
   });
 
   it('an escalation exposes only Open card (no merge/reply/resolve/snooze/archive controls) and navigates to the card', async () => {
     const navigate = vi.fn();
-    const fetchImpl = vi.fn(async () => json(envelope([escalation])));
+    const fetchImpl = fetchFor(envelope([escalation]));
     await renderWithTestSession(<Inbox fetchImpl={fetchImpl} onNavigate={navigate} />);
     const open = await screen.findByRole('button', { name: 'Open card' });
     expect(screen.queryByRole('button', { name: /merge|reply|resolve|snooze|archive|deploy|run/i })).toBeNull();
     fireEvent.click(open);
-    expect(navigate).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: escalation.subject.cardId } });
+    expect(navigate).toHaveBeenCalledWith({ view: 'inbox', focus: { kind: 'card', id: escalation.subject.cardId } });
+  });
+
+  it('composes four counted sections and dedupes a matching escalation in favor of its actionable card', async () => {
+    const fetchImpl = fetchFor(envelope([escalation, pr]), { inbox: [approvalCard()] });
+    await renderWithTestSession(<Inbox fetchImpl={fetchImpl} initialSelectedId={escalation.subject.cardId} />);
+
+    const approvals = await screen.findByLabelText('Approvals / cards');
+    expect(within(approvals).getByLabelText('1 items')).toBeTruthy();
+    expect(within(approvals).getByTestId(`task-row-${escalation.subject.cardId}`)).toBeTruthy();
+    expect(within(approvals).queryByTestId('inbox-escalation')).toBeNull();
+    expect(within(approvals).getByTestId('card-gate')).toBeTruthy();
+    expect(within(approvals).getByText(/Updated /)).toBeTruthy();
+    expect(Array.from(document.querySelectorAll('.inbox__section-title')).map((heading) => heading.textContent)).toEqual([
+      'Approvals / cards', 'Deploys', 'Pull requests', 'Asset pulls',
+    ]);
+  });
+
+  it('keeps legacy and cross-entity deep links alive for a card outside the human-only list', async () => {
+    const ordinary = approvalCard('ordinary-card');
+    ordinary.meta = { ...ordinary.meta, action: 'build:ordinary-work', owner: 'codex-worker', state: 'working' };
+    ordinary.displayName = 'build:ordinary-work';
+    const fetchImpl = fetchFor(envelope([]), { working: [ordinary] });
+    await renderWithTestSession(<Inbox fetchImpl={fetchImpl} initialSelectedId="ordinary-card" />);
+
+    const approvals = await screen.findByLabelText('Approvals / cards');
+    expect(within(approvals).getByLabelText('0 items')).toBeTruthy();
+    expect(within(approvals).getByLabelText('Card detail')).toBeTruthy();
+    expect(within(approvals).getByRole('heading', { name: 'Build Ordinary Work' })).toBeTruthy();
+    expect(within(approvals).getByLabelText('Cards needing you').children).toHaveLength(0);
   });
 
   it('a PR exposes Open PR labelled external, linking to the server-built pinned URL with an accessible name [P4-C24]', async () => {
-    const fetchImpl = vi.fn(async () => json(envelope([pr])));
+    const fetchImpl = fetchFor(envelope([pr]));
     await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
     const link = await screen.findByRole('link', { name: /Open PR #42 on GitHub \(opens externally/ });
     expect(link.getAttribute('href')).toBe('https://github.com/danielzhang04/kb/pull/42');
@@ -94,12 +147,14 @@ describe('Inbox', () => {
     expect(link.getAttribute('target')).toBe('_blank');
     // The visible control is explicitly labelled external.
     expect(link.textContent).toMatch(/external/i);
+    expect(screen.getByText(/Arrived /)).toBeTruthy();
     // There is no merge action anywhere.
     expect(screen.queryByRole('button', { name: /merge/i })).toBeNull();
   });
 
   it('a failed source shows a source-specific retry row and never a false empty; retry re-reads only that source', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/index') return json({ cards: {} });
       if (url === '/api/inbox?refresh=pr') return json(envelope([pr]));
       return json(envelope([], { pr: { status: 'failed', errorCode: 'unavailable', stale: false }, escalation: verified }));
     });
@@ -112,22 +167,46 @@ describe('Inbox', () => {
     expect(await screen.findByRole('link', { name: /Open PR #42/ })).toBeTruthy();
   });
 
+  it('retains verified external rows when the card projection fails and offers a scoped retry', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) =>
+      String(input) === '/api/index' ? new Response('no', { status: 500 }) : json(envelope([pr])));
+    await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
+    expect(await screen.findByRole('link', { name: /Open PR #42/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry Approval cards' })).toBeTruthy();
+    expect(screen.queryByText('Nothing needs you')).toBeNull();
+  });
+
   it('treats SSE only as a trigger and retains the last verified snapshot after a failed refresh', async () => {
-    const first = deferred<Response>();
-    const second = deferred<Response>();
-    const fetchImpl = vi.fn()
-      .mockImplementationOnce(() => first.promise)
-      .mockImplementationOnce(() => second.promise);
+    const firstInbox = deferred<Response>();
+    const secondInbox = deferred<Response>();
+    const firstCards = deferred<Response>();
+    const secondCards = deferred<Response>();
+    let inboxCalls = 0;
+    let cardCalls = 0;
+    const fetchImpl = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/index') {
+        cardCalls += 1;
+        return cardCalls === 1 ? firstCards.promise : secondCards.promise;
+      }
+      inboxCalls += 1;
+      return inboxCalls === 1 ? firstInbox.promise : secondInbox.promise;
+    });
     const events = sourceFactory();
     await renderWithTestSession(<Inbox fetchImpl={fetchImpl} sseFactory={events.factory} />);
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    await act(async () => { for (let i = 0; i < 5; i += 1) events.emit(); });
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    await act(async () => { first.resolve(json(envelope([escalation]))); });
-    expect(await screen.findByText('Wake Me:runner Failed')).toBeTruthy();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    await act(async () => { second.resolve(new Response('no', { status: 500 })); });
+    await act(async () => { for (let i = 0; i < 5; i += 1) events.emit(); });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      firstInbox.resolve(json(envelope([escalation])));
+      firstCards.resolve(json({ cards: {} }));
+    });
+    expect(await screen.findByText('Wake Me:runner Failed')).toBeTruthy();
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    await act(async () => {
+      secondInbox.resolve(new Response('no', { status: 500 }));
+      secondCards.resolve(json({ cards: {} }));
+    });
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByText('Wake Me:runner Failed')).toBeTruthy();
     expect(screen.queryByText('untrusted event item')).toBeNull();
@@ -135,7 +214,7 @@ describe('Inbox', () => {
 
   it('renders a hostile PR title as inert text — never markup, never in the href, id, or number', async () => {
     const hostile = { ...pr, title: '<script>alert(1)</script>\n**bold** [x](javascript:alert(2))' };
-    const fetchImpl = vi.fn(async () => json(envelope([hostile])));
+    const fetchImpl = fetchFor(envelope([hostile]));
     const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
     const link = await screen.findByRole('link', { name: /Open PR #42/ });
     // React escaped the title into a text node: no <script> (or any) element was minted from it, and the
@@ -192,7 +271,7 @@ describe('Inbox', () => {
 
   for (const scenario of CASES) {
     it(`deployment case: ${scenario.label}`, async () => {
-      const fetchImpl = vi.fn(async () => json(envelope([scenario.item])));
+      const fetchImpl = fetchFor(envelope([scenario.item]));
       const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
       await screen.findByTestId('inbox-inspect');
       const mutating = view.container.querySelectorAll('.inbox__action--mutating');
@@ -215,7 +294,7 @@ describe('Inbox', () => {
 
   it('a pre-swap deployment with live blocking PTYs shows Close PTYs and continue (and no deploy-ready ever does)', async () => {
     const blocked = deployment('parked', { blockingPtyIds: [`pty-${'a'.repeat(32)}`] });
-    const fetchImpl = vi.fn(async () => json(envelope([blocked])));
+    const fetchImpl = fetchFor(envelope([blocked]));
     const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
     const control = await screen.findByTestId('inbox-deploy-control');
     expect(control.textContent).toBe('Close PTYs and continue');
@@ -230,12 +309,12 @@ describe('Inbox', () => {
     };
     for (const [state, label] of [['pending', 'Pull home'], ['failed', 'Retry'], ['offline', 'Retry']] as const) {
       cleanup();
-      await renderWithTestSession(<Inbox fetchImpl={vi.fn(async () => json(envelope([{ ...base, state }]))) as unknown as typeof fetch} />);
+      await renderWithTestSession(<Inbox fetchImpl={fetchFor(envelope([{ ...base, state }])) as unknown as typeof fetch} />);
       const control = await screen.findByTestId('inbox-asset-control');
       expect(control.textContent).toBe(label);
     }
     cleanup();
-    const inflight = await renderWithTestSession(<Inbox fetchImpl={vi.fn(async () => json(envelope([{ ...base, state: 'in-flight' }])))} />);
+    const inflight = await renderWithTestSession(<Inbox fetchImpl={fetchFor(envelope([{ ...base, state: 'in-flight' }]))} />);
     await inflight.findByTestId('inbox-inspect');
     expect(inflight.container.querySelector('[data-testid="inbox-asset-control"]')).toBeNull();
   });
@@ -248,7 +327,7 @@ describe('Inbox', () => {
     ];
     // Distinct ids so React keys do not collide.
     const withIds = items.map((it, i) => ({ ...it, id: i.toString(16).padStart(64, '0') }));
-    const view = await renderWithTestSession(<Inbox fetchImpl={vi.fn(async () => json(envelope(withIds)))} />);
+    const view = await renderWithTestSession(<Inbox fetchImpl={fetchFor(envelope(withIds))} />);
     await screen.findAllByTestId('inbox-inspect');
     const forbidden = ['decline', 'Decline', 'candidate-superseded', 'superseded', 'abortReason', 'DeployReady', 'deploy-ready'];
     // Scope: visible copy + every control label/accessible name — NOT test-only attributes.
@@ -267,7 +346,7 @@ describe('Inbox', () => {
         Object.defineProperty(window, 'innerWidth', { value: width, configurable: true, writable: true });
         window.dispatchEvent(new Event('resize'));
         try {
-          const fetchImpl = vi.fn(async () => json(envelope([pr, escalation])));
+          const fetchImpl = fetchFor(envelope([pr, escalation]));
           const view = await renderWithTestSession(<Inbox fetchImpl={fetchImpl} />);
           await screen.findByRole('link', { name: /Open PR #42/ });
           // The layout is class-driven and CSS-responsive: the container, list, and one row per item
@@ -275,6 +354,7 @@ describe('Inbox', () => {
           expect(view.container.querySelector('.inbox')).toBeTruthy();
           expect(view.container.querySelectorAll('.inbox__row')).toHaveLength(2);
           expect(screen.getByRole('button', { name: 'Open card' })).toBeTruthy();
+          expect(screen.getAllByText(/Arrived /)).toHaveLength(2);
           // No element hardcodes a pixel width wider than the viewport — the horizontal-overflow bug class.
           for (const el of Array.from(view.container.querySelectorAll<HTMLElement>('*'))) {
             const declared = el.style.width || el.style.minWidth;

@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +65,19 @@ describe('indexRepo', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it('projects the card file mtime as an optional ISO updatedAt outside frontmatter', () => {
+    const repo = scratchRepo();
+    const path = join(repo, 'queue', 'inbox', 'card-new.md');
+    const modified = new Date('2026-08-26T14:23:45.000Z');
+    writeFileSync(path, CARD, 'utf-8');
+    utimesSync(path, modified, modified);
+
+    const projected = Object.values(indexRepo(repo).cards).flat()
+      .find((card) => card.meta.id === 'bbbb0001-9999');
+    expect(projected?.updatedAt).toBe(modified.toISOString());
+    expect(projected?.meta.updatedAt).toBeUndefined();
   });
 });
 

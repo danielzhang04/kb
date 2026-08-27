@@ -81,7 +81,7 @@ describe('links', () => {
     expect(runLink('run-1')).toEqual({ view: 'workflows', focus: { kind: 'run', id: 'run-1' } });
     expect(workflowLink('video-pipeline')).toEqual({ view: 'workflows', focus: { kind: 'workflow', id: 'video-pipeline' } });
     expect(agentLink('claude-worker')).toEqual({ view: 'agents', focus: { kind: 'agent', id: 'claude-worker' } });
-    expect(cardLink('card-100')).toEqual({ view: 'tasks', focus: { kind: 'card', id: 'card-100' } });
+    expect(cardLink('card-100')).toEqual({ view: 'inbox', focus: { kind: 'card', id: 'card-100' } });
   });
 });
 

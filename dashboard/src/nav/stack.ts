@@ -7,7 +7,7 @@
  * directly, so it would cost a full migration for partial ownership.
  *
  * What arc-3 actually needs is drill-in + back, which `App.tsx` already had a single-purpose version of
- * (`openCardId` + `goTo('tasks')` + `taskSelectedId`). This module generalizes that precedent into one
+ * (`openCardId` + `taskSelectedId`). This module generalizes that precedent into one
  * typed stack of ~40 lines with zero dependencies.
  *
  * The three operations are deliberately asymmetric:
@@ -23,7 +23,7 @@
 import type { DestinationId } from './config';
 import type { RunnableRef } from '../../server/control/p2Contracts.ts';
 
-/** The entity a pushed entry is focused on. `card` reuses the pre-existing Tasks detail-pane payload. */
+/** The entity a pushed entry is focused on. Cards now open inside the unified Inbox. */
 export type Focus =
   | { kind: 'run'; id: string }
   | { kind: 'workflow'; id: string }
@@ -53,7 +53,7 @@ export const DESTINATION_BY_FOCUS: Record<Focus['kind'], DestinationId> = {
   run: 'workflows',
   workflow: 'workflows',
   agent: 'agents',
-  card: 'tasks',
+  card: 'inbox',
 };
 
 /** The nav target that opens an entity, in whichever destination owns its kind. */
@@ -104,12 +104,12 @@ export function parentEntry(stack: NavEntry[]): NavEntry | undefined {
 }
 
 const DESTINATIONS = new Set<DestinationId>([
-  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'tasks', 'projects', 'files', 'health',
+  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'projects', 'files', 'health',
 ]);
 const URL_ENTITY_VIEW: Partial<Record<Focus['kind'], DestinationId>> = {
   agent: 'agents',
   workflow: 'workflows',
-  card: 'tasks',
+  card: 'inbox',
 };
 
 /** Parse the closed P1 query grammar; every invalid ingress falls back to a clean Home root. */
@@ -122,8 +122,11 @@ export function parseNavigationSearch(search: string): NavEntry[] {
   if (keys.some((key) => key !== 'view' && key !== 'entity' && key !== 'filter')) return fallback;
   if (params.getAll('view').length !== 1 || params.getAll('entity').length > 1 || params.getAll('filter').length > 1) return fallback;
   const view = params.get('view');
-  if (!view || !DESTINATIONS.has(view as DestinationId)) return fallback;
-  const destination = view as DestinationId;
+  // Tasks is no longer an IA destination, but its shipped card links remain valid and canonicalize to
+  // the card section in Inbox rather than falling through to Home or a dead surface.
+  const legacyTasks = view === 'tasks';
+  if (!view || (!legacyTasks && !DESTINATIONS.has(view as DestinationId))) return fallback;
+  const destination: DestinationId = legacyTasks ? 'inbox' : view as DestinationId;
   const filter = params.get('filter');
   if (filter !== null && (filter !== 'attention' || destination !== 'agents' && destination !== 'workflows')) return fallback;
   const root = { view: destination, ...(filter === 'attention' ? { filter } : {}) } as NavEntry;

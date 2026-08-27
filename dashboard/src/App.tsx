@@ -31,7 +31,6 @@ import { Home } from './views/Home';
 import { Inbox } from './views/Inbox';
 import { Projects } from './views/Projects';
 import { SchedulesBody as Schedules } from './views/Schedules';
-import { Tasks } from './views/Tasks';
 import { Terminal } from './views/Terminal';
 import { Workflows } from './views/Workflows';
 
@@ -180,12 +179,14 @@ function ViewBody({ entry, onPush, onBack, onSectionChange, onNavigateTarget, on
 }): React.JSX.Element {
   switch (entry.view) {
     case 'home': return <Home onNavigateTarget={onNavigateTarget} />;
-    case 'inbox': return <Inbox onNavigate={onNavigateTarget} />;
+    case 'inbox': return <Inbox
+      initialSelectedId={entry.focus?.kind === 'card' ? entry.focus.id : undefined}
+      onNavigate={onNavigateTarget}
+    />;
     case 'schedules': return <Schedules scheduleOwner={entry.scheduleOwner} />;
     case 'terminal': return <></>;
     case 'agents': return <Agents filter={entry.filter} focusAgentId={entry.focus?.kind === 'agent' ? entry.focus.id : null} onOpenAgent={(id) => onPush({ ...focusTarget({ kind: 'agent', id }), ...(entry.filter ? { filter: entry.filter } : {}) })} onBack={onBack} activeSectionId={entry.section} onSectionChange={onSectionChange} onNavigate={onNavigateTarget} onOpenTerminal={onOpenAgentTerminal} />;
     case 'workflows': return <Workflows filter={entry.filter} focusWorkflowId={entry.focus?.kind === 'workflow' ? entry.focus.id : null} focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null} onOpenWorkflow={(id) => onPush({ ...focusTarget({ kind: 'workflow', id }), ...(entry.filter ? { filter: entry.filter } : {}) })} onOpenRun={(id) => onPush(focusTarget({ kind: 'run', id }))} onBack={onBack} onNavigate={onNavigateTarget} activeSectionId={entry.section} onSectionChange={onSectionChange} onOpenTerminal={onOpenWorkflowTerminal} />;
-    case 'tasks': return <Tasks initialSelectedId={entry.focus?.kind === 'card' ? entry.focus.id : undefined} />;
     case 'projects': return <section aria-label="Projects view"><Projects /></section>;
     case 'files': return <section aria-label="Files view"><Browser /></section>;
     case 'health': return <Health />;

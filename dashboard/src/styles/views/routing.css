@@ -118,7 +118,7 @@
   color: var(--fg-dim);
 }
 
-/* ---- Per-card routing bar (Tasks detail) ---- */
+/* ---- Per-card routing bar (Inbox card detail) ---- */
 .v-routing-bar {
   display: flex;
   flex-wrap: wrap;

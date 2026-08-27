@@ -1,5 +1,5 @@
 /**
- * D2.4 — card verifier: child-process-driven approval verification for the Tasks card channel.
+ * D2.4 — card verifier: child-process-driven approval verification for the Inbox card channel.
  *
  * `driveVerify` shells the verifier matching a card's approval channel. Two of the three channels
  * (`signed`, `possession`) are the fleet's `scripts/approvals.py` — which has **no argparse CLI**

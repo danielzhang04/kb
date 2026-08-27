@@ -43,6 +43,9 @@ export interface ParsedCard {
 export interface CardProjection extends ParsedCard {
   displayName: string;
   shortRef: number;
+  /** Filesystem modification time supplied by the indexer, never card frontmatter. Optional so older
+   *  snapshots and fixture literals remain valid while clients gain a trustworthy recency label. */
+  updatedAt?: string;
 }
 
 /** All seven schema card states (mirrors scripts/cards.py `STATES`). */

@@ -1,9 +1,9 @@
 /*
  * ============================================================================
- * TASKS view (U3) — the whole card queue, state-grouped, with a detail pane
+ * INBOX card approvals — reusable governed card list + detail pane
  * ============================================================================
- * Layout: LEFT a scrollable column of state groups with human-first summaries;
- * RIGHT a sticky detail pane with the task brief before optional technical data. Tokens
+ * Layout: LEFT the human-only card rows owned by inbox.css; RIGHT a sticky detail pane with the
+ * task brief, governed actions, routing, and directly disclosed metadata. Tokens
  * only (docs/design-brief.md §A–F); dark is default, the light remap in app.css
  * carries through every var().
  *
@@ -24,7 +24,7 @@
   min-width: 0;
 }
 
-/* ---- LEFT: state groups ------------------------------------------------ */
+/* ---- LEFT: card rows --------------------------------------------------- */
 .v-tasks__groups {
   display: flex;
   flex-direction: column;
@@ -32,75 +32,7 @@
   min-width: 0;
 }
 
-.v-tasks__group {
-  min-width: 0;
-}
-
-.v-tasks__group--priority {
-  padding: var(--space-3);
-  border: 1px solid var(--border-strong);
-  border-left: 2px solid var(--accent);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-}
-
-.v-tasks__group-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-2);
-}
-
-.v-tasks__group-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.v-tasks__group-title {
-  margin: 0;
-  font-size: var(--type-section-size);
-  font-weight: var(--type-section-weight);
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--fg-dim);
-}
-
-.v-tasks__group--priority .v-tasks__group-title {
-  color: var(--fg-primary);
-}
-
-.v-tasks__group-description {
-  margin: var(--space-1) 0 0;
-  color: var(--fg-faint);
-  font-size: var(--type-meta-size);
-  line-height: 1.4;
-}
-
-.v-tasks__needs-you {
-  flex: none;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--accent-quiet);
-  color: var(--fg-primary);
-  font-size: var(--type-meta-size);
-  font-weight: var(--type-section-weight);
-  white-space: nowrap;
-}
-
-/* A count, not a hue — tabular in a quiet pill. */
-.v-tasks__group-count {
-  font-size: var(--type-section-size);
-  color: var(--fg-faint);
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  min-width: 1.4em;
-  text-align: center;
-}
-
-/* ---- Dense table — the shell, header style, row height and cell padding are the shared
- * .mc-table / .mc-table--boxed geometry in app.css. Only the selection rail and the task-specific
- * cells live here, so this table cannot drift from the Agents/Workflows/Home ones. ---- */
+/* inbox.css owns the shared list-row geometry; this module adds only card selection and detail styles. */
 .v-tasks__row {
   height: auto;
   border-bottom: 1px solid var(--border);
@@ -173,10 +105,6 @@
   overflow-wrap: anywhere;
 }
 
-.v-tasks__cell--faint {
-  color: var(--fg-faint);
-}
-
 /* ---- RIGHT: detail pane ------------------------------------------------ */
 .v-tasks__detail,
 .v-tasks__placeholder {
@@ -244,26 +172,16 @@
   margin-bottom: var(--space-4);
 }
 
-.v-tasks__advanced {
+.v-tasks__metadata {
   border-top: 1px solid var(--border);
   padding-top: var(--space-3);
 }
 
-.v-tasks__advanced > summary {
-  color: var(--fg-dim);
-  cursor: pointer;
+.v-tasks__metadata-title {
+  margin: 0 0 var(--space-3);
+  color: var(--fg-primary);
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
-}
-
-.v-tasks__advanced[open] > summary {
-  margin-bottom: var(--space-3);
-  color: var(--fg-primary);
-}
-
-.v-tasks__advanced > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: var(--space-1);
 }
 
 .v-tasks__technical-id {
@@ -325,10 +243,6 @@
 }
 
 @media (max-width: 599px) {
-  .v-tasks__group-head {
-    flex-wrap: wrap;
-  }
-
   .v-tasks__detail-summary,
   .v-tasks__technical-id {
     flex-direction: column;
@@ -417,10 +331,8 @@
 }
 
 /* ---- Card gate (spec §5) ----
- * "This needs you", stated on the card's own surface, directly above the frontmatter and work order it
- * is about. The Inbox row that linked here deliberately shows none of that context, so this block is
- * where a card's decision is actually made. Verify/respond controls reuse the inbox classes so the two
- * surfaces read as one language. */
+ * "This needs you", stated in the Inbox card detail directly above the frontmatter and work order it
+ * governs. This block is where a card's decision is actually made. */
 .v-tasks__gate {
   display: flex;
   flex-direction: column;

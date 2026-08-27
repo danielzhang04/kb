@@ -3,7 +3,7 @@
  * by state, ledger rollups, and org STATE sections. It is rebuilt on start and kept live by a
  * chokidar file-watch. No SQLite, no source-of-truth store — git stays the database.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
@@ -36,8 +36,12 @@ export interface PlaneADelta {
 }
 
 /** Attach the server-owned display identity to one parsed card. */
-export function projectCard(card: ParsedCard, naming: NamingRegistry): CardProjection {
-  return { ...card, ...naming.displayFor('card', String(card.meta.id), cardTitle(card)) };
+export function projectCard(card: ParsedCard, naming: NamingRegistry, updatedAt?: string): CardProjection {
+  return {
+    ...card,
+    ...naming.displayFor('card', String(card.meta.id), cardTitle(card)),
+    ...(updatedAt === undefined ? {} : { updatedAt }),
+  };
 }
 
 /** Read and parse every card across the four physical queue dirs. */
@@ -51,7 +55,9 @@ function readCards(repoRoot: string, naming: NamingRegistry): { cards: CardProje
       if (!name.endsWith('.md')) continue;
       const path = join(full, name);
       try {
-        cards.push(projectCard(parseValidatedCard(readFileSync(path, 'utf-8')), naming));
+        const mtime = statSync(path).mtime;
+        if (!Number.isFinite(mtime.getTime())) throw new Error('card file mtime is invalid');
+        cards.push(projectCard(parseValidatedCard(readFileSync(path, 'utf-8')), naming, mtime.toISOString()));
       } catch (error) {
         rejectedCards += 1;
         console.warn(`[planeA] rejected card ${path}: ${error instanceof Error ? error.message : String(error)}`);

@@ -6,7 +6,7 @@ import {
   P5_BROWSER_EXIT, P5_FIXTURE_KINDS, P5_LIVE_ACTIVATION, P5_RAIL_DESTINATIONS, P5_SCENARIOS,
   P5_SCENARIO_FIXTURE, P5_VIEWPORT_WIDTHS, assertAssetPullDigest, assertDeploymentActionMatrix,
   assertHealthBoundedProbeFailure, assertHomeFallbackActive, assertHomeHealthLiveRelease,
-  assertPtyQuiescenceRefusal, assertRailExactlyTenNoDeploy, assertT3MissingCeremony, enumerateMatrix,
+  assertPtyQuiescenceRefusal, assertRailExactlyNineNoDeploy, assertT3MissingCeremony, enumerateMatrix,
   evaluateP5ScenarioBullet, isP5FixtureKind, isP5Scenario, mainP5ActualBrowserRunner, p5ScenarioProfile,
   parseP5BrowserCliArgs, runP5BrowserMatrix,
 } from './p5ActualBrowserRunner.ts';
@@ -93,11 +93,12 @@ describe('p5ScenarioProfile — the seven §8 scenarios and their plan bullets',
     expect(profile.liveRelease?.generatedAt).toBe(P5_LIVE_ACTIVATION.generatedAt);
   });
 
-  it('no-deploy-destination lists exactly the ten ux-rules:3 destinations with no deploy/deploys/learnings', () => {
+  it('no-deploy-destination lists exactly the nine destinations with no tasks/deploy/deploys/learnings', () => {
     const profile = p5ScenarioProfile('no-deploy-destination');
     expect(profile.noDeployDestination).toBe(true);
     expect(profile.railDestinations).toEqual([...P5_RAIL_DESTINATIONS]);
-    expect(profile.railDestinations).toHaveLength(10);
+    expect(profile.railDestinations).toHaveLength(9);
+    expect(profile.railDestinations).not.toContain('tasks');
     expect(profile.railDestinations).not.toContain('deploy');
     expect(profile.railDestinations).not.toContain('deploys');
     expect(profile.railDestinations).not.toContain('learnings');
@@ -284,22 +285,22 @@ describe('mainP5ActualBrowserRunner — real wiring against an injected browser'
 });
 
 describe('W6.5b — the seven scenarios\' DOM bullet assertions are non-vacuous', () => {
-  it('assertRailExactlyTenNoDeploy: passes on the real sidebar markup, fails when Deploy is injected or an entry is missing', () => {
+  it('assertRailExactlyNineNoDeploy: passes on the real sidebar markup, fails when Deploy is injected or an entry is missing', () => {
     const goodSidebar = `<nav class="mc-sidebar" aria-label="Primary navigation">${
       P5_RAIL_DESTINATIONS.map((id) => `<button title="${id[0].toUpperCase()}${id.slice(1)}"><span class="mc-nav-item__label">${id[0].toUpperCase()}${id.slice(1)}</span></button>`).join('')
     }</nav>`;
-    expect(assertRailExactlyTenNoDeploy(goodSidebar).ok).toBe(true);
+    expect(assertRailExactlyNineNoDeploy(goodSidebar).ok).toBe(true);
 
     const withDeploy = `<nav class="mc-sidebar" aria-label="Primary navigation">${
       [...P5_RAIL_DESTINATIONS, 'deploy'].map((id) => `<span class="mc-nav-item__label">${id[0].toUpperCase()}${id.slice(1)}</span>`).join('')
     }</nav>`;
-    expect(assertRailExactlyTenNoDeploy(withDeploy).ok).toBe(false);
+    expect(assertRailExactlyNineNoDeploy(withDeploy).ok).toBe(false);
 
     const missingOne = `<nav class="mc-sidebar" aria-label="Primary navigation">${
-      P5_RAIL_DESTINATIONS.slice(0, 9).map((id) => `<span class="mc-nav-item__label">${id[0].toUpperCase()}${id.slice(1)}</span>`).join('')
+      P5_RAIL_DESTINATIONS.slice(0, 8).map((id) => `<span class="mc-nav-item__label">${id[0].toUpperCase()}${id.slice(1)}</span>`).join('')
     }</nav>`;
-    expect(assertRailExactlyTenNoDeploy(missingOne).ok).toBe(false);
-    expect(assertRailExactlyTenNoDeploy('<div>no sidebar here</div>').ok).toBe(false);
+    expect(assertRailExactlyNineNoDeploy(missingOne).ok).toBe(false);
+    expect(assertRailExactlyNineNoDeploy('<div>no sidebar here</div>').ok).toBe(false);
   });
 
   it('assertHomeFallbackActive: passes when Home is aria-current=page, fails when another destination is active', () => {

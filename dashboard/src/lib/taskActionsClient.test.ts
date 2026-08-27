@@ -1,5 +1,5 @@
 /**
- * U2 — taskActionsClient: drives explicit Tasks card verify/reply/resolve POSTs.
+ * U2 — taskActionsClient: drives explicit Inbox card verify/reply/resolve POSTs.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { respondToCard, verifyApproval } from './taskActionsClient';

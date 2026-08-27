@@ -52,7 +52,7 @@ describe('P1 command palette', () => {
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy();
   });
 
-  it('renders exactly the ten destination commands', async () => {
+  it('renders exactly the nine destination commands', async () => {
     await renderApp();
     openPalette();
     expect(screen.getAllByRole('option').map((option) => option.id)).toEqual(

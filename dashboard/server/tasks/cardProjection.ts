@@ -1,5 +1,5 @@
 /**
- * Read-only classification of a single card into the operator gate the Tasks view answers.
+ * Read-only classification of a single card into the operator gate the unified Inbox answers.
  *
  * The classification is deliberately conservative. Normal queued work and dependency-blocked DAG stages
  * are not human notifications. Only an approval boundary, an OPERATOR GATE (see {@link isHumanGate}),
@@ -7,9 +7,8 @@
  * surfaced. Nothing here changes card state.
  *
  * P4 W6.1 removed the pre-v3 Human Inbox feed vocabulary (the per-item classification labels and the
- * full-feed projection): the Inbox is now the PR + escalation surface of `server/inbox`, and the card
- * verify/reply/resolve gate is answered card-by-card in the Tasks view. This module keeps only the
- * per-card gate classification that gate needs.
+ * full-feed projection). U9 composes the server Inbox projection with Plane-A cards in one client view;
+ * this module keeps the per-card gate classification used by that unified surface.
  */
 import type { ApprovalButtons } from '../approvals/assurance.ts';
 import { buttonsFor } from '../approvals/assurance.ts';
@@ -97,7 +96,7 @@ function safeWorkOrder(card: ParsedCard): string | null {
 }
 
 /**
- * Classify one card into the operator gate the Tasks view answers, or `null` when the card needs nothing
+ * Classify one card into the operator gate the unified Inbox answers, or `null` when the card needs nothing
  * from a person. Pure and fixture-testable: derives everything from the card's own frontmatter and body,
  * never from file mtime or a repository scan.
  */

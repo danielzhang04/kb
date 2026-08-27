@@ -1,6 +1,6 @@
 /**
  * Command palette (U4) — Raycast-style centered overlay opened with Ctrl/Cmd+K. It NAVIGATES and it
- * contains the exact ten P1 destinations. Running a command only changes the active view; no command
+ * contains the exact nine destinations. Running a command only changes the active view; no command
  * here issues a governed network request.
  *
  * Interaction: focus is trapped in the input while open (the list uses aria-activedescendant so the

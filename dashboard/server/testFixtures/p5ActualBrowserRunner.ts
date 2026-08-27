@@ -146,9 +146,9 @@ export interface P5InboxEnvelope {
 const VERIFIED = (revision: string): P5SourceState =>
   ({ status: 'verified', revision, verifiedAt: '2026-08-25T12:00:00.000Z' });
 
-/** The ten `ux-rules:3` rail destinations — NO deploy, deploys, or learnings entry [plan §8 line 401]. */
+/** The nine rail destinations after Tasks moved into Inbox — no deploy, deploys, or learnings entry. */
 export const P5_RAIL_DESTINATIONS = [
-  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'tasks', 'projects', 'files', 'health',
+  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'projects', 'files', 'health',
 ] as const;
 
 /** The one injected activation `home-health-live-release` pins: Home chip and Health release row show it. */
@@ -237,7 +237,7 @@ export function p5ScenarioProfile(scenario: P5Scenario): P5ScenarioProfile {
       return {
         ...base, surface: 'rail', noDeployDestination: true,
         inbox: inboxEnvelope([], ALL_VERIFIED, 'no-deploy-destination'),
-        assertsBullet: 'the rail renders exactly the ten ux-rules:3 destinations with no Deploy/Learnings entry; /deploy and /deploys render not-found and GET /api/deploy + /api/deploys return 404.',
+        assertsBullet: 'the rail renders exactly the nine destinations with no Tasks/Deploy/Learnings entry; /deploy and /deploys render not-found and GET /api/deploy + /api/deploys return 404.',
       };
     default:
       return assertNeverScenario(scenario);
@@ -453,7 +453,7 @@ export type ScenarioDoms = Readonly<Record<string, string>>;
 
 const RAIL_LABEL_BY_ID: Readonly<Record<string, string>> = {
   home: 'Home', inbox: 'Inbox', schedules: 'Schedules', terminal: 'Terminal', agents: 'Agents',
-  workflows: 'Workflows', tasks: 'Tasks', projects: 'Projects', files: 'Files', health: 'Health',
+  workflows: 'Workflows', projects: 'Projects', files: 'Files', health: 'Health',
 };
 
 function extractSidebar(dom: string): string {
@@ -475,15 +475,15 @@ function rowSegment(dom: string, testid: string): string | null {
   return end === -1 ? dom.slice(start) : dom.slice(start, end);
 }
 
-/** no-deploy-destination, part 1: the rail renders EXACTLY the ten `ux-rules:3` destinations, in order,
- *  with no Deploy/Deploys/Learnings entry anywhere in the sidebar. */
-export function assertRailExactlyTenNoDeploy(dom: string): BulletVerdict {
+/** no-deploy-destination, part 1: the rail renders exactly the nine destinations, in order, with no
+ * Tasks/Deploy/Deploys/Learnings entry anywhere in the sidebar. */
+export function assertRailExactlyNineNoDeploy(dom: string): BulletVerdict {
   const sidebar = extractSidebar(dom);
   if (sidebar === '') return { ok: false, detail: 'no <nav class="mc-sidebar"> found in the rendered DOM' };
   const labels = railLabels(sidebar);
   const expected = P5_RAIL_DESTINATIONS.map((id) => RAIL_LABEL_BY_ID[id]);
   const exact = labels.length === expected.length && expected.every((label, index) => labels[index] === label);
-  const forbidden = ['Deploy', 'Deploys', 'Learnings'].filter((word) => labels.includes(word));
+  const forbidden = ['Tasks', 'Deploy', 'Deploys', 'Learnings'].filter((word) => labels.includes(word));
   return {
     ok: exact && forbidden.length === 0,
     detail: `rail rendered [${labels.join(', ')}]${forbidden.length > 0 ? ` — forbidden entries present: ${forbidden.join(', ')}` : ''}`,
@@ -613,7 +613,7 @@ export function evaluateP5ScenarioBullet(
 ): BulletVerdict {
   switch (scenario) {
     case 'no-deploy-destination': {
-      const rail = assertRailExactlyTenNoDeploy(doms.main ?? '');
+      const rail = assertRailExactlyNineNoDeploy(doms.main ?? '');
       if (!rail.ok) return rail;
       const deploy = assertHomeFallbackActive(doms.deployRoute ?? '');
       if (!deploy.ok) return { ok: false, detail: `/deploy did not fall back to Home: ${deploy.detail}` };

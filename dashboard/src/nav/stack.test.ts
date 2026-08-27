@@ -22,8 +22,16 @@ describe('nav stack', () => {
     ]);
     expect(parseNavigationSearch('?view=workflows&entity=workflow%3Avideo-run').at(-1)?.focus)
       .toEqual({ kind: 'workflow', id: 'video-run' });
-    expect(parseNavigationSearch('?view=tasks&entity=card%3Aabcdef01-card').at(-1)?.focus)
+    expect(parseNavigationSearch('?view=inbox&entity=card%3Aabcdef01-card').at(-1)?.focus)
       .toEqual({ kind: 'card', id: 'abcdef01-card' });
+  });
+
+  it('keeps legacy Tasks card links alive and canonicalizes them to Inbox', () => {
+    expect(parseNavigationSearch('?view=tasks&entity=card%3Aabcdef01-card')).toEqual([
+      { view: 'inbox' },
+      { view: 'inbox', focus: { kind: 'card', id: 'abcdef01-card' } },
+    ]);
+    expect(parseNavigationSearch('?view=tasks')).toEqual([{ view: 'inbox' }]);
   });
 
   it('rejects deleted, unknown, malformed, and mismatched deep links to clean Home', () => {
@@ -81,7 +89,7 @@ describe('nav stack', () => {
     expect(focusTarget({ kind: 'run', id: 'run-1' })).toEqual({ view: 'workflows', focus: { kind: 'run', id: 'run-1' } });
     expect(focusTarget({ kind: 'workflow', id: 'wf-1' })).toEqual({ view: 'workflows', focus: { kind: 'workflow', id: 'wf-1' } });
     expect(focusTarget({ kind: 'agent', id: 'a-1' })).toEqual({ view: 'agents', focus: { kind: 'agent', id: 'a-1' } });
-    expect(focusTarget({ kind: 'card', id: 'c-1' })).toEqual({ view: 'tasks', focus: { kind: 'card', id: 'c-1' } });
+    expect(focusTarget({ kind: 'card', id: 'c-1' })).toEqual({ view: 'inbox', focus: { kind: 'card', id: 'c-1' } });
     expect(focusTarget({ kind: 'run', id: 'run-1' }, 'changes').section).toBe('changes');
   });
 
@@ -138,9 +146,9 @@ describe('nav stack', () => {
     // deeper, then back — the run detail is still on Changes rather than reset to Overview.
     let stack = pushStack(rootStack('workflows'), { view: 'workflows', focus: { kind: 'run', id: 'run-1' } });
     stack = setSectionOnStack(stack, 'changes');
-    stack = pushStack(stack, { view: 'tasks', focus: { kind: 'card', id: 'card-1' } });
+    stack = pushStack(stack, { view: 'inbox', focus: { kind: 'card', id: 'card-1' } });
 
-    expect(stack[stack.length - 1].view).toBe('tasks');
+    expect(stack[stack.length - 1].view).toBe('inbox');
 
     stack = backStack(stack);
 
