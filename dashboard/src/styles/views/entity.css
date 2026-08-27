@@ -496,7 +496,7 @@
 }
 
 .entity-roster-controls { display: flex; align-items: center; min-width: 0; }
-.entity-roster-controls input { min-width: 0; max-width: 100%; min-height: 36px; width: 100%; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
+.entity-roster-controls input { min-width: 0; max-width: 100%; min-height: 36px; width: 100%; padding: var(--space-2) var(--space-3); font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
 
 .entity-card-groups, .entity-card-group { display: flex; flex-direction: column; gap: var(--card-gap); min-width: 0; }
 .entity-card-group__toggle { width: 100%; min-height: 36px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--fg-primary); text-align: left; cursor: pointer; }
