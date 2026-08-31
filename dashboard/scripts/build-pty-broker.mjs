@@ -201,15 +201,26 @@ for (const item of emitted) {
   const relative = path.relative(outputRoot, item).split(path.sep).join('/');
   members.set(relative, { source: item, executable: false });
 }
+// npm tarballs ship prebuilt natives for every platform (node-pty: prebuilds/{win32,darwin,linux}-*).
+// The VM only ever resolves linux-* prebuilds, so foreign-platform trees are excluded from the
+// archive outright — packaging them would either bloat the payload or, worse, trip the Linux ELF
+// wall below on bytes the broker can never load.
+function isForeignPrebuild(packageRelative) {
+  const parts = packageRelative.split('/');
+  const index = parts.indexOf('prebuilds');
+  return index !== -1 && index + 1 < parts.length && !parts[index + 1].startsWith('linux-');
+}
+
 const natives = [];
 for (const { specifier, root } of packages) {
   const buildRoots = nodeGypBuildRoots(root);
   for (const item of walk(root)) {
     if (isNodeGypIntermediate(item, buildRoots)) continue;
+    const packageRelative = path.relative(root, item).split(path.sep).join('/');
+    if (isForeignPrebuild(packageRelative)) continue;
     const extension = path.extname(item).toLowerCase();
     if (extension === '.node') natives.push(item);
-    const relative = `node_modules/${specifier}/`
-      + path.relative(root, item).split(path.sep).join('/');
+    const relative = `node_modules/${specifier}/${packageRelative}`;
     members.set(relative, { source: item, executable: NATIVE_KEEP_SUFFIXES.has(extension) });
   }
 }
