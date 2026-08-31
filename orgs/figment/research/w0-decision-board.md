@@ -46,7 +46,12 @@ output evidence low and R7 flags processor/trust risk; treat as bridge, never ba
   documented platform fit (verified AI-creator category, disclosure rules, SFW public
   surface, "reasonable person" visual-age test).
 
-## Confirmation trial (replaces the bake-off) — ~$10–20
+## Confirmation trial (replaces the bake-off) — ~$30–40 (Daniel approved 2026-08-31)
+
+Amendment: **ZenCreator head-to-head arm added** ($19.99 credits, no subscription) —
+same test-character brief, same 40-still matrix at the swimwear register, blinded
+grading against the LoRA arms. Settles "is our stack actually better than the NSFW
+SaaS" empirically.
 
 One synthetic test character (provenance law: 100% synthetic references, stated age
 23–27, visual-age unambiguous). On a rented pod (SFW workload): train SDXL-RealVisXL
