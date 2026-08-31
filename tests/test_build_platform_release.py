@@ -70,6 +70,10 @@ def release_source(root: Path) -> Path:
     write_broker_archive(source)
     for rel in (
         "dashboard/dist/app.js", "dashboard/server/index.ts", "dashboard/src/lib/timelineModel.ts", "dashboard/package.json",
+        # dashboard/shared is a RELEASE_ROOT: the contracts both sides of the wire compile against
+        # (the PTY protocol and the schedule-socket schema), so a fake source tree without it is not a
+        # buildable release. Mirrors the two representative files the real directory carries.
+        "dashboard/shared/ptyProtocol.ts", "dashboard/shared/schedule-socket-v1.json",
         "dashboard/package-lock.json", "dashboard/node_modules/pkg/index.js", "scripts/cards.py",
         "schemas/compatibility.json", "dashboard/config/repositories.json",
         "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/control_plane_schema.py", "deploy/export_tier0.py",
