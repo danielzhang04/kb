@@ -636,8 +636,10 @@ def test_bootstrap_provisions_the_broker_account_and_enables_only_the_socket(tmp
                                     shell_root=tmp_path / "shell", unit_root=tmp_path / "units")
     bootstrap_vm.provision_pty_broker(run=recorder, layout=layout_value)
     argv_list = recorder.argv_list()
-    assert ("systemctl", "enable", installer.SOCKET_UNIT) in argv_list
-    assert not any(argv[:3] == ("systemctl", "enable", "--now") for argv in argv_list)
+    # Absolute paths throughout, same rationale as the installer's own allow-list: root's inherited
+    # PATH must not decide which binary "systemctl" means.
+    assert (installer.SYSTEMCTL_BIN, "enable", installer.SOCKET_UNIT) in argv_list
+    assert not any(argv[:3] == (installer.SYSTEMCTL_BIN, "enable", "--now") for argv in argv_list)
     assert any(argv[0] == installer.INSTALL_BIN and argv[-1] == str(layout_value.unit_root
                                                         / "kb-shell-broker.service")
                for argv in argv_list)

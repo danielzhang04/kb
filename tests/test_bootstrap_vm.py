@@ -15,6 +15,11 @@ TAILNET_HOST = "kb.command.ts.net"
 TAILNET_OPERATOR = "daniel.zhang.t1@gmail.com"
 # dashboard-v3 P5 [P5-C42]: the pinned desktop-helper origin is a REQUIRED third injected value.
 HELPER_ORIGIN = "https://kb-desk.command.ts.net"
+# Absolute program paths, shared with install_pty_broker: root PATH must not decide which binary
+# "install" means.
+INSTALL = bootstrap_vm.INSTALL_BIN
+USERADD = bootstrap_vm.USERADD_BIN
+SYSTEMCTL = bootstrap_vm.SYSTEMCTL_BIN
 
 
 @pytest.fixture(autouse=True)
@@ -353,7 +358,7 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
 
     monkeypatch.setattr(bootstrap_vm.tempfile, "mkstemp", mkstemp)
     bootstrap_vm.install_root_validators(key_path, TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN, run=run)
-    assert ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/usr/local/lib/kb"] in commands
+    assert [INSTALL, "-d", "-o", "root", "-g", "root", "-m", "0755", "/usr/local/lib/kb"] in commands
     installed_helpers = {
         command[-1].rsplit("/", 1)[-1]
         for command in commands
@@ -362,11 +367,11 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
     assert "control_plane_schema.py" in installed_helpers
     for helper in ("activate_release.py", "apply_ops_reconciliation.py", "export_tier0.py"):
         assert any(
-            command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0555"]
+            command[:7] == [INSTALL, "-o", "root", "-g", "root", "-m", "0555"]
             and command[-1] == f"/usr/local/lib/kb/{helper}"
             for command in commands
         )
-    assert any(command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0444"] and command[-1] == "/usr/local/lib/kb/release_signing_public.py" for command in commands)
+    assert any(command[:7] == [INSTALL, "-o", "root", "-g", "root", "-m", "0444"] and command[-1] == "/usr/local/lib/kb/release_signing_public.py" for command in commands)
     assert any(command[-1] == "/etc/systemd/system/kb-dashboard.service" for command in commands)
 
 
@@ -379,7 +384,7 @@ def test_bootstrap_injects_the_tailnet_host_and_operator_lines(tmp_path):
         nonlocal installed_unit
         if argv[-1] == "/etc/systemd/system/kb-dashboard.service":
             installed_unit = Path(argv[-2]).read_bytes()
-            assert argv[:7] == ["install", "-o", "root", "-g", "root", "-m", "0444"]
+            assert argv[:7] == [INSTALL, "-o", "root", "-g", "root", "-m", "0444"]
         return subprocess.CompletedProcess(argv, 0)
 
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, tailnet_host=TAILNET_HOST, tailnet_operator=TAILNET_OPERATOR, desktop_helper_origin=HELPER_ORIGIN, run=run)
@@ -444,15 +449,32 @@ def test_provision_node_proxy_creates_a_pinned_nologin_account_and_installs_the_
         commands.append(argv)
         return subprocess.CompletedProcess(argv, 0)
 
-    bootstrap_vm.provision_node_proxy(run=run)
-    useradd = next(c for c in commands if c and c[0] == "useradd")
+    bootstrap_vm.provision_node_proxy(run=run, lookup_uid=lambda name: None)
+    useradd = next(c for c in commands if c and c[0] == USERADD)
     assert "--uid" in useradd and useradd[useradd.index("--uid") + 1] == str(bootstrap_vm.NODE_PROXY_UID)
     assert useradd[useradd.index("--shell") + 1] == "/usr/sbin/nologin"
+    # kb-node-proxy.service Group= and kb-whois.socket SocketGroup= need the group to exist; the host's
+    # USERGROUPS_ENAB is not a guarantee, so the flag is explicit.
+    assert "--user-group" in useradd
     assert useradd[-1] == "kb-node-proxy"
     for unit in bootstrap_vm.NODE_PROXY_UNITS:
-        assert any(c[:6] == ["install", "-o", "root", "-g", "root", "-m"] and c[-1] == f"/etc/systemd/system/{unit}" for c in commands)
-    assert ["systemctl", "enable", "kb-whois.socket"] in commands
-    assert ["systemctl", "enable", "kb-node-proxy.service"] in commands
+        assert any(c[:6] == [INSTALL, "-o", "root", "-g", "root", "-m"] and c[-1] == f"/etc/systemd/system/{unit}" for c in commands)
+    assert [SYSTEMCTL, "enable", "kb-whois.socket"] in commands
+    assert [SYSTEMCTL, "enable", "kb-node-proxy.service"] in commands
+
+
+def test_provision_node_proxy_skips_useradd_when_the_pinned_account_exists():
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.provision_node_proxy(run=run, lookup_uid=lambda name: bootstrap_vm.NODE_PROXY_UID)
+    # Probe-then-create, like install_pty_broker: the create itself runs check=True, so a uid clash
+    # cannot be swallowed the way `useradd ... check=False` swallowed exit 4.
+    assert not any(c[0] == USERADD for c in commands)
+    assert [SYSTEMCTL, "enable", "kb-node-proxy.service"] in commands
 
 
 def test_bootstrap_provisions_the_node_proxy(tmp_path, monkeypatch):

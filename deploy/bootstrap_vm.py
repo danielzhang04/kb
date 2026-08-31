@@ -1,3 +1,57 @@
+"""Provision a fresh kb VM (`bootstrap`), or converge an already-provisioned one (`upgrade`).
+
+Operator runbook - the `upgrade` verb
+=====================================
+
+WHAT IT IS FOR. A VM bootstrapped before dashboard-v3 P6 cannot boot the current release: its unit
+predates DASHBOARD_NODE_PROXY_UID, DASHBOARD_DESKTOP_HELPER_ORIGIN and RuntimeDirectory=kb-dashboard,
+and the host sides of the node proxy and the PTY broker are absent. `upgrade` converges that host.
+It touches NO data: never the ops checkout, never the state root, never a release tree, never the
+host-node map, never the release signing key. The DO/SKIP/NEVER triage of every bootstrap step is a
+table in `upgrade`'s own docstring.
+
+PRECONDITIONS.
+  * root on the VM, running from a checkout of the release you are about to deploy (the resident
+    helpers and the unit are copied out of THIS deploy/ tree).
+  * The VM was bootstrapped before: /usr/local/lib/kb/release_signing_public.py must exist. Its
+    absence is a refusal - bootstrap such a host, do not upgrade it.
+  * uid 987 is free or already belongs to kb-node-proxy. A uid held by another account is a refusal.
+  * No /etc/systemd/system/kb-dashboard.service.d drop-in directory. Its presence is a refusal.
+  * The desktop helper's tailnet origin, if the installed unit does not already carry one.
+
+COMMAND. Rehearse first; the dry run executes nothing at all:
+
+    sudo python3 deploy/bootstrap_vm.py upgrade --dry-run
+    sudo python3 deploy/bootstrap_vm.py upgrade
+
+Add `--desktop-helper-origin https://<desktop-host>.ts.net` when the installed unit has no
+DASHBOARD_DESKTOP_HELPER_ORIGIN (a pre-P5 unit), or to change the pinned one. Omit it to preserve
+what is installed. `--unit-path`, `--install-root`, `--host-node-map` and `--backup-dir` exist for
+rehearsal against a fake tree and should be left at their defaults on a real host.
+
+EXPECTED OUTPUT. A preflight block echoing the tailnet host, operator and helper origin it will
+preserve; a WARNING if /etc/kb-dashboard/host-nodes.json is absent (node routes stay fail-closed
+until Daniel installs it - this script never writes it); then one section per converged piece:
+release staging directory, node-proxy account and units, PTY broker, resident helpers, unit backup,
+unit re-render. It ends by listing what is still owed.
+
+AFTER IT RETURNS - the run is NOT finished until all three are done:
+  1. Activate a release: the node-proxy, WhoIs shim and broker EXECUTABLES ship inside the release
+     tree, not with this script.
+  2. Land the broker payload: `deploy/install_pty_broker.py --digest <the MANIFEST.sha256 digest of
+     dashboard/dist-server/kb-shell-broker.tar.gz>`.
+  3. `systemctl restart kb-dashboard.service`.
+Until 1 and 2 are done, kb-node-proxy.service and kb-shell-broker.service are EXPECTED to sit failed
+- their executables do not exist yet. That is not a failed upgrade.
+
+ROLLBACK. The previous unit is copied to /root/kb-dashboard.service.pre-upgrade-<UTC> before the new
+one is installed. To restore just the unit: install the newest such file over
+/etc/systemd/system/kb-dashboard.service and `systemctl daemon-reload`. Note the resident helpers
+under /usr/local/lib/kb are refreshed BEFORE the unit is replaced, so between those two steps - and
+after a unit-only rollback - the new validator is paired with an old unit and a restart fails
+ExecStartPre. Re-running `upgrade` is the shorter road back.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -16,21 +70,27 @@ from urllib.parse import urlsplit
 try:
     from .control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
     from .install_pty_broker import (
+        INSTALL_BIN,
         Layout as BrokerLayout,
         SOCKET_UNIT,
+        SYSTEMCTL_BIN,
+        USERADD_BIN,
         install_units as install_broker_units,
         provision_account_and_directories as provision_broker_account,
     )
-    from .validate_vm_runtime import EXPECTED_UNIT_ENV
+    from .validate_vm_runtime import EXPECTED_UNIT_ENV, OPTIONAL_UNIT_ENV, _unit_environment
 except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
     from control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
     from install_pty_broker import (
+        INSTALL_BIN,
         Layout as BrokerLayout,
         SOCKET_UNIT,
+        SYSTEMCTL_BIN,
+        USERADD_BIN,
         install_units as install_broker_units,
         provision_account_and_directories as provision_broker_account,
     )
-    from validate_vm_runtime import EXPECTED_UNIT_ENV
+    from validate_vm_runtime import EXPECTED_UNIT_ENV, OPTIONAL_UNIT_ENV, _unit_environment
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
@@ -78,9 +138,10 @@ UNIT_ENVIRONMENT_PATTERN = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)")
 # validate_vm_runtime's EXPECTED_UNIT_ENV refuses the unit without it, so bootstrap_vm injects it.
 HELPER_ORIGIN_HOST_SUFFIX = ".ts.net"
 # Applied to the NORMALIZED origin, after the URL checks below have mirrored the TypeScript client.
-# Not a loosening of anything: every value the client accepts already matches this. It exists because
-# this value is written into a systemd `Environment=` line, where a space, newline, or quote would
-# stop being a URL and start being a unit directive.
+# It exists because this value is written into a systemd `Environment=` line, where a space, newline,
+# or quote would stop being a URL and start being a unit directive. It is slightly NARROWER than the
+# WHATWG host grammar rather than a pure superset of it - an underscore label, say, parses there and
+# is refused here - which is the safe direction for a value no tailnet name ever takes.
 HELPER_ORIGIN_PATTERN = re.compile(r"https://[a-z0-9][a-z0-9.-]*(?::[0-9]{1,5})?")
 
 
@@ -150,19 +211,29 @@ def install_host_node_map(source: Path, run=subprocess.run, target: str = HOST_N
     run(["install", "-o", "root", "-g", "root", "-m", "0444", str(source), target], check=True)
 
 
-def provision_node_proxy(run=subprocess.run, source_root: Path | None = None) -> None:
+def provision_node_proxy(run=subprocess.run, source_root: Path | None = None, lookup_uid=None) -> None:
     """Provision the attested node-proxy account (pinned uid) and install the frozen node-proxy + WhoIs
     unit trio. No proxy/shim code exists until the first release is activated, so the units are enabled but
-    the node-proxy socket only comes up once the release tree lands."""
+    the node-proxy socket only comes up once the release tree lands.
+
+    The account is created only when it does not already exist, and then with `check=True`: a
+    swallowed `useradd` failure - exit 4 when uid 987 is already held by an unrelated account - would
+    otherwise leave the run reporting success while DASHBOARD_NODE_PROXY_UID, the node-route trust
+    anchor, pointed at somebody else's account. `--user-group` is explicit for the same reason
+    install_pty_broker.py does not rely on it: kb-node-proxy.service's Group= and kb-whois.socket's
+    SocketGroup= need the group to exist, and USERGROUPS_ENAB is host configuration, not a guarantee.
+    """
     root = source_root if source_root is not None else Path(__file__).resolve().parent
-    run(["useradd", "--system", "--uid", str(NODE_PROXY_UID), "--home-dir", "/nonexistent",
-         "--shell", "/usr/sbin/nologin", NODE_PROXY_USER], check=False)
+    lookup_uid = _account_uid if lookup_uid is None else lookup_uid
+    if lookup_uid(NODE_PROXY_USER) is None:
+        run([USERADD_BIN, "--system", "--user-group", "--uid", str(NODE_PROXY_UID),
+             "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", NODE_PROXY_USER], check=True)
     for unit in NODE_PROXY_UNITS:
-        run(["install", "-o", "root", "-g", "root", "-m", "0444",
+        run([INSTALL_BIN, "-o", "root", "-g", "root", "-m", "0444",
              str(root / "systemd" / unit), f"/etc/systemd/system/{unit}"], check=True)
-    run(["systemctl", "daemon-reload"], check=True)
-    run(["systemctl", "enable", "kb-whois.socket"], check=True)
-    run(["systemctl", "enable", "kb-node-proxy.service"], check=True)
+    run([SYSTEMCTL_BIN, "daemon-reload"], check=True)
+    run([SYSTEMCTL_BIN, "enable", "kb-whois.socket"], check=True)
+    run([SYSTEMCTL_BIN, "enable", "kb-node-proxy.service"], check=True)
 
 
 def normalize_desktop_helper_origin(value: object) -> str:
@@ -175,8 +246,11 @@ def normalize_desktop_helper_origin(value: object) -> str:
 
     Two places are deliberately MORE closed than the TypeScript, both fail-closed: a value carrying
     whitespace or non-ASCII is refused before parsing, and the normalized result must match
-    HELPER_ORIGIN_PATTERN. Neither can reject an origin the client would accept; both exist because
-    this value is injected into a systemd unit rather than handed to a URL constructor.
+    HELPER_ORIGIN_PATTERN. Both exist because this value is injected into a systemd unit rather than
+    handed to a URL constructor. They are not a pure superset of the client's rules - a hostname the
+    WHATWG parser tolerates but this pattern does not (an underscore label, say) is refused here and
+    accepted there. That direction is the safe one, and no tailnet name looks like that; a legitimate
+    host this refuses is a bug report, not a silent misconfiguration.
     """
     if not isinstance(value, str) or value == "":
         raise ValueError("dashboard desktop helper origin is required")
@@ -260,18 +334,24 @@ def _fsync_directory(path: Path) -> None:
 
 
 def assert_unit_env_complete(rendered: bytes) -> None:
-    """Every name the resident boot validator REQUIRES must actually be assigned by what we render.
+    """What we render must satisfy the resident boot validator's closed env set, exactly.
 
-    EXPECTED_UNIT_ENV is imported from deploy/validate_vm_runtime.py - the same module this script
-    installs at /usr/local/lib/kb and that the unit's own ExecStartPre runs - so the set cannot drift
-    between the renderer and the validator. A render that would fail ExecStartPre fails HERE instead,
-    before a single command runs.
+    Everything here is borrowed from deploy/validate_vm_runtime.py - the same module this script
+    installs at /usr/local/lib/kb and that the unit's own ExecStartPre runs - so the renderer cannot
+    drift from the validator. Its `_unit_environment` reader is used rather than this module's
+    tolerant one BECAUSE it is stricter: it shlex-splits and rejects a repeated name, so a value that
+    renders fine but explodes on the boot path (an unbalanced quote in an operator identity, say)
+    fails HERE. The comparison is set EQUALITY against the same closed set the validator checks, so an
+    invented name is refused as loudly as a missing one. Either way, before a single command runs.
     """
-    missing = sorted(EXPECTED_UNIT_ENV - set(unit_environment(rendered.decode("utf-8"))))
-    if missing:
+    assigned = set(_unit_environment(rendered.decode("utf-8")))
+    allowed = EXPECTED_UNIT_ENV | OPTIONAL_UNIT_ENV
+    missing, unexpected = sorted(EXPECTED_UNIT_ENV - assigned), sorted(assigned - allowed)
+    if missing or unexpected:
         raise RuntimeError(
-            "rendered kb-dashboard.service does not assign " + ",".join(missing)
-            + ", which validate_vm_runtime.py requires at boot; the service would fail ExecStartPre")
+            "rendered kb-dashboard.service environment set does not match what validate_vm_runtime.py"
+            f" requires at boot (missing: {','.join(missing) or 'none'};"
+            f" unexpected: {','.join(unexpected) or 'none'}); the service would fail ExecStartPre")
 
 
 def unit_fragment_source(tailnet_host: str, tailnet_operator: str, desktop_helper_origin: str) -> bytes:
@@ -334,10 +414,10 @@ def install_resident_helpers(
     re-run on an existing VM is a byte-for-byte no-op unless the release actually changed the helper.
     """
     deploy_root = Path(__file__).resolve().parent if source_root is None else source_root
-    run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", str(install_root)], check=True)
+    run([INSTALL_BIN, "-d", "-o", "root", "-g", "root", "-m", "0755", str(install_root)], check=True)
     for helper in RESIDENT_HELPERS:
         run([
-            "install", "-o", "root", "-g", "root", "-m", "0555",
+            INSTALL_BIN, "-o", "root", "-g", "root", "-m", "0555",
             str(deploy_root / helper), str(install_root / helper),
         ], check=True)
 
@@ -361,12 +441,12 @@ def install_dashboard_unit(
         output.write(unit_fragment_source(tailnet_host, tailnet_operator, desktop_helper_origin))
     generated.chmod(0o400)
     try:
-        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(unit_path)], check=True)
+        run([INSTALL_BIN, "-o", "root", "-g", "root", "-m", "0444", str(generated), str(unit_path)], check=True)
     finally:
         generated.chmod(0o600)
         generated.unlink(missing_ok=True)
-    run(["systemctl", "daemon-reload"], check=True)
-    run(["systemctl", "enable", DASHBOARD_UNIT], check=True)
+    run([SYSTEMCTL_BIN, "daemon-reload"], check=True)
+    run([SYSTEMCTL_BIN, "enable", DASHBOARD_UNIT], check=True)
 
 
 def install_root_validators(
@@ -389,7 +469,7 @@ def install_root_validators(
             output.write(source)
         generated.chmod(0o400)
         install_resident_helpers(run=run, install_root=install_root)
-        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(install_root / RELEASE_SIGNING_MODULE)], check=True)
+        run([INSTALL_BIN, "-o", "root", "-g", "root", "-m", "0444", str(generated), str(install_root / RELEASE_SIGNING_MODULE)], check=True)
         install_dashboard_unit(tailnet_host, tailnet_operator, desktop_helper_origin, run=run)
     finally:
         if generated.exists():
@@ -407,8 +487,8 @@ def provision_pty_broker(run=subprocess.run, layout: BrokerLayout | None = None)
     layout = BrokerLayout() if layout is None else layout
     provision_broker_account(layout, run)
     install_broker_units(layout, run, source_root=Path(__file__).resolve().parents[1])
-    run(["systemctl", "daemon-reload"], check=True)
-    run(["systemctl", "enable", SOCKET_UNIT], check=True)
+    run([SYSTEMCTL_BIN, "daemon-reload"], check=True)
+    run([SYSTEMCTL_BIN, "enable", SOCKET_UNIT], check=True)
 
 
 def unit_environment(text: str) -> dict[str, str]:
@@ -485,9 +565,9 @@ def select_desktop_helper_origin(installed: str | None, override: str | None, em
 def _account_uid(name: str) -> int | None:
     """The uid of an existing local account, or None when it does not exist.
 
-    A `pwd` lookup rather than an `id -u` subprocess on purpose: it is the one preflight answer that
-    decides whether the upgrade refuses, and `--dry-run` must be able to reach it while running
-    nothing at all. Absent `pwd` (Windows, tests) the account cannot exist.
+    A `pwd` lookup rather than an `id -u` subprocess on purpose: it is one of the two preflight
+    answers that decide whether the upgrade refuses, and `--dry-run` must be able to reach it while
+    running nothing at all. Absent `pwd` (Windows, tests) the account cannot exist.
     """
     try:
         import pwd
@@ -495,6 +575,24 @@ def _account_uid(name: str) -> int | None:
         return None
     try:
         return pwd.getpwnam(name).pw_uid
+    except KeyError:
+        return None
+
+
+def _account_name(uid: int) -> str | None:
+    """The account currently HOLDING a uid, or None when the uid is free.
+
+    The other half of the identity check, and the half a name lookup cannot answer: uid 987 may be
+    held by an unrelated system account (polkitd and friends land in that range), in which case
+    `useradd --uid 987` fails and the injected DASHBOARD_NODE_PROXY_UID would name somebody else.
+    Read-only, so `--dry-run` reaches it too.
+    """
+    try:
+        import pwd
+    except ImportError:
+        return None
+    try:
+        return pwd.getpwuid(uid).pw_name
     except KeyError:
         return None
 
@@ -537,6 +635,7 @@ def upgrade(
     desktop_helper_origin: str | None = None,
     dry_run: bool = False,
     lookup_uid=_account_uid,
+    lookup_user=_account_name,
     now=_utc_stamp,
     emit=print,
 ) -> None:
@@ -585,12 +684,28 @@ def upgrade(
 
     # --- preflight: read-only, and every refusal fires before the first mutation ------------------
     emit("[upgrade] preflight")
+    # BOTH directions of the identity. Name to uid catches a kb-node-proxy account someone already
+    # made with the wrong uid; uid to name catches the case a name lookup cannot see at all - uid 987
+    # held by an unrelated system account, where `useradd --uid 987` fails with exit 4 and the
+    # injected DASHBOARD_NODE_PROXY_UID would name that account as the node-route trust anchor.
     existing_uid = lookup_uid(NODE_PROXY_USER)
     if existing_uid is not None and existing_uid != NODE_PROXY_UID:
         raise RuntimeError(
             f"account {NODE_PROXY_USER} already exists with uid {existing_uid}, not the pinned"
             f" {NODE_PROXY_UID}; the injected DASHBOARD_NODE_PROXY_UID would not match `id -u` and the"
             " dashboard would refuse every node request. Resolve the uid by hand before upgrading.")
+    holder = lookup_user(NODE_PROXY_UID)
+    if holder is not None and holder != NODE_PROXY_USER:
+        raise RuntimeError(
+            f"uid {NODE_PROXY_UID} is already held by account {holder!r}, not {NODE_PROXY_USER};"
+            f" useradd would fail and DASHBOARD_NODE_PROXY_UID={NODE_PROXY_UID} would pin the node-route"
+            f" trust anchor to {holder!r}. Free the uid or re-pin NODE_PROXY_UID before upgrading.")
+    drop_in_dir = unit_path.with_name(unit_path.name + ".d")
+    if drop_in_dir.is_dir():
+        raise RuntimeError(
+            f"unit drop-in directory exists: {drop_in_dir}; its fragments would survive the re-render"
+            " unreviewed, and the boot validator rejects a non-empty DropInPaths outright. Move it"
+            " aside and fold anything it carries into deploy/systemd/kb-dashboard.service.")
     tailnet_host, tailnet_operator, installed_origin = installed_tailnet_identity(unit_path)
     emit(f"[upgrade] preserving DASHBOARD_TAILNET_HOST={tailnet_host}"
          f" DASHBOARD_TAILNET_OPERATOR={tailnet_operator}")
@@ -610,20 +725,42 @@ def upgrade(
 
     # --- converge ---------------------------------------------------------------------------------
     emit("[upgrade] release staging directory")
-    run(["install", "-d", "-o", "root", "-g", "root", "-m", "0700", RELEASE_STAGING_DIR], check=True)
+    run([INSTALL_BIN, "-d", "-o", "root", "-g", "root", "-m", "0700", RELEASE_STAGING_DIR], check=True)
     emit("[upgrade] node-proxy account and units")
-    provision_node_proxy(run=run)
+    provision_node_proxy(run=run, lookup_uid=lookup_uid)
+    if not dry_run:
+        # The account this run just made IS the node-route trust anchor. Read it back rather than
+        # trusting useradd's exit code, so a host that somehow ended up with a different uid stops the
+        # upgrade here instead of at the first node request.
+        provisioned = lookup_uid(NODE_PROXY_USER)
+        if provisioned != NODE_PROXY_UID:
+            raise RuntimeError(
+                f"after provisioning, {NODE_PROXY_USER} has uid {provisioned}, not the pinned"
+                f" {NODE_PROXY_UID}; the unit is NOT installed and the VM is unchanged apart from the"
+                " node-proxy units. Resolve the account by hand and re-run.")
     emit("[upgrade] PTY broker account, filesystem and units")
     provision_pty_broker(run=run)
+    emit("[upgrade] from here until this run completes, a `systemctl restart"
+         f" {DASHBOARD_UNIT}` WILL FAIL: the new resident validator lands before the new unit does."
+         " If this run aborts, either re-run upgrade or restore the unit from"
+         f" {backup_dir / (DASHBOARD_UNIT + '.pre-upgrade-*')} alongside the old helpers.")
     emit("[upgrade] resident root helpers")
     install_resident_helpers(run=run, install_root=install_root)
     emit("[upgrade] backing up the installed dashboard unit")
     backup = backup_dir / f"{DASHBOARD_UNIT}.pre-upgrade-{now()}"
-    run(["install", "-o", "root", "-g", "root", "-m", "0400", str(unit_path), str(backup)], check=True)
+    run([INSTALL_BIN, "-o", "root", "-g", "root", "-m", "0400", str(unit_path), str(backup)], check=True)
     emit(f"[upgrade] re-rendering {unit_path}")
     install_dashboard_unit(tailnet_host, tailnet_operator, helper_origin, run=run, unit_path=unit_path)
-    emit("[upgrade] converged; the dashboard was NOT restarted - activate a release, then"
-         f" `systemctl restart {DASHBOARD_UNIT}`")
+    emit("[upgrade] converged. The dashboard was NOT restarted, and it is NOT yet startable. Owed:")
+    emit("[upgrade]   1. activate a release (deploy/activate_release.py) - the node-proxy and broker"
+         " code ships inside the release tree, not with this script")
+    emit("[upgrade]   2. land the broker payload: deploy/install_pty_broker.py --digest <the"
+         " MANIFEST.sha256 digest of dashboard/dist-server/kb-shell-broker.tar.gz>")
+    emit(f"[upgrade]   3. then `systemctl restart {DASHBOARD_UNIT}`")
+    emit("[upgrade] Until 1 and 2 are done, kb-node-proxy.service and kb-shell-broker.service are"
+         " EXPECTED to sit failed - their executables do not exist yet. That is not a bad upgrade.")
+    emit("[upgrade] Rollback of the unit alone: install the newest"
+         f" {backup_dir / (DASHBOARD_UNIT + '.pre-upgrade-*')} over {unit_path}, then daemon-reload.")
 
 
 def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tailnet_operator: str, desktop_helper_origin: str, run=subprocess.run) -> None:
