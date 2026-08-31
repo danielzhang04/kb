@@ -513,9 +513,13 @@ export async function runScheduleBootMigrations(
   publishRemoval: (marker: string, digest: string) => Promise<void> =
     (marker, digest) => publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest),
 ): Promise<void> {
+  // Production seeds from the attested release tree (opened inside runP2ScheduleStartupMigrations);
+  // the development source exists for sandboxes whose repoRoot is a full main-layout checkout. A
+  // coordination checkout (ops) does not carry every seed path, so a failed development read must
+  // degrade to "no fallback", not kill the boot before the attested source is even consulted.
   await runP2ScheduleStartupMigrations({
     existingMarker: controlStore.getScheduleSeedImportMarker(),
-    development: await readDevelopmentScheduleSeedSource(repoRoot),
+    development: await readDevelopmentScheduleSeedSource(repoRoot).catch(() => undefined),
     commitSeeds: (plan) => controlStore.commitScheduleSeedImport(plan),
     convertPauseMarkers: async () => {
       const discovered = await discoverLegacyScheduleMarkers(repoRoot, await controlStore.readScheduleSnapshot());
@@ -549,7 +553,7 @@ export async function start(
     bootId: randomUUID(),
   });
   try {
-    const repoRoot = options.repoRoot ?? fileURLToPath(new URL('../../', import.meta.url));
+    const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
     let controlStore: ControlPlaneStore | undefined;
     if (!options.buildApplication) {
       controlStore = createFileControlPlaneStore(lease.stateRoot, { mode: 'already-locked', lease }, {
