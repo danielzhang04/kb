@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from deploy import bootstrap_vm
+from deploy.validate_vm_runtime import EXPECTED_UNIT_ENV
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -21,21 +22,25 @@ FRAGMENT = (REPO / "deploy/systemd/kb-dashboard.service").read_text(encoding="ut
 ANCHOR = "Environment=GIT_CONFIG_GLOBAL=/dev/null\n"
 TAILNET_HOST = "kb.tail82dd4f.ts.net"
 TAILNET_OPERATOR = "daniel.zhang.t1@gmail.com"
+HELPER_ORIGIN = "https://kb-desk.command.ts.net"
 STAMP = "20260831T041500Z"
 # Every path an upgrade must never appear to touch, in argv-substring form.
 DATA_PATHS = ("/var/lib/kb/state", "/var/lib/kb/ops", "/opt/kb-releases", "control-plane.json")
 
 
 def legacy_unit_text(host: str | None = TAILNET_HOST, operator: str | None = TAILNET_OPERATOR,
-                     extra: str = "") -> str:
-    """The unit a pre-P6 VM actually carries: no RuntimeDirectory, no proxy-uid envs, and the two
-    site-specific values injected after the anchor exactly as bootstrap once wrote them."""
+                     origin: str | None = None, extra: str = "") -> str:
+    """The unit an older VM actually carries: no RuntimeDirectory, no proxy-uid envs, no
+    DASHBOARD_DESKTOP_HELPER_ORIGIN unless asked for, and the site-specific values injected after the
+    anchor exactly as bootstrap once wrote them."""
     body = "\n".join(line for line in FRAGMENT.splitlines() if not line.startswith("RuntimeDirectory")) + "\n"
     injected = ""
     if host is not None:
         injected += f"Environment=DASHBOARD_TAILNET_HOST={host}\n"
     if operator is not None:
         injected += f"Environment=DASHBOARD_TAILNET_OPERATOR={operator}\n"
+    if origin is not None:
+        injected += f"Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN={origin}\n"
     return body.replace(ANCHOR, ANCHOR + injected + extra)
 
 
@@ -71,7 +76,7 @@ class Recorder:
 def vm(tmp_path):
     """A pre-P6 VM seam: an installed unit and a resident signing-key module, nothing else."""
     unit = tmp_path / "kb-dashboard.service"
-    unit.write_text(legacy_unit_text(), encoding="utf-8")
+    unit.write_text(legacy_unit_text(origin=HELPER_ORIGIN), encoding="utf-8")
     install_root = tmp_path / "usr-local-lib-kb"
     install_root.mkdir()
     (install_root / bootstrap_vm.RELEASE_SIGNING_MODULE).write_text(
@@ -94,13 +99,15 @@ def normalize(commands: list[list[str]]) -> list[list[str]]:
             for command in commands]
 
 
-def converge(vm, run, *, lookup_uid=lambda name: None, dry_run=False, emit=lambda *a: None):
+def converge(vm, run, *, lookup_uid=lambda name: None, dry_run=False, emit=lambda *a: None,
+             desktop_helper_origin=None):
     return bootstrap_vm.upgrade(
         run=run,
         unit_path=vm.unit,
         install_root=vm.install_root,
         host_node_map_path=vm.host_node_map,
         backup_dir=vm.backup_dir,
+        desktop_helper_origin=desktop_helper_origin,
         dry_run=dry_run,
         lookup_uid=lookup_uid,
         now=lambda: STAMP,
@@ -176,14 +183,15 @@ def test_upgrade_leaves_the_running_service_alone(vm):
 
 
 def test_upgrade_preserves_the_installed_host_and_operator_into_the_rendered_unit(tmp_path, vm):
-    vm.unit.write_text(legacy_unit_text(host="other.example.ts.net", operator="someone@else.com"),
-                       encoding="utf-8")
+    vm.unit.write_text(legacy_unit_text(host="other.example.ts.net", operator="someone@else.com",
+                                        origin="https://other-desk.example.ts.net"), encoding="utf-8")
     recorder = Recorder()
     converge(vm, recorder)
 
     rendered = next(content for target, content in recorder.installed_units if target == str(vm.unit))
     assert b"Environment=DASHBOARD_TAILNET_HOST=other.example.ts.net\n" in rendered
     assert b"Environment=DASHBOARD_TAILNET_OPERATOR=someone@else.com\n" in rendered
+    assert b"Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN=https://other-desk.example.ts.net\n" in rendered
 
 
 def test_rendered_unit_adds_the_two_things_the_pre_p6_vm_boot_was_missing(vm):
@@ -194,14 +202,15 @@ def test_rendered_unit_adds_the_two_things_the_pre_p6_vm_boot_was_missing(vm):
     assert b"Environment=DASHBOARD_NODE_PROXY_UID=987\n" in rendered
     assert b"Environment=DASHBOARD_TAILNET_PROXY_UID=0\n" in rendered
     assert b"RuntimeDirectory=kb-dashboard\n" in rendered
-    assert rendered == bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR)
+    assert rendered == bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
 
 
 def test_upgrade_discards_hand_injected_drift_rather_than_merging_it(vm):
     # An operator part-way through a manual fix: a stale WebAuthn env and a duplicate host line, both
     # of which the boot validator rejects. Re-rendering the whole fragment is what removes them.
     vm.unit.write_text(
-        legacy_unit_text(extra="Environment=DASHBOARD_RP_ORIGIN=https://stale\n"
+        legacy_unit_text(origin=HELPER_ORIGIN,
+                         extra="Environment=DASHBOARD_RP_ORIGIN=https://stale\n"
                                f"Environment=DASHBOARD_TAILNET_HOST={TAILNET_HOST}\n"),
         encoding="utf-8")
     recorder = Recorder()
@@ -297,16 +306,122 @@ def test_upgrade_does_not_warn_when_the_host_node_map_is_present(vm):
     assert not any("host-node map" in line for line in lines)
 
 
-def test_upgrade_reports_required_unit_env_the_repo_fragment_does_not_render(vm):
+# --- the rendered unit satisfies the resident validator's closed env set -------------------------
+
+
+def test_every_name_the_boot_validator_requires_is_actually_rendered():
+    rendered = bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
+    assigned = set(bootstrap_vm.unit_environment(rendered.decode("utf-8")))
+    assert EXPECTED_UNIT_ENV.issubset(assigned)
+    # the renderer must not invent names the validator's closed set would reject either
+    assert assigned == EXPECTED_UNIT_ENV
+
+
+def test_a_render_missing_a_required_name_fails_instead_of_warning(monkeypatch):
+    monkeypatch.setattr(bootstrap_vm, "EXPECTED_UNIT_ENV", EXPECTED_UNIT_ENV | {"DASHBOARD_NOT_RENDERED"})
+    with pytest.raises(RuntimeError, match="DASHBOARD_NOT_RENDERED"):
+        bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
+
+
+def test_upgrade_refuses_before_mutating_when_the_render_would_be_incomplete(vm, monkeypatch):
+    monkeypatch.setattr(bootstrap_vm, "EXPECTED_UNIT_ENV", EXPECTED_UNIT_ENV | {"DASHBOARD_NOT_RENDERED"})
+    recorder = Recorder()
+    with pytest.raises(RuntimeError, match="would fail ExecStartPre"):
+        converge(vm, recorder)
+    assert recorder.commands == []
+
+
+# --- desktop helper origin -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value,message", [
+    (None, "is required"),
+    ("", "is required"),
+    ("kb-desk.command.ts.net", "not a valid absolute URL"),
+    ("//kb-desk.command.ts.net", "not a valid absolute URL"),
+    ("https://kb-desk.command.ts.net\nExecStart=/bin/sh", "not a valid absolute URL"),
+    ("https://kb-desk.command.ts.net evil", "not a valid absolute URL"),
+    ("http://kb-desk.command.ts.net", "must be an https: origin"),
+    ("wss://kb-desk.command.ts.net", "must be an https: origin"),
+    ("https://kb-desk.example.com", "must be a tailnet"),
+    ("https://kb-desk.ts.net.evil.com", "must be a tailnet"),
+    ("https://kb-desk.command.ts.net/deploy", "bare origin"),
+    ("https://kb-desk.command.ts.net/?x=1", "bare origin"),
+    ("https://kb-desk.command.ts.net#frag", "bare origin"),
+])
+def test_desktop_helper_origin_validation_mirrors_the_typescript_client(value, message):
+    with pytest.raises(ValueError, match=message):
+        bootstrap_vm.normalize_desktop_helper_origin(value)
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("https://kb-desk.command.ts.net", "https://kb-desk.command.ts.net"),
+    ("https://kb-desk.command.ts.net/", "https://kb-desk.command.ts.net"),
+    ("https://KB-Desk.Command.TS.NET/", "https://kb-desk.command.ts.net"),
+    ("https://kb-desk.command.ts.net:443/", "https://kb-desk.command.ts.net"),
+    ("https://kb-desk.command.ts.net:8443", "https://kb-desk.command.ts.net:8443"),
+])
+def test_desktop_helper_origin_normalizes_to_a_bare_origin(value, expected):
+    assert bootstrap_vm.normalize_desktop_helper_origin(value) == expected
+
+
+def test_upgrade_preserves_the_installed_helper_origin_by_default(vm):
+    recorder = Recorder()
     lines: list[str] = []
-    converge(vm, Recorder(), emit=lines.append)
-    missing = bootstrap_vm._report_unrendered_unit_env(TAILNET_HOST, TAILNET_OPERATOR, emit=lambda *a: None)
-    if missing:
-        warning = next(line for line in lines if line.startswith("WARNING") and "ExecStartPre" in line)
-        for name in missing:
-            assert name in warning
-    else:
-        assert not any("ExecStartPre" in line for line in lines)
+    converge(vm, recorder, emit=lines.append)
+
+    rendered = next(content for target, content in recorder.installed_units if target == str(vm.unit))
+    assert f"Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN={HELPER_ORIGIN}\n".encode("ascii") in rendered
+    assert not any(line.startswith("NOTICE") for line in lines)
+
+
+def test_the_flag_overrides_the_installed_helper_origin_with_a_printed_notice(vm):
+    recorder = Recorder()
+    lines: list[str] = []
+    converge(vm, recorder, emit=lines.append, desktop_helper_origin="https://new-desk.command.ts.net/")
+
+    notice = next(line for line in lines if line.startswith("NOTICE"))
+    assert "https://new-desk.command.ts.net" in notice and HELPER_ORIGIN in notice
+    rendered = next(content for target, content in recorder.installed_units if target == str(vm.unit))
+    # normalized on the way in: the trailing slash never reaches the unit
+    assert b"Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN=https://new-desk.command.ts.net\n" in rendered
+
+
+def test_the_flag_supplies_the_origin_a_pre_p5_unit_does_not_carry(vm):
+    vm.unit.write_text(legacy_unit_text(), encoding="utf-8")
+    recorder = Recorder()
+    lines: list[str] = []
+    converge(vm, recorder, emit=lines.append, desktop_helper_origin=HELPER_ORIGIN)
+
+    assert any("the installed unit assigns none" in line for line in lines)
+    rendered = next(content for target, content in recorder.installed_units if target == str(vm.unit))
+    assert f"Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN={HELPER_ORIGIN}\n".encode("ascii") in rendered
+
+
+def test_upgrade_refuses_when_neither_the_unit_nor_the_flag_names_a_helper_origin(vm):
+    vm.unit.write_text(legacy_unit_text(), encoding="utf-8")
+    recorder = Recorder()
+    with pytest.raises(RuntimeError, match="--desktop-helper-origin"):
+        converge(vm, recorder)
+    assert recorder.commands == []
+
+
+def test_upgrade_refuses_a_malformed_flag_before_mutating(vm):
+    recorder = Recorder()
+    with pytest.raises(ValueError, match="must be a tailnet"):
+        converge(vm, recorder, desktop_helper_origin="https://desk.example.com")
+    assert recorder.commands == []
+
+
+def test_a_malformed_installed_origin_is_refused_but_the_flag_can_rescue_it(vm):
+    vm.unit.write_text(legacy_unit_text(origin="http://desk.command.ts.net"), encoding="utf-8")
+    with pytest.raises(ValueError, match="must be an https: origin"):
+        converge(vm, Recorder())
+
+    recorder = Recorder()
+    converge(vm, recorder, desktop_helper_origin=HELPER_ORIGIN)
+    rendered = next(content for target, content in recorder.installed_units if target == str(vm.unit))
+    assert f"Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN={HELPER_ORIGIN}\n".encode("ascii") in rendered
 
 
 # --- dry run ------------------------------------------------------------------------------------
@@ -372,7 +487,7 @@ def test_upgrading_a_vm_this_script_already_converged_is_a_no_op_render(tmp_path
     first = Recorder(mirror_unit=vm.unit)
     converge(vm, first)
     already_converged = vm.unit.read_bytes()
-    assert already_converged == bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR)
+    assert already_converged == bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
 
     # Second pass over the VM the first pass produced: the accounts now exist, so the broker installer
     # skips groupadd/useradd, and everything else converges to the same commands and the same bytes.
@@ -389,12 +504,13 @@ def test_upgrading_a_vm_this_script_already_converged_is_a_no_op_render(tmp_path
 def test_upgrade_converges_a_partially_hand_provisioned_vm(vm):
     # The operator got part-way by hand: kb-shell exists, the broker socket unit was copied, and the
     # old unit was sed-patched with a proxy uid line. None of it changes the end state.
-    vm.unit.write_text(legacy_unit_text(extra="Environment=DASHBOARD_NODE_PROXY_UID=987\n"),
+    vm.unit.write_text(legacy_unit_text(origin=HELPER_ORIGIN,
+                                        extra="Environment=DASHBOARD_NODE_PROXY_UID=987\n"),
                        encoding="utf-8")
     recorder = Recorder(accounts=("kb-shell",), mirror_unit=vm.unit)
     converge(vm, recorder, lookup_uid=lambda name: None)
 
-    assert vm.unit.read_bytes() == bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR)
+    assert vm.unit.read_bytes() == bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
     assert vm.unit.read_bytes().count(b"Environment=DASHBOARD_NODE_PROXY_UID=") == 1
     assert not any(c[0].endswith("useradd") and c[-1] == "kb-shell" for c in recorder.commands)
     assert any(c[0] == "useradd" and c[-1] == "kb-node-proxy" for c in recorder.commands)
@@ -403,21 +519,36 @@ def test_upgrade_converges_a_partially_hand_provisioned_vm(vm):
 # --- CLI ----------------------------------------------------------------------------------------
 
 
+def fake_bootstrap(seen):
+    def call(ops_bundle, release_public_key, tailnet_host, tailnet_operator, desktop_helper_origin):
+        seen.append((tailnet_host, desktop_helper_origin))
+    return call
+
+
 def test_legacy_flag_only_invocation_still_means_bootstrap(monkeypatch):
     seen = []
-    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, tailnet_host, tailnet_operator: seen.append(tailnet_host))
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", fake_bootstrap(seen))
     monkeypatch.setattr(sys, "argv", ["bootstrap_vm.py", "--ops-bundle", "o", "--release-public-key", "r",
-                                      "--tailnet-host", TAILNET_HOST])
+                                      "--tailnet-host", TAILNET_HOST,
+                                      "--desktop-helper-origin", HELPER_ORIGIN])
     assert bootstrap_vm.main() == 0
-    assert seen == [TAILNET_HOST]
+    assert seen == [(TAILNET_HOST, HELPER_ORIGIN)]
 
 
 def test_explicit_bootstrap_subcommand_reaches_the_same_call(monkeypatch):
     seen = []
-    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, tailnet_host, tailnet_operator: seen.append(tailnet_host))
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", fake_bootstrap(seen))
     assert bootstrap_vm.main(["bootstrap", "--ops-bundle", "o", "--release-public-key", "r",
-                              "--tailnet-host", TAILNET_HOST]) == 0
-    assert seen == [TAILNET_HOST]
+                              "--tailnet-host", TAILNET_HOST,
+                              "--desktop-helper-origin", HELPER_ORIGIN]) == 0
+    assert seen == [(TAILNET_HOST, HELPER_ORIGIN)]
+
+
+def test_bootstrap_refuses_to_run_without_a_desktop_helper_origin(monkeypatch):
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", fake_bootstrap([]))
+    with pytest.raises(SystemExit):
+        bootstrap_vm.main(["bootstrap", "--ops-bundle", "o", "--release-public-key", "r",
+                           "--tailnet-host", TAILNET_HOST])
 
 
 def test_upgrade_subcommand_passes_every_path_seam_and_the_dry_run_flag(monkeypatch, vm):
@@ -429,12 +560,14 @@ def test_upgrade_subcommand_passes_every_path_seam_and_the_dry_run_flag(monkeypa
         "--install-root", str(vm.install_root),
         "--host-node-map", str(vm.host_node_map),
         "--backup-dir", str(vm.backup_dir),
+        "--desktop-helper-origin", HELPER_ORIGIN,
     ]) == 0
     assert seen == {
         "unit_path": vm.unit,
         "install_root": vm.install_root,
         "host_node_map_path": vm.host_node_map,
         "backup_dir": vm.backup_dir,
+        "desktop_helper_origin": HELPER_ORIGIN,
         "dry_run": True,
     }
 
@@ -447,6 +580,8 @@ def test_upgrade_defaults_point_at_the_real_vm_locations(monkeypatch):
     assert seen["install_root"] == Path("/usr/local/lib/kb")
     assert seen["host_node_map_path"] == Path(bootstrap_vm.HOST_NODE_MAP_PATH)
     assert seen["backup_dir"] == Path("/root")
+    # optional on upgrade: the installed unit's value is preserved when the flag is omitted
+    assert seen["desktop_helper_origin"] is None
     assert seen["dry_run"] is False
 
 
@@ -455,18 +590,38 @@ def test_an_unknown_subcommand_is_refused(monkeypatch):
         bootstrap_vm.main(["reinstall"])
 
 
-def test_upgrade_is_reachable_as_a_real_subprocess_dry_run(tmp_path):
+def real_dry_run(tmp_path, unit_text: str, *extra: str) -> subprocess.CompletedProcess:
     unit = tmp_path / "kb-dashboard.service"
-    unit.write_text(legacy_unit_text(), encoding="utf-8")
+    unit.write_text(unit_text, encoding="utf-8")
     install_root = tmp_path / "lib"
-    install_root.mkdir()
+    install_root.mkdir(exist_ok=True)
     (install_root / bootstrap_vm.RELEASE_SIGNING_MODULE).write_text("RELEASE_PUBLIC_KEY = 'x'\n", encoding="ascii")
     result = subprocess.run(
         [sys.executable, str(REPO / "deploy/bootstrap_vm.py"), "upgrade", "--dry-run",
          "--unit-path", str(unit), "--install-root", str(install_root),
-         "--host-node-map", str(tmp_path / "absent.json"), "--backup-dir", str(tmp_path)],
-        check=True, text=True, capture_output=True)
+         "--host-node-map", str(tmp_path / "absent.json"), "--backup-dir", str(tmp_path), *extra],
+        text=True, capture_output=True)
+    # nothing was executed: the unit it was pointed at is byte-for-byte what it was
+    assert unit.read_text(encoding="utf-8") == unit_text
+    return result
+
+
+def test_upgrade_is_reachable_as_a_real_subprocess_dry_run(tmp_path):
+    result = real_dry_run(tmp_path, legacy_unit_text(origin=HELPER_ORIGIN))
+    assert result.returncode == 0, result.stderr
     assert "would run: useradd --system --uid 987" in result.stdout
     assert f"[upgrade] preserving DASHBOARD_TAILNET_HOST={TAILNET_HOST}" in result.stdout
-    # nothing was executed: the unit it was pointed at is byte-for-byte what it was
-    assert unit.read_text(encoding="utf-8") == legacy_unit_text()
+    assert f"[upgrade] rendering DASHBOARD_DESKTOP_HELPER_ORIGIN={HELPER_ORIGIN}" in result.stdout
+
+
+def test_a_real_subprocess_dry_run_refuses_a_unit_with_no_helper_origin(tmp_path):
+    result = real_dry_run(tmp_path, legacy_unit_text())
+    assert result.returncode != 0
+    assert "--desktop-helper-origin" in result.stderr
+    assert "would run:" not in result.stdout
+
+
+def test_a_real_subprocess_dry_run_accepts_the_helper_origin_flag(tmp_path):
+    result = real_dry_run(tmp_path, legacy_unit_text(), "--desktop-helper-origin", HELPER_ORIGIN)
+    assert result.returncode == 0, result.stderr
+    assert "the installed unit assigns none" in result.stdout

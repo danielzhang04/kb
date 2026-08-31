@@ -11,6 +11,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 try:
     from .control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
@@ -72,6 +73,15 @@ DASHBOARD_UNIT_PATH = f"/etc/systemd/system/{DASHBOARD_UNIT}"
 UNIT_BACKUP_DIR = "/root"
 RELEASE_STAGING_DIR = "/var/lib/kb-release-staging"
 UNIT_ENVIRONMENT_PATTERN = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)")
+# dashboard-v3 P5 [P5-C42]: the ONE desktop-helper tailnet address the deploy/asset-pull client speaks
+# to. REQUIRED and never defaulted - the dashboard refuses composition without it, and
+# validate_vm_runtime's EXPECTED_UNIT_ENV refuses the unit without it, so bootstrap_vm injects it.
+HELPER_ORIGIN_HOST_SUFFIX = ".ts.net"
+# Applied to the NORMALIZED origin, after the URL checks below have mirrored the TypeScript client.
+# Not a loosening of anything: every value the client accepts already matches this. It exists because
+# this value is written into a systemd `Environment=` line, where a space, newline, or quote would
+# stop being a URL and start being a unit directive.
+HELPER_ORIGIN_PATTERN = re.compile(r"https://[a-z0-9][a-z0-9.-]*(?::[0-9]{1,5})?")
 
 
 def validate_host_node_map(data: object) -> dict:
@@ -155,6 +165,42 @@ def provision_node_proxy(run=subprocess.run, source_root: Path | None = None) ->
     run(["systemctl", "enable", "kb-node-proxy.service"], check=True)
 
 
+def normalize_desktop_helper_origin(value: object) -> str:
+    """Validate and normalize the pinned desktop-helper origin; return the bare normalized origin.
+
+    Mirrors dashboard/server/deploy/helperClient.ts#assertHelperOrigin check for check: an absolute
+    `https:` URL whose host is a tailnet (`*.ts.net`) name, with no path, query, or fragment, reduced
+    to `url.origin` (default port dropped, userinfo dropped, no trailing slash). There is no default
+    [P5-C42] - the client fails composition on a missing or malformed value, so this fails the render.
+
+    Two places are deliberately MORE closed than the TypeScript, both fail-closed: a value carrying
+    whitespace or non-ASCII is refused before parsing, and the normalized result must match
+    HELPER_ORIGIN_PATTERN. Neither can reject an origin the client would accept; both exist because
+    this value is injected into a systemd unit rather than handed to a URL constructor.
+    """
+    if not isinstance(value, str) or value == "":
+        raise ValueError("dashboard desktop helper origin is required")
+    if not value.isascii() or any(character.isspace() for character in value):
+        raise ValueError("dashboard desktop helper origin is not a valid absolute URL")
+    parsed = urlsplit(value)
+    if parsed.scheme == "" or parsed.netloc == "":
+        raise ValueError("dashboard desktop helper origin is not a valid absolute URL")
+    if parsed.scheme != "https":
+        raise ValueError("dashboard desktop helper origin must be an https: origin")
+    try:
+        hostname, port = parsed.hostname, parsed.port
+    except ValueError as error:
+        raise ValueError("dashboard desktop helper origin is not a valid absolute URL") from error
+    if hostname is None or not hostname.endswith(HELPER_ORIGIN_HOST_SUFFIX):
+        raise ValueError("dashboard desktop helper origin must be a tailnet (*.ts.net) host")
+    if parsed.path not in ("", "/") or parsed.query != "" or parsed.fragment != "":
+        raise ValueError("dashboard desktop helper origin must be a bare origin with no path, query, or fragment")
+    origin = f"https://{hostname}" if port in (None, 443) else f"https://{hostname}:{port}"
+    if HELPER_ORIGIN_PATTERN.fullmatch(origin) is None:
+        raise ValueError("dashboard desktop helper origin is not a valid absolute URL")
+    return origin
+
+
 def validate_tailnet_host(value: str) -> None:
     if TAILNET_HOST_PATTERN.fullmatch(value) is None:
         raise ValueError("dashboard tailnet host is invalid")
@@ -213,15 +259,31 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def unit_fragment_source(tailnet_host: str, tailnet_operator: str) -> bytes:
-    """The repo unit fragment with this VM's tailnet host and operator appended.
+def assert_unit_env_complete(rendered: bytes) -> None:
+    """Every name the resident boot validator REQUIRES must actually be assigned by what we render.
 
-    `DASHBOARD_AUTH_MODE=tailnet` is static in the fragment; the host varies per VM and the operator is the
-    single pinned identity, so both are injected here. Both are REQUIRED: the daemon refuses to start
-    without them.
+    EXPECTED_UNIT_ENV is imported from deploy/validate_vm_runtime.py - the same module this script
+    installs at /usr/local/lib/kb and that the unit's own ExecStartPre runs - so the set cannot drift
+    between the renderer and the validator. A render that would fail ExecStartPre fails HERE instead,
+    before a single command runs.
+    """
+    missing = sorted(EXPECTED_UNIT_ENV - set(unit_environment(rendered.decode("utf-8"))))
+    if missing:
+        raise RuntimeError(
+            "rendered kb-dashboard.service does not assign " + ",".join(missing)
+            + ", which validate_vm_runtime.py requires at boot; the service would fail ExecStartPre")
+
+
+def unit_fragment_source(tailnet_host: str, tailnet_operator: str, desktop_helper_origin: str) -> bytes:
+    """The repo unit fragment with this VM's site-specific values appended.
+
+    `DASHBOARD_AUTH_MODE=tailnet` is static in the fragment; the host varies per VM, the operator is the
+    single pinned identity, and the desktop-helper origin is the one address the deploy client speaks
+    to, so all three are injected here. All are REQUIRED: the daemon refuses to start without them.
     """
     validate_tailnet_host(tailnet_host)
     validate_tailnet_operator(tailnet_operator)
+    helper_origin = normalize_desktop_helper_origin(desktop_helper_origin)
     source = (Path(__file__).resolve().parent / "systemd/kb-dashboard.service").read_bytes()
     # dashboard-v3 P6 §3.3: both proxy-uid envs are injected here. The tailnet (root serve) proxy is pinned
     # to 0 and the attested node proxy to its pinned system uid, so the distinctness rule
@@ -229,6 +291,7 @@ def unit_fragment_source(tailnet_host: str, tailnet_operator: str) -> bytes:
     extra = (
         f"Environment=DASHBOARD_TAILNET_HOST={tailnet_host}\n"
         f"Environment=DASHBOARD_TAILNET_OPERATOR={tailnet_operator}\n"
+        f"Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN={helper_origin}\n"
         f"Environment=DASHBOARD_TAILNET_PROXY_UID={TAILNET_PROXY_UID}\n"
         f"Environment=DASHBOARD_NODE_PROXY_UID={NODE_PROXY_UID}\n"
     ).encode("ascii")
@@ -238,6 +301,7 @@ def unit_fragment_source(tailnet_host: str, tailnet_operator: str) -> bytes:
     )
     if result == source:
         raise RuntimeError("kb-dashboard.service is missing the GIT_CONFIG_GLOBAL environment anchor")
+    assert_unit_env_complete(result)
     return result
 
 
@@ -281,6 +345,7 @@ def install_resident_helpers(
 def install_dashboard_unit(
     tailnet_host: str,
     tailnet_operator: str,
+    desktop_helper_origin: str,
     run=subprocess.run,
     unit_path: PurePosixPath | Path = PurePosixPath(DASHBOARD_UNIT_PATH),
 ) -> None:
@@ -293,7 +358,7 @@ def install_dashboard_unit(
     descriptor, generated_name = tempfile.mkstemp(prefix="kb-dashboard-service-")
     generated = Path(generated_name)
     with os.fdopen(descriptor, "wb") as output:
-        output.write(unit_fragment_source(tailnet_host, tailnet_operator))
+        output.write(unit_fragment_source(tailnet_host, tailnet_operator, desktop_helper_origin))
     generated.chmod(0o400)
     try:
         run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(unit_path)], check=True)
@@ -308,11 +373,13 @@ def install_root_validators(
     release_public_key: Path,
     tailnet_host: str,
     tailnet_operator: str,
+    desktop_helper_origin: str,
     run=subprocess.run,
     install_root: PurePosixPath = PurePosixPath(RESIDENT_ROOT),
 ) -> None:
     validate_tailnet_host(tailnet_host)
     validate_tailnet_operator(tailnet_operator)
+    normalize_desktop_helper_origin(desktop_helper_origin)
     public_key = release_public_key.read_text(encoding="ascii")
     source = public_key_module_source(public_key)
     descriptor, generated_name = tempfile.mkstemp(prefix="kb-release-signing-public-")
@@ -323,7 +390,7 @@ def install_root_validators(
         generated.chmod(0o400)
         install_resident_helpers(run=run, install_root=install_root)
         run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(install_root / RELEASE_SIGNING_MODULE)], check=True)
-        install_dashboard_unit(tailnet_host, tailnet_operator, run=run)
+        install_dashboard_unit(tailnet_host, tailnet_operator, desktop_helper_origin, run=run)
     finally:
         if generated.exists():
             generated.chmod(0o600)
@@ -365,12 +432,15 @@ def unit_environment(text: str) -> dict[str, str]:
     return assigned
 
 
-def installed_tailnet_identity(unit_path: Path) -> tuple[str, str]:
-    """The site-specific host and operator carried by the CURRENTLY installed unit.
+def installed_tailnet_identity(unit_path: Path) -> tuple[str, str, str | None]:
+    """The site-specific values carried by the CURRENTLY installed unit.
 
     An upgrade must never invent these: the host is what `tailscale serve` publishes this VM at, and
     the operator is the single pinned identity that IS the operator. Absent or malformed, the upgrade
     refuses rather than guessing a value that would silently re-point authority.
+
+    The desktop-helper origin is returned RAW and may be None: a pre-P5 unit has none, and a malformed
+    one must still be overridable by `--desktop-helper-origin` rather than aborting the read.
     """
     if not unit_path.is_file():
         raise RuntimeError(f"installed dashboard unit is absent: {unit_path}; this VM was never bootstrapped")
@@ -384,7 +454,32 @@ def installed_tailnet_identity(unit_path: Path) -> tuple[str, str]:
     tailnet_operator = environment["DASHBOARD_TAILNET_OPERATOR"]
     validate_tailnet_host(tailnet_host)
     validate_tailnet_operator(tailnet_operator)
-    return tailnet_host, tailnet_operator
+    return tailnet_host, tailnet_operator, environment.get("DASHBOARD_DESKTOP_HELPER_ORIGIN")
+
+
+def select_desktop_helper_origin(installed: str | None, override: str | None, emit=print) -> str:
+    """Decide which desktop-helper origin the upgrade renders, and say so out loud.
+
+    Preserved from the installed unit by default, exactly like the host and operator. An explicit
+    `--desktop-helper-origin` wins, with a printed notice so the change is never silent. Neither
+    present is a REFUSAL naming the flag: rendering a unit without it produces a service the resident
+    validator rejects at ExecStartPre and a dashboard that refuses composition [P5-C42].
+    """
+    if override is not None:
+        chosen = normalize_desktop_helper_origin(override)
+        if installed is None:
+            emit(f"[upgrade] using --desktop-helper-origin {chosen}; the installed unit assigns none")
+        elif installed != chosen:
+            emit(f"NOTICE: --desktop-helper-origin {chosen} overrides the installed"
+                 f" DASHBOARD_DESKTOP_HELPER_ORIGIN={installed}")
+        return chosen
+    if installed is None:
+        raise RuntimeError(
+            "the installed dashboard unit does not assign DASHBOARD_DESKTOP_HELPER_ORIGIN and no"
+            " --desktop-helper-origin was given; the dashboard refuses composition without it and"
+            " validate_vm_runtime.py refuses the unit, so there is nothing safe to render."
+            " Re-run with --desktop-helper-origin https://<desktop-host>.ts.net")
+    return normalize_desktop_helper_origin(installed)
 
 
 def _account_uid(name: str) -> int | None:
@@ -433,27 +528,13 @@ class DryRunner:
         return subprocess.CompletedProcess(rendered, 0, "", "")
 
 
-def _report_unrendered_unit_env(tailnet_host: str, tailnet_operator: str, emit=print) -> tuple[str, ...]:
-    """Warn about names the resident boot validator REQUIRES that the repo fragment does not render.
-
-    Read-only and advisory: the upgrade must not invent a value for an env the fragment has no
-    producer for, but it must not let the operator discover the gap as an ExecStartPre failure either.
-    """
-    rendered = set(unit_environment(unit_fragment_source(tailnet_host, tailnet_operator).decode("utf-8")))
-    missing = tuple(sorted(EXPECTED_UNIT_ENV - rendered))
-    if missing:
-        emit("WARNING: the rendered unit does not assign " + ",".join(missing)
-             + ", which validate_vm_runtime.py requires at boot; the service will fail ExecStartPre"
-             " until deploy/systemd/kb-dashboard.service gains a producer for it")
-    return missing
-
-
 def upgrade(
     run=subprocess.run,
     unit_path: Path = Path(DASHBOARD_UNIT_PATH),
     install_root: Path = Path(RESIDENT_ROOT),
     host_node_map_path: Path = Path(HOST_NODE_MAP_PATH),
     backup_dir: Path = Path(UNIT_BACKUP_DIR),
+    desktop_helper_origin: str | None = None,
     dry_run: bool = False,
     lookup_uid=_account_uid,
     now=_utc_stamp,
@@ -472,7 +553,7 @@ def upgrade(
 
     | bootstrap() action                                    | upgrade   | why                                                                       |
     |-------------------------------------------------------|-----------|---------------------------------------------------------------------------|
-    | validate_tailnet_host / _operator                     | DO        | applied to the values RECOVERED from the installed unit, before any change |
+    | validate_tailnet_host / _operator / helper origin     | DO        | applied to the values RECOVERED from the installed unit, before any change |
     | systemctl disable --now kb-dashboard.service          | SKIP      | bootstrap stops a service that would write into the tree it is about to    |
     |                                                       |           | clone; upgrade clones nothing, and taking the live dashboard down is not   |
     |                                                       |           | this script's call. daemon-reload + enable only; the operator restarts.    |
@@ -510,9 +591,11 @@ def upgrade(
             f"account {NODE_PROXY_USER} already exists with uid {existing_uid}, not the pinned"
             f" {NODE_PROXY_UID}; the injected DASHBOARD_NODE_PROXY_UID would not match `id -u` and the"
             " dashboard would refuse every node request. Resolve the uid by hand before upgrading.")
-    tailnet_host, tailnet_operator = installed_tailnet_identity(unit_path)
+    tailnet_host, tailnet_operator, installed_origin = installed_tailnet_identity(unit_path)
     emit(f"[upgrade] preserving DASHBOARD_TAILNET_HOST={tailnet_host}"
          f" DASHBOARD_TAILNET_OPERATOR={tailnet_operator}")
+    helper_origin = select_desktop_helper_origin(installed_origin, desktop_helper_origin, emit=emit)
+    emit(f"[upgrade] rendering DASHBOARD_DESKTOP_HELPER_ORIGIN={helper_origin}")
     signing_module = install_root / RELEASE_SIGNING_MODULE
     if not signing_module.is_file():
         raise RuntimeError(
@@ -521,7 +604,9 @@ def upgrade(
     if not host_node_map_path.is_file():
         emit(f"WARNING: {host_node_map_path} is absent; node routes stay fail-closed until the"
              " Daniel-authored host-node map is installed (upgrade never creates it)")
-    _report_unrendered_unit_env(tailnet_host, tailnet_operator, emit=emit)
+    # Renders and throws the bytes away: proves the unit this run WILL install assigns every name
+    # validate_vm_runtime.py requires, while nothing has been mutated yet.
+    unit_fragment_source(tailnet_host, tailnet_operator, helper_origin)
 
     # --- converge ---------------------------------------------------------------------------------
     emit("[upgrade] release staging directory")
@@ -536,15 +621,17 @@ def upgrade(
     backup = backup_dir / f"{DASHBOARD_UNIT}.pre-upgrade-{now()}"
     run(["install", "-o", "root", "-g", "root", "-m", "0400", str(unit_path), str(backup)], check=True)
     emit(f"[upgrade] re-rendering {unit_path}")
-    install_dashboard_unit(tailnet_host, tailnet_operator, run=run, unit_path=unit_path)
+    install_dashboard_unit(tailnet_host, tailnet_operator, helper_origin, run=run, unit_path=unit_path)
     emit("[upgrade] converged; the dashboard was NOT restarted - activate a release, then"
          f" `systemctl restart {DASHBOARD_UNIT}`")
 
 
-def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tailnet_operator: str, run=subprocess.run) -> None:
-    # Validated BEFORE any command runs: a bad host/operator must not leave a half-bootstrapped VM behind.
+def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tailnet_operator: str, desktop_helper_origin: str, run=subprocess.run) -> None:
+    # Validated BEFORE any command runs: a bad host/operator/helper-origin must not leave a
+    # half-bootstrapped VM behind.
     validate_tailnet_host(tailnet_host)
     validate_tailnet_operator(tailnet_operator)
+    normalize_desktop_helper_origin(desktop_helper_origin)
     run(["systemctl", "disable", "--now", "kb-dashboard.service"], check=False)
     run(["useradd", "--system", "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", "kb-dashboard"], check=False)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/opt/kb-releases"], check=True)
@@ -567,7 +654,7 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tai
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", STATE_ROOT], check=True)
-    install_root_validators(release_public_key, tailnet_host, tailnet_operator, run=run)
+    install_root_validators(release_public_key, tailnet_host, tailnet_operator, desktop_helper_origin, run=run)
     provision_pty_broker(run=run)
     provision_node_proxy(run=run)
 
@@ -582,6 +669,7 @@ def build_parser() -> argparse.ArgumentParser:
     boot.add_argument("--release-public-key", type=Path, required=True)
     boot.add_argument("--tailnet-host", required=True, help="the bare `tailscale serve` hostname this VM is published at")
     boot.add_argument("--tailnet-operator", default=DEFAULT_TAILNET_OPERATOR, help="the single tailnet login that IS the operator")
+    boot.add_argument("--desktop-helper-origin", required=True, help="the pinned https://<desktop>.ts.net origin of the desktop helper; REQUIRED, never defaulted")
 
     converge = subparsers.add_parser(
         "upgrade",
@@ -589,6 +677,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Converge an already-bootstrapped VM onto the current runtime contract."
                     " Touches no state: never the ops checkout, the state root, or a release tree.")
     converge.add_argument("--dry-run", action="store_true", help="print every command that would run, execute nothing")
+    converge.add_argument("--desktop-helper-origin", default=None, help="override the pinned desktop-helper origin; by default the installed unit's value is preserved, and its absence from both is a refusal")
     # Path seams. Defaults are the real VM locations; overriding them is for rehearsal and tests.
     converge.add_argument("--unit-path", type=Path, default=Path(DASHBOARD_UNIT_PATH), help="the installed dashboard unit to read the tailnet identity from and re-render")
     converge.add_argument("--install-root", type=Path, default=Path(RESIDENT_ROOT), help="the resident root-owned helper directory")
@@ -610,10 +699,12 @@ def main(argv: list[str] | None = None) -> int:
             install_root=args.install_root,
             host_node_map_path=args.host_node_map,
             backup_dir=args.backup_dir,
+            desktop_helper_origin=args.desktop_helper_origin,
             dry_run=args.dry_run,
         )
         return 0
-    bootstrap(args.ops_bundle, args.release_public_key, tailnet_host=args.tailnet_host, tailnet_operator=args.tailnet_operator)
+    bootstrap(args.ops_bundle, args.release_public_key, tailnet_host=args.tailnet_host,
+              tailnet_operator=args.tailnet_operator, desktop_helper_origin=args.desktop_helper_origin)
     return 0
 
 
