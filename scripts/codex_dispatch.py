@@ -92,9 +92,9 @@ def billing_guard(env: dict, login_check: bool = True) -> list[str]:
             # otherwise read as "auth stale" here.
             rc = subprocess.run([codex_bin(), "login", "status",
                                  "-c", "approval_policy=never"],
-                                capture_output=True, timeout=15).returncode
+                                capture_output=True, timeout=45).returncode
         except subprocess.TimeoutExpired:
-            return ["codex login status timed out after 15s — auth check wedged"]
+            return ["codex login status timed out after 45s — auth check wedged"]
         if rc != 0:
             problems.append(f"codex login status exited {rc} — subscription auth missing/stale")
     return problems
