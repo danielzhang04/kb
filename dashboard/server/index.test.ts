@@ -58,6 +58,7 @@ import type { WriterLease } from './control/writerLease.ts';
 import { createExistingRootFileStoreHarnessForTest } from './control/test-fixtures/controlStore.ts';
 import { readDevelopmentScheduleSeedSource } from './schedules/seedImport.ts';
 import { publishVerifiedScheduleMarkerRemoval } from './write/branch.ts';
+import type { GitRunner } from './write/branch.ts';
 
 let app: FastifyInstance | undefined;
 let testStateRoot: string | undefined;
@@ -374,6 +375,68 @@ describe('server', () => {
       harness.close();
       rmSync(repoRoot, { recursive: true, force: true });
       rmSync(stateRoot, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The VM boot crash: `KB_COORDINATION_PUBLICATION=outbox` with an ops checkout whose origin is
+   * deliberately `disabled://desktop-promotion-only`. The boot migration's DEFAULT publisher must
+   * resolve that env mode the same way the rest of the server does, or its prepare phase runs
+   * `pull --rebase origin ops` against the disabled origin and crash-loops the daemon on every start.
+   */
+  it('resolves the env publication mode for the default boot marker publisher', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-repo-'));
+    const stateRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-state-'));
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-spool-'));
+    const harness = createExistingRootFileStoreHarnessForTest();
+    const originalPublication = process.env.KB_COORDINATION_PUBLICATION;
+    try {
+      const source = await readDevelopmentScheduleSeedSource(REPO_ROOT);
+      for (const file of [...source.heartbeatFiles, ...source.agentFiles]) {
+        const path = join(repoRoot, ...file.path.split('/'));
+        mkdirSync(join(path, '..'), { recursive: true });
+        writeFileSync(path, file.bytes, 'utf8');
+      }
+      const markerPath = join(repoRoot, ...PAUSE_MARKER.split('/'));
+      mkdirSync(join(markerPath, '..'), { recursive: true });
+      writeFileSync(markerPath, 'legacy pause marker', 'utf8');
+
+      const parent = 'a'.repeat(40);
+      const commit = 'b'.repeat(40);
+      const calls: string[][] = [];
+      let committed = false;
+      const runGit: GitRunner = async (_root, args) => {
+        calls.push(args);
+        const command = args.join(' ');
+        if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+        if (command === 'rev-parse --verify refs/kb-outbox/spooled') return `${parent}\n`;
+        if (command === `rev-list --reverse ${parent}..HEAD`) return committed ? `${commit}\n` : '';
+        if (command === 'diff --cached --name-only -z') return '';
+        if (args[0] === 'add') return '';
+        if (args[0] === 'commit') { committed = true; return ''; }
+        if (command === 'rev-parse HEAD') return `${commit}\n`;
+        if (command === `rev-list --parents -n 1 ${commit}`) return `${commit} ${parent}\n`;
+        if (args[0] === 'diff-tree') return `${PAUSE_MARKER}\0`;
+        if (args[0] === 'bundle') { writeFileSync(args[2], 'bundle'); return ''; }
+        if (args[0] === 'update-ref') return '';
+        throw new Error(`unexpected git invocation: ${command}`);
+      };
+
+      process.env.KB_COORDINATION_PUBLICATION = 'outbox';
+      const store = harness.open(stateRoot);
+      await runScheduleBootMigrations(repoRoot, store, undefined, { outboxRoot, runGit });
+
+      expect(() => readFileSync(markerPath)).toThrow();
+      expect(calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
+      expect(calls).toContainEqual(['update-ref', 'refs/kb-outbox/spooled', commit, parent]);
+      expect(await store.listIncompleteSchedulePauseMarkerReceipts?.()).toEqual([]);
+    } finally {
+      if (originalPublication === undefined) delete process.env.KB_COORDINATION_PUBLICATION;
+      else process.env.KB_COORDINATION_PUBLICATION = originalPublication;
+      harness.close();
+      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(stateRoot, { recursive: true, force: true });
+      rmSync(outboxRoot, { recursive: true, force: true });
     }
   });
 

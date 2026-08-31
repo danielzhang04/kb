@@ -481,6 +481,10 @@ export function makeSurfaceContext(
         // its coordination phase publishes serial `card-transition` intents (P4 §3.4) rather than running
         // its own cards.py mutation + git commit/push.
         reconciliationPublisher,
+        // The executor owns two coordination git writers of its own (the canonical integrator's prepare
+        // phase and the post-run fleet-ledger settlement); both publish in THIS context's mode.
+        coordinationPublication,
+        outboxRoot,
       },
       onChange: (execution, state, serviceCaller) => {
         stopQueueBridge?.();

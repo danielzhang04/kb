@@ -143,6 +143,79 @@ describe('verified legacy Schedule marker publication', () => {
       rmSync(repoRoot, { recursive: true, force: true });
     }
   });
+
+  /**
+   * The boot crash this publication mode exists to close: the VM runs `KB_COORDINATION_PUBLICATION=outbox`
+   * with its ops checkout's origin deliberately set to `disabled://desktop-promotion-only`. With the
+   * publisher's DEFAULT prepare/commit closures on `direct`, the boot migration ran
+   * `pull --rebase origin ops` against that origin and crash-looped the daemon on every start.
+   */
+  it('never pulls or pushes in outbox mode, and spools the removal commit instead', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-marker-outbox-'));
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'schedule-marker-spool-'));
+    const marker = MARKER_GOLDEN[0].marker;
+    const absolute = join(repoRoot, ...marker.split('/'));
+    mkdirSync(dirname(absolute), { recursive: true });
+    const bytes = Buffer.from('legacy marker bytes');
+    writeFileSync(absolute, bytes);
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const parent = 'a'.repeat(40);
+    const commit = 'b'.repeat(40);
+    const calls: string[][] = [];
+    let committed = false;
+    const runner: GitRunner = async (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'rev-parse --verify refs/kb-outbox/spooled') return `${parent}\n`;
+      if (command === `rev-list --reverse ${parent}..HEAD`) return committed ? `${commit}\n` : '';
+      if (command === 'diff --cached --name-only -z') return '';
+      if (args[0] === 'add') return '';
+      if (args[0] === 'commit') { committed = true; return ''; }
+      if (command === 'rev-parse HEAD') return `${commit}\n`;
+      if (command === `rev-list --parents -n 1 ${commit}`) return `${commit} ${parent}\n`;
+      if (args[0] === 'diff-tree') return `${marker}\0`;
+      if (args[0] === 'bundle') { writeFileSync(args[2], 'bundle'); return ''; }
+      if (args[0] === 'update-ref') return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    try {
+      await publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, {
+        runGit: runner, publication: 'outbox', outboxRoot,
+      });
+      expect(existsSync(absolute)).toBe(false);
+      expect(calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
+      expect(calls).toContainEqual(['update-ref', 'refs/kb-outbox/spooled', commit, parent]);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(outboxRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the direct route — pull then push — when no publication mode is supplied', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-marker-direct-'));
+    const marker = MARKER_GOLDEN[0].marker;
+    const absolute = join(repoRoot, ...marker.split('/'));
+    mkdirSync(dirname(absolute), { recursive: true });
+    const bytes = Buffer.from('legacy marker bytes');
+    writeFileSync(absolute, bytes);
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const calls: string[][] = [];
+    const runner: GitRunner = async (_root, args) => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args.join(' ') === 'diff --cached --name-only -z') return '';
+      return '';
+    };
+    try {
+      await publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, { runGit: runner });
+      expect(calls).toContainEqual(['pull', '--rebase', 'origin', 'ops']);
+      expect(calls).toContainEqual(['push', 'origin', 'ops']);
+      expect(calls.some((args) => args[0] === 'update-ref')).toBe(false);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('publishPreparedCoordinationCommit', () => {

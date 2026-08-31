@@ -39,6 +39,9 @@ import { createLearningRecordRetire } from './reconciliation/realPorts.ts';
 import type { MergedPrStatus, PrMergeReader } from './reconciliation/mergePoll.ts';
 import { resolveRepositoryPin, RepositoryPinError } from './runtime/repoPin.ts';
 import { defaultGitRunner, resolveBaseCommit } from './write/branch.ts';
+import type { GitRunner } from './write/branch.ts';
+import { DEFAULT_OUTBOX_ROOT, resolveCoordinationPublication } from './write/outbox.ts';
+import type { CoordinationPublication } from './write/outbox.ts';
 import { runTrackedProcess } from './write/asyncGit.ts';
 import { isCommitSha } from './write/durableManifest.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
@@ -414,6 +417,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       store: surfaceCtx.controlStore,
       repoRoot: surfaceCtx.repoRoot,
       appendAudit: surfaceCtx.appendAudit,
+      // Same publication mode as every other coordination writer on this context: without it the boot
+      // sweep's real `appendAudit` runs `pull --rebase --autostash origin ops` on an outbox deployment,
+      // whose ops checkout has no usable remote.
+      auditOptions: {
+        publication: surfaceCtx.coordinationPublication,
+        outboxRoot: surfaceCtx.outboxRoot,
+      },
       now: surfaceCtx.now,
       onSweep: (result) => {
         const line = humanRequestSweepLogLine(result);
@@ -506,13 +516,35 @@ export interface StartOptions {
   probePtyCapability?: typeof probePublicPtyCapability;
 }
 
+/** Coordination seams the boot migration's DEFAULT marker publisher is composed from. */
+export interface ScheduleBootMigrationOptions {
+  /** Publication mode; defaults to the same env resolution `makeSurfaceContext` uses. */
+  publication?: CoordinationPublication;
+  /** Durable local spool root used only when {@link publication} is `outbox`. */
+  outboxRoot?: string;
+  /** @internal Git runner for the default publisher's prepare/commit closures. */
+  runGit?: GitRunner;
+}
+
 /** Production Schedule boot unit, exported so crash/restart tests exercise the exact startup path. */
 export async function runScheduleBootMigrations(
   repoRoot: string,
   controlStore: ControlPlaneStore,
-  publishRemoval: (marker: string, digest: string) => Promise<void> =
-    (marker, digest) => publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest),
+  publishRemoval?: (marker: string, digest: string) => Promise<void>,
+  options: ScheduleBootMigrationOptions = {},
 ): Promise<void> {
+  // The marker publisher writes coordination git, so it must run in the SAME publication mode the rest
+  // of the server resolves — an `outbox` deployment's ops checkout has no usable remote, and the default
+  // `direct` prepare phase ran `pull --rebase origin ops` against a disabled origin and crash-looped the
+  // daemon at boot (the legacy pause markers make `convertPauseMarkers` fire on every start).
+  const publication = options.publication ?? resolveCoordinationPublication();
+  const outboxRoot = options.outboxRoot ?? DEFAULT_OUTBOX_ROOT;
+  const publish = publishRemoval ?? ((marker: string, digest: string) =>
+    publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, {
+      runGit: options.runGit,
+      publication,
+      outboxRoot,
+    }));
   // Production seeds from the attested release tree (opened inside runP2ScheduleStartupMigrations);
   // the development source exists for sandboxes whose repoRoot is a full main-layout checkout. A
   // coordination checkout (ops) does not carry every seed path, so a failed development read must
@@ -534,7 +566,7 @@ export async function runScheduleBootMigrations(
           read: (marker) => controlStore.readSchedulePauseMarkerReceipt(marker),
           write: (receipt) => controlStore.writeSchedulePauseMarkerReceipt(receipt),
         },
-        publishRemoval,
+        publishRemoval: publish,
       });
     },
   });

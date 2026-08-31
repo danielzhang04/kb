@@ -1445,13 +1445,24 @@ export async function discoverLegacyScheduleMarkers(
   return markers;
 }
 
-interface VerifiedScheduleMarkerRemovalOptions {
+export interface VerifiedScheduleMarkerRemovalOptions {
   /** Test seam; production uses the coordination publisher's prepare phase. */
   prepare?: (repoRoot: string) => Promise<void>;
   /** Test seam; production commits the exact removed coordination path. */
   commit?: (repoRoot: string, marker: string) => Promise<void>;
   /** Fault seam proving a crash after unlink is resumable. */
   afterUnlink?: () => Promise<void>;
+  /** Git runner the DEFAULT prepare/commit closures use. Injected for hermetic tests. */
+  runGit?: GitRunner;
+  /**
+   * Coordination publication mode, threaded into the default prepare/commit closures. Desktop defaults
+   * to direct remote publication; an outbox deployment (whose `ops` checkout has NO usable remote) must
+   * pass `'outbox'` here or the boot migration's prepare phase runs `pull --rebase origin ops` against a
+   * deliberately disabled origin and crash-loops the daemon.
+   */
+  publication?: CoordinationPublication;
+  /** Durable local spool root used only when {@link publication} is `outbox`. */
+  outboxRoot?: string;
 }
 
 /**
@@ -1474,9 +1485,18 @@ export async function publishVerifiedScheduleMarkerRemoval(
   if (bounded === '' || bounded === '..' || bounded.startsWith('../') || bounded.startsWith('..\\')) {
     throw new Error('pause-marker-migration-invalid');
   }
-  const prepare = options.prepare ?? (async (targetRoot) => prepareCoordination(targetRoot));
-  const commit = options.commit ?? (async (targetRoot, targetMarker) =>
-    commitPreparedCoordination(targetRoot, targetMarker));
+  // Both defaults carry the caller's publication mode: in `outbox` the prepare phase recovers/spools
+  // instead of pulling, and the commit spools the local commit instead of pushing. Passing `undefined`
+  // through leaves each callee on its own `'direct'` default, so desktop behaviour is unchanged.
+  const prepare = options.prepare ?? (async (targetRoot) =>
+    prepareCoordination(targetRoot, options.runGit, options.publication, options.outboxRoot));
+  const commit = options.commit ?? (async (targetRoot, targetMarker) => {
+    await commitPreparedCoordination(targetRoot, targetMarker, {
+      runGit: options.runGit,
+      publication: options.publication,
+      outboxRoot: options.outboxRoot,
+    });
+  });
 
   await withOpsTransaction(async () => {
     let pathStat;

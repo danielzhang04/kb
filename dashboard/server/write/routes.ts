@@ -343,6 +343,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       runPy: ctx.runPy,
       runGit: ctx.saveGit,
       now: ctx.now,
+      publication: ctx.coordinationPublication,
+      outboxRoot: ctx.outboxRoot,
     };
     const input = { repoRoot: ctx.repoRoot, cardId, sessionToken: session?.token, sessionConfig: ctx.sessionConfig };
     const outcome =

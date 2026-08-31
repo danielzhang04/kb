@@ -69,6 +69,9 @@ function fsyncDirectory(path: string): void {
   fsyncPath(path);
 }
 
+/** The durable local spool root every `outbox` writer defaults to; the VM deployment mounts it. */
+export const DEFAULT_OUTBOX_ROOT = '/var/lib/kb/state/outbox';
+
 export function resolveCoordinationPublication(
   env: NodeJS.ProcessEnv = process.env,
 ): CoordinationPublication {
