@@ -608,3 +608,20 @@
   cloud clone the recurring drift always "looks" novel -- READ memory and diff today's --check
   against the newest standing drift card BEFORE filing anything.
 - Push path: recorded in the run summary.
+
+### 2026-08-31 nightly-review (cloud, dispatcher-cloud)
+- Clean checks: preamble OK, pyyaml OK. Dispatch emitted 0 cards (nothing cloud-tier due);
+  queue/approvals/ empty, no approvals-ref records to verify in step 4b.
+- step-2b: naive `python scripts/sync_daemon_dirs.py --check` on ops EXIT 2 (script STILL absent
+  on ops -- main-authored; restore owned by 6a605ebb + wake-2026-08-15). Ran main's copy in
+  refs-fallback -> EXIT 1, drift UNCHANGED from 08-22..08-25: single ops-only file
+  orgs/kb-ops/workflows/acceptance-run.md, byte-identical to umbrella card 6a7c0ebf's 08-22
+  refresh Evidence. Content drift (the 5+5 faceless-youtube main-only/content-differs paths seen
+  08-18) stays reconciled; only the --prune half + script-restore remain owed.
+- PROCESS SLIP caught & corrected AGAIN (as 08-14/08-25): started to edit a wake card (6a605ebb)
+  with a fresh re-check note BEFORE finishing the memory read. Reading this shard surfaced that
+  the drift dedupe target is umbrella 6a7c0ebf (not 6a605ebb) and that state is unchanged ->
+  "no new card, no re-refresh, avoid churn". Reverted the edit via `git checkout` before commit.
+  LESSON, reinforced: on a fresh cloud clone recurring drift always LOOKS novel -- READ memory
+  and diff today's --check against the newest standing drift card (6a7c0ebf) BEFORE touching any card.
+- Push path: recorded in the run summary.
