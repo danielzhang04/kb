@@ -184,3 +184,44 @@ export function findPeerUid(input: {
   if (owners.size > 1) return { ok: false, reason: 'peer-socket-ambiguous' };
   return { ok: true, uid: owners.values().next().value as number };
 }
+
+/** The socket-bearing request shape the peer proof reads (a structural subset of `OperatorRequestLike`). */
+export interface PeerSocketRequest {
+  socket?: {
+    remoteAddress?: string | undefined;
+    remotePort?: number | undefined;
+    localAddress?: string | undefined;
+    localPort?: number | undefined;
+  } | undefined;
+}
+
+/**
+ * Exactly loopback, nothing else in 127/8 — the same tight set both trust boundaries use. `startsWith('127.')`
+ * would admit `127.0.0.2`, the source-address spoof the full-4-tuple match in {@link findPeerUid} guards.
+ */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+/**
+ * Resolve the owning uid of the accepted connection's loopback peer, or a fail-closed `PeerUidResult`. The
+ * node-identity and tailnet-operator boundaries share this exact block: require both endpoints to be
+ * loopback with integer ports (else `peer-socket-not-found`), then match the full 4-tuple against `/proc`
+ * via {@link findPeerUid}. `readTables` is read ONLY on the success path — never on a socket rejection.
+ */
+export function resolvePeerUid(req: PeerSocketRequest, readTables: () => readonly string[]): PeerUidResult {
+  const socket = req.socket;
+  const remoteAddress = socket?.remoteAddress;
+  const localAddress = socket?.localAddress;
+  const remotePort = socket?.remotePort;
+  const localPort = socket?.localPort;
+  if (!isLoopbackAddress(remoteAddress) || !isLoopbackAddress(localAddress)
+    || !Number.isInteger(remotePort) || !Number.isInteger(localPort)) {
+    return { ok: false, reason: 'peer-socket-not-found' };
+  }
+  return findPeerUid({
+    localAddress: localAddress!, localPort: localPort!,
+    remoteAddress: remoteAddress!, remotePort: remotePort!,
+    tables: readTables(),
+  });
+}

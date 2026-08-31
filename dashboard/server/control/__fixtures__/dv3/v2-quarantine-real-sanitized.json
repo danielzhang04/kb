@@ -1,0 +1,49 @@
+{
+  "provenance": {
+    "sourcePath": "%LOCALAPPDATA%/kb-dashboard/control/control-plane.json",
+    "sourceSha256": "6aa42d2b5758a715d1f71d0b9226a6b8f0ae2e4deb15818c9dabedbde2ce445b",
+    "extractedAt": "2026-08-21T22:42:30.064Z",
+    "sanitizer": "replace absolute paths under Users/ with <user-home>; replace emails with <email>; replace token-, secret-, password-, and authorization-bearing values with <token>; replace hostnames with <hostname>; preserve real runRef and proposalRef; convert v1 state to the v2 lifecycle field",
+    "note": "The source v1 document had no quarantine rows; this fixture wraps one real stored run in the v2 quarantine[] envelope."
+  },
+  "version": 2,
+  "documentRevision": 0,
+  "quarantine": [
+    {
+      "subject": "dashboard-engine",
+      "quarantinedAt": "2026-08-11T21:32:58.109Z",
+      "run": {
+        "subject": "dashboard-engine",
+        "launchOperationKey": "queue-bridge:6a7b92c4-40dce8a1",
+        "launchOperationFingerprint": "fd7bd5258cc751a17b56ef2d6b8d13572c5199974eb752e91e3e7895b05de7c1",
+        "activationReceipts": [],
+        "authorizedFailedRunReconciliation": null,
+        "runRef": "run-96ce771d-c3d5-4ed7-843e-457704334fdd",
+        "predecessorRunRef": null,
+        "title": "Workflow-platform P0 chain smoke test",
+        "proposalRef": "proposal-94d78785-8826-40a3-bb46-04975e8c5e48",
+        "proposalRevision": 1,
+        "proposalHash": "f5094e21a3536cf9265110de0732368a74e8212c90c65587578e4dadf86dba48",
+        "publicationState": "published",
+        "version": 5,
+        "managerSessionRef": "session-196649f3-b1f6-4d09-b363-c1f53c8d091c",
+        "managerGeneration": 1,
+        "managerAssignment": null,
+        "agentWorkspaceLaunch": null,
+        "createdAt": "2026-08-11T21:02:23.342Z",
+        "updatedAt": "2026-08-11T21:32:58.109Z",
+        "lifecycle": { "kind": "failed", "deployPause": null }
+      },
+      "stages": [],
+      "attempts": [],
+      "sessions": [],
+      "humanRequests": [],
+      "events": [],
+      "stageGenerations": [],
+      "iterationLoops": [],
+      "iterationRequests": [],
+      "iterationReceipts": [],
+      "generationSupersessions": []
+    }
+  ]
+}

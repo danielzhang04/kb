@@ -22,6 +22,12 @@ atlas/.venv/
 # dashboard (Node) — build + deps never committed
 dashboard/node_modules/
 dashboard/dist/
+dashboard/dist-server/
+
+# P3 focused-gate output. The Vitest JSON the closure asserter reads and the browser-matrix artefacts:
+# both are per-run evidence, and a committed copy is exactly the stale green the asserter refuses.
+dashboard/.p3-vitest-results.json
+dashboard/.p3-browser/
 
 # Dashboard display-name/short-ref ordinals. Daemon-local state, never coordination truth: the
 # production copy lives under DASHBOARD_STATE_ROOT (AppData\Local\kb-dashboard), deliberately outside
@@ -29,3 +35,4 @@ dashboard/dist/
 naming.json
 kit/.rendered/
 state/scratch/
+dashboard/.artifacts/

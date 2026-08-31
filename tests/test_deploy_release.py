@@ -35,6 +35,34 @@ from scripts import deploy_platform_release
 TEST_RELEASE_COMMIT = "d" * 40
 
 
+def test_dashboard_unit_provisions_schedule_socket_runtime_directory():
+    unit = (Path(__file__).parents[1] / "deploy/systemd/kb-dashboard.service").read_text(
+        encoding="utf-8"
+    )
+    assert "RuntimeDirectory=kb-dashboard" in unit.splitlines()
+    assert "RuntimeDirectoryMode=0750" in unit.splitlines()
+
+
+def test_activation_stays_dashboard_only_and_never_installs_the_broker():
+    """W6.2 pins the non-change: the PTY broker is installed by bootstrap_vm/install_pty_broker.
+
+    Release activation owns exactly one unit (kb-dashboard.service) and one release tree. Teaching it
+    about kb-shell would put a second, differently-owned service inside the release-lock's blast
+    radius and inside a rollback it does not model.
+    """
+    source = (Path(__file__).parents[1] / "deploy/activate_release.py").read_text(encoding="utf-8")
+    for token in ("kb-shell", "kb-shell-broker", "install_pty_broker", "broker", "socket-fd"):
+        assert token not in source, token
+    assert "kb-dashboard.service" in source
+
+
+def test_broker_units_are_installed_by_bootstrap_not_by_activation():
+    bootstrap_source = (Path(__file__).parents[1] / "deploy/bootstrap_vm.py").read_text(
+        encoding="utf-8")
+    assert "provision_pty_broker" in bootstrap_source
+    assert "install_pty_broker" in bootstrap_source
+
+
 def canonical_attestation(commit: str = "a" * 40, digest: str = "b" * 64) -> bytes:
     value = {
         "archive": f"kb-platform-{commit}.tar.gz",
@@ -187,8 +215,8 @@ def test_resident_parser_rejects_structurally_invalid_v2_values(tmp_path, field,
 
 
 @pytest.mark.parametrize(("field", "value"), [
-    ("stateSchema", "3"),
-    ("rollbackStateSchema", "0"),
+    ("stateSchema", "4"),
+    ("rollbackStateSchema", "1"),
     ("stateMigration", "compatible"),
 ])
 def test_desktop_parser_rejects_structurally_valid_nonregistry_v2_values(tmp_path, field, value):
@@ -318,12 +346,15 @@ def test_extract_rejects_manifest_omissions(tmp_path):
         activate_release.extract_read_only(archive_path, tmp_path / "destination")
 
 
-def test_rollback_repoints_current_only_when_quiescent(tmp_path, monkeypatch):
+def test_rollback_with_sidecars_repoints_current_only_when_quiescent(tmp_path, monkeypatch):
     releases = tmp_path / "releases"
     first = releases / ("a" * 40)
     second = releases / ("b" * 40)
     first.mkdir(parents=True)
     second.mkdir()
+    for release, marker in ((first, b"first"), (second, b"second")):
+        (release / "attestation.json").write_bytes(marker)
+        (release / "attestation.json.sig").write_bytes(marker + b"-signature")
     paths = activate_release.RuntimePaths(
         releases=releases,
         current=second,
@@ -343,6 +374,10 @@ def test_rollback_repoints_current_only_when_quiescent(tmp_path, monkeypatch):
         ["systemctl", "restart", "kb-dashboard.service"],
         ["healthy"],
     ]
+    assert (first / "attestation.json").read_bytes() == b"first"
+    assert (first / "attestation.json.sig").read_bytes() == b"first-signature"
+    assert (second / "attestation.json").read_bytes() == b"second"
+    assert (second / "attestation.json.sig").read_bytes() == b"second-signature"
 
 
 def test_rollback_refuses_when_previous_is_current(tmp_path, monkeypatch):
@@ -407,6 +442,7 @@ def test_live_validation_failure_restores_previous_selection(tmp_path, monkeypat
     def copy_upload(_upload_dir, stage, _io):
         (stage / "release.tar.gz").write_bytes(b"archive")
         (stage / "attestation.json").write_bytes(canonical_attestation(commit="b" * 40, digest=digest))
+        (stage / "attestation.json.sig").write_bytes(b"verified-signature")
 
     def extract(_archive, destination):
         destination.mkdir()
@@ -448,6 +484,7 @@ def test_first_activation_live_failure_unlinks_current_stops_service_and_cleans_
     def copy_upload(_upload_dir, stage, _io):
         (stage / "release.tar.gz").write_bytes(b"archive")
         (stage / "attestation.json").write_bytes(canonical_attestation(commit="b" * 40, digest=digest))
+        (stage / "attestation.json.sig").write_bytes(b"verified-signature")
 
     def extract(_archive, destination):
         destination.mkdir()
@@ -487,6 +524,7 @@ def test_static_failure_after_extraction_cleans_candidate(tmp_path, monkeypatch)
     def copy_upload(_upload_dir, stage, _io):
         (stage / "release.tar.gz").write_bytes(b"archive")
         (stage / "attestation.json").write_bytes(canonical_attestation(commit="b" * 40, digest=digest))
+        (stage / "attestation.json.sig").write_bytes(b"verified-signature")
 
     def extract(_archive, destination):
         destination.mkdir()
@@ -508,7 +546,58 @@ def test_static_failure_after_extraction_cleans_candidate(tmp_path, monkeypatch)
     assert not (releases / ("b" * 40)).exists()
 
 
-def test_activation_orders_signature_static_validation_and_real_link_selection(tmp_path, monkeypatch):
+def test_activation_missing_verified_sidecar_rolls_back_without_partial_install(tmp_path, monkeypatch):
+    releases = tmp_path / "releases"
+    old = releases / ("a" * 40)
+    old.mkdir(parents=True)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    paths = activate_release.RuntimePaths(
+        releases=releases,
+        current=old,
+        previous=releases / "previous",
+        ops_root=tmp_path / "ops",
+        staging=staging,
+    )
+    digest = hashlib.sha256(b"archive").hexdigest()
+
+    def copy_upload(_upload_dir, stage, _io):
+        (stage / "release.tar.gz").write_bytes(b"archive")
+        (stage / "attestation.json").write_bytes(
+            canonical_attestation(commit="b" * 40, digest=digest)
+        )
+
+    def extract(_archive, destination):
+        destination.mkdir()
+        (destination / "VERSION").write_text("b" * 40 + "\n", encoding="ascii")
+
+    monkeypatch.setattr(activate_release.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(activate_release, "require_root_staging", lambda _value: None)
+    monkeypatch.setattr(activate_release, "copy_and_verify_upload", copy_upload)
+    monkeypatch.setattr(activate_release, "extract_read_only", extract)
+    monkeypatch.setattr(
+        activate_release,
+        "read_readiness",
+        lambda: {"ok": True, "quiescent": True, "blockers": []},
+    )
+    monkeypatch.setattr(activate_release, "atomic_link", lambda *_args: None)
+
+    with pytest.raises(RuntimeError, match="verified attestation sidecars are required"):
+        activate_release.activate_from_upload(
+            tmp_path / "upload",
+            paths,
+            SimpleNamespace(
+                run=lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0),
+                wait_healthy=lambda: None,
+            ),
+        )
+
+    assert paths.current.resolve() == old.resolve()
+    assert not (releases / ("b" * 40)).exists()
+    assert not paths.previous.exists()
+
+
+def test_activation_with_sidecars_orders_signature_static_validation_and_real_link_selection(tmp_path, monkeypatch):
     releases = tmp_path / "releases"
     releases.mkdir()
     staging = tmp_path / "staging"
@@ -566,6 +655,11 @@ def test_activation_orders_signature_static_validation_and_real_link_selection(t
     )
 
     assert activate_release.activate_from_upload(upload, paths, activation_io) == commit
+    installed = releases / commit
+    assert (installed / "attestation.json").read_bytes() == (upload / "attestation.json").read_bytes()
+    assert (installed / "attestation.json.sig").read_bytes() == (upload / "attestation.json.sig").read_bytes()
+    assert stat.S_IMODE((installed / "attestation.json").stat().st_mode) == 0o444
+    assert stat.S_IMODE((installed / "attestation.json.sig").stat().st_mode) == 0o444
     if paths.current.exists():
         assert paths.current.resolve() == (releases / commit).resolve()
     else:

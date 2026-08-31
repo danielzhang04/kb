@@ -12,8 +12,20 @@ from pathlib import Path, PurePosixPath
 
 try:
     from .control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
+    from .install_pty_broker import (
+        Layout as BrokerLayout,
+        SOCKET_UNIT,
+        install_units as install_broker_units,
+        provision_account_and_directories as provision_broker_account,
+    )
 except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
     from control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
+    from install_pty_broker import (
+        Layout as BrokerLayout,
+        SOCKET_UNIT,
+        install_units as install_broker_units,
+        provision_account_and_directories as provision_broker_account,
+    )
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
@@ -23,6 +35,101 @@ TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
 # The single tailnet identity that IS the operator (Daniel, 2026-08-18). Required, fail-closed.
 DEFAULT_TAILNET_OPERATOR = "daniel.zhang.t1@gmail.com"
 STATE_ROOT = "/var/lib/kb/state"
+
+# dashboard-v3 P6 §3.3: the attested node-identity proxy account, created with a PINNED system uid so the
+# injected DASHBOARD_NODE_PROXY_UID is deterministic and the boot validator's `id -u` == env check is exact.
+# The tailnet (operator/root serve) proxy uid is pinned to 0. The dashboard refuses to boot unless
+# DASHBOARD_NODE_PROXY_UID ∉ {0, DASHBOARD_TAILNET_PROXY_UID}.
+NODE_PROXY_USER = "kb-node-proxy"
+NODE_PROXY_UID = 987
+TAILNET_PROXY_UID = 0
+NODE_PROXY_UNITS = ("kb-node-proxy.service", "kb-whois.service", "kb-whois.socket")
+# The root-owned host-node map: authorization derives a node's HostKind from THIS file only [design:416].
+HOST_NODE_MAP_DIR = "/etc/kb-dashboard"
+HOST_NODE_MAP_PATH = "/etc/kb-dashboard/host-nodes.json"
+HOST_NODE_MAP_SCHEMA = "kb.host-node-map/v1"
+NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{5,32}$")
+
+
+def validate_host_node_map(data: object) -> dict:
+    """Deploy-side decode of the root-owned host-node map, mirroring auth/hostNodeMapContracts.ts exactly:
+    the schema literal, a positive-integer revision, exactly {schema, revision, hosts, revoked}, hosts
+    exactly {vm, desktop}, node-id charset, the two active ids distinct AND absent from revoked, and unique
+    revoked entries with RFC 3339 revokedAt. Raises ValueError on any malformation (a bad map is refused at
+    install rather than shipped)."""
+    if not isinstance(data, dict):
+        raise ValueError("host-node map must be an object")
+    if set(data) != {"schema", "revision", "hosts", "revoked"}:
+        raise ValueError("host-node map keys must be exactly schema/revision/hosts/revoked")
+    if data["schema"] != HOST_NODE_MAP_SCHEMA:
+        raise ValueError(f"host-node map schema must equal {HOST_NODE_MAP_SCHEMA}")
+    revision = data["revision"]
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        raise ValueError("host-node map revision must be a positive integer")
+    hosts = data["hosts"]
+    if not isinstance(hosts, dict) or set(hosts) != {"vm", "desktop"}:
+        raise ValueError("host-node map hosts must be exactly {vm, desktop}")
+    ids = {}
+    for role in ("vm", "desktop"):
+        node = hosts[role]
+        if not isinstance(node, dict) or set(node) != {"nodeId"} or not isinstance(node["nodeId"], str) \
+                or not NODE_ID_PATTERN.match(node["nodeId"]):
+            raise ValueError(f"host-node map {role} nodeId must match /^[A-Za-z0-9]{{5,32}}$/")
+        ids[role] = node["nodeId"]
+    if ids["vm"] == ids["desktop"]:
+        raise ValueError("host-node map active node ids must be distinct")
+    revoked = data["revoked"]
+    if not isinstance(revoked, list):
+        raise ValueError("host-node map revoked must be an array")
+    seen: set[str] = set()
+    for entry in revoked:
+        if not isinstance(entry, dict) or set(entry) != {"nodeId", "revokedAt"}:
+            raise ValueError("host-node map revoked entries must be {nodeId, revokedAt}")
+        node_id = entry["nodeId"]
+        if not isinstance(node_id, str) or not NODE_ID_PATTERN.match(node_id):
+            raise ValueError("host-node map revoked nodeId must match the node-id charset")
+        if not _is_rfc3339_utc(entry["revokedAt"]):
+            raise ValueError("host-node map revokedAt must be RFC 3339 UTC")
+        if node_id in seen:
+            raise ValueError(f"host-node map duplicate revoked id {node_id!r}")
+        seen.add(node_id)
+    if seen & set(ids.values()):
+        raise ValueError("host-node map active id must not also be revoked")
+    return data
+
+
+def _is_rfc3339_utc(value: object) -> bool:
+    from datetime import datetime
+    if not isinstance(value, str) or not value.endswith(("Z", "+00:00")):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def install_host_node_map(source: Path, run=subprocess.run, target: str = HOST_NODE_MAP_PATH) -> None:
+    """Install a Daniel-authored host-node map as root-owned 0444, refusing a malformed source first.
+    Enrollment/rotation are file edits through deploy review — there is no endpoint and no hot reload."""
+    validate_host_node_map(json.loads(source.read_text(encoding="utf-8")))
+    run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", HOST_NODE_MAP_DIR], check=True)
+    run(["install", "-o", "root", "-g", "root", "-m", "0444", str(source), target], check=True)
+
+
+def provision_node_proxy(run=subprocess.run, source_root: Path | None = None) -> None:
+    """Provision the attested node-proxy account (pinned uid) and install the frozen node-proxy + WhoIs
+    unit trio. No proxy/shim code exists until the first release is activated, so the units are enabled but
+    the node-proxy socket only comes up once the release tree lands."""
+    root = source_root if source_root is not None else Path(__file__).resolve().parent
+    run(["useradd", "--system", "--uid", str(NODE_PROXY_UID), "--home-dir", "/nonexistent",
+         "--shell", "/usr/sbin/nologin", NODE_PROXY_USER], check=False)
+    for unit in NODE_PROXY_UNITS:
+        run(["install", "-o", "root", "-g", "root", "-m", "0444",
+             str(root / "systemd" / unit), f"/etc/systemd/system/{unit}"], check=True)
+    run(["systemctl", "daemon-reload"], check=True)
+    run(["systemctl", "enable", "kb-whois.socket"], check=True)
+    run(["systemctl", "enable", "kb-node-proxy.service"], check=True)
 
 
 def validate_tailnet_host(value: str) -> None:
@@ -93,9 +200,14 @@ def unit_fragment_source(tailnet_host: str, tailnet_operator: str) -> bytes:
     validate_tailnet_host(tailnet_host)
     validate_tailnet_operator(tailnet_operator)
     source = (Path(__file__).resolve().parent / "systemd/kb-dashboard.service").read_bytes()
+    # dashboard-v3 P6 §3.3: both proxy-uid envs are injected here. The tailnet (root serve) proxy is pinned
+    # to 0 and the attested node proxy to its pinned system uid, so the distinctness rule
+    # DASHBOARD_NODE_PROXY_UID ∉ {0, DASHBOARD_TAILNET_PROXY_UID} holds by construction.
     extra = (
         f"Environment=DASHBOARD_TAILNET_HOST={tailnet_host}\n"
         f"Environment=DASHBOARD_TAILNET_OPERATOR={tailnet_operator}\n"
+        f"Environment=DASHBOARD_TAILNET_PROXY_UID={TAILNET_PROXY_UID}\n"
+        f"Environment=DASHBOARD_NODE_PROXY_UID={NODE_PROXY_UID}\n"
     ).encode("ascii")
     result = source.replace(
         b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n",
@@ -173,6 +285,20 @@ def install_root_validators(
         generated.unlink(missing_ok=True)
 
 
+def provision_pty_broker(run=subprocess.run, layout: BrokerLayout | None = None) -> None:
+    """Newly provisioned machines get the PTY broker here.
+
+    Only the account, its filesystem, and the two units: no broker code exists until the first
+    release is activated, so the socket is enabled but never started. Existing VMs take the same end
+    state through the bounded deploy/install_pty_broker.py instead.
+    """
+    layout = BrokerLayout() if layout is None else layout
+    provision_broker_account(layout, run)
+    install_broker_units(layout, run, source_root=Path(__file__).resolve().parents[1])
+    run(["systemctl", "daemon-reload"], check=True)
+    run(["systemctl", "enable", SOCKET_UNIT], check=True)
+
+
 def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tailnet_operator: str, run=subprocess.run) -> None:
     # Validated BEFORE any command runs: a bad host/operator must not leave a half-bootstrapped VM behind.
     validate_tailnet_host(tailnet_host)
@@ -200,6 +326,8 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tai
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", STATE_ROOT], check=True)
     install_root_validators(release_public_key, tailnet_host, tailnet_operator, run=run)
+    provision_pty_broker(run=run)
+    provision_node_proxy(run=run)
 
 
 def main() -> int:

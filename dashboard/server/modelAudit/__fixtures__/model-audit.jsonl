@@ -1,3 +1,0 @@
-{"event":"PreToolUse","tool":"Agent","session_id":"session-under-test","agent_id":null,"subagent_type":"general-purpose","description":"do a thing","requested_model":"opus","verdict":"allowed"}
-{"event":"PreToolUse","tool":"Agent","session_id":"session-under-test","agent_id":null,"subagent_type":"Explore","description":"do a thing","requested_model":"gpt-4-turbo-typo","verdict":"unknown"}
-{"event":"SubagentStop","session_id":"session-under-test","agent_id":"agent-abc123","agent_type":"general-purpose","requested_model":"opus","observed_model":"claude-haiku-4-5","observed_models":["claude-haiku-4-5"],"pairing":"heuristic","verdict":"mismatch"}

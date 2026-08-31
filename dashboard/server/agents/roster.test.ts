@@ -266,10 +266,13 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(declared.get('research-worker')).toEqual({
       id: 'research-worker',
       role: 'work',
+      group: null,
       runtime: 'codex',
       model: 'gpt-5.6-sol',
       tools: null,
       knowledgeSource: null,
+      connectors: null,
+      filesystemRoots: null,
       autonomyTier: null,
       skills: null,
       whatItReplaces: null,
@@ -280,8 +283,6 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
       projects: ['kb-ops'],
       description: 'Volume worker for kb-ops housekeeping.',
       version: 1,
-      io: null,
-      defaults: null,
     });
   });
 
@@ -316,45 +317,34 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
       });
   });
 
-  it('parses version, io, and advisory defaults with the same legacy defaults as Python', () => {
+  it('parses version with the same legacy default as Python', () => {
     const versioned = `---
 id: versioned-agent
 version: 3
-io:
-  inputs: {brief: markdown}
-  outputs: [report, citations]
-defaults: {budget_usd: 2.5, max_retries: 3, escalation: human-review}
 ---
 # Versioned
 `;
     const root = repoWithAgents({ 'versioned-agent.md': versioned, 'legacy-agent.md': AGENT_FILE.replaceAll('research-worker', 'legacy-agent') });
     const detail = readDeclaredAgentDetails(root).get('versioned-agent')!;
-    expect(detail).toMatchObject({
-      version: 3,
-      io: { inputs: { brief: 'markdown' }, outputs: ['report', 'citations'] },
-      defaults: { budgetUsd: 2.5, maxRetries: 3, escalation: 'human-review' },
-    });
-    expect(readDeclaredAgentDetails(root).get('legacy-agent')).toMatchObject({ version: 1, io: null, defaults: null });
+    expect(detail).toMatchObject({ version: 3 });
+    expect(readDeclaredAgentDetails(root).get('legacy-agent')).toMatchObject({ version: 1 });
     const quoted = repoWithAgents({ 'quoted-agent.md': versioned.replace('id: versioned-agent\nversion: 3', 'id: quoted-agent\nversion: "3"') });
     expect(readDeclaredAgentDetails(quoted).get('quoted-agent')).toMatchObject({ version: 1 });
   });
 
   it.each([
-    ['3', 3, 3],
-    ['"3"', 1, '3'],
-    ['"true"', 1, 'true'],
-    ['true', 1, null],
-    ['null', 1, null],
-    [null, 1, null],
-  ])('matches Python scalar semantics for version/defaults: %s', (scalar, version, budgetUsd) => {
+    ['3', 3],
+    ['"3"', 1],
+    ['"true"', 1],
+    ['true', 1],
+    ['null', 1],
+    [null, 1],
+  ])('matches Python scalar semantics for version: %s', (scalar, version) => {
     // Shared scalar fixture list: expected values are PyYAML +
     // scripts/agent_definitions.py, which is the declaration authority.
-    const scalarLines = scalar === null ? '' : `version: ${scalar}\ndefaults: {budget_usd: ${scalar}}\n`;
+    const scalarLines = scalar === null ? '' : `version: ${scalar}\n`;
     const root = repoWithAgents({ 'scalar-agent.md': `---\nid: scalar-agent\n${scalarLines}---\n` });
-    expect(readDeclaredAgentDetails(root).get('scalar-agent')).toMatchObject({
-      version,
-      defaults: scalar === null ? null : { budgetUsd, maxRetries: null, escalation: null },
-    });
+    expect(readDeclaredAgentDetails(root).get('scalar-agent')).toMatchObject({ version });
   });
 
   it('authoring a new list field with YAML block-list syntax throws in the frontmatter parser and drops the whole declaration (documented trap: only inline [a, b] list syntax parses)', () => {

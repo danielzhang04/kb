@@ -34,15 +34,22 @@ APPROVAL_NAMESPACE = "kb-phase1-approval"
 INVENTORY_NAMESPACE = "kb-phase1-inventory"
 
 REQUIRED_UNAUTH = (
-    "/api/kb/tree", "/api/registry", "/api/index", "/api/dag", "/api/routing",
-    "/api/agents", "/api/panels/health", "/api/panels/usage", "/api/workflows", "/events",
+    "/api/kb/tree", "/api/index", "/api/routing", "/api/agents", "/api/workflows",
+    "/api/inbox", "/api/home", "/api/health", "/api/attention", "/api/schedules",
+    "/api/control/runs", "/events",
 )
 REQUIRED_ROUTE_TESTS = (
     "server/index.test.ts",
+    "server/agents/routes.test.ts",
+    "server/control/routes.test.ts",
+    "server/health/routes.test.ts",
+    "server/home/routes.test.ts",
     "server/http/middleware.test.ts",
     "server/hub/sse.test.ts",
     "server/hub/ws.test.ts",
     "server/kb/routes.test.ts",
+    "server/schedules/service.test.ts",
+    "server/workflows/routes.test.ts",
 )
 # Task 15 non-data paths the confined browser must refuse, and one approved-root control.
 CONFINEMENT_REFUSED = ("CLAUDE.md", ".git/config", "dashboard/server/index.ts", "scripts/cards.py")

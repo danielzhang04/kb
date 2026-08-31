@@ -12,7 +12,7 @@
  */
 import { existsSync, readdirSync, readFileSync, lstatSync, realpathSync } from 'node:fs';
 import { join, relative, resolve, isAbsolute } from 'node:path';
-import { createHash } from 'node:crypto';
+import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 import type { CardProjection, ParsedCard } from '../planeA/cards.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
@@ -185,10 +185,6 @@ export interface AgentRosterEntry {
   description: string | null;
   /** Declaration revision. Legacy definitions are v1. */
   version?: number;
-  /** Advisory input/output schema descriptions from the declaration, or null when absent. */
-  io?: AgentIo | null;
-  /** Advisory budget/retry/escalation defaults from the declaration, or null when absent. */
-  defaults?: AgentDefaults | null;
   /** A declaration file was found for this id but could not safely be used. */
   declarationProblem?: string | null;
 }
@@ -196,6 +192,8 @@ export interface AgentRosterEntry {
 /** A declared agent parsed from `agents/<id>.md` frontmatter (C7.3). */
 export interface DeclaredAgent {
   id: string;
+  /** System maintenance declarations are grouped separately and rendered last. */
+  group?: 'system' | null;
   role: string | null;
   runtime: string | null;
   model: string | null;
@@ -203,6 +201,8 @@ export interface DeclaredAgent {
   knowledgeSource?: string[] | null;
   autonomyTier?: string | null;
   skills?: string[] | null;
+  connectors?: Array<{ server: string; tools: string[] }> | null;
+  filesystemRoots?: string[] | null;
   whatItReplaces?: string | null;
   buildsOn?: string[] | null;
   /** Optional complete execution-profile contract. Legacy declarations carry null for both fields. */
@@ -211,21 +211,8 @@ export interface DeclaredAgent {
   runnerBound: boolean;
   description: string | null;
   version?: number;
-  io?: AgentIo | null;
-  defaults?: AgentDefaults | null;
   /** Declared project relationships are display metadata, never routing authority. */
   projects: string[];
-}
-
-interface AgentIo {
-  inputs: YamlValue | null;
-  outputs: YamlValue | null;
-}
-
-interface AgentDefaults {
-  budgetUsd: string | number | null;
-  maxRetries: string | number | null;
-  escalation: string | number | null;
 }
 
 export type ExecutionAssignmentRole = 'manager' | 'worker';
@@ -468,6 +455,30 @@ function listField(v: unknown): string[] | null {
   return values;
 }
 
+function connectorField(value: unknown, source?: string): Array<{ server: string; tools: string[] }> | null {
+  if (source) {
+    const frontmatter = /^(?:\uFEFF)?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(source)?.[1];
+    const raw = frontmatter ? /^connectors:\s*(.+)$/m.exec(frontmatter)?.[1] : undefined;
+    if (raw !== undefined) {
+      const parsed = parseYaml(`connectors: ${raw}`);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        value = (parsed as Record<string, YamlValue>).connectors;
+      }
+    }
+  }
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value)) return null;
+  const connectors: Array<{ server: string; tools: string[] }> = [];
+  for (const item of value) {
+    const record = recordValue(item);
+    if (!record || typeof record.server !== 'string') return null;
+    const tools = listField(record.tools);
+    if (tools === null) return null;
+    connectors.push({ server: record.server, tools });
+  }
+  return connectors;
+}
+
 function recordValue(value: unknown): Record<string, YamlValue> | null {
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
     return value as Record<string, YamlValue>;
@@ -488,72 +499,21 @@ function declaredVersion(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : 1;
 }
 
-function declaredIo(value: unknown): AgentIo | null {
-  const io = recordValue(value);
-  return io ? { inputs: io.inputs ?? null, outputs: io.outputs ?? null } : null;
-}
-
-function advisoryDefault(value: unknown): string | number | null {
-  if (typeof value === 'number') return value;
-  // The dashboard's compact YAML reader intentionally leaves decimal literals
-  // as strings; normalize this advisory numeric subset to match Python YAML.
-  if (typeof value === 'string' && /^-?\d+\.\d+$/.test(value)) return Number(value);
-  return typeof value === 'string' ? value : null;
-}
-
-function declaredDefaults(value: unknown): AgentDefaults | null {
-  const defaults = recordValue(value);
-  return defaults ? {
-    budgetUsd: advisoryDefault(defaults.budget_usd),
-    maxRetries: advisoryDefault(defaults.max_retries),
-    escalation: advisoryDefault(defaults.escalation),
-  } : null;
-}
-
 /**
- * Agent declarations inherit the card parser's strict flat shape.  The new
- * `io` / `defaults` fields may additionally use YAML block maps; the fallback
- * is limited to those two top-level keys so old malformed fields stay invalid.
+ * Agent declarations inherit the card parser's strict flat shape. The `version` field additionally
+ * reads from the permissive YAML subset parser so a bare integer (`version: 3`) types correctly while
+ * quoted `version: "3"` stays a string and falls back to the legacy v1 default, matching Python exactly.
  */
 function parseAgentFrontmatter(text: string): { meta: Record<string, unknown>; body: string } {
-  try {
-    const parsed = parseCardFrontmatter(text);
-    const meta = { ...parsed.meta } as Record<string, unknown>;
-    // Keep the established strict parser as the admission gate, then recover
-    // only the typed extension fields from the YAML subset parser. This makes
-    // bare `version: 3` an integer while quoted `version: "3"` stays a string
-    // and therefore gets the legacy v1 default, matching Python exactly.
-    const head = text.replace(/^---\r?\n/, '');
-    const fenceIdx = head.search(/\r?\n---\r?\n/);
-    const extensions = fenceIdx === -1 ? null : parseYaml(head.slice(0, fenceIdx));
-    if (typeof extensions === 'object' && extensions !== null && !Array.isArray(extensions)) {
-      for (const key of ['version', 'io', 'defaults']) {
-        if (Object.hasOwn(extensions, key)) meta[key] = (extensions as Record<string, YamlValue>)[key];
-      }
-    }
-    return { meta, body: parsed.body };
-  } catch (err) {
-    if (!text.startsWith('---\n') && !text.startsWith('---\r\n')) throw err;
-    const head = text.replace(/^---\r?\n/, '');
-    const fenceIdx = head.search(/\r?\n---\r?\n/);
-    if (fenceIdx === -1) throw err;
-    const frontmatter = head.slice(0, fenceIdx);
-    let topLevel: string | null = null;
-    for (const line of frontmatter.split(/\r?\n/)) {
-      if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
-      if (!/^\s/.test(line)) {
-        const key = /^([^:\s][^:]*):/.exec(line);
-        if (!key || line.startsWith('-')) throw err;
-        topLevel = key[1].trim();
-      } else if (topLevel !== 'io' && topLevel !== 'defaults') {
-        throw err;
-      }
-    }
-    const parsed = parseYaml(frontmatter);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw err;
-    const body = head.slice(fenceIdx).replace(/^\r?\n---\r?\n/, '').replace(/^\r?\n+/, '');
-    return { meta: parsed as Record<string, unknown>, body };
+  const parsed = parseCardFrontmatter(text);
+  const meta = { ...parsed.meta } as Record<string, unknown>;
+  const head = text.replace(/^---\r?\n/, '');
+  const fenceIdx = head.search(/\r?\n---\r?\n/);
+  const extensions = fenceIdx === -1 ? null : parseYaml(head.slice(0, fenceIdx));
+  if (typeof extensions === 'object' && extensions !== null && !Array.isArray(extensions) && Object.hasOwn(extensions, 'version')) {
+    meta.version = (extensions as Record<string, YamlValue>).version;
   }
+  return { meta, body: parsed.body };
 }
 
 /** Extract display-only, repo-contained paths from the declaration body. */
@@ -661,6 +621,7 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
     const projects = [...new Set([...projectIds(meta.projects), ...inferredProjects])].sort();
     details.set(candidate.claimedId, {
       id: candidate.claimedId,
+      group: meta.group === 'system' ? 'system' : null,
       role: strFieldOrNull(meta.role),
       runtime: strFieldOrNull(meta.runtime),
       model: strFieldOrNull(meta.model),
@@ -668,6 +629,8 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       knowledgeSource: listField(meta['knowledge-source']),
       autonomyTier: strFieldOrNull(meta['autonomy-tier']),
       skills: listField(meta.skills),
+      connectors: connectorField(meta.connectors, candidate.text),
+      filesystemRoots: listField(meta['filesystem-roots']),
       whatItReplaces: strFieldOrNull(meta['what-it-replaces']),
       buildsOn: listField(meta['builds-on']),
       defaultProfile: profileConfig.defaultProfile,
@@ -675,11 +638,9 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       runnerBound: meta['runner-bound'] === true,
       description: strFieldOrNull(meta.description),
       version: declaredVersion(meta.version),
-      io: declaredIo(meta.io),
-      defaults: declaredDefaults(meta.defaults),
       source: candidate.source,
       instructionMarkdown: candidate.parsed.body,
-      sourceHash: createHash('sha256').update(candidate.text, 'utf8').digest('hex'),
+      sourceHash: normalizedTextSha256(candidate.text),
       codebasePaths,
       projects,
       workflowPaths: codebasePaths.filter((path) => /^orgs\/[^/]+\/workflows\//.test(path)),
@@ -733,6 +694,7 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
     const id = detail.id;
     out.set(id, {
       id,
+      group: detail.group,
       role: detail.role,
       runtime: detail.runtime,
       model: detail.model,
@@ -740,6 +702,12 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
       knowledgeSource: detail.knowledgeSource === null || detail.knowledgeSource === undefined ? null : [...detail.knowledgeSource],
       autonomyTier: detail.autonomyTier ?? null,
       skills: detail.skills === null || detail.skills === undefined ? null : [...detail.skills],
+      connectors: detail.connectors === null || detail.connectors === undefined
+        ? null
+        : detail.connectors.map((connector) => ({ server: connector.server, tools: [...connector.tools] })),
+      filesystemRoots: detail.filesystemRoots === null || detail.filesystemRoots === undefined
+        ? null
+        : [...detail.filesystemRoots],
       whatItReplaces: detail.whatItReplaces ?? null,
       buildsOn: detail.buildsOn === null || detail.buildsOn === undefined ? null : [...detail.buildsOn],
       defaultProfile: detail.defaultProfile,
@@ -747,12 +715,6 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
       runnerBound: detail.runnerBound,
       description: detail.description,
       version: detail.version,
-      io: detail.io === null || detail.io === undefined ? null : { inputs: detail.io.inputs, outputs: detail.io.outputs },
-      defaults: detail.defaults === null || detail.defaults === undefined ? null : {
-        budgetUsd: detail.defaults.budgetUsd,
-        maxRetries: detail.defaults.maxRetries,
-        escalation: detail.defaults.escalation,
-      },
       projects: detail.projects,
     });
   }
@@ -830,8 +792,6 @@ export function buildRoster(
       allowedProfiles: dec?.allowedProfiles ? [...dec.allowedProfiles] : null,
       description: dec?.description ?? null,
       version: dec?.version ?? 1,
-      io: dec?.io === null || dec?.io === undefined ? null : { ...dec.io },
-      defaults: dec?.defaults === null || dec?.defaults === undefined ? null : { ...dec.defaults },
       declarationProblem,
     });
   }

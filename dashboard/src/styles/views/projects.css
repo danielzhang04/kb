@@ -54,23 +54,23 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-4);
+  display: flex;
+  flex-direction: column;
 }
 
 /* A card is a full flat hairline panel button. Hover lifts the border to the
  * accent — the one terracotta touch, no fill wash, no shadow, no glow. */
 .v-projects__card {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
+  min-height: 36px;
+  max-height: 44px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-1) var(--space-2);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -81,11 +81,10 @@
 
 .v-projects__card:hover {
   background: var(--bg-elevated);
-  border-left-color: var(--accent-strong);
 }
 
 .v-projects__card:focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
 
@@ -111,10 +110,9 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--fg-dim);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
+  background: transparent;
+  border: 0;
+  padding: 0;
   line-height: 1.6;
 }
 
@@ -136,7 +134,7 @@
 .v-projects__crumb-back {
   background: transparent;
   border: none;
-  color: var(--accent-strong);
+  color: var(--accent);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 500;

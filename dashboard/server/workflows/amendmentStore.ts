@@ -1,13 +1,14 @@
 /** Durable, dashboard-owned state for workflow definition amendments. This is deliberately outside
  * the repository: a pending PR is runtime control state, not canonical workflow content. */
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
 import { renameWithRetrySync } from '../atomicRename.ts';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DEFAULT_WORK_BRANCH } from '../write/branch.ts';
 
 export type AmendmentPhase = 'prepared' | 'committed' | 'pushed' | 'audit-pending' | 'pending-human-merge' | 'audit-failed' | 'settled';
-export type DefinitionAmendmentKind = 'assignment' | 'governance';
+export type DefinitionAmendmentKind = 'assignment' | 'governance'
+  | 'agent-builder-create' | 'agent-builder-edit' | 'workflow-builder-create' | 'workflow-builder-edit';
 
 export interface PendingDefinitionAmendment {
   kind: DefinitionAmendmentKind;
@@ -17,17 +18,21 @@ export interface PendingDefinitionAmendment {
   branch: string;
   pr: { url?: string; number?: number };
   phase: AmendmentPhase;
+  /** Present on builder operations; durable across daemon restarts. */
+  idempotencyKey?: string;
+  requestFingerprint?: string;
 }
 export type AmendmentLookup = { ok: true; record: PendingDefinitionAmendment | null } | { ok: false; detail: string };
 
 export interface DefinitionAmendmentStore {
   lookup(workflowPath: string, activeSourceHash: string): AmendmentLookup;
+  lookupRequest(entityPath: string, idempotencyKey: string): AmendmentLookup;
   put(record: PendingDefinitionAmendment): void;
   update(record: PendingDefinitionAmendment): void;
   remove(workflowPath: string): void;
 }
 
-const WORKFLOW_PATH = /^orgs\/[A-Za-z0-9._-]+\/workflows\/[A-Za-z0-9._-]+\.md$/;
+const WORKFLOW_PATH = /^(?:agents\/[a-z0-9][a-z0-9-]{0,63}\.md|orgs\/[A-Za-z0-9._-]+\/workflows\/[A-Za-z0-9._-]+\.md)$/;
 const HASH = /^[a-f0-9]{64}$/;
 const PHASES = new Set<AmendmentPhase>(['prepared', 'committed', 'pushed', 'audit-pending', 'pending-human-merge', 'audit-failed', 'settled']);
 
@@ -37,21 +42,26 @@ function isSafePrUrl(value: unknown): value is string {
 }
 
 function key(workflowPath: string): string {
-  return createHash('sha256').update(workflowPath, 'utf8').digest('hex');
+  return sha256Hex(workflowPath);
 }
 
 function validate(value: unknown, workflowPath: string): PendingDefinitionAmendment | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
-  if (Object.keys(row).some((name) => !['kind', 'workflowPath', 'baseSourceHash', 'proposedSourceHash', 'branch', 'pr', 'phase'].includes(name))
+  if (Object.keys(row).some((name) => !['kind', 'workflowPath', 'baseSourceHash', 'proposedSourceHash', 'branch', 'pr', 'phase', 'idempotencyKey', 'requestFingerprint'].includes(name))
     || row.workflowPath !== workflowPath || !HASH.test(String(row.baseSourceHash)) || !HASH.test(String(row.proposedSourceHash))
-    || (row.kind !== undefined && row.kind !== 'assignment' && row.kind !== 'governance')
+    || (row.kind !== undefined && !['assignment', 'governance', 'agent-builder-create', 'agent-builder-edit', 'workflow-builder-create', 'workflow-builder-edit'].includes(String(row.kind)))
     || row.branch !== DEFAULT_WORK_BRANCH || !row.pr || typeof row.pr !== 'object' || Array.isArray(row.pr) || !PHASES.has(row.phase as AmendmentPhase)) return null;
   const pr = row.pr as Record<string, unknown>;
   if (Object.keys(pr).some((name) => name !== 'url' && name !== 'number')
     || (pr.url !== undefined && !isSafePrUrl(pr.url)) || (pr.number !== undefined && (!Number.isInteger(pr.number) || (pr.number as number) < 1))) return null;
-  return { kind: (row.kind ?? 'assignment') as DefinitionAmendmentKind, workflowPath, baseSourceHash: row.baseSourceHash as string, proposedSourceHash: row.proposedSourceHash as string,
-    branch: row.branch, pr: { ...(typeof pr.url === 'string' ? { url: pr.url } : {}), ...(typeof pr.number === 'number' ? { number: pr.number } : {}) }, phase: row.phase as AmendmentPhase };
+  const kind = (row.kind ?? 'assignment') as DefinitionAmendmentKind;
+  const builder = kind.includes('-builder-');
+  if (builder && (typeof row.idempotencyKey !== 'string' || row.idempotencyKey.trim() === '' || !HASH.test(String(row.requestFingerprint)))) return null;
+  if (!builder && (row.idempotencyKey !== undefined || row.requestFingerprint !== undefined)) return null;
+  return { kind, workflowPath, baseSourceHash: row.baseSourceHash as string, proposedSourceHash: row.proposedSourceHash as string,
+    branch: row.branch, pr: { ...(typeof pr.url === 'string' ? { url: pr.url } : {}), ...(typeof pr.number === 'number' ? { number: pr.number } : {}) }, phase: row.phase as AmendmentPhase,
+    ...(builder ? { idempotencyKey: row.idempotencyKey as string, requestFingerprint: row.requestFingerprint as string } : {}) };
 }
 
 function assertRecord(record: PendingDefinitionAmendment): void {
@@ -67,6 +77,10 @@ export function createInMemoryDefinitionAmendmentStore(): DefinitionAmendmentSto
       if (row.phase === 'settled') return { ok: true, record: null };
       if (row.proposedSourceHash === activeSourceHash) { rows.set(workflowPath, { ...row, phase: 'settled' }); return { ok: true, record: null }; }
       return { ok: true, record: { ...row, pr: { ...row.pr } } };
+    },
+    lookupRequest(entityPath, idempotencyKey) {
+      const row = rows.get(entityPath);
+      return { ok: true, record: row?.idempotencyKey === idempotencyKey ? { ...row, pr: { ...row.pr } } : null };
     },
     put(record) { assertRecord(record); rows.set(record.workflowPath, { ...record, pr: { ...record.pr } }); },
     update(record) { assertRecord(record); rows.set(record.workflowPath, { ...record, pr: { ...record.pr } }); },
@@ -115,6 +129,12 @@ export function createFileDefinitionAmendmentStore(stateRoot: string): Definitio
         return { ok: true, record: row };
       } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
     },
+    lookupRequest(entityPath, idempotencyKey) {
+      try {
+        const row = read(entityPath);
+        return { ok: true, record: row?.idempotencyKey === idempotencyKey ? row : null };
+      } catch (error) { return { ok: false, detail: error instanceof Error ? error.message : String(error) }; }
+    },
     put: write,
     update: write,
     remove(workflowPath) { ensureDir(); const path = pathFor(workflowPath); if (existsSync(path)) unlinkSync(path); },
@@ -134,6 +154,7 @@ function normalizeLegacyAssignmentRecord(record: PendingDefinitionAmendment | Pe
 function legacyAssignmentStore(store: DefinitionAmendmentStore): AssignmentAmendmentStore {
   return {
     lookup: store.lookup,
+    lookupRequest: store.lookupRequest,
     put: (record) => store.put(normalizeLegacyAssignmentRecord(record)),
     update: (record) => store.update(normalizeLegacyAssignmentRecord(record)),
     remove: store.remove,

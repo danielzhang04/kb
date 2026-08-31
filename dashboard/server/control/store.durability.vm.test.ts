@@ -114,7 +114,11 @@ it('proves the durability measurement harness against a local source size', asyn
   const source = join(root, 'control-plane.json');
   const prior = process.env.KB_VM_DURABILITY_SOURCE;
   try {
-    writeFileSync(source, Buffer.alloc(128 * 1024));
+    const serialized = JSON.stringify(emptyControlPlaneDocument());
+    const targetBytes = 128 * 1024;
+    const paddingBytes = targetBytes - Buffer.byteLength(serialized);
+    if (paddingBytes < 0) throw new Error('empty control-plane fixture exceeds durability target');
+    writeFileSync(source, serialized + ' '.repeat(paddingBytes));
     process.env.KB_VM_DURABILITY_SOURCE = source;
     await runVmDurabilityBenchmark();
   } finally {
@@ -122,7 +126,7 @@ it('proves the durability measurement harness against a local source size', asyn
     else process.env.KB_VM_DURABILITY_SOURCE = prior;
     rmSync(root, { recursive: true, force: true });
   }
-});
+}, 60_000);
 
 it.skipIf(process.env.KB_VM_DURABILITY_BENCHMARK !== '1')(
   'meets the VM deploy-critical latency budget',

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { createReadStream } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import type { AttemptLaunch } from '../pty/contracts.ts';
 import type { ControlPlaneStore } from './store.ts';
 import type { Attempt, IterationArtifactSnapshot, ManagedSession, RunDetail, Stage } from './types.ts';
 import { runLifecycleKind, type RunLifecycleKind } from './runLifecycle.ts';
@@ -126,8 +128,16 @@ export interface WorkerExecutionResult {
 }
 
 export interface WorkerAdapter {
-  /** operationKey is stable across reconciliation; implementations must not spawn duplicates. */
-  execute(input: {
+  /**
+   * Two-phase attempt start ([C-S5]). `begin` returns immediately with `{receipt,result}`: the receipt
+   * resolves only once the session exists, its durable operation receipt is written, the one-to-one
+   * attempt binding is committed, and the recorder is attached. A caller MUST await the receipt before
+   * projecting `starting -> running`, and only then await `result`. A refused receipt therefore never
+   * produces a running projection, and an exact duplicate `operationKey` shares one receipt and one
+   * result while a changed request hash conflicts.
+   * operationKey is stable across reconciliation; implementations must not spawn duplicates.
+   */
+  begin(input: {
     operationKey: string;
     subject: string;
     runRef: string;
@@ -166,7 +176,7 @@ export interface WorkerAdapter {
      */
     proposalStage?: ProposalStage;
     project?: string;
-  }): Promise<WorkerExecutionResult>;
+  }): AttemptLaunch;
 }
 
 export interface ManagedCancellationInput {
@@ -511,9 +521,9 @@ export function canonicalStageResultHash(
   };
   const payload = { summary: result.summary, artifacts, changed, checkpoints };
   if (result.iterationOutcome !== undefined) {
-    return createHash('sha256').update(JSON.stringify({ ...payload, iterationOutcome }), 'utf8').digest('hex');
+    return sha256Hex(JSON.stringify({ ...payload, iterationOutcome }));
   }
-  return createHash('sha256').update(JSON.stringify({ ...payload, iterationOutcome }), 'utf8').digest('hex');
+  return sha256Hex(JSON.stringify({ ...payload, iterationOutcome }));
 }
 
 function validatedIterationOutcome(contract: IterationOutcomeContract, outcome: IterationOutcome): IterationOutcome | null {
@@ -575,7 +585,7 @@ export function stableHumanTitle(kind: 'gate' | 'policy' | 'budget' | 'execution
  * states. Deliberately carries no attemptRef: the condition belongs to the stranded record, not to any one
  * attempt, so repeated encounters reuse the one open boundary instead of stacking byte-identical parks.
  */
-export function strandedIntegrationTitle(stageId: string): string {
+function strandedIntegrationTitle(stageId: string): string {
   return stableHumanTitle('execution', stageId, 'canonical-integration-incomplete');
 }
 
@@ -843,6 +853,10 @@ export class AutomaticExecutionEngine {
     const startedStageIds: string[] = [];
     const completedStageIds: string[] = [];
     const waitingStageIds: string[] = [];
+    // Every boundary/blocked return builds the identical accumulator triple around the run's current
+    // lifecycle kind; this closure is that one object so the shape can never drift return-to-return.
+    const blockedOutcome = (state: RunLifecycleKind): ExecutionOutcome =>
+      ({ state, startedStageIds, completedStageIds, waitingStageIds });
     try {
       this.assertRunBinding(input);
       // Resolve only after the immutable run/proposal binding is proven. In particular, an arbitrary
@@ -854,11 +868,11 @@ export class AutomaticExecutionEngine {
       if (initialIterationWait.length > 0) {
         waitingStageIds.push(...initialIterationWait);
         if (hasRunWideBlockingBoundary(this.detail(input))) {
-          return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
         }
       }
       if (!(await this.ensureManager(input, policy, resolvedAgents.manager))) {
-        return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+        return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
       }
       // BigInt keeps every safe-integer declaration exact; no old fixed cap or lossy product can
       // truncate a valid high bound. Each compiled schedule step can consume one durable worker pass,
@@ -871,31 +885,31 @@ export class AutomaticExecutionEngine {
       for (let pass = 0n; pass <= reconciliationPasses; pass += 1n) {
         const detail = this.detail(input);
         if (this.cancellingRuns.has(lockKey)) {
-          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(detail.run.lifecycle));
         }
         if (['succeeded', 'failed', 'stopped', 'stopping'].includes(runLifecycleKind(detail.run.lifecycle))) {
-          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(detail.run.lifecycle));
         }
         if (runLifecycleKind(detail.run.lifecycle) === 'interrupted'
           && detail.humanRequests.some((request) => request.state === 'open')) {
-          return { state: runLifecycleKind(detail.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(detail.run.lifecycle));
         }
         const iterationWait = await this.reconcileIterationRuntime(input);
         if (iterationWait.length > 0) {
           for (const stageId of iterationWait) if (!waitingStageIds.includes(stageId)) waitingStageIds.push(stageId);
           if (hasRunWideBlockingBoundary(this.detail(input))) {
-            return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+            return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
           }
         }
         this.releaseDependents(input, this.detail(input));
         await this.scheduleIterationTurns(input);
         const refreshed = this.detail(input);
         if (hasRunWideBlockingBoundary(refreshed)) {
-          return { state: runLifecycleKind(refreshed.run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(refreshed.run.lifecycle));
         }
         if (refreshed.stages.some((stage) => stage.state === 'failed' || stage.state === 'stopped')) {
           const state = runLifecycleKind(this.transitionRun(input, 'failed').lifecycle);
-          return { state, startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(state);
         }
         const candidates: Array<{ stage: Stage; proposalStage: ProposalStage }> = [];
         for (const stage of [...refreshed.stages].sort((left, right) => left.stageId.localeCompare(right.stageId))) {
@@ -905,14 +919,14 @@ export class AutomaticExecutionEngine {
           if (boundary === 'waiting') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
             if (hasRunWideBlockingBoundary(this.detail(input))) {
-              return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+              return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
             }
             continue;
           }
           if (boundary === 'refused') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
             if (hasRunWideBlockingBoundary(this.detail(input))) {
-              return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+              return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
             }
             continue;
           }
@@ -931,7 +945,7 @@ export class AutomaticExecutionEngine {
         const batch = candidates.slice(0, available);
         if (batch.length === 0) {
           const settled = await this.settleRunState(input);
-          return { state: runLifecycleKind(settled.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(settled.lifecycle));
         }
         const prepared = batch
           .map(({ stage, proposalStage }) => this.prepareOrContain(
@@ -954,7 +968,7 @@ export class AutomaticExecutionEngine {
         if (results.some((result) => result.state === 'waiting-human')
           && runLifecycleKind(this.detail(input).run.lifecycle) === 'waiting-human'
           && hasRunWideBlockingBoundary(this.detail(input))) {
-          return { state: runLifecycleKind(this.detail(input).run.lifecycle), startedStageIds, completedStageIds, waitingStageIds };
+          return blockedOutcome(runLifecycleKind(this.detail(input).run.lifecycle));
         }
       }
       throw new AutomaticExecutionError('DAG reconciliation exceeded its deterministic pass bound');
@@ -1739,16 +1753,22 @@ export class AutomaticExecutionEngine {
         return 'refused';
       }
     }
-    const actionClassification = classifyActionRisk(proposalStage.action);
-    if (actionClassification.disposition === 'forbidden') {
-      const reason = actionClassification.reason;
+    // The mechanical tail every policy rung below shares: mint the stage's policy boundary under its
+    // stable title if absent (else re-park the stage), then return refused/waiting by disposition. Only
+    // the tail folds — the gate/action-risk/restricted-intent/policy ladder above and the
+    // capability-mismatch rung below keep their exact ordering and their own distinct bodies.
+    const mintOrWaitPolicyBoundary = (reason: string, refuse: boolean): 'waiting' | 'refused' => {
       const title = stableHumanTitle('policy', stage.stageId, reason);
       if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(input, stage, 'governance-refusal', title, reason);
+        this.createBoundary(input, stage, refuse ? 'governance-refusal' : 'approval', title, reason);
       } else {
         this.ensureStageWaiting(input, stage.stageRef);
       }
-      return 'refused';
+      return refuse ? 'refused' : 'waiting';
+    };
+    const actionClassification = classifyActionRisk(proposalStage.action);
+    if (actionClassification.disposition === 'forbidden') {
+      return mintOrWaitPolicyBoundary(actionClassification.reason, true);
     }
     // Resolved once and shared by the restricted-intent scan and the policy call below, so a stage cannot
     // clear one and park on the other.
@@ -1762,19 +1782,7 @@ export class AutomaticExecutionEngine {
       && restricted.reason === 'external-publication-intent-requires-human-approval'
       && publicationAuthorization === 'approved';
     if (restricted && !restrictedReleased) {
-      const title = stableHumanTitle('policy', stage.stageId, restricted.reason);
-      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(
-          input,
-          stage,
-          restricted.kind === 'refuse' ? 'governance-refusal' : 'approval',
-          title,
-          restricted.reason,
-        );
-      } else {
-        this.ensureStageWaiting(input, stage.stageRef);
-      }
-      return restricted.kind === 'refuse' ? 'refused' : 'waiting';
+      return mintOrWaitPolicyBoundary(restricted.reason, restricted.kind === 'refuse');
     }
     const routing = effectiveWorkerRouting(detail, stage, proposalStage);
     const iterationVerdictTurn = [...detail.iterationRequests].reverse().some((request) => {
@@ -1807,13 +1815,7 @@ export class AutomaticExecutionEngine {
       ...(publicationAuthorization === 'none' ? {} : { requestsPublication: true, publicationAuthorization }),
     }, policy);
     if (decision.disposition !== 'allow') {
-      const title = stableHumanTitle('policy', stage.stageId, decision.reason);
-      if (!detail.humanRequests.some((request) => request.stageRef === stage.stageRef && request.title === title)) {
-        this.createBoundary(input, stage, decision.disposition === 'refuse' ? 'governance-refusal' : 'approval', title, decision.reason);
-      } else {
-        this.ensureStageWaiting(input, stage.stageRef);
-      }
-      return decision.disposition === 'refuse' ? 'refused' : 'waiting';
+      return mintOrWaitPolicyBoundary(decision.reason, decision.disposition === 'refuse');
     }
     if (!decision.profile || REQUIRED_WORKER_CAPABILITIES.some((capability) => !decision.profile?.capabilities.includes(capability))) {
       const title = stableHumanTitle('policy', stage.stageId, 'profile-capability-mismatch');
@@ -1965,9 +1967,10 @@ export class AutomaticExecutionEngine {
     if (attempt.state === 'queued') attempt = this.transitionAttempt(input, attempt.attemptRef, 'starting');
     session = this.detail(input).sessions.find((candidate) => candidate.sessionRef === session?.sessionRef) as ManagedSession;
     if (session.state === 'pending') session = this.transitionSession(input, session.sessionRef, 'starting');
-    if (session.state === 'starting') session = this.transitionSession(input, session.sessionRef, 'running');
-    attempt = this.detail(input).attempts.find((candidate) => candidate.attemptRef === attempt?.attemptRef) as Attempt;
-    if (attempt.state === 'starting') attempt = this.transitionAttempt(input, attempt.attemptRef, 'running');
+    // `starting -> running` is DELIBERATELY not projected here ([C-S5]). Nothing has been started yet:
+    // the attempt reaches `running` only in `projectAttemptRunning`, once the attempt port's start
+    // receipt proves the session exists and is durably bound. A refused start therefore never leaves a
+    // `running` attempt or session behind.
     return {
       stage: this.detail(input).stages.find((candidate) => candidate.stageRef === stage.stageRef) as Stage,
       proposalStage, attempt, session, profile, assignedAgent,
@@ -2235,7 +2238,7 @@ export class AutomaticExecutionEngine {
     }
     let result: WorkerExecutionResult;
     try {
-      result = await this.options.workers.execute({
+      const launch = this.options.workers.begin({
         operationKey,
         subject: input.subject,
         runRef: input.runRef,
@@ -2257,6 +2260,20 @@ export class AutomaticExecutionEngine {
         ...(iterationContract ? { iterationContract, expectsIterationOutcome: true } : {}),
         ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
       });
+      // Both halves of the launch exist the moment `begin` returns. If the receipt rejects, the catch
+      // below synthesizes a failed result and NOTHING ever awaits `launch.result` — so claim its
+      // rejection here, before the first await, or a later failure there is an unhandled rejection that
+      // can take the daemon down. The real await stays in PHASE 2.
+      launch.result.catch(() => { /* claimed; PHASE 2 owns the real outcome when it is reached */ });
+      // PHASE 1. The receipt proves the session was created, its durable operation receipt written, the
+      // attempt bound one-to-one, and the recorder attached. Only a successful receipt may promote the
+      // attempt/session to `running`; a refusal falls straight through to the port's own failure result,
+      // so a create/bind failure or a cancellation before the receipt is durably failed with no
+      // `running` projection anywhere.
+      const receipt = await launch.receipt;
+      if (receipt.ok) this.projectAttemptRunning(input, attempt.attemptRef, session.sessionRef);
+      // PHASE 2. Only now is the attempt's terminal result awaited.
+      result = await launch.result;
     } catch (error) {
       result = {
         state: 'failed', summary: error instanceof Error ? error.message : 'worker adapter failed',
@@ -2500,6 +2517,18 @@ export class AutomaticExecutionEngine {
     const result = this.options.store.transitionStage(input.subject, stageRef, stage.version, state);
     if (!result.ok) throw new AutomaticExecutionError(result.detail);
     return result.value;
+  }
+
+  /**
+   * The single `starting -> running` projection for a worker attempt ([C-S5]). It is reachable only
+   * from the receipt-proved branch of `executeAttemptUnsafe`, so `running` in the store always means a
+   * created, durably bound, recorder-attached session — never merely an intent to start one.
+   */
+  private projectAttemptRunning(input: ExecuteRunInput, attemptRef: string, sessionRef: string): void {
+    const session = this.detail(input).sessions.find((candidate) => candidate.sessionRef === sessionRef);
+    if (session && session.state === 'starting') this.transitionSession(input, sessionRef, 'running');
+    const attempt = this.detail(input).attempts.find((candidate) => candidate.attemptRef === attemptRef);
+    if (attempt && attempt.state === 'starting') this.transitionAttempt(input, attemptRef, 'running');
   }
 
   private transitionAttempt(input: ExecuteRunInput, attemptRef: string, state: Attempt['state']): Attempt {

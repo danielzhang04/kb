@@ -5,7 +5,8 @@
  * intent and dependencies; the server supplies card ids, the workflow run id, claim tokens, and routing.
  * Every card is prepared and published by one fixed Python subprocess through scripts/cards.py.
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verifySession, isInternalServiceCaller } from '../auth/session.ts';
@@ -201,6 +202,10 @@ export interface ManagedRootActivationOptions {
    * ONE-SHOT authorization, run exactly once after the opening pull and before local mutation. Callers
    * put their SIDE EFFECTS here — the T3 authorize audit row, the post-audit preamble, the activation
    * claim. It is never re-run on a push reconcile; see {@link reassertAfterReconcile}.
+   *
+   * REQUIRED (not optional in practice): this function throws at entry when it is absent, because the
+   * mutation below is the atomic multi-root `cards.transition` exception — a caller that omits it would
+   * run that mutation with no T3 authorize audit row and no activation claim, silently.
    */
   authorizeAfterPrepare?: () => void | Promise<void>;
   /**
@@ -221,9 +226,20 @@ export interface ManagedRootActivationOptions {
 }
 
 /**
- * Exact canonical activation transaction for managed roots. It pulls ops before mutation, uses
- * cards.transition for blocked->inbox, commits/pushes exact paths, then proves HEAD contains the
- * bytes just validated. Empty-dependency blocked cards remain invisible to legacy dispatch until here.
+ * Exact canonical activation transaction for managed roots. It pulls ops before mutation, walks each
+ * root blocked->inbox, commits/pushes exact paths, then proves HEAD contains the bytes just validated.
+ * Empty-dependency blocked cards remain invisible to legacy dispatch until here.
+ *
+ * [P4-C14] MANAGED-ROOT ACTIVATION EXCEPTION (R2). This is the documented THIRD direct
+ * `cards.transition`/`executeCardMutation` site permitted by the §9 / [P4-C14] transition scan,
+ * alongside `write/cardRespond.ts` (the executor) and the reconciliation publisher channel
+ * (`reconciliation/{publisher,realPorts}.ts`). It is INTENTIONALLY not a reconciliation `card-transition`
+ * intent: it publishes MULTIPLE dependency-free roots in ONE atomic commit with its own T3 authorize
+ * audit row + activation claim (`authorizeAfterPrepare`) and a pure reassert-after-reconcile re-proof.
+ * Serial one-card-per-intent publishes would break that atomicity and the T3 authorization re-proof — a
+ * security regression — so it stays a direct executor here. `authorizeAfterPrepare` runs before the
+ * mutation (see the "[P4-C14]/R2" ordering test); an activation with no authorize step or no re-proof
+ * is refused at entry — neither hook is optional.
  */
 export async function activateManagedRootCards(options: ManagedRootActivationOptions): Promise<{ replayed: boolean; cardPaths: string[] }> {
   if (!SAFE_ID_RE.test(options.runRef) || options.cardRefs.length === 0
@@ -238,6 +254,12 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
   const reassertAfterReconcile = options.reassertAfterReconcile;
   if (!reassertAfterReconcile) {
     throw new Error('managed root activation requires a reassertAfterReconcile re-proof');
+  }
+  // Same structural-impossibility guard as reassertAfterReconcile above: a caller that omits the T3
+  // authorize step must never be able to reach the mutation below with no audit row and no claim.
+  const authorizeAfterPrepare = options.authorizeAfterPrepare;
+  if (!authorizeAfterPrepare) {
+    throw new Error('managed root activation requires an authorizeAfterPrepare audit step');
   }
   const runGit = options.runGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
@@ -272,7 +294,7 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
     if (!options.verifyCompletedRoots) throw new Error('completed managed roots require canonical provenance verification');
     await options.verifyCompletedRoots({ runRef: options.runRef, cardRefs: completedCardRefs });
   }
-  await options.authorizeAfterPrepare?.();
+  await authorizeAfterPrepare();
   const applied = checked(decode(runPy(options.repoRoot, MANAGED_ROOT_ACTIVATION_SCRIPT, JSON.stringify({
     mode: 'apply', runRef: options.runRef, cardRefs: expected, completedCardRefs,
   }))));
@@ -320,7 +342,7 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
 
 /** Stable per-run/stage card identity permits exact crash reconciliation without trusting filenames. */
 export function workflowCardId(runId: string, stageId: string): string {
-  return `wf-${createHash('sha256').update(`${runId}\0${stageId}`, 'utf8').digest('hex').slice(0, 24)}`;
+  return `wf-${sha256Hex(`${runId}\0${stageId}`).slice(0, 24)}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

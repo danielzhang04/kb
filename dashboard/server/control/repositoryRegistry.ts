@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { readFileSync } from 'node:fs';
 
 export interface RepositoryBinding { readonly registryId: string; readonly identity: string }
@@ -29,7 +29,7 @@ export function loadRepositoryRegistry(configPath: string, variables: Readonly<{
     if (typeof raw.remote !== 'string' || raw.remote.length === 0 || raw.baseRef !== 'ops' || typeof raw.credentialIdentity !== 'string' || raw.credentialIdentity.length === 0) throw new Error('Phase I repository source fields require recorded remote/credential labels and baseRef ops');
     if (!Array.isArray(raw.scope) || raw.scope.length === 0 || raw.scope.some((value) => typeof value !== 'string')) throw new Error('repository scope is invalid');
     const canonical = JSON.stringify({ id: raw.id, projects: raw.projects, root: raw.root, remote: raw.remote, baseRef: raw.baseRef, scope: raw.scope, credentialIdentity: raw.credentialIdentity });
-    const identity = createHash('sha256').update(canonical).digest('hex');
+    const identity = sha256Hex(canonical);
     const root = variables.repoRoot;
     const record = Object.freeze({ ...raw, id: String(raw.id), projects: Object.freeze(raw.projects as string[]), root, remote: String(raw.remote), baseRef: String(raw.baseRef), scope: Object.freeze(raw.scope as string[]), credentialIdentity: String(raw.credentialIdentity), registryId: String(raw.id), identity }) as RepositoryRecord;
     if (byId.has(record.id)) throw new Error(`duplicate repository id: ${record.id}`);

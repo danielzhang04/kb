@@ -1,9 +1,9 @@
 /*
  * ============================================================================
- * TASKS view (U3) — the whole card queue, state-grouped, with a detail pane
+ * INBOX card approvals — reusable governed card list + detail pane
  * ============================================================================
- * Layout: LEFT a scrollable column of state groups (each a dense table); RIGHT
- * a sticky detail pane (frontmatter key/value + rendered card body). Tokens
+ * Layout: LEFT the human-only card rows owned by inbox.css; RIGHT a sticky detail pane with the
+ * task brief, governed actions, routing, and directly disclosed metadata. Tokens
  * only (docs/design-brief.md §A–F); dark is default, the light remap in app.css
  * carries through every var().
  *
@@ -19,54 +19,23 @@
 .v-tasks {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
-  gap: var(--space-6);
+  gap: var(--section-gap);
   align-items: start;
   min-width: 0;
 }
 
-/* ---- LEFT: state groups ------------------------------------------------ */
+/* ---- LEFT: card rows --------------------------------------------------- */
 .v-tasks__groups {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--section-gap);
   min-width: 0;
 }
 
-.v-tasks__group {
-  min-width: 0;
-}
-
-.v-tasks__group-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-2);
-}
-
-.v-tasks__group-title {
-  margin: 0;
-  font-size: var(--type-section-size);
-  font-weight: var(--type-section-weight);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--fg-dim);
-}
-
-/* A count, not a hue — tabular in a quiet pill. */
-.v-tasks__group-count {
-  font-size: var(--type-section-size);
-  color: var(--fg-faint);
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  min-width: 1.4em;
-  text-align: center;
-}
-
-/* ---- Dense table — the shell, header style, row height and cell padding are the shared
- * .mc-table / .mc-table--boxed geometry in app.css. Only the selection rail and the task-specific
- * cells live here, so this table cannot drift from the Agents/Workflows/Home ones. ---- */
+/* inbox.css owns the shared list-row geometry; this module adds only card selection and detail styles. */
 .v-tasks__row {
+  height: auto;
+  border-bottom: 1px solid var(--border);
   /* 2px transparent left rail keeps geometry stable; only selection paints it. */
   border-left: 2px solid transparent;
   cursor: pointer;
@@ -74,35 +43,66 @@
 }
 
 .v-tasks__row:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
 /* Selected = the single left-border-accent language, reused. */
 .v-tasks__row--selected {
   background: var(--accent-quiet);
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--accent);
 }
 
-.v-tasks__cell-id {
-  font-size: var(--type-meta-size);
+.v-tasks__cell-summary {
+  width: 100%;
+  min-width: 0;
+}
+
+.v-tasks__task-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.v-tasks__task-title {
   color: var(--fg-primary);
-  white-space: nowrap;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
+  line-height: 1.35;
+  word-break: break-word;
 }
 
-.v-tasks__cell-action {
-  color: var(--fg-primary);
-}
-
-.v-tasks__cell-owner,
-.v-tasks__cell-project {
-  font-size: var(--type-meta-size);
+.v-tasks__action-cue {
+  flex: none;
   color: var(--fg-dim);
-  white-space: nowrap;
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
 }
 
-.v-tasks__cell--faint {
+.v-tasks__action-cue--needed {
+  color: var(--accent);
+}
+
+.v-tasks__task-summary {
+  margin: var(--space-1) 0 0;
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1.45;
+}
+
+.v-tasks__task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
+  font-size: var(--type-meta-size);
   color: var(--fg-faint);
+}
+
+.v-tasks__task-meta .mc-mono {
+  overflow-wrap: anywhere;
 }
 
 /* ---- RIGHT: detail pane ------------------------------------------------ */
@@ -129,18 +129,73 @@
   color: var(--fg-faint);
 }
 
-.v-tasks__detail-id {
-  margin: 0 0 var(--space-1);
+.v-tasks__back {
+  margin-bottom: var(--space-4);
+}
+
+.v-tasks__detail-head {
+  margin-bottom: var(--space-4);
+}
+
+.v-tasks__detail-title {
+  margin: 0 0 var(--space-2);
   font-size: var(--type-title-size);
   font-weight: var(--type-title-weight);
   line-height: 1.2;
   word-break: break-word;
 }
 
+.v-tasks__detail-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1.5;
+}
+
+.v-tasks__detail-summary strong {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+}
+
 .v-tasks__detail-caption {
   margin: 0 0 var(--space-4);
   font-size: var(--type-meta-size);
   color: var(--fg-dim);
+}
+
+.v-tasks__brief {
+  margin-bottom: var(--space-4);
+}
+
+.v-tasks__metadata {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.v-tasks__metadata-title {
+  margin: 0 0 var(--space-3);
+  color: var(--fg-primary);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+}
+
+.v-tasks__technical-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.v-tasks__technical-label {
+  flex: none;
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
 }
 
 /* ---- Frontmatter key/value block (mono, aligned) ---------------------- */
@@ -174,6 +229,30 @@
   font-size: var(--type-meta-size);
   color: var(--fg-primary);
   word-break: break-word;
+}
+
+@media (max-width: 899px) {
+  .v-tasks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v-tasks__detail,
+  .v-tasks__placeholder {
+    position: static;
+  }
+}
+
+@media (max-width: 599px) {
+  .v-tasks__detail-summary,
+  .v-tasks__technical-id {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .v-tasks__fm-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
 }
 
 /* ---- Rendered card body (inert) --------------------------------------- */
@@ -248,14 +327,12 @@
 }
 
 .v-tasks__body a {
-  color: var(--mc-accent);
+  color: var(--accent);
 }
 
 /* ---- Card gate (spec §5) ----
- * "This needs you", stated on the card's own surface, directly above the frontmatter and work order it
- * is about. The Inbox row that linked here deliberately shows none of that context, so this block is
- * where a card's decision is actually made. Verify/respond controls reuse the inbox classes so the two
- * surfaces read as one language. */
+ * "This needs you", stated in the Inbox card detail directly above the frontmatter and work order it
+ * governs. This block is where a card's decision is actually made. */
 .v-tasks__gate {
   display: flex;
   flex-direction: column;
@@ -263,10 +340,16 @@
   margin-bottom: var(--space-4);
   padding: var(--space-3);
   border: 1px solid var(--border-strong);
-  border-left: 2px solid var(--mc-accent);
+  border-left: 2px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--bg-panel);
 }
+
+.v-tasks__eyebrow, .v-tasks__field-label, .v-tasks__truth-note { color: var(--fg-dim); font-size: var(--type-meta-size); }
+.v-tasks__respond { display: grid; gap: var(--space-2); margin-block: var(--space-3); }
+.v-tasks__respond-input { min-height: 36px; font: inherit; border: 1px solid var(--border); background: var(--bg-panel); color: var(--fg-primary); }
+.v-tasks__buttons { display: flex; gap: var(--space-2); }
+.v-tasks__outcome { margin: var(--space-2) 0; color: var(--fg-dim); }
 
 .v-tasks__gate-head {
   margin: 0;
@@ -289,5 +372,4 @@
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
   letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
 }

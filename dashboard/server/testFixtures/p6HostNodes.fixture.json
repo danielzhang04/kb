@@ -1,0 +1,6 @@
+{
+  "schema": "kb.host-node-map/v1",
+  "revision": 2,
+  "hosts": { "vm": { "nodeId": "nodeVM01" }, "desktop": { "nodeId": "nodeDESK9" } },
+  "revoked": [{ "nodeId": "oldNODE7", "revokedAt": "2026-08-01T00:00:00.000Z" }]
+}

@@ -9,10 +9,12 @@ import type { PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import type { GitCommandRunner } from './adapters.ts';
 import {
-  CANONICAL_RESULT_CARD_SCRIPT,
   CANONICAL_RESULT_VERIFY_SCRIPT,
   createCanonicalGitResultIntegrator,
 } from './canonicalResultIntegrator.ts';
+import { parseCardFrontmatter } from '../planeA/cards.ts';
+import type { CardTransitionIntent } from '../reconciliation/contracts.ts';
+import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import { canonicalStageResultHash, iterationResultOperationKey, planAttemptWorktreePath, type ResultIntegrator } from './execution.ts';
 
 const roots: string[] = [];
@@ -268,7 +270,10 @@ function fixture(options: {
     const args = fullArgs.slice(fullArgs.indexOf('--literal-pathspecs') + 1);
     coordinationCalls.push([...args]);
     if (args[0] === 'rev-parse' && args[1] === '--verify') return `${'e'.repeat(40)}\n`;
-    if (args[0] === 'rev-parse') return 'ops\n';
+    if (args[0] === 'rev-parse' && args.includes('--abbrev-ref')) return 'ops\n';
+    // `rev-parse HEAD` now feeds `resolveBaseCommit` (each card-transition intent pins the source revision
+    // it minted against), which requires a real 40-hex commit; the branch check above stays a name.
+    if (args[0] === 'rev-parse') return `${'f'.repeat(40)}\n`;
     if (args[0] === 'diff' && args[1] === '--cached') return coordinationIndexDirty ? 'queue/inbox/residue.md\0' : '';
     if (args[0] === 'diff' && args[1] === '--name-only') {
       if (failCanonicalRecovery) {
@@ -318,22 +323,58 @@ function fixture(options: {
       });
       return { exitCode: 0, stdout: JSON.stringify({ path: doneRel }), stderr: '' };
     }
-    expect(code).toBe(CANONICAL_RESULT_CARD_SCRIPT);
-    if (cardFails) return { exitCode: 1, stdout: '', stderr: 'canonical card mismatch' };
-    cardMutations += 1;
-    const op = JSON.parse(jsonArg) as { runRef: string; cardRef: string; result: Record<string, unknown> };
-    expect(op).toMatchObject({ runRef, cardRef });
-    const done = join(coordinationRoot, ...doneRel.split('/'));
-    if (!existsSync(done)) {
-      writeFileSync(done, [
-        '---', `id: ${cardRef}`, `workflow: ${runRef}`, 'state: done', 'execution-controller: dashboard', '---', '',
-        '## Result', '', '```kb.canonical-stage-result/v1', JSON.stringify(op.result), '```', '',
-      ].join('\n'));
-      rmSync(join(coordinationRoot, ...sourceRel.split('/')));
-      return { exitCode: 0, stdout: JSON.stringify({ oldPath: sourceRel, resultPath: doneRel, changed: true }), stderr: '' };
-    }
-    return { exitCode: 0, stdout: JSON.stringify({ oldPath: doneRel, resultPath: doneRel, changed: false }), stderr: '' };
+    // The canonical card mutation is no longer a `cards.py` heredoc: the integrator validates in TS and
+    // publishes serial `card-transition` intents through `reconciliationPublisher` (the fake below).
+    // VERIFY is the ONLY embedded script this integrator still runs.
+    throw new Error(`unexpected embedded script passed to runPy: ${code.slice(0, 48)}`);
   };
+
+  // The fake reconciliation publisher: the ONE seam the coordination phase now drives instead of running
+  // cards.py + git itself. It applies each `card-transition` hop the way the real `cards` port does —
+  // reconcile is a no-op here, `append_section` on the FINAL hop, `cards.transition` moves the file, and
+  // the commit+push land atomically (we set `coordinationPushed`). `cardMutations` counts applied hops so
+  // the tests can assert "mutated exactly once" without a coordination-git commit to grep.
+  const applyResultToBody = (body: string, block: string): string => {
+    const base = body.replace(/\n+$/, '');
+    return `${base ? `${base}\n\n` : ''}## Result\n\n${block}\n`;
+  };
+  const reconciliationPublisher: ReconciliationPublisher = async (submitted, context) => {
+    expect(context.authenticatedTaskAction).toBe(false);
+    expect(submitted.kind).toBe('card-transition');
+    const intent = submitted as CardTransitionIntent;
+    expect(intent.actor).toBe('dashboard-supervisor');
+    if (cardFails) throw new Error('canonical card mismatch');
+    if (pushFails || remainingPushFailures > 0) {
+      if (remainingPushFailures > 0) remainingPushFailures -= 1;
+      throw new Error('push refused');
+    }
+    // Apply the hop: move the card from `fromState` to `toState`, appending the Result block on the hop
+    // that carries `write` (the final one into `done`). A state's queue DIR is not always its name
+    // (`blocked`->inbox, `approved`->approvals), mirroring scripts/cards.py STATE_DIR.
+    const queueDir = (queueState: string): string =>
+      queueState === 'blocked' ? 'inbox' : queueState === 'approved' ? 'approvals' : queueState;
+    const fromPath = join(coordinationRoot, 'queue', queueDir(intent.fromState), `${cardRef}.md`);
+    const toPath = join(coordinationRoot, 'queue', queueDir(intent.toState), `${cardRef}.md`);
+    const text = readFileSync(fromPath, 'utf8');
+    const parsed = parseCardFrontmatter(text);
+    const body = intent.write ? applyResultToBody(parsed.body, intent.write.block) : parsed.body;
+    writeFileSync(toPath, [
+      '---', `id: ${cardRef}`, `workflow: ${runRef}`, `state: ${intent.toState}`, 'execution-controller: dashboard',
+      'depends-on: []', '---', '', body,
+    ].join('\n'));
+    if (toPath !== fromPath) rmSync(fromPath);
+    if (intent.write) {
+      cardMutations += 1;
+      coordinationPushed = true;
+    }
+    coordinationCalls.push(['reconcile-publish', intent.fromState, intent.toState]);
+    if (failCanonicalRecovery) {
+      failCanonicalRecovery = false;
+      throw new Error('simulated daemon exit after canonical card mutation');
+    }
+    return { outcome: 'applied', revision: `${'e'.repeat(40)}` };
+  };
+  const readStoreRevision = () => '0';
 
   // The read-only branch seam is deliberately SEPARATE from `coordinationGit`: faking the mutating
   // runner must never be able to neuter the guard, so a test that wants coordination git to run has to
@@ -342,7 +383,7 @@ function fixture(options: {
   const coordinationBranch = options.coordinationBranch === undefined ? 'ops' : options.coordinationBranch;
   const integratorOptions = {
     repoRoot, coordinationRoot, integrationRoot, worktreeRoot, stateRoot, baseCommit: 'a'.repeat(40),
-    gitRunner, coordinationGit, runPy,
+    gitRunner, coordinationGit, runPy, reconciliationPublisher, readStoreRevision,
     resolveCoordinationBranch: async (path: string) => { branchResolutions.push(path); return coordinationBranch; },
   };
   const integrator = createCanonicalGitResultIntegrator(integratorOptions);
@@ -432,14 +473,14 @@ describe('canonical Git result integrator', () => {
     expect(worktreeAdd!.fullArgs[worktreeAdd!.fullArgs.indexOf('core.longpaths=true') - 1]).toBe('-c');
 
     const cherryPick = item.gitCalls.findIndex((call) => call.args[0] === 'cherry-pick');
-    const canonicalCommit = item.coordinationCalls.findIndex((args) => args[0] === 'commit');
-    const push = item.coordinationCalls.findIndex((args) => args[0] === 'push');
+    const canonicalPublish = item.coordinationCalls.findIndex((args) => args[0] === 'reconcile-publish');
     const reread = item.coordinationCalls.findIndex((args) =>
       args[0] === 'fetch' && args.includes('refs/heads/ops:refs/remotes/origin/ops'));
     expect(cherryPick).toBeGreaterThan(-1);
-    expect(canonicalCommit).toBeGreaterThan(-1);
-    expect(push).toBeGreaterThan(canonicalCommit);
-    expect(reread).toBeGreaterThan(push);
+    // The canonical card is PUBLISHED as its serial card-transition intent (the publisher owns the
+    // commit+push atomically), and only then is the ops commit re-read and verified.
+    expect(canonicalPublish).toBeGreaterThan(-1);
+    expect(reread).toBeGreaterThan(canonicalPublish);
   });
 
   it('replays a request-keyed generic iteration result through a restarted canonical integrator', async () => {
@@ -652,7 +693,9 @@ describe('canonical Git result integrator', () => {
     expect(JSON.parse(readFileSync(join(item.stateRoot, 'control/canonical-integration.json'), 'utf8')).records[0].state)
       .toBe('canonical-intent');
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
-    expect(item.coordinationCalls.filter((args) => args[0] === 'commit')).toHaveLength(1);
+    // The card mutation landed exactly once (the crash was AFTER its atomic publish); the resume re-reads
+    // the already-`done` card and mints nothing more.
+    expect(item.cardMutations()).toBe(1);
   });
 
   it('promotes a pushed canonical-intent result through lookup without replaying its mutable input', async () => {
@@ -660,8 +703,9 @@ describe('canonical Git result integrator', () => {
     await expect(item.integrator.integrate(item.input)).rejects.toThrow('committed canonical Result payload differs');
     const path = join(item.stateRoot, 'control/canonical-integration.json');
     expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-intent');
-    expect(item.coordinationCalls.filter((args) => args[0] === 'commit')).toHaveLength(1);
-    expect(item.coordinationCalls.filter((args) => args[0] === 'push')).toHaveLength(1);
+    // The canonical card-transition was published exactly once before verification failed.
+    expect(item.cardMutations()).toBe(1);
+    expect(item.coordinationCalls.filter((args) => args[0] === 'reconcile-publish')).toHaveLength(1);
 
     item.setVerifyFails(false);
     await expect(item.integrator.lookup({
@@ -676,18 +720,21 @@ describe('canonical Git result integrator', () => {
     });
     expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-committed');
     expect(item.cardMutations()).toBe(1);
-    expect(item.coordinationCalls.filter((args) => args[0] === 'commit')).toHaveLength(1);
+    expect(item.coordinationCalls.filter((args) => args[0] === 'reconcile-publish')).toHaveLength(1);
   });
 
-  it('does not promote a local-only canonical-intent card through lookup', async () => {
-    const item = fixture({ failAfterCardMutation: true });
-    await expect(item.integrator.integrate(item.input)).rejects.toThrow('simulated daemon exit after canonical card mutation');
+  it('does not promote a canonical-intent card through lookup until it is remotely durable', async () => {
+    // The publication did NOT land (the publisher threw before its atomic commit+push), so the record is
+    // parked at canonical-intent with nothing durable. `lookup` must not promote it — it verifies against
+    // the ops commit, which has no such card.
+    const item = fixture({ pushFails: true });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('push refused');
     await expect(item.integrator.lookup({
       operationKey: item.input.operationKey,
       subject: item.input.subject,
       runRef: item.input.runRef,
       stageId: item.input.stageId,
-    })).rejects.toThrow();
+    })).rejects.toThrow('published canonical result card is missing or ambiguous');
     const path = join(item.stateRoot, 'control/canonical-integration.json');
     expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-intent');
   });
@@ -969,11 +1016,44 @@ describe('canonical Git result integrator', () => {
     }
   });
 
-  it('rebases and re-verifies a journaled canonical commit after one concurrent ops advance', async () => {
+  it('parks a canonical-intent record when publication is refused, then completes on the next integrate', async () => {
+    // The push-refusal + rebase + re-verify + re-push retry now lives INSIDE the reconciliation publisher
+    // (its cards port owns the atomic commit+push), not the integrator: a refused publication throws, the
+    // record parks at canonical-intent, and the next integrate re-drives the same walk to completion.
     const item = fixture({ pushFailsOnce: true });
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('push refused');
+    expect(JSON.parse(readFileSync(join(item.stateRoot, 'control/canonical-integration.json'), 'utf8')).records[0].state)
+      .toBe('canonical-intent');
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
-    expect(item.coordinationCalls.filter((args) => args[0] === 'push')).toHaveLength(2);
-    expect(item.coordinationCalls.some((args) => args.join(' ') === 'pull --rebase origin ops')).toBe(true);
+    expect(item.cardMutations()).toBe(1);
+  });
+
+  it('refuses to publish when the live canonical card already carries a different Result', async () => {
+    // TS port of the retired heredoc's idempotency guard: a card whose STRUCTURAL Result differs from the
+    // one this integration would write is refused BEFORE any card-transition intent is minted.
+    const item = fixture();
+    const cardRef = workflowCardId('run-1', 'stage-1');
+    writeFileSync(join(item.coordinationRoot, 'queue', 'working', `${cardRef}.md`), [
+      '---', `id: ${cardRef}`, 'workflow: run-1', 'state: working', 'execution-controller: dashboard', '---', '',
+      '# Managed stage', '', '## Result', '', '```kb.canonical-stage-result/v1', '{"different":"payload"}', '```', '',
+    ].join('\n'));
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('canonical card already has a different Result');
+    expect(item.cardMutations()).toBe(0);
+  });
+
+  it('refuses to publish a blocked canonical card whose dependency is not done', async () => {
+    // TS port of the retired heredoc's dependency-done guard: a `blocked` card (which lives in queue/inbox/
+    // per cards.py STATE_DIR) may not be walked to done until every `depends-on` card is itself done.
+    const item = fixture();
+    const cardRef = workflowCardId('run-1', 'stage-1');
+    rmSync(join(item.coordinationRoot, 'queue', 'working', `${cardRef}.md`));
+    mkdirSync(join(item.coordinationRoot, 'queue', 'inbox'), { recursive: true });
+    writeFileSync(join(item.coordinationRoot, 'queue', 'inbox', `${cardRef}.md`), [
+      '---', `id: ${cardRef}`, 'workflow: run-1', 'state: blocked', 'execution-controller: dashboard',
+      'depends-on:', '- wf-missing-dep', '---', '', '# Managed stage', '',
+    ].join('\n'));
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('canonical dependency is not done');
+    expect(item.cardMutations()).toBe(0);
   });
 });
 

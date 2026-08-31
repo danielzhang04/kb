@@ -1,0 +1,48 @@
+{
+  "snapshot": {
+    "runs": [
+      {
+        "runRef": "run-agent",
+        "owner": { "type": "agent", "id": "alpha", "sourcePath": "agents/alpha.md" },
+        "lifecycle": "running"
+      },
+      {
+        "runRef": "run-atlas",
+        "owner": { "type": "workflow", "id": "release", "project": "atlas-prep", "sourcePath": "orgs/atlas-prep/workflows/release.md" },
+        "lifecycle": "waiting-human"
+      },
+      {
+        "runRef": "run-kb",
+        "owner": { "type": "workflow", "id": "release", "project": "kb-ops", "sourcePath": "orgs/kb-ops/workflows/release.md" },
+        "lifecycle": "running"
+      }
+    ],
+    "humanRequests": [
+      { "requestRef": "ask-agent-1", "runRef": "run-agent", "state": "open" },
+      { "requestRef": "ask-agent-2", "runRef": "run-agent", "state": "open" },
+      { "requestRef": "ask-kb", "runRef": "run-kb", "state": "open" }
+    ]
+  },
+  "expected": {
+    "revision": "b35764b659470092dc56b63510b447e33091c91480af24099bed6b984d0cb51e",
+    "pairs": [
+      {
+        "runRef": "run-agent",
+        "owner": { "type": "agent", "id": "alpha", "sourcePath": "agents/alpha.md" }
+      },
+      {
+        "runRef": "run-atlas",
+        "owner": { "type": "workflow", "id": "release", "project": "atlas-prep", "sourcePath": "orgs/atlas-prep/workflows/release.md" }
+      },
+      {
+        "runRef": "run-kb",
+        "owner": { "type": "workflow", "id": "release", "project": "kb-ops", "sourcePath": "orgs/kb-ops/workflows/release.md" }
+      }
+    ],
+    "agents": { "alpha": 1 },
+    "workflows": {
+      "workflow:atlas-prep:release": 1,
+      "workflow:kb-ops:release": 1
+    }
+  }
+}

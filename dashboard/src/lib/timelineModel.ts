@@ -42,7 +42,7 @@ export interface SubagentView {
 
 /** One step within a turn: a thinking block, a text block, or a tool_use (with its result/subagent). */
 export interface TimelineStep {
-  kind: 'thinking' | 'text' | 'tool_use';
+  kind: 'thinking' | 'text' | 'tool_use' | 'file' | 'diff' | 'checkpoint' | 'lifecycle';
   /** thinking/text payload. */
   text?: string;
   /** tool_use fields. */
@@ -53,6 +53,11 @@ export interface TimelineStep {
   result?: StepToolResult | null;
   /** For a `Task` tool_use: the nested subagent folded from its own transcript. */
   subagent?: SubagentView | null;
+  path?: string | null;
+  diff?: string | null;
+  status?: string | null;
+  checkpoint?: string | null;
+  truncated?: boolean;
 }
 
 /** One assistant turn: its steps plus the model/usage/timestamp of the assistant message that produced it. */
@@ -136,6 +141,18 @@ function buildTurns(records: TranscriptRecord[]): Turn[] {
           input: block.input ?? null,
           result: resultByUseId.get(id) ?? null,
           subagent: null,
+        });
+      } else if (block.type === 'run_event'
+        && (block.kind === 'file' || block.kind === 'diff'
+          || block.kind === 'checkpoint' || block.kind === 'lifecycle')) {
+        steps.push({
+          kind: block.kind,
+          text: typeof block.text === 'string' ? block.text : '',
+          path: typeof block.path === 'string' ? block.path : null,
+          diff: typeof block.diff === 'string' ? block.diff : null,
+          status: typeof block.status === 'string' ? block.status : null,
+          checkpoint: typeof block.checkpoint === 'string' ? block.checkpoint : null,
+          truncated: block.truncated === true,
         });
       }
     }

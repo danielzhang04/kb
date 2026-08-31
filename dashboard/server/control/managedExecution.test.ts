@@ -84,12 +84,11 @@ describe('createBrokerManagerAdapter (D3 realization b — no subprocess)', () =
     await expect(managers.ensure(managerEnsureInput())).resolves.toBeUndefined();
   });
 
-  it('never spawns a subprocess: no broker is required or touched to ensure a manager', async () => {
-    let started = 0;
-    const broker = { start() { started += 1; return { ok: true, started: true } as const; }, stop() { return false; } };
-    const managers = createBrokerManagerAdapter({ broker: broker as never });
-    await managers.ensure(managerEnsureInput());
-    expect(started).toBe(0);
+  it('never spawns a subprocess: the adapter takes no process authority to construct', async () => {
+    // P3 removed the supervisor the adapter could once have been handed. There is no longer any
+    // injectable that could start a child, which is the point: metadata-only is now structural.
+    const managers = createBrokerManagerAdapter({});
+    await expect(managers.ensure(managerEnsureInput())).resolves.toBeUndefined();
   });
 
   it('throws when the manager execution profile is missing', async () => {
@@ -123,36 +122,45 @@ describe('createBrokerManagerAdapter (D3 realization b — no subprocess)', () =
 });
 
 describe('createBrokerCancellationController', () => {
-  it('cancelWorker maps attemptRef to the automatic-attempt operationKey and fires its registered cancel', async () => {
+  it('cancelWorker maps attemptRef to the automatic-attempt operationKey on BOTH the port and the registry', async () => {
     const cancelled: string[] = [];
+    const portKeys: string[] = [];
     const registry = { cancel(operationKey: string) { cancelled.push(operationKey); } };
-    const broker = { stop() { return false; } };
-    const controller = createBrokerCancellationController({ broker: broker as never, registry });
+    const attemptPort = {
+      async cancel(input: { operationKey: string; reason: string }) {
+        portKeys.push(input.operationKey);
+        return { ok: false as const, refusal: 'not-found' as const, detail: null };
+      },
+    };
+    const controller = createBrokerCancellationController({ attemptPort, registry });
     await controller.cancelWorker(cancellationInput({ attemptRef: 'attempt-42' }) as never);
     expect(cancelled).toEqual(['automatic-attempt:attempt-42']);
+    expect(portKeys).toEqual(['automatic-attempt:attempt-42']);
   });
 
-  it('cancelManager calls broker.stop with the session reference', async () => {
-    const stopped: string[] = [];
+  it('cancelManager signals nothing: the metadata-only manager owns no child', async () => {
     const registry = { cancel() {} };
-    const broker = { stop(sessionRef: string) { stopped.push(sessionRef); return true; } };
-    const controller = createBrokerCancellationController({ broker: broker as never, registry });
-    await controller.cancelManager(cancellationInput({ sessionRef: 'session-9' }));
-    expect(stopped).toEqual(['session-9']);
+    let portCalls = 0;
+    const attemptPort = {
+      async cancel() {
+        portCalls += 1;
+        return { ok: false as const, refusal: 'not-found' as const, detail: null };
+      },
+    };
+    const controller = createBrokerCancellationController({ attemptPort, registry });
+    await expect(controller.cancelManager(cancellationInput({ sessionRef: 'session-9' }))).resolves.toBeUndefined();
+    await expect(controller.cancelManager(cancellationInput())).resolves.toBeUndefined();
+    expect(portCalls).toBe(0);
   });
 
-  it('cancelManager is idempotent when broker.stop reports nothing live to stop', async () => {
-    const registry = { cancel() {} };
-    const broker = { stop() { return false; } };
-    const controller = createBrokerCancellationController({ broker: broker as never, registry });
-    await expect(controller.cancelManager(cancellationInput())).resolves.toBeUndefined();
-    await expect(controller.cancelManager(cancellationInput())).resolves.toBeUndefined();
-  });
-
-  it('cancelWorker on an unknown attempt is a no-op (idempotent stop authority)', async () => {
+  it('cancelWorker on an unknown attempt, and with no attempt port at all, is a no-op', async () => {
     const registry = createWorkerCancellationRegistry();
-    const broker = { stop() { return false; } };
-    const controller = createBrokerCancellationController({ broker: broker as never, registry });
-    await expect(controller.cancelWorker(cancellationInput({ attemptRef: 'ghost' }) as never)).resolves.toBeUndefined();
+    const attemptPort = {
+      async cancel() { return { ok: false as const, refusal: 'not-found' as const, detail: null }; },
+    };
+    await expect(createBrokerCancellationController({ attemptPort, registry })
+      .cancelWorker(cancellationInput({ attemptRef: 'ghost' }) as never)).resolves.toBeUndefined();
+    await expect(createBrokerCancellationController({ attemptPort: null, registry })
+      .cancelWorker(cancellationInput({ attemptRef: 'ghost' }) as never)).resolves.toBeUndefined();
   });
 });

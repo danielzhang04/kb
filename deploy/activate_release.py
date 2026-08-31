@@ -252,6 +252,28 @@ def secure_copy(source: Path, destination: Path) -> None:
         os.close(source_fd)
 
 
+def install_attestation_sidecars(stage: Path, destination: Path) -> None:
+    """Install verified release identity beside VERSION before link selection."""
+    sources = [stage / "attestation.json", stage / "attestation.json.sig"]
+    if not all(source.exists() for source in sources):
+        raise RuntimeError("verified attestation sidecars are required")
+    destination.chmod(0o755)
+    installed: list[Path] = []
+    try:
+        for source in sources:
+            target = destination / source.name
+            secure_copy(source, target)
+            target.chmod(0o444)
+            installed.append(target)
+    except BaseException:
+        for target in installed:
+            target.chmod(0o600)
+            target.unlink(missing_ok=True)
+        raise
+    finally:
+        destination.chmod(0o555)
+
+
 def verify_signature(attestation: Path, signature: Path, run=subprocess.run) -> None:
     allowed = attestation.parent / "allowed_signers"
     try:
@@ -365,6 +387,7 @@ def activate_from_upload(upload_dir: Path, paths: RuntimePaths = RuntimePaths(),
             destination_created = True
             if (destination / "VERSION").read_text(encoding="ascii").strip() != version:
                 raise RuntimeError("release VERSION mismatch")
+            install_attestation_sidecars(stage, destination)
             validator = ["python3", "-I", "-B", "/usr/local/lib/kb/validate_vm_runtime.py"]
             io.run([*validator, "--phase", "static", "--ops-root", str(paths.ops_root), "--unit", "kb-dashboard.service"], check=True, timeout=SHORT_COMMAND_TIMEOUT)
             old = paths.current.resolve() if paths.current.exists() else None

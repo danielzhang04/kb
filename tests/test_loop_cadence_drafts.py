@@ -119,14 +119,6 @@ def test_schedule_is_one_dispatch_due_understands(cadences, name):
 
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
-def test_planned_pause_sentinel_is_listed_in_the_readme(cadences, name):
-    """Every block must have its planned queue/paused/<name> sentinel named in README.md —
-    the sentinel leg of the inert-ness argument."""
-    readme = README.read_text(encoding="utf-8")
-    assert f"queue/paused/{name}" in readme
-
-
-@pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_prompt_brief_exists_and_carries_the_discipline_markers(name):
     """Structure lint, not content review: each brief must carry a decidable done-criterion
     heading, a boundaries section, a wake-me fallback (loop-design-check discipline), and

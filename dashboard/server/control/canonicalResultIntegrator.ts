@@ -5,14 +5,22 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import {
   defaultGitRunner,
-  isCoordinationPath,
   prepareCoordination,
+  resolveBaseCommit,
   type GitRunner,
 } from '../write/branch.ts';
 import { resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.ts';
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
-import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
+import { type CoordinationPublication } from '../write/outbox.ts';
+import { parseCardFrontmatter } from '../planeA/cards.ts';
+import {
+  RECONCILIATION_INTENT_SCHEMA,
+  reconciliationIdempotencyKey,
+  type CardTransitionIntent,
+  type CardTransitionWrite,
+} from '../reconciliation/contracts.ts';
+import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import type { CanonicalStageResult, CanonicalStageResultPayload, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
 import {
   canonicalResultOperationKey,
@@ -40,7 +48,7 @@ const INTEGRATION_INPUT_KEYS = new Set([
 /** The one branch a coordination write may ever run git against (CLAUDE.md's Branch rules). */
 const COORDINATION_BRANCH = 'ops';
 /** Named, greppable refusal so every guarded coordination call is findable in the daemon log. */
-export const COORDINATION_GIT_GUARD_REASON = 'canonical-coordination-git-guard';
+const COORDINATION_GIT_GUARD_REASON = 'canonical-coordination-git-guard';
 
 export class CanonicalResultIntegrationError extends Error {}
 
@@ -117,6 +125,22 @@ export interface CanonicalGitResultIntegratorOptions {
    * passes it, so the daemon always gets the real `git symbolic-ref --short HEAD` resolution.
    */
   resolveCoordinationBranch?: (root: string) => Promise<string | null>;
+  /**
+   * The ONE server-owned reconciliation publisher (P4 §3.4), composed once in the surface and threaded
+   * through the activation options. The canonical coordination phase publishes its inbox->working->done
+   * card walk as SERIAL single-step `card-transition` intents through this seam — it no longer runs any
+   * `cards.py` mutation, `git commit`, or `git push` of its own. Optional so construction stays additive;
+   * a coordination phase that reaches the card walk without it fails closed (a real posture, never a
+   * silent bypass), exactly as the attempt port is `null` with no session host.
+   */
+  reconciliationPublisher?: ReconciliationPublisher;
+  /**
+   * Reads the control-plane store's current document revision, so each card-transition intent pins the
+   * `expectedStoreRevision` the publisher's freshness gate compares against. Threaded from the same
+   * `controlStore` the surface composed the publisher over; a card-transition never mutates that document,
+   * so the value is stable across the walk.
+   */
+  readStoreRevision?: () => string;
 }
 
 // Mirrors the repository's existing exact-byte card-section grammar: only `## Result` at column 0,
@@ -138,67 +162,14 @@ def canonical_result_structure(body):
     return offsets, fenced
 `.trim();
 
-export const CANONICAL_RESULT_CARD_SCRIPT = `
-import sys, json
-from pathlib import Path
-sys.path.insert(0, "scripts")
-import cards
-
-${CANONICAL_RESULT_HEADING_HELPER}
-
-op = json.loads(sys.argv[1])
-card_id = op["cardRef"]
-candidates = [
-    Path("queue/inbox") / (card_id + ".md"),
-    Path("queue/working") / (card_id + ".md"),
-    Path("queue/approvals") / (card_id + ".md"),
-    Path("queue/done") / (card_id + ".md"),
-]
-found = [path for path in candidates if path.is_file()]
-if len(found) != 1:
-    raise cards.ValidationError("canonical managed card path is missing or ambiguous")
-source = found[0]
-card = cards.parse(source)
-if card.meta.get("id") != card_id or card.meta.get("workflow") != op["runRef"]:
-    raise cards.ValidationError("canonical managed card identity differs")
-if card.meta.get("execution-controller") != "dashboard":
-    raise cards.ValidationError("canonical managed card controller differs")
-
-wire = json.dumps(op["result"], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-block = "## Result\\n\\n\`\`\`kb.canonical-stage-result/v1\\n" + wire + "\\n\`\`\`\\n"
-headings, fenced = canonical_result_structure(card.body)
-if fenced:
-    raise cards.ValidationError("canonical card has unbalanced fenced content")
-if len(headings) > 1:
-    raise cards.ValidationError("canonical card has ambiguous Result sections")
-if headings:
-    prefix = card.body[:headings[0]].rstrip()
-    if card.body.rstrip() != (prefix + "\\n\\n" + block).rstrip():
-        raise cards.ValidationError("canonical card already has a different Result")
-else:
-    card.body = card.body.rstrip() + "\\n\\n" + block
-
-old_path = source
-changed = card.meta.get("state") != "done" or cards.parse(source).body != card.body
-if card.meta.get("state") == "blocked":
-    for dep in card.meta.get("depends-on") or []:
-        dep_path = Path("queue/done") / (dep + ".md")
-        if not dep_path.is_file() or cards.parse(dep_path).meta.get("state") != "done":
-            raise cards.ValidationError("canonical dependency is not done")
-    cards.transition(card, "inbox", Path("queue"))
-if card.meta.get("state") == "inbox":
-    cards.transition(card, "working", Path("queue"))
-if card.meta.get("state") == "working":
-    result_path = cards.transition(card, "done", Path("queue"))
-elif card.meta.get("state") == "approved":
-    result_path = cards.transition(card, "done", Path("queue"))
-elif card.meta.get("state") == "done":
-    cards.save(card, Path("queue"))
-    result_path = Path("queue/done") / (card_id + ".md")
-else:
-    raise cards.ValidationError("canonical managed card cannot legally transition to done")
-print(json.dumps({"oldPath": str(old_path), "resultPath": str(result_path), "changed": changed}))
-`.trim();
+// The canonical card mutation (single `## Result`, fence balance, already-has-a-different-Result
+// idempotency, blocked-dependency-done, and the inbox->working->done state walk) is NO LONGER a
+// `cards.py` heredoc run against the ops worktree. Post-cutover it is validated in TypeScript
+// (`canonicalResultStructure` + the coordination phase below) and PUBLISHED as serial single-step
+// `card-transition` intents through the ONE reconciliation publisher, whose `cards` port owns the
+// reconcile -> append_section -> state transition -> commit -> push per step. The
+// `CANONICAL_RESULT_VERIFY_SCRIPT` stays: it re-proves the exact published bytes from one immutable
+// fetched ops commit and shares `CANONICAL_RESULT_HEADING_HELPER` with the validator's TS twin.
 
 export const CANONICAL_RESULT_VERIFY_SCRIPT = `
 import sys, json, re, subprocess
@@ -618,6 +589,55 @@ function nulPaths(output: string): string[] {
   return paths.sort();
 }
 
+/** The fenced payload marker the canonical Result block carries; VERIFY asserts these exact bytes. */
+const CANONICAL_STAGE_RESULT_MARKER = 'kb.canonical-stage-result/v1';
+
+/**
+ * TS twin of `canonical_result_structure` (the Python helper VERIFY still runs): the column-0 offsets of
+ * a bare `## Result` heading that sits OUTSIDE balanced column-0 backtick fences, plus whether the body
+ * closes with an unbalanced fence. Card bodies are `\n`-delimited; the split keeps line ends so an offset
+ * indexes straight into `body`, exactly as the Python twin indexes `card.body`.
+ */
+function canonicalResultStructure(body: string): { offsets: number[]; fenced: boolean } {
+  const offsets: number[] = [];
+  let fenced = false;
+  let offset = 0;
+  for (const line of body.split(/(?<=\n)/)) {
+    const value = line.replace(/[\r\n]+$/, '');
+    if (value.startsWith('```')) fenced = !fenced;
+    else if (!fenced && value === '## Result') offsets.push(offset);
+    offset += line.length;
+  }
+  return { offsets, fenced };
+}
+
+interface LocatedCanonicalCard {
+  state: string;
+  body: string;
+  dependsOn: string[];
+  id: string;
+  workflow: string;
+  controller: string;
+}
+
+/** Find the ONE queue file for a managed card; missing or ambiguous fails closed (Python parity). */
+function locateCanonicalCard(coordinationRoot: string, cardId: string): LocatedCanonicalCard {
+  const found = ['inbox', 'working', 'approvals', 'done']
+    .map((dir) => join(coordinationRoot, 'queue', dir, `${cardId}.md`))
+    .filter((path) => existsSync(path));
+  if (found.length !== 1) throw new CanonicalResultIntegrationError('canonical managed card path is missing or ambiguous');
+  const { meta, body } = parseCardFrontmatter(readFileSync(found[0]!, 'utf8'));
+  const dependsOn = meta['depends-on'];
+  return {
+    state: String(meta.state ?? ''),
+    body,
+    dependsOn: Array.isArray(dependsOn) ? dependsOn.map((value) => String(value)) : [],
+    id: String(meta.id ?? ''),
+    workflow: String(meta.workflow ?? ''),
+    controller: String(meta['execution-controller'] ?? ''),
+  };
+}
+
 /** Concrete but inactive-by-default Git lineage + canonical ops-card integrator. */
 export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIntegratorOptions): ResultIntegrator {
   const repoRoot = absolute(options.repoRoot, 'repoRoot');
@@ -630,8 +650,12 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
   const rawOpsGit = options.coordinationGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
   const statePath = join(stateRoot, 'control', 'canonical-integration.json');
+  // [C-S4] No eager mkdir under the worktree root. On the VM that root is `/var/lib/kb-shell/worktrees`,
+  // broker-owned (02770, installer-created) and not writable by the dashboard uid at composition time, so
+  // creating it here made activation unconstructible on Linux (EACCES). Nothing is lost: `core.hooksPath`
+  // pointing at a path that does not exist disables repo hooks exactly as an empty directory does, and the
+  // worktree adapter materializes this same directory at first provisioning.
   const hooksPath = join(worktreeRoot, '.disabled-hooks');
-  mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
   // core.longpaths=true: the integration worktree is created under the same deep state-root path as the
   // attempt worktree, so long repo-relative paths tip over Windows MAX_PATH (260) without it. No-op off
   // Windows; not a gate.
@@ -913,6 +937,10 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         return { status: 'integrated' as const, resultHash: record.result.resultHash,
           durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
       }
+      // The `cards` port owns its own reconcile (`prepareCoordination`) per intent, so this phase no
+      // longer stages/commits/pushes coordination git itself. `prepareCoordination` still runs once here
+      // to fail-closed on a dirty coordination index BEFORE the walk (parity with the retired heredoc's
+      // index guard) and to reconcile the checkout the TS validator reads the live card from.
       await prepareCoordination(coordinationRoot, opsGit, options.publication, options.outboxRoot);
       const dirty = await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
       if (dirty) throw new CanonicalResultIntegrationError('coordination index is dirty');
@@ -922,71 +950,116 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     if (record.state !== 'canonical-intent') {
       throw new CanonicalResultIntegrationError('canonical integration phase is invalid');
     }
+    // Re-prove the checkout is `ops` before minting any intent even though `opsGit`'s guard also refuses
+    // off-ops: an off-ops coordination root parks the stage here with a named error, mutating nothing.
     const branch = (await opsGit(coordinationRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
     if (branch !== 'ops') throw new CanonicalResultIntegrationError('canonical coordination checkout differs');
     if (!record.integrationCommit) throw new CanonicalResultIntegrationError('integration commit is unavailable');
+    const cardRef = record.cardRef;
+    if (cardRef === null) throw new CanonicalResultIntegrationError('canonical coordination requires a card reference');
+    const publisher = options.reconciliationPublisher;
+    if (!publisher) throw new CanonicalResultIntegrationError('canonical coordination requires a reconciliation publisher');
+    const readStoreRevision = options.readStoreRevision;
+    if (!readStoreRevision) throw new CanonicalResultIntegrationError('canonical coordination requires a store-revision reader');
     const wire = canonicalWire(record);
-    const encoded = JSON.stringify({ runRef: record.runRef, cardRef: record.cardRef, result: wire });
+    const encoded = JSON.stringify({ runRef: record.runRef, cardRef, result: wire });
     if (Buffer.byteLength(encoded) > MAX_RESULT_BYTES) throw new CanonicalResultIntegrationError('canonical card result exceeds its bound');
-    const card = runPy(coordinationRoot, CANONICAL_RESULT_CARD_SCRIPT, encoded);
-    if (card.exitCode !== 0) throw new CanonicalResultIntegrationError(card.stderr.trim() || card.stdout.trim() || 'canonical card mutation failed');
-    const parsed = JSON.parse(card.stdout.trim()) as { oldPath: string; resultPath: string; changed: boolean };
-    const resultPath = `queue/done/${record.cardRef}.md`;
-    if (parsed.resultPath.replace(/\\/g, '/') !== resultPath || typeof parsed.changed !== 'boolean') {
-      throw new CanonicalResultIntegrationError('canonical card mutation returned a mismatched result');
+    // The exact fenced Result bytes VERIFY re-proves: `## Result` then a `kb.canonical-stage-result/v1`
+    // fence wrapping the sort-keyed compact wire. `canonical(...)` is the same sorted-key serializer the
+    // journal fingerprint uses and matches Python's `json.dumps(..., sort_keys=True,
+    // separators=(",",":"), ensure_ascii=False)`; the `cards` port's `append_section` inserts this block
+    // under `## Result`, so the committed section is byte-identical to the retired heredoc's output.
+    const resultBlock = `\`\`\`${CANONICAL_STAGE_RESULT_MARKER}\n${canonical(wire)}\n\`\`\``;
+    const resultWrite: CardTransitionWrite = { section: 'Result', block: resultBlock };
+
+    // Publish ONE serial single-step `card-transition` intent, pinned to the card's CURRENT bytes + the
+    // CURRENT ops/store revisions, wrapped so the `cards` port's own `withOpsTransaction` joins this span
+    // reentrantly (AsyncLocalStorage). Each hop commits+pushes atomically inside the publisher, so a crash
+    // mid-walk leaves the card at a durable intermediate state the resume re-reads from disk; the
+    // publisher's receipt is the at-most-once dedup for a hop whose effect landed before its receipt
+    // advanced. The final hop into `done` carries the Result block so `append_section` writes it once.
+    // A card's queue DIRECTORY is not always its state name: `blocked` lives in `queue/inbox/` and
+    // `approved` in `queue/approvals/` (scripts/cards.py STATE_DIR). The intent pins the card by its real
+    // on-disk path, while `fromState`/`toState` stay the STATE names the `cards` port transitions between.
+    const queueDir = (queueState: string): string =>
+      queueState === 'blocked' ? 'inbox' : queueState === 'approved' ? 'approvals' : queueState;
+    const publishCardStep = async (from: string, to: string, write?: CardTransitionWrite): Promise<void> => {
+      const cardPath = `queue/${queueDir(from)}/${cardRef}.md`;
+      const cardAbsolute = join(coordinationRoot, 'queue', queueDir(from), `${cardRef}.md`);
+      if (!existsSync(cardAbsolute)) {
+        throw new CanonicalResultIntegrationError(`canonical card is not in ${from} (already reconciled?): ${cardRef}`);
+      }
+      const draft: CardTransitionIntent = {
+        schema: RECONCILIATION_INTENT_SCHEMA,
+        kind: 'card-transition',
+        actor: 'dashboard-supervisor',
+        idempotencyKey: '',
+        expectedSourceRevision: await resolveBaseCommit(coordinationRoot, opsGit),
+        expectedStoreRevision: readStoreRevision(),
+        exactTargets: [cardPath],
+        cardId: cardPath,
+        expectedCardSha256: createHash('sha256').update(readFileSync(cardAbsolute)).digest('hex'),
+        fromState: from,
+        toState: to,
+        ...(write === undefined ? {} : { write }),
+      };
+      await publisher(
+        { ...draft, idempotencyKey: reconciliationIdempotencyKey(draft) },
+        { authenticatedTaskAction: false },
+      );
+    };
+
+    // Validate the LIVE card in TS (the faithful port of the retired heredoc's checks) BEFORE minting any
+    // intent, then walk it to `done`. The Result block rides the FINAL hop into `done` so `append_section`
+    // reproduces the verified bytes exactly once; a `done` card whose Result already matches is the
+    // idempotent no-op replay (nothing minted), re-proven from the ops commit by `verifyCanonical` below.
+    const located = locateCanonicalCard(coordinationRoot, cardRef);
+    if (located.id !== cardRef || located.workflow !== record.runRef) {
+      throw new CanonicalResultIntegrationError('canonical managed card identity differs');
     }
-    const oldPath = parsed.oldPath.replace(/\\/g, '/');
-    const allowed = new Set([
-      `queue/inbox/${record.cardRef}.md`, `queue/working/${record.cardRef}.md`,
-      `queue/approvals/${record.cardRef}.md`, resultPath,
-    ]);
-    const stagedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']));
-    const trackedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--name-only', '-z']));
-    const untrackedPaths = nulPaths(await opsGit(coordinationRoot, ['ls-files', '--others', '--exclude-standard', '-z']));
-    const changedPaths = [...new Set([...stagedPaths, ...trackedPaths, ...untrackedPaths])].sort();
-    if (changedPaths.some((path) => !allowed.has(path)) || (parsed.changed && !changedPaths.includes(resultPath))
-      || (!allowed.has(oldPath) && oldPath !== resultPath)) {
-      throw new CanonicalResultIntegrationError('canonical recovery contains unrelated coordination changes');
+    if (located.controller !== 'dashboard') {
+      throw new CanonicalResultIntegrationError('canonical managed card controller differs');
     }
-    if (changedPaths.length > 0) {
-      await opsGit(coordinationRoot, ['add', '--', ...changedPaths]);
-      await opsGit(coordinationRoot, [
-        'commit', '-m', `chore(queue): integrate managed result ${record.cardRef}`, '--only', '--', ...changedPaths,
-      ]);
+    const { offsets, fenced } = canonicalResultStructure(located.body);
+    if (fenced) throw new CanonicalResultIntegrationError('canonical card has unbalanced fenced content');
+    if (offsets.length > 1) throw new CanonicalResultIntegrationError('canonical card has ambiguous Result sections');
+    if (offsets.length === 1) {
+      const prefix = located.body.slice(0, offsets[0]).replace(/\s+$/, '');
+      const expected = `${prefix}\n\n## Result\n\n${resultBlock}`.replace(/\s+$/, '');
+      if (located.body.replace(/\s+$/, '') !== expected) {
+        throw new CanonicalResultIntegrationError('canonical card already has a different Result');
+      }
+    } else if (located.body.split('\n').some((line) => line.trim() === '## Result')) {
+      // No STRUCTURAL Result (the only matches are inside a balanced fence), but the `cards` port's
+      // `append_section` is not fence-aware and would insert the block under that fenced heading, mangling
+      // the card. The retired heredoc appended at end and dodged this; fail closed here rather than commit
+      // corrupted bytes. Production managed cards never carry a fenced `## Result`, so this never fires.
+      throw new CanonicalResultIntegrationError('canonical card body has a fenced Result heading that would misdirect the append');
     }
-    if ((options.publication ?? 'direct') === 'outbox') {
-      if (changedPaths.length > 0) {
-        await recoverUnspooledCoordinationCommits({
-          repoRoot: coordinationRoot,
-          spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
-          runGit: opsGit,
-          isCoordinationPath,
-        });
+    // The Result block rides the final hop ONLY when no structural Result is present yet; when one already
+    // matches (a resume that already appended it), the final hop is a pure transition so `append_section`
+    // never duplicates the section.
+    const finalWrite = offsets.length === 0 ? resultWrite : undefined;
+    if (located.state === 'blocked') {
+      for (const dep of located.dependsOn) {
+        const depPath = join(coordinationRoot, 'queue', 'done', `${dep}.md`);
+        if (!existsSync(depPath)
+          || String(parseCardFrontmatter(readFileSync(depPath, 'utf8')).meta.state ?? '') !== 'done') {
+          throw new CanonicalResultIntegrationError('canonical dependency is not done');
+        }
       }
-    } else try {
-      await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
-    } catch (pushError) {
-      try {
-        await opsGit(coordinationRoot, ['pull', '--rebase', 'origin', 'ops']);
-      } catch (reconcileError) {
-        try { await opsGit(coordinationRoot, ['rebase', '--abort']); } catch { /* no rebase was active */ }
-        throw new CanonicalResultIntegrationError(
-          `canonical publication reconciliation failed: ${reconcileError instanceof Error ? reconcileError.message : String(reconcileError)}`,
-        );
-      }
-      const reconciled = runPy(coordinationRoot, CANONICAL_RESULT_VERIFY_SCRIPT, JSON.stringify({
-        cardRef: record.cardRef, runRef: record.runRef, result: wire,
-      }));
-      if (reconciled.exitCode !== 0) {
-        throw new CanonicalResultIntegrationError(
-          reconciled.stderr.trim() || reconciled.stdout.trim() || 'reconciled canonical Result differs',
-        );
-      }
-      try {
-        await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
-      } catch {
-        throw pushError;
-      }
+      await publishCardStep('blocked', 'inbox');
+      await publishCardStep('inbox', 'working');
+      await publishCardStep('working', 'done', finalWrite);
+    } else if (located.state === 'inbox') {
+      await publishCardStep('inbox', 'working');
+      await publishCardStep('working', 'done', finalWrite);
+    } else if (located.state === 'working') {
+      await publishCardStep('working', 'done', finalWrite);
+    } else if (located.state === 'approved') {
+      await publishCardStep('approved', 'done', finalWrite);
+    } else if (located.state !== 'done') {
+      throw new CanonicalResultIntegrationError('canonical managed card cannot legally transition to done');
     }
     await verifyCanonical(record);
     record.state = 'canonical-committed';

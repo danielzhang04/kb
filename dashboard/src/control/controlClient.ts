@@ -1,11 +1,27 @@
 /**
  * Browser-only client for the managed execution control plane.
  *
- * DTOs are intentionally duplicated at this boundary. Importing server modules into the SPA would
- * make Node-only implementation details part of the browser graph and could accidentally widen the
- * public protocol. Governed mutations always carry an exact hash/version and an idempotency key.
+ * P2 run wire types come from the type-only shared protocol module; no Node implementation enters the
+ * browser graph. Governed mutations always carry an exact hash/version and an idempotency key.
  */
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import type {
+  AttentionEnvelope,
+  ControlRunDto as RunDto,
+  OutputRef,
+  RunEventPage,
+} from '../../server/control/p2Contracts.ts';
+import type { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
+import { performAssertion } from '../lib/webauthnClient.ts';
+export type {
+  AttentionEnvelope,
+  ArchivedFrom as ArchivedFromDto,
+  ControlRunDto as RunDto,
+  OutputRef,
+  RunnableRef as RunnableRefDto,
+  RunEventPage,
+  RunOutcome as RunOutcomeDto,
+} from '../../server/control/p2Contracts.ts';
 
 export type FetchLike = typeof fetch;
 export type JsonPrimitive = string | number | boolean | null;
@@ -129,33 +145,6 @@ export type RunState =
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
-
-export interface RunDto {
-  runRef: string;
-  predecessorRunRef: string | null;
-  title: string;
-  /** Server-owned display identity (`server/naming.ts`, embedded by `server/control/routes.ts`).
-   *  `runRef` stays canonical and stays on the wire; it just never reaches primary UI text again. */
-  displayName: string;
-  shortRef: number;
-  /** The workflow definition this run was launched from, or null for an ad-hoc (Composer) run.
-   *  Joined server-side at the DTO-build site (`server/control/routes.ts#workflowRefIndex`): it is the
-   *  grouping key that files every run under its workflow, so no client surface re-derives it. */
-  workflowRef: string | null;
-  proposalRef: string;
-  proposalRevision: number;
-  proposalHash: string;
-  publicationState: 'pending' | 'waiting-human' | 'publishing' | 'published' | 'reconcile-required';
-  state: RunState;
-  version: number;
-  managerSessionRef: string;
-  managerGeneration: number;
-  /** Immutable logical-manager provenance, or null for a legacy/unassigned run. */
-  managerAssignment: ResolvedAgentAssignmentDto | null;
-  agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenanceDto | null;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export interface RunMetadataDto extends RunDto {
   /**
@@ -460,7 +449,36 @@ export interface IterationLoopDto {
   updatedAt: string;
 }
 
+/**
+ * One PTY session bound to one Run attempt. Deliberately a DUPLICATE of the `shared/ptyProtocol.ts`
+ * and `server/control/p2Contracts.ts` declarations (plan [C-M4]): the browser pins its own copy and
+ * decodes it strictly, so a server-side widening is refused at the boundary rather than rendered.
+ */
+export type PtySessionState = 'starting' | 'live' | 'closing' | 'exited' | 'abandoned';
+export type PublicExitDto = { exitCode: number | null; reason: 'exited' | 'closed' | 'abandoned'; observedAt: string };
+export interface AttemptSessionPublicRow {
+  attemptRef: string;
+  sessionId: string;
+  launcher: 'claude' | 'codex';
+  state: PtySessionState;
+  startedAt: string;
+  endedAt: string | null;
+  exit: PublicExitDto | null;
+  controllerClaimed: boolean;
+  liveControl: boolean;
+}
+
 export interface RunDetailDto {
+  /**
+   * [C-M4] The Run console contract, pinned REQUIRED on both sides. `sessionId` is the server's
+   * selection among `attemptSessions` and is `null`, never absent, when there is nothing to open;
+   * `attemptSessions` is every attempt session in the server's binding order — the browser renders
+   * that order as given and never re-sorts it.
+   */
+  streamKind: 'pty' | 'transcript';
+  sessionId: string | null;
+  attemptSessions: AttemptSessionPublicRow[];
+  outputs?: OutputRef[];
   run: RunDto;
   /** The subject that owns this run. See {@link RunMetadataDto.ownerSubject}. */
   ownerSubject: string;
@@ -652,13 +670,29 @@ export interface QuarantinePlanDto {
 }
 
 export class ControlApiError extends Error {
+  readonly status: number;
+  readonly reason: string;
+  /** Stable server error discriminator; unlike `reason`, this never prefers human-readable detail. */
+  readonly code: string;
+  /**
+   * The refusal body as the server sent it, for the routes whose refusals carry STRUCTURED data a
+   * caller must act on — the [C-R6] replay gap's `nextSequence`/`floorSequence` is the first. Kept as
+   * the raw record rather than a field per route: a caller that wants one of these numbers must
+   * validate it itself, and no route can widen this error class by adding a refusal field.
+   */
+  readonly body: Record<string, unknown> | null;
+
   constructor(
-    readonly status: number,
-    readonly reason: string,
-    /** Stable server error discriminator; unlike `reason`, this never prefers human-readable detail. */
-    readonly code: string = reason,
+    status: number,
+    reason: string,
+    code: string = reason,
+    body: Record<string, unknown> | null = null,
   ) {
     super(reason ? `control request refused: ${status} (${reason})` : `control request refused: ${status}`);
+    this.status = status;
+    this.reason = reason;
+    this.code = code;
+    this.body = body;
   }
 }
 
@@ -798,7 +832,7 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
   if (!response.ok) {
     const code = typeof body.error === 'string' ? body.error : '';
     const reason = [body.detail, body.reason, body.error].find((value): value is string => typeof value === 'string') ?? '';
-    throw new ControlApiError(response.status, reason, code);
+    throw new ControlApiError(response.status, reason, code, wireRecord(body));
   }
   return body;
 }
@@ -985,11 +1019,333 @@ export async function listRuns(token: string, fetchImpl?: FetchLike): Promise<Ru
   return body.runs;
 }
 
+type WireValidator = (value: unknown) => boolean;
+
+const wireString: WireValidator = (value) => typeof value === 'string';
+const wireNumber: WireValidator = (value) => typeof value === 'number' && Number.isFinite(value);
+const wireBoolean: WireValidator = (value) => typeof value === 'boolean';
+const nullable = (validator: WireValidator): WireValidator => (value) => value === null || validator(value);
+const arrayOf = (validator: WireValidator): WireValidator =>
+  (value) => Array.isArray(value) && value.every(validator);
+const stringRecord: WireValidator = (value) => {
+  const record = wireRecord(value);
+  return record !== null && Object.values(record).every(wireString);
+};
+
+function exactDto(
+  value: unknown,
+  required: Record<string, WireValidator>,
+  optional: Record<string, WireValidator> = {},
+): boolean {
+  const record = wireRecord(value);
+  if (!record) return false;
+  const keys = Object.keys(record);
+  if (!Object.keys(required).every((key) => Object.hasOwn(record, key))
+    || !keys.every((key) => Object.hasOwn(required, key) || Object.hasOwn(optional, key))) return false;
+  return Object.entries(required).every(([key, validator]) => validator(record[key]))
+    && Object.entries(optional).every(([key, validator]) => !Object.hasOwn(record, key) || validator(record[key]));
+}
+
+const assignmentDto: WireValidator = (value) => exactDto(value, {
+  agentId: wireString, declarationPath: wireString, declarationHash: wireString,
+  profileId: wireString, runtime: wireString, model: wireString,
+});
+const ownerDto: WireValidator = (value) => {
+  const owner = wireRecord(value);
+  if (!owner || owner.type === undefined) return false;
+  return owner.type === 'agent'
+    ? exactDto(owner, { type: wireString, id: wireString, sourcePath: wireString })
+    : owner.type === 'workflow' && exactDto(owner, {
+      type: wireString, id: wireString, project: wireString, sourcePath: wireString,
+    });
+};
+const outputRefDto: WireValidator = (value) => {
+  const output = wireRecord(value);
+  if (!output) return false;
+  if (output.kind === 'repository-file' || output.kind === 'artifact') {
+    return exactDto(output, { kind: wireString, label: wireString, path: wireString });
+  }
+  return output.kind === 'external-pr' && exactDto(output, {
+    kind: wireString, label: wireString, owner: wireString, repository: wireString, number: wireNumber,
+  });
+};
+const runDto: WireValidator = (value) => exactDto(value, {
+  runRef: wireString, predecessorRunRef: nullable(wireString), title: wireString, displayName: wireString,
+  shortRef: wireNumber, workflowRef: nullable(wireString), proposalRef: wireString,
+  proposalRevision: wireNumber, proposalHash: wireString, publicationState: wireString, state: wireString,
+  version: wireNumber, managerSessionRef: wireString, managerGeneration: wireNumber,
+  managerAssignment: nullable(assignmentDto), owner: ownerDto, executionHost: wireString,
+  terminalOutcome: nullable(wireString), completedAt: nullable(wireString), archivedFrom: nullable(wireString),
+  createdAt: wireString, updatedAt: wireString,
+}, {
+  agentWorkspaceLaunch: nullable((entry) => exactDto(entry, {
+    composerRef: wireString, agentId: wireString, declarationPath: wireString, declarationHash: wireString,
+  })),
+});
+const stageDto: WireValidator = (value) => exactDto(value, {
+  stageRef: wireString, runRef: wireString, stageId: wireString, title: wireString,
+  dependsOn: arrayOf(wireString), canonicalCardRef: nullable(wireString), state: wireString, version: wireNumber,
+  currentAttemptRef: nullable(wireString), assignment: nullable(assignmentDto), createdAt: wireString, updatedAt: wireString,
+});
+const attemptDto: WireValidator = (value) => exactDto(value, {
+  attemptRef: wireString, runRef: wireString, stageRef: wireString, generation: wireNumber,
+  predecessorAttemptRef: nullable(wireString), runtime: wireString, model: wireString, state: wireString,
+  version: wireNumber, managedSessionRef: nullable(wireString), createdAt: wireString, updatedAt: wireString,
+});
+const managedSessionDto: WireValidator = (value) => exactDto(value, {
+  sessionRef: wireString, runRef: wireString, stageRef: nullable(wireString), attemptRef: nullable(wireString),
+  role: wireString, generation: wireNumber, predecessorSessionRef: nullable(wireString), runtime: wireString,
+  model: wireString, state: wireString, version: wireNumber, createdAt: wireString, updatedAt: wireString,
+});
+const humanResponseDto: WireValidator = (value) => exactDto(value, {
+  requestRevision: wireNumber, decision: wireString, response: nullable(wireString), respondedAt: wireString,
+});
+const humanRequestDto: WireValidator = (value) => exactDto(value, {
+  requestRef: wireString, runRef: wireString, displayName: wireString, shortRef: wireNumber,
+  stageRef: nullable(wireString), kind: wireString, revision: wireNumber, state: wireString, title: wireString,
+  prompt: wireString, ask: wireString, technicalDetail: nullable(wireString), response: nullable(humanResponseDto),
+  createdAt: wireString, updatedAt: wireString,
+}, { gateKind: wireString });
+const participantDto: WireValidator = (value) => exactDto(value, {
+  participantId: wireString, stageRef: wireString, role: wireString, perspective: wireString, mandate: wireString,
+}, { goal: wireString });
+const routeDto: WireValidator = (value) => exactDto(value, {
+  routeId: wireString, senderParticipantId: wireString, recipientParticipantId: wireString,
+  requestKinds: arrayOf(wireString), baseResolutionStageIds: arrayOf(wireString),
+});
+const scheduleStepDto: WireValidator = (value) => exactDto(value, {
+  stepId: wireString, routeId: wireString, cycle: wireString,
+}, { after: (entry) => exactDto(entry, { stepId: wireString, participantId: wireString, verdict: wireString }) });
+const findingDto: WireValidator = (value) => exactDto(value, {
+  findingId: wireString, criterionId: wireString, severity: wireString, summary: wireString,
+  evidencePaths: arrayOf(wireString),
+});
+const positionDto: WireValidator = (value) => exactDto(value, {
+  positionId: wireString, participantId: wireString, summary: wireString, generationRefs: arrayOf(wireString),
+});
+const dissentDto: WireValidator = (value) => exactDto(value, {
+  dissentId: wireString, participantId: wireString, positionId: wireString, summary: wireString,
+});
+const criterionOutcomeDto: WireValidator = (value) => exactDto(value, {
+  criterionId: wireString, verdict: wireString, findingIds: arrayOf(wireString),
+});
+const outcomeDto: WireValidator = (value) => exactDto(value, {
+  schema: wireString, requestRef: wireString, iterationLoopRef: wireString, participantId: wireString,
+  cycle: wireNumber, verdict: wireString, inputGenerationRefs: arrayOf(wireString),
+  criteria: arrayOf(criterionOutcomeDto), findings: arrayOf(findingDto), positions: arrayOf(positionDto),
+  recordedDissent: arrayOf(dissentDto), summary: wireString,
+}, { resolvedFindingRefs: arrayOf(wireString) });
+const artifactSnapshotDto: WireValidator = (value) => exactDto(value, {
+  path: wireString, regularFile: wireBoolean, size: nullable(wireNumber), sha256: nullable(wireString),
+  afterRegularFile: wireBoolean, afterSize: nullable(wireNumber), afterSha256: nullable(wireString),
+  byteIdentical: wireBoolean,
+});
+const residueDto: WireValidator = (value) => exactDto(value, {
+  unresolvedFindings: arrayOf(findingDto), positions: arrayOf(positionDto), recordedDissent: arrayOf(dissentDto),
+  requestRefs: arrayOf(wireString), receiptRefs: arrayOf(wireString), activeGenerationRefs: arrayOf(wireString),
+  acceptedGenerationRefs: arrayOf(wireString), nextRouteId: wireString, cycleUnit: wireString,
+  cyclesUsed: wireNumber, maxCycles: wireNumber,
+}, {
+  attemptedRequestRef: wireString, attemptedRequestCycle: wireNumber, attemptedOutcome: outcomeDto,
+  artifactSnapshots: arrayOf(artifactSnapshotDto), failureReason: wireString,
+});
+const iterationRequestDto: WireValidator = (value) => exactDto(value, {
+  schema: wireString, requestRef: wireString, iterationLoopRef: wireString, routeId: wireString,
+  senderParticipantId: wireString, recipientParticipantId: wireString, kind: wireString, cycle: wireNumber,
+  inputGenerationRefs: arrayOf(wireString), baseCommit: wireString, artifactHashes: stringRecord,
+  criteria: arrayOf((entry) => exactDto(entry, { id: wireString, description: wireString })),
+  unresolvedFindingRefs: arrayOf(wireString), preservedInvariants: arrayOf(wireString),
+  nextAcceptanceCheck: wireString, instructions: wireString,
+}, { stepId: wireString });
+const iterationReceiptDto: WireValidator = (value) => exactDto(value, {
+  schema: wireString, receiptRef: wireString, requestRef: wireString, iterationLoopRef: wireString,
+  participantId: wireString, cycle: wireNumber, verdict: wireString, inputGenerationRefs: arrayOf(wireString),
+  criteria: arrayOf(criterionOutcomeDto), findings: arrayOf(findingDto), positions: arrayOf(positionDto),
+  recordedDissent: arrayOf(dissentDto), summary: wireString, outcomeHash: wireString,
+  outputGenerationRefs: arrayOf(wireString), baseCommit: wireString, canonicalCommit: wireString,
+  createdAt: wireString, version: wireNumber,
+}, { resolvedFindingRefs: arrayOf(wireString) });
+const stageGenerationDto: WireValidator = (value) => exactDto(value, {
+  generationRef: wireString, runRef: wireString, logicalStageRef: wireString, logicalStageId: wireString,
+  generation: wireNumber, predecessorGenerationRef: nullable(wireString), attemptRef: wireString,
+  canonicalResultOperationKey: nullable(wireString), resultHash: nullable(wireString),
+  resultCardRef: nullable(wireString), baseCommit: nullable(wireString), canonicalCommit: nullable(wireString),
+  state: wireString, createdAt: wireString, updatedAt: wireString,
+});
+const generationSupersessionDto: WireValidator = (value) => exactDto(value, {
+  runRef: wireString, predecessorGenerationRef: wireString, successorGenerationRef: wireString,
+  triggerReceiptRef: wireString, operationKey: wireString, createdAt: wireString,
+});
+const iterationLoopDto: WireValidator = (value) => exactDto(value, {
+  iterationLoopRef: wireString, runRef: wireString, definitionHash: wireString, iterationGroupId: wireString,
+  participants: arrayOf(participantDto), routes: arrayOf(routeDto), activation: (entry) => exactDto(entry, {
+    seedParticipantId: wireString, seedArtifactIds: arrayOf(wireString),
+  }), initialStepId: wireString, schedule: arrayOf(scheduleStepDto), artifacts: arrayOf(wireString),
+  criteria: arrayOf((entry) => exactDto(entry, { id: wireString, description: wireString })),
+  maxCycles: wireNumber, cycleUnit: wireString,
+  terminalAuthorities: arrayOf((entry) => exactDto(entry, { participantId: wireString, verdict: wireString })),
+  cyclesUsed: wireNumber, state: wireString, activeGenerationRefs: arrayOf(wireString), version: wireNumber,
+  createdAt: wireString, updatedAt: wireString,
+}, {
+  goal: wireString,
+  completionGate: (entry) => exactDto(entry, { id: wireString, kind: wireString, prompt: wireString, requiresReview: wireString }),
+  turnOwnerParticipantId: wireString, currentStepId: wireString, acceptedGenerationRefs: arrayOf(wireString),
+  lastReceiptRef: wireString, completionGateRef: wireString, interventionRef: wireString,
+  parkReason: wireString, unresolvedResidue: residueDto,
+});
+
+const PTY_SESSION_STATES: readonly string[] = ['starting', 'live', 'closing', 'exited', 'abandoned'];
+const EXIT_REASONS: readonly string[] = ['exited', 'closed', 'abandoned'];
+const ptySessionState: WireValidator = (value) => typeof value === 'string' && PTY_SESSION_STATES.includes(value);
+const publicExitDto: WireValidator = (value) => exactDto(value, {
+  exitCode: nullable(wireNumber),
+  reason: (reason) => typeof reason === 'string' && EXIT_REASONS.includes(reason),
+  observedAt: wireString,
+});
+/** Closed [C-M4] decoder: strict keys, closed state/launcher enums, and the existing ref/time shapes. */
+export const attemptSessionPublicRowDto: WireValidator = (value) => exactDto(value, {
+  attemptRef: wireString, sessionId: wireString,
+  launcher: (launcher) => launcher === 'claude' || launcher === 'codex',
+  state: ptySessionState, startedAt: wireString, endedAt: nullable(wireString),
+  exit: nullable(publicExitDto), controllerClaimed: wireBoolean, liveControl: wireBoolean,
+});
+
+/** Closed decoder for the complete Run-detail wire graph. */
+export function decodeRunDetail(value: unknown): RunDetailDto | null {
+  return exactDto(value, {
+    run: runDto, ownerSubject: wireString, stages: arrayOf(stageDto), attempts: arrayOf(attemptDto),
+    sessions: arrayOf(managedSessionDto), humanRequests: arrayOf(humanRequestDto),
+    stageGenerations: arrayOf(stageGenerationDto), generationSupersessions: arrayOf(generationSupersessionDto),
+    iterationLoops: arrayOf(iterationLoopDto), iterationRequests: arrayOf(iterationRequestDto),
+    iterationReceipts: arrayOf(iterationReceiptDto),
+    streamKind: (kind) => kind === 'pty' || kind === 'transcript',
+    sessionId: nullable(wireString),
+    attemptSessions: arrayOf(attemptSessionPublicRowDto),
+  }, { outputs: arrayOf(outputRefDto) }) ? value as RunDetailDto : null;
+}
+
+/** One [C-R6] raw-replay frame. `sequence` is the BYTE OFFSET of the frame's first byte. */
+export interface RunSessionReplayFrame {
+  sequence: number;
+  encoding: 'base64';
+  data: string;
+}
+
+/** One [C-R6] raw-replay page, exactly as the scoped Run replay route returns it. */
+export interface RunSessionReplayPage {
+  sessionId: string;
+  fromSequence: number;
+  nextSequence: number;
+  complete: boolean;
+  frames: RunSessionReplayFrame[];
+}
+
+/**
+ * Why the whole replay read has a CLOSED refusal union rather than a thrown message: the console has
+ * exactly four honest reactions to a refused page, and each one is a different sentence to the
+ * operator. `gap` means the retention window dropped the head the caller asked for — the transcript
+ * resumes, but with a hole. `unreadable` means the transcript itself cannot be served. `not-found`
+ * means this run has no such attempt session (a cross-Run probe gets this same answer). `invalid` is
+ * this client asking wrongly. A string-matched error message would collapse the four.
+ */
+export type RunSessionReplayRefusal =
+  | { kind: 'gap'; nextSequence: number | null; floorSequence: number | null }
+  | { kind: 'unreadable' }
+  | { kind: 'not-found' }
+  | { kind: 'invalid' };
+
+export type RunSessionReplayResult =
+  | { ok: true; value: RunSessionReplayPage }
+  | { ok: false; refusal: RunSessionReplayRefusal };
+
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+const byteOffset = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+const replayFrameDto: WireValidator = (value) => exactDto(value, {
+  sequence: byteOffset,
+  encoding: (encoding) => encoding === 'base64',
+  data: (data) => typeof data === 'string' && data.length % 4 === 0 && BASE64.test(data),
+});
+
+/** Closed decoder for one replay page: exact keys, byte-offset integers, base64 payloads only. */
+export function decodeRunSessionReplayPage(value: unknown): RunSessionReplayPage | null {
+  return exactDto(value, {
+    sessionId: wireString,
+    fromSequence: byteOffset,
+    nextSequence: byteOffset,
+    complete: wireBoolean,
+    frames: arrayOf(replayFrameDto),
+  }) ? value as RunSessionReplayPage : null;
+}
+
+function replayRefusal(cause: unknown): RunSessionReplayRefusal {
+  if (!(cause instanceof ControlApiError)) return { kind: 'unreadable' };
+  if (cause.status === 404) return { kind: 'not-found' };
+  if (cause.status === 400) return { kind: 'invalid' };
+  if (cause.code === 'replay-gap') {
+    const hint = (key: string): number | null =>
+      byteOffset(cause.body?.[key]) ? cause.body?.[key] as number : null;
+    return { kind: 'gap', nextSequence: hint('nextSequence'), floorSequence: hint('floorSequence') };
+  }
+  return { kind: 'unreadable' };
+}
+
+/**
+ * Read ONE attempt session's transcript, whole, through the scoped Run replay route.
+ *
+ * Paging is driven by the server's `nextSequence` and terminated by its `complete` flag — never by a
+ * frame count or a page-size guess, because the route's bounds (64 KiB, 256 frames) belong to the
+ * reader and may tighten without this client knowing. A page that does not advance the cursor and is
+ * not complete would spin forever, so it is treated as `unreadable` rather than retried.
+ */
+export async function readRunSessionReplay(
+  runRef: string,
+  sessionId: string,
+  fromSequence: number,
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<RunSessionReplayResult> {
+  if (!byteOffset(fromSequence)) return { ok: false, refusal: { kind: 'invalid' } };
+  const frames: RunSessionReplayFrame[] = [];
+  let cursor = fromSequence;
+  let pages = 0;
+  for (;;) {
+    let body: unknown;
+    try {
+      body = await read<unknown>(
+        `/api/control/runs/${segment(runRef)}/pty-sessions/${segment(sessionId)}/replay?fromSequence=${cursor}`,
+        token,
+        fetchImpl,
+      );
+    } catch (cause) {
+      return { ok: false, refusal: replayRefusal(cause) };
+    }
+    const envelope = wireRecord(body);
+    const page = envelope && exactWireKeys(envelope, ['ok', 'value']) && envelope.ok === true
+      ? decodeRunSessionReplayPage(envelope.value) : null;
+    if (page === null || page.sessionId !== sessionId || page.fromSequence !== cursor) {
+      return { ok: false, refusal: { kind: 'unreadable' } };
+    }
+    frames.push(...page.frames);
+    pages += 1;
+    if (page.complete) {
+      return { ok: true, value: { sessionId, fromSequence, nextSequence: page.nextSequence, complete: true, frames } };
+    }
+    // A page that neither completes nor advances is a server that cannot finish this transcript. The
+    // 4,096-page ceiling is the same statement for a stream that advances one byte at a time.
+    if (page.nextSequence <= cursor || pages >= 4096) return { ok: false, refusal: { kind: 'unreadable' } };
+    cursor = page.nextSequence;
+  }
+}
+
 export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailDto> {
-  const body = await read<{ ok: true; value: RunDetailDto }>(
+  const body = await read<unknown>(
     `/api/control/runs/${segment(runRef)}`, token, fetchImpl,
   );
-  return body.value;
+  const envelope = wireRecord(body);
+  const detail = envelope && exactWireKeys(envelope, ['ok', 'value']) && envelope.ok === true
+    ? decodeRunDetail(envelope.value) : null;
+  if (!detail) throw new Error('invalid run detail');
+  return detail;
 }
 
 /**
@@ -1019,11 +1375,88 @@ export async function listRunEvents(
   limit: number,
   token: string,
   fetchImpl?: FetchLike,
-): Promise<OperationalEventDto[]> {
-  const body = await read<{ ok: true; value: OperationalEventDto[] }>(
+): Promise<RunEventPage> {
+  const body = await read<unknown>(
     `/api/control/runs/${segment(runRef)}/events?after=${after}&limit=${limit}`, token, fetchImpl,
   );
-  return body.value;
+  const page = decodeRunEventPage(body);
+  if (page === null) throw new Error('invalid run event page');
+  return page;
+}
+
+const RUN_EVENT_KEYS = [
+  'cursor', 'runRef', 'kind', 'source', 'stageRef', 'attemptRef', 'sessionRef', 'status', 'summary',
+  'command', 'toolName', 'path', 'diff', 'checkpoint', 'createdAt',
+] as const;
+
+function wireRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : null;
+}
+
+function exactWireKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && Object.keys(value).every((key) => keys.includes(key));
+}
+
+function nullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string';
+}
+
+export function decodeOperationalEvent(value: unknown): OperationalEventDto | null {
+  const event = wireRecord(value);
+  if (!event || !exactWireKeys(event, RUN_EVENT_KEYS)
+    || !Number.isSafeInteger(event.cursor) || (event.cursor as number) < 0
+    || typeof event.runRef !== 'string' || event.runRef.length === 0
+    || !['message', 'command', 'tool', 'file', 'diff', 'checkpoint', 'lifecycle', 'session-link', 'governance'].includes(String(event.kind))
+    || !['system', 'manager', 'worker', 'human'].includes(String(event.source))
+    || ![event.stageRef, event.attemptRef, event.sessionRef, event.summary, event.command, event.toolName,
+      event.path, event.diff, event.checkpoint].every(nullableString)
+    || !(event.status === null || ['pending', 'running', 'success', 'failure', 'stopped', 'interrupted', 'waiting'].includes(String(event.status)))
+    || typeof event.createdAt !== 'string') return null;
+  return event as unknown as OperationalEventDto;
+}
+
+function decodeRunEventPage(value: unknown): RunEventPage | null {
+  const page = wireRecord(value);
+  if (!page || !exactWireKeys(page, ['revision', 'items', 'nextCursor'])
+    || typeof page.revision !== 'string' || !/^[a-f0-9]{64}$/.test(page.revision)
+    || !Array.isArray(page.items)
+    || !(page.nextCursor === null || (Number.isSafeInteger(page.nextCursor) && (page.nextCursor as number) >= 0))) return null;
+  const items = page.items.map(decodeOperationalEvent);
+  if (items.some((event) => event === null)) return null;
+  return { revision: page.revision, items: items as OperationalEventDto[], nextCursor: page.nextCursor as number | null };
+}
+
+function decodeAttention(value: unknown): AttentionEnvelope | null {
+  const envelope = wireRecord(value);
+  if (!envelope || !exactWireKeys(envelope, ['revision', 'pairs', 'agents', 'workflows'])
+    || typeof envelope.revision !== 'string' || !/^[a-f0-9]{64}$/.test(envelope.revision)
+    || !Array.isArray(envelope.pairs)) return null;
+  const agents = wireRecord(envelope.agents);
+  const workflows = wireRecord(envelope.workflows);
+  if (!agents || !workflows || ![...Object.values(agents), ...Object.values(workflows)]
+    .every((count) => Number.isSafeInteger(count) && (count as number) >= 0)) return null;
+  for (const valuePair of envelope.pairs) {
+    const pair = wireRecord(valuePair);
+    const owner = wireRecord(pair?.owner);
+    if (!pair || !exactWireKeys(pair, ['runRef', 'owner']) || typeof pair.runRef !== 'string' || !owner) return null;
+    if (owner.type === 'agent') {
+      if (!exactWireKeys(owner, ['type', 'id', 'sourcePath']) || typeof owner.id !== 'string'
+        || typeof owner.sourcePath !== 'string' || !owner.sourcePath.startsWith('agents/')) return null;
+    } else if (owner.type === 'workflow') {
+      if (!exactWireKeys(owner, ['type', 'id', 'project', 'sourcePath']) || typeof owner.id !== 'string'
+        || typeof owner.project !== 'string' || typeof owner.sourcePath !== 'string'
+        || !owner.sourcePath.startsWith('orgs/')) return null;
+    } else return null;
+  }
+  return envelope as unknown as AttentionEnvelope;
+}
+
+export async function getAttention(token: string, fetchImpl?: FetchLike): Promise<AttentionEnvelope> {
+  const body = await read<unknown>('/api/attention', token, fetchImpl);
+  const attention = decodeAttention(body);
+  if (attention === null) throw new Error('invalid attention envelope');
+  return attention;
 }
 
 export interface ManagerCasInput {
@@ -1116,6 +1549,9 @@ export function respondToHumanRequest(
     decision: HumanRequestDecision;
     idempotencyKey: string;
     response?: string | null;
+    ceremonyId?: string;
+    assertion?: AuthenticationResponseJSON;
+    challengeExpiresAt?: string;
   },
   token: string,
   fetchImpl?: FetchLike,
@@ -1123,6 +1559,46 @@ export function respondToHumanRequest(
   return write<{ ok: true; value: HumanRequestDto }>(
     `/api/control/human-requests/${segment(requestRef)}/respond`, input, token, fetchImpl,
   ).then((body) => body.value);
+}
+
+export interface HumanResponseChallengeDto {
+  ceremonyId: string;
+  options: PublicKeyCredentialRequestOptionsJSON;
+  challengeExpiresAt: string;
+}
+
+export function requestHumanResponseChallenge(
+  requestRef: string,
+  input: { expectedRevision: number; decision: HumanRequestDecision; response?: string | null },
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<HumanResponseChallengeDto> {
+  return write<HumanResponseChallengeDto>(
+    `/api/control/human-requests/${segment(requestRef)}/respond/challenge`, input, token, fetchImpl,
+  );
+}
+
+/** T3 responses are signed over the exact request revision, decision, response digest, origin, and expiry. */
+export async function respondToHumanRequestWithCeremony(
+  requestRef: string,
+  input: {
+    expectedRevision: number;
+    decision: HumanRequestDecision;
+    idempotencyKey: string;
+    response?: string | null;
+  },
+  token: string,
+  fetchImpl?: FetchLike,
+  perform: (options: PublicKeyCredentialRequestOptionsJSON) => Promise<AuthenticationResponseJSON> = performAssertion,
+): Promise<HumanRequestDto> {
+  const challenge = await requestHumanResponseChallenge(requestRef, input, token, fetchImpl);
+  const assertion = await perform(challenge.options);
+  return respondToHumanRequest(requestRef, {
+    ...input,
+    ceremonyId: challenge.ceremonyId,
+    assertion,
+    challengeExpiresAt: challenge.challengeExpiresAt,
+  }, token, fetchImpl);
 }
 
 /** One-off, server-constrained repair for the authorized 2026-07-31 execution-lock boundary. */

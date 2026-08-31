@@ -78,7 +78,7 @@
  *   .mc-main, .mc-panel, .mc-card, .mc-table, .mc-table--boxed, .mc-badge*, .mc-status-dot*, .mc-btn*
  *   .mc-row-link — the ONE clickable-row hover treatment (2px left rail, painted on hover/focus)
  *   .mc-empty    — the ONE empty state: a quiet sentence, never a placeholder box
- *   .mc-stop     — the emergency-stop controls (mounted on the Sentinel view)
+ *   .mc-stop     — the emergency-stop controls mounted in Health
  *   .mc-mono — ids/hashes/tiers/sessions (also tabular figures)
  *   .mc-num  — tabular figures on any non-mono live/columnar number
  *
@@ -93,25 +93,25 @@
   color-scheme: dark;
 
   /* ---- Color: pure-neutral dark scale. All grey tokens have R = G = B. ---- */
-  --bg-sunken: #0f0f0f; /* code gutters / terminal — deepest well */
-  --bg-base: #0f0f0f; /* page */
-  --bg-sidebar: #141414; /* navigation / chrome — intentionally below cards */
-  --bg-panel: #1b1b1b; /* cards / panes */
-  --bg-elevated: #202020; /* controls / sheets / popovers */
+  --bg-sunken: #000000;
+  --bg-base: #000000;
+  --bg-sidebar: #111111;
+  --bg-panel: #111111;
+  --bg-elevated: #1a1a1a;
 
   /* ---- Color: foreground (neutral off-white / neutral gray) ---- */
-  --fg-primary: #ebebeb;
-  --fg-dim: #a6a6a6;
-  --fg-faint: #7c7c7c;
-  --ink: #ebebeb;
-  --paper: #0f0f0f;
+  --fg-primary: #ffffff;
+  --fg-dim: #888888;
+  --fg-faint: #888888;
+  --paper: #000000;
+  --focus: #0070f3;
+  --focus-contrast: #ffffff;
 
   /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
    * selection, KPI tiles, buttons, links, focus, tab underlines, left-borders) so redefining them here
    * neutralises every consumer at once. Semantic status colour lives in the separate tokens below. ---- */
-  --accent-strong: var(--ink); /* buttons / links / focus / active underline+border */
-  --accent: var(--fg-dim); /* active nav icon tint / secondary */
+  --accent: var(--focus);
   --accent-quiet: var(--bg-elevated); /* selected wash */
 
   /* ---- Color: hairlines (the Claude "super thin white outline" — a low-alpha white line is how a
@@ -122,8 +122,8 @@
    * --border / --border-strong are kept as aliases so every existing consumer inherits at once.
    * Field-guide restyle 2026-08-18: both alphas step up (0.10 -> 0.12, 0.16 -> 0.18) because the surface
    * ladder flattened — the edge is now the primary separator, not a secondary one. ---- */
-  --hairline: #2a2a2a;
-  --hairline-strong: #7c7c7c;
+  --hairline: #333333;
+  --hairline-strong: #888888;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -134,13 +134,13 @@
    * where it fell short. Hue families are unchanged; only lightness moved. Untouched values were already
    * over the bar.
    * The rust failure token is the sole non-neutral color. ---- */
-  --error: #c97867; /* rust — the sole hue */
-  --warning: var(--error);
-  --success: var(--fg-dim);
+  --error: #e5484d;
+  --warning: #f5a623;
+  --success: #46a758;
 
   /* ---- Color: status (fleet card state — semantic, kept) ---- */
-  --status-running: var(--fg-dim);
-  --status-done: var(--fg-dim);
+  --status-running: var(--success);
+  --status-done: var(--success);
   --status-blocked: var(--error);
   --status-idle: var(--fg-faint);
 
@@ -174,16 +174,23 @@
   --space-8: 32px;
   --space-12: 48px;
   --gap: var(--space-3); /* legacy alias — existing views (fleet-strip/control__grid) use this */
+  --content-pad: var(--space-6);
+  --content-pad-compact: var(--space-4);
+  --section-gap: var(--space-6);
+  --card-gap: var(--space-3);
+  --card-pad: var(--space-4);
 
   /* ---- Type (system stacks only — self-contained, no external fonts) ---- */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
-  --text-xs: 11px; /* eyebrow / badge / col-headers */
+  --font-sans: -apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-header: var(--font-sans);
+  --font-body: var(--font-sans);
+  --font-mono: "Geist Mono",ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  --text-xs: 12px;
   --text-sm: 12px; /* secondary / timestamps / nav labels */
   --text-base: 13px; /* body / table cell — dense tool */
-  --text-md: 14px; /* inputs / active nav */
-  --text-lg: 16px; /* section headers */
-  --text-xl: 20px; /* view titles / KPI numbers */
+  --text-md: 13px;
+  --text-lg: 15px; /* section headers */
+  --text-xl: 22px;
 
   /* ---- Typographic ROLES (Phase 6). The raw --text-* scale above is the vocabulary; these five roles
    * are the GRAMMAR — every surface renders each role with exactly ONE size+weight pair, and no view
@@ -195,16 +202,25 @@
    *   meta    — timestamps, counts, help text, secondary cells (always --fg-dim or --fg-faint)
    *   metric  — the big tile numeral (mono + tabular)
    * ---- */
-  --type-title-size: var(--text-lg);
+  --type-title: 600 22px/28px var(--font-header);
+  --type-section: 600 15px/20px var(--font-header);
+  --type-body: 400 13px/18px var(--font-body);
+  --type-meta: 400 12px/16px var(--font-body);
+  --type-mono: 400 12px/18px var(--font-mono);
+  --type-title-size: 22px;
   --type-title-weight: 600;
-  --type-section-size: var(--text-xs);
+  --type-title-line: 28px;
+  --type-section-size: 15px;
   --type-section-weight: 600;
-  --type-body-size: var(--text-base);
+  --type-section-line: 20px;
+  --type-body-size: 13px;
   --type-body-weight: 400;
-  --type-meta-size: var(--text-sm);
+  --type-body-line: 18px;
+  --type-meta-size: 12px;
   --type-meta-weight: 400;
-  --type-metric-size: var(--text-xl);
-  --type-metric-weight: 650;
+  --type-meta-line: 16px;
+  --type-metric-size: 24px;
+  --type-metric-weight: 600;
   /* ONE tracking for every uppercase section heading (was 0.02/0.04/0.05/0.06em scattered). */
   --tracking-eyebrow: 0.05em;
 
@@ -221,9 +237,6 @@
   --transition: 120ms ease-out;
 
   /* ---- Accent slot. Inversion is ink on page in both themes. ---- */
-  --mc-accent: var(--ink);
-  --mc-accent-fg: var(--paper);
-
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
    * neutral black low-opacity, never colored/glow).
    * --shadow-overlay restyled 2026-08-18: the reference floats an overlay on ONE soft, very large,
@@ -240,82 +253,30 @@
   --topbar-h: 44px;
 }
 
-/* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. */
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --bg-sunken: #fafafa;
-    --bg-base: #fafafa;
-    --bg-sidebar: #f1f1f1;
-    --bg-panel: #ffffff;
-    --bg-elevated: #f1f1f1;
-
-    --fg-primary: #161616;
-    --ink: #161616;
-    --paper: #fafafa;
-    --fg-dim: #555555;
-    --fg-faint: #767676;
-
-    --accent-strong: var(--ink);
-    --accent: var(--fg-dim);
-    --accent-quiet: var(--bg-elevated);
-    --mc-accent: var(--ink);
-
-    --hairline: #dcdcdc;
-    --hairline-strong: #767676;
-    --border: var(--hairline);
-    --border-strong: var(--hairline-strong);
-
-    --error: #a1543f; /* rust — the sole hue */
-    --warning: var(--error);
-    --success: var(--fg-dim);
-
-    --status-running: var(--fg-dim);
-    --status-done: var(--fg-dim);
-    --status-blocked: var(--error);
-    --status-idle: var(--fg-faint);
-
-    --tier-t1: var(--fg-faint);
-    --tier-t2: var(--fg-dim);
-    --tier-t3: var(--error);
-
-    --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.08);
-    --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.16);
-    --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.12);
-  }
-}
-
-/* Explicit theme pin — wins over the media query above. */
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg-sunken: #fafafa;
-  --bg-base: #fafafa;
-  --bg-sidebar: #f1f1f1;
-  --bg-panel: #ffffff;
-  --bg-elevated: #f1f1f1;
-
-  --fg-primary: #161616;
-  --ink: #161616;
-  --paper: #fafafa;
-  --fg-dim: #555555;
-  --fg-faint: #767676;
-
-  --accent-strong: var(--ink);
-  --accent: var(--fg-dim);
+  --bg-sunken: #ffffff;
+  --bg-base: #ffffff;
+  --bg-sidebar: #f7f7f7;
+  --bg-panel: #f7f7f7;
+  --bg-elevated: #ededed;
+  --fg-primary: #000000;
+  --paper: #ffffff;
+  --fg-dim: #666666;
+  --fg-faint: #666666;
+  --focus: #0070f3;
+  --focus-contrast: #ffffff;
+  --accent: var(--focus);
   --accent-quiet: var(--bg-elevated);
-  --mc-accent: var(--ink);
-
-  --hairline: #dcdcdc;
-  --hairline-strong: #767676;
+  --hairline: #d4d4d4;
+  --hairline-strong: #666666;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
-
-  --error: #a1543f;
-  --warning: var(--error);
-  --success: var(--fg-dim);
-
-  --status-running: var(--fg-dim);
-  --status-done: var(--fg-dim);
+  --error: #d1242f;
+  --warning: #9a6700;
+  --success: #18794e;
+  --status-running: var(--success);
+  --status-done: var(--success);
   --status-blocked: var(--error);
   --status-idle: var(--fg-faint);
 
@@ -330,34 +291,29 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg-sunken: #0f0f0f;
-  --bg-base: #0f0f0f;
-  --bg-sidebar: #141414;
-  --bg-panel: #1b1b1b;
-  --bg-elevated: #202020;
-
-  --fg-primary: #ebebeb;
-  --ink: #ebebeb;
-  --paper: #0f0f0f;
-  --fg-dim: #a6a6a6;
-  --fg-faint: #7c7c7c;
-
-  --accent-strong: var(--ink);
-  --accent: var(--fg-dim);
+  --bg-sunken: #000000;
+  --bg-base: #000000;
+  --bg-sidebar: #111111;
+  --bg-panel: #111111;
+  --bg-elevated: #1a1a1a;
+  --fg-primary: #ffffff;
+  --paper: #000000;
+  --fg-dim: #888888;
+  --fg-faint: #888888;
+  --focus: #0070f3;
+  --focus-contrast: #ffffff;
+  --accent: var(--focus);
   --accent-quiet: var(--bg-elevated);
-  --mc-accent: var(--ink);
-
-  --hairline: #2a2a2a;
-  --hairline-strong: #7c7c7c;
+  --hairline: #333333;
+  --hairline-strong: #888888;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  --error: #c97867;
-  --warning: var(--error);
-  --success: var(--fg-dim);
-
-  --status-running: var(--fg-dim);
-  --status-done: var(--fg-dim);
+  --error: #e5484d;
+  --warning: #f5a623;
+  --success: #46a758;
+  --status-running: var(--success);
+  --status-done: var(--success);
   --status-blocked: var(--error);
   --status-idle: var(--fg-faint);
 
@@ -376,10 +332,21 @@
 
 body {
   margin: 0;
-  font-family: var(--font-sans);
+  font: var(--type-body);
   background: var(--bg-base);
   color: var(--fg-primary);
-  line-height: 1.45;
+}
+
+h1 {
+  font: var(--type-title);
+}
+
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font: var(--type-section);
 }
 
 /* Browser-native controls otherwise retain a light UA surface in dark mode. Keep every app
@@ -412,10 +379,10 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  border-color: var(--ink);
-  background: var(--ink);
+  border-color: var(--focus);
+  background: var(--focus);
   color: var(--paper);
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -427,7 +394,7 @@ select option {
 /* ---- Numeric utilities ---- */
 /* Mono for ids/hashes/tiers/sessions — always tabular figures so columns of them line up. */
 .mc-mono {
-  font-family: var(--font-mono);
+  font: var(--type-mono);
   font-variant-ligatures: none;
   font-variant-numeric: tabular-nums;
 }
@@ -447,7 +414,7 @@ select option {
  * (and `.mc-nav`), never on <body>. */
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   grid-template-rows: var(--topbar-h) 1fr;
   grid-template-areas:
     'sidebar topbar'
@@ -459,7 +426,7 @@ select option {
 }
 
 .app-shell--rail {
-  grid-template-columns: var(--sidebar-w-rail) 1fr;
+  grid-template-columns: var(--sidebar-w-rail) minmax(0, 1fr);
 }
 
 /* ---- Sidebar ---- */
@@ -530,110 +497,6 @@ select option {
   background: transparent;
 }
 
-/* ---- [+ New] menu (pinned above the first divider) ---- */
-.mc-new {
-  position: relative;
-  padding: 0 var(--space-1);
-}
-
-.mc-new__trigger {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  background: transparent;
-  color: var(--fg-dim);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-3);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mc-new__trigger:hover {
-  background: var(--bg-elevated);
-  color: var(--fg-primary);
-}
-
-.mc-new__plus {
-  flex: 0 0 auto;
-  width: 1.1em;
-  text-align: center;
-  color: var(--fg-dim);
-}
-
-.mc-new__label {
-  flex: 1 1 auto;
-}
-
-.mc-new__caret {
-  flex: 0 0 auto;
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-}
-
-.mc-new__menu {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  left: var(--space-1);
-  right: var(--space-1);
-  z-index: 20;
-  list-style: none;
-  margin: 0;
-  padding: var(--space-1);
-  background: var(--bg-elevated);
-  /* OVERLAYS GET A STRONG EDGE (field-guide restyle 2026-08-18). A hairline is how a surface that sits
-   * IN the page is defined; a surface floating OVER it gets a definite near-foreground line instead, so
-   * the menu reads as a separate object rather than a lighter patch of the panel underneath. This is a
-   * value swap only — --border-strong keeps its meaning (the interactive/hovered edge) everywhere else.
-   * The same rule is applied to the command palette in palette.css. */
-  /* Overlay edge uses --fg-faint (not --border-strong) per the field-guide direction: overlays get a strong near-fg edge; resting surfaces get hairlines. */
-  border: 1px solid var(--fg-faint);
-  /* --radius-lg, not --radius-md: this menu is a SHADOWED overlay, and --radius-lg is the rung that
-   * keeps a 2px nick exactly for those (see the Radius note above). Same rung as the palette. */
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-overlay);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0);
-}
-
-.mc-new__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  width: 100%;
-  background: transparent;
-  color: var(--fg-dim);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-2);
-  font: inherit;
-  font-size: var(--text-sm);
-  text-align: left;
-  cursor: pointer;
-}
-
-.mc-new__item:hover:not(.mc-new__item--disabled) {
-  background: var(--bg-panel);
-  color: var(--fg-primary);
-}
-
-.mc-new__item--disabled {
-  color: var(--fg-faint);
-  cursor: not-allowed;
-}
-
-.mc-new__item-hint {
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-  font-style: italic;
-}
-
 /* ---- Nav sections (unlabelled groups, hairline dividers only — Linear pattern; dense) ---- */
 .mc-nav__divider {
   height: 0;
@@ -678,15 +541,15 @@ select option {
 
 .mc-nav-item:hover:not(.mc-nav-item--disabled) {
   background: var(--paper);
-  border-color: var(--ink);
-  border-left-color: var(--ink);
-  color: var(--ink);
+  border-color: var(--focus);
+  border-left-color: var(--focus);
+  color: var(--focus);
 }
 
 .mc-nav-item--active {
-  background: var(--ink);
-  border-color: var(--ink);
-  border-left-color: var(--ink);
+  background: var(--focus);
+  border-color: var(--focus);
+  border-left-color: var(--focus);
   color: var(--paper);
   font-weight: 600;
 }
@@ -696,9 +559,17 @@ select option {
   cursor: not-allowed;
 }
 
-.mc-nav-item__icon {
+.mc-nav-item__icon-wrap {
+  position: relative;
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 1.1em;
+}
+
+.mc-nav-item__icon {
+  width: 100%;
   text-align: center;
   font-family: var(--font-mono);
   color: var(--fg-faint);
@@ -739,19 +610,26 @@ select option {
   line-height: 1.4;
 }
 
+/* In the 48px rail the pending count becomes a superscript on the icon instead of consuming a second
+ * flex column. The button owns the accessible name; this compact duplicate is purely visual. */
+.mc-nav-item__badge--corner {
+  position: absolute;
+  top: -0.65em;
+  right: -0.9em;
+  z-index: 1;
+  min-width: 1.5em;
+  padding: 0 0.25em;
+  border-radius: 999px;
+  font-size: calc(var(--text-xs) * 0.75);
+  line-height: 1.35;
+}
+
 /* ---- Rail mode: icon-only 48px sidebar, labels/section chrome collapse away (icons keep a
  * native title-attr tooltip on hover — VS Code activity-bar / Linear pattern) ---- */
 .app-shell--rail .mc-sidebar__brand-text,
-.app-shell--rail .mc-new__label,
-.app-shell--rail .mc-new__caret,
 .app-shell--rail .mc-nav-item__label,
 .app-shell--rail .mc-nav-item__hint {
   display: none;
-}
-
-.app-shell--rail .mc-new__trigger {
-  justify-content: center;
-  padding: var(--space-2);
 }
 
 .app-shell--rail .mc-nav-item {
@@ -771,8 +649,8 @@ select option {
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: 0 var(--space-4);
+  gap: var(--card-gap);
+  padding: 0 var(--content-pad);
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
 }
@@ -782,6 +660,7 @@ select option {
   font-weight: 600;
   margin: 0;
   flex: 1 1 auto;
+  min-width: 0;
 }
 
 .mc-topbar__glance {
@@ -823,7 +702,7 @@ select option {
 }
 
 .mc-session-chip:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -831,14 +710,14 @@ select option {
  * restores the chip's compact top-bar metrics over the button's larger defaults. */
 .mc-session-chip--locked {
   padding: var(--space-1) var(--space-3);
-  color: var(--mc-accent-fg);
+  color: var(--focus-contrast);
   font-weight: 600;
 }
 
 .mc-session-chip--locked:hover {
-  color: var(--mc-accent-fg);
-  background: var(--mc-accent);
-  border-color: var(--mc-accent);
+  color: var(--focus-contrast);
+  background: var(--focus);
+  border-color: var(--focus);
   filter: brightness(1.06);
 }
 
@@ -867,7 +746,7 @@ select option {
 }
 
 .mc-theme-toggle:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -875,7 +754,7 @@ select option {
  * never scrolls (see .app-shell). `min-height: 0` lets the grid row clamp so this cell scrolls. ---- */
 .mc-main {
   grid-area: main;
-  padding: var(--space-8);
+  padding: var(--content-pad);
   overflow-y: auto;
   min-width: 0;
   min-height: 0;
@@ -887,13 +766,34 @@ select option {
   display: none;
 }
 
-/* Terminal destination: the main area becomes a flex column so the tab strip, notices, and the
- * terminal SHARE the viewport-bounded box — the terminal flexes to the remainder and can never push
- * past the fold (no page scroll at any zoom; browser zoom fires resize → FitAddon refits). */
+/* ---- Shared view heading chrome ---- */
+.page-header {
+  margin: 0 0 var(--space-4);
+}
+
+.page-eyebrow {
+  margin: 0 0 var(--space-1);
+  color: var(--fg-dim);
+  font: var(--type-meta);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+/* Terminal destination: the workspace OWNS the main viewport. The main area drops its page padding and
+ * its own scroll entirely and becomes a viewport-bounded flex column, so the only scrollable region on
+ * this destination is the xterm viewport inside the selected console. Nothing here may scroll: a second
+ * scrollbar beside the terminal's own is the exact defect this rule exists to prevent (browser zoom
+ * fires resize → FitAddon refits, so the grid re-fits instead of overflowing). */
 .mc-main--terminal {
   display: flex;
   flex-direction: column;
+  padding: 0;
   overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 /* ============================================================================
@@ -907,7 +807,7 @@ select option {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: var(--space-3);
+  padding: var(--card-pad);
 }
 
 .mc-panel {
@@ -930,6 +830,7 @@ select option {
  * for a table that stands on the page rather than sitting inside a `.mc-panel`. ---- */
 .mc-table {
   width: 100%;
+  max-width: 100%;
   border-collapse: collapse;
   font-size: var(--type-body-size);
   font-variant-numeric: tabular-nums;
@@ -947,7 +848,6 @@ select option {
   color: var(--fg-dim);
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
 }
 
@@ -1058,14 +958,14 @@ select option {
 }
 
 .mc-badge--attention {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--warning);
+  border-color: var(--warning);
   color: var(--paper);
   font-weight: 650;
 }
 
 /* ---- Status dot — the app's ONE state indicator (Phase 6). Same shape, same size, same tone mapping
- * everywhere: Home tiles, agent rows, run states, inbox chips, Sentinel liveness. A new state taxonomy
+ * everywhere: Home rows, agent rows, run states, inbox chips, and Health liveness. A new state taxonomy
  * gets a modifier here and reuses this geometry; it never gets a second dot implementation or a new hue.
  *   idle → grey · running → green · done → green · waiting → amber · blocked/failed/error → red
  * ---- */
@@ -1088,8 +988,8 @@ select option {
 
 /* Waiting on a person — the one amber state; it must not read as a failure. */
 .mc-status-dot--waiting {
-  background: var(--ink);
-  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--ink);
+  background: var(--warning);
+  box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--warning);
 }
 
 .mc-status-dot--blocked,
@@ -1153,7 +1053,7 @@ select option {
 }
 
 .entity-name__copy:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -1185,15 +1085,15 @@ select option {
 /* Primary = neutral near-white fill (dark theme) / near-black fill (light theme) with the shell base
  * colour as its text — a Linear/Claude-dark solid button, no accent hue. */
 .mc-btn--primary {
-  background: var(--mc-accent);
-  border-color: var(--mc-accent);
-  color: var(--mc-accent-fg);
+  background: var(--focus);
+  border-color: var(--focus);
+  color: var(--focus-contrast);
 }
 
 .mc-btn--primary:hover:not(:disabled),
 .mc-btn--primary:focus-visible {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--focus);
+  border-color: var(--focus);
   color: var(--paper);
 }
 
@@ -1229,11 +1129,11 @@ select option {
 
 .mc-row-link:hover {
   color: var(--fg-primary);
-  border-left-color: var(--mc-accent);
+  border-left-color: var(--focus);
 }
 
 .mc-row-link:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: -1px;
 }
 
@@ -1248,7 +1148,7 @@ select option {
 }
 
 /* ---- Emergency stop (the app's ONE stop implementation — `views/Control.tsx#StopControls`, mounted on
- * the Sentinel view). Three stacked controls, narrowest first, each with one plain sentence of context.
+ * the Health view). One fleet control with one plain sentence of context.
  * The nuclear control is set apart by a hairline and carries the semantic --error only: no glow, no
  * gradient, no decorative hue. ---- */
 .mc-stop {
@@ -1314,7 +1214,7 @@ select option {
 }
 
 .mc-stop input:focus-visible {
-  outline: 2px solid var(--mc-accent);
+  outline: 2px solid var(--focus);
   outline-offset: -1px;
 }
 
@@ -1360,7 +1260,6 @@ select option {
   border-color: var(--error);
   color: var(--error);
   background: transparent;
-  text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
@@ -1407,7 +1306,6 @@ select option {
 .fleet-strip__label {
   display: block;
   font-size: var(--text-xs);
-  text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-dim);
 }
@@ -1469,7 +1367,7 @@ select option {
 .org-states__item h3 {
   margin: 0 0 0.2rem;
   font-size: var(--text-base);
-  color: var(--accent-strong);
+  color: var(--focus);
   font-family: var(--font-mono);
 }
 
@@ -1503,4 +1401,132 @@ select option {
 .registry__empty,
 .org-states__empty {
   color: var(--fg-dim);
+}
+
+/* ---- Dashboard v3 Run: one full-width record stream with one right inspector ---- */
+.run-v3 {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.run-v3__header,
+.run-v3__actions,
+.run-v3__steps {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.run-v3__header {
+  justify-content: space-between;
+}
+
+.run-v3__header h1,
+.run-v3__header p {
+  margin: 0;
+}
+
+.run-v3__stream-pane [data-testid='run-stream'],
+.run-v3__stream-pane [data-testid^='console-pane'] {
+  width: 100%;
+  min-width: 0;
+  max-height: 55vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  background: var(--bg-panel);
+}
+
+.run-v3__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 22rem);
+  gap: var(--gap);
+  align-items: start;
+}
+
+.run-v3__body--collapsed {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.run-v3__stream-pane,
+.run-v3__inspector-shell {
+  min-width: 0;
+}
+
+.run-v3__inspector-shell > aside {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 899px) {
+  .mc-main {
+    padding: var(--content-pad-compact);
+    overflow-x: hidden;
+  }
+
+  .mc-main--terminal {
+    padding: 0;
+  }
+
+  .mc-table {
+    display: block;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .mc-table th,
+  .mc-table td {
+    white-space: nowrap;
+  }
+
+  .mc-topbar__glance {
+    display: none;
+  }
+
+  .run-v3__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 599px) {
+  .mc-topbar {
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+  }
+
+  .mc-topbar__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mc-topbar__glance {
+    display: none;
+  }
+
+  .mc-main {
+    padding: var(--space-3);
+  }
+
+  .mc-main--terminal {
+    padding: 0;
+  }
+
+  .mc-panel,
+  .mc-card {
+    padding: var(--space-3);
+  }
+
+  .mc-table th,
+  .mc-table td {
+    padding-inline: var(--space-2);
+  }
+
+  .control__grid,
+  .run-v3__body,
+  .run-v3__body--collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

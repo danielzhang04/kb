@@ -1,7 +1,27 @@
-import { describe, expect, it } from 'vitest';
-import { describeSchedule, localTimestampLabel, nextScheduleWindow, presetSchedule, relativeScheduleWindow } from './scheduleWords';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { describeSchedule, localTimestampLabel, nextScheduleWindow, presetSchedule, relativeScheduleWindow, validateScheduleCadence } from './scheduleWords';
+
+interface ClockVector {
+  id: string;
+  cron: string;
+  now: string;
+  latest: string | null;
+  next: string;
+  labelInput?: string;
+  label?: string;
+}
+const vectors = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../tests/fixtures/schedule-clock-vectors.json'), 'utf8')) as ClockVector[];
 
 describe('scheduleWords', () => {
+  it('shares the closed words, time, and cron validation vectors with the client', () => {
+    expect(validateScheduleCadence({ kind: 'words', words: 'weekly:sun', time: '09:15' })).toBeNull();
+    expect(validateScheduleCadence({ kind: 'words', words: 'sometimes', time: '09:15' })).toMatchObject({ field: 'words' });
+    expect(validateScheduleCadence({ kind: 'words', words: 'daily', time: '24:00' })).toMatchObject({ field: 'time' });
+    expect(validateScheduleCadence({ kind: 'cron', minute: '*/15', hour: '*', dayOfMonth: '*', month: '*', dayOfWeek: 'mon-fri' })).toBeNull();
+    expect(validateScheduleCadence({ kind: 'cron', minute: '60', hour: '9', dayOfMonth: '*', month: '*', dayOfWeek: '*' })).toMatchObject({ field: 'cron' });
+  });
   it.each([
     ['daily', 'Daily', 'daily'],
     ['weekly:sat', 'Weekly on Sat', 'weekly'],
@@ -21,16 +41,24 @@ describe('scheduleWords', () => {
     expect(presetSchedule('weekly', 'sat')).toBe('0 9 * * sat');
   });
 
-  it('formats valid local timestamps and preserves invalid input', () => {
-    const iso = '2026-08-19T13:24:00.000Z';
-    expect(localTimestampLabel(iso)).toBe(new Date(iso).toLocaleString());
+  it('formats valid timestamps explicitly in America/New_York with no suffix', () => {
+    const vector = vectors.find((candidate) => candidate.labelInput);
+    if (!vector?.labelInput || !vector.label) throw new Error('missing Eastern label vector');
+    const formatter = vi.spyOn(Date.prototype, 'toLocaleString');
+    expect(localTimestampLabel(vector.labelInput)).toBe(vector.label);
+    expect(formatter).toHaveBeenCalledWith('en-US', expect.objectContaining({ timeZone: 'America/New_York' }));
+    expect(vector.label).not.toMatch(/\b(?:EST|EDT|Eastern)\b/);
     expect(localTimestampLabel('not-a-time')).toBe('not-a-time');
   });
 
   it('calculates a display-only next window for word and cron schedules', () => {
-    const now = new Date(2026, 7, 19, 8, 58, 20);
+    const now = new Date('2026-08-19T08:58:20-04:00');
     expect(relativeScheduleWindow(nextScheduleWindow('0 9 * * mon-fri', now), now)).toBe('in 2m');
     expect(relativeScheduleWindow(nextScheduleWindow('*/5 * * * *', now), now)).toBe('in 2m');
     expect(relativeScheduleWindow(nextScheduleWindow('weekly:sat', now), now)).toBe('in 3d 1m');
+  });
+
+  it.each(vectors)('matches shared Eastern clock vector $id', (vector) => {
+    expect(nextScheduleWindow(vector.cron, new Date(vector.now))?.toISOString()).toBe(vector.next);
   });
 });

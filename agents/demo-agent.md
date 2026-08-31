@@ -7,6 +7,7 @@ model: claude-sonnet-5
 default-profile: worker:claude:claude-sonnet-5
 allowed-profiles: [worker:claude:claude-sonnet-5]
 projects: []
+group: system
 runner-bound: false
 description: Factory-created demo agent.
 tools: []

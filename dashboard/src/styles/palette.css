@@ -72,10 +72,10 @@
 }
 
 .mc-palette__input:focus-visible {
-  border-color: var(--ink);
-  background: var(--ink);
+  border-color: var(--focus);
+  background: var(--focus);
   color: var(--paper);
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -95,7 +95,6 @@
   display: block;
   padding: var(--space-2) var(--space-2) var(--space-1);
   font-size: var(--text-xs);
-  text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 600;
   color: var(--fg-faint);
@@ -121,9 +120,9 @@
 }
 
 .mc-palette__opt--selected {
-  background: var(--ink);
-  border-color: var(--ink);
-  border-left-color: var(--ink);
+  background: var(--focus);
+  border-color: var(--focus);
+  border-left-color: var(--focus);
   color: var(--paper);
 }
 

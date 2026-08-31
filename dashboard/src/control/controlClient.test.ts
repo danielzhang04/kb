@@ -3,16 +3,21 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   activateRun,
   archiveRun,
+  attemptSessionPublicRowDto,
+  decodeRunDetail,
+  decodeRunSessionReplayPage,
   createProposalRevision,
   createManagerSuccessor,
   decideProposalRevision,
   dryRunQuarantine,
   getExecutionPosture,
+  getAttention,
   getRun,
   launchProposalRevision,
   listRunEvents,
   parseExecutionPosture,
   quarantineRuns,
+  readRunSessionReplay,
   recoverAuthorized20260731ExecutionLock,
   reconcileAuthorizedFailedRun,
   AUTHORIZED_FAILED_RUN_PUBLISHED_UNCOMMITTED_CODE,
@@ -20,12 +25,14 @@ import {
   rerouteManagedStage,
   resolveIterationGate,
   respondToHumanRequest,
+  respondToHumanRequestWithCeremony,
   resumeRunAfterHumanResponse,
   steerManagerAtCheckpoint,
   unlockExecution,
   type FetchLike,
   type PlanProposalDto,
 } from './controlClient';
+import { p2RunDetail } from '../../server/testFixtures/p2BrowserFixtureData.ts';
 import { SESSION_STORAGE_KEY } from '../lib/authClient';
 
 const proposal: PlanProposalDto = {
@@ -248,6 +255,25 @@ describe('control client proposal CAS', () => {
   });
 });
 
+function acceptedRunDetail(
+  publicationState: 'published' | 'waiting-human',
+  kind: 'approval' | 'intervention',
+  decision: 'approved' | 'responded',
+): Record<string, any> {
+  const value = structuredClone(p2RunDetail('p2-gate-dedupe-t3').value) as Record<string, any>;
+  Object.assign(value.run, {
+    runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+    publicationState, state: 'waiting-human', version: 5, managerGeneration: 1,
+  });
+  Object.assign(value.humanRequests[0], {
+    runRef: 'run-1', kind, revision: 2, state: 'resolved',
+    response: {
+      requestRevision: 1, decision, response: null, respondedAt: '2026-08-21T12:01:00.000Z',
+    },
+  });
+  return value;
+}
+
 describe('control client run and retention writes', () => {
   it('retains complete iteration loop request receipt and residue fields from run detail', async () => {
     const residue = {
@@ -267,7 +293,9 @@ describe('control client run and retention writes', () => {
       failureReason: 'required output was byte-identical',
     };
     const value = {
-      run: { runRef: 'run-1' }, ownerSubject: 'operator', stages: [], attempts: [], sessions: [], humanRequests: [],
+      run: p2RunDetail('p2-run-actions').value.run,
+      ownerSubject: 'operator', stages: [], attempts: [], sessions: [], humanRequests: [],
+      streamKind: 'transcript', sessionId: null, attemptSessions: [],
       stageGenerations: [{ generationRef: 'generation-1', runRef: 'run-1', logicalStageRef: 'stage-1', logicalStageId: 'draft', generation: 1, predecessorGenerationRef: null, attemptRef: 'attempt-1', canonicalResultOperationKey: 'result-1', resultHash: 'hash', resultCardRef: 'card-1', baseCommit: 'base', canonicalCommit: 'head', state: 'committed', createdAt: 'now', updatedAt: 'now' }],
       generationSupersessions: [{ runRef: 'run-1', predecessorGenerationRef: 'generation-0', successorGenerationRef: 'generation-1', triggerReceiptRef: 'iteration-receipt-1', operationKey: 'supersede-1', createdAt: 'now' }],
       iterationLoops: [{
@@ -287,6 +315,11 @@ describe('control client run and retention writes', () => {
     expect(detail).toEqual(value);
     expect(detail.iterationLoops[0]?.unresolvedResidue).toMatchObject({ cyclesUsed: 2, attemptedRequestCycle: 3 });
     expect(detail.iterationReceipts[0]?.version).toBe(4);
+
+    const injected = structuredClone(value) as typeof value & { run: typeof value.run & { injected?: boolean } };
+    injected.run.injected = true;
+    await expect(getRun('run-1', 'bearer', recordedFetch({ ok: true, value: injected })))
+      .rejects.toThrow('invalid run detail');
   });
 
   it('resolves completion and reason-coded iteration-park gates through the dedicated iteration endpoint', async () => {
@@ -318,12 +351,47 @@ describe('control client run and retention writes', () => {
   });
 
   it('requests cursor replay without spawning a session', async () => {
-    const fetchImpl = recordedFetch({ ok: true, value: [] });
-    await listRunEvents('run/ref', 41, 50, 'bearer', fetchImpl);
+    const page = { revision: 'a'.repeat(64), items: [], nextCursor: null };
+    const fetchImpl = recordedFetch(page);
+    await expect(listRunEvents('run/ref', 41, 50, 'bearer', fetchImpl)).resolves.toEqual(page);
     expect(fetchImpl).toHaveBeenCalledWith(
       '/api/control/runs/run%2Fref/events?after=41&limit=50',
       expect.objectContaining({ method: 'GET' }),
     );
+  });
+
+  it('rejects an open replay envelope and reads the direct attention projection', async () => {
+    await expect(listRunEvents('run-1', 0, 50, 'bearer', recordedFetch({
+      revision: 'a'.repeat(64), items: [], nextCursor: null, hidden: true,
+    }))).rejects.toThrow('invalid run event page');
+    const attention = { revision: 'b'.repeat(64), pairs: [], agents: {}, workflows: {} };
+    await expect(getAttention('bearer', recordedFetch(attention))).resolves.toEqual(attention);
+  });
+
+  it('binds a T3 response through challenge, assertion, and the final response write', async () => {
+    const options = { challenge: 'challenge', rpId: 'localhost', allowCredentials: [], userVerification: 'required' as const };
+    const assertion = { id: 'credential-1', rawId: 'credential-1', type: 'public-key' as const,
+      response: { authenticatorData: 'auth', clientDataJSON: 'client', signature: 'sig', userHandle: null },
+      clientExtensionResults: {}, authenticatorAttachment: 'platform' as const };
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/respond/challenge')) return response({
+        ceremonyId: 'ceremony-1', options, challengeExpiresAt: '2026-08-21T12:05:00.000Z',
+      });
+      return response({ ok: true, value: { requestRef: 'request-1' } });
+    }) as unknown as FetchLike;
+    const perform = vi.fn(async () => assertion);
+
+    await respondToHumanRequestWithCeremony('request-1', {
+      expectedRevision: 3, decision: 'approved', response: 'ship it', idempotencyKey: 'response-3',
+    }, 'bearer', fetchImpl, perform as never);
+
+    expect(perform).toHaveBeenCalledWith(options);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const finalBody = JSON.parse(String((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1]?.body));
+    expect(finalBody).toMatchObject({
+      expectedRevision: 3, decision: 'approved', response: 'ship it', idempotencyKey: 'response-3',
+      ceremonyId: 'ceremony-1', challengeExpiresAt: '2026-08-21T12:05:00.000Z', assertion,
+    });
   });
 
   it('carries run version and manager generation when checkpoint steering', async () => {
@@ -401,14 +469,9 @@ describe('control client run and retention writes', () => {
   // boundary is accepted; a client-side activate here would be a second, differently-keyed activation
   // of the same run that nothing dedupes.
   it('never activates a published run from the client after a Human Request response', async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'approval', state: 'resolved', response: { decision: 'approved' } }],
-      } })) as unknown as FetchLike;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response({
+      ok: true, value: acceptedRunDetail('published', 'approval', 'approved'),
+    })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -420,13 +483,9 @@ describe('control client run and retention writes', () => {
   // so the accepted boundary re-enters the exact launch operation from here.
   it('re-enters the exact launch operation for a run still waiting on publication', async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'waiting-human', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'approval', state: 'resolved', response: { decision: 'approved' } }],
-      } }))
+      .mockResolvedValueOnce(response({
+        ok: true, value: acceptedRunDetail('waiting-human', 'approval', 'approved'),
+      }))
       .mockResolvedValueOnce(response({ ok: true, value: {} })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
@@ -514,14 +573,9 @@ describe('control client run and retention writes', () => {
   // A locked daemon is no longer this function's problem either: it never activates a published run, so
   // the durable response flow ends after the refresh read and the operator keeps the manual Resume.
   it('keeps a durable Human Request response successful without touching a locked execution latch', async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
-      } })) as unknown as FetchLike;
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response({
+      ok: true, value: acceptedRunDetail('published', 'intervention', 'responded'),
+    })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -556,13 +610,9 @@ describe('control client run and retention writes', () => {
 
   it('does not swallow a failed pre-publication launch after a Human Request response', async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ok: true, value: {
-        run: {
-          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'waiting-human', state: 'waiting-human', version: 5, managerGeneration: 1,
-        },
-        humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
-      } }))
+      .mockResolvedValueOnce(response({
+        ok: true, value: acceptedRunDetail('waiting-human', 'intervention', 'responded'),
+      }))
       .mockResolvedValueOnce(response({ error: 'canonical-reconciliation-failed' }, 409)) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).rejects.toMatchObject({
@@ -609,5 +659,170 @@ describe('archiveRun', () => {
     })) as unknown as FetchLike;
     await archiveRun({ runRef: 'run-1', version: 1 }, null, 'tok', fetchImpl);
     expect(JSON.parse(String((vi.mocked(fetchImpl).mock.calls[0] as [string, RequestInit])[1].body)).reason).toBeNull();
+  });
+});
+
+describe('[C-M4] attemptSessionPublicRowDto — closed browser decoder', () => {
+  const row = {
+    attemptRef: 'attempt-a1', sessionId: 'pty-' + 'a'.repeat(32), launcher: 'claude',
+    state: 'live', startedAt: '2026-08-23T00:00:00.000Z', endedAt: null, exit: null,
+    controllerClaimed: false, liveControl: true,
+  };
+
+  it('accepts a live row and a terminal row carrying its public exit', () => {
+    expect(attemptSessionPublicRowDto(row)).toBe(true);
+    expect(attemptSessionPublicRowDto({
+      ...row, launcher: 'codex', state: 'exited', endedAt: '2026-08-23T00:05:00.000Z',
+      exit: { exitCode: 0, reason: 'exited', observedAt: '2026-08-23T00:05:00.000Z' },
+      controllerClaimed: true, liveControl: false,
+    })).toBe(true);
+  });
+
+  it('refuses an extra key, a missing key, and a non-object', () => {
+    expect(attemptSessionPublicRowDto({ ...row, operator: 'daniel' })).toBe(false);
+    const { liveControl: _dropped, ...missing } = row;
+    expect(attemptSessionPublicRowDto(missing)).toBe(false);
+    expect(attemptSessionPublicRowDto(null)).toBe(false);
+    expect(attemptSessionPublicRowDto('pty')).toBe(false);
+  });
+
+  it('refuses an unknown state, an unknown launcher, and an unknown exit reason', () => {
+    expect(attemptSessionPublicRowDto({ ...row, state: 'running' })).toBe(false);
+    expect(attemptSessionPublicRowDto({ ...row, launcher: 'shell' })).toBe(false);
+    expect(attemptSessionPublicRowDto({
+      ...row, state: 'exited', exit: { exitCode: 0, reason: 'killed', observedAt: row.startedAt },
+    })).toBe(false);
+  });
+
+  it('refuses non-string timestamps/refs and non-boolean control flags', () => {
+    expect(attemptSessionPublicRowDto({ ...row, startedAt: 0 })).toBe(false);
+    expect(attemptSessionPublicRowDto({ ...row, endedAt: 0 })).toBe(false);
+    expect(attemptSessionPublicRowDto({ ...row, attemptRef: 7 })).toBe(false);
+    expect(attemptSessionPublicRowDto({ ...row, sessionId: null })).toBe(false);
+    expect(attemptSessionPublicRowDto({ ...row, controllerClaimed: 'yes' })).toBe(false);
+    expect(attemptSessionPublicRowDto({ ...row, liveControl: 1 })).toBe(false);
+  });
+
+  it('refuses an exit whose exitCode is neither a number nor null', () => {
+    expect(attemptSessionPublicRowDto({
+      ...row, exit: { exitCode: '0', reason: 'exited', observedAt: row.startedAt },
+    })).toBe(false);
+    expect(attemptSessionPublicRowDto({
+      ...row, exit: { exitCode: null, reason: 'abandoned', observedAt: row.startedAt },
+    })).toBe(true);
+  });
+});
+
+
+describe('[C-M4] RunDetailDto console fields are pinned, not optional', () => {
+  const base = {
+    run: p2RunDetail('p2-run-actions').value.run,
+    ownerSubject: 'operator', stages: [], attempts: [], sessions: [], humanRequests: [],
+    stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [],
+    iterationReceipts: [],
+    streamKind: 'transcript', sessionId: null, attemptSessions: [],
+  };
+  const row = {
+    attemptRef: 'attempt-1', sessionId: 'pty-a', launcher: 'claude', state: 'live',
+    startedAt: '2026-08-23T00:00:00.000Z', endedAt: null, exit: null,
+    controllerClaimed: false, liveControl: true,
+  };
+
+  it('accepts a transcript run and a PTY run with its selected id and attempt rows', () => {
+    expect(decodeRunDetail(base)).not.toBeNull();
+    const pty = { ...base, streamKind: 'pty', sessionId: 'pty-a', attemptSessions: [row, { ...row, attemptRef: 'attempt-2', sessionId: 'pty-b' }] };
+    expect(decodeRunDetail(pty)?.attemptSessions.map((item) => item.sessionId)).toEqual(['pty-a', 'pty-b']);
+  });
+
+  it('takes the server order as authoritative and never re-sorts it', () => {
+    const newestFirst = { ...base, streamKind: 'pty', sessionId: 'pty-b',
+      attemptSessions: [{ ...row, sessionId: 'pty-b', startedAt: '2026-08-23T02:00:00.000Z' },
+        { ...row, sessionId: 'pty-a', startedAt: '2026-08-23T00:00:00.000Z' }] };
+    expect(decodeRunDetail(newestFirst)?.attemptSessions.map((item) => item.sessionId)).toEqual(['pty-b', 'pty-a']);
+  });
+
+  it('refuses a detail missing any of the three, and an unknown streamKind or bad row', () => {
+    for (const key of ['streamKind', 'sessionId', 'attemptSessions']) {
+      const { [key]: _dropped, ...missing } = base as Record<string, unknown>;
+      expect(decodeRunDetail(missing)).toBeNull();
+    }
+    expect(decodeRunDetail({ ...base, streamKind: 'terminal' })).toBeNull();
+    expect(decodeRunDetail({ ...base, sessionId: 7 })).toBeNull();
+    expect(decodeRunDetail({ ...base, attemptSessions: [{ ...row, operator: 'daniel' }] })).toBeNull();
+    expect(decodeRunDetail({ ...base, unexpected: true })).toBeNull();
+  });
+});
+
+describe('[C-R6] readRunSessionReplay — paging and its closed refusal union', () => {
+  const frame = (sequence: number, data: string) => ({ sequence, encoding: 'base64', data });
+  function pages(...bodies: unknown[]) {
+    const calls: string[] = [];
+    let index = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      const body = bodies[Math.min(index, bodies.length - 1)];
+      index += 1;
+      return body instanceof Response ? body.clone() : response(body);
+    }) as unknown as FetchLike;
+    return { calls, fetchImpl };
+  }
+
+  it('pages on nextSequence until complete and concatenates the frames in order', async () => {
+    const { calls, fetchImpl } = pages(
+      { ok: true, value: { sessionId: 'pty-a', fromSequence: 0, nextSequence: 4, complete: false, frames: [frame(0, 'aGVsbG8=')] } },
+      { ok: true, value: { sessionId: 'pty-a', fromSequence: 4, nextSequence: 9, complete: true, frames: [frame(4, 'd29ybGQ=')] } },
+    );
+    const result = await readRunSessionReplay('run-1', 'pty-a', 0, 'tok', fetchImpl);
+    expect(result.ok && result.value.frames.map((item) => item.sequence)).toEqual([0, 4]);
+    expect(result.ok && result.value.nextSequence).toBe(9);
+    expect(calls).toEqual([
+      '/api/control/runs/run-1/pty-sessions/pty-a/replay?fromSequence=0',
+      '/api/control/runs/run-1/pty-sessions/pty-a/replay?fromSequence=4',
+    ]);
+  });
+
+  it('decodes only exact keys, byte offsets, and base64 payloads', () => {
+    const page = { sessionId: 'pty-a', fromSequence: 0, nextSequence: 4, complete: true, frames: [frame(0, 'aGk=')] };
+    expect(decodeRunSessionReplayPage(page)).not.toBeNull();
+    expect(decodeRunSessionReplayPage({ ...page, limit: 10 })).toBeNull();
+    expect(decodeRunSessionReplayPage({ ...page, nextSequence: -1 })).toBeNull();
+    expect(decodeRunSessionReplayPage({ ...page, fromSequence: 1.5 })).toBeNull();
+    expect(decodeRunSessionReplayPage({ ...page, complete: 'yes' })).toBeNull();
+    expect(decodeRunSessionReplayPage({ ...page, frames: [{ sequence: 0, encoding: 'utf8', data: 'aGk=' }] })).toBeNull();
+    expect(decodeRunSessionReplayPage({ ...page, frames: [frame(0, 'not base64!')] })).toBeNull();
+  });
+
+  it('returns each refusal member and never spins on a page that cannot advance', async () => {
+    const gap = await readRunSessionReplay('run-1', 'pty-a', 0, 'tok', pages(
+      response({ error: 'replay-gap', detail: 'head dropped', nextSequence: 64, floorSequence: 64 }, 409),
+    ).fetchImpl);
+    expect(gap).toEqual({ ok: false, refusal: { kind: 'gap', nextSequence: 64, floorSequence: 64 } });
+
+    const unreadable = await readRunSessionReplay('run-1', 'pty-a', 0, 'tok', pages(
+      response({ error: 'replay-unreadable', detail: 'transcript unreadable' }, 409),
+    ).fetchImpl);
+    expect(unreadable).toEqual({ ok: false, refusal: { kind: 'unreadable' } });
+
+    const missing = await readRunSessionReplay('run-1', 'pty-a', 0, 'tok', pages(
+      response({ error: 'not-found', detail: 'no attempt session for this run' }, 404),
+    ).fetchImpl);
+    expect(missing).toEqual({ ok: false, refusal: { kind: 'not-found' } });
+
+    const invalid = await readRunSessionReplay('run-1', 'pty-a', 0, 'tok', pages(
+      response({ error: 'unexpected-query-key', detail: 'limit' }, 400),
+    ).fetchImpl);
+    expect(invalid).toEqual({ ok: false, refusal: { kind: 'invalid' } });
+
+    expect(await readRunSessionReplay('run-1', 'pty-a', -1, 'tok', pages({}).fetchImpl))
+      .toEqual({ ok: false, refusal: { kind: 'invalid' } });
+
+    const stuck = pages({ ok: true, value: { sessionId: 'pty-a', fromSequence: 0, nextSequence: 0, complete: false, frames: [] } });
+    expect(await readRunSessionReplay('run-1', 'pty-a', 0, 'tok', stuck.fetchImpl))
+      .toEqual({ ok: false, refusal: { kind: 'unreadable' } });
+    expect(stuck.calls).toHaveLength(1);
+
+    const wrongSession = pages({ ok: true, value: { sessionId: 'pty-other', fromSequence: 0, nextSequence: 4, complete: true, frames: [] } });
+    expect(await readRunSessionReplay('run-1', 'pty-a', 0, 'tok', wrongSession.fetchImpl))
+      .toEqual({ ok: false, refusal: { kind: 'unreadable' } });
   });
 });

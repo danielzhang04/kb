@@ -1,0 +1,32 @@
+# The ONLY listener in the broker vertical: one AF_UNIX stream socket. The dashboard (kb-dashboard)
+# connects; the broker (kb-shell) is socket-activated and receives it as fd 3. There is deliberately
+# no TCP/IP listener anywhere in this vertical, and the service unit declares no ListenStream at all.
+#
+# /run/kb-shell ownership lives HERE, not on the service: the runtime directory must be
+# kb-shell:kb-dashboard 0750 so kb-dashboard can traverse to broker.sock while only kb-shell can write
+# state.json. A service-side `RuntimeDirectory=` would chown the directory to the service's own
+# User:Group (kb-shell:kb-shell) on every start and lock the dashboard out, so the socket unit owns it
+# and preserves it across broker restarts.
+[Unit]
+Description=kb shell broker socket
+PartOf=kb-shell-broker.service
+
+[Socket]
+ListenStream=/run/kb-shell/broker.sock
+Accept=no
+SocketUser=kb-dashboard
+SocketGroup=kb-dashboard
+SocketMode=0600
+DirectoryMode=0750
+RemoveOnStop=yes
+User=kb-shell
+Group=kb-dashboard
+RuntimeDirectory=kb-shell
+RuntimeDirectoryMode=0750
+# `restart`, not `yes`: the directory only needs to survive a broker restart (which does not stop
+# this unit anyway). Stopping the socket should take /run/kb-shell with it, so a stopped vertical
+# leaves no state.json behind.
+RuntimeDirectoryPreserve=restart
+
+[Install]
+WantedBy=sockets.target

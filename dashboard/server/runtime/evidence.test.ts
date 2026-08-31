@@ -88,7 +88,6 @@ describe('runEvidenceCommand', () => {
   it('runs probe-unsupported-surfaces as an internal argv-only evidence command', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'evidence-'));
     const probe: UnsupportedVmSurfacesProbeIo = {
-      composerTurn: async () => 503,
       mainPid: () => 42,
       cmdline: () => 'node\0server/index.ts\0',
       descendantPids: () => [43],
@@ -104,7 +103,7 @@ describe('runEvidenceCommand', () => {
     expect(payload.passed).toBe(true);
     expect(payload.command).toEqual(['probe-unsupported-surfaces']);
     expect(JSON.parse(readFileSync(join(directory, 'unsupportedVmSurfacesSafe.raw.json'), 'utf8'))).toMatchObject({
-      stdout: expect.stringContaining('composerStatus'),
+      stdout: expect.stringContaining('agentCliChildPids'),
     });
   });
 });

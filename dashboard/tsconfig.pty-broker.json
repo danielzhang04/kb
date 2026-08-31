@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist-server/kb-shell-broker",
+    "rootDir": ".",
+    "rewriteRelativeImportExtensions": true,
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "server/pty/brokerProtocol.ts",
+    "server/pty/fdPinnedPaths.ts",
+    "server/pty/linuxBrokerServer.ts",
+    "server/pty/linuxBrokerMain.ts",
+    "shared/ptyProtocol.ts"
+  ]
+}

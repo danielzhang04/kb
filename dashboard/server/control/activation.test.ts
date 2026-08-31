@@ -38,7 +38,7 @@ function spyDeps(): ActivationDeps {
     cancelRun: vi.fn().mockResolvedValue({ state: 'stopped' }),
     containManagerStart: vi.fn().mockResolvedValue(undefined),
   };
-  const broker = { __brand: 'broker', drain: vi.fn() } as never;
+  const attemptPort = { __brand: 'attempt-port', drain: vi.fn().mockResolvedValue(undefined) } as never;
   return {
     loadPolicy: vi.fn().mockReturnValue({
       profiles: [
@@ -50,10 +50,7 @@ function spyDeps(): ActivationDeps {
       curatedSkills: new Set<string>(), contractText: '', governanceContents: {},
     }),
     resolveBaseCommit: vi.fn().mockReturnValue('f'.repeat(40)),
-    createSessionAdapter: vi.fn().mockReturnValue({ start: vi.fn() }) as never,
-    createCodexSessionAdapter: vi.fn().mockReturnValue({ start: vi.fn() }) as never,
-    createBrokerPersistence: vi.fn().mockReturnValue({}) as never,
-    createBroker: vi.fn().mockReturnValue(broker),
+    createAttemptPort: vi.fn().mockReturnValue(attemptPort),
     createWorktrees: vi.fn().mockReturnValue({}) as never,
     createSkills: vi.fn().mockReturnValue({}) as never,
     createAccounting: vi.fn().mockReturnValue({}) as never,
@@ -85,6 +82,8 @@ function baseOptions(deps: ActivationDeps, env: Record<string, string | undefine
     controlStore: {} as never,
     repoRoot: '/repo',
     stateRoot: '/state',
+    sessionHost: {} as never,
+    attemptBindings: {} as never,
     deps,
   };
 }
@@ -120,7 +119,10 @@ describe('createInternalServiceCaller — activation admission', () => {
         grant = options.unlockGrant;
         return buildActivatedExecution(options);
       }) as typeof buildActivatedExecution,
-      buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state', deps },
+      buildOptions: {
+        controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state',
+        sessionHost: {} as never, attemptBindings: {} as never, deps,
+      },
     });
     expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
 
@@ -160,7 +162,7 @@ describe('buildActivatedExecution — gate ON', () => {
     const deps = spyDeps();
     const result = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     expect(result).not.toBeNull();
-    expect(result?.controlBroker).toBeDefined();
+    expect(result?.attemptPort).toBe((deps.createAttemptPort as ReturnType<typeof vi.fn>).mock.results[0].value);
     expect(typeof result?.runAutomatic).toBe('function');
     expect(typeof result?.cancelAutomatic).toBe('function');
     expect(typeof result?.containManagerStart).toBe('function');
@@ -292,8 +294,11 @@ describe('buildActivatedExecution — gate ON', () => {
   it('constructs under the single dashboard-engine subject (D1) and the CANONICAL result integrator (D4)', () => {
     const deps = spyDeps();
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
-    // D1: broker persistence bound to the one executor subject.
-    expect(deps.createBrokerPersistence).toHaveBeenCalledWith(expect.anything(), DASHBOARD_EXECUTOR_SUBJECT);
+    // D1: the attempt port is built on the surface's own probed host and v2 binding document, so a Run
+    // attempt is the same kind of record on the same host as a Terminal session.
+    expect(deps.createAttemptPort).toHaveBeenCalledWith(expect.objectContaining({
+      host: expect.anything(), bindings: expect.anything(), repoRoot: '/repo',
+    }));
     // D4: the engine's result integrator is the canonical git integrator, keyed to the ops repo root.
     expect(deps.createResults).toHaveBeenCalledWith(expect.objectContaining({ repoRoot: '/repo', coordinationRoot: '/repo' }));
     // D5: worktree + integration roots live under the state root, never inside the repo.
@@ -302,16 +307,51 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(engineOptions.results).toBe((deps.createResults as ReturnType<typeof vi.fn>).mock.results[0].value);
   });
 
+  it('[C-S4] provisions VM attempts under /var/lib/kb-shell/worktrees, never the state root', () => {
+    const linux = spyDeps();
+    buildActivatedExecution(baseOptions(linux, {
+      DASHBOARD_EXECUTION_ACTIVATED: '1', DASHBOARD_HOST_PLATFORM: 'linux',
+    }));
+    // The shared dashboard/kb-shell tree - the only path the broker unit may write.
+    expect(linux.createWorktrees).toHaveBeenCalledWith(expect.objectContaining({
+      worktreeRoot: '/var/lib/kb-shell/worktrees',
+    }));
+    expect(linux.createPaidActions).toHaveBeenCalledWith(expect.objectContaining({
+      worktreeRoot: '/var/lib/kb-shell/worktrees',
+    }));
+    // /var/lib/kb/state is InaccessiblePaths to the broker: no new attempt may be provisioned there.
+    const call = (linux.createWorktrees as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.worktreeRoot).not.toContain('control');
+    expect(call.worktreeRoot).not.toContain('/state');
+
+    const windows = spyDeps();
+    buildActivatedExecution(baseOptions(windows, {
+      DASHBOARD_EXECUTION_ACTIVATED: '1', DASHBOARD_HOST_PLATFORM: 'win32',
+    }));
+    expect((windows.createWorktrees as ReturnType<typeof vi.fn>).mock.calls[0][0].worktreeRoot)
+      .toContain('control');
+
+    // An explicit root still wins on either platform: migration/cleanup work names the old tree.
+    const explicit = spyDeps();
+    buildActivatedExecution({
+      ...baseOptions(explicit, { DASHBOARD_EXECUTION_ACTIVATED: '1', DASHBOARD_HOST_PLATFORM: 'linux' }),
+      worktreeRoot: '/state/control/worktrees',
+    });
+    expect(explicit.createWorktrees).toHaveBeenCalledWith(expect.objectContaining({
+      worktreeRoot: '/state/control/worktrees',
+    }));
+  });
+
   it('wires the worker cancellation registry.register into the worker adapter and the same registry into cancellation', () => {
     const deps = spyDeps();
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const registry = (deps.createRegistry as ReturnType<typeof vi.fn>).mock.results[0].value;
+    // [C-S5]: the worker factories now receive only the attempt port and the worktree root; the
+    // cancellation registry and the C3 repo root reach the attempt port instead.
     expect(deps.createWorkers).toHaveBeenCalledWith(expect.objectContaining({
-      registerCancellation: registry.register,
-      deregisterCancellation: registry.clear,
-      // C3: the canonical repo root is threaded so the worker adapter can emit the //-absolute deny companion.
-      repoRoot: '/repo',
+      attemptPort: expect.anything(), worktreeRoot: expect.any(String),
     }));
+    expect(deps.createAttemptPort).toHaveBeenCalledWith(expect.objectContaining({ repoRoot: '/repo' }));
     expect(deps.createCancellation).toHaveBeenCalledWith(expect.objectContaining({ registry }));
   });
 
@@ -409,7 +449,10 @@ describe('createExecutionLatch (runtime unlock)', () => {
       build: build as unknown as typeof buildActivatedExecution,
       env,
       now: () => 1_700_000_000_000,
-      buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state', deps },
+      buildOptions: {
+        controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state',
+        sessionHost: {} as never, attemptBindings: {} as never, deps,
+      },
       onChange: (execution, state) => changes.push({ execution, state }),
     });
     return { deps, build, latch, changes };
@@ -447,11 +490,11 @@ describe('createExecutionLatch (runtime unlock)', () => {
   it('lock drains managed sessions, drops the wiring, and can be re-unlocked', () => {
     const { deps, latch, changes } = latchHarness();
     latch.unlock({ subject: 'operator' });
-    const broker = (deps.createBroker as ReturnType<typeof vi.fn>).mock.results[0]?.value;
+    const port = (deps.createAttemptPort as ReturnType<typeof vi.fn>).mock.results[0]?.value;
     expect(latch.lock({ subject: 'operator' })).toEqual({ state: 'locked', source: null, unlockedAt: null, unlockedBy: null });
     expect(latch.current()).toBeNull();
     expect(changes.at(-1)?.execution).toBeNull();
-    expect(broker.drain).toHaveBeenCalledOnce();
+    expect(port.drain).toHaveBeenCalledOnce();
     // A locked latch locks idempotently, then unlocks again on a fresh assertion.
     expect(latch.lock({ subject: 'operator' }).state).toBe('locked');
     expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
@@ -548,7 +591,7 @@ describe('buildActivatedExecution — unlock grants and headless execution', () 
     const deps = spyDeps();
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const engineOptions = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(engineOptions.workers).toEqual(expect.objectContaining({ execute: expect.any(Function) }));
+    expect(engineOptions.workers).toEqual(expect.objectContaining({ begin: expect.any(Function) }));
   });
 
   it('drives and cancels through the headless engine', async () => {
@@ -619,31 +662,49 @@ describe('buildActivatedExecution — unlock grants and headless execution', () 
 
   it('routes worker execution by ExecutionProfile.runtime', async () => {
     const deps = spyDeps();
-    const claudeExecute = vi.fn().mockResolvedValue({ state: 'succeeded' });
-    const codexExecute = vi.fn().mockResolvedValue({ state: 'succeeded' });
-    (deps.createWorkers as ReturnType<typeof vi.fn>).mockReturnValue({ execute: claudeExecute });
-    (deps.createCodexWorkers as ReturnType<typeof vi.fn>).mockReturnValue({ execute: codexExecute });
+    const launch = { receipt: Promise.resolve({ ok: true, value: {} }), result: Promise.resolve({ state: 'succeeded' }) };
+    const claudeBegin = vi.fn().mockReturnValue(launch);
+    const codexBegin = vi.fn().mockReturnValue(launch);
+    (deps.createWorkers as ReturnType<typeof vi.fn>).mockReturnValue({ begin: claudeBegin });
+    (deps.createCodexWorkers as ReturnType<typeof vi.fn>).mockReturnValue({ begin: codexBegin });
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const workers = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0].workers;
-    await workers.execute({ profile: { runtime: 'claude' } } as never);
-    await workers.execute({ profile: { runtime: 'codex' } } as never);
-    expect(claudeExecute).toHaveBeenCalledOnce();
-    expect(codexExecute).toHaveBeenCalledOnce();
+    await workers.begin({ profile: { runtime: 'claude' } } as never).result;
+    await workers.begin({ profile: { runtime: 'codex' } } as never).result;
+    expect(claudeBegin).toHaveBeenCalledOnce();
+    expect(codexBegin).toHaveBeenCalledOnce();
   });
 
-  it('routes managed sessions by their server-owned profile runtime', () => {
+  it('leaves the attempt port NULL when the daemon has no PTY host or binding store', () => {
+    // Not a fallback path: with no host there is nothing to start an attempt on, and every control
+    // route then observes exactly the not-running refusals it observes with the gate closed.
+    for (const missing of [{ sessionHost: undefined }, { attemptBindings: undefined }]) {
+      const deps = spyDeps();
+      const result = buildActivatedExecution({
+        ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }), ...missing,
+      });
+      expect(result?.attemptPort).toBeNull();
+      expect(deps.createAttemptPort).not.toHaveBeenCalled();
+    }
+  });
+
+  it('gives the attempt port the SAME session-chain resume store the one-shot workers use', () => {
     const deps = spyDeps();
-    const claudeStart = vi.fn().mockReturnValue({ stop: vi.fn() });
-    const codexStart = vi.fn().mockReturnValue({ stop: vi.fn() });
-    (deps.createSessionAdapter as ReturnType<typeof vi.fn>).mockReturnValue({ start: claudeStart });
-    (deps.createCodexSessionAdapter as ReturnType<typeof vi.fn>).mockReturnValue({ start: codexStart });
+    const chains = {
+      get: vi.fn().mockReturnValue({ runtime: 'codex', sessionId: 'thread-7' }),
+      record: vi.fn().mockResolvedValue(undefined),
+      drainMessages: vi.fn().mockResolvedValue([]),
+      queueMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    (deps.createSessionChains as ReturnType<typeof vi.fn>).mockReturnValue(chains);
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
-    const adapter = (deps.createBroker as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    const observer = { onEvent: vi.fn(), onExit: vi.fn() };
-    adapter.start({ runRef: 'run-1', sessionRef: 'manager-1', role: 'manager', profileId: 'manager:claude:claude-opus', approvedPrompt: 'x' }, observer);
-    adapter.start({ runRef: 'run-1', sessionRef: 'manager-2', role: 'manager', profileId: 'manager:codex:gpt-5.6-sol', approvedPrompt: 'x' }, observer);
-    expect(claudeStart).toHaveBeenCalledOnce();
-    expect(codexStart).toHaveBeenCalledOnce();
+    const portOptions = (deps.createAttemptPort as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(portOptions.resolveResumeRef('codex', 'run-1', 'codex-agent')).toBe('thread-7');
+    portOptions.recordResumeRef('codex', 'run-1', 'codex-agent', 'thread-8');
+    expect(chains.record).toHaveBeenCalledWith('run-1', 'codex-agent', { runtime: 'codex', sessionId: 'thread-8' });
+    // A recorded chain whose runtime differs from the attempt's is a refusal, never a silent resume.
+    chains.get.mockReturnValue({ runtime: 'claude', sessionId: 'claude-session' });
+    expect(() => portOptions.resolveResumeRef('codex', 'run-1', 'codex-agent')).toThrow(/runtime/);
   });
 
   it('wires the async chain store into both worker adapters and rejects runtime mismatch', async () => {
@@ -656,14 +717,15 @@ describe('buildActivatedExecution — unlock grants and headless execution', () 
     };
     (deps.createSessionChains as ReturnType<typeof vi.fn>).mockReturnValue(chains);
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
-    const claudeOptions = (deps.createWorkers as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    const codexOptions = (deps.createCodexWorkers as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(claudeOptions.resolveSession('run-1', 'claude-agent')).toBe('claude-session');
-    expect(codexOptions.resolveThread('run-1', 'codex-agent')).toBeNull();
-    await claudeOptions.recordSession('run-1', 'claude-agent', 'next-claude');
-    await codexOptions.recordThread('run-1', 'codex-agent', 'next-codex');
+    // [C-S5]: resume/record moved off the two worker factories onto the single attempt port, so the
+    // chain store is asserted where it is now consumed — one resolver and one recorder for both runtimes.
+    const portOptions = (deps.createAttemptPort as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(portOptions.resolveResumeRef('claude', 'run-1', 'claude-agent')).toBe('claude-session');
+    expect(portOptions.resolveResumeRef('codex', 'run-1', 'codex-agent')).toBeNull();
+    await portOptions.recordResumeRef('claude', 'run-1', 'claude-agent', 'next-claude');
+    await portOptions.recordResumeRef('codex', 'run-1', 'codex-agent', 'next-codex');
     expect(chains.record).toHaveBeenCalledWith('run-1', 'claude-agent', { runtime: 'claude', sessionId: 'next-claude' });
     expect(chains.record).toHaveBeenCalledWith('run-1', 'codex-agent', { runtime: 'codex', sessionId: 'next-codex' });
-    expect(() => codexOptions.resolveThread('run-1', 'claude-agent')).toThrow(/runtime differs/);
+    expect(() => portOptions.resolveResumeRef('codex', 'run-1', 'claude-agent')).toThrow(/runtime differs/);
   });
 });

@@ -30,7 +30,6 @@
   margin: 0 0 var(--space-1);
   font-size: var(--type-section-size);
   font-weight: var(--type-section-weight);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
 }
@@ -65,7 +64,6 @@
  * the same active/selected language used everywhere else in the app. */
 .v-agents__state {
   font-size: var(--type-section-size);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-faint);
 }

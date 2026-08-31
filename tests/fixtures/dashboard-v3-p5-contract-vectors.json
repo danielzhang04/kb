@@ -1,0 +1,145 @@
+{
+  "schema": "kb.dashboard-v3-p5-contract-vectors/v1",
+  "note": "P5 W0 contract vectors. Values are computed independently of the TS modules (see the compute in the W0 report); the suites assert the modules reproduce them. Covers the helper request/receipt union, the DeployReadyPort candidate, the deployment + asset-pull Inbox arms, the deployment:<n> and deploy-ready:<sha> revision/ref parsers, the four Health rows, the deploy-purpose T3 preimage, and the quiescence payload. Compile-negative vectors (unknown helper verb, extra helper field, two mutating actions, unmapped state, missing T3 digest) live in the .test.ts files as @ts-expect-error, verified by tsc.",
+  "constants": {
+    "targetSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "liveSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "deployReadyRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "deployReadyRevision": "deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e",
+    "deployReadyItemId": "d4b2a9c8659d6148df8ab2e245286f0df44f2a50dfa502b50cea510cc60a8320",
+    "intentRef": "assetpull-00000000000000000000000000000000",
+    "assetPullItemId": "c41af36dc2684e63cfcf57237952250ae5eda73357e163e4e2cff1272411f2b9",
+    "ptyIdA": "pty-00000000000000000000000000000000",
+    "ptyIdB": "pty-11111111111111111111111111111111",
+    "quiescenceDigest": "6b2a5fdbb29bdb7f2ab797640ba077a9b3765bb6ca0ad3cc98c85495d5ea0173",
+    "t3DeployDigest": "40a1370677aa596eb2b92f4f0339c0ce47709141fc9a7240515151f67eb7f854"
+  },
+  "helperRequests": {
+    "valid": [
+      { "name": "deploy", "value": { "verb": "deploy", "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "requestRef": "req-1" } },
+      { "name": "pull-assets", "value": { "verb": "pull-assets", "intentRef": "assetpull-00000000000000000000000000000000", "runRef": "run-1", "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" } },
+      { "name": "deployment-result", "value": { "verb": "deployment-result", "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "outcome": "succeeded" } }
+    ],
+    "invalid": [
+      { "name": "unknown verb", "field": "helperRequest.verb", "value": { "verb": "frobnicate", "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "requestRef": "req-1" } },
+      { "name": "extra field on deploy", "field": "helperRequest.deploy", "value": { "verb": "deploy", "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "requestRef": "req-1", "path": "/etc/passwd" } },
+      { "name": "path-shaped field", "field": "helperRequest.deploy", "value": { "verb": "deploy", "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "requestRef": "req-1", "host": "evil.example" } },
+      { "name": "short source commit", "field": "helperRequest.deploy.sourceCommit", "value": { "verb": "deploy", "sourceCommit": "abc", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "requestRef": "req-1" } },
+      { "name": "pull-assets bad digest", "field": "helperRequest.pull-assets.manifestDigest", "value": { "verb": "pull-assets", "intentRef": "assetpull-00000000000000000000000000000000", "runRef": "run-1", "manifestDigest": "nothex" } },
+      { "name": "deployment-result bad outcome", "field": "helperRequest.deployment-result.outcome", "value": { "verb": "deployment-result", "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "outcome": "maybe" } }
+    ]
+  },
+  "helperReceipts": {
+    "valid": [
+      { "name": "accepted", "value": { "time": "2026-08-24T10:00:00Z", "requestRef": "req-1", "shortSha": "aaaaaaa", "callerNode": "vm-node", "outcome": "accepted" } },
+      { "name": "refused", "value": { "time": "2026-08-24T10:00:01Z", "requestRef": "req-2", "shortSha": "bbbbbbb", "callerNode": "vm-node", "outcome": "refused" } },
+      { "name": "failed", "value": { "time": "2026-08-24T10:00:02Z", "requestRef": "req-3", "shortSha": "ccccccc", "callerNode": "vm-node", "outcome": "failed" } }
+    ],
+    "invalid": [
+      { "name": "extra receipt key (signature)", "field": "helperReceipt", "value": { "time": "2026-08-24T10:00:00Z", "requestRef": "req-1", "shortSha": "aaaaaaa", "callerNode": "vm-node", "outcome": "accepted", "signature": "deadbeef" } },
+      { "name": "bad short sha", "field": "helperReceipt.shortSha", "value": { "time": "2026-08-24T10:00:00Z", "requestRef": "req-1", "shortSha": "ZZ", "callerNode": "vm-node", "outcome": "accepted" } },
+      { "name": "unknown outcome", "field": "helperReceipt.outcome", "value": { "time": "2026-08-24T10:00:00Z", "requestRef": "req-1", "shortSha": "aaaaaaa", "callerNode": "vm-node", "outcome": "pending" } }
+    ]
+  },
+  "deployReadyCandidates": {
+    "valid": [
+      { "name": "green", "value": { "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "breaking": false } },
+      { "name": "breaking", "value": { "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "breaking": true } }
+    ],
+    "invalid": [
+      { "name": "missing breaking", "field": "candidate", "value": { "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" } },
+      { "name": "short sha", "field": "candidate.sha", "value": { "sha": "abc", "attestationDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "breaking": false } }
+    ]
+  },
+  "deploymentItems": {
+    "valid": [
+      { "name": "deploy-ready green", "value": { "kind": "deployment", "id": "d4b2a9c8659d6148df8ab2e245286f0df44f2a50dfa502b50cea510cc60a8320", "createdAt": "2026-08-24T10:00:00Z", "revision": "deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e", "subject": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "title": "Deploy aaaaaaaa", "state": "deploy-ready", "blockingPtyIds": [] } },
+      { "name": "requested stored", "value": { "kind": "deployment", "id": "d4b2a9c8659d6148df8ab2e245286f0df44f2a50dfa502b50cea510cc60a8320", "createdAt": "2026-08-24T10:05:00Z", "revision": "deployment:3", "subject": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "title": "Deployment in flight", "state": "requested", "blockingPtyIds": [ "pty-00000000000000000000000000000000" ] } }
+    ],
+    "invalid": [
+      { "name": "unmapped state", "field": "deploymentItem.state", "value": { "kind": "deployment", "id": "d4b2a9c8659d6148df8ab2e245286f0df44f2a50dfa502b50cea510cc60a8320", "createdAt": "2026-08-24T10:00:00Z", "revision": "deployment:3", "subject": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "title": "x", "state": "banana", "blockingPtyIds": [] } },
+      { "name": "deploy-ready with blocking ids", "field": "deploymentItem.blockingPtyIds", "value": { "kind": "deployment", "id": "d4b2a9c8659d6148df8ab2e245286f0df44f2a50dfa502b50cea510cc60a8320", "createdAt": "2026-08-24T10:00:00Z", "revision": "deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e", "subject": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "title": "x", "state": "deploy-ready", "blockingPtyIds": [ "pty-00000000000000000000000000000000" ] } },
+      { "name": "wrong id", "field": "deploymentItem.id", "value": { "kind": "deployment", "id": "0000000000000000000000000000000000000000000000000000000000000000", "createdAt": "2026-08-24T10:00:00Z", "revision": "deployment:3", "subject": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "title": "x", "state": "requested", "blockingPtyIds": [] } },
+      { "name": "extra key", "field": "deploymentItem", "value": { "kind": "deployment", "id": "d4b2a9c8659d6148df8ab2e245286f0df44f2a50dfa502b50cea510cc60a8320", "createdAt": "2026-08-24T10:00:00Z", "revision": "deployment:3", "subject": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, "title": "x", "state": "requested", "blockingPtyIds": [], "breaking": true } }
+    ]
+  },
+  "deploymentRevisions": {
+    "accept": [ { "s": "deployment:0", "n": 0 }, { "s": "deployment:3", "n": 3 }, { "s": "deployment:1234567890", "n": 1234567890 } ],
+    "reject": [ "3", "deployment:03", "deployment:", "deployment:-1", "deploy:3", "deployment:99999999999999999999", "deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e" ]
+  },
+  "deploymentRefs": {
+    "accept": [ "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "deployment:3", "deployment:0" ],
+    "reject": [ "run:3", "deploy-ready:AAAA", "deployment:", "", "deploy-ready:zzzz" ]
+  },
+  "assetPullIntents": {
+    "valid": [
+      { "name": "pending", "value": { "intentRef": "assetpull-00000000000000000000000000000000", "runRef": "run-1", "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "state": "pending", "requestedAt": "2026-08-24T10:00:00Z", "attempts": 0, "result": null } },
+      { "name": "failed with result", "value": { "intentRef": "assetpull-00000000000000000000000000000000", "runRef": "run-1", "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "state": "failed", "requestedAt": "2026-08-24T10:00:00Z", "attempts": 2, "result": { "outcome": "failed", "receiptAt": "2026-08-24T10:01:00Z", "errorCode": "digest-mismatch" } } }
+    ],
+    "invalid": [
+      { "name": "manifestDigest not 64 hex", "field": "assetPull.manifestDigest", "value": { "intentRef": "assetpull-00000000000000000000000000000000", "runRef": "run-1", "manifestDigest": "abcd", "state": "pending", "requestedAt": "2026-08-24T10:00:00Z", "attempts": 0, "result": null } },
+      { "name": "attempts over cap", "field": "assetPull.attempts", "value": { "intentRef": "assetpull-00000000000000000000000000000000", "runRef": "run-1", "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "state": "pending", "requestedAt": "2026-08-24T10:00:00Z", "attempts": 33, "result": null } },
+      { "name": "bad intentRef", "field": "assetPull.intentRef", "value": { "intentRef": "intent-1", "runRef": "run-1", "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "state": "pending", "requestedAt": "2026-08-24T10:00:00Z", "attempts": 0, "result": null } },
+      { "name": "unknown state", "field": "assetPull.state", "value": { "intentRef": "assetpull-00000000000000000000000000000000", "runRef": "run-1", "manifestDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "state": "queued", "requestedAt": "2026-08-24T10:00:00Z", "attempts": 0, "result": null } }
+    ]
+  },
+  "healthRows": {
+    "machine": {
+      "valid": [
+        { "name": "daemon-platform", "value": { "kind": "machine", "key": "daemon-platform", "label": "Daemon", "value": "linux", "observedAt": "2026-08-24T10:00:00Z", "source": "machine" } },
+        { "name": "cpu", "value": { "kind": "machine", "key": "cpu", "label": "CPU", "value": { "load1": 0.5, "load5": 0.4, "load15": 0.3 }, "observedAt": "2026-08-24T10:00:00Z", "source": "machine" } },
+        { "name": "memory", "value": { "kind": "machine", "key": "memory", "label": "Memory", "value": { "used": 4, "total": 16, "unit": "GiB" }, "observedAt": "2026-08-24T10:00:00Z", "source": "machine" } },
+        { "name": "uptime", "value": { "kind": "machine", "key": "uptime", "label": "Uptime", "value": { "seconds": 3600 }, "observedAt": "2026-08-24T10:00:00Z", "source": "machine" } }
+      ],
+      "invalid": [
+        { "name": "bad platform value", "field": "machineRow.value", "value": { "kind": "machine", "key": "daemon-platform", "label": "Daemon", "value": "darwin", "observedAt": "2026-08-24T10:00:00Z", "source": "machine" } },
+        { "name": "unknown key", "field": "machineRow.key", "value": { "kind": "machine", "key": "swap", "label": "Swap", "value": { "used": 1, "total": 2, "unit": "GiB" }, "observedAt": "2026-08-24T10:00:00Z", "source": "machine" } }
+      ]
+    },
+    "daemon": {
+      "valid": [
+        { "name": "service", "value": { "kind": "daemon", "key": "service", "label": "Service", "value": { "unit": "kb-dashboard.service", "mainPid": 1234, "loadedRoot": "/opt/kb-releases/aaaa", "childCount": 3 }, "observedAt": "2026-08-24T10:00:00Z", "source": "daemon" } }
+      ],
+      "invalid": [
+        { "name": "mainPid not integer", "field": "daemonRow.value.mainPid", "value": { "kind": "daemon", "key": "service", "label": "Service", "value": { "unit": "kb-dashboard.service", "mainPid": "1234", "loadedRoot": "/opt/kb-releases/aaaa", "childCount": 3 }, "observedAt": "2026-08-24T10:00:00Z", "source": "daemon" } }
+      ]
+    },
+    "release": {
+      "valid": [
+        { "name": "release", "value": { "kind": "release", "key": "release", "label": "Release", "value": { "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "archiveSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "activatedAt": "2026-08-24T09:00:00Z", "rollbackAvailable": true }, "observedAt": "2026-08-24T10:00:00Z", "source": "release" } }
+      ],
+      "invalid": [
+        { "name": "bad sha", "field": "releaseRow.value.sha", "value": { "kind": "release", "key": "release", "label": "Release", "value": { "sha": "xyz", "archiveSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "activatedAt": "2026-08-24T09:00:00Z", "rollbackAvailable": true }, "observedAt": "2026-08-24T10:00:00Z", "source": "release" } }
+      ]
+    },
+    "deploy": {
+      "valid": [
+        { "name": "deploy", "value": { "kind": "deploy", "key": "deploy:deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "label": "Deployment", "value": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "swapping", "targetCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "previousCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "error": null }, "observedAt": "2026-08-24T10:00:00Z", "source": "deploy" } }
+      ],
+      "invalid": [
+        { "name": "state not a deployment state", "field": "deployRow.value.state", "value": { "kind": "deploy", "key": "deploy:x", "label": "Deployment", "value": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "state": "deploy-ready", "targetCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "previousCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "error": null }, "observedAt": "2026-08-24T10:00:00Z", "source": "deploy" } }
+      ]
+    }
+  },
+  "t3": {
+    "valid": [
+      { "name": "deploy decision", "input": { "subject": "deployment", "ref": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "revision": "deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e", "decision": "deploy", "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" }, "digest": "40a1370677aa596eb2b92f4f0339c0ce47709141fc9a7240515151f67eb7f854" }
+    ],
+    "invalid": [
+      { "name": "unknown subject", "input": { "subject": "release", "ref": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "revision": "deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e", "decision": "deploy", "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" } },
+      { "name": "unknown decision", "input": { "subject": "deployment", "ref": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "revision": "deployment:3", "decision": "decline", "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" } }
+    ]
+  },
+  "quiescence": {
+    "valid": [
+      { "name": "two ids", "value": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expectedRevision": "deployment:5", "sessionIds": [ "pty-11111111111111111111111111111111", "pty-00000000000000000000000000000000" ] }, "digest": "6b2a5fdbb29bdb7f2ab797640ba077a9b3765bb6ca0ad3cc98c85495d5ea0173" }
+    ],
+    "invalid": [
+      { "name": "deploy-ready revision refused", "field": "invalid-revision", "value": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expectedRevision": "deploy-ready:0365e0f62588dd65f972717fb13fba2ee2fd35b7a0e68e09208313e9a4601e2e", "sessionIds": [ "pty-00000000000000000000000000000000" ] } },
+      { "name": "empty session ids", "field": "quiescence.sessionIds", "value": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expectedRevision": "deployment:5", "sessionIds": [] } },
+      { "name": "duplicate id", "field": "quiescence.sessionIds", "value": { "deploymentRef": "deploy-ready:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expectedRevision": "deployment:5", "sessionIds": [ "pty-00000000000000000000000000000000", "pty-00000000000000000000000000000000" ] } }
+    ]
+  }
+}

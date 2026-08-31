@@ -16,8 +16,12 @@
  * gate falls back to its real default.
  */
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { resolve as resolvePath } from 'node:path';
+import { connect as connectSocket } from 'node:net';
 import type { FastifyInstance } from 'fastify';
-import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
+import { BROKER_SOCKET_PATH } from '../pty/fdPinnedPaths.ts';
+import { createBrowserSessionRefStore, resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAuthMode, resolveTailnetConfig } from '../auth/mode.ts';
 import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
@@ -25,10 +29,11 @@ import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
-import { registerAuthRoutes } from '../auth/routes.ts';
+import { makeNodeRateGuard, makeNodeReadRateGuard } from './context.ts';
+import { registerV1NodeRoutes, registerV1Routes } from '../api/v1/routes.ts';
+import { registerAuthRoutes, registerBrowserSessionRoute } from '../auth/routes.ts';
+import { createActivationReader } from '../home/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
-import { registerComposerRoutes } from '../composer/routes.ts';
-import { createResumeRegistry } from '../composer/resumeRegistry.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
@@ -36,19 +41,25 @@ import { drainVibeProcesses } from '../vibe/session.ts';
 import { activeVibeProcessCount } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
 import { activeAsyncGitCount } from '../write/asyncGit.ts';
-import { createFileControlPlaneStore } from '../control/store.ts';
+import { createFileControlPlaneStore, createPythonScheduleClaimRenderer } from '../control/store.ts';
+import { projectAttemptSessions } from '../control/runProjection.ts';
+import { loadP2MigrationEvidence } from '../control/p2MigrationEvidence.ts';
 import type { FileControlPlaneAccess } from '../control/writerLease.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
-import { registerControlRoutes } from '../control/routes.ts';
+import { readScopeForSubject, registerControlRoutes } from '../control/routes.ts';
 import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
-import { createPtyHost } from '../pty/host.ts';
-import type { PtyHost } from '../pty/host.ts';
-import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { createSessionRunStore } from '../pty/sessionRuns.ts';
-import { createTranscriptRecorder } from '../pty/transcripts.ts';
+import { createRawSessionReplaySource } from '../pty/replayReader.ts';
+import { createSessionPersistence, createTranscriptRetention } from '../pty/sessionPersistence.ts';
+import { createWindowsSessionHost } from '../pty/windowsSessionHost.ts';
+import { LinuxBrokerClient } from '../pty/linuxBrokerClient.ts';
+import { createSessionRecordRegistry } from '../pty/sessionRecord.ts';
+import type { DeploymentSessionCloser } from '../pty/sessionRecord.ts';
+import type { SessionHost } from '../pty/contracts.ts';
+import { migratePtySessionStateRoot } from '../pty/sessionMigration.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
@@ -61,6 +72,7 @@ import { admit } from '../control/admission.ts';
 import { outboxStatus } from '../write/outboxStatus.ts';
 import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capabilities.ts';
 import { resolveSessionRoot } from '../trace/routes.ts';
+import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -82,7 +94,6 @@ export interface SurfaceActivationSeam {
   env?: Record<string, string | undefined>;
   createQueueBridge?: typeof createQueueBridge;
   dispatchClaimedCard?: typeof dispatchClaimedCard;
-  createPtyHost?: typeof createPtyHost;
 }
 
 export type SurfaceContextOverrides = Partial<SurfaceContext> & {
@@ -95,32 +106,51 @@ const QUEUE_BRIDGE_INTERVAL_MS = 15_000;
 export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
 
 /**
- * Put the fleet preamble on the shared host itself, not only on one HTTP route. The browser route may
- * deliberately check twice; the second check closes the gap for session-registry callers that
- * reach `PtyHost.open` without traversing that route. Construction stays inert: no preamble runs and no
- * shell opens until `open` is actually invoked.
+ * Put the fleet preamble on the platform {@link SessionHost} itself, not only on one HTTP route. The
+ * browser route may deliberately check twice; the second check closes the gap for every registry caller
+ * that reaches `SessionHost.create` without traversing that route (the Run-scoped attempt path included).
+ * Construction stays inert: no preamble runs and no child spawns until `create` is actually invoked.
+ *
+ * A frozen fleet is a typed refusal, never a throw: `create` is the one host method that returns a
+ * `HostLaunch` synchronously, so refusing it means handing back an already-refused receipt plus a
+ * settled `abandoned` exit — the registry's normal failure path — instead of an exception the WebSocket
+ * route would have to catch. The detail is the fixed {@link PTY_OPEN_FLEET_FROZEN} string: preamble
+ * stdout/stderr can name environment or credential problems, and none of it may reach a browser frame,
+ * an audit row, or a close reason.
+ *
+ * Only `create` is gated. `attach`/`write`/`resize`/`close`/`drain` act on sessions that already exist,
+ * and a freeze must never strand a live child or block reaping one.
  */
-function fleetGatedPtyHost(host: PtyHost, repoRoot: string, runPreamble: PreambleRunner): PtyHost {
+function fleetGatedSessionHost(host: SessionHost, repoRoot: string, runPreamble: PreambleRunner): SessionHost {
+  const fleetRunnable = (): boolean => {
+    try {
+      return assertFleetRunnable(repoRoot, runPreamble).ok;
+    } catch {
+      return false;
+    }
+  };
   return {
-    open(request) {
-      try {
-        if (!assertFleetRunnable(repoRoot, runPreamble).ok) throw new Error(PTY_OPEN_FLEET_FROZEN);
-      } catch {
-        // Preamble stdout/stderr can name environment or credential problems. Never surface those details
-        // through a PTY spawn error, audit row, or WebSocket close reason.
-        throw new Error(PTY_OPEN_FLEET_FROZEN);
-      }
-      return host.open(request);
+    probe: () => host.probe(),
+    create(request, sink) {
+      if (fleetRunnable()) return host.create(request, sink);
+      return {
+        receipt: Promise.resolve({ ok: false, refusal: 'unavailable', detail: PTY_OPEN_FLEET_FROZEN }),
+        exit: Promise.resolve({
+          sessionId: '',
+          sequence: 0,
+          exitCode: null,
+          signal: null,
+          reason: 'abandoned',
+          observedAt: new Date().toISOString(),
+        }),
+      };
     },
-    stop(sessionId) {
-      return host.stop(sessionId);
-    },
-    stopAll() {
-      host.stopAll();
-    },
-    sessions() {
-      return host.sessions();
-    },
+    attach: (sessionId, sink) => host.attach(sessionId, sink),
+    write: (sessionId, data) => host.write(sessionId, data),
+    resize: (sessionId, size) => host.resize(sessionId, size),
+    close: (sessionId) => host.close(sessionId),
+    listEpoch: () => host.listEpoch(),
+    drain: (epochId) => host.drain(epochId),
   };
 }
 
@@ -150,14 +180,17 @@ export function makeSurfaceContext(
   const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? (overrides.fileControlAccess
-    ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess)
+      ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess, {
+        p2MigrationContext: loadP2MigrationEvidence(repoRoot),
+        renderScheduleClaim: createPythonScheduleClaimRenderer(repoRoot),
+      })
     : (() => { throw new Error('makeSurfaceContext requires controlStore or fileControlAccess'); })());
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
   // supplied as an override (tests, or a future explicit injection), activation is skipped entirely so no
   // construction is attempted. Otherwise `buildActivatedExecution` returns `null` unless the gate is on —
-  // meaning production, gate absent, constructs no broker/engine and spawns no `claude` (the core inert
+  // meaning production, gate absent, constructs no attempt port/engine and spawns no `claude` (the core inert
   // invariant): the executor fields below stay `undefined` exactly as today.
-  const activationOverridden = overrides.controlBroker !== undefined
+  const activationOverridden = overrides.attemptPort !== undefined
     || overrides.runAutomatic !== undefined
     || overrides.cancelAutomatic !== undefined
     || overrides.containManagerStart !== undefined
@@ -169,29 +202,118 @@ export function makeSurfaceContext(
     overrides.runtimeCapabilities ?? runtimeCapabilities(),
     { coordinationPublication, openPr, transcriptRoot: traceRoot },
   );
-  // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
-  // spawns nothing; only `open` does.
-  const underlyingPtyHost = capabilities.pty
-    ? (overrides.ptyHost ?? (activation.createPtyHost ?? createPtyHost)({ shell: 'powershell.exe' }))
+  // W6.4 - the ONE PTY host for `/api/pty`, composed here and nowhere else: Windows drives `node-pty`
+  // in-process, Linux speaks the socket-activated broker protocol as an unprivileged client. The fleet
+  // preamble wraps it, so every `create` — browser terminal or Run-scoped attempt — passes the gate.
+  // Construction spawns nothing, connects to nothing, and runs no preamble; only `create` does.
+  const underlyingPtySessionHost: SessionHost | undefined = capabilities.pty
+    ? (overrides.ptySessionHost
+      ?? (process.platform === 'win32'
+        ? createWindowsSessionHost({
+          epochId: randomUUID(),
+          roots: { repo: repoRoot, worktrees: resolvePath(stateRoot, 'worktrees') },
+        })
+        : new LinuxBrokerClient({
+          connect: async () => connectSocket(BROKER_SOCKET_PATH),
+          dashboardEpochId: randomUUID(),
+          makeRequestId: () => randomUUID(),
+        })))
     : undefined;
-  const ptyHost = underlyingPtyHost
-    ? fleetGatedPtyHost(underlyingPtyHost, repoRoot, overrides.runPreamble ?? defaultPreambleRunner)
+  const ptySessionHost = underlyingPtySessionHost
+    ? fleetGatedSessionHost(underlyingPtySessionHost, repoRoot, overrides.runPreamble ?? defaultPreambleRunner)
     : undefined;
-  const ptySessions = capabilities.pty ? (overrides.ptySessions ?? createPersistentSessionRegistry()) : undefined;
   // Session runs + transcripts (leg 2). Construction is INERT: the store's JSON document is created
   // lazily and the recorder only touches disk once a session is actually taped, so building a context
   // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
   // REGISTRATION instead, the one moment that happens exactly once per daemon boot.
-  const ptySessionRuns = capabilities.pty ? (overrides.ptySessionRuns ?? createSessionRunStore(stateRoot)) : undefined;
-  const ptyTranscripts = capabilities.pty ? (overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot })) : undefined;
+  // ONE v2 PTY document (`kb.pty-sessions/v2`) for the whole daemon: session records, attempt bindings,
+  // operation receipts AND the legacy session-run rows share its lock and its revision counter. Building
+  // it is inert (the file is opened lazily). A daemon still holding a v1 `kb.pty-session-runs/v1`
+  // document migrates through W3's `sessionMigration` — backup first, ambiguity aborts with v1 left
+  // authoritative — which is awaited exactly once, lazily, before the first write (at boot that is the
+  // session-run routes' `live` -> `abandoned` sweep), so composition itself still touches no filesystem.
+  const ptyPersistence = capabilities.pty
+    ? (overrides.ptyPersistence ?? createSessionPersistence(stateRoot))
+    : undefined;
+  const ptySessionRuns = capabilities.pty && ptyPersistence
+    ? (overrides.ptySessionRuns
+      ?? createSessionRunStore(ptyPersistence, { migrate: () => migratePtySessionStateRoot(stateRoot) }))
+    : undefined;
+  // The ONE v2 session registry. It is the only holder of the cross-controller close port: the closer is
+  // handed OUT through `installDeploymentCloser` (Daniel's `close-ptys-and-continue` deployment action)
+  // and is deliberately absent from the registry object every route sees.
+  let deploymentSessionCloser: DeploymentSessionCloser | null = null;
+  const ptySessionRegistry = capabilities.pty && ptySessionHost && ptyPersistence
+    ? (overrides.ptySessionRegistry ?? createSessionRecordRegistry({
+      host: ptySessionHost,
+      persistence: ptyPersistence,
+      transcript: createTranscriptRetention(stateRoot),
+      // A Run-controller claim is authorized by the CONTROL plane, not by the PTY document: the
+      // registry may only hand a session to a browser whose operator can already read that run, and
+      // it CASes against the run version that read returned. An unreadable run resolves to `null`,
+      // which the registry turns into `not-found` — the same answer a nonexistent session gets, so a
+      // claim can never be used to probe for runs the caller cannot see.
+      // The inner read must use the SAME scope the claim route's outer read used (`readScopeForSubject`
+      // is a pure function of the subject, so this cannot drift from it): resolving under the default
+      // `own-subject` while the route read under `all-subjects` would turn every engine-owned run the
+      // operator can legitimately see into a `not-found` claim.
+      resolveRunVersion: async (operator: string, runRef: string) => {
+        const detail = controlStore.getRun(operator, runRef, readScopeForSubject(operator));
+        return detail.ok ? detail.value.run.version : null;
+      },
+      installDeploymentCloser: (closer) => { deploymentSessionCloser = closer; },
+    }))
+    : undefined;
+  // The typed raw-replay read the Run-scoped replay route serves earlier attempts from ([C-R6]).
+  // Composed over the SAME `stateRoot` the registry's `createTranscriptRetention` writes into, and
+  // over the SAME record the persistence document holds, so reader and writer can never disagree
+  // about where a transcript lives or how much of it survived compaction. Absent with no persistence:
+  // there is then no retained window to serve, and the route answers `pty-unavailable` rather than
+  // inventing an empty transcript.
+  const ptyRawReplay = overrides.ptyRawReplay ?? (ptyPersistence
+    ? createRawSessionReplaySource({
+      stateRoot,
+      extent: (sessionId) => {
+        const record = ptyPersistence.read().sessions.find((item) => item.sessionId === sessionId);
+        return record === undefined
+          ? null
+          : { total: record.transcript.lastSequence, bytes: record.transcript.bytes };
+      },
+    }).read
+    : undefined);
+  // [C-M4] The Run detail's attempt-session projection. Composed over the SAME registry that owns
+  // binding order and the SAME persistence document the records live in, so the order the operator
+  // sees, the session the server selects, and the transcript the replay route serves can never come
+  // from three different reads of the world.
+  const ptyRunAttemptSessions = overrides.ptyRunAttemptSessions ?? (ptySessionRegistry && ptyPersistence
+    ? (operator: string, runRef: string) => projectAttemptSessions(
+      ptySessionRegistry.byRun(operator, runRef),
+      ptyPersistence.read().sessions,
+    )
+    : undefined);
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
   let serviceCgroupCache: { checkedAt: number; children: number | null } | undefined;
+  // W6.2 (step 1): compose the ONE reconciliation publisher over the real store/ops ports and expose it
+  // on the context. It is composed exactly once here and called from NOWHERE yet — step 2 cuts the
+  // card/inbox/schedule callers over to it; the four heredocs stay live until then.
+  const reconciliationPublisher = overrides.reconciliationPublisher ?? createReconciliationPublisher(
+    createReconciliationRealPorts({
+      repoRoot,
+      store: controlStore,
+      stateRoot,
+      runPy: overrides.runPy,
+      now: overrides.now === undefined ? undefined : () => overrides.now!().toISOString(),
+      coordinationPublication,
+      outboxRoot,
+    }),
+  );
   let ctx!: SurfaceContext;
   ctx = {
     runtimeCapabilities: capabilities,
     repoRoot,
+    reconciliationPublisher,
     coordinationPublication,
     outboxRoot,
     outboxRecoveryFailure: overrides.outboxRecoveryFailure,
@@ -228,6 +350,18 @@ export function makeSurfaceContext(
           blockers: [...recoveryBlockers, 'service-cgroup-unknown'],
         };
       }
+      // Live PTYs come from the platform host's own epoch listing — the only thing that knows what
+      // children this daemon epoch still owns. An unreadable/refusing host counts as one live session:
+      // quiescence must never be claimed off a count we could not take (same rule as the cgroup probe).
+      let activePty = 0;
+      if (ctx.ptySessionHost) {
+        try {
+          const listed = await ctx.ptySessionHost.listEpoch();
+          activePty = listed.ok ? listed.value.sessionIds.length : 1;
+        } catch {
+          activePty = 1;
+        }
+      }
       const result = quiescence({
         executionState: activation?.state ?? 'locked',
         bridgeStopped: ctx.stopQueueBridge === undefined,
@@ -237,7 +371,7 @@ export function makeSurfaceContext(
         // locked/locking state already prevents readiness through executionState.
         activeWorkers: activation?.state === 'unlocked' ? 1 : 0,
         activeGit: activeAsyncGitCount(),
-        activePty: ctx.ptySessions?.liveCount() ?? 0,
+        activePty,
         activeComposer: activeVibeProcessCount(),
         serviceCgroupChildren: serviceCgroupCache.children,
       });
@@ -250,9 +384,24 @@ export function makeSurfaceContext(
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
     authMode: overrides.authMode ?? authMode,
+    // P5 W6.1 [P5-C30]: the ONE shared activation reader. Constructed exactly once here and threaded
+    // through the context to Home, Health, and the Inbox deploy-ready gate. `index.test.ts` asserts a
+    // single construction; deleting the `createHomeRoutePorts` default (home/routes.ts:73) makes a
+    // second impossible.
+    activationReader: overrides.activationReader ?? createActivationReader(),
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(activation.env),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
     readRateGuard: overrides.readRateGuard ?? makeDefaultReadRateGuard(),
+    // P6 W6.1 [P6-C33]: the v1 NODE scope's OWN rate-guard pair, built beside the operator pair and never
+    // shared. Always present so the node sibling scope can mount whenever node identity is configured.
+    nodeRateGuard: overrides.nodeRateGuard ?? makeNodeRateGuard(),
+    nodeReadRateGuard: overrides.nodeReadRateGuard ?? makeNodeReadRateGuard(),
+    // Node identity + the injectable v1 ports. Absent leaves the whole v1 surface unregistered
+    // (fail-closed); production binds these to the attested node uid, the root-owned map, and the
+    // extracted W2 services + placement store adapters.
+    nodeProxyUid: overrides.nodeProxyUid,
+    loadHostNodeMap: overrides.loadHostNodeMap,
+    v1: overrides.v1,
     // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
     // (which the origin guard has already blocked when the allowlist is empty), never at registration.
     webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
@@ -270,21 +419,30 @@ export function makeSurfaceContext(
     now: overrides.now,
     // One issued-session allowlist for the whole process (review F1) — resumes only ids captured this
     // lifetime. Tests override with a fresh instance so ids never leak between them.
-    resumeRegistry: overrides.resumeRegistry ?? createResumeRegistry(),
     composerStore:
       overrides.composerStore ??
       createFileComposerStore(stateRoot, {
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
     controlStore,
-    ptyHost,
-    ptySessions,
+    ptySessionHost,
+    ptySessionRegistry,
+    ptyRawReplay,
+    ptyRunAttemptSessions,
+    closeDeploymentPtySessions: async (sessionIds) =>
+      deploymentSessionCloser === null
+        ? { ok: false, refusal: 'unavailable', detail: 'no session host' }
+        : deploymentSessionCloser(sessionIds),
+    ptyPersistence,
+    // One ref table per process, reading the v2 document so a ref already spent as a session controller
+    // can never be re-minted for a second browser.
+    browserSessionRefs: overrides.browserSessionRefs
+      ?? createBrowserSessionRefStore(ptyPersistence ? { persistence: ptyPersistence } : {}),
     ptySessionRuns,
-    ptyTranscripts,
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
     // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
     // place on unlock and clears them on lock.
-    controlBroker: overrides.controlBroker,
+    attemptPort: overrides.attemptPort,
     runAutomatic: overrides.runAutomatic,
     cancelAutomatic: overrides.cancelAutomatic,
     containManagerStart: overrides.containManagerStart,
@@ -314,14 +472,23 @@ export function makeSurfaceContext(
     ctx.executionLatch = createExecutionLatch({
       build,
       env: activation.env,
-      buildOptions: { controlStore, repoRoot, stateRoot },
+      buildOptions: {
+        controlStore, repoRoot, stateRoot,
+        // The attempt port is built from the SAME probed host and v2 document the browser PTY routes
+        // use, so a Run attempt and a Terminal session are the same kind of record on the same host.
+        sessionHost: ptySessionHost, attemptBindings: ptySessionRegistry,
+        // The ONE reconciliation publisher composed above, threaded to the canonical result integrator so
+        // its coordination phase publishes serial `card-transition` intents (P4 §3.4) rather than running
+        // its own cards.py mutation + git commit/push.
+        reconciliationPublisher,
+      },
       onChange: (execution, state, serviceCaller) => {
         stopQueueBridge?.();
         stopQueueBridge = undefined;
         ctx.stopQueueBridge = undefined;
         offAttemptIo?.();
         offAttemptIo = null;
-        ctx.controlBroker = execution?.controlBroker;
+        ctx.attemptPort = execution?.attemptPort ?? undefined;
         ctx.runAutomatic = execution?.runAutomatic;
         ctx.cancelAutomatic = execution?.cancelAutomatic;
         ctx.containManagerStart = execution?.containManagerStart;
@@ -358,6 +525,8 @@ export function makeSurfaceContext(
                   }
                   return serviceCaller;
                 },
+                resolveScheduleReceiptOwner: (cardId) => ctx.controlStore.resolveScheduleReceiptOwner(cardId),
+                bindScheduleOccurrenceRun: (cardId, runRef) => ctx.controlStore.bindScheduleOccurrenceRun(cardId, runRef),
               });
               if (result.outcome !== 'launched' && result.outcome !== 'replayed') {
                 console.error('queue bridge dispatch did not launch', result);
@@ -398,7 +567,9 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
   app.addHook('preClose', async () => {
     ctx.stopQueueBridge?.();
     ctx.stopQueueBridge = undefined;
-    ctx.controlBroker?.drain();
+    // Shutdown is a fail-safe direction: a drain that throws synchronously, rejects, or returns
+    // nothing at all must not block Fastify from closing.
+    try { await ctx.attemptPort?.drain(); } catch { /* best effort */ }
     drainVibeProcesses();
     // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks
     // behind a hung push — the very failure mode this async-git conversion exists to remove.
@@ -419,10 +590,24 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
     registerPaidActionRoute(scope, ctx);
     scope.register(async (authenticated) => {
       authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
+      // The controller-cookie endpoint lives INSIDE the session gate, not beside the public ceremonies:
+      // its authorization is "Origin + operator" (route matrix), and in tailnet mode the operator gate is
+      // the only proof that exists — no assertion is ever verified there, so the WebAuthn mint path never
+      // runs and this is the sole way the always-on deployment gets a `kb_browser_session` ref at all.
+      registerBrowserSessionRoute(authenticated, ctx);
       registerWriteRoutes(authenticated, ctx);
-      registerComposerRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);
       registerApprovalsRoutes(authenticated, ctx);
+      // P6 W6.1 [P6-C20]: v1 operator MUTATIONS join the operator authenticated scope — they SHOULD spend
+      // the operator write budget and prove the session. The scope's operatorRouteOnlyGuard refuses the
+      // node-proxy uid `403 operator-route-only`.
+      registerV1Routes(authenticated, ctx, 'operator-mutations');
     });
   });
+  // P6 W6.1 [P6-C20, P6-C33, P6-C46]: the four node routes as a SIBLING scope of the operator write scope,
+  // both children of `app`. Registered on `app` — NOT nested inside the operator scope — precisely so the
+  // operator rate hook above is never inherited by node traffic; the node scope installs its OWN
+  // origin+rate hooks and requireNodeIdentity in place of requireSession. Mounts nothing when node identity
+  // is unconfigured (fail-closed).
+  registerV1NodeRoutes(app, ctx);
 }

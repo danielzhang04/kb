@@ -11,7 +11,6 @@
  *   POST /api/write/rerun         -> write/launch.ts#rerunAsDependsOn
  *   POST /api/write/stop          -> stop/floor.ts#writeStop        (nuclear, fleet-wide STOP sentinel)
  *   POST /api/write/stop-card     -> stop/floor.ts#requestStop      (scoped: working -> stop-requested -> halting)
- *   POST /api/write/pause-cadence -> stop/floor.ts#pauseCadence
  */
 import { readFileSync } from 'node:fs';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -29,7 +28,7 @@ import { respondToCard, resolveCardPath } from './cardRespond.ts';
 import type { RespondVerb } from './cardRespond.ts';
 import { parseValidatedCard } from '../planeA/cards.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
-import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
+import { writeStop } from '../stop/floor.ts';
 import { setOverride, clearOverride } from './routingOverride.ts';
 import type { OverrideScope } from './routingOverride.ts';
 import { setCardRouting, clearCardRouting } from './cardRouting.ts';
@@ -284,13 +283,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const outcome = writeStop(
       { token: session?.token, config: ctx.sessionConfig },
-      {
-        repoRoot: ctx.repoRoot,
-        runPy: ctx.runPy,
-        runGit: ctx.opsGit,
-        publication: ctx.coordinationPublication,
-        outboxRoot: ctx.outboxRoot,
-      },
+      { repoRoot: ctx.repoRoot },
     );
     // FINDING 3: audit only when the STOP sentinel was actually written.
     if (outcome.ok) {
@@ -300,71 +293,6 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         result: 'stop-written',
       }, auditOpts);
       return reply.code(200).send({ ok: true, path: outcome.path });
-    }
-    return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
-  });
-
-  scope.post('/api/write/stop-card', { preHandler }, async (req, reply: FastifyReply) => {
-    const session = verifiedSession(req);
-    const body = asRecord(req.body);
-    const cardId = str(body.cardId);
-    // LOW (same class as rerun): reject glob-metachar / traversal card ids before the id reaches
-    // floor.ts's queue_root.glob(f"**/{cardId}.md").
-    if (!CARD_ID_RE.test(cardId)) {
-      return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
-    }
-    const outcome = await requestStop(
-      cardId,
-      { token: session?.token, config: ctx.sessionConfig },
-      {
-        repoRoot: ctx.repoRoot,
-        runPy: ctx.runPy,
-        runGit: ctx.opsGit,
-        publication: ctx.coordinationPublication,
-        outboxRoot: ctx.outboxRoot,
-      },
-    );
-    // FINDING 3: audit only on a successful state transition.
-    if (outcome.ok) {
-      await audit(ctx.repoRoot, {
-        action: 'stop-card',
-        owner: session?.claims.sub,
-        cardId,
-        result: `halting:${outcome.state}`,
-      }, auditOpts);
-      return reply.code(200).send({ ok: true, cardId: outcome.cardId, state: outcome.state });
-    }
-    if (outcome.reason === 'unauthenticated') return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
-    return reply.code(500).send({ error: outcome.reason, detail: outcome.detail });
-  });
-
-  scope.post('/api/write/pause-cadence', { preHandler }, async (req, reply: FastifyReply) => {
-    const session = verifiedSession(req);
-    const body = asRecord(req.body);
-    const name = str(body.name);
-    const outcome = await pauseCadence(
-      name,
-      { token: session?.token, config: ctx.sessionConfig },
-      {
-        repoRoot: ctx.repoRoot,
-        runPy: ctx.runPy,
-        runGit: ctx.opsGit,
-        publication: ctx.coordinationPublication,
-        outboxRoot: ctx.outboxRoot,
-      },
-    );
-    // FINDING 3: audit only when the cadence was actually paused.
-    if (outcome.ok) {
-      await audit(ctx.repoRoot, {
-        action: 'pause-cadence',
-        owner: session?.claims.sub,
-        target: name,
-        result: 'paused',
-      }, auditOpts);
-      return reply.code(200).send({ ok: true, path: outcome.path });
-    }
-    if (outcome.reason === 'invalid-cadence') {
-      return reply.code(400).send({ error: outcome.reason, detail: outcome.detail });
     }
     return reply.code(401).send({ error: outcome.reason, detail: outcome.detail });
   });

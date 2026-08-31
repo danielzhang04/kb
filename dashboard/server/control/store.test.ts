@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import {
   CONTROL_PLANE_ACCEPTED_SIZE_FILENAME,
   ControlStoreLimitError,
+  ControlStoreReadOnlyError,
   AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
   AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
@@ -18,21 +19,259 @@ import {
   emptyStoreDocumentForTest,
   exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
+  createFileControlPlaneStore as openFileControlPlaneStore,
 } from './store.ts';
-import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
+import {
+  createExistingRootFileStoreHarnessForTest, createLeasedFileStoreForTest,
+} from './test-fixtures/controlStore.ts';
 import { CONTROL_PLANE_COLLECTIONS } from './generated/controlPlaneSchema.ts';
 import { applyMigrationEdgeForTest, loadAndMigrate } from './migrations.ts';
 import { createNodePersistenceDeps } from './persistence.ts';
+import { acquireWriterLease } from './writerLease.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
+import { ScheduleService } from '../schedules/service.ts';
+import { scheduleMirrorSnapshotDigest } from '../schedules/mirror.ts';
+import { SCHEDULE_MIRROR_BATCH_SCHEMA, scheduleMirrorBatchId } from '../schedules/mirrorContracts.ts';
+import type { ScheduleMirrorBatch } from '../schedules/mirrorContracts.ts';
+import { scheduleMirrorOperationKey } from '../write/durableManifest.ts';
+import { resolveQueueBridgeRunnable } from './queueBridge.ts';
+import { assertReconciliationPublisher, publishReconciliationIntent } from '../reconciliation/publisher.ts';
+import type { ReconciliationPublisherPorts, ReconciliationSourceSnapshot } from '../reconciliation/publisher.ts';
+import {
+  ReconciliationConflictError, reconciliationIdempotencyKey,
+} from '../reconciliation/contracts.ts';
+import type {
+  CardTransitionIntent, PreparedReconciliationReceipt, PublishedReconciliationReceipt,
+  ReconciliationAuditRecord, ReconciliationResult,
+} from '../reconciliation/contracts.ts';
+import type { ReconciliationAuditSink } from '../reconciliation/audit.ts';
 
 const roots: string[] = [];
 const fileStores = createExistingRootFileStoreHarnessForTest();
 const createFileControlPlaneStore = fileStores.open;
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
+const TEST_EXECUTION_HOST = process.platform === 'win32' ? 'desktop' : 'vm';
+const OTHER_EXECUTION_HOST = TEST_EXECUTION_HOST === 'desktop' ? 'vm' : 'desktop';
 
+it('leaves file-backed v2 bytes unchanged on host contradiction and partial outcome aborts', () => {
+  for (const [name, fields] of [
+    ['host', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: OTHER_EXECUTION_HOST,
+      terminalOutcome: null, completedAt: null, archivedFrom: null,
+    }],
+    ['partial-outcome', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: TEST_EXECUTION_HOST,
+      terminalOutcome: 'ok',
+    }],
+  ] as const) {
+    const root = mkdtempSync(join(tmpdir(), `control-store-p2-${name}-`));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    mkdirSync(dirname(path), { recursive: true });
+    const source = {
+      version: 2, documentRevision: 0, nextEventCursor: 1, proposals: [],
+      runs: [{
+        subject: 'operator', runRef: `run-${name}`, predecessorRunRef: null, title: 'Abort fixture',
+        proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+        publicationState: 'published', lifecycle: { kind: 'running', deployPause: null }, version: 1,
+        managerSessionRef: 'session-1', managerGeneration: 1, managerAssignment: null,
+        agentWorkspaceLaunch: null, activationReceipts: [], authorizedFailedRunReconciliation: null,
+        createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:00:00.000Z', ...fields,
+      }],
+      stages: [], attempts: [], sessions: [], humanRequests: [], events: [], stageGenerations: [],
+      iterationLoops: [], iterationRequests: [], iterationReceipts: [], generationSupersessions: [],
+      quarantine: [], deployments: [],
+    };
+    writeFileSync(path, `${JSON.stringify(source)}\n`, 'utf8');
+    const before = readFileSync(path);
+    const digest = createHash('sha256').update(before).digest('hex');
+    const lease = acquireWriterLease({ stateRoot: root, bootId: `abort-${name}` });
+    try {
+      expect(() => openFileControlPlaneStore(root, { mode: 'already-locked', lease }, {
+        p2MigrationContext: {
+          agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [], auditRows: [],
+        },
+      })).toThrow(/run-(?:owner|outcome)-migration-required/);
+      expect(createHash('sha256').update(readFileSync(path)).digest('hex')).toBe(digest);
+      expect(readFileSync(path)).toEqual(before);
+    } finally {
+      lease.release();
+    }
+  }
+});
+
+describe('control-store schedule authority', () => {
+  it('appends one durable event and advances the cursor only for each fresh arm, disarm, and delete', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedule-events-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root);
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
+    const created = await api.create({
+      owner: { type: 'agent', id: owner.id },
+      cadence: { kind: 'words', words: 'daily', time: '09:15' },
+      expectedCollectionRevision: 0,
+      idempotencyKey: 'event-create',
+    });
+    const persisted = () => JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      nextEventCursor: number;
+      schedules: Array<{ operationReceipts: Array<{ kind?: string; cursor?: number; operation?: string }> }>;
+      scheduleTombstones: Array<{ operationReceipts: Array<{ kind?: string; cursor?: number; operation?: string }> }>;
+    };
+    const state = () => {
+      const document = persisted();
+      const events = [...document.schedules, ...document.scheduleTombstones]
+        .flatMap((row) => row.operationReceipts)
+        .filter((receipt) => receipt.kind === 'schedule-mutation-event');
+      return { cursor: document.nextEventCursor, events };
+    };
+
+    const beforeArm = state();
+    const armInput = { expectedVersion: created.schedule.version, idempotencyKey: 'event-arm', armed: true };
+    const armed = await api.setArmed(created.schedule.id, armInput);
+    expect(state()).toMatchObject({ cursor: beforeArm.cursor + 1, events: [...beforeArm.events, { operation: 'armed', cursor: beforeArm.cursor }] });
+    await api.setArmed(created.schedule.id, armInput);
+    expect(state()).toEqual({ cursor: beforeArm.cursor + 1, events: [...beforeArm.events, expect.objectContaining({ operation: 'armed', cursor: beforeArm.cursor })] });
+
+    const beforeDisarm = state();
+    const disarmInput = { expectedVersion: armed.schedule.version, idempotencyKey: 'event-disarm', armed: false };
+    const disarmed = await api.setArmed(created.schedule.id, disarmInput);
+    expect(state()).toMatchObject({ cursor: beforeDisarm.cursor + 1, events: [...beforeDisarm.events, { operation: 'disarmed', cursor: beforeDisarm.cursor }] });
+
+    const beforeDelete = state();
+    const deleteInput = { expectedVersion: disarmed.schedule.version, idempotencyKey: 'event-delete' };
+    await api.delete(created.schedule.id, deleteInput);
+    expect(state()).toMatchObject({ cursor: beforeDelete.cursor + 1, events: [...beforeDelete.events, { operation: 'deleted', cursor: beforeDelete.cursor }] });
+    await api.delete(created.schedule.id, deleteInput);
+    expect(state().cursor).toBe(beforeDelete.cursor + 1);
+    expect(state().events).toHaveLength(beforeDelete.events.length + 1);
+  });
+
+  it('persists mutation replay, receipt-first ownership, and one terminal completion across restart', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedules-'));
+    roots.push(root);
+    const scheduledFor = '2026-08-23T07:15:00.000Z';
+    const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+      const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+      return { card: {
+        meta: {
+          'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+          project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+          'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+          workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+          runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+        },
+        body: '## Work order\n\nRun the scheduled Hygiene agent.\n',
+      }, cardBytesSha256: 'b'.repeat(64) };
+    });
+    let store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({
+      store,
+      resolveOwner: async () => owner,
+      mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md',
+      seedAuthorization: async () => true,
+    });
+    const create = {
+      owner: { type: 'agent' as const, id: 'hygiene' }, cadence: { kind: 'cron' as const, minute: '15', hour: '3', dayOfMonth: '*', month: '*', dayOfWeek: '0' },
+      expectedCollectionRevision: 0, idempotencyKey: 'operator-create',
+    };
+    const created = await api.create(create);
+    await api.setArmed(created.schedule.id, { expectedVersion: 1, idempotencyKey: 'arm', armed: true });
+
+    store = fileStores.restart(root, { renderScheduleClaim });
+    const restarted = new ScheduleService({
+      store, resolveOwner: async () => owner, mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md', seedAuthorization: async () => true,
+    });
+    await expect(restarted.create(create)).resolves.toMatchObject({ replayed: true, schedule: { owner } });
+    const armed = store.getScheduleSnapshot().schedules[0];
+    const claim = await restarted.claimScheduleOccurrence({
+      occurrence: { scheduleId: armed.id, scheduledFor, nextAt: '2026-08-23T07:30:00.000Z' },
+      expectedVersion: armed.version, idempotencyKey: 'claim-1',
+    });
+    const cardId = String((claim.card.meta as Record<string, unknown>).id);
+    await store.advanceScheduleOccurrence({
+      scheduleId: armed.id, scheduledFor, nextAt: '2026-08-23T07:30:00.000Z',
+      phase: 'card-saved', idempotencyKey: 'claim-1:card-saved',
+    });
+    await store.advanceScheduleOccurrence({
+      scheduleId: armed.id, scheduledFor, nextAt: '2026-08-23T07:30:00.000Z',
+      phase: 'ledger-appended', idempotencyKey: 'claim-1:ledger-appended',
+    });
+    expect(store.resolveScheduleReceiptOwner(cardId)).toEqual(owner);
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: store.resolveScheduleReceiptOwner(cardId), workflowOwner: null, cardOwner: 'hygiene', declaredAgents: [owner],
+    })).toMatchObject({ ok: true, value: owner, source: 'schedule-receipt' });
+    expect(resolveQueueBridgeRunnable({
+      receiptOwner: store.resolveScheduleReceiptOwner(cardId),
+      workflowOwner: { type: 'workflow', id: 'video-run', project: 'faceless-youtube', sourcePath: 'orgs/faceless-youtube/workflows/video-run.md' },
+      cardOwner: 'hygiene', declaredAgents: [owner],
+    })).toMatchObject({ ok: false, code: 'runnable-owner-conflict' });
+    expect(renderScheduleClaim).toHaveBeenCalledWith(expect.objectContaining({ mirrorPath: 'orgs/kb-ops/HEARTBEAT.md' }));
+    expect(renderScheduleClaim).toHaveBeenCalledTimes(1);
+
+    const launched = createRun(store, 'alice');
+    await store.bindScheduleOccurrenceRun(cardId, launched.run.runRef);
+    const running = store.transitionRun('alice', launched.run.runRef, launched.run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const beforeTerminal = store.getScheduleSnapshot();
+    const failed = store.transitionRun('alice', launched.run.runRef, running.value.version, 'failed');
+    if (!failed.ok) throw new Error(failed.detail);
+    expect(store.getScheduleSnapshot()).toMatchObject({
+      collectionRevision: beforeTerminal.collectionRevision + 1,
+      schedules: [{ lastOutcome: 'failed', nextAt: '2026-08-23T07:30:00.000Z' }],
+    });
+    const replay = store.transitionRun('alice', launched.run.runRef, failed.value.version, 'failed');
+    expect(replay).toMatchObject({ ok: true, replayed: true });
+    expect(store.getScheduleSnapshot().collectionRevision).toBe(beforeTerminal.collectionRevision + 1);
+    const document = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      scheduleOccurrenceClaims: Array<{ runRef: string | null; completionReceipt: unknown }>;
+    };
+    expect(document.scheduleOccurrenceClaims.filter((row) => row.runRef === launched.run.runRef && row.completionReceipt !== null)).toHaveLength(1);
+  });
+});
+
+// Production migrations are up-only (rollback is restore-from-backup, never down-migrate), so this
+// test helper hand-builds a legacy on-disk v1 document to exercise the store's up-migration-on-load
+// path. It converts each run's `lifecycle` back to a v1 `state` and drops the v2/v3/v4 collections and
+// the migration carrier event (a real old v1 doc never had one). It KEEPS each run's already-valid
+// identity fields: these are v4-native runs whose owner was set from their proposal at creation, so
+// they carry no legacy agentWorkspaceLaunch/workflow-audit evidence and the v2->v3 up edge could not
+// re-derive identity from the empty unit-test migration context — the old down-migration preserved
+// identity through a carrier the up path restored, and up-only migration re-validates the retained
+// identity idempotently instead. See toV1Run for the executionHost pinning that the re-proof needs.
 function persistedV1(value: unknown): any {
-  return applyMigrationEdgeForTest(value, 1, { stamp: '2026-08-20T00:00:00.000Z' });
+  const doc = structuredClone(value) as Record<string, any>;
+  const toV1Run = (run: Record<string, any>): void => {
+    if (isPlainObject(run.lifecycle)) {
+      run.state = (run.lifecycle as Record<string, unknown>).kind;
+      delete run.lifecycle;
+    }
+    // A v4-native run (owner derived from its proposal at creation) carries no legacy
+    // agentWorkspaceLaunch/workflow-audit evidence, so the v2->v3 up edge cannot re-derive its
+    // identity from an empty migration context — the old down-migration preserved identity through a
+    // carrier the up path restored. With migrations up-only (carrier removed), the on-disk legacy doc
+    // keeps its already-valid identity, which the up edge re-validates idempotently. The store's
+    // migration re-proof binds executionHost to the running host, so pin it to this platform's value.
+    if (Object.hasOwn(run, 'executionHost')) {
+      run.executionHost = process.platform === 'win32' ? 'desktop' : 'vm';
+    }
+  };
+  for (const run of (doc.runs ?? []) as Array<Record<string, any>>) toV1Run(run);
+  for (const bundle of (doc.quarantine ?? []) as Array<Record<string, any>>) toV1Run(bundle.run);
+  for (const key of [
+    'deployments', 'documentRevision',
+    'scheduleCollectionRevision', 'schedules', 'scheduleTombstones',
+    'scheduleOccurrenceClaims', 'scheduleSeedImports',
+    'hostAdvertisements', 'placementLeases', 'v1Idempotency',
+  ]) delete doc[key];
+  doc.version = 1;
+  return doc;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
@@ -45,6 +284,8 @@ function largeV1MigrationSource(stamp = '2026-08-20T00:00:00.000Z') {
       title: `Large run ${index}`, proposalRef: `proposal-${index}`, proposalRevision: 1,
       proposalHash: `${index.toString(16).padStart(2, '0')}${'a'.repeat(62)}`,
       publicationState: 'published', state: 'succeeded', version: 1,
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: TEST_EXECUTION_HOST, terminalOutcome: 'ok', completedAt: stamp, archivedFrom: null,
       managerSessionRef: `manager-${index}`, managerGeneration: 1,
       createdAt: stamp, updatedAt: stamp,
     })),
@@ -211,14 +452,34 @@ describe('authorized 2026-08-01 proposal provenance', () => {
     };
   }
 
+  function historicalMapping(encoded: string) {
+    return {
+      p2MigrationContext: {
+        explicitMapping: {
+          storeSha256: createHash('sha256').update(encoded).digest('hex'),
+          runs: {
+            [RUN_REF]: {
+              owner: { type: 'agent' as const, id: 'fyt-runner', sourcePath: 'agents/fyt-runner.md' as const },
+              executionHost: 'desktop' as const,
+              terminalOutcome: 'failed' as const,
+              completedAt: '2026-08-01T03:32:49.635Z',
+              archivedFrom: null,
+            },
+          },
+        },
+      },
+    };
+  }
+
   it('classifies the historical run as claimable after the real normalizer has filled its stage keys', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-settlement-normalized-'));
     roots.push(root);
     const path = join(root, 'control', 'control-plane.json');
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(historicalDocument())}\n`, 'utf8');
+    const encoded = `${JSON.stringify(historicalDocument())}\n`;
+    writeFileSync(path, encoded, 'utf8');
 
-    const store = createFileControlPlaneStore(root);
+    const store = createFileControlPlaneStore(root, historicalMapping(encoded));
     const normalized = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
     // The normalizer really did fill and PERSIST the keys the snapshot omits — the exact asymmetry
     // that made classify report conflict.
@@ -243,9 +504,10 @@ describe('authorized 2026-08-01 proposal provenance', () => {
     mkdirSync(dirname(path), { recursive: true });
     const drifted = historicalDocument();
     drifted.stages[6].workflowProfile = 'checker-readonly';
-    writeFileSync(path, `${JSON.stringify(drifted)}\n`, 'utf8');
+    const encoded = `${JSON.stringify(drifted)}\n`;
+    writeFileSync(path, encoded, 'utf8');
 
-    expect(createFileControlPlaneStore(root)
+    expect(createFileControlPlaneStore(root, historicalMapping(encoded))
       .preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
       .toMatchObject({ ok: false, reason: 'conflict' });
   });
@@ -449,6 +711,8 @@ function seedAuthorizedLegacyExecutionLock(store: ControlPlaneStore) {
     schema: 'kb.plan-proposal/v1', title: 'Validate one all-Codex faceless-video opening slice', manager: {}, stages: stageSpecs,
   });
   const created = store.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Validate one all-Codex faceless-video opening slice', proposalRef: proposal.proposalRef,
     proposalRevision: proposal.revision, expectedProposalHash: proposal.hash,
     managerRuntime: 'codex', managerModel: 'gpt-5.6-sol', idempotencyKey: 'legacy-launch',
@@ -519,6 +783,8 @@ function createApprovedProposal(
 function createRun(store: ControlPlaneStore, subject = 'alice', agentWorkspaceLaunch?: { composerRef: string; agentId: string; declarationPath: string; declarationHash: string }) {
   const proposal = createApprovedProposal(store, subject);
   const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Synthetic run',
     proposalRef: proposal.proposalRef,
     proposalRevision: proposal.revision,
@@ -535,6 +801,29 @@ function createRun(store: ControlPlaneStore, subject = 'alice', agentWorkspaceLa
   if (!created.ok) throw new Error(created.detail);
   return created.value;
 }
+
+it('persists immutable run owner/host and derives terminal outcome plus archive provenance', () => {
+  let tick = 0;
+  const store = createInMemoryControlPlaneStore({
+    now: () => new Date(`2026-08-21T00:0${tick++}:00.000Z`),
+    newId: () => `p2-id-${tick}`,
+  });
+  const created = createRun(store);
+  expect(created.run).toMatchObject({
+    owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    executionHost: 'desktop', terminalOutcome: null, completedAt: null, archivedFrom: null,
+  });
+  const running = store.transitionRun('alice', created.run.runRef, created.run.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const failed = store.transitionRun('alice', created.run.runRef, running.value.version, 'failed');
+  expect(failed).toMatchObject({ ok: true, value: { terminalOutcome: 'failed', completedAt: expect.any(String), archivedFrom: null } });
+  if (!failed.ok) throw new Error(failed.detail);
+  const archived = store.archiveRun('alice', created.run.runRef, { idempotencyKey: 'archive-p2' });
+  expect(archived).toMatchObject({
+    ok: true,
+    value: { run: { terminalOutcome: 'failed', completedAt: failed.value.completedAt, archivedFrom: 'failed' } },
+  });
+});
 
 function prepareActivatableRun(store: ControlPlaneStore, withAcceptedRequest = true) {
   const created = createRun(store);
@@ -586,6 +875,8 @@ function createAssignedRun(
     ],
   });
   const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Assigned synthetic run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: assignments.manager.runtime, managerModel: assignments.manager.model,
     managerAssignment: assignments.manager, idempotencyKey: 'launch-assigned',
@@ -625,6 +916,8 @@ function checkerStages(maxCreatorReworks = CHECKER_REVIEW.maxCreatorReworks) {
 function createCheckerRun(store: ControlPlaneStore, subject = 'alice', maxCreatorReworks = CHECKER_REVIEW.maxCreatorReworks) {
   const proposal = createApprovedProposal(store, subject, checkerSnapshot(maxCreatorReworks));
   const created = store.createRun(subject, {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Checker synthetic run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     idempotencyKey: `launch-checker-${maxCreatorReworks}`, stages: checkerStages(maxCreatorReworks),
@@ -934,6 +1227,8 @@ function createTask2IterationRun(store: ControlPlaneStore, group = task2Iteratio
   } as unknown as JsonObject;
   const proposal = createApprovedProposal(store, 'alice', snapshot);
   return store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Iteration run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     idempotencyKey: `iteration-${group.iterationGroupId}`, iterationGroups: [structuredClone(group)],
@@ -993,6 +1288,8 @@ function createTask4IterationRun(store: ControlPlaneStore, groups = [task4Iterat
   } as unknown as JsonObject;
   const proposal = createApprovedProposal(store, 'alice', snapshot);
   const created = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Task 4 iteration run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
     expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     idempotencyKey: `task4-${groups.map((group) => group.iterationGroupId).join('-')}`,
@@ -2187,7 +2484,7 @@ describe('Task 2 generic iteration durability', () => {
     expect(secondBoot.createProposalRevision('alice', {
       sourceComposerRef: 'large-v1-second-boot', sourceTurnId: 'turn-second', title: 'Second boot', snapshot: {},
     }).ok).toBe(true);
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, documentRevision: 3 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 4, documentRevision: 3 });
   });
 
   it.each([
@@ -2248,22 +2545,24 @@ describe('Task 2 generic iteration durability', () => {
     createFileControlPlaneStore(root, { ...deterministicOptions(), maxDocumentBytes });
     const firstGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
     expect(statSync(path).size).toBeGreaterThan(maxDocumentBytes);
-    expect(firstGrant).toMatchObject({ schemaVersion: 2 });
+    expect(firstGrant).toMatchObject({ schemaVersion: 4 });
 
+    // Simulate a further pure-schema migration that grows the already-current v4 document, and assert the
+    // accepted-size grant accumulates on top of the first [P6-C32]: the mock forces a growing edge.
     expect(() => createFileControlPlaneStore(root, {
       ...deterministicOptions(),
       maxDocumentBytes,
       loadAndMigrateForTest: (encoded, target, context) => {
         const result = loadAndMigrate(encoded, target, context);
-        if ((JSON.parse(encoded) as { version: number }).version === 2) {
+        if ((JSON.parse(encoded) as { version: number }).version === 4) {
           for (const run of result.document.runs) run.title = `${run.title}x`;
-          return { document: result.document, applied: [{ from: 2, to: 3, breaking: true, down: 'present' }] };
+          return { document: result.document, applied: [{ from: 3, to: 4, breaking: true, down: 'present' }] };
         }
         return result;
       },
     })).not.toThrow();
     const secondGrant = JSON.parse(readFileSync(sidecarPath, 'utf8')) as { maxBytes: number; schemaVersion: number };
-    expect(secondGrant.schemaVersion).toBe(2);
+    expect(secondGrant.schemaVersion).toBe(4);
     expect(secondGrant.maxBytes).toBeGreaterThan(firstGrant.maxBytes);
   });
 
@@ -2444,6 +2743,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const proposal = createApprovedProposal(store, 'alice', { manager: {}, stages: [{ id: 'build', title: 'Build', dependsOn: [] }] });
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Idempotent run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'launch-once', stages: [{ stageId: 'build', title: 'Build', dependsOn: [] }],
@@ -2452,7 +2753,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const replay = store.createRun('alice', input);
     expect(first.ok && replay.ok && replay.value.run.runRef).toBe(first.ok ? first.value.run.runRef : '');
     expect(replay).toMatchObject({ ok: true, replayed: true });
-    expect(store.createRun('alice', { ...input, title: 'Changed' })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(store.createRun('alice', {
+      ...input, title: 'Changed' })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
   });
 
   it('copies only the exact approved assignment snapshot into a run and its stages', () => {
@@ -2482,6 +2784,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const proposal = createApprovedProposal(store, 'alice', checkerSnapshot());
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Checker run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'checker-launch-once', stages: checkerStages(),
@@ -2521,24 +2825,34 @@ describe('run graph, attempts, and managed sessions', () => {
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
     };
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-omitted', stages: [checkerStages()[0], { ...checkerStages()[1], review: null, completionGate: null, workflowProfile: null }],
     })).toMatchObject({ ok: false, reason: 'conflict' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-substituted', stages: [checkerStages()[0], {
         ...checkerStages()[1], review: { ...CHECKER_REVIEW, maxCreatorReworks: 2 },
       }],
     })).toMatchObject({ ok: false, reason: 'conflict' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-injected', stages: [checkerStages()[0], {
         ...checkerStages()[1], review: { ...CHECKER_REVIEW, extra: true } as never,
       }],
     })).toMatchObject({ ok: false, reason: 'invalid' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-wrong-profile', stages: [checkerStages()[0], {
         ...checkerStages()[1], workflowProfile: 'writer-profile',
       }],
     })).toMatchObject({ ok: false, reason: 'invalid' });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       ...base, idempotencyKey: 'checker-gate-without-review', stages: [checkerStages()[0], {
         ...checkerStages()[1], review: null,
       }],
@@ -2551,6 +2865,8 @@ describe('run graph, attempts, and managed sessions', () => {
       manager: { assignment: MANAGER_ASSIGNMENT }, stages: [{ id: 'build', title: 'Build', dependsOn: [], assignment: BUILD_ASSIGNMENT }],
     });
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Tampered assignment', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: MANAGER_ASSIGNMENT.runtime, managerModel: MANAGER_ASSIGNMENT.model,
       managerAssignment: { ...MANAGER_ASSIGNMENT }, idempotencyKey: 'tampered-assignment',
@@ -2582,6 +2898,8 @@ describe('run graph, attempts, and managed sessions', () => {
       ],
     });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Tampered dependencies', proposalRef: dependencyProposal.proposalRef, proposalRevision: dependencyProposal.revision,
       expectedProposalHash: dependencyProposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'tampered-dependencies',
@@ -2591,6 +2909,8 @@ describe('run graph, attempts, and managed sessions', () => {
     })).toMatchObject({ ok: false, reason: 'invalid' });
     const incomplete = createApprovedProposal(store, 'alice', { manager: {}, stages: [{ id: 'build', title: 'Build', dependsOn: [] }] });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Missing approved stage', proposalRef: incomplete.proposalRef, proposalRevision: incomplete.revision,
       expectedProposalHash: incomplete.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'missing-approved-stage',
@@ -2606,6 +2926,8 @@ describe('run graph, attempts, and managed sessions', () => {
       ],
     });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Extra approved stage', proposalRef: excessive.proposalRef, proposalRevision: excessive.revision,
       expectedProposalHash: excessive.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'extra-approved-stage',
@@ -2621,6 +2943,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const predecessor = settleRetryPredecessor(store, 'alice', createAssignedRun);
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Assigned Retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
       expectedProposalHash: predecessor.run.proposalHash, managerRuntime: MANAGER_ASSIGNMENT.runtime, managerModel: MANAGER_ASSIGNMENT.model,
       managerAssignment: structuredClone(MANAGER_ASSIGNMENT), idempotencyKey: 'assigned-retry',
@@ -2643,6 +2967,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const predecessor = settleRetryPredecessor(store, 'alice', createCheckerRun);
     const input = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Checker Retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
       expectedProposalHash: predecessor.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'checker-retry', predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: predecessor.run.version,
@@ -2723,6 +3049,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const first = settleRetryPredecessor(store);
     const successor = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Retry run', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
       expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'retry-run-1', predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version,
@@ -2730,6 +3058,8 @@ describe('run graph, attempts, and managed sessions', () => {
     });
     expect(successor.ok && successor.value.run).toMatchObject({ predecessorRunRef: first.run.runRef, lifecycle: { kind: 'planned', deployPause: null } });
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Bad retry', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
       expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'retry-run-stale', predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version - 1,
@@ -2774,6 +3104,8 @@ describe('run graph, attempts, and managed sessions', () => {
     if (!interruptedRun.ok) throw new Error(interruptedRun.detail);
 
     const successor = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Retry interrupted run', proposalRef: created.run.proposalRef, proposalRevision: created.run.proposalRevision,
       expectedProposalHash: created.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'retry-interrupted-run', predecessorRunRef: created.run.runRef,
@@ -2786,6 +3118,8 @@ describe('run graph, attempts, and managed sessions', () => {
 
   it('refuses Retry while publication, canonical work, sessions, or Human Requests remain unresolved', () => {
     const retry = (store: ControlPlaneStore, predecessor: ReturnType<typeof createRun>, idempotencyKey: string) => store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Unsafe retry', proposalRef: predecessor.run.proposalRef, proposalRevision: predecessor.run.proposalRevision,
       expectedProposalHash: predecessor.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey, predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: predecessor.run.version,
@@ -2851,6 +3185,8 @@ describe('run graph, attempts, and managed sessions', () => {
     const unapproved = store.createProposalRevision('alice', { ...SOURCE, title: 'Pending', snapshot: { stages: [] } });
     if (!unapproved.ok) throw new Error(unapproved.detail);
     expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'No', proposalRef: unapproved.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: unapproved.value.hash, managerRuntime: 'claude', managerModel: 'fixed',
       idempotencyKey: 'launch-unapproved',
@@ -3199,6 +3535,8 @@ describe('run graph, attempts, and managed sessions', () => {
       ],
     } as unknown as JsonObject);
     const launched = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
       title: 'Canonical dependency guard', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
       expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
       idempotencyKey: 'canonical-dependency-guard', iterationGroups: [upstream, consumer], stages,
@@ -3628,15 +3966,16 @@ describe('durability, crash recovery, and retention', () => {
     const first = createFileControlPlaneStore(root, deterministicOptions());
     createRun(first);
     const path = join(root, 'control', 'control-plane.json');
-    const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as {
+    const current = JSON.parse(readFileSync(path, 'utf8')) as {
       runs: Array<Record<string, unknown>>;
       stages: Array<Record<string, unknown>>;
       quarantine: Array<Record<string, unknown>>;
     };
-    document.quarantine.push({
-      subject: 'archived', quarantinedAt: '2026-07-18T12:00:00.000Z', run: structuredClone(document.runs[0]),
-      stages: structuredClone(document.stages), attempts: [], sessions: [], humanRequests: [], events: [],
+    current.quarantine.push({
+      subject: 'archived', quarantinedAt: '2026-07-18T12:00:00.000Z', run: structuredClone(current.runs[0]),
+      stages: structuredClone(current.stages), attempts: [], sessions: [], humanRequests: [], events: [],
     });
+    const document = persistedV1(current) as typeof current;
     for (const stage of [...document.stages, ...(document.quarantine[0].stages as Array<Record<string, unknown>>)]) {
       delete stage.workflowProfile;
       delete stage.review;
@@ -3799,7 +4138,7 @@ describe('durability, crash recovery, and retention', () => {
     if (!managerRunning.ok) throw new Error(managerRunning.detail);
 
     const path = join(root, 'control', 'control-plane.json');
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 2, nextEventCursor: 1 });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ version: 4, nextEventCursor: 1 });
     expect(readdirSync(join(root, 'control')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
 
     const restarted = createFileControlPlaneStore(root, clock);
@@ -4011,6 +4350,8 @@ describe('authorized 2026-08-01 settlement durability', () => {
 
   function successorInput(run: { proposalRef: string; proposalRevision: number; proposalHash: string; version: number }) {
     return {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
       title: 'Successor of the settled run',
       proposalRef: run.proposalRef,
       proposalRevision: run.proposalRevision,
@@ -4028,8 +4369,13 @@ describe('authorized 2026-08-01 settlement durability', () => {
   }
 
   it('refuses a successor for the settled run and stays loadable afterwards', () => {
-    const { root, run } = seedSettledStore();
+    const { root, path, run } = seedSettledStore();
     const store = createFileControlPlaneStore(root);
+    const persisted = JSON.parse(readFileSync(path, 'utf8')) as MutableDocument;
+    expect(persisted.runs[0]).toMatchObject({
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      authorizedFailedRunReconciliation: { phase: 'committed' },
+    });
     const successor = store.createRun('alice', successorInput(run));
     expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
     expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);
@@ -4053,7 +4399,8 @@ describe('authorized 2026-08-01 settlement durability', () => {
     const detail = reopened.getRun('alice', AUTHORIZED_20260801_FAILED_RUN_REF);
     if (!detail.ok) throw new Error(detail.detail);
     // The receipt travels with the run, so finality survives the quarantine round trip.
-    const successor = reopened.createRun('alice', { ...successorInput(run), expectedPredecessorVersion: detail.value.run.version });
+    const successor = reopened.createRun('alice', {
+      ...successorInput(run), expectedPredecessorVersion: detail.value.run.version });
     expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
     expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);
   });
@@ -4393,7 +4740,13 @@ describe('Human Request auto-close', () => {
     const document = persistedV1(JSON.parse(readFileSync(path, 'utf8'))) as { runs: Array<Record<string, unknown>> };
     const record = document.runs.find((candidate) => candidate.runRef === run.runRef);
     if (!record) throw new Error('seeded run missing from the raw document');
+    // A consistent legacy terminal shape: the run is `failed` on disk with matching outcome residue
+    // (up-migration re-validates it), yet its human request never went through the patched close path
+    // and is still open — the zombie the sweep must reap.
     record.state = 'failed';
+    record.terminalOutcome = 'failed';
+    record.completedAt = record.updatedAt;
+    record.archivedFrom = null;
     writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
 
     const reopened = createFileControlPlaneStore(root, deterministicOptions());
@@ -4648,4 +5001,538 @@ describe('read scope', () => {
     }, 'all-subjects')).toMatchObject({ ok: false, reason: 'conflict' });
   });
 
+});
+
+describe('control-store schedule mirror revision', () => {
+  const mirrorBatch = (revision: number, rows: Parameters<typeof scheduleMirrorSnapshotDigest>[0]): ScheduleMirrorBatch => {
+    const targetWatermark = { revision, digest: scheduleMirrorSnapshotDigest(rows) };
+    const id = scheduleMirrorBatchId(targetWatermark);
+    return {
+      schema: SCHEDULE_MIRROR_BATCH_SCHEMA,
+      id,
+      baseWatermark: { revision: 0, digest: '0'.repeat(64) },
+      targetWatermark,
+      paths: [{ path: 'HEARTBEAT.md', digest: 'a'.repeat(64) }],
+      state: 'prepared',
+      operationKey: scheduleMirrorOperationKey(id),
+      createdAt: '2026-08-23T09:00:00.000Z',
+    };
+  };
+
+  it('reads a pre-P4 document lacking both mirror fields and writes them on the first mirror batch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-mirror-prep4-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+
+    // A genuine pre-P4 document: produced by the store's OWN save path, then reduced to base
+    // semantics by deleting exactly the two fields P4 adds. Nothing here is hand-built.
+    const seeding = createFileControlPlaneStore(root);
+    await seeding.transaction(async (transaction) => {
+      await transaction.createSchedule({
+        owner: { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' },
+        cadence: { source: 'weekly:sun', words: 'Weekly on Sun' },
+        mirrorPath: 'HEARTBEAT.md', expectedCollectionRevision: 0, idempotencyKey: 'pre-p4',
+      });
+    });
+    const saved = JSON.parse(readFileSync(path, 'utf8')) as {
+      scheduleMirrorRevision?: number; schedules: Array<Record<string, unknown>>;
+    };
+    expect(Object.hasOwn(saved, 'scheduleMirrorRevision')).toBe(true);
+    delete saved.scheduleMirrorRevision;
+    for (const schedule of saved.schedules) {
+      expect(Object.hasOwn(schedule, 'lastMirrorRevision')).toBe(true);
+      delete schedule['lastMirrorRevision'];
+      // Seed identity, exactly as the seed importer writes it.
+      schedule['launchPayload'] = { cadenceName: 'branch-hygiene', disarmedReason: null };
+    }
+    writeFileSync(path, `${JSON.stringify(saved)}\n`);
+    const scheduleId = String(saved.schedules[0]['id']);
+
+    const store = createFileControlPlaneStore(root);
+    const snapshot = await store.readScheduleMirrorSnapshot();
+    expect(snapshot).toEqual({
+      revision: 0,
+      rows: [{
+        id: scheduleId, name: 'branch-hygiene', schedule: 'weekly:sun',
+        agent: 'hygiene', armed: false, mirrorPath: 'HEARTBEAT.md', lastMirrorRevision: 0,
+      }],
+    });
+
+    expect(await store.commitScheduleMirrorPreparation(mirrorBatch(0, snapshot.rows)))
+      .toEqual({ outcome: 'committed' });
+    const written = JSON.parse(readFileSync(path, 'utf8')) as {
+      version: number; scheduleMirrorRevision?: number;
+      scheduleMirrorBatch?: { record: unknown };
+      schedules: Array<{ lastMirrorRevision?: number }>;
+    };
+    expect(written.version).toBe(4);
+    expect(Object.hasOwn(written, 'scheduleMirrorRevision')).toBe(true);
+    expect(written.scheduleMirrorRevision).toBe(0);
+    expect(Object.hasOwn(written.schedules[0], 'lastMirrorRevision')).toBe(true);
+    expect(written.schedules[0].lastMirrorRevision).toBe(0);
+    // The batch record itself is durable, not just the revision fields.
+    expect(written.scheduleMirrorBatch?.record).toMatchObject({ state: 'prepared', id: mirrorBatch(0, snapshot.rows).id });
+  });
+
+  it('replays an identical preparation and refuses a second, different open batch', async () => {
+    const store = createInMemoryControlPlaneStore();
+    const snapshot = await store.readScheduleMirrorSnapshot();
+    const first = mirrorBatch(0, snapshot.rows);
+    expect(await store.commitScheduleMirrorPreparation(first)).toEqual({ outcome: 'committed' });
+    expect(await store.commitScheduleMirrorPreparation(first)).toEqual({ outcome: 'replayed', batch: first });
+    const second = mirrorBatch(1, snapshot.rows);
+    expect(await store.commitScheduleMirrorPreparation(second)).toEqual({ outcome: 'batch-open', batch: first });
+    expect(await store.readOpenScheduleMirrorBatch()).toEqual(first);
+  });
+
+  it('records a byte-identical mirror by advancing the merged watermark with no batch', async () => {
+    const store = createInMemoryControlPlaneStore();
+    expect((await store.readMergedScheduleMirrorWatermark()).revision).toBe(0);
+    const watermark = { revision: 4, digest: 'c'.repeat(64) };
+    await store.recordScheduleMirrorUnchanged(watermark);
+    expect(await store.readMergedScheduleMirrorWatermark()).toEqual(watermark);
+    expect(await store.readOpenScheduleMirrorBatch()).toBeNull();
+    const before = store.getControlDocumentMetadata().documentRevision;
+    await store.recordScheduleMirrorUnchanged(watermark);
+    expect(store.getControlDocumentMetadata().documentRevision).toBe(before);
+  });
+
+  it('advances the mirror revision for create, arm, disarm, and delete but never for an occurrence', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-mirror-hooks-'));
+    roots.push(root);
+    const scheduledFor = '2026-08-23T07:15:00.000Z';
+    const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+      const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+      return { card: {
+        meta: {
+          'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+          project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+          'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+          workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+          runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+        },
+        body: '## Work order\n\nRun the scheduled Hygiene agent.\n',
+      }, cardBytesSha256: 'b'.repeat(64) };
+    });
+    const store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
+    const revision = async () => (await store.readScheduleMirrorSnapshot()).revision;
+
+    expect(await revision()).toBe(0);
+    const created = await api.create({
+      owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '07:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'mirror-create',
+    });
+    expect(await revision()).toBe(1);
+    const armed = await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'mirror-arm', armed: true });
+    expect(await revision()).toBe(2);
+    // A replayed mutation is not a fresh mirror-relevant mutation.
+    await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'mirror-arm', armed: true });
+    expect(await revision()).toBe(2);
+    expect((await store.readScheduleMirrorSnapshot()).rows[0].lastMirrorRevision).toBe(2);
+
+    // Occurrence claim, phase advance, and terminal completion are NOT mirror hooks.
+    const claim = await api.claimScheduleOccurrence({
+      occurrence: { scheduleId: armed.schedule.id, scheduledFor, nextAt: '2026-08-24T07:15:00.000Z' },
+      expectedVersion: armed.schedule.version, idempotencyKey: 'mirror-claim',
+    });
+    const cardId = String((claim.card.meta as Record<string, unknown>).id);
+    for (const phase of ['card-saved', 'ledger-appended'] as const) {
+      await store.advanceScheduleOccurrence({
+        scheduleId: armed.schedule.id, scheduledFor, nextAt: '2026-08-24T07:15:00.000Z',
+        phase, idempotencyKey: `mirror-claim:${phase}`,
+      });
+    }
+    const launched = createRun(store, 'alice');
+    await store.bindScheduleOccurrenceRun(cardId, launched.run.runRef);
+    const running = store.transitionRun('alice', launched.run.runRef, launched.run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const done = store.transitionRun('alice', launched.run.runRef, running.value.version, 'failed');
+    if (!done.ok) throw new Error(done.detail);
+    expect(store.getScheduleSnapshot().schedules[0].lastOutcome).toBe('failed');
+    expect(await revision()).toBe(2);
+
+    const current = store.getScheduleSnapshot().schedules[0];
+    const disarmed = await api.setArmed(current.id, { expectedVersion: current.version, idempotencyKey: 'mirror-disarm', armed: false });
+    expect(await revision()).toBe(3);
+    await api.delete(disarmed.schedule.id, { expectedVersion: disarmed.schedule.version, idempotencyKey: 'mirror-delete' });
+    expect(await revision()).toBe(4);
+    const persisted = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      scheduleMirrorRevision?: number; scheduleTombstones: Array<{ lastMirrorRevision?: number }>;
+    };
+    expect(persisted.scheduleMirrorRevision).toBe(4);
+    expect(persisted.scheduleTombstones[0].lastMirrorRevision).toBe(4);
+  });
+
+  it('bounds mirroredAt to the rows the merged batch covered', async () => {
+    const store = createInMemoryControlPlaneStore();
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
+    const covered = await api.create({
+      owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '07:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'covered',
+    });
+    const snapshot = await store.readScheduleMirrorSnapshot();
+    const batch = mirrorBatch(snapshot.revision, snapshot.rows);
+    // A later mutation advances the store watermark; the open batch never covers it.
+    const later = await api.create({
+      owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '08:15' },
+      expectedCollectionRevision: 1, idempotencyKey: 'later',
+    });
+    expect((await store.readScheduleMirrorSnapshot()).revision).toBe(2);
+
+    const merged = await store.applyScheduleMirrorMerge({ batch, mirroredAt: '2026-08-23T10:00:00.000Z' });
+    expect(merged.updatedRowIds).toEqual([covered.schedule.id]);
+    const rows = store.getScheduleSnapshot().schedules;
+    expect(rows.find((row) => row.id === covered.schedule.id)?.mirroredAt).toBe('2026-08-23T10:00:00.000Z');
+    expect(rows.find((row) => row.id === later.schedule.id)?.mirroredAt).toBeNull();
+  });
+});
+
+describe('P4 two-phase reconciliation receipt store [P4-C33]', () => {
+  const CARD_SHA_RR = 'a'.repeat(64);
+
+  function rrCardIntent(overrides: Partial<CardTransitionIntent> = {}): CardTransitionIntent {
+    const draft = {
+      schema: 'kb.reconciliation-intent/v1', kind: 'card-transition', actor: 'system-sweeper',
+      idempotencyKey: '', expectedSourceRevision: 'src-1', expectedStoreRevision: 'store-1',
+      exactTargets: ['queue/inbox/card-1.md'], cardId: 'queue/inbox/card-1.md',
+      expectedCardSha256: CARD_SHA_RR, fromState: 'inbox', toState: 'done',
+      ...overrides,
+    } as CardTransitionIntent;
+    return { ...draft, idempotencyKey: reconciliationIdempotencyKey(draft) };
+  }
+
+  interface RRHarness {
+    ports: ReconciliationPublisherPorts;
+    readonly calls: string[];
+    readonly audits: ReconciliationAuditRecord[];
+    failEffect: boolean;
+    completedReplay: ReconciliationResult | null;
+    effectDetail: string | undefined;
+  }
+
+  // The REAL store's receipt port stands in for W4's in-memory fake; every other collaborator is a
+  // fake, exactly as W4 wires them, so this proves the store honors the port contract end to end.
+  function rrHarness(store: ControlPlaneStore, snapshot: Partial<ReconciliationSourceSnapshot> = {}): RRHarness {
+    const calls: string[] = [];
+    const audits: ReconciliationAuditRecord[] = [];
+    const state: RRHarness = {
+      calls, audits, failEffect: false, completedReplay: null, effectDetail: undefined,
+      ports: undefined as unknown as ReconciliationPublisherPorts,
+    };
+    const sink: ReconciliationAuditSink = {
+      async append(record) { audits.push(record); return `audit-${audits.length}`; },
+      async find() { return null; },
+    };
+    const effect = async (label: string, request: unknown) => {
+      assertReconciliationPublisher(request);
+      calls.push(label);
+      if (state.failEffect) throw new Error(`${label} failed`);
+      return {
+        revision: 'src-2', receipt: 'receipt-1', storeRevision: 'store-2',
+        ...(state.effectDetail === undefined ? {} : { detail: state.effectDetail }),
+      };
+    };
+    state.ports = {
+      receipts: store.reconciliationReceiptPort(),
+      source: {
+        async snapshot() {
+          return {
+            sourceRevision: 'src-1', storeRevision: 'store-1', cardSha256: CARD_SHA_RR,
+            escalationCardPath: null, ...snapshot,
+          };
+        },
+      },
+      cards: { executeCardMutation: (request) => effect('card', request) },
+      outbox: { publishOpsOutbox: (request) => effect('outbox', request) },
+      durable: {
+        async routeDurable(request) {
+          assertReconciliationPublisher(request);
+          calls.push('durable');
+          return {
+            revision: 'src-2',
+            receipt: { mode: 'pr', branch: 'dv3-p4/x', pr: { owner: 'kb', repo: 'kb', number: 1, url: 'https://example.invalid/pr/1' } },
+          };
+        },
+      },
+      mirror: { completeMirrorMerge: (request) => effect('mirror', request) },
+      reconciler: {
+        async findCompleted() { calls.push('reconcile-lookup'); return state.completedReplay; },
+      },
+      audit: sink,
+      clock: { now: () => '2026-08-23T00:00:00Z' },
+    };
+    return state;
+  }
+
+  function freshStore(): ControlPlaneStore {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-reconciliation-'));
+    roots.push(root);
+    return createFileControlPlaneStore(root, deterministicOptions());
+  }
+
+  it('prepares, applies, and publishes a fresh intent; the receipt persists as published and reads back', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    const intent = rrCardIntent();
+    const result = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(result.outcome).toBe('applied');
+    expect(h.calls).toEqual(['card']);
+    const stored = await store.reconciliationReceiptPort().read(intent.idempotencyKey);
+    expect(stored?.phase).toBe('published');
+    expect((stored as PublishedReconciliationReceipt).result).toEqual(result);
+  });
+
+  it('returns the original result verbatim on exact replay and never re-runs the effect', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    h.effectDetail = 'card moved to done';
+    const intent = rrCardIntent();
+    const first = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(first.detail).toBe('card moved to done');
+    // If the store lost read-your-writes, the replay would re-classify as fresh and this failing
+    // effect would throw; instead the stored result is returned verbatim, detail included.
+    h.failEffect = true;
+    const second = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(second).toEqual(first);
+    expect(h.calls).toEqual(['card']);
+  });
+
+  it('preserves optional-field absence: a detail-less result round-trips without a spurious detail key', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    const intent = rrCardIntent();
+    const first = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect('detail' in first).toBe(false);
+    const stored = await store.reconciliationReceiptPort().read(intent.idempotencyKey);
+    const result = (stored as PublishedReconciliationReceipt).result;
+    expect(Object.hasOwn(result, 'detail')).toBe(false);
+    expect(result).toEqual(first);
+  });
+
+  it('rejects the same key carrying a different intent hash with 409 and does not re-run the effect', async () => {
+    const store = freshStore();
+    const h = rrHarness(store);
+    await publishReconciliationIntent(rrCardIntent(), h.ports, { authenticatedTaskAction: false });
+    // fromState is not part of the idempotency-key formula, so this lands on the same key with a
+    // different canonical hash - the changed-replay 409.
+    await expect(publishReconciliationIntent(rrCardIntent({ fromState: 'working' }), h.ports, { authenticatedTaskAction: false }))
+      .rejects.toBeInstanceOf(ReconciliationConflictError);
+    expect(h.calls).toEqual(['card']);
+  });
+
+  it('surfaces a duplicate prepare as a 409 conflict (atomic insert-if-absent)', async () => {
+    const port = freshStore().reconciliationReceiptPort();
+    const prepared: PreparedReconciliationReceipt = {
+      idempotencyKey: 'k1', requestSha256: 'x'.repeat(64), phase: 'prepared',
+      expectedSourceRevision: 's', expectedStoreRevision: 't', exactTargets: ['a'],
+    };
+    await port.prepare(prepared);
+    await expect(port.prepare(prepared)).rejects.toBeInstanceOf(ReconciliationConflictError);
+  });
+
+  it('publish CAS fails unless the stored prepared row matches on key, phase, hash, and targets', async () => {
+    const port = freshStore().reconciliationReceiptPort();
+    const base = {
+      idempotencyKey: 'k2', requestSha256: 'y'.repeat(64),
+      expectedSourceRevision: 's', expectedStoreRevision: 't', exactTargets: ['a'],
+    } as const;
+    const published: PublishedReconciliationReceipt = {
+      ...base, phase: 'published', result: { outcome: 'applied', revision: 'r' }, auditRef: 'audit-1',
+    };
+    // No prepared row exists yet -> CAS fails.
+    await expect(port.publish(published)).rejects.toBeInstanceOf(ReconciliationConflictError);
+    await port.prepare({ ...base, phase: 'prepared' });
+    // Prepared row exists but the requestSha256 differs -> CAS fails, nothing published.
+    await expect(port.publish({ ...published, requestSha256: 'z'.repeat(64) }))
+      .rejects.toBeInstanceOf(ReconciliationConflictError);
+    const result = await port.publish(published);
+    expect(result.phase).toBe('published');
+    const read = await port.read('k2');
+    expect(read).toEqual(published);
+  });
+
+  it('advances a prepared receipt to published via the reconciler after a crash, never repeating the effect', async () => {
+    const { reconciliationIntentSha256 } = await import('../reconciliation/contracts.ts');
+    const store = freshStore();
+    const h = rrHarness(store);
+    const intent = rrCardIntent();
+    // Seed exactly the row the publisher would have staged, then simulate the effect having landed.
+    await store.reconciliationReceiptPort().prepare({
+      idempotencyKey: intent.idempotencyKey,
+      requestSha256: reconciliationIntentSha256(intent),
+      phase: 'prepared',
+      expectedSourceRevision: intent.expectedSourceRevision,
+      expectedStoreRevision: intent.expectedStoreRevision,
+      exactTargets: [...intent.exactTargets],
+    });
+    h.completedReplay = { outcome: 'applied', revision: 'src-2' };
+    h.failEffect = true; // the effect must NOT be re-run
+    const result = await publishReconciliationIntent(intent, h.ports, { authenticatedTaskAction: false });
+    expect(result).toEqual({ outcome: 'applied', revision: 'src-2' });
+    expect(h.calls).toEqual(['reconcile-lookup']);
+    const stored = await store.reconciliationReceiptPort().read(intent.idempotencyKey);
+    expect(stored?.phase).toBe('published');
+    expect((stored as PublishedReconciliationReceipt).result).toEqual(result);
+  });
+});
+
+describe('P5 asset-pull intents — additive collection + CAS [P5-C34]', () => {
+  const INTENT_REF = `assetpull-${'0'.repeat(32)}`;
+  const DIGEST = 'a'.repeat(64);
+  const AT = '2026-08-20T00:00:00.000Z';
+  const createInput = {
+    intentRef: INTENT_REF, runRef: 'run-1', manifestDigest: DIGEST, requestedAt: AT, idempotencyKey: 'k1',
+  };
+  const assetPullRoots: string[] = [];
+  const assetPullHarness = createExistingRootFileStoreHarnessForTest();
+
+  afterEach(() => {
+    assetPullHarness.close();
+    for (const root of assetPullRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  function assetPullFileStore() {
+    const root = mkdtempSync(join(tmpdir(), 'asset-pull-store-'));
+    assetPullRoots.push(root);
+    return { root, path: join(root, 'control', 'control-plane.json'), store: assetPullHarness.open(root) };
+  }
+
+  it('reads a pre-P5 document that lacks the collection, then persists new intents additively', () => {
+    const { root, path, store } = assetPullFileStore();
+    // A pre-P5 control document carries no asset-pull collection, yet reads clean as empty.
+    expect(Object.hasOwn(emptyStoreDocumentForTest(), 'assetPullIntents')).toBe(false);
+    expect(store.listAssetPullIntents()).toEqual([]);
+    expect(store.createAssetPullIntent('asset-pull', createInput).ok).toBe(true);
+    // The additive field materialises only on the first write — no version bump.
+    expect(Object.hasOwn(JSON.parse(readFileSync(path, 'utf8')), 'assetPullIntents')).toBe(true);
+    const reopened = assetPullHarness.open(root);
+    expect(reopened.getAssetPullIntent(INTENT_REF)).toMatchObject({
+      ok: true, value: { state: 'pending', attempts: 0, result: null, manifestDigest: DIGEST },
+    });
+  });
+
+  it('rejects an inexact stored asset-pull shape through file hydration', () => {
+    const { root, path, store } = assetPullFileStore();
+    expect(store.createAssetPullIntent('asset-pull', createInput).ok).toBe(true);
+    const document = JSON.parse(readFileSync(path, 'utf8')) as any;
+    document.assetPullIntents[0].unexpected = true;
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => assetPullHarness.open(root)).toThrow(/asset-pull/);
+  });
+
+  it('creates a pending intent, replays on the same intentRef, conflicts on changed content', () => {
+    const store = createInMemoryControlPlaneStore();
+    const first = store.createAssetPullIntent('asset-pull', createInput);
+    expect(first).toMatchObject({ ok: true, value: { state: 'pending', attempts: 0 } });
+    expect(store.createAssetPullIntent('asset-pull', createInput)).toMatchObject({ ok: true, replayed: true });
+    expect(store.createAssetPullIntent('asset-pull', { ...createInput, runRef: 'run-2' }))
+      .toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+  });
+
+  it('dispatches under a pinned (state, attempts) CAS and rejects a stale dispatch with no side effect', () => {
+    const store = createInMemoryControlPlaneStore();
+    store.createAssetPullIntent('asset-pull', createInput);
+    const armed = store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'pending', expectedAttempts: 0, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'pull-assets:x',
+    });
+    expect(armed).toMatchObject({ ok: true, value: { state: 'in-flight', attempts: 1 } });
+    const before = store.getControlDocumentMetadata().documentRevision;
+    // A second dispatch pinned to the now-stale (pending, 0) conflicts and writes nothing.
+    expect(store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'pending', expectedAttempts: 0, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'pull-assets:x',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.getControlDocumentMetadata().documentRevision).toBe(before);
+    expect(store.getAssetPullIntent(INTENT_REF)).toMatchObject({ ok: true, value: { attempts: 1 } });
+  });
+
+  it('refuses a dispatch that would push attempts past the cap of 32', () => {
+    const store = createInMemoryControlPlaneStore();
+    store.createAssetPullIntent('asset-pull', createInput);
+    // Walk the intent to attempts=32/state=failed through the public CAS, then attempt one more dispatch.
+    for (let i = 0; i < 32; i += 1) {
+      const from = i === 0 ? 'pending' : 'failed';
+      const armed = store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+        expectedState: from, expectedAttempts: i, nextState: 'in-flight', attemptsDelta: 1,
+        result: null, idempotencyKey: `k-arm-${i}`,
+      });
+      expect(armed.ok).toBe(true);
+      const settled = store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+        expectedState: 'in-flight', expectedAttempts: i + 1, nextState: 'failed', attemptsDelta: 0,
+        result: { outcome: 'failed', receiptAt: AT, errorCode: 'timeout' }, idempotencyKey: `k-settle-${i}`,
+      });
+      expect(settled.ok).toBe(true);
+    }
+    expect(store.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'failed', expectedAttempts: 32, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'k-over',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('keeps the deployment read-only allowlist exactly getDeployment/listDeployments [P5-C33]', () => {
+    // The two deployment WRITES remain reachable on a normal store; only the two reads are allowlisted,
+    // and the two asset-pull writes join them as writer-only, proven by the read-only harness below.
+    const { root, store } = assetPullFileStore();
+    store.createAssetPullIntent('asset-pull', createInput);
+    const readOnly = openFileControlPlaneStore(root, { mode: 'read-only-harness' });
+    expect(readOnly.listAssetPullIntents()).toHaveLength(1);
+    expect(readOnly.getAssetPullIntent(INTENT_REF).ok).toBe(true);
+    expect(() => readOnly.createAssetPullIntent('asset-pull', { ...createInput, intentRef: `assetpull-${'1'.repeat(32)}` }))
+      .toThrow(ControlStoreReadOnlyError);
+    expect(() => readOnly.updateAssetPullIntent('asset-pull', INTENT_REF, {
+      expectedState: 'pending', expectedAttempts: 0, nextState: 'in-flight', attemptsDelta: 1,
+      result: null, idempotencyKey: 'ro',
+    })).toThrow(ControlStoreReadOnlyError);
+  });
+});
+
+describe('P6 W1b — placement collections wired into the store-open invariant [P6-C48]', () => {
+  const HASH = 'a'.repeat(64);
+  const AT = '2026-08-24T00:00:00.000Z';
+  const validLease = { runRef: 'run-1', hostId: 'vm' as const, capabilityHash: HASH, revision: 1, expiresAt: AT, lastReportSequence: 0 };
+  const validIdempotency = {
+    actorOrNodeId: 'node-vm', method: 'POST' as const, uri: '/api/v1/runs/run-1/reports',
+    key: 'k'.repeat(16), bodyHash: HASH, status: 200, responseBody: '{}', createdAt: AT,
+  };
+  const validAdvertisement = {
+    hostId: 'vm' as const, daemonVersion: 'abc', reportedAt: AT, connectors: [], skills: [], filesystemRoots: [],
+    pty: true, gpu: false, clis: { claude: 'ready', codex: 'ready' }, version: 1,
+  };
+
+  const corruptCases: Array<[string, Record<string, unknown>]> = [
+    ['placementLeases', { placementLeases: [{ ...validLease, extra: true }] }],
+    ['v1Idempotency', { v1Idempotency: [{ ...validIdempotency, extra: true }] }],
+    ['hostAdvertisements', { hostAdvertisements: [{ ...validAdvertisement, extra: true }] }],
+  ];
+
+  for (const [name, override] of corruptCases) {
+    it(`aborts store-open on a corrupt ${name} row (fail-closed)`, () => {
+      const doc = { ...emptyStoreDocumentForTest(), ...override };
+      expect(() => createLeasedFileStoreForTest({}, doc)).toThrow();
+    });
+  }
+
+  it('opens a v4 document with valid populated placement collections', () => {
+    const doc = {
+      ...emptyStoreDocumentForTest(),
+      placementLeases: [validLease], v1Idempotency: [validIdempotency], hostAdvertisements: [validAdvertisement],
+    };
+    const fixture = createLeasedFileStoreForTest({}, doc);
+    fixture.close();
+  });
+
+  it('still opens a pre-P6 v3 document (regression: the new check does not fire on absent collections)', () => {
+    const v3 = { ...emptyStoreDocumentForTest() } as Record<string, unknown>;
+    delete v3.hostAdvertisements;
+    delete v3.placementLeases;
+    delete v3.v1Idempotency;
+    v3.version = 3;
+    const fixture = createLeasedFileStoreForTest({}, v3);
+    expect(fixture.store.getControlDocumentMetadata().version).toBe(4);
+    fixture.close();
+  });
 });

@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 /**
- * U3 — Tasks view. All cards on one surface, grouped by state, with a detail pane that opens on
- * selection (frontmatter key/value + safe-rendered body). Card content is inert: rendered, never
- * interpreted.
+ * Re-housed Inbox card approvals. Only cards classified as needing a person appear; selection keeps
+ * the full governed gate/routing/body/metadata behavior that used to live in Tasks.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
-import { Tasks, type CardsByState } from './Tasks';
+import { CardApprovals, type CardsByState } from './Tasks';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
 import type { CardProjection } from '../../server/planeA/cards';
 import type { RoutingSnapshot } from '../lib/routingClient';
+import { renderWithTestSession } from '../test/session';
 
 afterEach(cleanup);
 
@@ -32,7 +32,7 @@ function card(over: Partial<CardProjection['meta']> & { id: string }, body = '')
 }
 
 const fixture: CardsByState = {
-  inbox: [card({ id: 'card-100', action: 'draft-plan', 'risk-tier': 'T1', state: 'inbox' })],
+  inbox: [card({ id: 'card-100', action: 'needs-input:draft-plan', 'risk-tier': 'T1', owner: 'codex-worker', state: 'inbox' })],
   blocked: [card({ id: 'card-150', action: 'future-stage', 'risk-tier': 'T2', owner: 'codex-worker', state: 'blocked' })],
   working: [
     card({ id: 'card-200', action: 'run-build', 'risk-tier': 'T2', owner: 'claude/m1', state: 'working' }),
@@ -45,50 +45,108 @@ const fixture: CardsByState = {
   ],
 };
 
-describe('Tasks view', () => {
-  it('renders a group per state from fixture data with its cards', () => {
-    render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
-    // Primary buckets present as labelled groups.
-    expect(screen.getByLabelText('Inbox cards')).toBeTruthy();
-    expect(screen.getByLabelText('Working cards')).toBeTruthy();
-    expect(screen.getByLabelText('Approvals cards')).toBeTruthy();
-    // Cards land under the right group.
-    // Rows are named, not id-printed: the group holds the card's action, and its id is a tooltip.
-    expect(within(screen.getByLabelText('Inbox cards')).getAllByText('draft-plan').length).toBeGreaterThan(0);
-    expect(within(screen.getByLabelText('Working cards')).getAllByText('run-build').length).toBeGreaterThan(0);
-    expect(within(screen.getByLabelText('Approvals cards')).getAllByText('push-remote').length).toBeGreaterThan(0);
-    expect(within(screen.getByLabelText('Inbox cards')).queryByText('card-100')).toBeNull();
+describe('Inbox card approvals', () => {
+  it('renders one flat human-only card list with action-needed rows first', () => {
+    render(<SessionProvider><CardApprovals data={fixture} /></SessionProvider>);
+    const list = screen.getByLabelText('Cards needing you');
+    expect(within(list).getByText('Draft Plan')).toBeTruthy();
+    expect(within(list).getByText('Push Remote')).toBeTruthy();
+    expect(within(list).getByText('Review')).toBeTruthy();
+    expect(within(list).getByText('Reply')).toBeTruthy();
+    expect(within(list).queryByText('Run Build')).toBeNull();
+    expect(within(list).queryByText('Future Stage')).toBeNull();
+    expect(within(list).getAllByText(/Updated recently/)).toHaveLength(2);
+    expect(within(list).getByLabelText('Low risk').textContent).toBe('Low risk');
+    expect(within(list).getByLabelText('High risk').textContent).toBe('High risk');
+    expect(within(list).queryByText('Card #1')).toBeNull();
   });
 
-  it('always renders the four primary buckets, empty ones calm (Done here has no cards)', () => {
-    render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
-    const done = screen.getByLabelText('Done cards');
-    expect(within(done).getByText('Nothing in done.')).toBeTruthy();
+  it('does not recreate lifecycle sub-sections inside the Inbox section', () => {
+    render(<SessionProvider><CardApprovals data={fixture} /></SessionProvider>);
+    expect(screen.queryByLabelText('Inbox cards')).toBeNull();
+    expect(screen.queryByLabelText('Working cards')).toBeNull();
+    expect(screen.queryByLabelText('Done cards')).toBeNull();
+  });
+
+  it('orders a card with an open action before a newer watch/wait card', () => {
+    const waiting = card(
+      { id: 'waiting', action: 'needs-input:already-answered', owner: 'codex-worker', state: 'inbox' },
+      '## Work order\n\nChoose.\n\n## Feedback\n\nReply from operator (2026-08-27T00:00:00.000Z):\nDone.\n',
+    );
+    waiting.updatedAt = '2026-08-27T11:00:00.000Z';
+    const active = card({ id: 'active', action: 'wake-me:runner', owner: 'codex-worker', state: 'inbox' });
+    active.updatedAt = '2026-08-26T11:00:00.000Z';
+    render(<SessionProvider><CardApprovals data={{ inbox: [waiting, active] }} /></SessionProvider>);
+    expect(Array.from(screen.getByLabelText('Cards needing you').children).map((row) => row.getAttribute('data-testid')))
+      .toEqual(['task-row-active', 'task-row-waiting']);
   });
 
   it('opens the detail pane on selection: frontmatter key/value + rendered body', () => {
-    render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
+    render(<SessionProvider><CardApprovals data={fixture} /></SessionProvider>);
     // Nothing selected -> placeholder prompt.
-    expect(screen.getByText('Select a card to see its frontmatter and body.')).toBeTruthy();
+    expect(screen.getByText('Select a card to see what it needs and why.')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('task-row-card-300'));
 
     const detail = screen.getByLabelText('Card detail');
     // Frontmatter block: key + value pairs.
     expect(within(detail).getByText('risk-tier')).toBeTruthy();
-    expect(within(detail).getByText('T3')).toBeTruthy();
-    // `push-remote` appears twice now: the EntityName heading and the frontmatter `action` value.
-    expect(within(detail).getAllByText('push-remote').length).toBe(2);
+    expect(within(detail).getByText('High risk')).toBeTruthy();
+    expect(within(detail).queryByText('T3')).toBeNull();
+    // Cards keep their server-owned display identity; the raw id stays behind the identity affordance.
+    expect(within(detail).queryByText('Card 300')).toBeNull();
+    expect(within(detail).getAllByText('push-remote')).toHaveLength(2);
     // Body rendered through the safe markdown renderer (heading + list item become real elements).
     expect(within(detail).getByRole('heading', { name: 'Work order' })).toBeTruthy();
     expect(within(detail).getByText('step one')).toBeTruthy();
+    expect(within(detail).getByRole('heading', { name: 'Card details' })).toBeTruthy();
+    expect(within(detail).getByText('Card reference')).toBeTruthy();
+    expect(within(detail).getByText(/shown as read-only text/)).toBeTruthy();
+    expect(detail.querySelector('details')).toBeNull();
+  });
+
+  it('maps medium risk, keeps an unknown tier unchanged, and uses calm copy when no owner is assigned', () => {
+    const medium = card({ id: 'card-medium', action: 'needs-input:medium-risk', 'risk-tier': 'T2', owner: 'codex-worker', state: 'inbox' });
+    const unknown = card({ id: 'card-unknown', action: 'needs-input:assign-owner', 'risk-tier': 'T4', owner: null, state: 'inbox' });
+    render(<SessionProvider><CardApprovals data={{ inbox: [medium, unknown] }} /></SessionProvider>);
+    expect(screen.getByLabelText('Medium risk').textContent).toBe('Medium risk');
+    const row = screen.getByTestId('task-row-card-unknown');
+    expect(within(row).getByLabelText('T4').textContent).toBe('T4');
+    expect(within(row).getByText('No one assigned yet')).toBeTruthy();
+    expect(within(row).queryByText('Owner Unassigned')).toBeNull();
+    fireEvent.click(row);
+    expect(within(screen.getByLabelText('Card detail')).getByText('T4')).toBeTruthy();
+  });
+
+  it('closes detail by Back, Escape, outside click, or selecting the same row again', () => {
+    render(<SessionProvider><CardApprovals data={fixture} /></SessionProvider>);
+    const approvalRow = screen.getByTestId('task-row-card-300');
+    const inputRow = screen.getByTestId('task-row-card-100');
+
+    fireEvent.click(approvalRow);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Inbox' }));
+    expect(screen.getByText('Select a card to see what it needs and why.')).toBeTruthy();
+
+    fireEvent.click(approvalRow);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByText('Select a card to see what it needs and why.')).toBeTruthy();
+
+    fireEvent.click(approvalRow);
+    fireEvent.click(screen.getByLabelText('Approval cards'));
+    expect(screen.getByText('Select a card to see what it needs and why.')).toBeTruthy();
+
+    fireEvent.click(approvalRow);
+    fireEvent.click(inputRow);
+    expect(within(screen.getByLabelText('Card detail')).getByRole('heading', { name: 'Draft Plan' })).toBeTruthy();
+    fireEvent.click(inputRow);
+    expect(screen.getByText('Select a card to see what it needs and why.')).toBeTruthy();
   });
 
   it('body content is escaped, never interpreted as live markup', () => {
     const data: CardsByState = {
-      inbox: [card({ id: 'card-x', state: 'inbox' }, '## Evidence\n\n<img src=x onerror=alert(1)>\n')],
+      inbox: [card({ id: 'card-x', action: 'needs-input:markup', owner: 'codex-worker', state: 'inbox' }, '## Evidence\n\n<img src=x onerror=alert(1)>\n')],
     };
-    render(<SessionProvider><Tasks data={data} /></SessionProvider>);
+    render(<SessionProvider><CardApprovals data={data} /></SessionProvider>);
     fireEvent.click(screen.getByTestId('task-row-card-x'));
     const detail = screen.getByLabelText('Card detail');
     // The raw HTML survives as escaped text, and no <img> element is ever created.
@@ -109,7 +167,7 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<SessionProvider><Tasks data={fixture} routing={routing} /></SessionProvider>);
+    render(<SessionProvider><CardApprovals data={fixture} routing={routing} /></SessionProvider>);
     // card-300 is in `approvals` — selecting it must present a disabled, locked routing chip.
     fireEvent.click(screen.getByTestId('task-row-card-300'));
     const chip = screen.getByTestId('card-card-300-routing-chip') as HTMLButtonElement;
@@ -117,7 +175,7 @@ describe('Tasks view', () => {
     expect(screen.getByTestId('card-card-300-routing-locked')).toBeTruthy();
   });
 
-  it('locks a working card because routing is fixed for the active attempt', () => {
+  it('keeps a focused working card locked because routing is fixed for the active attempt', () => {
     const routing: RoutingSnapshot = {
       policy: {
         version: 1,
@@ -130,14 +188,13 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<SessionProvider><Tasks data={fixture} routing={routing} /></SessionProvider>);
-    fireEvent.click(screen.getByTestId('task-row-card-200')); // working
+    render(<SessionProvider><CardApprovals data={fixture} routing={routing} initialSelectedId="card-200" /></SessionProvider>);
     const chip = screen.getByTestId('card-card-200-routing-chip') as HTMLButtonElement;
     expect(chip.disabled).toBe(true);
     expect(screen.getByTestId('card-card-200-routing-locked').textContent).toMatch(/fixed for this attempt/i);
   });
 
-  it('keeps an owned dependency-blocked stage mutable before release', () => {
+  it('keeps a focused dependency-blocked stage mutable before release', () => {
     const routing: RoutingSnapshot = {
       policy: {
         version: 1,
@@ -150,15 +207,14 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<SessionProvider><Tasks data={fixture} routing={routing} /></SessionProvider>);
-    fireEvent.click(screen.getByTestId('task-row-card-150'));
+    render(<SessionProvider><CardApprovals data={fixture} routing={routing} initialSelectedId="card-150" /></SessionProvider>);
     const chip = screen.getByTestId('card-card-150-routing-chip') as HTMLButtonElement;
     expect(chip.disabled).toBe(false);
     expect(screen.queryByTestId('card-card-150-routing-locked')).toBeNull();
   });
 
-  it('locks an assigned inbox card because canonical inbox may race runner pickup', () => {
-    const data: CardsByState = { inbox: [card({ id: 'card-owned', owner: 'codex-worker', state: 'inbox' })] };
+  it('keeps a focused assigned Inbox card locked against runner-pickup races', () => {
+    const data: CardsByState = { inbox: [card({ id: 'card-owned', action: 'noop', owner: 'codex-worker', state: 'inbox' })] };
     const routing: RoutingSnapshot = {
       policy: {
         version: 1,
@@ -171,35 +227,33 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<SessionProvider><Tasks data={data} routing={routing} /></SessionProvider>);
-    fireEvent.click(screen.getByTestId('task-row-card-owned'));
+    render(<SessionProvider><CardApprovals data={data} routing={routing} initialSelectedId="card-owned" /></SessionProvider>);
     expect((screen.getByTestId('card-card-owned-routing-chip') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('card-card-owned-routing-locked').textContent).toMatch(/runner may already be active/i);
   });
 
-  it('renders calm empty groups when there are no cards at all', () => {
-    render(<SessionProvider><Tasks data={{}} /></SessionProvider>);
-    expect(screen.getByLabelText('Tasks view')).toBeTruthy();
-    expect(screen.getByText('Nothing in inbox.')).toBeTruthy();
-    expect(screen.getByText('Nothing in working.')).toBeTruthy();
-    expect(screen.getByText('Nothing in approvals.')).toBeTruthy();
-    expect(screen.getByText('Nothing in done.')).toBeTruthy();
-    // Non-primary states stay hidden when empty.
-    expect(screen.queryByLabelText('Blocked cards')).toBeNull();
+  it('renders no row or detail placeholder when no card needs a person', () => {
+    render(<SessionProvider><CardApprovals data={{ inbox: [card({ id: 'quiet', owner: 'codex-worker', state: 'inbox' })] }} /></SessionProvider>);
+    expect(screen.getByLabelText('Approval cards')).toBeTruthy();
+    expect(screen.getByLabelText('Cards needing you').children).toHaveLength(0);
+    expect(screen.queryByLabelText('Card detail')).toBeNull();
   });
 });
 
 /**
- * spec §5 — the card gate moved HERE from the Inbox.
+ * The card gate is imported by the unified Inbox.
  *
- * The Inbox is a list of links now; a decision needs the card's work order in front of the operator, so
- * the verify channels and the reply/resolve box live on the card's own surface. The predicate for
- * "does this need a person" is the SAME projection the Inbox lists from, never a second opinion.
+ * A decision keeps the card's work order in front of the operator; the verify channels and the
+ * reply/resolve box remain on the card's own surface.
  */
-describe('Tasks view — the card gate', () => {
+describe('Inbox card approvals — governed gate', () => {
   const unlocked = (ui: React.ReactElement): React.ReactElement => {
     persistSession({ token: 'sess-tok', expiresAt: Date.now() + 60_000 });
     return <SessionProvider>{ui}</SessionProvider>;
+  };
+  const renderUnlocked = async (ui: React.ReactElement) => {
+    persistSession({ token: 'sess-tok', expiresAt: Date.now() + 60_000 });
+    return renderWithTestSession(ui);
   };
 
   function jsonResponse(body: unknown, ok = true, status = 200): Response {
@@ -220,22 +274,26 @@ describe('Tasks view — the card gate', () => {
 
   it('offers the verify channels beside the card body — and never for a card nothing waits on', () => {
     const data: CardsByState = { approvals: [decisionCard], inbox: [card({ id: 'card-quiet', action: 'noop', state: 'inbox', owner: 'codex-worker' })] };
-    render(unlocked(<Tasks data={data} initialSelectedId="card-300" />));
+    render(unlocked(<CardApprovals data={data} initialSelectedId="card-300" />));
 
     expect(screen.getByTestId('card-gate')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i })).toBeTruthy();
+    expect(screen.getByRole('note').textContent)
+      .toBe("Verifying evidence only records your check — it doesn't start or finish the work.");
     // T3-novel: possession is unavailable and is ABSENT, not a disabled ghost.
     expect(screen.queryByRole('button', { name: /Verify evidence \(possession\)/i })).toBeNull();
     // The decision sits beside the work order it covers — the context the Inbox row deliberately lacks.
     expect(screen.getByLabelText('Card detail').textContent).toContain('Push the ops branch.');
 
-    fireEvent.click(within(screen.getByLabelText('Inbox cards')).getAllByText('noop')[0]);
+    cleanup();
+    render(unlocked(<CardApprovals data={{ inbox: [data.inbox![0]] }} />));
     expect(screen.queryByTestId('card-gate')).toBeNull();
+    expect(screen.queryByTestId('task-row-card-quiet')).toBeNull();
   });
 
   it('POSTs an explicit verify with the session bearer and reports the outcome by name', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true, reason: 'verified' }));
-    render(unlocked(<Tasks data={{ approvals: [decisionCard] }} initialSelectedId="card-300" fetchImpl={fetchImpl as unknown as typeof fetch} />));
+    await renderUnlocked(<CardApprovals data={{ approvals: [decisionCard] }} initialSelectedId="card-300" fetchImpl={fetchImpl as unknown as typeof fetch} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
     await waitFor(() => {
@@ -252,7 +310,7 @@ describe('Tasks view — the card gate', () => {
       ok: true, state: 'inbox',
       liveness: { consumer: 'none', online: false, detail: 'no runner is registered for worker-desktop' },
     }));
-    render(unlocked(<Tasks data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />));
+    await renderUnlocked(<CardApprovals data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />);
 
     const send = screen.getByTestId('respond-submit') as HTMLButtonElement;
     expect(send.disabled).toBe(true);
@@ -279,10 +337,9 @@ describe('Tasks view — the card gate', () => {
     });
     const signIn = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
     persistSession({ token: 'stale', expiresAt: Date.now() + 60_000 });
-    render(
-      <SessionProvider deps={{ signIn }}>
-        <Tasks data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />
-      </SessionProvider>,
+    await renderWithTestSession(
+      <CardApprovals data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />,
+      { signIn },
     );
 
     fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'retry me' } });
@@ -301,7 +358,7 @@ describe('Tasks view — the card gate', () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true }));
     render(
       <SessionProvider deps={{ signIn: async () => { throw new Error('refused'); } }}>
-        <Tasks data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />
+        <CardApprovals data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />
       </SessionProvider>,
     );
 

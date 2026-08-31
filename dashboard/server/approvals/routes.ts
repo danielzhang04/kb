@@ -3,7 +3,7 @@
  *
  *   GET  /api/approvals        -> ranked pending cards, each with its `assurance.ts#buttonsFor` gating.
  *                                 Session-gated alongside every other repository/state read.
- *   POST /api/approvals/verify -> drives the channel's verifier (`inbox.ts#driveVerify` -> the fleet's
+ *   POST /api/approvals/verify -> drives the channel's verifier (`cardVerifier.ts#driveVerify` -> the fleet's
  *                                 `scripts/approvals.py` / D2.3's `scripts/webauthn_verify.py`). Session-
  *                                 gated; the WebAuthn channel additionally performs the load-bearing
  *                                 dispatcher-side assertion re-check inside that subprocess (the actual
@@ -16,11 +16,8 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { indexRepo } from '../planeA/indexer.ts';
-import { listPending, driveVerify } from './inbox.ts';
-import type { ApprovalChannel, VerifiedCardView } from './inbox.ts';
-import { projectHumanInbox } from './humanInbox.ts';
-import { buttonsFor } from './assurance.ts';
+import { driveVerify } from './cardVerifier.ts';
+import type { ApprovalChannel, VerifiedCardView } from './cardVerifier.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
@@ -49,20 +46,6 @@ function resolveCardPath(repoRoot: string, cardId: string): string | null {
 
 export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   const preHandler = requireSession(ctx.sessionConfig);
-  scope.get('/api/human-inbox', { preHandler }, async (_req, reply: FastifyReply) => {
-    const index = indexRepo(ctx.repoRoot);
-    // The repo-root STOP freeze file is deliberately uncommitted/local; presence alone drives the
-    // synthetic STOP intervention. We check EXISTENCE only and never read its contents.
-    const stopPresent = existsSync(join(ctx.repoRoot, 'STOP'));
-    return reply.code(200).send(projectHumanInbox(index, { stopPresent }));
-  });
-
-  scope.get('/api/approvals', { preHandler }, async (_req, reply: FastifyReply) => {
-    const index = indexRepo(ctx.repoRoot);
-    const pending = listPending(index).map((card) => ({ card, buttons: buttonsFor(card) }));
-    return reply.code(200).send({ pending });
-  });
-
   scope.post('/api/approvals/verify', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
     const session = verifiedSession(req);
     const body = asRecord(req.body);

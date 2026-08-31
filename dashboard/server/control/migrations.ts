@@ -1,7 +1,11 @@
-import { createHash } from 'node:crypto';
 import { parseIterationOutcome } from './iterationOutcome.ts';
-import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
+import { CONTROL_PLANE_COLLECTIONS, CONTROL_PLANE_MIGRATIONS, CONTROL_PLANE_SCHEMA_VERSION } from './generated/controlPlaneSchema.ts';
 import { assertDeploymentCollection } from './deploymentState.ts';
+import { assertAssetPullCollection } from './assetPullState.ts';
+// P6 W1b [P6-C48]: the store-open invariant must decode every placement collection row through its W0
+// exact-key decoder, not just check bounded-array shape (assertMigrationEnvelope's `boundedArray` check
+// below) — otherwise a corrupt hostAdvertisements/placementLeases/v1Idempotency row loads silently.
+import { assertPlacementCollections } from './placementState.ts';
 import {
   crashNormalizedLifecycle,
   lifecycleForKind,
@@ -9,14 +13,37 @@ import {
   runLifecycleKind,
 } from './runLifecycle.ts';
 import { TERMINAL_ATTEMPT } from './types.ts';
+import { decodeHostKind, decodeRunIdentityFields, decodeRunnableRef, identityFieldsFromRun } from './p2Decoders.ts';
+import {
+  migrateRunIdentities,
+  type LegacyAgentDeclaration,
+  type LegacyWorkflowDefinition,
+  type LegacyWorkflowLaunchAudit,
+  type RunIdentityMigrationReport,
+} from './runIdentity.ts';
+import {
+  migrateRunOutcomes,
+  type LegacyArchiveAudit,
+  type RunOutcomeMigrationReport,
+} from './runOutcomeMigration.ts';
+import type { HostKind, RunIdentityFields } from './p2Contracts.ts';
+import { openAttestedScheduleSource } from '../schedules/attestedSource.ts';
+import {
+  importHeartbeatScheduleSeedsV1,
+  type DevelopmentScheduleSeedSource,
+  type ScheduleSeedImportMarker,
+  type ScheduleSeedImportPlan,
+} from '../schedules/seedImport.ts';
 import type {
   IterationLoop,
-  IterationRequest,
   JsonObject,
   JsonValue,
   RunLifecycle,
 } from './types.ts';
 import type { ProposalIterationGroup, ProposalReview } from './proposal.ts';
+import {
+  canonicalJson, clone, isPlainRecord, iterationDefinitionHash, iterationRequestFingerprint, sha256,
+} from './controlHashing.ts';
 import type {
   QuarantinedRunBundle,
   StoreDocument,
@@ -37,25 +64,75 @@ const CANONICAL_COMMIT_RE = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const SAFE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ACTIVATION_PHASES = new Set(['claimed', 'roots-activated', 'dispatched', 'failed']);
 const ORDINARY_RUN_KINDS = new Set(RUN_LIFECYCLE_KINDS.filter((kind) => kind !== 'paused-for-deploy'));
-const TERMINAL_DEPLOYMENT_STATES = new Set(['succeeded', 'aborted', 'failed', 'acknowledged']);
-const CARRIER_PREFIX = 'kb.control-plane-v2-down-carrier/v1:';
+const V2_COLLECTIONS = [
+  'proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events',
+  'stageGenerations', 'iterationLoops', 'iterationRequests', 'iterationReceipts',
+  'generationSupersessions', 'quarantine', 'deployments',
+] as const;
+// P6 [P6-C23, P6-C48]: the three additive placement collections the v3 -> v4 edge introduces. They are
+// present only from schema v4, so a pre-P6 v3 document must NOT be required to carry them.
+const V4_NEW_COLLECTIONS = ['hostAdvertisements', 'placementLeases', 'v1Idempotency'] as const;
+const V3_COLLECTIONS = CONTROL_PLANE_COLLECTIONS.filter(
+  (collection) => !(V4_NEW_COLLECTIONS as readonly string[]).includes(collection),
+);
 
 type RawDocument = Record<string, any>;
 
 export interface MigrationContext {
   stamp: string;
+  executionHost?: HostKind;
+  agentDeclarations?: readonly LegacyAgentDeclaration[];
+  workflowDefinitions?: readonly LegacyWorkflowDefinition[];
+  workflowLaunchAudits?: readonly LegacyWorkflowLaunchAudit[];
+  auditRows?: readonly LegacyArchiveAudit[];
+  sourceSha256?: string;
+  explicitMapping?: {
+    storeSha256: string;
+    runs: Readonly<Record<string, RunIdentityFields>>;
+  };
 }
 
 export interface AppliedMigration {
   from: number;
   to: number;
-  breaking: true;
+  breaking: boolean;
   down: 'present';
+}
+
+/**
+ * The up-edge `breaking` flag, sourced from the generated migration registry so the applied-migration
+ * record can never drift from the registry's own declaration (as the hardcoded v3->v4 `true` once did,
+ * against the registry's `breaking:false` for that edge) [P6 W1b].
+ */
+function breakingFlagForUpEdge(from: number, to: number): boolean {
+  const entry = CONTROL_PLANE_MIGRATIONS.find((edge) => edge.from === from && edge.to === to);
+  if (!entry) throw new Error(`no control-plane migration registry entry for edge ${from}->${to}`);
+  return entry.breaking;
 }
 
 export interface MigrationResult {
   document: StoreDocument;
   applied: AppliedMigration[];
+}
+
+export interface P2RunMigrationReports {
+  runIdentity: RunIdentityMigrationReport;
+  runOutcome: RunOutcomeMigrationReport;
+}
+
+export class P2RunMigrationError extends Error {
+  readonly code: 'run-owner-migration-required' | 'run-outcome-migration-required';
+  readonly reports: P2RunMigrationReports;
+
+  constructor(reports: P2RunMigrationReports) {
+    const code = reports.runIdentity.errors.length > 0
+      ? 'run-owner-migration-required' as const
+      : 'run-outcome-migration-required' as const;
+    super(`${code}: ${JSON.stringify(reports)}`);
+    this.code = code;
+    this.reports = reports;
+    this.name = 'P2RunMigrationError';
+  }
 }
 
 interface LegacyStoreReviewLoopMigrationRow {
@@ -111,24 +188,6 @@ type LegacyStoreMigrationBundle = Pick<StoreDocument,
     reviewReceipts?: LegacyStoreReviewReceiptMigrationRow[];
   };
 
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
-
-function canonicalJson(value: JsonValue): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
-}
-
-function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-}
-
 function validNonEmpty(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max && !value.includes('\0');
 }
@@ -151,7 +210,8 @@ export function assertMigrationEnvelope(value: unknown): asserts value is RawDoc
   }
   const required = version === 1
     ? ['proposals', 'runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'quarantine']
-    : [...CONTROL_PLANE_COLLECTIONS];
+    : version === 2 ? [...V2_COLLECTIONS]
+      : version === 3 ? [...V3_COLLECTIONS] : [...CONTROL_PLANE_COLLECTIONS];
   if (required.some((field) => !boundedArray(value[field]))) throw new Error('invalid control-plane store');
   if (version === 1) {
     for (const field of [
@@ -163,6 +223,10 @@ export function assertMigrationEnvelope(value: unknown): asserts value is RawDoc
   } else if (typeof value.documentRevision !== 'number' || !Number.isSafeInteger(value.documentRevision)
     || value.documentRevision < 0) {
     throw new Error('invalid control-plane store');
+  }
+  if (version >= 3 && (typeof value.scheduleCollectionRevision !== 'number'
+    || !Number.isSafeInteger(value.scheduleCollectionRevision) || value.scheduleCollectionRevision < 0)) {
+    throw new Error('invalid control-plane schedule collection revision');
   }
 }
 
@@ -237,8 +301,24 @@ export function assertDocumentInvariant(value: unknown): asserts value is StoreD
   assertMigrationEnvelope(value);
   if (value.version !== CONTROL_PLANE_SCHEMA_VERSION) throw new Error('invalid control-plane store target');
   assertDeploymentCollection(value.deployments);
+  // Dashboard v3 P5 §3.2: the asset-pull intents are ADDITIVE and optional on the SAME versioned
+  // document — a pre-P5 document lacks the field and reads as an empty collection, so no version bump
+  // and no migration is introduced; a present collection is still validated [P5-C34].
+  assertAssetPullCollection(value.assetPullIntents ?? []);
+  // P6 W1b [P6-C48]: decode every placement-collection row (hostAdvertisements/placementLeases/
+  // v1Idempotency) through its W0 exact-key decoder here, fail-closed — the `required.some(...)`
+  // bounded-array check above only confirms shape, never per-row content.
+  assertPlacementCollections({
+    hostAdvertisements: value.hostAdvertisements,
+    placementLeases: value.placementLeases,
+    v1Idempotency: value.v1Idempotency,
+    cursorSecret: value.cursorSecret,
+  });
   assertEventCursorSequence(value);
-  for (const run of value.runs) assertRunLifecycle(run);
+  for (const run of value.runs) {
+    assertRunLifecycle(run);
+    if (!identityFieldsFromRun(run)) throw new Error('invalid control-plane run identity');
+  }
   for (const stage of value.stages) assertStoredStageGenerationProjection(stage);
   for (const bundle of value.quarantine) {
     if (!isPlainRecord(bundle) || !isPlainRecord(bundle.run)) throw new Error('invalid control-plane quarantine');
@@ -247,6 +327,7 @@ export function assertDocumentInvariant(value: unknown): asserts value is StoreD
       'iterationLoops', 'iterationRequests', 'iterationReceipts', 'generationSupersessions',
     ]) if (!boundedArray(bundle[field])) throw new Error('invalid control-plane quarantine');
     assertRunLifecycle(bundle.run);
+    if (!identityFieldsFromRun(bundle.run)) throw new Error('invalid control-plane run identity');
     for (const stage of bundle.stages as RawDocument[]) assertStoredStageGenerationProjection(stage);
   }
 }
@@ -360,20 +441,6 @@ function prepareLegacyStoreMigration(document: StoreDocument): boolean {
     }
   }
   return changed;
-}
-
-function iterationDefinitionHash(group: ProposalIterationGroup): string {
-  return sha256(canonicalJson(group as unknown as JsonValue));
-}
-
-function iterationRequestBody(request: StoredIterationRequest): IterationRequest {
-  const { subject: _subject, runRef: _runRef, operationKey: _operationKey,
-    operationFingerprint: _operationFingerprint, ...body } = request;
-  return body;
-}
-
-function iterationRequestFingerprint(request: StoredIterationRequest): string {
-  return sha256(canonicalJson(iterationRequestBody(request) as unknown as JsonValue));
 }
 
 export function legacyGroupForStages(
@@ -730,24 +797,6 @@ function normalizeLegacyFields(document: RawDocument): void {
   }
 }
 
-function restoreDownCarrier(document: RawDocument): boolean {
-  const carrier = document.events.at(-1);
-  if (!isPlainRecord(carrier) || carrier.kind !== 'lifecycle' || carrier.source !== 'system'
-    || typeof carrier.summary !== 'string' || !carrier.summary.startsWith(CARRIER_PREFIX)) return false;
-  const encoded = carrier.summary.slice(CARRIER_PREFIX.length);
-  const payload = JSON.parse(encoded) as unknown;
-  if (!isPlainRecord(payload) || canonicalJson(payload as JsonValue) !== encoded
-    || !Array.isArray(payload.deployments) || !Number.isSafeInteger(payload.documentRevision)
-    || !Number.isSafeInteger(payload.nextEventCursor) || carrier.cursor !== payload.nextEventCursor) {
-    throw new Error('invalid control-plane down-migration carrier');
-  }
-  document.events.pop();
-  document.deployments = payload.deployments;
-  document.documentRevision = payload.documentRevision;
-  document.nextEventCursor = payload.nextEventCursor;
-  return true;
-}
-
 function upV1ToV2(source: RawDocument, context: MigrationContext): RawDocument {
   const document = source as unknown as StoreDocument;
   prepareLegacyStoreMigration(document);
@@ -766,69 +815,275 @@ function upV1ToV2(source: RawDocument, context: MigrationContext): RawDocument {
   }
   decodeLegacyStoreRows(document);
   const raw = document as unknown as RawDocument;
-  const restored = restoreDownCarrier(raw);
   for (const run of [...raw.runs, ...raw.quarantine.map((bundle: RawDocument) => bundle.run)]) {
     if (Object.hasOwn(run, 'state')) {
       run.lifecycle = lifecycleForKind(run.state, null);
       delete run.state;
     }
   }
-  if (!restored) {
-    raw.documentRevision = 0;
-    raw.deployments = [];
-  }
+  // Migrations are up-only: a genuine pre-existing v1 document carries no v2 fields, so v2's
+  // deployment ledger starts empty at revision 0 (rollback is restore-from-backup, never down-migrate).
+  raw.documentRevision = 0;
+  raw.deployments = [];
   raw.version = 2;
   return raw;
 }
 
-function downV2ToV1(source: RawDocument): RawDocument {
-  for (const run of [...source.runs, ...source.quarantine.map((bundle: RawDocument) => bundle.run)]) {
-    if (run.lifecycle?.kind === 'paused-for-deploy') throw new Error('cannot migrate a paused run to control-plane v1');
+interface P2LocatedRun {
+  run: RawDocument;
+  subject: string;
+  location: string;
+  humanRequests: RawDocument[];
+  events: RawDocument[];
+  mutationReceipts: RawDocument[];
+}
+
+function p2MutationReceipts(bundle: RawDocument, run: RawDocument): RawDocument[] {
+  const matches = (row: RawDocument): boolean => row.subject === run.subject && row.runRef === run.runRef;
+  return [
+    ...(Array.isArray(run.activationReceipts) ? run.activationReceipts : []),
+    ...(run.authorizedFailedRunReconciliation == null ? [] : [run.authorizedFailedRunReconciliation]),
+    ...(bundle.sessions as RawDocument[]).filter(matches).flatMap((session) =>
+      Array.isArray(session.brokerReceipts) ? session.brokerReceipts : []),
+    ...(bundle.iterationReceipts as RawDocument[]).filter(matches),
+    ...(bundle.generationSupersessions as RawDocument[]).filter(matches),
+    ...(bundle.stageGenerations as RawDocument[]).filter(matches),
+    ...(bundle.attempts as RawDocument[]).filter((attempt) => matches(attempt)
+      && (attempt.rerouteOperationKey != null || attempt.iterationAdvanceOperationKey != null)),
+  ];
+}
+
+function p2LocatedRuns(document: RawDocument): P2LocatedRun[] {
+  return [
+    ...document.runs.map((run: RawDocument, index: number) => ({
+      run, subject: String(run.subject), location: `runs[${index}]`,
+      humanRequests: document.humanRequests.filter((row: RawDocument) => row.subject === run.subject && row.runRef === run.runRef),
+      events: document.events.filter((row: RawDocument) => row.subject === run.subject && row.runRef === run.runRef),
+      mutationReceipts: p2MutationReceipts(document, run),
+    })),
+    ...document.quarantine.map((bundle: RawDocument, index: number) => ({
+      run: bundle.run as RawDocument, subject: String(bundle.subject), location: `quarantine[${index}].run`,
+      humanRequests: (bundle.humanRequests as RawDocument[]).filter((row) => row.runRef === bundle.run.runRef),
+      events: (bundle.events as RawDocument[]).filter((row) => row.runRef === bundle.run.runRef),
+      mutationReceipts: p2MutationReceipts(bundle, bundle.run as RawDocument),
+    })),
+  ];
+}
+
+function existingOwnerHost(run: RawDocument): Pick<RunIdentityFields, 'owner' | 'executionHost'> | null {
+  const owner = decodeRunnableRef(run.owner);
+  const executionHost = decodeHostKind(run.executionHost);
+  return owner && executionHost ? { owner, executionHost } : null;
+}
+
+function explicitOutcomeMatchesLifecycle(fields: RunIdentityFields, lifecycle: RunLifecycle['kind']): boolean {
+  if (lifecycle === 'succeeded') return fields.terminalOutcome === 'ok' && fields.archivedFrom === null;
+  if (lifecycle === 'failed' || lifecycle === 'stopped') {
+    return fields.terminalOutcome === lifecycle && fields.archivedFrom === null;
   }
-  if (source.deployments.some((deployment: RawDocument) => !TERMINAL_DEPLOYMENT_STATES.has(String(deployment.state)))) {
-    throw new Error('cannot migrate a nonterminal deployment to control-plane v1');
+  if (lifecycle !== 'archived') {
+    return fields.terminalOutcome === null && fields.completedAt === null && fields.archivedFrom === null;
   }
-  const carrierPayload = {
-    deployments: source.deployments,
-    documentRevision: source.documentRevision,
-    nextEventCursor: source.nextEventCursor,
+  const archivedOutcome = {
+    succeeded: 'ok', failed: 'failed', stopped: 'stopped',
+    interrupted: 'interrupted', 'waiting-human': 'abandoned',
+  } as const;
+  return fields.archivedFrom !== null && fields.terminalOutcome === archivedOutcome[fields.archivedFrom];
+}
+
+export function reportP2RunMigrations(document: RawDocument, context: MigrationContext): P2RunMigrationReports & {
+  identities: Array<{ location: string; runRef: string; value: Pick<RunIdentityFields, 'owner' | 'executionHost'> }>;
+  outcomes: Array<{ location: string; runRef: string; value: Pick<RunIdentityFields, 'terminalOutcome' | 'completedAt' | 'archivedFrom'> }>;
+} {
+  const located = p2LocatedRuns(document);
+  if (context.explicitMapping && context.explicitMapping.storeSha256 !== context.sourceSha256) {
+    throw new Error('explicit run migration mapping store SHA mismatch');
+  }
+  const identities: Array<{ location: string; runRef: string; value: Pick<RunIdentityFields, 'owner' | 'executionHost'> }> = [];
+  const identityInputs = [];
+  for (const item of located) {
+    const existing = existingOwnerHost(item.run);
+    const mapped = context.explicitMapping?.runs[String(item.run.runRef)];
+    const decodedMapping = mapped ? decodeRunIdentityFields(mapped) : null;
+    if (mapped && !decodedMapping) throw new Error(`invalid explicit run migration mapping for ${String(item.run.runRef)}`);
+    const hasOwnerHost = Object.hasOwn(item.run, 'owner') || Object.hasOwn(item.run, 'executionHost');
+    const verifiedHost = context.executionHost ?? (process.platform === 'win32' ? 'desktop' : 'vm');
+    if (existing && existing.executionHost === verifiedHost) {
+      identities.push({ location: item.location, runRef: String(item.run.runRef), value: existing });
+      continue;
+    }
+    if (hasOwnerHost) {
+      identityInputs.push({
+        runRef: String(item.run.runRef), location: item.location, executionHost: verifiedHost,
+        agentWorkspaceLaunch: null, proposal: null, agentDeclarations: [], workflowDefinitions: [], workflowLaunchAudits: [],
+      });
+      continue;
+    }
+    if (decodedMapping) {
+      identities.push({
+        location: item.location, runRef: String(item.run.runRef),
+        value: { owner: decodedMapping.owner, executionHost: decodedMapping.executionHost },
+      });
+      continue;
+    }
+    const proposal = document.proposals.find((row: RawDocument) => row.subject === item.run.subject
+      && row.proposalRef === item.run.proposalRef && row.revision === item.run.proposalRevision
+      && row.hash === item.run.proposalHash);
+    identityInputs.push({
+      runRef: String(item.run.runRef), location: item.location,
+      executionHost: verifiedHost,
+      agentWorkspaceLaunch: item.run.agentWorkspaceLaunch == null ? null : {
+        agentId: String(item.run.agentWorkspaceLaunch.agentId),
+        declarationPath: String(item.run.agentWorkspaceLaunch.declarationPath),
+        declarationHash: String(item.run.agentWorkspaceLaunch.declarationHash),
+      },
+      proposal: proposal ? {
+        proposalRef: String(proposal.proposalRef), proposalRevision: Number(proposal.revision), proposalHash: String(proposal.hash),
+      } : null,
+      agentDeclarations: context.agentDeclarations ?? [],
+      workflowDefinitions: context.workflowDefinitions ?? [],
+      workflowLaunchAudits: context.workflowLaunchAudits ?? [],
+    });
+  }
+  const identityResolution = migrateRunIdentities(identityInputs);
+  identities.push(...identityResolution.items.map((item) => ({
+    location: item.location, runRef: item.runRef,
+    value: { owner: item.value.owner, executionHost: item.value.executionHost },
+  })));
+  const runIdentity: RunIdentityMigrationReport = {
+    ...identityResolution.report,
+    total: located.length,
+    migrated: identities.length,
   };
-  source.events.push({
-    cursor: source.nextEventCursor,
-    runRef: '__control-plane-migration__',
-    kind: 'lifecycle',
-    source: 'system',
-    stageRef: null,
-    attemptRef: null,
-    sessionRef: null,
-    status: 'success',
-    summary: `${CARRIER_PREFIX}${canonicalJson(carrierPayload as unknown as JsonValue)}`,
-    command: null,
-    toolName: null,
-    path: null,
-    diff: null,
-    checkpoint: null,
-    createdAt: '1970-01-01T00:00:00.000Z',
+
+  const outcomes: Array<{
+    location: string;
+    runRef: string;
+    value: Pick<RunIdentityFields, 'terminalOutcome' | 'completedAt' | 'archivedFrom'>;
+  }> = [];
+  const outcomeInputs = located.flatMap((item) => {
+    const mapped = context.explicitMapping?.runs[String(item.run.runRef)];
+    const decodedMapping = mapped ? decodeRunIdentityFields(mapped) : null;
+    const outcomeKeys = ['terminalOutcome', 'completedAt', 'archivedFrom'] as const;
+    const outcomeKeysPresent = outcomeKeys.filter((key) => Object.hasOwn(item.run, key));
+    const existing = identityFieldsFromRun(item.run);
+    if (decodedMapping && outcomeKeysPresent.length === 0) {
+      const lifecycle = runLifecycleKind(item.run.lifecycle as RunLifecycle);
+      if (!explicitOutcomeMatchesLifecycle(decodedMapping, lifecycle)) {
+        throw new Error(`explicit run migration mapping outcome mismatch for ${String(item.run.runRef)}`);
+      }
+      outcomes.push({
+        location: item.location,
+        runRef: String(item.run.runRef),
+        value: {
+          terminalOutcome: decodedMapping.terminalOutcome,
+          completedAt: decodedMapping.completedAt,
+          archivedFrom: decodedMapping.archivedFrom,
+        },
+      });
+      return [];
+    }
+    return [{
+      runRef: String(item.run.runRef), subject: item.subject, location: item.location,
+      lifecycle: runLifecycleKind(item.run.lifecycle as RunLifecycle),
+      updatedAt: String(item.run.updatedAt), version: Number(item.run.version),
+      archiveOperationKey: typeof item.run.archiveOperationKey === 'string' ? item.run.archiveOperationKey : null,
+      humanRequests: item.humanRequests.map((row) => ({
+        requestRef: String(row.requestRef), runRef: String(row.runRef), updatedAt: String(row.updatedAt),
+        response: row.response == null ? null : {
+          requestRevision: Number(row.response.requestRevision), decision: String(row.response.decision),
+          respondedBy: String(row.response.respondedBy), idempotencyKey: String(row.response.idempotencyKey),
+          response: row.response.response == null ? null : String(row.response.response),
+          respondedAt: String(row.response.respondedAt),
+        },
+      })),
+      events: item.events.map((row) => ({ createdAt: String(row.createdAt) })),
+      mutationReceipts: item.mutationReceipts.map((receipt: RawDocument) => ({
+        ...(typeof receipt.createdAt === 'string' ? { createdAt: receipt.createdAt } : {}),
+        ...(typeof receipt.claimedAt === 'string' ? { claimedAt: receipt.claimedAt } : {}),
+        ...(typeof receipt.updatedAt === 'string' ? { updatedAt: receipt.updatedAt } : {}),
+        ...(typeof receipt.recordedAt === 'string' ? { recordedAt: receipt.recordedAt } : {}),
+      })),
+      auditRows: context.auditRows ?? [],
+      existing,
+      existingInvalid: outcomeKeysPresent.length > 0 && (outcomeKeysPresent.length !== outcomeKeys.length || existing === null),
+    }];
   });
-  source.nextEventCursor += 1;
-  for (const run of [...source.runs, ...source.quarantine.map((bundle: RawDocument) => bundle.run)]) {
-    run.state = runLifecycleKind(run.lifecycle as RunLifecycle);
-    delete run.lifecycle;
+  const outcomeResolution = migrateRunOutcomes(outcomeInputs);
+  outcomes.push(...outcomeResolution.items.map((item) => ({ location: item.location, runRef: item.runRef, value: item.value })));
+  const runOutcome: RunOutcomeMigrationReport = {
+    ...outcomeResolution.report,
+    total: located.length,
+    migrated: outcomes.length,
+  };
+  return { runIdentity, runOutcome, identities, outcomes };
+}
+
+function applyP2RunMigration(document: RawDocument, context: MigrationContext): void {
+  const reported = reportP2RunMigrations(document, context);
+  if (reported.runIdentity.errors.length > 0 || reported.runOutcome.errors.length > 0) {
+    throw new P2RunMigrationError({ runIdentity: reported.runIdentity, runOutcome: reported.runOutcome });
   }
-  delete source.deployments;
-  delete source.documentRevision;
-  source.version = 1;
+  const byLocation = new Map(p2LocatedRuns(document).map((item) => [item.location, item.run]));
+  for (const item of reported.identities) Object.assign(byLocation.get(item.location)!, clone(item.value));
+  for (const item of reported.outcomes) Object.assign(byLocation.get(item.location)!, clone(item.value));
+}
+
+function upV2ToV3(source: RawDocument, context: MigrationContext): RawDocument {
+  // Migrations are up-only: a genuine pre-existing v2 document carries no v3 run-identity or schedule
+  // fields, so the real P2 run migration always runs and the schedule collections start empty
+  // (rollback is restore-from-backup, never down-migrate).
+  applyP2RunMigration(source, context);
+  source.scheduleCollectionRevision = 0;
+  source.schedules = [];
+  source.scheduleTombstones = [];
+  source.scheduleOccurrenceClaims = [];
+  source.scheduleSeedImports = [];
+  source.version = 3;
   return source;
 }
 
+// P6 [P6-C23, P6-C48]: v3 -> v4 is a purely ADDITIVE edge — it introduces the three placement
+// collections empty and touches nothing else, so the paired down deletes exactly those keys and
+// restores a byte-identical v3 document (the keys are appended last on the way up and removed on the
+// way down, leaving the original key order intact).
+function upV3ToV4(source: RawDocument): RawDocument {
+  source.hostAdvertisements = [];
+  source.placementLeases = [];
+  source.v1Idempotency = [];
+  source.version = 4;
+  return source;
+}
+
+// The single edge table for the {1->2, 2->3, 3->4} up-only ladder. It drives both former hand-rolled
+// encodings — `applyMigrationEdgeForTest` and the up-ladder — so the edge set is declared once.
+// Migrations are up-only; rollback is restore-from-backup, never down-migrate. `breaking` takes the
+// generated registry flag (`breakingFlagForUpEdge`, evaluated once here; the registry import is already
+// resolved and its value is constant). `fn` is called with `(document, context)`; edges that ignore
+// `context` simply drop it.
+interface MigrationEdge {
+  from: number;
+  to: number;
+  fn: (document: RawDocument, context: MigrationContext) => RawDocument;
+  breaking: boolean;
+}
+
+const UP_EDGES: readonly MigrationEdge[] = [
+  { from: 1, to: 2, fn: upV1ToV2, breaking: breakingFlagForUpEdge(1, 2) },
+  { from: 2, to: 3, fn: upV2ToV3, breaking: breakingFlagForUpEdge(2, 3) },
+  { from: 3, to: 4, fn: upV3ToV4, breaking: breakingFlagForUpEdge(3, 4) },
+];
+
 export function applyMigrationEdgeForTest(
   source: unknown,
-  target: 1 | 2,
+  target: 1 | 2 | 3 | 4,
   context: MigrationContext,
 ): unknown {
   assertMigrationEnvelope(source);
   const document = clone(source);
-  return target === 2 ? upV1ToV2(document, context) : downV2ToV1(document);
+  const edge = UP_EDGES.find((candidate) => candidate.from === document.version && candidate.to === target);
+  if (!edge) throw new Error(`no control-plane migration edge ${document.version}->${target}`);
+  return edge.fn(document, context);
 }
 
 export function migrateControlDocument(
@@ -842,13 +1097,16 @@ export function migrateControlDocument(
   }
   const document = clone(source);
   const applied: AppliedMigration[] = [];
-  if (document.version === 1 && target === 2) {
-    upV1ToV2(document, context);
-    applied.push({ from: 1, to: 2, breaking: true, down: 'present' });
-  } else if (document.version === 2 && target === 1) {
-    downV2ToV1(document);
-    applied.push({ from: 2, to: 1, breaking: true, down: 'present' });
-  } else if (document.version !== target) {
+  // P6 [P6-C32]: the ladder chains every up edge so v1 -> v4 and v2 -> v4 reach the target in one call
+  // (each `up*` advances `document.version`, so the loop steps one edge at a time). Migrations are
+  // up-only; rollback is restore-from-backup, never down-migrate.
+  while (document.version < target) {
+    const edge = UP_EDGES.find((candidate) => candidate.from === document.version);
+    if (!edge) break;
+    edge.fn(document, context);
+    applied.push({ from: edge.from, to: edge.to, breaking: edge.breaking, down: 'present' });
+  }
+  if (document.version !== target) {
     throw new Error(`no control-plane migration path ${document.version}->${target}`);
   }
   if (target === CONTROL_PLANE_SCHEMA_VERSION) assertDocumentInvariant(document);
@@ -860,6 +1118,43 @@ export function loadAndMigrate(encoded: string, target: number, context: Migrati
   const parsed: unknown = JSON.parse(encoded);
   assertMigrationEnvelope(parsed);
   return migrateControlDocument(parsed, target, context);
+}
+
+export interface P2ScheduleStartupMigrationReport {
+  phases: ['identity', 'outcome', 'schedule-collections', 'seed-import', 'pause-marker-conversion'];
+  source: Awaited<ReturnType<typeof openAttestedScheduleSource>>;
+}
+
+/**
+ * The Run migration and v3 collection creation are completed by `loadAndMigrate` before this async
+ * startup continuation is called. Keeping the remaining phases here makes their order observable and
+ * prevents pause conversion from racing seed creation.
+ */
+export async function runP2ScheduleStartupMigrations(
+  input: {
+    currentReleasePath?: string;
+    existingMarker?: ScheduleSeedImportMarker | null;
+    development?: DevelopmentScheduleSeedSource;
+    commitSeeds(plan: ScheduleSeedImportPlan): Promise<void>;
+    convertPauseMarkers(): Promise<unknown>;
+  },
+  deps: {
+    openSource?: typeof openAttestedScheduleSource;
+    importSeeds?: typeof importHeartbeatScheduleSeedsV1;
+  } = {},
+): Promise<P2ScheduleStartupMigrationReport> {
+  const source = await (deps.openSource ?? openAttestedScheduleSource)({ currentPath: input.currentReleasePath });
+  const imported = await (deps.importSeeds ?? importHeartbeatScheduleSeedsV1)({
+    source,
+    existingMarker: input.existingMarker,
+    ...(input.development ? { development: input.development } : {}),
+  }, input.commitSeeds);
+  if (!imported.ok) throw Object.assign(new Error(imported.code), { code: imported.code, report: imported.report });
+  await input.convertPauseMarkers();
+  return {
+    phases: ['identity', 'outcome', 'schedule-collections', 'seed-import', 'pause-marker-conversion'],
+    source,
+  };
 }
 
 export function normalizeCrash(
@@ -883,12 +1178,12 @@ export function normalizeCrash(
     const pendingActivation = [...run.activationReceipts].reverse()
       .find((receipt: RawDocument) => receipt.phase === 'claimed' || receipt.phase === 'roots-activated');
     const normalizedLifecycle = crashNormalizedLifecycle(run.lifecycle, pendingActivation !== undefined);
-    if (normalizedLifecycle !== run.lifecycle) {
-      run.lifecycle = normalizedLifecycle;
-      run.version += 1;
-      run.updatedAt = context.stamp;
-      runChanged = true;
-    }
+      if (normalizedLifecycle !== run.lifecycle) {
+        run.lifecycle = normalizedLifecycle;
+        run.version += 1;
+        run.updatedAt = context.stamp;
+        runChanged = true;
+      }
     for (const stage of raw.stages.filter((item: RawDocument) => item.subject === run.subject && item.runRef === run.runRef)) {
       if (stage.state !== 'running') continue;
       stage.state = 'interrupted';

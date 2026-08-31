@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  runBuilderAmendment,
   isExactAssignmentAmendment,
   isExactGovernanceAmendment,
   patchWorkflowAssignment,
   patchWorkflowGovernance,
 } from './amendments.ts';
+import { createFileDefinitionAmendmentStore } from './amendmentStore.ts';
 import { parseWorkflowDef } from './defs.ts';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const VIDEO_RUN = [
@@ -33,6 +37,29 @@ const VIDEO_RUN = [
   'body',
   '',
 ].join('\n');
+
+describe('durable builder amendments', () => {
+  it('replays the original receipt after a store restart, conflicts on another body, and runs one effect', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'builder-amendment-'));
+    let effects = 0;
+    const input = {
+      kind: 'workflow-builder-edit' as const,
+      entityPath: 'orgs/faceless-youtube/workflows/video-run.md',
+      idempotencyKey: 'builder-edit-1', baseSourceHash: 'a'.repeat(64), proposedSourceHash: 'b'.repeat(64),
+      request: { purpose: 'One' }, effect: async () => { effects += 1; },
+    };
+    try {
+      const first = await runBuilderAmendment(createFileDefinitionAmendmentStore(stateRoot), input);
+      const replay = await runBuilderAmendment(createFileDefinitionAmendmentStore(stateRoot), input);
+      expect(first).toEqual({ status: 'pending', operationId: 'builder-edit-1', replayed: false });
+      expect(replay).toEqual({ ...first, replayed: true });
+      await expect(runBuilderAmendment(createFileDefinitionAmendmentStore(stateRoot), {
+        ...input, request: { purpose: 'Two' },
+      })).rejects.toThrow('idempotency-body-conflict');
+      expect(effects).toBe(1);
+    } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+  });
+});
 
 describe('patchWorkflowAssignment', () => {
   it('adds and clears a stage assignment without touching real inline dependsOn arrays or body bytes', () => {

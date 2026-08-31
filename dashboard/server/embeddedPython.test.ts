@@ -9,39 +9,33 @@ import { resolvePython } from './runtime/python.ts';
 // escapes/interpolation) and asks Python to ast.parse it. No source-scraping, no escape
 // false positives.
 import {
-  CANONICAL_RESULT_CARD_SCRIPT,
   CANONICAL_RESULT_VERIFY_SCRIPT,
 } from './control/canonicalResultIntegrator.ts';
 import {
   QUEUE_BRIDGE_SELECT_SCRIPT,
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
-  QUEUE_BRIDGE_RECONCILE_SCRIPT,
   QUEUE_BRIDGE_LEDGER_COST_SCRIPT,
 } from './control/queueBridge.ts';
 import { MANAGED_ROOT_ACTIVATION_SCRIPT, WORKFLOW_CARD_OP_SCRIPT } from './write/workflowRun.ts';
 import { CARD_RESPOND_SCRIPT } from './write/cardRespond.ts';
 import { CARD_ROUTING_SCRIPT } from './write/cardRouting.ts';
 import { CARD_OP_SCRIPT } from './write/launch.ts';
-import { STOP_CARD_SCRIPT } from './stop/floor.ts';
 import {
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,
-} from './approvals/inbox.ts';
+} from './approvals/cardVerifier.ts';
 
 const SCRIPTS: Record<string, string> = {
-  CANONICAL_RESULT_CARD_SCRIPT,
   CANONICAL_RESULT_VERIFY_SCRIPT,
   QUEUE_BRIDGE_SELECT_SCRIPT,
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
-  QUEUE_BRIDGE_RECONCILE_SCRIPT,
   QUEUE_BRIDGE_LEDGER_COST_SCRIPT,
   MANAGED_ROOT_ACTIVATION_SCRIPT,
   WORKFLOW_CARD_OP_SCRIPT,
   CARD_RESPOND_SCRIPT,
   CARD_ROUTING_SCRIPT,
   CARD_OP_SCRIPT,
-  STOP_CARD_SCRIPT,
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,

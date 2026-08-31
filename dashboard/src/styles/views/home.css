@@ -1,333 +1,64 @@
-/*
- * Home view (U3) — the default landing rollup. Styled with design tokens only (see app.css §A/B/C);
- * dark + light both work via the token remap. Namespaced `.v-home__…`; reuses the `.mc-*` primitives
- * (panels, tables, badges, status dots, buttons, mono) for everything shared. Signature rules (§F):
- * hairline borders do the work, mono tabular-nums on every id/count/figure, the accent slot used
- * sparingly (the Approvals-waiting tile + the row active-language left-border), and the ONE
- * --transition token for motion. Type sizes come from the --type-* roles, never a local px value.
- */
-
-.v-home {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-
-/* ── KPI tiles — flat hairline panels, mono tabular xl numerals ───────────────────────────────── */
-.v-home__kpis {
+.d13-home {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: var(--space-3);
-}
-
-.v-home__kpi {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  /* Stable geometry: a transparent 2px left rail everywhere; only the accent tile paints it. */
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  text-align: left;
-}
-
-/* Tiles that navigate are buttons — reset the button chrome and add restrained hover motion. */
-.v-home__kpi--link {
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.v-home__kpi--link:hover {
-  background: var(--bg-elevated);
-  border-color: var(--border-strong);
-}
-
-.v-home__kpi--link:focus-visible {
-  outline: 2px solid var(--mc-accent);
-  outline-offset: 1px;
-}
-
-/* The single terracotta accent: only while something is actually waiting on a signature. */
-.v-home__kpi--accent {
-  border-left-color: var(--mc-accent);
-}
-
-.v-home__kpi--accent .v-home__kpi-value {
-  color: var(--mc-accent);
-}
-
-.v-home__kpi-value {
-  font-size: var(--type-metric-size);
-  font-weight: var(--type-metric-weight);
-  line-height: 1.1;
-}
-
-.v-home__kpi-label {
-  font-size: var(--type-section-size);
-  font-weight: var(--type-section-weight);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--fg-dim);
-}
-
-/* ── 2fr / 1fr grid ───────────────────────────────────────────────────────────────────────────── */
-.v-home__grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: var(--space-4);
-  align-items: start;
-}
-
-.v-home__col {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.v-home__panel-title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--type-title-size);
-  font-weight: var(--type-title-weight);
-  line-height: 1.2;
-}
-
-/* ── Running / resume hero ────────────────────────────────────────────────────────────────────── */
-.v-home__group + .v-home__group {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-
-.v-home__group-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.v-home__eyebrow {
-  font-size: var(--type-section-size);
-  font-weight: var(--type-section-weight);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-eyebrow);
-  color: var(--fg-dim);
-}
-
-.v-home__count {
-  font-size: var(--type-section-size);
-  color: var(--fg-faint);
-}
-
-.v-home__rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0);
-}
-
-/* A resume row is a button (keyboard-reachable). Left-border accent = the shared active/selected
- * language, painted on hover/focus only; geometry stays stable via the transparent resting rail.
- * ONE hover treatment covers every clickable surface on this view (rows, projects, KPI tiles). */
-.v-home__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  gap: var(--section-gap);
+  /* Full content width, consistent with the Agents/Workflows views (was capped at 1120px). */
   width: 100%;
-  background: transparent;
-  border: 1px solid transparent;
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  font: inherit;
-  font-size: var(--type-body-size);
-  color: var(--fg-primary);
-  text-align: left;
-  cursor: pointer;
 }
 
-.v-home__kpi--link,
-.v-home__row,
-.v-home__project {
-  transition: background-color var(--transition), border-color var(--transition);
-}
-
-.v-home__row:hover,
-.v-home__row:focus-visible,
-.v-home__project:hover,
-.v-home__project:focus-visible {
-  background: var(--bg-elevated);
-  border-left-color: var(--mc-accent);
-  outline: none;
-}
-
-.v-home__row-id {
-  flex: 0 0 auto;
-  font-size: var(--type-meta-size);
-  color: var(--fg-dim);
-}
-
-.v-home__row-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.v-home__row-meta {
-  flex: 0 0 auto;
-  font-size: var(--type-meta-size);
-  color: var(--fg-faint);
-}
-
-/* ── Projects ─────────────────────────────────────────────────────────────────────────────────── */
-.v-home__projects {
+.d13-home > h1 {
   margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0);
+  font: var(--type-title);
 }
 
-.v-home__project {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  width: 100%;
+.d13-home__section {
+  border-top: 1px solid var(--hairline);
+  padding-top: var(--card-gap);
+}
+
+.d13-home__section h2 {
+  margin: 0 0 var(--card-gap);
+  font: var(--type-section);
+}
+
+.d13-home__section p {
+  margin: 0;
+  color: var(--fg-dim);
+}
+
+.d13-home__section > div {
+  display: grid;
+}
+
+.d13-home__section button {
+  min-height: 40px;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
   background: transparent;
-  border: 1px solid transparent;
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  font: inherit;
-  font-size: var(--type-body-size);
   color: var(--fg-primary);
+  padding: var(--space-2) 0;
   text-align: left;
-  cursor: pointer;
 }
 
-.v-home__project-name {
-  flex: 0 0 auto;
-  font-size: var(--type-meta-size);
-  color: var(--fg-primary);
+.d13-home__section button:hover,
+.d13-home__section button:focus-visible {
+  color: var(--focus);
 }
 
-.v-home__project-now {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-dim);
-  font-size: var(--type-meta-size);
-}
-
-/* ── Usage panel ──────────────────────────────────────────────────────────────────────────────── */
-.v-home__usage-total {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.v-home__usage-total-value {
-  font-size: var(--type-metric-size);
-  font-weight: var(--type-metric-weight);
-  line-height: 1.1;
-}
-
-.v-home__usage-table {
-  width: 100%;
-}
-
-/* ── Launch surface ───────────────────────────────────────────────────────────────────────────── */
-.v-home__launch-warning {
-  margin: 0 0 var(--space-3);
-  font-size: var(--type-meta-size);
-  color: var(--warning);
-}
-
-.v-home__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.v-home__form + .v-home__form {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-
-.v-home__input {
-  font: inherit;
-  font-size: var(--type-body-size);
-  background: var(--bg-sunken);
-  color: var(--fg-primary);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+.d13-home__section[aria-label="Version"] span {
+  display: inline-flex;
+  border: 1px solid var(--hairline);
+  background: var(--bg-panel);
   padding: var(--space-1) var(--space-2);
-}
-
-.v-home__input:focus-visible {
-  outline: none;
-  border-color: var(--mc-accent);
-}
-
-textarea.v-home__input {
-  min-height: 3.5rem;
-  resize: vertical;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-.v-home__form-status {
-  margin: var(--space-2) 0 0;
-  font-size: var(--type-meta-size);
-  color: var(--fg-dim);
-}
-
-/* ── Motion / accessibility ───────────────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .v-home__kpi--link,
-  .v-home__row,
-  .v-home__project {
+  .d13-home__section button {
     transition: none;
   }
 }
-.v-home__execution {
-  display: grid;
-  gap: var(--space-2);
-}
 
-.v-home__execution-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.v-home__execution-state,
-.v-home__execution-help,
-.v-home__execution-error {
-  margin: var(--space-1) 0 0;
-}
-
-.v-home__execution-state {
-  font-size: var(--type-body-size);
-  font-weight: var(--type-title-weight);
-}
-
-.v-home__execution-help {
-  color: var(--fg-faint);
-  font-size: var(--type-meta-size);
-  line-height: 1.45;
-}
-
-.v-home__execution-error {
-  color: var(--error);
-  font-size: var(--type-meta-size);
+.d13-home__muted {
+  color: var(--fg-dim);
 }

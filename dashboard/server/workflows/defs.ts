@@ -270,6 +270,14 @@ export interface WorkflowDef {
   id: string;
   project: string;
   title: string;
+  /** Builder-owned operator summary; legacy definitions fall back to the Markdown description. */
+  purpose?: string;
+  /** Builder-owned execution-policy choices, separate from the executable stage graph. */
+  model?: string;
+  tools?: string[];
+  skills?: string[];
+  connectors?: Array<{ server: string; tools: string[] }>;
+  filesystemRoots?: string[];
   /**
    * `validation-slice` is a server-enforced non-publication workflow class. It exists for bounded
    * live validation runs: no stage may be a T3 publish action or carry a publication gate, even if
@@ -1108,7 +1116,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['schemaVersion', 'id', 'project', 'title', 'executionMode', 'maxConcurrency', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages', 'iterationGroups']);
+  const allowed = new Set(['schemaVersion', 'id', 'project', 'title', 'purpose', 'model', 'tools', 'skills', 'connectors', 'filesystemRoots', 'executionMode', 'maxConcurrency', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages', 'iterationGroups']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -1129,6 +1137,38 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   const title = asString(frontmatter.title);
   if (title === null || title.trim() === '' || title.length > MAX_TITLE_CHARS) {
     return { ok: false, detail: `title must be a non-empty string of at most ${MAX_TITLE_CHARS} characters` };
+  }
+  const purpose = frontmatter.purpose === undefined ? undefined : asString(frontmatter.purpose);
+  if (purpose === null || (purpose !== undefined && (purpose.trim() === '' || purpose.length > MAX_DESCRIPTION_CHARS))) {
+    return { ok: false, detail: 'purpose must be a non-empty bounded string when present' };
+  }
+  const model = frontmatter.model === undefined ? undefined : asString(frontmatter.model);
+  if (model === null || (model !== undefined && (model.trim() === '' || model.length > MAX_PROFILE_CHARS))) {
+    return { ok: false, detail: 'model must be a non-empty bounded string when present' };
+  }
+  const builderList = (name: 'tools' | 'skills' | 'filesystemRoots'): string[] | null => {
+    const raw = frontmatter[name];
+    if (raw === undefined) return [];
+    if (!Array.isArray(raw) || raw.some((entry) => typeof entry !== 'string' || entry === '')) return null;
+    return [...raw] as string[];
+  };
+  const tools = builderList('tools');
+  const skills = builderList('skills');
+  const filesystemRoots = builderList('filesystemRoots');
+  if (!tools || !skills || !filesystemRoots) return { ok: false, detail: 'builder policy fields must be string lists' };
+  const connectors: Array<{ server: string; tools: string[] }> = [];
+  if (frontmatter.connectors !== undefined) {
+    if (!Array.isArray(frontmatter.connectors)) return { ok: false, detail: 'connectors must be a list of grants' };
+    for (const encoded of frontmatter.connectors) {
+      let raw: unknown = encoded;
+      if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+        const decoded = parseYaml(`value: ${raw}`);
+        raw = isRecord(decoded) ? decoded.value : raw;
+      }
+      if (!isRecord(raw) || Object.keys(raw).some((key) => key !== 'server' && key !== 'tools') || typeof raw.server !== 'string'
+        || !Array.isArray(raw.tools) || raw.tools.some((tool) => typeof tool !== 'string')) return { ok: false, detail: 'connectors must contain {server, tools} grants' };
+      connectors.push({ server: raw.server, tools: [...raw.tools] as string[] });
+    }
   }
   let executionMode: WorkflowDef['executionMode'];
   if (hasOwn(frontmatter, 'executionMode')) {
@@ -1277,7 +1317,8 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     ok: true,
     value: {
       schemaVersion: schemaVersion as number | undefined,
-      id, project, title, ...(executionMode ? { executionMode } : {}), ...(maxConcurrency ? { maxConcurrency } : {}),
+      id, project, title, ...(purpose ? { purpose } : {}), ...(model ? { model } : {}), tools, skills, connectors, filesystemRoots,
+      ...(executionMode ? { executionMode } : {}), ...(maxConcurrency ? { maxConcurrency } : {}),
       profile, readScope: readScope.value, parameters: [...parameters],
       ...(governedBy ? { governedBy } : {}), ...(manager ? { manager } : {}), description, stages,
       ...(parsedIterationGroups.value.length > 0 ? { iterationGroups: parsedIterationGroups.value } : {}),

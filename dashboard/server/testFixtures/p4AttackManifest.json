@@ -1,0 +1,133 @@
+{
+  "note": "P4 W6.4 adversarial manifest. Freezes (a) the exact section-7 focused test-file set and (b) the eleven section-9 attack ids. assertP4GateResults.ts uses it two ways: --results mode validates the vitest gate JSON (no failed/skipped/todo, gateFiles set-equal the results, every attack owned by a passing test titled 'refuses: <id>'); --attack-root mode validates the per-attack artifact JSON (each id present once, passed:true, nonempty assertion, artifact path, real fixture identity).",
+  "gateFiles": [
+    "server/learnings/contracts.test.ts",
+    "server/learnings/proposalReader.test.ts",
+    "server/learnings/targetWall.test.ts",
+    "server/learnings/execution.test.ts",
+    "server/inbox/contracts.test.ts",
+    "server/inbox/project.test.ts",
+    "server/inbox/resolvers.test.ts",
+    "server/inbox/sourceCache.test.ts",
+    "server/inbox/routes.test.ts",
+    "server/home/routes.test.ts",
+    "server/agents/routes.test.ts",
+    "server/reconciliation/contracts.test.ts",
+    "server/reconciliation/sweeper.test.ts",
+    "server/reconciliation/publisher.test.ts",
+    "server/reconciliation/audit.test.ts",
+    "server/schedules/mirrorContracts.test.ts",
+    "server/schedules/mirror.test.ts",
+    "server/schedules/contracts.test.ts",
+    "server/schedules/service.test.ts",
+    "server/runtime/capabilities.test.ts",
+    "server/runtime/repoPin.test.ts",
+    "server/control/activation.test.ts",
+    "server/control/execution.test.ts",
+    "server/control/store.test.ts",
+    "server/control/canonicalResultIntegrator.test.ts",
+    "server/control/queueBridge.test.ts",
+    "server/write/durableManifest.test.ts",
+    "server/write/durableManifestService.test.ts",
+    "server/write/branch.test.ts",
+    "server/write/asyncGit.test.ts",
+    "server/write/cardRespond.test.ts",
+    "server/write/cardRespondRoute.test.ts",
+    "server/write/workflowRun.test.ts",
+    "server/workflows/routes.test.ts",
+    "server/tasks/cardProjection.test.ts",
+    "server/approvals/cardVerifier.test.ts",
+    "server/hub/bus.test.ts",
+    "server/http/surface.test.ts",
+    "server/index.test.ts",
+    "server/testFixtures/p1BrowserFixture.test.ts",
+    "server/testFixtures/p4FixtureServer.test.ts",
+    "server/testFixtures/p4FixtureLifecycle.test.ts",
+    "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+    "server/testFixtures/p4ActualBrowserRunner.test.ts",
+    "src/lib/taskActionsClient.test.ts",
+    "src/lib/inboxClient.test.ts",
+    "src/App.test.tsx",
+    "src/views/Inbox.test.tsx",
+    "src/views/Tasks.test.tsx"
+  ],
+  "attacks": [
+    {
+      "id": "evidence-instructions",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: evidence-instructions",
+      "proof": "P4",
+      "summary": "The real learning-record reader (readProposedLearningRecords) parses the content-hash-bound record in the lifecycle's step 2; the Evidence locator survives verbatim on main as inert data and never enters the worker target bytes or a command."
+    },
+    {
+      "id": "traversal-symlink",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: traversal-symlink",
+      "proof": "P4",
+      "summary": "The real target wall (validateImplementerTarget + defaultLstatPath) refuses a real on-disk symlink via lstat (reason 'symlink') and rejects traversal/absolute/nested targets structurally before any subprocess."
+    },
+    {
+      "id": "conflicting-targets",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: conflicting-targets",
+      "proof": "P4",
+      "summary": "The real selectImplementerBatch rejects a whole batch whose two records name one target (reason 'conflicting-targets'); no PR opens."
+    },
+    {
+      "id": "partial-durable-failure",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: partial-durable-failure",
+      "proof": "P4",
+      "summary": "A failed publish step leaves no partial durable state; protected main is unchanged."
+    },
+    {
+      "id": "replayed-changed-intents",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: replayed-changed-intents",
+      "proof": "P4",
+      "summary": "Exact replay returns one receipt; a changed intent on a stale base conflicts."
+    },
+    {
+      "id": "direct-sweeper-writes",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: direct-sweeper-writes",
+      "proof": "P4",
+      "summary": "The Sweeper has no effect port; a direct ops write is refused and audited."
+    },
+    {
+      "id": "ops-bypass",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: ops-bypass",
+      "proof": "P4",
+      "summary": "A direct ops write on a stale base is denied and audited."
+    },
+    {
+      "id": "stale-card",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: stale-card",
+      "proof": "P4",
+      "summary": "The real reconciliation publisher refuses a card-transition whose expected card bytes are stale (ReconciliationConflictError 'stale card bytes'), runs no card effect, and audits the refusal once."
+    },
+    {
+      "id": "failed-sweeper",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: failed-sweeper",
+      "proof": "P4",
+      "summary": "The real runSweeper turns a failed snapshot read into exactly one dashboard-supervisor escalation whose idempotency key is failure-stable across fires yet distinct per subject."
+    },
+    {
+      "id": "mirror-watermark-races",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: mirror-watermark-races",
+      "proof": "P4",
+      "summary": "Two mirror mutations around one open batch produce ordered watermarks; replay opens no second PR."
+    },
+    {
+      "id": "attempted-run-gate-injection",
+      "suite": "server/testFixtures/p4FixtureRemoteLifecycle.test.ts",
+      "title": "refuses: attempted-run-gate-injection",
+      "proof": "P4",
+      "summary": "The real Inbox projector (projectEscalationSubjects + projectP4Inbox) drops a run/next-fire/snooze card entirely and admits only the wake-me escalation subject; no run-gate field reaches an Inbox item."
+    }
+  ]
+}

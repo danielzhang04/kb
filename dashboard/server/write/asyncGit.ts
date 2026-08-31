@@ -68,12 +68,52 @@ export interface AsyncPrRequest {
   head: string;
   title: string;
   body?: string;
+  /** The composition-time repository pin [P4-C35]; becomes `gh --repo <owner>/<repo>`. */
+  repo?: { readonly owner: string; readonly repo: string };
 }
 
-/** Honest metadata returned by a PR opener when the provider reports it. */
+/**
+ * The COMPLETE git subcommand table the one durable publisher may issue [P4-C21].
+ * `write/branch.ts#routeDurable` wraps its injected runner so anything outside this list throws before
+ * a child is spawned. W2 adds `fetch` and `merge-base`: the publisher verifies the retire's merge proof
+ * itself (`fetch origin main` + `merge-base --is-ancestor <mergeCommit> origin/main`) instead of
+ * trusting a caller's `merged: true`. `ls-files` and `show` are the post-`add` staged-object reads
+ * (link mode, record bytes). Nothing here can remove a worktree, move a ref, or reach `gh`.
+ */
+export const PUBLISHER_PERMITTED_SUBCOMMANDS: readonly string[] = [
+  'rev-parse', 'diff', 'add', 'commit', 'push', 'reset', 'ls-files', 'show', 'fetch', 'merge-base',
+];
+
+/**
+ * Honest metadata returned by a PR opener when the provider reports it.
+ *
+ * P4 §3.2 pins this to `{owner,repo,number,url}`, all required [P4-C16, P4-C32]. W2 widened it additively
+ * (adding optional `owner`/`repo`); W6.1 makes all four required across every consumer, so a PR receipt
+ * is either the complete pinned quadruple or absent — never a half-known PR. `parsePrCreateOutput`
+ * returns `null` on a malformed `gh` output, and `write/branch.ts#routeDurable` treats that as failure.
+ * This shape is now identical to {@link import('./durableManifest.ts').PinnedAsyncPrResult}.
+ */
 export interface AsyncPrResult {
-  url?: string;
-  number?: number;
+  url: string;
+  number: number;
+  owner: string;
+  repo: string;
+}
+
+/**
+ * Parse `gh pr create` output into the pinned PR identity. The ONLY accepted shape is a GitHub PR URL
+ * — `https://github.com/<owner>/<repo>/pull/<number>` — from which owner, repo, and number are all
+ * derived together. Any other line, a non-GitHub host, or a missing number yields `null`, which the
+ * publisher treats as failure; no field is ever guessed from a request or from subject text.
+ */
+export function parsePrCreateOutput(output: string): AsyncPrResult | null {
+  const line = output.split(/\r?\n/).map((row) => row.trim()).find((row) => /^https:\/\//.test(row));
+  if (!line) return null;
+  const match = /^https:\/\/github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/pull\/(\d+)$/.exec(line);
+  if (!match) return null;
+  const number = Number(match[3]);
+  if (!Number.isInteger(number) || number <= 0) return null;
+  return { url: line, number, owner: match[1]!, repo: match[2]! };
 }
 
 /** Opens a PR (a distinct capability from {@link OpsGitRunner}). Widened to allow a `Promise`. */
@@ -344,10 +384,11 @@ export function createAsyncPrOpener(options: AsyncGitOptions = {}): AsyncPrOpene
       throw new Error('gh pr create invoked outside withOpsTransaction — wrap the whole durable-save span');
     }
     const args = ['pr', 'create', '--base', req.base, '--head', req.head, '--title', req.title];
+    // Pin the invocation to the composition-time repository: a `gh` that resolves a fork or a mis-set
+    // `remote.origin.url` must not be able to open this PR against a different repository.
+    if (req.repo) args.push('--repo', `${req.repo.owner}/${req.repo.repo}`);
     if (req.body) args.push('--body', req.body);
     const output = await runTrackedProcess('gh', args, repoRoot, 'pr create', options);
-    const url = output.trim().split(/\r?\n/).find((line) => /^https:\/\//.test(line.trim()))?.trim();
-    const number = url ? /\/pull\/(\d+)(?:$|[?#])/.exec(url)?.[1] : undefined;
-    return { ...(url ? { url } : {}), ...(number ? { number: Number(number) } : {}) };
+    return parsePrCreateOutput(output) ?? undefined;
   };
 }

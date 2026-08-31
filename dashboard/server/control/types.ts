@@ -15,6 +15,7 @@ import type {
 import type { IterationOutcome } from './iterationOutcome.ts';
 import type { DeploymentState } from './deploymentState.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
+import type { AttemptSessionPublicRow, RunIdentityFields } from './p2Contracts.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -151,6 +152,50 @@ export interface TransitionDeploymentInput {
   patch: DeploymentTransitionPatch;
 }
 
+// Dashboard v3 P5 §3.2 — the movement:256 AssetPullIntent record, ADDITIVE on the SAME versioned
+// control document (no schema bump, no migration): a pre-P5 document simply lacks the collection and
+// reads as empty [P5-C34]. The record fields are movement:256 verbatim.
+export type AssetPullState = 'pending' | 'in-flight' | 'succeeded' | 'failed' | 'offline';
+export type AssetPullErrorCode = 'unavailable' | 'timeout' | 'digest-mismatch' | 'refused' | 'invalid';
+
+export interface AssetPullResult {
+  outcome: 'succeeded' | 'failed';
+  receiptAt: string;
+  errorCode: AssetPullErrorCode | null;
+}
+
+export interface AssetPullIntent {
+  intentRef: string;
+  runRef: string;
+  manifestDigest: string;
+  state: AssetPullState;
+  requestedAt: string;
+  attempts: number;
+  result: AssetPullResult | null;
+}
+
+export interface CreateAssetPullIntentInput {
+  intentRef: string;
+  runRef: string;
+  manifestDigest: string;
+  requestedAt: string;
+  idempotencyKey: string;
+}
+
+/**
+ * A single asset-pull CAS: pinned to the exact `(expectedState, expectedAttempts)` the caller read, so
+ * a stale dispatch or settlement conflicts with no side effect. `attemptsDelta` is `1` for a dispatch
+ * (Pull/Retry) and `0` for a settlement; `result` accompanies a terminal or offline settlement.
+ */
+export interface UpdateAssetPullIntentInput {
+  expectedState: AssetPullState;
+  expectedAttempts: number;
+  nextState: AssetPullState;
+  attemptsDelta: 0 | 1;
+  result: AssetPullResult | null;
+  idempotencyKey: string;
+}
+
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);
@@ -164,7 +209,7 @@ export interface AgentWorkspaceLaunchProvenance {
   declarationHash: string;
 }
 
-export interface Run {
+export interface Run extends RunIdentityFields {
   runRef: string;
   predecessorRunRef: string | null;
   title: string;
@@ -612,6 +657,16 @@ export interface IterationLoopDto extends Omit<IterationLoop, 'unresolvedResidue
 export interface RunDetailDto extends Omit<RunDetail, 'run' | 'iterationLoops'> {
   run: RunDto;
   iterationLoops: IterationLoopDto[];
+  /**
+   * [C-M4] The Run console contract, all three fields REQUIRED so no surface has to guess from an
+   * absent key. `sessionId` is the SERVER's selection among `attemptSessions` (see
+   * `runProjection.ts#projectAttemptSessions`) and is `null` — never absent — when this run has no
+   * session to open; `attemptSessions` is every attempt session in binding order, empty for a
+   * transcript run.
+   */
+  streamKind: 'pty' | 'transcript';
+  sessionId: string | null;
+  attemptSessions: AttemptSessionPublicRow[];
 }
 
 export interface StorageInventoryItem {

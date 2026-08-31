@@ -5,10 +5,16 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defaultPyRunner } from '../write/launch.ts';
-import {
-  CANONICAL_RESULT_CARD_SCRIPT,
-  CANONICAL_RESULT_VERIFY_SCRIPT,
-} from './canonicalResultIntegrator.ts';
+import { CARD_RESPOND_SCRIPT } from '../write/cardRespond.ts';
+import { CANONICAL_RESULT_VERIFY_SCRIPT } from './canonicalResultIntegrator.ts';
+
+// The canonical card mutation is no longer a `cards.py` heredoc: the integrator validates in TypeScript
+// and PUBLISHES the walk as serial `card-transition` intents, whose `cards` port appends the fenced
+// Result via `CARD_RESPOND_SCRIPT`'s `append_section` then transitions the card. This file proves the
+// SURVIVING runtime contract: the TS-built Result block, appended by `CARD_RESPOND_SCRIPT`, is
+// BYTE-IDENTICAL to what `CANONICAL_RESULT_VERIFY_SCRIPT` re-proves from the committed ops card. The
+// writer-side validation (identity, fence balance, ambiguity, dependency-done, idempotent replay) now
+// lives in `canonicalResultIntegrator.test.ts`; the verifier-side defenses stay here.
 
 const roots: string[] = [];
 const cardsSource = fileURLToPath(new URL('../../../scripts/cards.py', import.meta.url));
@@ -51,8 +57,36 @@ const result = {
 };
 const operation = { cardRef: 'wf-runtime-stage', runRef: 'run-runtime', result };
 
+// The exact sorted-key compact serializer the integrator uses to build the Result block. It matches
+// Python's `json.dumps(..., sort_keys=True, separators=(",",":"), ensure_ascii=False)` — the byte
+// equality VERIFY asserts is the whole point of this file.
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
+}
+
+/** The Result block the integrator hands the `cards` port as `write.block` (section `Result`). */
+function resultBlock(wire: unknown): string {
+  return `\`\`\`kb.canonical-stage-result/v1\n${canonical(wire)}\n\`\`\``;
+}
+
 function run(root: string, script: string, value: Record<string, unknown> = operation) {
   return defaultPyRunner(root, script, JSON.stringify(value));
+}
+
+/** Run `CARD_RESPOND_SCRIPT` exactly as the reconciliation `cards` port does: append the block under the
+ *  `## <section>` heading, then take the single transition. `cardId` is the BARE id (the port strips the
+ *  path), so this mirrors `realPorts.ts`. */
+function respond(root: string, op: { section?: string; block?: string; transitions: string[] }) {
+  return defaultPyRunner(root, CARD_RESPOND_SCRIPT, JSON.stringify({
+    cardId: 'wf-runtime-stage',
+    section: op.section ?? null,
+    block: op.block ?? '',
+    transitions: op.transitions,
+    claimOwner: null,
+  }));
 }
 
 function commitCurrentQueue(root: string): string {
@@ -81,47 +115,32 @@ describe('canonical Result embedded Python runtime', () => {
     else expect(true).toBe(true);
   });
 
-  it.runIf(haveRuntime)('writes, replays, and verifies a result despite incidental Result text', () => {
+  it.runIf(haveRuntime)('the TS-built Result block, appended by the cards port, verifies byte-for-byte', () => {
     const root = runtimeRoot();
     const working = join(root, 'queue', 'working', 'wf-runtime-stage.md');
-    writeFileSync(working, cardText('working', [
-      '## Work order',
-      '',
-      'Explain why an old report mentioned `## Result` without adding that section.',
-      '',
-      '```markdown',
-      '## Result',
-      'This fenced example is inert.',
-      '```',
-    ].join('\n')));
+    writeFileSync(working, cardText('working', '## Work order\n\nProduce the report.'));
 
-    const first = run(root, CANONICAL_RESULT_CARD_SCRIPT);
-    expect(first.exitCode, first.stderr).toBe(0);
-    expect(JSON.parse(first.stdout)).toMatchObject({ changed: true });
+    // The publisher's `cards` port: append the Result block under `## Result`, then transition to `done`.
+    const mutated = respond(root, { section: 'Result', block: resultBlock(result), transitions: ['done'] });
+    expect(mutated.exitCode, mutated.stderr).toBe(0);
 
     const done = join(root, 'queue', 'done', 'wf-runtime-stage.md');
     expect(readFileSync(done, 'utf8')).toContain(result.summary);
+    expect(existsSync(working)).toBe(false);
 
-    const replay = run(root, CANONICAL_RESULT_CARD_SCRIPT);
-    expect(replay.exitCode, replay.stderr).toBe(0);
-    expect(JSON.parse(replay.stdout)).toMatchObject({ changed: false });
-
+    // Re-read from the working tree...
     const verified = run(root, CANONICAL_RESULT_VERIFY_SCRIPT);
     expect(verified.exitCode, verified.stderr).toBe(0);
 
+    // ...and from an immutable ops commit, exactly as the integrator's `verifyCanonical` does.
     const publishedCommit = commitCurrentQueue(root);
-    const published = run(root, CANONICAL_RESULT_VERIFY_SCRIPT, {
-      ...operation,
-      gitCommit: publishedCommit,
-    });
+    const published = run(root, CANONICAL_RESULT_VERIFY_SCRIPT, { ...operation, gitCommit: publishedCommit });
     expect(published.exitCode, published.stderr).toBe(0);
 
+    // The pin holds against later mutable edits: the committed bytes are what matters.
     writeFileSync(done, readFileSync(done, 'utf8').replace(result.summary, 'newer mutable summary'));
     commitCurrentQueue(root);
-    const pinned = run(root, CANONICAL_RESULT_VERIFY_SCRIPT, {
-      ...operation,
-      gitCommit: publishedCommit,
-    });
+    const pinned = run(root, CANONICAL_RESULT_VERIFY_SCRIPT, { ...operation, gitCommit: publishedCommit });
     expect(pinned.exitCode, pinned.stderr).toBe(0);
   });
 
@@ -131,56 +150,43 @@ describe('canonical Result embedded Python runtime', () => {
     writeFileSync(working, cardText('working', '## Work order\n\nProduce the report.'));
     const publishedCommit = commitCurrentQueue(root);
 
-    expect(run(root, CANONICAL_RESULT_CARD_SCRIPT).exitCode).toBe(0);
-    const verified = run(root, CANONICAL_RESULT_VERIFY_SCRIPT, {
-      ...operation,
-      gitCommit: publishedCommit,
-    });
+    // Mutate to `done` locally but do NOT commit that move — the pinned commit still holds the working card.
+    expect(respond(root, { section: 'Result', block: resultBlock(result), transitions: ['done'] }).exitCode).toBe(0);
+    const verified = run(root, CANONICAL_RESULT_VERIFY_SCRIPT, { ...operation, gitCommit: publishedCommit });
     expect(verified.exitCode).not.toBe(0);
     expect(verified.stderr).toContain('published canonical result card is missing or ambiguous');
   });
 
-  it.runIf(haveRuntime)('rejects an unbalanced existing fence before changing the card', () => {
+  it.runIf(haveRuntime)('the verifier rejects an unbalanced fence in the committed card', () => {
     const root = runtimeRoot();
-    const working = join(root, 'queue', 'working', 'wf-runtime-stage.md');
-    writeFileSync(working, cardText('working', [
+    writeFileSync(join(root, 'queue', 'done', 'wf-runtime-stage.md'), cardText('done', [
       '## Work order',
       '',
       '```markdown',
       'This fence never closes.',
     ].join('\n')));
-    const before = readFileSync(working);
-
-    const checked = run(root, CANONICAL_RESULT_CARD_SCRIPT);
-
+    const checked = run(root, CANONICAL_RESULT_VERIFY_SCRIPT);
     expect(checked.exitCode).not.toBe(0);
-    expect(checked.stderr).toContain('canonical card has unbalanced fenced content');
-    expect(readFileSync(working)).toEqual(before);
-    expect(existsSync(join(root, 'queue', 'done', 'wf-runtime-stage.md'))).toBe(false);
+    expect(checked.stderr).toContain('committed canonical result has unbalanced fenced content');
   });
 
-  it.runIf(haveRuntime)('rejects duplicate structural Result headings in writer and verifier', () => {
-    for (const state of ['working', 'done'] as const) {
-      const root = runtimeRoot();
-      const path = join(root, 'queue', state, 'wf-runtime-stage.md');
-      writeFileSync(path, cardText(state, [
-        '## Result',
-        '',
-        'first',
-        '',
-        '## Result',
-        '',
-        'second',
-      ].join('\n')));
-      const checked = run(root, state === 'working' ? CANONICAL_RESULT_CARD_SCRIPT : CANONICAL_RESULT_VERIFY_SCRIPT);
-      expect(checked.exitCode).not.toBe(0);
-      expect(checked.stderr).toContain(state === 'working'
-        ? 'canonical card has ambiguous Result sections'
-        : 'committed canonical Result section is missing or ambiguous');
-    }
+  it.runIf(haveRuntime)('the verifier rejects duplicate structural Result headings', () => {
+    const root = runtimeRoot();
+    writeFileSync(join(root, 'queue', 'done', 'wf-runtime-stage.md'), cardText('done', [
+      '## Result',
+      '',
+      'first',
+      '',
+      '## Result',
+      '',
+      'second',
+    ].join('\n')));
+    const checked = run(root, CANONICAL_RESULT_VERIFY_SCRIPT);
+    expect(checked.exitCode).not.toBe(0);
+    expect(checked.stderr).toContain('committed canonical Result section is missing or ambiguous');
   });
 
-  it.runIf(haveRuntime)('rejects incomplete, changed, or trailing canonical Result content', () => {
+  it.runIf(haveRuntime)('the verifier rejects incomplete, changed, or trailing canonical Result content', () => {
     const cases = [
       ['incomplete', '## Result\n\n```kb.canonical-stage-result/v1\n{}'],
       ['different payload', '## Result\n\n```kb.canonical-stage-result/v1\n{}\n```'],
@@ -188,7 +194,7 @@ describe('canonical Result embedded Python runtime', () => {
         '## Result',
         '',
         '```kb.canonical-stage-result/v1',
-        JSON.stringify(result, Object.keys(result).sort()),
+        canonical(result),
         '```',
         '',
         'unexpected',

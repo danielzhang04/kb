@@ -1,0 +1,30 @@
+# The ONLY listener in the WhoIs vertical: one AF_UNIX stream socket. kb-node-proxy connects; the shim
+# (kb-whois.service, running as root) is socket-activated and receives it as fd 3. There is deliberately
+# no TCP/IP listener anywhere in this vertical.
+#
+# /run/kb-whois ownership lives HERE, not on the service: the runtime directory must be
+# root:kb-node-proxy 0750 so kb-node-proxy can TRAVERSE to whois.sock while only root writes it. Without
+# Group=kb-node-proxy systemd would chown /run/kb-whois to root:root 0750, kb-node-proxy would lose the
+# traverse bit, and the 0660 socket inside it would be unreachable - the exact hazard
+# kb-shell-broker.socket solves with its own User/Group split. The frozen set below is
+# WHOIS_SOCKET_DIRECTIVES / _UNIT_SECTION / _INSTALL_SECTION in validate_vm_runtime.py.
+[Unit]
+Description=kb WhoIs shim socket
+PartOf=kb-whois.service
+
+[Socket]
+ListenStream=/run/kb-whois/whois.sock
+Accept=no
+SocketUser=root
+SocketGroup=kb-node-proxy
+SocketMode=0660
+DirectoryMode=0750
+User=root
+Group=kb-node-proxy
+RuntimeDirectory=kb-whois
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=restart
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

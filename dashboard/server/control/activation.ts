@@ -5,7 +5,7 @@
  * CORE INERT INVARIANT (design "Authorization boundary", plan D3), unchanged in shape: unless the daemon
  * is explicitly authorized, `buildActivatedExecution` returns `null` BEFORE touching any construction
  * factory. Nothing is imported eagerly that spawns; nothing is `new`-ed at module load. Locked, the
- * daemon behaves byte-for-byte as an unactivated one: no broker, no engine, no worker subprocess reachable.
+ * daemon behaves byte-for-byte as an unactivated one: no attempt port, no engine, no worker subprocess reachable.
  *
  * WHAT CHANGED (FYT gated-pipeline Task 4): there are now TWO authorizations, and the daemon boots with
  * neither unless the environment says otherwise.
@@ -17,7 +17,7 @@
  *      construction (a module-private brand): a shape-matching object from anywhere else fails
  *      `isExecutionUnlockGrant`, so no route, store value, or JSON body can conjure one.
  * State stays unlocked until the daemon restarts (natural re-lock: the grant and the wiring live only in
- * memory) or an operator calls Lock, which drains the broker and drops the wiring.
+ * memory) or an operator calls Lock, which drains the attempt port and drops the wiring.
  *
  * When the gate is on this wires, behind the gate, the already-built, already-reviewed control-plane
  * pieces into one `AutomaticExecutionEngine`:
@@ -33,14 +33,17 @@
  */
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { ManagedSessionBroker } from './broker.ts';
-import type { BrokerPersistence, ManagedSessionAdapter, ManagedStartSpec } from './broker.ts';
-import { createClaudeSessionAdapter, type ClaudeSessionLaunch } from './claudeSessionAdapter.ts';
-import { createCodexSessionAdapter } from './codexSessionAdapter.ts';
-import { createSubjectBrokerPersistence } from './brokerStore.ts';
+import { LINUX_ROOTS } from '../pty/fdPinnedPaths.ts';
+import { createAttemptSessionAdapter } from './attemptSessionAdapter.ts';
+import type {
+  AttemptBindingPort,
+  AttemptExecutionPort,
+  SessionHost,
+} from '../pty/contracts.ts';
 import { createGitWorktreeAdapter, createCuratedSkillResolver, createFileAccountingAdapter } from './adapters.ts';
 import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import { createAttemptToolPolicyIdResolver } from './claudeLaunchPolicy.ts';
 import { createCodexExecAdapter } from './codexExecAdapter.ts';
 import { createAgentSessionChainStore } from './agentSessionChains.ts';
 import { createAttemptIoStore, type AttemptIoStore } from './attemptIo.ts';
@@ -58,8 +61,9 @@ import {
   canonicalResultOperationKey,
 } from './execution.ts';
 import { loadPolicyEnvironment } from './environment.ts';
-import type { ExecutionProfile, PolicyEnvironment } from './policy.ts';
+import type { PolicyEnvironment } from './policy.ts';
 import type { ControlPlaneStore } from './store.ts';
+import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import {
   createBrokerCancellationController,
   createBrokerManagerAdapter,
@@ -77,7 +81,7 @@ import { resolveDaemonPublicOrigin } from '../security/origin.ts';
 
 export class ActivationError extends Error {}
 
-/** The single dashboard executor identity (D1): card owner, broker subject, ledger agent, run subject. */
+/** The single dashboard executor identity (D1): card owner, attempt subject, ledger agent, run subject. */
 export const DASHBOARD_EXECUTOR_SUBJECT = 'dashboard-engine';
 
 /**
@@ -207,7 +211,13 @@ export interface ActivationEngine {
 }
 
 export interface ActivatedExecution {
-  controlBroker: ManagedSessionBroker;
+  /**
+   * The one real attempt-execution authority. Every governed Run attempt starts through this port on
+   * the platform `SessionHost`; there is no separate manager-process supervisor. `null` when the
+   * daemon has no usable PTY host or attempt-binding store, in which case no attempt can start and
+   * every control route observes the same not-running refusals it always did.
+   */
+  attemptPort: AttemptExecutionPort | null;
   /** Redacted, capped per-attempt JSONL transcript store for live reads and future bus wiring. */
   attemptIo: AttemptIoStore;
   /** Headless worker operator-message delivery; Claude may accept a live frame, Codex always queues. */
@@ -233,10 +243,7 @@ export interface ActivatedExecution {
 export interface ActivationDeps {
   loadPolicy(repoRoot: string, project: string, refs: string[]): PolicyEnvironment;
   resolveBaseCommit(repoRoot: string): string;
-  createSessionAdapter: typeof createClaudeSessionAdapter;
-  createCodexSessionAdapter: typeof createCodexSessionAdapter;
-  createBrokerPersistence: typeof createSubjectBrokerPersistence;
-  createBroker(adapter: ManagedSessionAdapter, persistence: BrokerPersistence): ManagedSessionBroker;
+  createAttemptPort: typeof createAttemptSessionAdapter;
   createWorktrees: typeof createGitWorktreeAdapter;
   createSkills: typeof createCuratedSkillResolver;
   createAccounting: typeof createFileAccountingAdapter;
@@ -289,24 +296,46 @@ export interface BuildActivatedExecutionOptions {
   attemptBudget?: ExecutionBudget;
   maxConcurrency?: number;
   /**
-   * Manager-session launch resolver. Dormant under D3(b) (no manager broker session is started), so the
-   * default is fail-closed: any unexpected managed-session spawn throws rather than launching an
-   * unconfigured `claude`. Supply a real resolver only when adopting the D3(b→a) broker-backed manager.
+   * The one platform PTY host and the attempt-binding store that owns `kb.pty-sessions/v2`. Both come
+   * from the surface, which already probed the host and opened the document. With either absent the
+   * attempt port is `null` and no Run attempt can start — a real posture, not a fallback path.
    */
-  resolveLaunch?: (spec: ManagedStartSpec) => ClaudeSessionLaunch;
+  sessionHost?: SessionHost;
+  attemptBindings?: AttemptBindingPort;
   /**
    * Reads settled usage micro-dollars for one terminal stage attempt, for the fleet-ledger post-run seam.
    * Wave-A default (omitted) is 0 — the faithful subscription value (the worker reports $0 with no
    * ANTHROPIC_API_KEY). A future metered-billing wave supplies a reader here.
    */
   readUsageMicros?: (stageRef: string, attemptRef: string | null) => number;
+  /**
+   * The ONE server-owned reconciliation publisher, composed once in the surface over the same
+   * `controlStore`/ops ports. Threaded through to the canonical result integrator so its coordination
+   * phase publishes its card walk as serial `card-transition` intents instead of running its own
+   * `cards.py` mutation + git commit/push (P4 §3.4 [P4-C-R1]). Absent in headless/test construction that
+   * injects the executor directly; the integrator then fails closed if a canonical card walk is reached.
+   */
+  reconciliationPublisher?: ReconciliationPublisher;
   deps?: Partial<ActivationDeps>;
 }
 
-function managedProfile(profiles: readonly ExecutionProfile[], spec: ManagedStartSpec): ExecutionProfile {
-  const profile = profiles.find((candidate) => candidate.id === spec.profileId && candidate.role === spec.role);
-  if (!profile) throw new ActivationError(`managed session profile '${spec.profileId}' is unavailable`);
-  return profile;
+/**
+ * [C-S4] Where attempt worktrees live.
+ *
+ * On the VM this is `/var/lib/kb-shell/worktrees` — the ONE tree the dashboard and the `kb-shell`
+ * broker share through their common supplementary group, and the only writable path the broker unit
+ * grants (the `ReadWritePaths` set frozen in `BROKER_SYSTEMD_POLICY`). It is deliberately NOT under `<stateRoot>/control`:
+ * `/var/lib/kb/state` is `InaccessiblePaths` to the broker, so an attempt provisioned there could be
+ * written by the dashboard and then never read by the process actually running the work.
+ *
+ * `<stateRoot>/control/worktrees` is migration/cleanup-only after the cutover: recorded old attempts
+ * still finish or abandon out of it, but no NEW attempt is provisioned there, and its removal is a
+ * separate human-reviewed step. Windows is unaffected and keeps the state-root tree.
+ */
+export function defaultWorktreeRoot(stateRoot: string, env: Record<string, string | undefined>): string {
+  return (env.DASHBOARD_HOST_PLATFORM ?? process.platform) === 'linux'
+    ? LINUX_ROOTS.worktrees
+    : join(stateRoot, 'control', 'worktrees');
 }
 
 function defaultResolveBaseCommit(repoRoot: string): string {
@@ -319,10 +348,7 @@ function defaultDeps(): ActivationDeps {
   return {
     loadPolicy: loadPolicyEnvironment,
     resolveBaseCommit: defaultResolveBaseCommit,
-    createSessionAdapter: createClaudeSessionAdapter,
-    createCodexSessionAdapter,
-    createBrokerPersistence: createSubjectBrokerPersistence,
-    createBroker: (adapter, persistence) => new ManagedSessionBroker(adapter, persistence),
+    createAttemptPort: createAttemptSessionAdapter,
     createWorktrees: createGitWorktreeAdapter,
     createSkills: createCuratedSkillResolver,
     createAccounting: createFileAccountingAdapter,
@@ -373,12 +399,11 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   if (!isExecutionActivated(env) && !isExecutionUnlockGrant(options.unlockGrant, options.now)) return null;
 
   const deps = { ...defaultDeps(), ...options.deps };
-  const subject = options.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
   const project = options.project ?? DEFAULT_POLICY_PROJECT;
   const refs = options.governanceRefs ?? [...DEFAULT_GOVERNANCE_REFS, `orgs/${project}/contract.md`];
   const stateRoot = options.stateRoot;
   const repoRoot = options.repoRoot;
-  const worktreeRoot = options.worktreeRoot ?? join(stateRoot, 'control', 'worktrees');
+  const worktreeRoot = options.worktreeRoot ?? defaultWorktreeRoot(stateRoot, env);
   const integrationRoot = options.integrationRoot ?? join(stateRoot, 'control', 'integration');
   const budget = options.budget ?? DEFAULT_BUDGET;
   const attemptBudget = options.attemptBudget ?? DEFAULT_ATTEMPT_BUDGET;
@@ -394,54 +419,6 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
   const sessionChains = deps.createSessionChains(stateRoot);
   const attemptIo = deps.createAttemptIo({ root: join(stateRoot, 'control', 'attempt-io') });
-
-  const resolveManagedLaunch = (spec: ManagedStartSpec): ClaudeSessionLaunch => {
-    const profile = managedProfile(policy.profiles, spec);
-    const resolved = options.resolveLaunch?.(spec) ?? {
-      cwd: repoRoot,
-      model: profile.model,
-      allowedTools: ['Read'],
-      permissionMode: 'default',
-    };
-    return { ...resolved, model: profile.model };
-  };
-  const claudeSessions = deps.createSessionAdapter({
-    resolveLaunch: (spec) => {
-      const profile = managedProfile(policy.profiles, spec);
-      if (profile.runtime !== 'claude') throw new ActivationError('Codex managed session reached the Claude adapter');
-      return resolveManagedLaunch(spec);
-    },
-  });
-  const codexSessions = deps.createCodexSessionAdapter({
-    resolveLaunch: (spec) => {
-      const profile = managedProfile(policy.profiles, spec);
-      if (profile.runtime !== 'codex') throw new ActivationError('Claude managed session reached the Codex adapter');
-      const launch = resolveManagedLaunch(spec);
-      return { cwd: launch.cwd, model: profile.model };
-    },
-    resolveThread: (spec) => {
-      const entry = sessionChains.get(spec.runRef, spec.sessionRef);
-      if (!entry) return null;
-      if (entry.runtime !== 'codex') throw new ActivationError('managed session chain runtime differs from its profile');
-      return entry.sessionId;
-    },
-    recordThread: (spec, threadId) => sessionChains.record(
-      spec.runRef, spec.sessionRef, { runtime: 'codex', sessionId: threadId },
-    ),
-  });
-  const sessionAdapter: ManagedSessionAdapter = {
-    start(spec, observer) {
-      const profile = managedProfile(policy.profiles, spec);
-      return profile.runtime === 'codex'
-        ? codexSessions.start(spec, observer)
-        : claudeSessions.start(spec, observer);
-    },
-  };
-
-  const broker = deps.createBroker(
-    sessionAdapter,
-    deps.createBrokerPersistence(options.controlStore, subject),
-  );
 
   // C2 production on-switch (env-gated, default OFF). `DASHBOARD_SPARSE_READSCOPE === '1'` turns the git
   // worktree adapter's sparse-checkout provisioning on; any other value (incl. unset) keeps the full
@@ -479,6 +456,11 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     worktreeRoot,
     stateRoot,
     baseCommit,
+    // The canonical coordination phase publishes its card walk through the ONE reconciliation publisher
+    // (P4 §3.4). `readStoreRevision` pins each intent's `expectedStoreRevision` off the SAME control store
+    // the surface composed that publisher over, so the publisher's freshness gate never sees a stale value.
+    reconciliationPublisher: options.reconciliationPublisher,
+    readStoreRevision: () => String(options.controlStore.getControlDocumentMetadata().documentRevision),
   });
 
   const registry = deps.createRegistry();
@@ -488,48 +470,54 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     if (entry.runtime !== runtime) throw new ActivationError('worker session chain runtime differs from its profile');
     return entry.sessionId;
   };
-  const claudeWorkers = deps.createWorkers({
-    resolveToolPolicy: deps.createToolPolicyResolver(),
-    registerCancellation: registry.register,
-    deregisterCancellation: registry.clear,
-    // C3: the canonical repo root, so `buildReadScopeSettings` emits the `//`-absolute deny companion.
-    // (Read denies are non-functional on CLI 2.1.217 in -p mode — see claudeWorkerAdapter.ts — so this is
-    // dormant future-proofing; the seam is wired for a CLI that honors them.)
-    repoRoot,
-    resolveSession: (runRef, agentId) => resolveChain('claude', runRef, agentId),
-    recordSession: (runRef, agentId, sessionId) => sessionChains.record(
-      runRef, agentId, { runtime: 'claude', sessionId },
-    ),
-    drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
-    attemptIo,
-  });
-  const codexWorkers = deps.createCodexWorkers({
-    resolveThread: (runRef, agentId) => resolveChain('codex', runRef, agentId),
-    recordThread: (runRef, agentId, threadId) => sessionChains.record(
-      runRef, agentId, { runtime: 'codex', sessionId: threadId },
-    ),
-    drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
-    attemptIo,
-  });
+  // The real attempt authority. It owns the two-phase start (host create -> durable receipt -> result
+  // projection) and the session-chain store both runtime adapters resolve resume refs from, so a resumed
+  // attempt reuses the recorded provider session. With no host or binding store it is `null`: no attempt
+  // can start, and both adapters refuse before any declaration reaches a port.
+  const attemptPort: AttemptExecutionPort | null = options.sessionHost && options.attemptBindings
+    ? deps.createAttemptPort({
+      host: options.sessionHost,
+      bindings: options.attemptBindings,
+      resolveClaudePolicy: deps.createToolPolicyResolver(),
+      // The recipe carries the tool cap only by NAME; this proves the broker's recipe table reproduces
+      // the policy the dashboard just computed before that name is allowed onto a declaration ([C-S2]).
+      resolveClaudePolicyId: createAttemptToolPolicyIdResolver(deps.createToolPolicyResolver()),
+      repoRoot,
+      resolveResumeRef: (runtime, runRef, agentId) => resolveChain(runtime, runRef, agentId),
+      recordResumeRef: (runtime, runRef, agentId, resumeRef) => sessionChains.record(
+        runRef, agentId, { runtime, sessionId: resumeRef },
+      ),
+      // The write side of the durable per-attempt IO log the `attempt-io` route and the hub signal read.
+      attemptIo,
+      // The delivery half of `agentMessages.deliver`'s `queued` answer.
+      drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
+    })
+    : null;
+  const claudeWorkers = deps.createWorkers({ attemptPort, worktreeRoot });
+  const codexWorkers = deps.createCodexWorkers({ attemptPort, worktreeRoot });
   const agentMessages: ActivatedExecution['agentMessages'] = {
     async deliver(input) {
       if (input.runtime === 'claude' && claudeWorkers.postMessage(input.runRef, input.agentId, input.message)) {
         return 'live';
       }
+      // `queued` is a PROMISE that the next attempt for this (run, agent) will read the message. Only the
+      // attempt port drains the chain, so with no port activated there is no drain path and the honest
+      // answer is a refusal, never a durable write nothing will ever pick up.
+      if (attemptPort === null) throw new ActivationError('no attempt execution port can deliver a queued operator message');
       await sessionChains.queueMessage(input.runRef, input.agentId, input.message);
       return 'queued';
     },
   };
   const workers: WorkerAdapter = {
-    execute(input) {
+    begin(input) {
       return input.profile.runtime === 'codex'
-        ? codexWorkers.execute(input)
-        : claudeWorkers.execute(input);
+        ? codexWorkers.begin(input)
+        : claudeWorkers.begin(input);
     },
   };
 
-  const managers = deps.createManagers({ broker });
-  const cancellation = deps.createCancellation({ broker, registry });
+  const managers = deps.createManagers();
+  const cancellation = deps.createCancellation({ attemptPort, registry });
 
   // FYT paid-action wiring (Units D1/D3), constructed ONLY here — behind the gate — with the other
   // activated-execution singletons. One paid-action journal + grant store at `stateRoot/control`; the
@@ -610,7 +598,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   };
 
   return {
-    controlBroker: broker,
+    attemptPort,
     attemptIo,
     agentMessages,
     paidActionService: paid.paidActionService,
@@ -752,7 +740,11 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
     lock() {
       if (!execution) return state;
       try {
-        execution.controlBroker.drain();
+        // Draining is fire-and-forget in a synchronous lock: the latch must drop the wiring now, and a
+        // child that outlives the drain is reconciled by epoch abandonment on the next boot. The
+        // `.catch` is not optional — a synchronous `try` never sees a rejected drain, and an unhandled
+        // rejection during a fail-safe lock would take the daemon down with it.
+        void execution.attemptPort?.drain().catch(() => { /* best-effort: locking is a fail-safe direction */ });
       } catch {
         /* best-effort: locking is a fail-safe direction */
       }

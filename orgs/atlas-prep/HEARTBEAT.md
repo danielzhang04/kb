@@ -8,6 +8,7 @@ cadences:
   - name: research-draft-gate
     schedule: weekly
     tier: cloud
+    agent: dispatcher-cloud
     risk-tier: T2
     prompt: |
       1. Read orgs/atlas-prep/STATE.md and raw/ for the next queued research target.

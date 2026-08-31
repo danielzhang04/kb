@@ -15,10 +15,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
+import { loadWorkflowCompileEnvironment } from '../control/environment.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
 import { readDeclaredAgents } from '../agents/roster.ts';
 import { createInMemoryAssignmentAmendmentStore } from './amendmentStore.ts';
-import { registerWorkflows } from './routes.ts';
+import { compileWorkflowDef } from './compile.ts';
+import { registerWorkflows, scanWorkflowDefs } from './routes.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const SESSION_SECRET = Buffer.from('fyt-registration-test-secret-32bytes');
@@ -143,22 +145,30 @@ describe('checked-out FYT video-run registry acceptance', () => {
     try {
       const listed = await app.inject({ method: 'GET', url: '/api/workflows' });
       expect(listed.statusCode).toBe(200);
-      const item = (listed.json().items as Array<Record<string, unknown>>).find((entry) => entry.ref === 'video-run');
+      const item = (listed.json().items as Array<Record<string, unknown>>).find((entry) =>
+        (entry.ref as { id?: string } | undefined)?.id === 'video-run');
       expect(item).toMatchObject({
+        ref: {
+          type: 'workflow', id: 'video-run', project: 'faceless-youtube',
+          sourcePath: 'orgs/faceless-youtube/workflows/video-run.md',
+        },
+        humanName: 'Video Run', modelLabel: 'varies',
+      });
+
+      const scanned = scanWorkflowDefs(REPO_ROOT).find((entry) => entry.entry.ref === 'video-run');
+      expect(scanned?.entry).toMatchObject({
         ref: 'video-run',
         project: 'faceless-youtube',
         path: 'orgs/faceless-youtube/workflows/video-run.md',
         valid: true,
-        launchable: true,
         profile: 'producer',
         governedBy: GOVERNANCE.workflow,
         governanceProblems: [],
         stageCount: STAGE_IDS.length,
         parameters: ['channel', 'slug', 'slice'],
         manager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
-        pendingAmendment: null,
       });
-      const listedStages = item?.stages as Array<Record<string, unknown>>;
+      const listedStages = scanned?.entry.stages ?? [];
       expect(listedStages.map((stage) => stage.id)).toEqual(STAGE_IDS);
       // `governedBy` is retained for display continuity only; `declaredAssignment` is what executes.
       expect(Object.fromEntries(listedStages.map((stage) => [stage.id, stage.governedBy]))).toEqual(GOVERNANCE.stages);
@@ -181,46 +191,49 @@ describe('checked-out FYT video-run registry acceptance', () => {
 
       const detail = await app.inject({ method: 'GET', url: '/api/workflows/video-run' });
       expect(detail.statusCode).toBe(200);
-      const body = detail.json() as {
-        definition: {
-          profile: string; governedBy?: string; parameters: string[];
-          manager?: { agentId: string; profileId: string };
-          stages: Array<{ id: string; governedBy?: string; agentId?: string; profileId?: string; humanGates?: unknown }>;
-        };
-        compiled: {
-          ok: boolean; manager: Record<string, unknown>;
-          stages: Array<{ id: string; assignment?: Record<string, unknown>; humanGates: Array<Record<string, unknown>> }>;
-        };
+      const detailBody = detail.json() as {
+        summary: { ref: { id: string; sourcePath: string } };
+        details: { workflow: { stepDag: { nodes: Array<{ stageRef: string }> } } };
       };
-      expect(body.definition).toMatchObject({
+      expect(detailBody.summary.ref).toEqual({
+        type: 'workflow', id: 'video-run', project: 'faceless-youtube',
+        sourcePath: 'orgs/faceless-youtube/workflows/video-run.md',
+      });
+      expect(detailBody.details.workflow.stepDag.nodes.map((node) => node.stageRef)).toEqual(STAGE_IDS);
+
+      expect(scanned?.def).toMatchObject({
         profile: 'producer', governedBy: GOVERNANCE.workflow, parameters: ['channel', 'slug', 'slice'],
         manager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
       });
-      expect(body.definition.stages).toHaveLength(STAGE_IDS.length);
-      expect(body.compiled.ok).toBe(true);
-      expect(body.compiled.stages).toHaveLength(STAGE_IDS.length);
-      expect(body.compiled.manager).toMatchObject({
+      expect(scanned?.def?.stages).toHaveLength(STAGE_IDS.length);
+      if (!scanned?.def) throw new Error('video-run definition did not scan');
+      const compilation = compileWorkflowDef(scanned.def, loadWorkflowCompileEnvironment(REPO_ROOT));
+      expect(compilation.ok).toBe(true);
+      if (!compilation.ok) throw new Error(compilation.detail);
+      const compiled = compilation.value;
+      expect(compiled.stages).toHaveLength(STAGE_IDS.length);
+      expect(compiled.manager).toMatchObject({
         runtime: 'claude', model: 'claude-fable-5',
         assignment: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-fable-5' },
       });
       // Every stage resolves to an immutable declaration binding, on Fable 5, through a worker profile —
       // including the two merge nodes, both bound to `fyt-checker` (see the ASSIGNMENTS note).
-      expect(body.compiled.stages.map((stage) => [stage.id, stage.assignment?.agentId, stage.assignment?.profileId])).toEqual(
+      expect(compiled.stages.map((stage) => [stage.id, stage.assignment?.agentId, stage.assignment?.profileId])).toEqual(
         STAGE_IDS.map((id) => (ASSIGNMENTS[id] ? [id, ASSIGNMENTS[id], WORKER_PROFILE] : [id, undefined, undefined])),
       );
-      expect(body.compiled.stages.filter((stage) => stage.assignment)
+      expect(compiled.stages.filter((stage) => stage.assignment)
         .every((stage) => stage.assignment?.model === 'claude-fable-5')).toBe(true);
-      expect(body.compiled.stages.filter((stage) => !stage.assignment).map((stage) => stage.id))
+      expect(compiled.stages.filter((stage) => !stage.assignment).map((stage) => stage.id))
         .toEqual(UNBOUND_STAGE_IDS);
 
       // The gates: at the spec's positions, all approval-kind, all threaded through the compiler
       // (a hardcoded `humanGates: []` would make every one of these assertions fail).
       expect(Object.fromEntries(
-        body.compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => [stage.id, stage.humanGates]),
+        compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => [stage.id, stage.humanGates]),
       )).toEqual(Object.fromEntries(Object.entries(GATES).map(([stageId, gateIds]) => [stageId, gateIds.map((gateId) => expect.objectContaining({
         id: gateId, kind: 'approval', prompt: expect.any(String),
       }))])));
-      expect(body.compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => stage.id))
+      expect(compiled.stages.filter((stage) => stage.humanGates.length > 0).map((stage) => stage.id))
         .toEqual(STAGE_IDS.filter((id) => id in GATES));
 
       // EVERY paid stage carries its own recorded cost authorization, and only paid stages do. G2 is the
@@ -228,12 +241,12 @@ describe('checked-out FYT video-run registry acceptance', () => {
       // authorizes cost PER STAGE, so a targeted single-stage re-run of narration would otherwise call a
       // paid API with no authorization recorded against the stage that called it. Approving G0/G1/G3/G4
       // must still never read as a cost authorization.
-      const spendGates = body.compiled.stages.flatMap((stage) => stage.humanGates
+      const spendGates = compiled.stages.flatMap((stage) => stage.humanGates
         .filter((gate) => gate.spendAuthorization === true)
         .map((gate) => `${stage.id}:${gate.id}`));
       expect(spendGates).toEqual(SPEND_GATES);
       const spendGateIds = new Set(SPEND_GATES.map((entry) => entry.split(':')[1]));
-      expect(body.compiled.stages.flatMap((stage) => stage.humanGates)
+      expect(compiled.stages.flatMap((stage) => stage.humanGates)
         .filter((gate) => !spendGateIds.has(gate.id as string))
         .every((gate) => gate.spendAuthorization === undefined)).toBe(true);
     } finally {

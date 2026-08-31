@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 
 export type PolicyDisposition = 'allow' | 'waiting-human' | 'refuse';
 
@@ -118,12 +118,12 @@ function within(path: string, prefixes: string[]): boolean {
 
 function policyDigest(request: PolicyRequest, environment: PolicyEnvironment): string {
   const referenced = [...new Set(request.governanceRefs)].sort().map((ref) => [ref, environment.governanceContents[ref] ?? null]);
-  return createHash('sha256').update(JSON.stringify({
+  return sha256Hex(JSON.stringify({
     contractText: environment.contractText,
     profiles: environment.profiles,
     referenced,
     scope: request.scope,
-  })).digest('hex');
+  }));
 }
 
 export type ActionRiskClassification =

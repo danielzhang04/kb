@@ -105,6 +105,8 @@ function seedRunWithAttemptAndSession(store: ControlPlaneStore): { runRef: strin
   });
   if (!approved.ok) throw new Error(approved.detail);
   const run = store.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: 'Deployment inventory run',
     proposalRef: approved.value.proposalRef,
     proposalRevision: approved.value.revision,

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
 import { createExistingRootFileStoreHarnessForTest } from './test-fixtures/controlStore.ts';
 import type { JsonObject } from './types.ts';
@@ -21,6 +21,7 @@ import {
   type ManagerAdapter,
   type ResultIntegrator,
   type WorkerAdapter,
+  type WorkerExecutionResult,
   type WorktreeAdapter,
 } from './execution.ts';
 
@@ -100,6 +101,8 @@ function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runR
   });
   expect(approved.ok).toBe(true);
   const run = store.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
     title: plan.title,
     proposalRef: createdProposal.value.proposalRef,
     proposalRevision: 1,
@@ -133,7 +136,7 @@ interface Fakes {
   worktrees: WorktreeAdapter;
   managers: ManagerAdapter;
   accounting: AccountingAdapter;
-  workers: WorkerAdapter;
+  workers: FakeWorker;
   results: ResultIntegrator;
   cancellation: ExecutionCancellationController;
   executionOrder: string[];
@@ -145,7 +148,29 @@ interface Fakes {
   reservationLimits: ExecutionBudget[];
 }
 
-function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapter } = {}): Fakes {
+/**
+ * The engine now drives a two-phase `WorkerAdapter.begin` ([C-S5]); these fakes keep the one-shot
+ * `execute` shape and `workerAdapter` lifts it into a launch whose receipt resolves before the result,
+ * so every pre-existing case still exercises the same worker behaviour through the new port shape.
+ */
+export type WorkerExecuteInput = Parameters<WorkerAdapter['begin']>[0];
+interface FakeWorker { execute(input: WorkerExecuteInput): Promise<WorkerExecutionResult> }
+function workerAdapter(worker: FakeWorker): WorkerAdapter {
+  return {
+    begin(input) {
+      const receipt = Promise.resolve({
+        ok: true as const,
+        value: {
+          operationKey: input.operationKey, sessionId: `session-${input.attemptRef}`,
+          attemptRef: input.attemptRef, revision: 1, boundAt: new Date(0).toISOString(), replayed: false,
+        },
+      });
+      return { receipt, result: receipt.then(() => worker.execute(input)) };
+    },
+  };
+}
+
+function fakes(overrides: { worker?: FakeWorker; accounting?: AccountingAdapter } = {}): Fakes {
   const executionOrder: string[] = [];
   const integrationOrder: string[] = [];
   const worktreePaths: string[] = [];
@@ -171,7 +196,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     },
     async settle(input) { settled.add(input.operationKey); settlements.push(input.operationKey); },
   };
-  const workers: WorkerAdapter = overrides.worker ?? {
+  const workers: FakeWorker = overrides.worker ?? {
     async execute(input) {
       executionOrder.push(input.action.split(':')[1]);
       return {
@@ -263,7 +288,13 @@ function windowAccounting(window: ExecutionBudget, maxConcurrency = 1): { adapte
   return { adapter, records };
 }
 
-function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir(), 'kb-auto-worktrees')): AutomaticExecutionOptions {
+// Per-suite worktree root. A fixed `tmpdir()/kb-auto-worktrees` was shared with the store/launch
+// suites, so concurrent workers raced each other's directories under full-gate load.
+const SUITE_WORKTREE_ROOT = mkdtempSync(join(tmpdir(), 'kb-auto-worktrees-execution-'));
+// Removed once the suite ends: a per-run mkdtemp root with no cleanup leaks one temp tree per run.
+afterAll(() => { rmSync(SUITE_WORKTREE_ROOT, { recursive: true, force: true }); });
+
+function engineOptions(store: ControlPlaneStore, fake: Fakes, root = SUITE_WORKTREE_ROOT): AutomaticExecutionOptions {
   return {
     store,
     policy,
@@ -274,7 +305,7 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
     attemptBudget: { maxAttempts: 1, maxInputTokens: 400, maxOutputTokens: 400, maxCostUsdMicros: 4_000 },
     worktrees: fake.worktrees,
     managers: fake.managers,
-    workers: fake.workers,
+    workers: workerAdapter(fake.workers),
     skills: {
       async resolve(input) { return { ok: true, skills: [...input.requested] }; },
     },
@@ -531,7 +562,7 @@ function mixedKindIterationPlan(): PlanProposal {
 }
 
 function genericOutcome(
-  contract: NonNullable<Parameters<WorkerAdapter['execute']>[0]['iterationContract']>,
+  contract: NonNullable<WorkerExecuteInput['iterationContract']>,
   verdict: 'accept' | 'fail' | 'pass' | 'fulfilled' | 'complete',
 ) {
   const findingId = `finding-${contract.request.cycle}`;
@@ -596,7 +627,7 @@ function genericIterationFixture(input: {
     };
   }
   const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
-  const workerInputs: Parameters<WorkerAdapter['execute']>[0][] = [];
+  const workerInputs: WorkerExecuteInput[] = [];
   const integrations: Parameters<ResultIntegrator['integrate']>[0][] = [];
   const baseResolutions: Parameters<NonNullable<ResultIntegrator['resolveBase']>>[0][] = [];
   const ensuredBases: Array<{ path: string; baseCommit?: string }> = [];
@@ -1475,7 +1506,7 @@ describe('AutomaticExecutionEngine', () => {
     const options = engineOptions(store, fake);
     const ledger = windowAccounting(options.budget);
     options.accounting = ledger.adapter;
-    options.workers = {
+    options.workers = workerAdapter({
       // Reports more input tokens than this attempt reserved (cache-read tokens accumulate across a long
       // multi-turn session), so the accounting adapter refuses the settlement.
       async execute() {
@@ -1486,7 +1517,7 @@ describe('AutomaticExecutionEngine', () => {
           artifacts: [], checkpoints: [],
         };
       },
-    };
+    });
     await expect(new AutomaticExecutionEngine(options).runToBoundary({
       subject: 'operator', runRef: run.runRef, proposal: plan,
     })).resolves.toMatchObject({ state: 'waiting-human' });
@@ -3093,5 +3124,151 @@ describe('AutomaticExecutionEngine restricted-intent scan', () => {
     });
     expect(outcome.state).toBe('succeeded');
     expect(fake.executionOrder).toEqual(['intent']);
+  });
+});
+
+/**
+ * [C-S5] two-phase attempt start, at the engine boundary. The engine must await the attempt port's
+ * start receipt BEFORE it projects `starting -> running`, and must never project `running` for a
+ * receipt that refused. Both orderings are barriered, not timing-hopeful: the result half of the launch
+ * only settles a macrotask after the receipt, so a projection that ran late would be visibly out of
+ * order rather than racily green.
+ */
+describe('AutomaticExecutionEngine two-phase attempt start', () => {
+  function recordAttemptTransitions(store: ControlPlaneStore, order: string[]): void {
+    const original = store.transitionAttempt.bind(store);
+    store.transitionAttempt = (subject, attemptRef, expectedVersion, state) => {
+      order.push(`attempt:${state}`);
+      return original(subject, attemptRef, expectedVersion, state);
+    };
+    const originalSession = store.transitionSession.bind(store);
+    store.transitionSession = (subject, sessionRef, expectedVersion, state) => {
+      // Scoped by ref: the Manager session legitimately reaches `running` before any worker attempt.
+      order.push(`session:${state}:${sessionRef}`);
+      return originalSession(subject, sessionRef, expectedVersion, state);
+    };
+  }
+
+  it('projects starting -> running only after the start receipt resolves', async () => {
+    const store = createStore();
+    const plan = proposal([stage('receipt-order')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const order: string[] = [];
+    recordAttemptTransitions(store, order);
+    let workerSessionRef = '';
+    options.workers = {
+      begin(input) {
+        workerSessionRef = input.sessionRef;
+        order.push('begin');
+        const receipt = Promise.resolve({
+          ok: true as const,
+          value: {
+            operationKey: input.operationKey, sessionId: 'session-receipt-order',
+            attemptRef: input.attemptRef, revision: 3, boundAt: new Date(0).toISOString(), replayed: false,
+          },
+        }).then((value) => { order.push('receipt'); return value; });
+        return {
+          receipt,
+          result: receipt.then(async () => {
+            await new Promise((resolve) => { setTimeout(resolve, 0); });
+            order.push('result');
+            return {
+              state: 'succeeded' as const, summary: 'done',
+              usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 }, artifacts: [], checkpoints: [],
+            };
+          }),
+        };
+      },
+    };
+
+    const outcome = await new AutomaticExecutionEngine(options).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    expect(outcome.state).toBe('succeeded');
+    expect(order.indexOf('receipt')).toBeLessThan(order.indexOf('attempt:running'));
+    expect(order.indexOf('receipt')).toBeLessThan(order.indexOf(`session:running:${workerSessionRef}`));
+    expect(order.indexOf('attempt:running')).toBeLessThan(order.indexOf('result'));
+    expect(order.filter((entry) => entry === 'attempt:starting' || entry === 'attempt:running'))
+      .toEqual(['attempt:starting', 'attempt:running']);
+    expect(order.indexOf('begin')).toBeLessThan(order.indexOf('receipt'));
+  });
+
+  it('never projects running when the start receipt refuses', async () => {
+    const store = createStore();
+    const plan = proposal([stage('receipt-refused')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const order: string[] = [];
+    recordAttemptTransitions(store, order);
+    let workerSessionRef = '';
+    options.workers = {
+      begin(input) {
+        workerSessionRef = input.sessionRef;
+        return {
+          receipt: Promise.resolve({
+            ok: false as const, refusal: 'binding-conflict' as const,
+            detail: 'operationKey already names a different approved attempt declaration',
+          }),
+          result: Promise.resolve({
+            state: 'failed' as const,
+            summary: 'claude attempt session start refused (binding-conflict)',
+            usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [],
+          }),
+        };
+      },
+    };
+
+    const outcome = await new AutomaticExecutionEngine(options).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+
+    expect(outcome.state).toBe('failed');
+    expect(order).toContain('attempt:starting');
+    expect(order).not.toContain('attempt:running');
+    expect(order).not.toContain(`session:running:${workerSessionRef}`);
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.attempts.map((attempt) => attempt.state)).toEqual(['failed']);
+  });
+
+  it('claims a rejecting launch.result when the receipt itself rejects', async () => {
+    // M5: both halves exist the moment `begin` returns. When the receipt rejects, the engine's catch
+    // synthesizes a failed result and nobody ever awaits `launch.result` — an unhandled rejection that
+    // would take the daemon down. The engine claims it before its first await.
+    const store = createStore();
+    const plan = proposal([stage('result-orphan')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    options.workers = {
+      begin() {
+        return {
+          receipt: Promise.reject(new Error('host receipt exploded')),
+          // Rejects LATER than the receipt, exactly like a port whose result settles after the failure.
+          result: new Promise((_resolve, reject) => {
+            setTimeout(() => reject(new Error('orphaned attempt result')), 5);
+          }),
+        } as never;
+      },
+    };
+
+    try {
+      const outcome = await new AutomaticExecutionEngine(options).runToBoundary({
+        subject: 'operator', runRef: run.runRef, proposal: plan,
+      });
+      expect(outcome.state).toBe('failed');
+      // Two macrotask turns: long enough for the orphaned rejection to have been reported.
+      await new Promise((resolve) => { setTimeout(resolve, 40); });
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 });

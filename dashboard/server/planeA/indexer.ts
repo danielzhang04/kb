@@ -3,7 +3,7 @@
  * by state, ledger rollups, and org STATE sections. It is rebuilt on start and kept live by a
  * chokidar file-watch. No SQLite, no source-of-truth store — git stays the database.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
@@ -17,8 +17,8 @@ import { readOrgStates } from './states.ts';
 import type { OrgState } from './states.ts';
 
 export interface PlaneAIndex {
-  /** Cards carry their server-owned `displayName`/`shortRef`: this index IS the DTO `/api/index`,
-   *  `/api/dag`, `/api/agents`, and `/api/human-inbox` are all built from. */
+  /** Cards carry their server-owned `displayName`/`shortRef`. This index is the `/api/index` DTO and
+   *  remains the shared card source for routing, Inbox, Home, Health, and declared-agent readers. */
   cards: Record<string, CardProjection[]>;
   /** Present on live indexer results; optional only for legacy/test projection literals. */
   rejectedCards?: number;
@@ -36,8 +36,12 @@ export interface PlaneADelta {
 }
 
 /** Attach the server-owned display identity to one parsed card. */
-export function projectCard(card: ParsedCard, naming: NamingRegistry): CardProjection {
-  return { ...card, ...naming.displayFor('card', String(card.meta.id), cardTitle(card)) };
+export function projectCard(card: ParsedCard, naming: NamingRegistry, updatedAt?: string): CardProjection {
+  return {
+    ...card,
+    ...naming.displayFor('card', String(card.meta.id), cardTitle(card)),
+    ...(updatedAt === undefined ? {} : { updatedAt }),
+  };
 }
 
 /** Read and parse every card across the four physical queue dirs. */
@@ -51,7 +55,9 @@ function readCards(repoRoot: string, naming: NamingRegistry): { cards: CardProje
       if (!name.endsWith('.md')) continue;
       const path = join(full, name);
       try {
-        cards.push(projectCard(parseValidatedCard(readFileSync(path, 'utf-8')), naming));
+        const mtime = statSync(path).mtime;
+        if (!Number.isFinite(mtime.getTime())) throw new Error('card file mtime is invalid');
+        cards.push(projectCard(parseValidatedCard(readFileSync(path, 'utf-8')), naming, mtime.toISOString()));
       } catch (error) {
         rejectedCards += 1;
         console.warn(`[planeA] rejected card ${path}: ${error instanceof Error ? error.message : String(error)}`);
@@ -111,7 +117,13 @@ function reindexSlice(repoRoot: string, prev: PlaneAIndex, kind: PlaneASlice, na
 export function watchPlaneA(
   repoRoot: string,
   onChange: (delta: PlaneADelta) => void,
-  opts: { debounceMs?: number; naming?: NamingRegistry } = {},
+  opts: {
+    debounceMs?: number;
+    naming?: NamingRegistry;
+    /** Handed the watcher SYNCHRONOUSLY, before the initial scan. A caller that only needs to tear the
+     *  watch down must not have to await `ready` first — see `registerHub`'s onClose. */
+    onWatcher?: (watcher: FSWatcher) => void;
+  } = {},
 ): Promise<FSWatcher> {
   const debounceMs = opts.debounceMs ?? 50;
   const naming = opts.naming ?? defaultNamingRegistry();
@@ -133,12 +145,26 @@ export function watchPlaneA(
   targets.push(join(repoRoot, 'STOP'));
 
   const watcher = watch(targets, { ignoreInitial: true, persistent: true });
+  opts.onWatcher?.(watcher);
 
   const pending = new Map<PlaneASlice, string>();
   let timer: NodeJS.Timeout | undefined;
+  // A change landing just before `close()` left a debounce timer armed that fired afterwards and
+  // published onto a torn-down app's bus. The watch is closed through `close()`, which is where the
+  // flag is set, so the guard covers both the armed timer and any event chokidar still delivers.
+  let closed = false;
+  const nativeClose = watcher.close.bind(watcher);
+  watcher.close = async (): Promise<void> => {
+    closed = true;
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    pending.clear();
+    await nativeClose();
+  };
 
   const flush = (): void => {
     timer = undefined;
+    if (closed) return;
     for (const [kind, path] of pending) {
       index = reindexSlice(repoRoot, index, kind, naming);
       onChange({ kind, path, index });
@@ -147,6 +173,7 @@ export function watchPlaneA(
   };
 
   const onEvent = (path: string): void => {
+    if (closed) return;
     const kind = classify(repoRoot, path);
     pending.set(kind, path); // debounce: last path per slice wins
     if (timer) clearTimeout(timer);

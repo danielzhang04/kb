@@ -4,7 +4,7 @@
  * Assistant text is untrusted process output. This module admits only one closed, versioned JSON
  * document and deliberately has no execution, filesystem, route, or persistence capability.
  */
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 
 export const PLAN_PROPOSAL_SCHEMA = 'kb.plan-proposal/v1' as const;
 export const PLAN_PROPOSAL_DIFF_SCHEMA = 'kb.plan-proposal-diff/v1' as const;
@@ -388,6 +388,42 @@ function validateUniqueStringArray(
   return { ok: true, value: result };
 }
 
+/**
+ * The object-array twin of {@link validateUniqueStringArray}: the scaffold every hand-written
+ * object-array validator repeated — length bound, per-index `isRecord` guard, `exactFields` check,
+ * then a per-item body. The caller supplies `item`, which owns the field-by-field decode AND any
+ * cross-item dedup (via a `Set`/`Map` it captures), so each validator's own error strings and dedup
+ * semantics stay exactly as they were; only the boilerplate folds. Error strings are byte-identical to
+ * the inlined versions: `${label} must contain ${min}-${max} ${noun}`, `${itemLabel} must be an
+ * object`, `${itemLabel}: ${fields}`.
+ */
+function validateObjectArray<T>(
+  value: unknown,
+  label: string,
+  min: number,
+  max: number,
+  noun: string,
+  allowed: ReadonlySet<string>,
+  required: readonly string[],
+  item: (raw: Record<string, unknown>, itemLabel: string) => ProposalValidation<T>,
+): ProposalValidation<T[]> {
+  if (!Array.isArray(value) || value.length < min || value.length > max) {
+    return { ok: false, detail: `${label} must contain ${min}-${max} ${noun}` };
+  }
+  const result: T[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const raw = value[index];
+    const itemLabel = `${label}[${index}]`;
+    if (!isRecord(raw)) return { ok: false, detail: `${itemLabel} must be an object` };
+    const fields = exactFields(raw, allowed, required);
+    if (fields) return { ok: false, detail: `${itemLabel}: ${fields}` };
+    const parsed = item(raw, itemLabel);
+    if (!parsed.ok) return parsed;
+    result.push(parsed.value);
+  }
+  return { ok: true, value: result };
+}
+
 function validateScope(value: unknown, label: string): ProposalValidation<ProposalScope> {
   if (!isRecord(value)) return { ok: false, detail: `${label} must be an object` };
   const fields = exactFields(value, SCOPE_FIELDS, ['read', 'write']);
@@ -481,17 +517,8 @@ function validateResolvedAssignment(value: unknown, label: string): ProposalVali
 }
 
 function validateArtifacts(value: unknown, label: string): ProposalValidation<ProposalArtifact[]> {
-  if (!Array.isArray(value) || value.length > MAX_ARTIFACTS) {
-    return { ok: false, detail: `${label} must contain 0-${MAX_ARTIFACTS} items` };
-  }
-  const result: ProposalArtifact[] = [];
   const ids = new Set<string>();
-  for (let index = 0; index < value.length; index += 1) {
-    const raw = value[index];
-    const itemLabel = `${label}[${index}]`;
-    if (!isRecord(raw)) return { ok: false, detail: `${itemLabel} must be an object` };
-    const fields = exactFields(raw, ARTIFACT_FIELDS, [...ARTIFACT_FIELDS]);
-    if (fields) return { ok: false, detail: `${itemLabel}: ${fields}` };
+  return validateObjectArray<ProposalArtifact>(value, label, 0, MAX_ARTIFACTS, 'items', ARTIFACT_FIELDS, [...ARTIFACT_FIELDS], (raw, itemLabel) => {
     const id = validateId(raw.id, `${itemLabel}.id`);
     if (!id.ok) return id;
     if (ids.has(id.value)) return { ok: false, detail: `${label} contains duplicate id '${id.value}'` };
@@ -500,32 +527,21 @@ function validateArtifacts(value: unknown, label: string): ProposalValidation<Pr
     if (!path.ok) return path;
     const description = validateText(raw.description, `${itemLabel}.description`, 1_000);
     if (!description.ok) return description;
-    result.push({ id: id.value, path: path.value, description: description.value });
-  }
-  return { ok: true, value: result };
+    return { ok: true, value: { id: id.value, path: path.value, description: description.value } };
+  });
 }
 
 function validateCheckpoints(value: unknown, label: string): ProposalValidation<ProposalCheckpoint[]> {
-  if (!Array.isArray(value) || value.length > MAX_CHECKPOINTS) {
-    return { ok: false, detail: `${label} must contain 0-${MAX_CHECKPOINTS} items` };
-  }
-  const result: ProposalCheckpoint[] = [];
   const ids = new Set<string>();
-  for (let index = 0; index < value.length; index += 1) {
-    const raw = value[index];
-    const itemLabel = `${label}[${index}]`;
-    if (!isRecord(raw)) return { ok: false, detail: `${itemLabel} must be an object` };
-    const fields = exactFields(raw, CHECKPOINT_FIELDS, [...CHECKPOINT_FIELDS]);
-    if (fields) return { ok: false, detail: `${itemLabel}: ${fields}` };
+  return validateObjectArray<ProposalCheckpoint>(value, label, 0, MAX_CHECKPOINTS, 'items', CHECKPOINT_FIELDS, [...CHECKPOINT_FIELDS], (raw, itemLabel) => {
     const id = validateId(raw.id, `${itemLabel}.id`);
     if (!id.ok) return id;
     if (ids.has(id.value)) return { ok: false, detail: `${label} contains duplicate id '${id.value}'` };
     ids.add(id.value);
     const labelText = validateText(raw.label, `${itemLabel}.label`, 1_000);
     if (!labelText.ok) return labelText;
-    result.push({ id: id.value, label: labelText.value });
-  }
-  return { ok: true, value: result };
+    return { ok: true, value: { id: id.value, label: labelText.value } };
+  });
 }
 
 function validateHumanGates(
@@ -533,63 +549,57 @@ function validateHumanGates(
   label: string,
   allowResolvedAssignments: boolean,
 ): ProposalValidation<ProposalHumanGate[]> {
-  if (!Array.isArray(value) || value.length > MAX_HUMAN_GATES) {
-    return { ok: false, detail: `${label} must contain 0-${MAX_HUMAN_GATES} items` };
-  }
   const kinds = new Set<HumanGateKind>(['input', 'approval', 'review', 'intervention', 'governance-refusal']);
-  const result: ProposalHumanGate[] = [];
   const ids = new Set<string>();
-  for (let index = 0; index < value.length; index += 1) {
-    const raw = value[index];
-    const itemLabel = `${label}[${index}]`;
-    if (!isRecord(raw)) return { ok: false, detail: `${itemLabel} must be an object` };
-    const fields = exactFields(
-      raw,
-      allowResolvedAssignments ? COMPILED_HUMAN_GATE_FIELDS : HUMAN_GATE_FIELDS,
-      [...HUMAN_GATE_FIELDS],
-    );
-    if (fields) return { ok: false, detail: `${itemLabel}: ${fields}` };
-    const id = validateId(raw.id, `${itemLabel}.id`);
-    if (!id.ok) return id;
-    if (ids.has(id.value)) return { ok: false, detail: `${label} contains duplicate id '${id.value}'` };
-    ids.add(id.value);
-    if (typeof raw.kind !== 'string' || !kinds.has(raw.kind as HumanGateKind)) {
-      return { ok: false, detail: `${itemLabel}.kind is not a supported human gate kind` };
-    }
-    const prompt = validateText(raw.prompt, `${itemLabel}.prompt`, 2_000);
-    if (!prompt.ok) return prompt;
-    let spendAuthorization: boolean | undefined;
-    if (Object.prototype.hasOwnProperty.call(raw, 'spendAuthorization')) {
-      if (typeof raw.spendAuthorization !== 'boolean') {
-        return { ok: false, detail: `${itemLabel}.spendAuthorization must be a boolean when present` };
+  return validateObjectArray<ProposalHumanGate>(
+    value, label, 0, MAX_HUMAN_GATES, 'items',
+    allowResolvedAssignments ? COMPILED_HUMAN_GATE_FIELDS : HUMAN_GATE_FIELDS,
+    [...HUMAN_GATE_FIELDS],
+    (raw, itemLabel) => {
+      const id = validateId(raw.id, `${itemLabel}.id`);
+      if (!id.ok) return id;
+      if (ids.has(id.value)) return { ok: false, detail: `${label} contains duplicate id '${id.value}'` };
+      ids.add(id.value);
+      if (typeof raw.kind !== 'string' || !kinds.has(raw.kind as HumanGateKind)) {
+        return { ok: false, detail: `${itemLabel}.kind is not a supported human gate kind` };
       }
-      // A non-approval response ('responded' on an input gate) must never read as a spend
-      // authorization, so the flag is only expressible on an approval gate.
-      if (raw.spendAuthorization && raw.kind !== 'approval') {
-        return { ok: false, detail: `${itemLabel}.spendAuthorization requires kind 'approval'` };
+      const prompt = validateText(raw.prompt, `${itemLabel}.prompt`, 2_000);
+      if (!prompt.ok) return prompt;
+      let spendAuthorization: boolean | undefined;
+      if (Object.prototype.hasOwnProperty.call(raw, 'spendAuthorization')) {
+        if (typeof raw.spendAuthorization !== 'boolean') {
+          return { ok: false, detail: `${itemLabel}.spendAuthorization must be a boolean when present` };
+        }
+        // A non-approval response ('responded' on an input gate) must never read as a spend
+        // authorization, so the flag is only expressible on an approval gate.
+        if (raw.spendAuthorization && raw.kind !== 'approval') {
+          return { ok: false, detail: `${itemLabel}.spendAuthorization requires kind 'approval'` };
+        }
+        spendAuthorization = raw.spendAuthorization;
       }
-      spendAuthorization = raw.spendAuthorization;
-    }
-    let publicationAuthorization: boolean | undefined;
-    if (Object.prototype.hasOwnProperty.call(raw, 'publicationAuthorization')) {
-      if (typeof raw.publicationAuthorization !== 'boolean') {
-        return { ok: false, detail: `${itemLabel}.publicationAuthorization must be a boolean when present` };
+      let publicationAuthorization: boolean | undefined;
+      if (Object.prototype.hasOwnProperty.call(raw, 'publicationAuthorization')) {
+        if (typeof raw.publicationAuthorization !== 'boolean') {
+          return { ok: false, detail: `${itemLabel}.publicationAuthorization must be a boolean when present` };
+        }
+        // Same rule as spend: a non-approval response can never read as a content-bound T3 approval.
+        if (raw.publicationAuthorization && raw.kind !== 'approval') {
+          return { ok: false, detail: `${itemLabel}.publicationAuthorization requires kind 'approval'` };
+        }
+        publicationAuthorization = raw.publicationAuthorization;
       }
-      // Same rule as spend: a non-approval response can never read as a content-bound T3 approval.
-      if (raw.publicationAuthorization && raw.kind !== 'approval') {
-        return { ok: false, detail: `${itemLabel}.publicationAuthorization requires kind 'approval'` };
-      }
-      publicationAuthorization = raw.publicationAuthorization;
-    }
-    result.push({
-      id: id.value,
-      kind: raw.kind as HumanGateKind,
-      prompt: prompt.value,
-      ...(spendAuthorization === undefined ? {} : { spendAuthorization }),
-      ...(publicationAuthorization === undefined ? {} : { publicationAuthorization }),
-    });
-  }
-  return { ok: true, value: result };
+      return {
+        ok: true,
+        value: {
+          id: id.value,
+          kind: raw.kind as HumanGateKind,
+          prompt: prompt.value,
+          ...(spendAuthorization === undefined ? {} : { spendAuthorization }),
+          ...(publicationAuthorization === undefined ? {} : { publicationAuthorization }),
+        },
+      };
+    },
+  );
 }
 
 function validateStage(
@@ -666,25 +676,22 @@ function validateStage(
       || maxCreatorReworks < 0 || maxCreatorReworks > Number.MAX_SAFE_INTEGER - 1) {
       return { ok: false, detail: `${label}.review.maxCreatorReworks must be a nonnegative safe integer that can be incremented` };
     }
-    if (!Array.isArray(value.review.criteria) || value.review.criteria.length < 1 || value.review.criteria.length > 16) {
-      return { ok: false, detail: `${label}.review.criteria must contain 1-16 items` };
-    }
-    const criteria: ProposalReviewCriterion[] = [];
     const criterionIds = new Set<string>();
-    for (let criterionIndex = 0; criterionIndex < value.review.criteria.length; criterionIndex += 1) {
-      const raw = value.review.criteria[criterionIndex];
-      if (!isRecord(raw)) return { ok: false, detail: `${label}.review.criteria[${criterionIndex}] must be an object` };
-      const criterionFields = exactFields(raw, REVIEW_CRITERION_FIELDS, ['id', 'description']);
-      if (criterionFields) return { ok: false, detail: `${label}.review.criteria[${criterionIndex}]: ${criterionFields}` };
-      const criterionId = validateId(raw.id, `${label}.review.criteria[${criterionIndex}].id`);
-      if (!criterionId.ok) return criterionId;
-      const description = validateText(raw.description, `${label}.review.criteria[${criterionIndex}].description`, MAX_TITLE_CHARS);
-      if (!description.ok) return description;
-      if (criterionIds.has(criterionId.value)) return { ok: false, detail: `${label}.review.criteria ids must be unique` };
-      criterionIds.add(criterionId.value);
-      criteria.push({ id: criterionId.value, description: description.value });
-    }
-    review = { subjectStageId: subjectStageId.value, maxCreatorReworks, criteria };
+    const criteriaResult = validateObjectArray<ProposalReviewCriterion>(
+      value.review.criteria, `${label}.review.criteria`, 1, 16, 'items',
+      REVIEW_CRITERION_FIELDS, ['id', 'description'],
+      (raw, itemLabel) => {
+        const criterionId = validateId(raw.id, `${itemLabel}.id`);
+        if (!criterionId.ok) return criterionId;
+        const description = validateText(raw.description, `${itemLabel}.description`, MAX_TITLE_CHARS);
+        if (!description.ok) return description;
+        if (criterionIds.has(criterionId.value)) return { ok: false, detail: `${label}.review.criteria ids must be unique` };
+        criterionIds.add(criterionId.value);
+        return { ok: true, value: { id: criterionId.value, description: description.value } };
+      },
+    );
+    if (!criteriaResult.ok) return criteriaResult;
+    review = { subjectStageId: subjectStageId.value, maxCreatorReworks, criteria: criteriaResult.value };
   }
   let completionGate: ProposalCompletionGate | undefined;
   if (allowResolvedAssignments && Object.prototype.hasOwnProperty.call(value, 'completionGate')) {
@@ -1541,7 +1548,7 @@ export function canonicalProposal(value: PlanProposal): string {
 }
 
 export function proposalContentHash(value: PlanProposal): string {
-  return createHash('sha256').update(canonicalProposal(value), 'utf8').digest('hex');
+  return sha256Hex(canonicalProposal(value));
 }
 
 /** Compute a detached, deeply immutable diff DTO directly from two validated proposal snapshots. */

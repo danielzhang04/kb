@@ -29,6 +29,7 @@ cadences:
   - name: grades-reconcile
     schedule: weekly:sat
     tier: desktop
+    agent: grader
     risk-tier: T1
     prompt: |
       1. Run: py -3 scripts/preamble.py  — if it fails, stop and write a wake-me card
@@ -44,6 +45,7 @@ cadences:
   - name: branch-hygiene
     schedule: weekly:sun
     tier: desktop
+    agent: hygiene
     risk-tier: T1
     prompt: |
       1. Run: py -3 scripts/preamble.py  — if it fails, stop and write a wake-me card
@@ -59,4 +61,89 @@ cadences:
       Tier is desktop, not cloud, because worktrees exist only on the desktop machine.
       This cadence deletes a branch ONLY when git proves every one of its commits is
       already reachable from origin/main; unmerged branches are reported, never touched.
+  - name: context-lifecycle
+    schedule: "15 1 * * *"
+    tier: desktop
+    agent: context-lifecycle
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Run the declaration's tool-free context-lifecycle worker over its bounded named
+      sources and emit at most five kb.learning-proposal/v1 records (status: proposed),
+      each with at most twenty inert evidence rows, or one no-change report. Publish in
+      coordination mode straight to ops: no PR, no durablePrWrites. Do not arm, merge,
+      or edit a proposed target.
+  - name: lessons-miner
+    schedule: "45 1 * * *"
+    tier: desktop
+    agent: lessons-miner
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Mine the bounded durable sources named by the Lessons Miner declaration with
+      session_miner.py + agent_maintainer.py#run_fire(forecast=False) and emit at most
+      five kb.learning-proposal/v1 lesson records (status: proposed), each with at most
+      twenty inert evidence rows, or one no-change report. Publish in coordination mode
+      straight to ops: no PR, no durablePrWrites. Evidence stays inert; never edit a target.
+  - name: grader
+    schedule: "15 2 * * *"
+    tier: desktop
+    agent: grader
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Reconcile only pinned, independently inspected grading evidence within the
+      declaration's bounds via agent_evals.py#run_suite(record=False,
+      include_model_judged=False) and emit at most five kb.learning-proposal/v1
+      grade-finding records (status: proposed), or one no-change report. Publish in
+      coordination mode straight to ops: no PR, no durablePrWrites. Never grade this run
+      or bless an eval manifest.
+  - name: model-audit
+    schedule: "45 2 * * 1"
+    tier: desktop
+    agent: model-audit
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Audit bounded model-routing observations with the declaration's tool-free worker
+      and emit at most five kb.learning-proposal/v1 model-audit records (status:
+      proposed), each with at most twenty inert evidence rows, or one no-change report.
+      Publish in coordination mode straight to ops: no PR, no durablePrWrites. Do not
+      change governance, routing, model assignments, or live cards.
+  - name: hygiene
+    schedule: "15 3 * * 0"
+    tier: desktop
+    agent: hygiene
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Inspect bounded repository-hygiene evidence with the declaration's tool-free
+      worker and emit at most five kb.learning-proposal/v1 hygiene records (status:
+      proposed), each with at most twenty inert evidence rows, or one no-change report.
+      Publish in coordination mode straight to ops: no PR, no durablePrWrites. Never
+      delete, merge, rewrite history, or mutate a proposed target.
+  - name: learnings-implementer
+    schedule: "30 3 * * *"
+    tier: desktop
+    agent: learnings-implementer
+    armed: true
+    risk-tier: T2
+    prompt: |
+      Read the bounded proposed-learning batch with readProposedLearningRecords, select
+      at most five non-conflicting kb.learning-proposal/v1 records via
+      selectImplementerBatch, apply the smallest tested batch, and open exactly ONE
+      learning-implementation PR (records rewritten to status: implemented) through the
+      durablePrWrites publisher. This is the only System path that holds durablePrWrites.
+      Stop at the reviewed publisher boundary. Never merge or write main.
+  - name: system-sweeper
+    schedule: "*/15 * * * *"
+    tier: cloud
+    agent: system-sweeper
+    armed: true
+    risk-tier: T1
+    prompt: |
+      Read the bounded reconciliation sources and run runSweeper to emit at most twenty
+      kb.reconciliation-intent/v1 intents (read-only ports, no durablePrWrites), or one
+      no-change report. Never mutate cards, Inbox state, HEARTBEAT files, git, schedules,
+      or ledgers directly.
 ```

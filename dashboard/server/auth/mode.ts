@@ -42,6 +42,26 @@ const LOOPBACK_BIND = new Set(['127.0.0.1', '::1', 'localhost']);
 /** WebAuthn channels retired by tailnet mode; their presence at boot is a misconfiguration. */
 const RETIRED_IN_TAILNET = ['DASHBOARD_RP_ORIGIN', 'DASHBOARD_WEBAUTHN_CREDENTIALS'] as const;
 
+/**
+ * P6 §3.3: the SECOND proxy uid, naming the attested `kb-node-proxy` that fronts the node routes on the
+ * 8444 `tailscale serve` listener. `requireNodeIdentity` accepts an injected `Tailscale-Node-ID` only from
+ * this uid, and the four node routes refuse every other peer. It is a hard REQUIRED env in tailnet mode —
+ * an absent value is a boot refusal, never a silent `0` default, because `0` is exactly the value that
+ * would let root `tailscale serve` on 443 satisfy the node peer check while nothing strips a client-supplied
+ * `Tailscale-Node-ID` [P6-C27, P6-C60].
+ */
+export function resolveNodeProxyUid(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.DASHBOARD_NODE_PROXY_UID?.trim();
+  if (!raw) {
+    throw new AuthModeError('DASHBOARD_NODE_PROXY_UID is required in tailnet mode (the attested node-proxy uid)');
+  }
+  const uid = Number(raw);
+  if (!Number.isInteger(uid) || uid < 0) {
+    throw new AuthModeError('DASHBOARD_NODE_PROXY_UID must be a non-negative integer');
+  }
+  return uid;
+}
+
 export function resolveAuthMode(env: Record<string, string | undefined> = process.env): AuthMode {
   const raw = env.DASHBOARD_AUTH_MODE?.trim();
   if (!raw) return DEFAULT_AUTH_MODE;
@@ -112,6 +132,23 @@ export function assertAuthModeBoot(options: {
       throw new AuthModeError(`tailnet auth mode retires ${retired}; remove it from the unit before starting`);
     }
   }
-  resolveTailnetConfig(env);
+  const { proxyUid: tailnetUid } = resolveTailnetConfig(env);
+  // P6 §3.3 [P6-C27, P6-C60, P6-C73]: the whole node-identity fix is the distinctness rule
+  //   DASHBOARD_NODE_PROXY_UID ∉ {0, DASHBOARD_TAILNET_PROXY_UID}, with DASHBOARD_TAILNET_PROXY_UID pinned
+  // to 0 (root `tailscale serve` is the only operator proxy this tree has, so 0 is the only value its peer
+  // check can ever see). A node uid of 0 lets root serve on 443 pass the node peer check while nothing
+  // strips an inbound `Tailscale-Node-ID`; equal uids invert it into a total operator lockout. Both are a
+  // boot refusal, evaluated here (never in `resolveTailnetConfig`, which stays a pure config read).
+  const nodeUid = resolveNodeProxyUid(env);
+  if (tailnetUid !== 0) {
+    throw new AuthModeError(
+      `tailnet auth mode requires DASHBOARD_TAILNET_PROXY_UID=0 (root tailscale serve is the only operator proxy); got ${tailnetUid}`,
+    );
+  }
+  if (nodeUid === 0 || nodeUid === tailnetUid) {
+    throw new AuthModeError(
+      'DASHBOARD_NODE_PROXY_UID must be distinct from 0 and from DASHBOARD_TAILNET_PROXY_UID',
+    );
+  }
   return mode;
 }

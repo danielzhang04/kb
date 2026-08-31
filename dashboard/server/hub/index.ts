@@ -8,6 +8,7 @@
  * later (write/steering) waves inherit.
  */
 import type { FastifyInstance } from 'fastify';
+import type { FSWatcher } from 'chokidar';
 import { createBus } from './bus.ts';
 import type { EventBus } from './bus.ts';
 import { wirePlaneA } from './bus.ts';
@@ -57,11 +58,19 @@ export function registerHub(app: FastifyInstance, opts: HubOptions & { sessionCo
   if (opts.repoRoot) {
     // Fire-and-forget so the daemon's `ready`/`listen` is not blocked on the initial repo scan; the
     // watcher is closed when the app closes.
-    const watching = wirePlaneA(bus, opts.repoRoot);
+    //
+    // The teardown takes the watcher from `onWatcher` (handed over synchronously) rather than from the
+    // returned promise, which only settles on chokidar's `ready`. Awaiting that promise made SHUTDOWN
+    // block on the very initial repo scan STARTUP deliberately refused to wait for — measured at
+    // 2.5–6 s per `app.close()` against a real checkout on the W6.6 Windows gate, which dominated
+    // every server/index.test.ts case and pushed the /readyz ones past the 5 s default. Closing a
+    // chokidar watcher before `ready` aborts the walk and returns immediately; the scan's result is
+    // discarded on close either way, so nothing is lost by not waiting for it.
+    const watcherRef: { current: FSWatcher | null } = { current: null };
+    void wirePlaneA(bus, opts.repoRoot, { onWatcher: (watcher) => { watcherRef.current = watcher; } });
     app.addHook('onClose', async () => {
       try {
-        const watcher = await watching;
-        await watcher.close();
+        await watcherRef.current?.close();
       } catch {
         // ignore — best-effort teardown
       }

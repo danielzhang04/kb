@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { sha256Hex } from '../shared/hashing.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
+import { registerRunPtyRoutes } from './runPtyRoutes.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { boundSummary } from './claudeWorkerAdapter.ts';
@@ -26,8 +28,8 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH,
   AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF,
   AUTHORIZED_20260801_FAILED_RUN_REF,
-  AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
-  AUTHORIZED_20260801_FAILED_RUN_STAGES,
+  MAX_EVENTS_PER_RUN,
+  MAX_EVENT_PAGE,
   OPERATOR_SUBJECT,
   exactAuthorized20260801ProposalRevision,
   type ReadScope,
@@ -44,12 +46,71 @@ import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
-import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
+import { acceptsBoundary, compiledPolicyUnchanged, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
+import { selectPlacementHost } from '../placement/select.ts';
+import type { CapabilityRequirement } from '../placement/contracts.ts';
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 import { projectRunState, runLifecycleKind, type RunLifecycleKind } from './runLifecycle.ts';
+import { selectAttemptSessionId } from './runProjection.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { scanWorkflowDefs } from '../workflows/routes.ts';
+import type { HostKind, RunnableRef } from './p2Contracts.ts';
+import { projectRunAttention } from './attention.ts';
+import { createRunEventService, type RunEventSource } from './runEventService.ts';
+import { createRunEventStream } from './runEventStream.ts';
+import {
+  createHumanResponseService,
+  deployChallenge,
+  humanResponseChallenge,
+  humanResponseDigest,
+  type CeremonyVerificationInput,
+  type HumanResponseInput,
+} from './humanResponse.ts';
+import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
+import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
+import type { AuthMode } from '../auth/mode.ts';
+import {
+  parseDeploymentRef, quiescenceDigest,
+} from '../inbox/deploymentContracts.ts';
+import type { DeployT3Decision, DeployT3Preimage, DeployT3Subject } from '../deploy/contracts.ts';
+import { DEPLOY_T3_DECISIONS } from '../deploy/contracts.ts';
+import {
+  listRuns as runReadServiceListRuns, getRunDetail, replayRunEvents, respondHumanRequestRoute,
+  type RunReadPort, type ControlReadResult, type EventPage, type RespondPort,
+} from '../services/runReadService.ts';
 
-function record(value: unknown): Record<string, unknown> {
+/**
+ * P6 W6.2 [P6-C55, design:410]: this route replays an already-approved PROPOSAL SNAPSHOT (never a live
+ * WorkflowDef with stage assignments), so there is no stage-agent capability union to derive here. The
+ * placement decision runs against the empty requirement — every fresh host satisfies it, and the VM/
+ * Desktop tie-break rule alone decides — rather than skipping placement and falling back to a platform
+ * guess.
+ */
+const EMPTY_CAPABILITY_REQUIREMENT: CapabilityRequirement = {
+  connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [],
+};
+
+/**
+ * P5 W6.3 [P5-C23, P5-C45]: the reachability gate for the SHIPPED WebAuthn ceremony — an EXHAUSTIVE
+ * switch over the closed `AuthMode` union whose `default` arm is a `never` assertion, so a future third
+ * auth mode fails to COMPILE rather than being auto-admitted. It loosens the P2-era `win32-desktop`-only
+ * restriction to `tailnet` as well, making T3 reachable on the tailnet Linux VM; it never loosens on
+ * credential possession (the caller still requires `credentials().length > 0`).
+ */
+export function ceremonyModeAdmits(mode: AuthMode): boolean {
+  switch (mode) {
+    case 'win32-desktop':
+    case 'tailnet':
+      return true;
+    default: {
+      const never: never = mode;
+      return never;
+    }
+  }
+}
+
+export function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
@@ -57,16 +118,31 @@ function string(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-function integer(value: unknown): number {
+export function integer(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) ? value : -1;
 }
 
-function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 200) {
+export function safeQueryInteger(value: unknown, fallback: number): number | null {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function etag(revision: string): string {
+  return `"${revision}"`;
+}
+
+function hasRevision(req: FastifyRequest, revision: string): boolean {
+  return req.headers['if-none-match'] === etag(revision);
+}
+
+export function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 200) {
   return result.ok ? reply.code(success).send({ ok: true, value: result.value, replayed: result.replayed ?? false })
     : reply.code(statusOf(result)).send({ error: result.reason, detail: result.detail });
 }
 
-function subject(req: FastifyRequest): string | null {
+export function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
 }
 
@@ -94,8 +170,12 @@ function subject(req: FastifyRequest): string | null {
  * subject) and never launders the actor (`respondedBy` and the audit row's `owner` both name the
  * operator). See {@link ReadScope}.
  */
+export function readScopeForSubject(sub: string | null | undefined): ReadScope {
+  return sub === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
+}
+
 function readScope(req: FastifyRequest): ReadScope {
-  return subject(req) === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
+  return readScopeForSubject(subject(req));
 }
 
 /**
@@ -179,8 +259,20 @@ function humanRequestDisplay(
 /** The `/api/control/runs/:runRef` DTO: display identity plus lossless, auditable iteration state. */
 function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope: ReadScope): RunDetailDto {
   const requestByRef = new Map(detail.iterationRequests.map((request) => [request.requestRef, request]));
+  const ptySession = [...detail.sessions]
+    .filter((session) => session.runtime === 'pty')
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  // [C-M4] Attempt rows arrive in BINDING order and the selected id is the server's own choice among
+  // them; the managed-session row above is the fallback when a run's PTY rows are gone. That fallback
+  // is still a PTY stream, so `streamKind` must not become `transcript` and send the view to the fold.
+  const attemptSessions = ctx.ptyRunAttemptSessions?.(sub, detail.run.runRef) ?? [];
+  const selectedSessionId = selectAttemptSessionId(attemptSessions)
+    ?? (ptySession ? ptySession.sessionRef : null);
   return {
     ...detail,
+    streamKind: ptySession || attemptSessions.length > 0 ? 'pty' : 'transcript',
+    sessionId: selectedSessionId,
+    attemptSessions,
     run: runDisplay(ctx, runDto(detail.run), workflowRefIndex(ctx, sub, scope)),
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
     iterationLoops: detail.iterationLoops.map((loop) => {
@@ -228,6 +320,9 @@ function executionLockedRefusal(ctx: SurfaceContext): { error: string; detail: s
   };
 }
 
+/** The server-minted PTY session-id shape; both Run PTY routes refuse anything else up front. */
+export const SESSION_ID_RE = /^pty-[0-9a-f]{32}$/;
+
 function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
   return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
 }
@@ -238,8 +333,10 @@ function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): Ac
   const latch = ctx.executionLatch;
   const snapshot = latch?.snapshot();
   const current = latch?.current() ?? null;
+  // Presence is part of the identity: with no PTY host BOTH sides are empty and a bare `!==` compares
+  // nothing at all, so the surface must hold the very port object this wiring built.
   if (!latch || !current || snapshot?.state !== 'unlocked' || !isOperatorUnlockSource(snapshot.source)
-    || snapshot.unlockedBy !== sub || ctx.controlBroker !== current.controlBroker
+    || snapshot.unlockedBy !== sub || !ctx.attemptPort || ctx.attemptPort !== current.attemptPort
     || ctx.runAutomatic !== current.runAutomatic || ctx.cancelAutomatic !== current.cancelAutomatic
     || ctx.containManagerStart !== current.containManagerStart
     || ctx.verifyCanonicalResult !== current.verifyCanonicalResult) return null;
@@ -262,14 +359,17 @@ export function authorizedFailedRunReconciliationGrant(
   if (!latch || (expected && latch !== expected.latch)) return null;
   const snapshot = latch.snapshot();
   const wiring = latch.current();
-  if (!wiring || ctx.controlBroker !== wiring.controlBroker
+  // As above: an absent port on both sides is not an identity match, and it would also make the
+  // `hasLiveRun` probe below answer `false` without ever asking anything.
+  if (!wiring || !ctx.attemptPort || ctx.attemptPort !== wiring.attemptPort
     || ctx.runAutomatic !== wiring.runAutomatic || ctx.cancelAutomatic !== wiring.cancelAutomatic
     || ctx.containManagerStart !== wiring.containManagerStart
     || ctx.verifyCanonicalResult !== wiring.verifyCanonicalResult) return null;
-  const hasLiveRun = [
-    AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
-    ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
-  ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
+  // Run-scoped, not session-scoped: the attempt port answers for the whole run's live attempts, which
+  // is exactly the residue this settlement must not race.
+  const hasLiveRun = wiring.attemptPort?.isRunLive({
+    operator: sub, runRef: AUTHORIZED_20260801_FAILED_RUN_REF,
+  }) === true;
   if (snapshot.state !== 'unlocked' || !isOperatorUnlockSource(snapshot.source)
     || snapshot.unlockedBy !== sub || !snapshot.unlockedAt || hasLiveRun
     || (expected && (snapshot.unlockedAt !== expected.unlockedAt || wiring !== expected.wiring))) return null;
@@ -309,6 +409,72 @@ class ActivationPreparationError extends Error {
 
 /** Authenticated app-local proposal/run control plane. Queue cards remain canonical execution truth. */
 export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
+  const projectRunEvents = createRunEventService({
+    async readRunEventSources(input) {
+      const readScope = input.scope ?? 'own-subject';
+      const sources: RunEventSource[] = [];
+      let after = 0;
+      for (let pageIndex = 0; pageIndex <= Math.ceil(MAX_EVENTS_PER_RUN / MAX_EVENT_PAGE); pageIndex += 1) {
+        const page = ctx.controlStore.listEvents(input.subject, input.runRef, after, MAX_EVENT_PAGE, readScope);
+        if (!page.ok) throw new Error(page.reason);
+        sources.push(...page.value.map((event) => ({ kind: 'control' as const, event })));
+        if (page.value.length < MAX_EVENT_PAGE) break;
+        const cursor = page.value.at(-1)?.cursor;
+        if (cursor === undefined || cursor <= after) throw new Error('run event replay cursor did not advance');
+        after = cursor;
+      }
+
+      const detail = ctx.controlStore.getRun(input.subject, input.runRef, readScope);
+      if (!detail.ok) throw new Error(detail.reason);
+      const attemptIo = ctx.executionLatch?.current()?.attemptIo;
+      if (!attemptIo) return sources;
+      // Persisted attempt order is append-only; keeping it avoids renumbering an earlier provider cursor
+      // when a later attempt is added with the same wall-clock timestamp.
+      const attempts = detail.value.attempts;
+      attempts.forEach((attempt, attemptIndex) => {
+        for (const entry of attemptIo.read(attempt.attemptRef)) {
+          if (entry.dir !== 'out') continue;
+          sources.push({
+            kind: 'provider',
+            provider: attempt.runtime,
+            cursor: MAX_EVENTS_PER_RUN + ((attemptIndex + 1) * 1_000_000) + entry.seq,
+            runRef: input.runRef,
+            stageRef: attempt.stageRef,
+            createdAt: entry.t,
+            rawLine: entry.line,
+          });
+        }
+      });
+      return sources;
+    },
+    openRunEventSource() {
+      let released = false;
+      const subscriptions = new Set<() => void>();
+      return {
+        subscribe(listener) {
+          if (released || !ctx.hubBus) return () => undefined;
+          const offBus = ctx.hubBus.subscribe((event) => {
+            if (event.channel === 'control') listener();
+          });
+          let active = true;
+          const unsubscribe = (): void => {
+            if (!active) return;
+            active = false;
+            subscriptions.delete(unsubscribe);
+            offBus();
+          };
+          subscriptions.add(unsubscribe);
+          return unsubscribe;
+        },
+        release() {
+          if (released) return;
+          released = true;
+          for (const unsubscribe of [...subscriptions]) unsubscribe();
+        },
+      };
+    },
+  });
+
   const preHandler = requireSession(ctx.sessionConfig);
 
   scope.get('/api/control/proposals', { preHandler }, async (req, reply) => {
@@ -471,6 +637,54 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!stored.ok) return sendResult(reply, stored);
     if (stored.value.hash !== string(body.expectedHash)) return reply.code(409).send({ error: 'revision-mismatch' });
     if (stored.value.approval?.decision !== 'approved') return reply.code(409).send({ error: 'not-approved' });
+    const workspace = ctx.composerStore.get(stored.value.ownerSubject, stored.value.sourceComposerRef);
+    const agentWorkspaceLaunch = workspace.ok && workspace.workspace.agent ? {
+      composerRef: workspace.workspace.composerRef,
+      agentId: workspace.workspace.agent.id,
+      declarationPath: workspace.workspace.agent.path,
+      declarationHash: workspace.workspace.agent.sourceHash,
+    } : null;
+    // P6 W6.2 [P6-C55]: the boot-time default host comes from the placement lease host, never a platform
+    // guess. Zero fresh complete matches refuses BEFORE any owner resolution or store write, so a
+    // `no-complete-placement` retry/relaunch creates no Run row.
+    const placement = selectPlacementHost(EMPTY_CAPABILITY_REQUIREMENT, ctx.controlStore.listHostAdvertisements(), Date.now());
+    if (placement.outcome === 'no-complete-placement') {
+      return reply.code(409).send({ error: 'no-complete-placement' });
+    }
+    const bootHost: HostKind = placement.hostId!;
+    let owner: RunnableRef | null = null;
+    let executionHost: HostKind = bootHost;
+    const predecessorRef = body.predecessorRunRef == null ? null : string(body.predecessorRunRef);
+    if (predecessorRef) {
+      const predecessor = ctx.controlStore.getRun(stored.value.ownerSubject, predecessorRef);
+      if (predecessor.ok) {
+        const candidate = predecessor.value.run.owner;
+        if (candidate.type === 'agent') {
+          const declared = readDeclaredAgentDetails(ctx.repoRoot).get(candidate.id);
+          if (declared?.source === candidate.sourcePath) owner = candidate;
+        } else {
+          const definition = scanWorkflowDefs(ctx.repoRoot).find((item) => item.def?.id === candidate.id
+            && item.def.project === candidate.project && item.entry.path === candidate.sourcePath && item.entry.valid);
+          if (definition) owner = candidate;
+        }
+        if (owner) executionHost = predecessor.value.run.executionHost;
+      }
+    } else if (agentWorkspaceLaunch) {
+      const declared = readDeclaredAgentDetails(ctx.repoRoot).get(agentWorkspaceLaunch.agentId);
+      if (declared && declared.source === agentWorkspaceLaunch.declarationPath
+        && declared.sourceHash === agentWorkspaceLaunch.declarationHash) {
+        owner = { type: 'agent', id: declared.id, sourcePath: declared.source as `agents/${string}.md` };
+      }
+    } else if (stored.value.sourceComposerRef === WORKFLOW_COMPOSER_REF) {
+      const project = typeof stored.value.snapshot.project === 'string' ? stored.value.snapshot.project : '';
+      const definition = scanWorkflowDefs(ctx.repoRoot).find((candidate) => candidate.def?.id === stored.value.sourceTurnId
+        && candidate.def.project === project && candidate.entry.valid);
+      if (definition) owner = {
+        type: 'workflow', id: stored.value.sourceTurnId, project,
+        sourcePath: definition.entry.path as `orgs/${string}/workflows/${string}.md`,
+      };
+    }
+    if (!owner) return reply.code(409).send({ error: 'runnable-owner-required' });
     // The single canonical launch body (one ops transaction: reconcile, compile, publish cards +
     // audit, activate) lives in control/launch.ts. Every launch surface calls it; nothing forks it.
     const outcome = await executeApprovedLaunch(ctx, stored.value.ownerSubject, {
@@ -481,14 +695,19 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       sessionToken: verifiedSession(req)?.token,
       actorSubject: sub,
       idempotencyKey: string(body.idempotencyKey),
-      predecessorRunRef: body.predecessorRunRef == null ? null : string(body.predecessorRunRef),
+      predecessorRunRef: predecessorRef,
       expectedPredecessorVersion: integer(body.expectedPredecessorVersion),
+      source: stored.value.sourceComposerRef === 'workflow-registry'
+        ? `workflow:${stored.value.sourceTurnId}`
+        : undefined,
+      agentWorkspaceLaunch,
+      identity: { owner, executionHost },
     });
     return reply.code(outcome.status).send(outcome.body);
   });
 
   // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
-  // The daemon boots LOCKED: no broker, no engine, no worker processes. Construction is authorized by the
+  // The daemon boots LOCKED: no attempt port, no engine, no worker processes. Construction is authorized by the
   // operator's WebAuthn-minted SESSION BEARER — the same one governing every other consequential control
   // action — verified by the scope's `requireSession` preHandler before this handler runs.
   //
@@ -660,7 +879,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             store: ctx.controlStore,
             // This is re-run around every filesystem/git boundary by the core.  It binds the same
             // passkey grant (including its latch and in-place wiring identity).  It only reads the
-            // fixed run's broker/roster liveness; it never creates, steers, stops, or otherwise drives it.
+            // fixed run's attempt/roster liveness; it never creates, steers, stops, or otherwise drives it.
             assertAuthorized: () => {
               if (!authorizedFailedRunReconciliationGrant(ctx, sub, grant)) {
                 throw new Error('authorized reconciliation passkey latch changed');
@@ -681,34 +900,32 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       }));
   });
 
+  // P6 W6.2 [design:435]: the run-list, run-detail, and run-events reads below are now THIN callers of
+  // `services/runReadService.ts` — the `401 unauthenticated` gate, the `includeArchived` default
+  // projection, the `ControlResult` not-ok mapping, and the numeric event-cursor wall are all the
+  // service's. No byte of the request/response contract changed.
+  const runReadPort: RunReadPort = {
+    listRuns: (sub, readScopeValue) => ctx.controlStore.listRuns(sub, readScopeValue),
+    getRun: (sub, runRef, readScopeValue) => ctx.controlStore.getRun(sub, runRef, readScopeValue) as unknown as ControlReadResult<Record<string, unknown>>,
+    statusOf: (result) => statusOf(result as Extract<ControlResult<unknown>, { ok: false }>),
+    lifecycleKind: (run) => runLifecycleKind((run as Run).lifecycle),
+    workflowRefIndex: (sub, readScopeValue) => workflowRefIndex(ctx, sub, readScopeValue),
+    runDto: (run) => runDto(run as Run) as unknown as { runRef: string; title: string; proposalRef: string } & Record<string, unknown>,
+    runDisplay: (dto, workflows) => runDisplay(ctx, dto as { runRef: string; title: string; proposalRef: string }, workflows),
+    runDetailDto: (sub, detail, readScopeValue) => runDetailDto(ctx, sub, detail as RunDetail, readScopeValue),
+    executionPosture: () => executionPosture(ctx),
+    replayEvents: (input) => projectRunEvents.replay(input) as unknown as Promise<EventPage>,
+  };
+
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    const scope = readScope(req);
-    // One revision walk for the whole list, not one per run.
-    const workflows = workflowRefIndex(ctx, sub, scope);
-    // An archived run is one the operator explicitly dismissed. It stays fully readable by ref and is
-    // still listable on request, but it is out of the DEFAULT projection every surface renders —
-    // otherwise "archive" would mean nothing and dead runs would keep haunting every list.
-    const includeArchived = string((req.query as { includeArchived?: unknown }).includeArchived) === '1';
-    const runs = ctx.controlStore.listRuns(sub, scope)
-      .filter((run) => includeArchived || runLifecycleKind(run.lifecycle) !== 'archived');
-    return reply.send({ runs: runs.map((run) => runDisplay(ctx, runDto(run), workflows)) });
+    const result = runReadServiceListRuns(runReadPort, subject(req), req.query as { includeArchived?: unknown });
+    return reply.code(result.status).send(result.body);
   });
 
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
-    const scope = readScope(req);
-    const detail = ctx.controlStore.getRun(sub, runRef, scope);
-    if (!detail.ok) return sendResult(reply, detail);
-    return reply.send({
-      ok: true,
-      value: runDetailDto(ctx, sub, detail.value, scope),
-      replayed: detail.replayed ?? false,
-      execution: executionPosture(ctx),
-    });
+    const result = getRunDetail(runReadPort, subject(req), runRef);
+    return reply.code(result.status).send(result.body);
   });
 
   scope.get('/api/control/runs/:runRef/attempts/:attemptRef/io', { preHandler }, async (req, reply) => {
@@ -730,13 +947,152 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.send({ entries: attemptIo.read(attemptRef, after, limit) });
   });
 
+  const authorizeReplay = (req: FastifyRequest, reply: FastifyReply) => {
+    const sub = subject(req);
+    if (!sub) return { response: reply.code(401).send({ error: 'unauthenticated' }) } as const;
+    const runRef = (req.params as { runRef: string }).runRef;
+    const scope = readScope(req);
+    const run = ctx.controlStore.getRun(sub, runRef, scope);
+    if (!run.ok) return { response: reply.code(404).send() } as const;
+    return { sub, runRef, scope, run: run.value } as const;
+  };
+
   scope.get('/api/control/runs/:runRef/events', { preHandler }, async (req, reply) => {
+    const runRef = (req.params as { runRef: string }).runRef;
+    const query = req.query as { after?: unknown; limit?: unknown; stageRef?: unknown };
+    const result = await replayRunEvents(runReadPort, subject(req), runRef, query, req.headers['if-none-match'] as string | undefined);
+    if (result.etag) reply.header('ETag', result.etag);
+    return result.status === 304 ? reply.code(304).send() : reply.code(result.status).send(result.body);
+  });
+
+  scope.get('/api/control/runs/:runRef/events/stream', { preHandler }, async (req, reply) => {
+    // Authorization and cursor validation deliberately precede every SSE header and every replay byte.
+    const authorized = authorizeReplay(req, reply);
+    if ('response' in authorized) return authorized.response;
+    const query = req.query as { after?: unknown; limit?: unknown; stageRef?: unknown };
+    const after = safeQueryInteger(query.after, 0);
+    const limit = safeQueryInteger(query.limit, 250);
+    const rawLastEventId = req.headers['last-event-id'];
+    const lastEventId = Array.isArray(rawLastEventId) ? rawLastEventId[0] : rawLastEventId;
+    if (after === null || limit === null || limit < 1 || limit > 250
+      || (lastEventId !== undefined && safeQueryInteger(lastEventId, 0) === null)) {
+      return reply.code(400).send({ error: 'invalid-event-cursor' });
+    }
+    const stageRef = typeof query.stageRef === 'string' && query.stageRef.length > 0 ? query.stageRef : null;
+    const eventStream = createRunEventStream(projectRunEvents);
+    const replay = await eventStream.replay({
+      subject: authorized.sub,
+      runRef: authorized.runRef,
+      scope: authorized.scope,
+      afterCursor: after,
+      limit,
+      lastEventId,
+      stageRef,
+    });
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    reply.raw.flushHeaders();
+
+    let closed = false;
+    let pumping = false;
+    let pending = false;
+    let unsubscribe = (): void => undefined;
+    let liveSource: ReturnType<typeof projectRunEvents.openLive> | null = null;
+    let cursor = Math.max(after, lastEventId === undefined ? 0 : Number(lastEventId));
+
+    const cleanup = (): void => {
+      if (closed) return;
+      closed = true;
+      unsubscribe();
+      liveSource?.release();
+    };
+    req.raw.once('aborted', cleanup);
+    req.raw.once('close', cleanup);
+    reply.raw.once('close', cleanup);
+
+    const writeFrame = async (wire: string): Promise<void> => {
+      if (closed || reply.raw.writableEnded) return;
+      if (reply.raw.write(wire)) return;
+      await new Promise<void>((resolve) => {
+        const done = (): void => {
+          reply.raw.off('drain', done);
+          reply.raw.off('close', done);
+          resolve();
+        };
+        reply.raw.once('drain', done);
+        reply.raw.once('close', done);
+      });
+    };
+
+    for (const frame of replay.frames) {
+      await writeFrame(frame.wire);
+      cursor = Math.max(cursor, frame.id);
+    }
+
+    const pump = async (): Promise<void> => {
+      if (pumping) {
+        pending = true;
+        return;
+      }
+      pumping = true;
+      try {
+        do {
+          pending = false;
+          let nextCursor: number | null;
+          do {
+            const next = await eventStream.replay({
+              subject: authorized.sub,
+              runRef: authorized.runRef,
+              scope: authorized.scope,
+              afterCursor: cursor,
+              limit,
+              stageRef,
+            });
+            for (const frame of next.frames) {
+              await writeFrame(frame.wire);
+              cursor = Math.max(cursor, frame.id);
+            }
+            nextCursor = next.page.nextCursor;
+            if (next.frames.length === 0) nextCursor = null;
+          } while (!closed && nextCursor !== null);
+        } while (!closed && pending);
+      } catch {
+        cleanup();
+        if (!reply.raw.writableEnded) reply.raw.end();
+      } finally {
+        pumping = false;
+      }
+    };
+
+    liveSource = projectRunEvents.openLive({
+      subject: authorized.sub, runRef: authorized.runRef, scope: authorized.scope,
+    });
+    unsubscribe = liveSource.subscribe(() => { void pump(); });
+    // Close the replay/subscribe race by immediately checking the shared source once subscribed.
+    void pump();
+  });
+
+  scope.get('/api/attention', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    const query = req.query as { after?: string; limit?: string };
-    return sendResult(reply, ctx.controlStore.listEvents(
-      sub, (req.params as { runRef: string }).runRef, Number(query.after ?? 0), Number(query.limit ?? 200), readScope(req),
-    ));
+    const scope = readScope(req);
+    const runs = ctx.controlStore.listRuns(sub, scope);
+    const humanRequests = runs.flatMap((run) => {
+      const detail = ctx.controlStore.getRun(sub, run.runRef, scope);
+      return detail.ok ? detail.value.humanRequests : [];
+    });
+    const projection = projectRunAttention({
+      runs: runs.map((run) => ({ runRef: run.runRef, owner: run.owner, lifecycle: runLifecycleKind(run.lifecycle) })),
+      humanRequests,
+    });
+    reply.header('ETag', etag(projection.revision));
+    if (hasRevision(req, projection.revision)) return reply.code(304).send();
+    return reply.send(projection);
   });
 
   /**
@@ -1091,6 +1447,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     });
   });
 
+  registerRunPtyRoutes(scope, ctx, preHandler);
+
   scope.post('/api/control/runs/:runRef/manager/messages', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -1099,7 +1457,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const runScope = readScope(req);
     const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
-    if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
+    // Liveness is a property of the RUN, not of a manager child: the port answers for the attempt the
+    // server itself selected, so no caller can name a session to steer.
+    if (!ctx.attemptPort?.isRunLive({ operator: sub, runRef })) {
       return reply.code(409).send({ error: 'manager-not-running' });
     }
     const committed = ctx.controlStore.recordManagerCommand(sub, runRef, {
@@ -1109,9 +1469,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       kind: 'message', message: string(body.message),
     }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
-    if (!ctx.controlBroker.queueInstruction(
-      detail.value.run.managerSessionRef, string(body.message), string(body.idempotencyKey),
-    )) {
+    if (!await ctx.attemptPort.queueRunInstruction({
+      operator: sub, runRef, idempotencyKey: string(body.idempotencyKey), message: string(body.message),
+    })) {
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager message delivery needs reconciliation',
         prompt: 'The operator message committed durably, but the live Manager could not accept its checkpoint queue.',
@@ -1175,7 +1535,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const runScope = readScope(req);
     const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
-    if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
+    if (!ctx.attemptPort?.isRunLive({ operator: sub, runRef })) {
       return reply.code(409).send({ error: 'manager-not-running' });
     }
     const instruction = string(body.instruction);
@@ -1187,9 +1547,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       kind: 'steer', message: instruction, checkpoint,
     }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
-    if (!ctx.controlBroker.queueInstructionAtCheckpoint(
-      detail.value.run.managerSessionRef, checkpoint, instruction, string(body.idempotencyKey),
-    )) {
+    if (!await ctx.attemptPort.queueRunInstructionAtCheckpoint({
+      operator: sub, runRef, idempotencyKey: string(body.idempotencyKey),
+      message: instruction, checkpoint,
+    })) {
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager steering needs reconciliation',
         prompt: 'The checkpoint-bound instruction committed durably, but the live Manager could not accept its queue.',
@@ -1375,7 +1736,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       runtime, model, idempotencyKey: string(body.idempotencyKey),
     });
     if (!successor.ok) return sendResult(reply, successor);
-    if (!ctx.controlBroker || !ctx.runAutomatic) {
+    if (!ctx.attemptPort || !ctx.runAutomatic) {
       return reply.code(202).send({ ok: true, value: successor.value, replayed: successor.replayed ?? false, activationGated: true });
     }
     void ctx.runAutomatic({ subject: owner, runRef, proposal: proposal.value }).catch((error: unknown) => {
@@ -1420,73 +1781,218 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.code(outcome.status).send(outcome.body);
   });
 
-  scope.post('/api/control/human-requests/:requestRef/respond', { preHandler }, async (req, reply) => {
+  const responseService = (req: FastifyRequest) => {
+    const scope = readScope(req);
+    const hasEventMarker = (actorSubject: string, runRef: string, marker: string): boolean => {
+      let after = 0;
+      for (let pageIndex = 0; pageIndex <= Math.ceil(MAX_EVENTS_PER_RUN / MAX_EVENT_PAGE); pageIndex += 1) {
+        const page = ctx.controlStore.listEvents(actorSubject, runRef, after, MAX_EVENT_PAGE, scope);
+        if (!page.ok) throw new Error(page.reason);
+        if (page.value.some((event) => event.checkpoint === marker)) return true;
+        if (page.value.length < MAX_EVENT_PAGE) return false;
+        const next = page.value.at(-1)?.cursor;
+        if (next === undefined || next <= after) throw new Error('human response event cursor did not advance');
+        after = next;
+      }
+      throw new Error('human response event lookup exceeded the bounded store limit');
+    };
+    return createHumanResponseService({
+      store: {
+        getHumanRequest(actorSubject, requestRef) {
+          const request = ctx.controlStore.getHumanRequest(actorSubject, requestRef, scope);
+          if (!request.ok) return null;
+          const run = ctx.controlStore.getRun(actorSubject, request.value.runRef, scope);
+          return run.ok ? { request: request.value, runOwnerSubject: run.value.ownerSubject } : null;
+        },
+        isReservedIterationGate(actorSubject, requestRef) {
+          const request = ctx.controlStore.getHumanRequest(actorSubject, requestRef, scope);
+          if (!request.ok) return false;
+          const run = ctx.controlStore.getRun(actorSubject, request.value.runRef, scope);
+          return run.ok && run.value.iterationLoops.some((loop) =>
+            loop.completionGateRef === requestRef || loop.interventionRef === requestRef);
+        },
+        respondHumanRequest(actorSubject, requestRef, input) {
+          const result = ctx.controlStore.respondHumanRequest(actorSubject, requestRef, input, scope);
+          if (!result.ok) throw new Error(result.reason);
+          return { request: result.value, replayed: result.replayed === true };
+        },
+        listHumanRequestsForRun(actorSubject, runRef) {
+          const run = ctx.controlStore.getRun(actorSubject, runRef, scope);
+          return run.ok ? run.value.humanRequests : [];
+        },
+        appendResponseEvent(actorSubject, request) {
+          const key = request.response?.idempotencyKey;
+          if (!key) throw new Error('human response event requires a committed response');
+          const identity = sha256Hex(`${request.requestRef}\u0000${key}`);
+          const marker = `human-response:${identity}`;
+          if (hasEventMarker(actorSubject, request.runRef, marker)) return;
+          const event = ctx.controlStore.appendEvent(actorSubject, request.runRef, {
+            kind: 'governance', source: 'human', stageRef: request.stageRef,
+            status: request.response?.decision === 'approved' || request.response?.decision === 'responded' ? 'success' : 'waiting',
+            summary: `Human Request ${request.response?.decision ?? 'resolved'} at revision ${request.revision}`,
+            checkpoint: marker,
+          }, scope);
+          if (!event.ok) throw new Error(event.reason);
+        },
+        resumeRunAfterBoundaryAccepted(actorSubject, runRef, answeredRequest) {
+          const key = answeredRequest.response?.idempotencyKey;
+          if (!key) throw new Error('human response resume requires a committed response');
+          const identity = sha256Hex(`${answeredRequest.requestRef}\u0000${key}`);
+          const marker = `human-response-resume:${identity}`;
+          if (hasEventMarker(actorSubject, runRef, marker)) return;
+          const intent = ctx.controlStore.appendEvent(actorSubject, runRef, {
+            kind: 'governance', source: 'system', stageRef: answeredRequest.stageRef,
+            status: 'pending', summary: 'Human response resume intent recorded', checkpoint: marker,
+          }, scope);
+          if (!intent.ok) throw new Error(intent.reason);
+          resumeRunAfterBoundaryAccepted(ctx, {
+            actorSubject, runRef, answeredTitle: answeredRequest.title, scope,
+          });
+        },
+      },
+      audit: {
+        async append(event) {
+          await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
+        },
+      },
+      ...(ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0 ? {
+        ceremony: {
+          async verify(input: CeremonyVerificationInput) {
+            const assertion = record(input.assertion);
+            const expectedChallenge = consumeChallenge(
+              string(assertion.ceremonyId), (ctx.now?.() ?? new Date()).getTime(),
+            );
+            if (!expectedChallenge) return false;
+            const bound = humanResponseChallenge({
+              requestRef: input.requestRef,
+              requestRevision: input.requestRevision,
+              responseDigest: input.responseDigest,
+              action: input.action,
+              origin: input.origin,
+              challengeExpiresAt: input.challengeExpiresAt,
+            });
+            if (expectedChallenge !== Buffer.from(bound, 'utf8').toString('base64url')) return false;
+            const response = record(assertion.response);
+            const credential = findCredential(ctx.credentials(), string(response.id));
+            if (!credential) return false;
+            const verified = await verifyAssertion(assertion.response as never, {
+              expectedChallenge, credential, config: ctx.webAuthnConfig(),
+            });
+            return verified.verified;
+          },
+        },
+      } : {}),
+      now: () => (ctx.now?.() ?? new Date()).getTime(),
+    });
+  };
+
+  scope.post('/api/control/human-requests/:requestRef/respond/challenge', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    const body = record(req.body);
+    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
+      return reply.code(403).send({ error: 'ceremony-unavailable' });
+    }
     const requestRef = (req.params as { requestRef: string }).requestRef;
-    const runScope = readScope(req);
-    const found = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
-    if (!found.ok) return sendResult(reply, found);
-    const existing = found.value;
-    // Specialized iteration gates have lineage and exact-artifact CAS requirements. Completion and
-    // iteration-park requests cannot fall through; a minted intervention remains a generic request.
-    const requestRun = ctx.controlStore.getRun(sub, existing.runRef, runScope);
-    if (!requestRun.ok) return sendResult(reply, requestRun);
-    const genericIterationGate = existing.kind !== 'intervention' && (existing.gateKind === 'iteration-park'
-      || requestRun.value.iterationLoops?.some((loop) =>
-        loop.completionGateRef === requestRef || loop.interventionRef === requestRef));
-    if (genericIterationGate) {
-      return reply.code(409).send({
-        error: 'iteration-gate-reserved', gateKind: existing.gateKind ?? 'completion',
-        resolveUrl: `/api/control/iteration-gates/${requestRef}/resolve`,
-      });
+    const body = record(req.body);
+    const request = ctx.controlStore.getHumanRequest(sub, requestRef, readScope(req));
+    if (!request.ok) return sendResult(reply, request);
+    if (request.value.kind !== 'approval' && request.value.kind !== 'review' && request.value.kind !== 'governance-refusal') {
+      return reply.code(409).send({ error: 'ceremony-not-required' });
     }
-    if (existing.state === 'open') {
-      if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
-      try {
-        await auditFn(ctx)(ctx.repoRoot, {
-          // `owner` is the ACTOR (the operator session); `runOwnerSubject` names whose run it is. The
-          // two differ on a cross-subject answer, and this row is the durable attribution for it.
-          action: 'control-human-response-authorize', owner: sub, target: requestRef,
-          riskTier: existing.kind === 'approval' || existing.kind === 'review' || existing.kind === 'governance-refusal' ? 'T3' : 'T2',
-          result: `authorized:${string(body.decision)}`,
-          detail: {
-            requestRef, runRef: existing.runRef, runOwnerSubject: requestRun.value.ownerSubject,
-            requestRevision: existing.revision, decision: string(body.decision),
-          },
-        }, { runGit: ctx.opsGit, now: ctx.now });
-      } catch {
-        return reply.code(500).send({ error: 'human-response-audit-required' });
+    const expectedRevision = integer(body.expectedRevision);
+    const decision = string(body.decision) as HumanResponseInput['decision'];
+    if (request.value.revision !== expectedRevision || !['approved', 'rejected', 'changes-requested'].includes(decision)) {
+      return reply.code(409).send({ error: 'request-revision-changed' });
+    }
+    let config;
+    try { config = ctx.webAuthnConfig(); }
+    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
+    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
+    const now = (ctx.now?.() ?? new Date()).getTime();
+    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
+    const response = body.response == null ? null : string(body.response);
+    const responseDigest = humanResponseDigest({ decision, response });
+    const challenge = humanResponseChallenge({
+      requestRef, requestRevision: expectedRevision, responseDigest, action: decision,
+      origin: config.origin, challengeExpiresAt,
+    });
+    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
+    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
+    return reply.send({ ceremonyId, options, challengeExpiresAt });
+  });
+
+  // P5 W6.3 [P5-C20, P5-C23, P5-C45]: the deploy-purpose T3 challenge on the SHIPPED verifier — registered
+  // beside the human-requests challenge, on the SAME guarded scope, minting through the SAME `credentialStore`
+  // pending map and binding through the SAME deterministic-preimage path (`deployChallenge`, humanResponse.ts).
+  // It mints ONLY the four T3 decisions, each over the ref spelling its decision requires; the assertion is
+  // verified by the deploy action endpoint against a preimage RE-READ server-side (a client-carried
+  // revision/digest is only a mint-time nonce — an acknowledged oracle/DoS surface, never an authz change,
+  // since verification still needs the provisioned key). No new refusal code is minted: an unreachable
+  // ceremony is `403 ceremony-unavailable`, exactly as the shipped ladder — never a downgrade [P5-C45].
+  scope.post('/api/inbox/deployment/:ref/challenge', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
+      return reply.code(403).send({ error: 'ceremony-unavailable' });
+    }
+    let parsedRef: { kind: 'deploy-ready' | 'deployment'; ref: string };
+    try { parsedRef = parseDeploymentRef((req.params as { ref: string }).ref); }
+    catch { return reply.code(400).send({ error: 'invalid-ref' }); }
+    const body = record(req.body);
+    const decisionRaw = string(body.decision);
+    if (!(DEPLOY_T3_DECISIONS as readonly string[]).includes(decisionRaw)) {
+      return reply.code(400).send({ error: 'invalid-decision' });
+    }
+    const decision = decisionRaw as DeployT3Decision;
+    // Ref spelling each decision requires [P5-C49, P5-C58]: deploy ⇐ deploy-ready:<sha>; confirm ⇐ either
+    // member of the two-spelling union; abort/close-ptys-and-continue ⇐ deployment:<n> only.
+    const refOk =
+      decision === 'deploy' ? parsedRef.kind === 'deploy-ready'
+        : decision === 'confirm' ? true
+          : parsedRef.kind === 'deployment';
+    if (!refOk) return reply.code(400).send({ error: 'invalid-revision' });
+    const subjectKind: DeployT3Subject = decision === 'close-ptys-and-continue' ? 'pty-quiescence' : 'deployment';
+    const revision = string(body.revision);
+    if (revision.length === 0) return reply.code(400).send({ error: 'invalid-revision' });
+    // Binding digest: close-ptys-and-continue pins sha256(sorted session ids); every other decision carries
+    // the candidate/record attestation digest, re-read and re-bound at the action endpoint [§3.3].
+    let digest: string;
+    if (decision === 'close-ptys-and-continue') {
+      const rawIds = body.sessionIds;
+      if (!Array.isArray(rawIds) || rawIds.length === 0 || !rawIds.every((id) => typeof id === 'string')) {
+        return reply.code(400).send({ error: 'invalid-session-ids' });
       }
+      digest = quiescenceDigest(rawIds as string[]);
+    } else {
+      digest = string(body.digest);
+      if (digest.length === 0) return reply.code(400).send({ error: 'invalid-digest' });
     }
-    const responded = ctx.controlStore.respondHumanRequest(sub, requestRef, {
-      expectedRevision: integer(body.expectedRevision),
-      decision: string(body.decision) as 'responded' | 'approved' | 'rejected' | 'changes-requested',
-      idempotencyKey: string(body.idempotencyKey),
-      response: body.response == null ? null : string(body.response),
-    }, runScope);
-    if (!responded.ok) return sendResult(reply, responded);
-    if (!responded.replayed) {
-      ctx.controlStore.appendEvent(sub, responded.value.runRef, {
-        kind: 'governance', source: 'human', stageRef: responded.value.stageRef,
-        status: responded.value.response?.decision === 'approved' || responded.value.response?.decision === 'responded' ? 'success' : 'waiting',
-        summary: `Human Request ${responded.value.response?.decision ?? 'resolved'} at revision ${responded.value.revision}`,
-      }, runScope);
-      // Answering the LAST open boundary resumes the run — see resumeRunAfterBoundaryAccepted. Only a
-      // fresh decision kicks; a replayed re-submit records nothing new and must start nothing.
-      resumeRunAfterBoundaryAccepted(ctx, {
-        actorSubject: sub, runRef: responded.value.runRef, answeredTitle: responded.value.title, scope: runScope,
-      });
-    }
-    // Unit-B's spend-grant mint marker used to live here. Unit D moved it to STAGE LAUNCH (see
-    // execution.ts `provisionSpendGrant` + spendGrantProvision.ts): the token FILE must exist inside the
-    // attempt worktree before the worker spawns, but that worktree is created AFTER this gate approval, and
-    // `mint` returns the raw token only once — so minting here would strand the token with nowhere to
-    // write it. This route now records the approval exactly as before; the engine mints the grant and writes
-    // `.kb/spend-grant.json` when it prepares the worktree for a spending stage whose gate is recorded
-    // approved (re-verified against these same resolved human requests).
-    return sendResult(reply, responded);
+    let config;
+    try { config = ctx.webAuthnConfig(); }
+    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
+    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
+    const preimage: DeployT3Preimage = { subject: subjectKind, ref: parsedRef.ref, revision, decision, digest };
+    let challenge: string;
+    try { challenge = deployChallenge(preimage); }
+    catch { return reply.code(400).send({ error: 'invalid-revision' }); }
+    const now = (ctx.now?.() ?? new Date()).getTime();
+    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
+    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
+    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
+    return reply.send({ ceremonyId, options, challengeExpiresAt });
+  });
+
+  // P6 W6.2 [design:435]: THIN caller of `services/runReadService.ts#respondHumanRequestRoute` — the
+  // closed body wall and the gate-service result mapping are the service's. No byte of the
+  // request/response contract changed.
+  scope.post('/api/control/human-requests/:requestRef/respond', { preHandler }, async (req, reply) => {
+    const respondPort: RespondPort = {
+      respond: (input) => responseService(req).respond(input as unknown as HumanResponseInput) as unknown as ReturnType<RespondPort['respond']>,
+    };
+    const result = await respondHumanRequestRoute(
+      respondPort, subject(req), (req.params as { requestRef: string }).requestRef, req.body, req.headers.origin,
+    );
+    return reply.code(result.status).send(result.body);
   });
 
   const resolveIterationGateRoute = async (
@@ -1705,7 +2211,7 @@ function activationFailure(result: Extract<ControlResult<unknown>, { ok: false }
 
 /** The executor is armed only when the whole activation wiring is present; anything less fails closed. */
 function executorArmed(ctx: SurfaceContext): boolean {
-  return !!(ctx.controlBroker && ctx.runAutomatic && ctx.containManagerStart);
+  return !!(ctx.attemptPort && ctx.runAutomatic && ctx.containManagerStart);
 }
 
 /**
@@ -1744,7 +2250,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
   if (persistedReceipt.value?.phase === 'failed') {
     return { status: 409, body: { error: 'activation-failed' } };
   }
-  if (!ctx.controlBroker || !ctx.runAutomatic || !ctx.containManagerStart) {
+  if (!ctx.attemptPort || !ctx.runAutomatic || !ctx.containManagerStart) {
     // A locked daemon gets its OWN refusal, which the UI turns into an unlock prompt; anything else
     // (an injected-but-incomplete executor) keeps the original not-activated answer.
     const locked = executionLockedRefusal(ctx);
@@ -1838,17 +2344,8 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
         throw new Error('run activation state changed before canonical root activation');
       }
     };
-    const currentPolicyMatches = (): boolean => {
-      const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-      const currentCompiled = currentProposal.ok
-        ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
-            policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-            defaultWorkers: defaultWorkers(ctx.repoRoot),
-          })
-        : null;
-      return !!currentCompiled?.ok
-        && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(compiled.value.stagePolicies);
-    };
+    const currentPolicyMatches = (): boolean =>
+      compiledPolicyUnchanged(ctx, stored.value, compiled.value.stagePolicies);
     const reassertActivationAuthorization = (): void => {
       assertCurrentState();
       if (!currentPolicyMatches()) {
@@ -1856,6 +2353,9 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
       }
     };
     try {
+      // [P4-C14] managed-root activation: atomic multi-root T3-authorized publication, audited via its own
+      // authorize row — intentionally NOT a reconciliation `card-transition` intent, so it stays a direct
+      // executor (R2). See `activateManagedRootCards` for the exception's invariants.
       await (ctx.activateManagedRoots ?? activateManagedRootCards)({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,

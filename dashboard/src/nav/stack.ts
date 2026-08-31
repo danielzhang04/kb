@@ -7,7 +7,7 @@
  * directly, so it would cost a full migration for partial ownership.
  *
  * What arc-3 actually needs is drill-in + back, which `App.tsx` already had a single-purpose version of
- * (`openCardId` + `goTo('tasks')` + `taskSelectedId`). This module generalizes that precedent into one
+ * (`openCardId` + `taskSelectedId`). This module generalizes that precedent into one
  * typed stack of ~40 lines with zero dependencies.
  *
  * The three operations are deliberately asymmetric:
@@ -21,8 +21,9 @@
  * migrating to a router later is mechanical rather than a rewrite.
  */
 import type { DestinationId } from './config';
+import type { RunnableRef } from '../../server/control/p2Contracts.ts';
 
-/** The entity a pushed entry is focused on. `card` reuses the pre-existing Tasks detail-pane payload. */
+/** The entity a pushed entry is focused on. Cards now open inside the unified Inbox. */
 export type Focus =
   | { kind: 'run'; id: string }
   | { kind: 'workflow'; id: string }
@@ -32,8 +33,12 @@ export type Focus =
 export interface NavTarget {
   view: DestinationId;
   focus?: Focus;
+  /** Closed roster filter used only by Home's Agent/Workflow attention links. */
+  filter?: 'attention';
   /** The detail section (tab) to restore. Written back into the top entry as the operator switches tabs. */
   section?: string;
+  /** New-schedule intent with immutable server-owned runnable identity prefilled. */
+  scheduleOwner?: RunnableRef;
 }
 
 /**
@@ -48,7 +53,7 @@ export const DESTINATION_BY_FOCUS: Record<Focus['kind'], DestinationId> = {
   run: 'workflows',
   workflow: 'workflows',
   agent: 'agents',
-  card: 'tasks',
+  card: 'inbox',
 };
 
 /** The nav target that opens an entity, in whichever destination owns its kind. */
@@ -66,7 +71,7 @@ export const rootStack = (view: DestinationId): NavEntry[] => [{ view }];
 /** True when two entries address the same thing — used to swallow double-click duplicates. */
 export function sameTarget(a: NavEntry | undefined, b: NavTarget): boolean {
   if (!a) return false;
-  return a.view === b.view && a.focus?.kind === b.focus?.kind && a.focus?.id === b.focus?.id;
+  return a.view === b.view && a.focus?.kind === b.focus?.kind && a.focus?.id === b.focus?.id && a.filter === b.filter;
 }
 
 /** A sidebar click: reset to a fresh root. No back arrow, no accumulated history. */
@@ -96,4 +101,55 @@ export function setSectionOnStack(stack: NavEntry[], section: string): NavEntry[
 /** The entry the back button would return to, or undefined at the root. */
 export function parentEntry(stack: NavEntry[]): NavEntry | undefined {
   return stack.length > 1 ? stack[stack.length - 2] : undefined;
+}
+
+const DESTINATIONS = new Set<DestinationId>([
+  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'projects', 'files', 'health',
+]);
+const URL_ENTITY_VIEW: Partial<Record<Focus['kind'], DestinationId>> = {
+  agent: 'agents',
+  workflow: 'workflows',
+  card: 'inbox',
+};
+
+/** Parse the closed P1 query grammar; every invalid ingress falls back to a clean Home root. */
+export function parseNavigationSearch(search: string): NavEntry[] {
+  const fallback = rootStack('home');
+  if (/%(?![0-9a-f]{2})/i.test(search)) return fallback;
+  const params = new URLSearchParams(search);
+  if ([...params].some(([key, value]) => key.includes('\uFFFD') || value.includes('\uFFFD'))) return fallback;
+  const keys = [...params.keys()];
+  if (keys.some((key) => key !== 'view' && key !== 'entity' && key !== 'filter')) return fallback;
+  if (params.getAll('view').length !== 1 || params.getAll('entity').length > 1 || params.getAll('filter').length > 1) return fallback;
+  const view = params.get('view');
+  // Tasks is no longer an IA destination, but its shipped card links remain valid and canonicalize to
+  // the card section in Inbox rather than falling through to Home or a dead surface.
+  const legacyTasks = view === 'tasks';
+  if (!view || (!legacyTasks && !DESTINATIONS.has(view as DestinationId))) return fallback;
+  const destination: DestinationId = legacyTasks ? 'inbox' : view as DestinationId;
+  const filter = params.get('filter');
+  if (filter !== null && (filter !== 'attention' || destination !== 'agents' && destination !== 'workflows')) return fallback;
+  const root = { view: destination, ...(filter === 'attention' ? { filter } : {}) } as NavEntry;
+  const encodedEntity = params.get('entity');
+  if (encodedEntity === null) return [root];
+  const separator = encodedEntity.indexOf(':');
+  if (separator <= 0 || separator === encodedEntity.length - 1) return fallback;
+  const kind = encodedEntity.slice(0, separator) as Focus['kind'];
+  const id = encodedEntity.slice(separator + 1);
+  if (!(kind in URL_ENTITY_VIEW) || URL_ENTITY_VIEW[kind] !== destination) return fallback;
+  const focus = { kind, id } as Focus;
+  return [root, { ...root, focus }];
+}
+
+/** Serialize the top stack entry through URLSearchParams so entity identity is encoded exactly once. */
+export function navigationSearchFor(entry: NavEntry): string {
+  const params = new URLSearchParams();
+  params.set('view', entry.view);
+  if (entry.filter === 'attention' && (entry.view === 'agents' || entry.view === 'workflows')) {
+    params.set('filter', entry.filter);
+  }
+  if (entry.focus && URL_ENTITY_VIEW[entry.focus.kind] === entry.view) {
+    params.set('entity', `${entry.focus.kind}:${entry.focus.id}`);
+  }
+  return `?${params.toString()}`;
 }

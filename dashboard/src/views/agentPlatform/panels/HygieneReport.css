@@ -1,9 +1,0 @@
-.ap-hygiene { display: flex; flex-direction: column; gap: var(--space-3); }
-.ap-hygiene__banner { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--warning); background: var(--bg-elevated); color: var(--fg-primary); font-size: var(--text-sm); }
-.ap-hygiene__summary, .ap-hygiene__empty { margin: 0; color: var(--fg-faint); font-size: var(--text-sm); }
-.ap-hygiene__group { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-panel); }
-.ap-hygiene__heading { margin: 0; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); color: var(--fg-primary); font-size: var(--text-sm); }
-.ap-hygiene__findings { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); list-style: none; }
-.ap-hygiene__finding { display: grid; gap: var(--space-1); color: var(--fg-dim); font-size: var(--text-xs); }
-.ap-hygiene__finding code { color: var(--fg-primary); font-family: var(--font-mono); }
-.ap-hygiene__finding em { color: var(--warning); font-style: normal; }

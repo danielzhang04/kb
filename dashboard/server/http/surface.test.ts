@@ -8,7 +8,7 @@
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,17 +24,28 @@ import type { SurfaceContext } from './context.ts';
 import { mintSession } from '../auth/session.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from '../write/branch.ts';
+import { stagingGit } from '../testFixtures/stagingGit.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
-import type { HostOpenRequest, PtyHost, PtySession } from '../pty/host.ts';
+import type {
+  HostLaunch, ObservedExit, PtyCapabilityProbe, SessionHost, SessionHostRequest, SessionSink,
+} from '../pty/contracts.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { AttemptIoAppend } from '../control/attemptIo.ts';
 import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
 import { admit } from '../control/admission.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
+import { acquireWriterLease } from '../control/writerLease.ts';
+import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
+/** What a successful composition-time host probe publishes; nothing constructs a PTY without it. */
+const AVAILABLE_PTY = {
+  pty: true as const, host: 'desktop' as const, launchers: ['shell' as const],
+  roots: ['repo' as const], checkedAt: '2026-08-22T09:00:00.000Z',
+};
+const KB_REPO = fileURLToPath(new URL('../../../', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
 const sessionConfig = { secret: SECRET, ttlMs: 60_000 };
 const GOOD_ORIGIN = 'http://localhost';
@@ -82,20 +93,59 @@ const noRunnerSignal: NonNullable<SurfaceContext['triggerRunner']> = (owner) => 
 });
 const frozenPreamble: PreambleRunner = () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP file present — fleet frozen', stderr: '' });
 
-function recordingPtyHost(): {
-  host: PtyHost;
-  open: ReturnType<typeof vi.fn>;
-  stop: ReturnType<typeof vi.fn>;
-  stopAll: ReturnType<typeof vi.fn>;
-  sessions: ReturnType<typeof vi.fn>;
-  session: PtySession;
+/** A v2 session id: `pty-` plus 32 lowercase hex digits, the only grammar the registry mints. */
+const HOST_SESSION_ID = 'pty-0123456789abcdef0123456789abcdef';
+
+/** A fake platform {@link SessionHost} recording every method the fleet gate is supposed to pass through
+ *  untouched, and the one method (`create`) it is supposed to refuse while the fleet is frozen. */
+function recordingSessionHost(): {
+  host: SessionHost;
+  launch: HostLaunch;
+  exit: ObservedExit;
+  probe: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  attach: ReturnType<typeof vi.fn>;
+  write: ReturnType<typeof vi.fn>;
+  resize: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  listEpoch: ReturnType<typeof vi.fn>;
+  drain: ReturnType<typeof vi.fn>;
 } {
-  const session = { sessionId: 'pty-surface-test', handle: {} } as PtySession;
-  const open = vi.fn((_request: HostOpenRequest) => session);
-  const stop = vi.fn((_sessionId: string) => true);
-  const stopAll = vi.fn();
-  const sessions = vi.fn(() => [session.sessionId]);
-  return { host: { open, stop, stopAll, sessions }, open, stop, stopAll, sessions, session };
+  const exit: ObservedExit = {
+    sessionId: HOST_SESSION_ID, sequence: 1, exitCode: 0, signal: null,
+    reason: 'exited', observedAt: '2026-08-22T00:00:00.000Z',
+  };
+  const launch: HostLaunch = {
+    receipt: Promise.resolve({
+      ok: true,
+      value: {
+        operationKey: 'op-surface-test', sessionId: HOST_SESSION_ID, epochId: 'epoch-surface-test',
+        revision: 1, boundAt: '2026-08-22T00:00:00.000Z', replayed: false,
+      },
+    }),
+    exit: Promise.resolve(exit),
+  };
+  const probe = vi.fn(async (): Promise<PtyCapabilityProbe> => ({
+    available: true, host: 'desktop', transport: 'local-node-pty',
+    launchers: ['shell'], roots: ['repo'], epochId: 'epoch-surface-test',
+    checkedAt: '2026-08-22T00:00:00.000Z',
+  }));
+  const create = vi.fn((_request: SessionHostRequest, _sink: SessionSink) => launch);
+  const attach = vi.fn(async (_sessionId: string, _sink: SessionSink) =>
+    ({ ok: true as const, value: { attachmentId: 'att-0123456789abcdef0123456789abcdef' } }));
+  const write = vi.fn(async (_sessionId: string, _data: Uint8Array) =>
+    ({ ok: true as const, value: { accepted: 3 } }));
+  const resize = vi.fn(async (_sessionId: string, size: { cols: number; rows: number }) =>
+    ({ ok: true as const, value: size }));
+  const close = vi.fn(async (_sessionId: string) => ({ ok: true as const, value: exit }));
+  const listEpoch = vi.fn(async () =>
+    ({ ok: true as const, value: { epochId: 'epoch-surface-test', sessionIds: [HOST_SESSION_ID] } }));
+  const drain = vi.fn(async (epochId: string) =>
+    ({ ok: true as const, value: { epochId, closed: [HOST_SESSION_ID], alreadyGone: [] } }));
+  return {
+    host: { probe, create, attach, write, resize, close, listEpoch, drain },
+    launch, exit, probe, create, attach, write, resize, close, listEpoch, drain,
+  };
 }
 
 function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstance; ctx: SurfaceContext } {
@@ -146,14 +196,44 @@ afterEach(async () => {
 });
 
 describe('write surface — composition chain', () => {
-  it('does not construct the PTY host on Linux', () => {
-    const createPty = vi.fn(() => { throw new Error('must not construct'); });
-    const ctx = makeSurfaceContext(
-      { runtimeCapabilities: runtimeCapabilities('linux') },
-      { createPtyHost: createPty },
-    );
-    expect(createPty).not.toHaveBeenCalled();
-    expect(ctx.ptyHost).toBeUndefined();
+  it('constructs no PTY host, registry, or run store when the probe refused', () => {
+    // An injected host is still refused: the capability decides, not the override. If composition ever
+    // took the override before checking `capabilities.pty`, a probe-refused daemon would expose a host.
+    const injected = recordingSessionHost();
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('linux'),
+      ptySessionHost: injected.host,
+    });
+    expect(ctx.runtimeCapabilities.pty).toBe(false);
+    expect(ctx.ptySessionHost).toBeUndefined();
+    expect(ctx.ptySessionRegistry).toBeUndefined();
+    expect(ctx.ptySessionRuns).toBeUndefined();
+    expect(injected.create).not.toHaveBeenCalled();
+    expect(injected.probe).not.toHaveBeenCalled();
+  });
+
+  it('refuses the same way on Windows until composition supplies a probe result', () => {
+    const injected = recordingSessionHost();
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32'),
+      ptySessionHost: injected.host,
+    });
+    expect(ctx.runtimeCapabilities).toMatchObject({
+      pty: false, diagnostic: { reason: 'node-pty-unavailable', detail: null },
+    });
+    expect(ctx.ptySessionHost).toBeUndefined();
+    expect(ctx.ptySessionRegistry).toBeUndefined();
+    expect(injected.probe).not.toHaveBeenCalled();
+  });
+
+  it('constructs the whole PTY stack once the probe advertised the closed capability', () => {
+    const ctx = makeSurfaceContext({ runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY) });
+    // No override: the REAL platform host is built here, and building it must stay inert — no probe, no
+    // spawn, no socket. `probe()` is the explicit, separately-invoked capability check.
+    expect(ctx.ptySessionHost).toBeDefined();
+    expect(ctx.ptySessionRegistry).toBeDefined();
+    expect(ctx.ptySessionRuns).toBeDefined();
+    expect(ctx.closeDeploymentPtySessions).toBeDefined();
   });
 
   it('resolves outbox publication once and recovers the anchor before readiness', async () => {
@@ -259,68 +339,19 @@ describe('write surface — composition chain', () => {
       '/api/write/launch',
       '/api/write/rerun',
       '/api/write/stop',
-      '/api/write/stop-card',
-      '/api/write/pause-cadence',
       '/api/approvals/verify',
     ]) {
       const res = await app.inject({ method: 'POST', url, headers: headers(false), payload: {} });
       expect(res.statusCode, `${url} should be gated, not missing`).not.toBe(404);
       expect(res.statusCode).toBe(401);
     }
-    // The capability-bearing legacy Composer route is intentionally retired, not session-gated alive.
-    const legacyComposer = await app.inject({
-      method: 'POST', url: '/api/composer/turn', headers: headers(false), payload: {},
-    });
-    expect(legacyComposer.statusCode).toBe(401);
-    const authenticatedLegacyComposer = await app.inject({
-      method: 'POST', url: '/api/composer/turn', headers: headers(true), payload: {},
-    });
-    expect(authenticatedLegacyComposer.statusCode).toBe(410);
-    // Read-only routes remain session-gated, but still exist and work for an authenticated caller.
-    const list = await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(false) });
-    expect(list.statusCode).toBe(401);
-    expect((await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(true) })).statusCode).toBe(200);
-    const inbox = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
-    expect(inbox.statusCode).toBe(401);
-    expect((await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(true) })).statusCode).toBe(200);
-  });
-
-  it('rejects invalid pause names before filesystem, git, or audit work and accepts a declared id', async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), 'pause-route-'));
-    writeFileSync(
-      join(repoRoot, 'HEARTBEAT.md'),
-      '# test\n\n```yaml\ncadences:\n  - name: nightly-review\n    schedule: daily\n```\n',
-      'utf8',
-    );
-    const git = vi.fn(okOpsGit);
-    const audit = recordingAudit();
-    ({ app } = buildApp({ repoRoot, opsGit: git, appendAudit: audit.fn }));
-
-    try {
-      for (const name of ['../../STOP', '..\\..\\STOP', 'nightly-review/../x', 'undeclared']) {
-        const response = await app.inject({
-          method: 'POST', url: '/api/write/pause-cadence', headers: headers(true), payload: { name },
-        });
-        expect(response.statusCode, name).toBe(400);
-        expect(response.json()).toMatchObject({ error: 'invalid-cadence' });
-      }
-      expect(existsSync(join(repoRoot, 'queue'))).toBe(false);
-      expect(existsSync(join(repoRoot, 'STOP'))).toBe(false);
-      expect(git).not.toHaveBeenCalled();
-      expect(audit.rows).toEqual([]);
-
-      const accepted = await app.inject({
-        method: 'POST', url: '/api/write/pause-cadence', headers: headers(true),
-        payload: { name: 'nightly-review' },
-      });
-      expect(accepted.statusCode).toBe(200);
-      expect(existsSync(join(repoRoot, 'queue', 'paused', 'nightly-review'))).toBe(true);
-      expect(git).toHaveBeenCalled();
-      expect(audit.rows).toHaveLength(1);
-    } finally {
-      await app.close();
-      app = undefined;
-      rmSync(repoRoot, { recursive: true, force: true });
+    for (const request of [
+      { method: 'POST' as const, url: '/api/write/stop-card' },
+      { method: 'POST' as const, url: '/api/composer/turn' },
+      { method: 'GET' as const, url: '/api/approvals' },
+      { method: 'GET' as const, url: '/api/human-inbox' },
+    ]) {
+      expect((await app.inject({ method: request.method, url: request.url, headers: headers(true), payload: request.method === 'POST' ? {} : undefined })).statusCode).toBe(404);
     }
   });
 
@@ -463,8 +494,8 @@ describe('write surface — composition chain', () => {
     ({ app } = buildApp({
       repoRoot,
       appendAudit: audit.fn,
-      saveGit: okGit,
-      openPr: (_r, req) => { prCalls.push(req); },
+      saveGit: stagingGit(),
+      openPr: (_r, req) => { prCalls.push(req); return { url: 'https://github.com/danielzhang04/kb/pull/1', number: 1, owner: 'danielzhang04', repo: 'kb' }; },
     }));
 
     const res = await app.inject({
@@ -790,12 +821,9 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
   it('a normal durable save (no workBranch) still routes to the server work branch', async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'u2-wb-'));
     const pushCalls: string[][] = [];
-    const recordingGit: GitRunner = (_r, args) => {
-      pushCalls.push(args);
-      return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '';
-    };
+    const recordingGit: GitRunner = stagingGit({ onCall: (_r, args) => pushCalls.push(args) });
     const prCalls: { head?: string }[] = [];
-    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => { prCalls.push(req); } }));
+    ({ app } = buildApp({ repoRoot, appendAudit: recordingAudit().fn, saveGit: recordingGit, openPr: (_r, req) => { prCalls.push(req); return { url: 'https://github.com/danielzhang04/kb/pull/2', number: 2, owner: 'danielzhang04', repo: 'kb' }; } }));
     const res = await app.inject({
       method: 'POST',
       url: '/api/write/save',
@@ -819,11 +847,8 @@ describe('write surface — FINDING 1: server owns the durable work branch (no c
     ({ app } = buildApp({
       repoRoot: opsRoot,
       durableRepoRoot: durableRoot,
-      saveGit: (repo, args) => {
-        gitRoots.push(repo);
-        return args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'claude/m1-dashboard\n' : '';
-      },
-      openPr: () => {},
+      saveGit: stagingGit({ onCall: (repo) => gitRoots.push(repo) }),
+      openPr: () => ({ url: 'https://github.com/danielzhang04/kb/pull/3', number: 3, owner: 'danielzhang04', repo: 'kb' }),
       appendAudit: (repo, event) => {
         auditRoots.push(repo);
         return { ts: '2026-07-18T00:00:00.000Z', ...event };
@@ -1009,7 +1034,7 @@ describe('auth surface — fail-closed WebAuthn reality (no passkey provisioned)
     // Default resolveAllowedOrigins({}) is []: fail-closed, every route 403s regardless of session.
     app = Fastify({ logger: false });
     registerWriteSurface(app, makeSurfaceContext({ repoRoot: REPO_A, sessionConfig, allowedOrigins: [] }));
-    const res = await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(false) });
+    const res = await app.inject({ method: 'POST', url: '/api/approvals/verify', headers: headers(false), payload: {} });
     expect(res.statusCode).toBe(403);
   });
 });
@@ -1057,36 +1082,19 @@ describe('approvals surface — verify wiring', () => {
   });
 });
 
-describe('human inbox surface', () => {
-  it('without a session is refused, and with one aggregates approval and human-attention states', async () => {
-    ({ app } = buildApp());
-    const refused = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
-    expect(refused.statusCode).toBe(401);
-    const res = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(true) });
-    expect(res.statusCode).toBe(200);
-    const payload = res.json() as {
-      counts: { total: number; decision: number; intervention: number };
-      items: Array<{ category: string; nextAction: string; card: { meta: { id: string } } }>;
-    };
-    expect(payload.counts).toMatchObject({ total: 2, decision: 1, intervention: 1 });
-    expect(payload.items.find((item) => item.category === 'decision')?.nextAction).toMatch(/does not run or resume/i);
-    expect(payload.items.map((item) => item.card.meta.id)).toEqual(expect.arrayContaining(['aaaa0002-2222', 'aaaa0006-6666']));
-  });
-});
-
 describe('surface — Wave-A executor activation wiring (env-gated, default OFF)', () => {
   const activatedTriple = () => ({
-    controlBroker: { drain() {} } as unknown as NonNullable<SurfaceContext['controlBroker']>,
+    attemptPort: { async drain() {} } as unknown as NonNullable<SurfaceContext['attemptPort']>,
     runAutomatic: (async () => ({ state: 'succeeded', startedStageIds: [], completedStageIds: [], waitingStageIds: [] })) as unknown as NonNullable<SurfaceContext['runAutomatic']>,
     cancelAutomatic: (async () => ({ state: 'stopped', stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false })) as unknown as NonNullable<SurfaceContext['cancelAutomatic']>,
     containManagerStart: (async () => {}) as NonNullable<SurfaceContext['containManagerStart']>,
     verifyCanonicalResult: (async () => true) as NonNullable<SurfaceContext['verifyCanonicalResult']>,
   });
 
-  it('CORE INERT INVARIANT: gate unset ⇒ controlBroker/runAutomatic/cancelAutomatic are undefined', () => {
+  it('CORE INERT INVARIANT: gate unset ⇒ attemptPort/runAutomatic/cancelAutomatic are undefined', () => {
     // Real builder, deterministic gate-off env — must return null and construct nothing.
     const ctx = makeSurfaceContext({ repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] }, { env: {} });
-    expect(ctx.controlBroker).toBeUndefined();
+    expect(ctx.attemptPort).toBeUndefined();
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
     expect(ctx.containManagerStart).toBeUndefined();
@@ -1095,9 +1103,9 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
   it('gate set ⇒ the three executor fields are populated from the builder result', () => {
     const triple = activatedTriple();
     const build = vi.fn().mockReturnValue(triple);
-    const underlying = recordingPtyHost();
+    const underlying = recordingSessionHost();
     const ctx = makeSurfaceContext(
-      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], ptyHost: underlying.host },
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], ptySessionHost: underlying.host },
       { build: build as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' } },
     );
     expect(build).toHaveBeenCalledTimes(1);
@@ -1106,10 +1114,15 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
       env: { DASHBOARD_EXECUTION_ACTIVATED: '1' },
       repoRoot: REPO_A,
     }));
-    expect(build.mock.calls[0][0]).not.toHaveProperty('ptyHost');
-    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessions');
-    expect(ctx.ptyHost).not.toBe(underlying.host);
-    expect(ctx.controlBroker).toBe(triple.controlBroker);
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessionHost');
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessionRegistry');
+    // The host and the v2 binding document DO reach the builder, under the port names the attempt
+    // adapter consumes: the fleet-gated host wrapper, never the raw underlying host.
+    expect(build.mock.calls[0][0].sessionHost).toBe(ctx.ptySessionHost);
+    expect(build.mock.calls[0][0].sessionHost).not.toBe(underlying.host);
+    expect(build.mock.calls[0][0].attemptBindings).toBe(ctx.ptySessionRegistry);
+    expect(ctx.ptySessionHost).not.toBe(underlying.host);
+    expect(ctx.attemptPort).toBe(triple.attemptPort);
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);
     expect(ctx.cancelAutomatic).toBe(triple.cancelAutomatic);
     expect(ctx.containManagerStart).toBe(triple.containManagerStart);
@@ -1118,13 +1131,13 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
 
   it('an explicit executor override wins and short-circuits activation entirely (builder never called)', () => {
     const build = vi.fn().mockReturnValue(activatedTriple());
-    const overrideBroker = { drain() {} } as unknown as NonNullable<SurfaceContext['controlBroker']>;
+    const overridePort = { async drain() {} } as unknown as NonNullable<SurfaceContext['attemptPort']>;
     const ctx = makeSurfaceContext(
-      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], controlBroker: overrideBroker },
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], attemptPort: overridePort },
       { build: build as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' } },
     );
     expect(build).not.toHaveBeenCalled();
-    expect(ctx.controlBroker).toBe(overrideBroker);
+    expect(ctx.attemptPort).toBe(overridePort);
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
     expect(ctx.containManagerStart).toBeUndefined();
@@ -1190,8 +1203,12 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
 
     const card: OwnedCard = { id: 'card-1', path: 'queue/inbox/card-1.md', state: 'inbox' };
     await bridgeOptions?.dispatch?.(card);
-    expect(dispatch).toHaveBeenCalledWith(ctx, card, expect.objectContaining({ internalCaller: expect.any(Function) }));
+    expect(dispatch).toHaveBeenCalledWith(ctx, card, expect.objectContaining({
+      internalCaller: expect.any(Function), resolveScheduleReceiptOwner: expect.any(Function),
+    }));
     const internalCaller = dispatch.mock.calls[0][2].internalCaller as (subject: string) => unknown;
+    const receiptOwner = dispatch.mock.calls[0][2].resolveScheduleReceiptOwner as (cardId: string) => unknown;
+    expect(receiptOwner('unmatched-card')).toBeNull();
     expect(internalCaller('dashboard-engine')).toMatchObject({ subject: 'dashboard-engine' });
     expect(() => internalCaller('other-subject')).toThrow(/unexpected internal service subject/);
 
@@ -1292,64 +1309,287 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
   });
 });
 
-describe('surface — shared PTY host fleet gate', () => {
-  const request: HostOpenRequest = { requestId: 'req-1', cwd: REPO_A, cols: 80, rows: 24 };
+describe('surface — the platform session host carries the fleet gate', () => {
+  const request: SessionHostRequest = {
+    operationKey: 'op-fleet-gate',
+    principal: { operator: 'op-1', browserSessionRef: 'bsr-1' },
+    recipe: { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'none', sandbox: 'interactive' },
+    rootId: 'repo',
+    relativeCwd: '',
+    cols: 80,
+    rows: 24,
+  };
+  const sink: SessionSink = { data() {}, exit() {}, closed: () => false };
 
-  it('fails closed before the underlying open and redacts all preamble failure details', () => {
-    const underlying = recordingPtyHost();
+  function gated(underlying: ReturnType<typeof recordingSessionHost>, runPreamble: PreambleRunner): SessionHost {
+    const ctx = makeSurfaceContext({
+      repoRoot: REPO_A,
+      sessionConfig,
+      allowedOrigins: [GOOD_ORIGIN],
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: underlying.host,
+      runPreamble,
+    });
+    // Composition WRAPS the injected host rather than exposing it: no caller can reach the ungated one.
+    expect(ctx.ptySessionHost).toBeDefined();
+    expect(ctx.ptySessionHost).not.toBe(underlying.host);
+    return ctx.ptySessionHost as SessionHost;
+  }
+
+  it('fails closed before the underlying create and redacts all preamble failure details', async () => {
+    const underlying = recordingSessionHost();
     const sensitive = 'credential=provider-secret-value';
     const runPreamble = vi.fn((_repoRoot: string) => ({
       exitCode: 1,
       stdout: `PREAMBLE FAIL: STOP present; ${sensitive}`,
       stderr: `stderr ${sensitive}`,
     }));
-    const ctx = makeSurfaceContext({
-      repoRoot: REPO_A,
-      sessionConfig,
-      allowedOrigins: [GOOD_ORIGIN],
-      ptyHost: underlying.host,
-      runPreamble,
-    });
+    const host = gated(underlying, runPreamble);
 
+    // Composition itself never runs the preamble — only an actual `create` does.
     expect(runPreamble).not.toHaveBeenCalled();
-    let thrown: Error | null = null;
-    try {
-      ctx.ptyHost?.open(request);
-    } catch (error) {
-      thrown = error as Error;
-    }
+
+    const launch = host.create(request, sink);
+    const receipt = await launch.receipt;
 
     expect(runPreamble).toHaveBeenCalledTimes(1);
     expect(runPreamble).toHaveBeenCalledWith(REPO_A);
-    expect(underlying.open).not.toHaveBeenCalled();
-    expect(thrown?.message).toBe(PTY_OPEN_FLEET_FROZEN);
-    expect(thrown?.message).not.toContain('STOP');
-    expect(thrown?.message).not.toContain(sensitive);
+    expect(underlying.create).not.toHaveBeenCalled();
+    expect(receipt.ok).toBe(false);
+    if (receipt.ok) throw new Error('a frozen fleet must refuse');
+    expect(receipt.refusal).toBe('unavailable');
+    expect(receipt.detail).toBe(PTY_OPEN_FLEET_FROZEN);
+    expect(receipt.detail).not.toContain('STOP');
+    expect(receipt.detail).not.toContain(sensitive);
+    // The refusal still settles the exit promise, so a caller awaiting teardown never hangs.
+    await expect(launch.exit).resolves.toMatchObject({ reason: 'abandoned', exitCode: null });
   });
 
-  it('delegates exactly one passing open and preserves every lifecycle method', () => {
-    const underlying = recordingPtyHost();
-    const runPreamble = vi.fn((_repoRoot: string) => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }));
-    const ctx = makeSurfaceContext({
-      repoRoot: REPO_A,
-      sessionConfig,
-      allowedOrigins: [GOOD_ORIGIN],
-      ptyHost: underlying.host,
-      runPreamble,
+  it('a preamble that THROWS is still a redacted refusal, never a propagated error', async () => {
+    const underlying = recordingSessionHost();
+    const runPreamble = vi.fn((_repoRoot: string) => {
+      throw new Error(`spawn failed: credential=provider-secret-value`);
     });
-    const host = ctx.ptyHost as PtyHost;
+    const host = gated(underlying, runPreamble as unknown as PreambleRunner);
 
-    expect(host.open(request)).toBe(underlying.session);
+    const receipt = await host.create(request, sink).receipt;
+
+    expect(underlying.create).not.toHaveBeenCalled();
+    expect(receipt.ok).toBe(false);
+    if (receipt.ok) throw new Error('a throwing preamble must refuse');
+    expect(receipt.detail).toBe(PTY_OPEN_FLEET_FROZEN);
+    expect(receipt.detail).not.toContain('provider-secret-value');
+  });
+
+  it('delegates exactly one passing create and passes every other method straight through', async () => {
+    const underlying = recordingSessionHost();
+    const runPreamble = vi.fn((_repoRoot: string) => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }));
+    const host = gated(underlying, runPreamble);
+
+    expect(host.create(request, sink)).toBe(underlying.launch);
     expect(runPreamble).toHaveBeenCalledOnce();
     expect(runPreamble).toHaveBeenCalledWith(REPO_A);
-    expect(underlying.open).toHaveBeenCalledOnce();
-    expect(underlying.open).toHaveBeenCalledWith(request);
+    expect(underlying.create).toHaveBeenCalledOnce();
+    expect(underlying.create).toHaveBeenCalledWith(request, sink);
 
-    expect(host.stop('pty-surface-test')).toBe(true);
-    host.stopAll();
-    expect(host.sessions()).toEqual(['pty-surface-test']);
-    expect(underlying.stop).toHaveBeenCalledWith('pty-surface-test');
-    expect(underlying.stopAll).toHaveBeenCalledOnce();
-    expect(underlying.sessions).toHaveBeenCalledOnce();
+    // Only `create` is gated: everything else acts on a session that already exists, and a freeze must
+    // never strand a live child or block reaping one. Each of these runs the preamble ZERO extra times.
+    await expect(host.probe()).resolves.toMatchObject({ available: true });
+    await expect(host.attach(HOST_SESSION_ID, sink)).resolves.toMatchObject({ ok: true });
+    await expect(host.write(HOST_SESSION_ID, new Uint8Array([1, 2, 3]))).resolves
+      .toMatchObject({ ok: true, value: { accepted: 3 } });
+    await expect(host.resize(HOST_SESSION_ID, { cols: 100, rows: 40 })).resolves
+      .toMatchObject({ ok: true, value: { cols: 100, rows: 40 } });
+    await expect(host.close(HOST_SESSION_ID)).resolves.toMatchObject({ ok: true, value: underlying.exit });
+    await expect(host.listEpoch()).resolves
+      .toMatchObject({ ok: true, value: { sessionIds: [HOST_SESSION_ID] } });
+    await expect(host.drain('epoch-surface-test')).resolves
+      .toMatchObject({ ok: true, value: { closed: [HOST_SESSION_ID] } });
+
+    expect(runPreamble).toHaveBeenCalledOnce();
+    expect(underlying.probe).toHaveBeenCalledOnce();
+    expect(underlying.attach).toHaveBeenCalledWith(HOST_SESSION_ID, sink);
+    expect(underlying.write).toHaveBeenCalledOnce();
+    expect(underlying.resize).toHaveBeenCalledWith(HOST_SESSION_ID, { cols: 100, rows: 40 });
+    expect(underlying.close).toHaveBeenCalledWith(HOST_SESSION_ID);
+    expect(underlying.listEpoch).toHaveBeenCalledOnce();
+    expect(underlying.drain).toHaveBeenCalledWith('epoch-surface-test');
+  });
+
+  it('re-runs the gate on EVERY create, so a freeze mid-session stops the next one', async () => {
+    const underlying = recordingSessionHost();
+    let exitCode = 0;
+    const runPreamble = vi.fn((_repoRoot: string) => ({ exitCode, stdout: '', stderr: '' }));
+    const host = gated(underlying, runPreamble);
+
+    await expect(host.create(request, sink).receipt).resolves.toMatchObject({ ok: true });
+    exitCode = 1;
+    await expect(host.create(request, sink).receipt).resolves
+      .toMatchObject({ ok: false, refusal: 'unavailable', detail: PTY_OPEN_FLEET_FROZEN });
+
+    expect(runPreamble).toHaveBeenCalledTimes(2);
+    expect(underlying.create).toHaveBeenCalledOnce();
+  });
+});
+
+describe('P1 route matrix', () => {
+  it('retains verify and fleet STOP while retired writes and Composer are 404', async () => {
+    ({ app } = buildApp());
+    for (const url of ['/api/approvals/verify', '/api/write/stop']) {
+      expect((await app.inject({ method: 'POST', url, headers: headers(false), payload: {} })).statusCode, url).toBe(401);
+    }
+    for (const request of [
+      { method: 'POST' as const, url: '/api/write/stop-card' },
+      { method: 'GET' as const, url: '/api/human-inbox' },
+      { method: 'GET' as const, url: '/api/approvals' },
+      { method: 'GET' as const, url: '/api/composer/sessions' },
+      { method: 'POST' as const, url: '/api/composer/sessions' },
+    ]) {
+      const response = await app.inject({
+        method: request.method,
+        url: request.url,
+        headers: headers(true),
+        ...(request.method === 'POST' ? { payload: {} } : {}),
+      });
+      expect(response.statusCode, request.url).toBe(404);
+    }
+  });
+});
+
+describe('P2 production migration evidence wiring', () => {
+  function fixture(): { repoRoot: string; stateRoot: string; path: string } {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'kb-surface-p2-repo-'));
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-surface-p2-state-'));
+    mkdirSync(join(repoRoot, 'agents'), { recursive: true });
+    mkdirSync(join(repoRoot, 'ledgers', 'audit'), { recursive: true });
+    mkdirSync(join(stateRoot, 'control'), { recursive: true });
+    copyFileSync(join(KB_REPO, 'agents', 'grader.md'), join(repoRoot, 'agents', 'grader.md'));
+    const run = (overrides: Record<string, unknown>) => ({
+      subject: 'operator', runRef: 'run-evidence', predecessorRunRef: null, title: 'Evidence fixture',
+      proposalRef: 'proposal-evidence', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+      publicationState: 'published', lifecycle: { kind: 'running', deployPause: null }, version: 1,
+      managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,
+      agentWorkspaceLaunch: {
+        composerRef: 'composer-evidence', agentId: 'grader', declarationPath: 'agents/grader.md',
+        declarationHash: normalizedTextSha256(readFileSync(join(repoRoot, 'agents', 'grader.md'))),
+      },
+      activationReceipts: [], authorizedFailedRunReconciliation: null,
+      createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:00:02.000Z',
+      ...overrides,
+    });
+    const document = JSON.parse(readFileSync(join(KB_REPO, 'tests', 'fixtures', 'control-plane', 'v2-empty.json'), 'utf8'));
+    document.runs = [run({}), run({ runRef: 'run-archive-evidence', lifecycle: { kind: 'archived', deployPause: null },
+      version: 2, archiveOperationKey: 'archive-evidence' })];
+    writeFileSync(join(repoRoot, 'ledgers', 'audit', 'dashboard-audit.ndjson'), `${JSON.stringify({
+      ts: '2026-08-21T00:00:01.000Z', action: 'control-run-archive-authorize', target: 'run-archive-evidence',
+      result: 'authorized:archive-evidence', detail: { runOwnerSubject: 'operator', runVersion: 1, runState: 'waiting-human' },
+    })}\n`, 'utf8');
+    const path = join(stateRoot, 'control', 'control-plane.json');
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    return { repoRoot, stateRoot, path };
+  }
+
+  it('migrates through real surface wiring only when declaration and archive-audit evidence are present', () => {
+    const success = fixture();
+    const successLease = acquireWriterLease({ stateRoot: success.stateRoot, bootId: 'surface-evidence-success' });
+    try {
+      makeProductionSurfaceContext({ repoRoot: success.repoRoot, stateRoot: success.stateRoot,
+        fileControlAccess: { mode: 'already-locked', lease: successLease } });
+      expect(JSON.parse(readFileSync(success.path, 'utf8'))).toMatchObject({
+        version: 4,
+        runs: [
+          { owner: { type: 'agent', id: 'grader' }, terminalOutcome: null },
+          { owner: { type: 'agent', id: 'grader' }, terminalOutcome: 'abandoned', archivedFrom: 'waiting-human' },
+        ],
+        // P6 W1's purely additive v3->v4 edge: the three placement collections land empty.
+        hostAdvertisements: [],
+        placementLeases: [],
+        v1Idempotency: [],
+      });
+    } finally {
+      successLease.release();
+      rmSync(success.repoRoot, { recursive: true, force: true });
+      rmSync(success.stateRoot, { recursive: true, force: true });
+    }
+
+    const withheld = fixture();
+    const before = readFileSync(withheld.path);
+    unlinkSync(join(withheld.repoRoot, 'agents', 'grader.md'));
+    const withheldLease = acquireWriterLease({ stateRoot: withheld.stateRoot, bootId: 'surface-evidence-withheld' });
+    try {
+      expect(() => makeProductionSurfaceContext({ repoRoot: withheld.repoRoot, stateRoot: withheld.stateRoot,
+        fileControlAccess: { mode: 'already-locked', lease: withheldLease } })).toThrow(/run-owner-migration-required/);
+      expect(readFileSync(withheld.path)).toEqual(before);
+    } finally {
+      withheldLease.release();
+      rmSync(withheld.repoRoot, { recursive: true, force: true });
+      rmSync(withheld.stateRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * W6.3b — the two composition facts W6.3 introduced and nothing pinned: the v2 PTY persistence port and
+ * the browser-session ref table, plus the endpoint that is the ONLY way the tailnet deployment ever gets
+ * a controller cookie.
+ */
+describe('write surface — PTY persistence + browser-session ref composition', () => {
+  it('composes the v2 persistence port and the ref table, and still touches no filesystem', () => {
+    // A state root that does not exist: if composition read or created anything under it, this test
+    // would see the directory afterwards. `createSessionPersistence` validates the path and memoizes
+    // the document LAZILY, and `createSessionRunStore` opens nothing.
+    const absentRoot = join(tmpdir(), `kb-compose-inert-${process.pid}-${Date.now()}`);
+
+    const ctx = makeSurfaceContext(
+      { runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY), stateRoot: absentRoot },
+    );
+
+    expect(ctx.ptyPersistence).toBeDefined();
+    expect(ctx.browserSessionRefs).toBeDefined();
+    expect(ctx.ptySessionRuns).toBeDefined();
+    // The migration is injected as a CLOSURE, never called at compose: `pending` proves it never ran.
+    expect(ctx.ptySessionRuns?.migrationState()).toBe('pending');
+    expect(existsSync(absentRoot)).toBe(false);
+  });
+
+  it('composes a ref table even with no PTY stack, so sign-in never depends on the PTY probe', () => {
+    const ctx = makeSurfaceContext(
+      { runtimeCapabilities: runtimeCapabilities('linux') },
+    );
+
+    expect(ctx.runtimeCapabilities.pty).toBe(false);
+    expect(ctx.ptyPersistence).toBeUndefined();
+    expect(ctx.browserSessionRefs).toBeDefined();
+  });
+});
+
+describe('write surface — POST /api/auth/browser-session is Origin + operator gated', () => {
+  it('403s a foreign Origin, 401s a session-less caller, and mints for an authenticated operator', async () => {
+    ({ app } = buildApp());
+
+    const foreign = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: { origin: 'https://evil.example', host: GOOD_HOST, 'content-type': 'application/json', authorization: `Bearer ${token()}` },
+      payload: {},
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect(foreign.headers['set-cookie']).toBeUndefined();
+
+    const sessionless = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: headers(false), payload: {},
+    });
+    // Gated, not missing — and no cookie leaks out of a refusal.
+    expect(sessionless.statusCode).toBe(401);
+    expect(sessionless.headers['set-cookie']).toBeUndefined();
+
+    const authenticated = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: headers(true), payload: {},
+    });
+    expect(authenticated.statusCode).toBe(204);
+    expect(authenticated.body).toBe('');
+    const cookies = ([] as string[]).concat(authenticated.headers['set-cookie'] as string | string[]);
+    expect(cookies[0]).toMatch(
+      /^kb_browser_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000$/,
+    );
   });
 });

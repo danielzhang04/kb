@@ -4,12 +4,17 @@ import {
   statSync,
 } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
+import {
+  canonicalJson, clone, isPlainRecord, iterationDefinitionHash, iterationRequestFingerprint, sha256,
+} from './controlHashing.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import {
   persistControlDocumentSync,
-  type PersistenceDeps,
+  writeControlPlaneMigrationBackupSync,
   type SaveDurability,
 } from './persistence.ts';
 import { assertWriterLeaseForRoot } from './writerLease.ts';
@@ -18,8 +23,56 @@ import {
   legacyGroupForStages,
   loadAndMigrate,
   normalizeCrash,
+  type MigrationContext,
 } from './migrations.ts';
-import { CONTROL_PLANE_SCHEMA_VERSION, type ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
+import {
+  CONTROL_PLANE_SCHEMA_VERSION,
+} from './generated/controlPlaneSchema.ts';
+import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
+import type {
+  RunnableRef,
+  Schedule,
+} from './p2Contracts.ts';
+// P6 W1 [P6-C23, P6-C37, P6-C48, P6-C59]: the three additive placement collections introduced by the
+// v3 -> v4 migration. Their record decoders are W0's contracts, imported — never re-declared here.
+import type {
+  StoredHostAdvertisement,
+} from '../placement/contracts.ts';
+// P6 W1b [P6-C48]: the store-open document invariant must decode every placement collection row through
+// its W0 exact-key decoder, not just confirm the collections are bounded arrays.
+import { assertPlacementCollections } from './placementState.ts';
+import type {
+  CompleteScheduleOccurrenceInput,
+  DeleteScheduleInput,
+  DeleteScheduleReceipt,
+  ResolvedCreateScheduleInput,
+  ScheduleMutationReceipt,
+  ScheduleMutationEvent,
+  ScheduleOccurrenceClaim,
+  CommitScheduleMirrorPreparationResult,
+  ScheduleMirrorRow,
+  ScheduleSnapshot,
+  SetScheduleArmedInput,
+} from '../schedules/contracts.ts';
+import {
+  decodeScheduleMirrorBatch, decodeScheduleMirrorWatermark, isRowCoveredByMirror,
+} from '../schedules/mirrorContracts.ts';
+import type { ScheduleMirrorBatch, ScheduleMirrorWatermark } from '../schedules/mirrorContracts.ts';
+import { ReconciliationConflictError } from '../reconciliation/contracts.ts';
+import type {
+  PreparedReconciliationReceipt,
+  PublishedReconciliationReceipt,
+  ReconciliationReceipt,
+  ReconciliationReceiptPort,
+  ReconciliationResult,
+} from '../reconciliation/contracts.ts';
+import type {
+  ScheduleMutationTransaction,
+  StoredScheduleMutationReceipt,
+} from '../schedules/service.ts';
+import type {
+  AdvanceScheduleOccurrenceInput,
+} from '../schedules/socketRoutes.ts';
 import type {
   ProposalCompletionGate,
   ProposalIterationGroup,
@@ -28,10 +81,9 @@ import type {
 } from './proposal.ts';
 import { ARTIFACT_PRODUCING_REQUEST_KINDS } from './proposal.ts';
 import type {
-  BrokerConsumption,
   BrokerMutation,
   ManagedStartSpec,
-} from './broker.ts';
+} from './attemptDurability.ts';
 import type { PublicOperationalEvent } from './publicEvents.ts';
 import { TERMINAL_ATTEMPT } from './types.ts';
 import { MAX_DEPLOYMENT_OPERATION_RECEIPTS } from './controlPlaneLimits.ts';
@@ -42,22 +94,25 @@ import {
   validateCreateDeploymentInput,
   validateTransitionDeploymentInput,
 } from './deploymentState.ts';
+import {
+  ASSET_PULL_MAX_ATTEMPTS,
+  assertAssetPullCollection,
+  canTransitionAssetPull,
+  validateCreateAssetPullIntentInput,
+  validateUpdateAssetPullIntentInput,
+} from './assetPullState.ts';
 import type {
   Attempt,
   AttemptState,
-  ActivateIterationLoopInput,
-  AdvanceIterationTurnInput,
   AgentWorkspaceLaunchProvenance,
+  AssetPullIntent,
   ControlResult,
-  CreateDeploymentInput,
   Deployment,
   GenerationSupersession,
   HumanRequest,
   HumanRequestDecision,
   HumanRequestKind,
   IterationLoop,
-  IterationGateResult,
-  IterationParkResult,
   IterationReceipt,
   IterationRequest,
   IterationResidue,
@@ -72,9 +127,6 @@ import type {
   ProposalRevisionMetadata,
   QuarantinePlan,
   ParkIterationLoopInput,
-  RecordIterationReceiptInput,
-  RecordIterationRequestInput,
-  ResolveIterationGateInput,
   Run,
   RunDetail,
   RunDto,
@@ -82,9 +134,7 @@ import type {
   Stage,
   StageGeneration,
   StageState,
-  StorageInventory,
   StorageInventoryItem,
-  TransitionDeploymentInput,
 } from './types.ts';
 import {
   RUN_LIFECYCLE_KINDS,
@@ -109,7 +159,7 @@ export const MAX_BROKER_RECEIPTS_PER_SESSION = 4_096;
 export const MAX_STEERING_INSTRUCTIONS_PER_SESSION = 256;
 
 const MAX_TITLE = 240;
-const MAX_SHORT_TEXT = 512;
+export const MAX_SHORT_TEXT = 512;
 const MAX_LONG_TEXT = 64 * 1024;
 const MAX_REVIEW_CRITERIA = 16;
 const MAX_REVIEW_REWORKS = 2;
@@ -207,7 +257,10 @@ const STAGE_EDGES: Readonly<Record<StageState, ReadonlySet<StageState>>> = {
 };
 const ATTEMPT_EDGES: Readonly<Record<AttemptState, ReadonlySet<AttemptState>>> = {
   queued: new Set(['starting', 'waiting-human', 'failed', 'stopped', 'interrupted']),
-  starting: new Set(['running', 'waiting-human', 'failed', 'stopped', 'interrupted']),
+  // `starting -> succeeded` exists because [C-S5] moved the `running` projection behind the attempt
+  // start receipt: a stage finalized from an already-committed canonical result adopts it without ever
+  // starting a session, so its attempt succeeds straight out of `starting`.
+  starting: new Set(['running', 'succeeded', 'waiting-human', 'failed', 'stopped', 'interrupted']),
   running: new Set(['waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']),
   'waiting-human': new Set(['failed', 'stopped', 'interrupted']),
   succeeded: new Set(),
@@ -217,7 +270,10 @@ const ATTEMPT_EDGES: Readonly<Record<AttemptState, ReadonlySet<AttemptState>>> =
 };
 const SESSION_EDGES: Readonly<Record<ManagedSessionState, ReadonlySet<ManagedSessionState>>> = {
   pending: new Set(['starting', 'failed', 'stopped', 'interrupted']),
-  starting: new Set(['running', 'failed', 'stopped', 'interrupted']),
+  // `starting -> waiting` exists because [C-S5] moved the `running` projection behind the attempt start
+  // receipt: a stage that parks for a human (a refused skill resolution) between session creation and
+  // that receipt has a `starting` session that never ran, and parking it is not an interruption.
+  starting: new Set(['running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']),
   running: new Set(['waiting', 'completed', 'failed', 'stopped', 'interrupted']),
   waiting: new Set(['running', 'completed', 'failed', 'stopped', 'interrupted']),
   completed: new Set(),
@@ -226,197 +282,99 @@ const SESSION_EDGES: Readonly<Record<ManagedSessionState, ReadonlySet<ManagedSes
   interrupted: new Set(['stopped']),
 };
 
-/**
- * `ownerSubject` is omitted deliberately: on a STORED row the owner is `subject`, and carrying both
- * would be two mutable copies of one fact. {@link publicProposal} projects `subject` onto `ownerSubject`
- * on the way out, exactly as `detail`/`metadata` do for a run.
- */
-export interface StoredProposal extends Omit<ProposalRevision, 'ownerSubject'> {
-  subject: string;
-}
 
-export interface StoredRun extends Run {
-  subject: string;
-  launchOperationKey?: string | null;
-  launchOperationFingerprint?: string | null;
-  archiveOperationKey?: string | null;
-  archiveOperationFingerprint?: string | null;
-  activationReceipts?: StoredRunActivationReceipt[];
-  authorizedFailedRunReconciliation?: StoredAuthorizedFailedRunReconciliation | null;
-}
-
-interface StoredDeployment extends Deployment {
-  operationReceipts: Array<{
-    key: string;
-    fingerprint: string;
-    operation: 'create' | 'transition';
-    deploymentRevision: number;
-    result: Deployment;
-    recordedAt: string;
-  }>;
-}
-
-export type RunActivationPhase = 'claimed' | 'roots-activated' | 'dispatched' | 'failed';
-
-export interface StoredRunActivationReceipt {
-  idempotencyKey: string;
-  fingerprint: string;
-  phase: RunActivationPhase;
-  claimedAt: string;
-  updatedAt: string;
-}
-
-export interface StoredStage extends Stage {
-  subject: string;
-}
-
-export interface StoredStageGeneration extends StageGeneration {
-  subject: string;
-  operationFingerprint: string;
-}
-
-export interface StoredGenerationSupersession extends GenerationSupersession {
-  subject: string;
-  operationFingerprint: string;
-}
-
-export interface StoredIterationLoop extends IterationLoop {
-  subject: string;
-  advanceOperationKey?: string;
-  advanceOperationFingerprint?: string;
-}
-
-export interface StoredIterationRequest extends IterationRequest {
-  subject: string;
-  runRef: string;
-  stepId: string;
-  operationKey: string;
-  operationFingerprint: string;
-}
-
-export interface StoredIterationReceipt extends IterationReceipt {
-  subject: string;
-  runRef: string;
-  routeId: string;
-  operationKey: string;
-  operationFingerprint: string;
-}
-
-export interface StoredAttempt extends Attempt {
-  subject: string;
-  rerouteOperationKey?: string | null;
-  rerouteOperationFingerprint?: string | null;
-  iterationAdvanceOperationKey?: string | null;
-  iterationAdvanceOperationFingerprint?: string | null;
-  iterationAdvanceReceiptRef?: string | null;
-}
-
-export interface StoredSession extends ManagedSession {
-  subject: string;
-  operationKey: string | null;
-  operationFingerprint: string | null;
-  brokerProfileId?: string | null;
-  brokerApprovedPromptHash?: string | null;
-  brokerStopRequested?: boolean;
-  brokerSteering?: StoredSteeringInstruction[];
-  brokerReceipts?: StoredBrokerReceipt[];
-}
-
-interface StoredSteeringInstruction {
-  instructionRef: string;
-  instruction: string;
-  checkpoint: string | null;
-  enqueuedAt: string;
-}
-
-type StoredBrokerReceiptKind = 'start' | 'event' | 'complete' | 'stop' | 'enqueue' | 'consume' | 'interrupt';
-
-interface StoredBrokerReceipt {
-  kind: StoredBrokerReceiptKind;
-  idempotencyKey: string;
-  fingerprint: string;
-  revision: number;
-  status: 'reserved' | 'already-active' | 'applied' | 'inactive' | 'conflict';
-  instructions: string[];
-  createdAt: string;
-}
-
-export interface StoredHumanRequest extends HumanRequest {
-  subject: string;
-  operationKey?: string | null;
-  operationFingerprint?: string | null;
-  resolutionOperationFingerprint?: string | null;
-  /** Private, one-off repair idempotency. Deliberately separate from the request's creation key. */
-  legacyRecoveryOperationKey?: string | null;
-  legacyRecoveryOperationFingerprint?: string | null;
-  legacyRecoveryEventCursor?: number | null;
-}
-
-export type AuthorizedFailedRunReconciliationPhase = 'claimed' | 'committed';
-
-export interface AuthorizedFailedRunReconciliationReceipt {
-  idempotencyKey: string;
-  fingerprint: string;
-  phase: AuthorizedFailedRunReconciliationPhase;
-  claimedAt: string;
-  updatedAt: string;
-  canonicalCommit: string | null;
-  eventCursor: number | null;
-}
-
-interface StoredAuthorizedFailedRunReconciliation extends AuthorizedFailedRunReconciliationReceipt {}
-
-export interface StoredEvent extends OperationalEvent {
-  subject: string;
-  operationKey?: string | null;
-  operationFingerprint?: string | null;
-}
-
-export interface QuarantinedRunBundle {
-  subject: string;
-  quarantinedAt: string;
-  run: StoredRun;
-  stages: StoredStage[];
-  attempts: StoredAttempt[];
-  sessions: StoredSession[];
-  humanRequests: StoredHumanRequest[];
-  events: StoredEvent[];
-  stageGenerations: StoredStageGeneration[];
-  iterationLoops: StoredIterationLoop[];
-  iterationRequests: StoredIterationRequest[];
-  iterationReceipts: StoredIterationReceipt[];
-  generationSupersessions: StoredGenerationSupersession[];
-}
-
-export interface StoreDocumentCollections {
-  proposals: StoredProposal[];
-  runs: StoredRun[];
-  stages: StoredStage[];
-  attempts: StoredAttempt[];
-  sessions: StoredSession[];
-  humanRequests: StoredHumanRequest[];
-  events: StoredEvent[];
-  stageGenerations: StoredStageGeneration[];
-  iterationLoops: StoredIterationLoop[];
-  iterationRequests: StoredIterationRequest[];
-  iterationReceipts: StoredIterationReceipt[];
-  generationSupersessions: StoredGenerationSupersession[];
-  quarantine: QuarantinedRunBundle[];
-  deployments: StoredDeployment[];
-}
-
-export interface StoreDocument extends StoreDocumentCollections {
-  version: 2;
-  documentRevision: number;
-  nextEventCursor: number;
-}
-
-type StoreDocumentCollectionEquality =
-  keyof StoreDocumentCollections extends ControlPlaneCollection
-    ? ControlPlaneCollection extends keyof StoreDocumentCollections ? true : false
-    : false;
-const STORE_DOCUMENT_COLLECTIONS_MATCH_GENERATED: StoreDocumentCollectionEquality = true;
-void STORE_DOCUMENT_COLLECTIONS_MATCH_GENERATED;
+import type {
+  StoredProposal,
+  StoredRun,
+  StoredDeployment,
+  StoredAssetPullIntent,
+  RunActivationPhase,
+  StoredRunActivationReceipt,
+  StoredStage,
+  StoredStageGeneration,
+  StoredGenerationSupersession,
+  StoredIterationLoop,
+  StoredIterationRequest,
+  StoredIterationReceipt,
+  StoredAttempt,
+  StoredSession,
+  StoredSteeringInstruction,
+  StoredBrokerReceiptKind,
+  StoredBrokerReceipt,
+  StoredHumanRequest,
+  StoredAuthorizedFailedRunReconciliation,
+  StoredEvent,
+  QuarantinedRunBundle,
+  StoredSchedule,
+  StoredScheduleTombstone,
+  StoredScheduleOccurrenceClaim,
+  StoreDocumentCollections,
+  StoreDocument,
+  ControlStoreOptions,
+  CreateRunStageInput,
+  RunActivationInput,
+  CanonicalStageProjectionInput,
+  ControlPlaneStore,
+} from './storeTypes.ts';
+export type {
+  StoredProposal,
+  StoredRun,
+  RunActivationPhase,
+  StoredRunActivationReceipt,
+  StoredStage,
+  StoredStageGeneration,
+  StoredGenerationSupersession,
+  StoredIterationLoop,
+  StoredIterationRequest,
+  StoredIterationReceipt,
+  StoredAttempt,
+  StoredSession,
+  StoredHumanRequest,
+  AuthorizedFailedRunReconciliationPhase,
+  AuthorizedFailedRunReconciliationReceipt,
+  StoredAuthorizedFailedRunReconciliation,
+  StoredEvent,
+  QuarantinedRunBundle,
+  StoredSchedule,
+  StoredScheduleTombstone,
+  StoredScheduleOccurrenceClaim,
+  StoredScheduleSeedImport,
+  StoreDocumentCollections,
+  StoreDocument,
+  ControlStoreOptions,
+  CreateProposalRevisionInput,
+  ApproveProposalInput,
+  CreateRunStageInput,
+  CreateRunInput,
+  RunActivationInput,
+  RunActivationReceipt,
+  CreateAttemptInput,
+  RecordStageGenerationInput,
+  CreateWorkerSessionInput,
+  RerouteStageInput,
+  RerouteStageResult,
+  CreateHumanRequestInput,
+  CreateHumanRequestBatchInput,
+  RespondHumanRequestInput,
+  ArchiveRunInput,
+  ArchiveRunResult,
+  CloseOrphanedHumanRequestsResult,
+  RecoverAuthorized20260731ExecutionLockInput,
+  RecoverAuthorized20260731ExecutionLockResult,
+  RecoverAuthorized20260731ExecutionLockPreflight,
+  ReconcileAuthorized20260801FailedRunInput,
+  ReconcileAuthorized20260801FailedRunResult,
+  ReconcileAuthorized20260801FailedRunPreflight,
+  CreateManagerSuccessorInput,
+  ManagerCommandInput,
+  ManagerCommandResult,
+  RequestRunCancellationInput,
+  CanonicalStageProjectionInput,
+  ReconcileCanonicalProjectionInput,
+  BrokerSteeringInput,
+  BrokerStoreBackend,
+  ControlPlaneStore,
+} from './storeTypes.ts';
 
 function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun): string | null {
   // The one Daniel-authorized settlement is a CLOSED record: it stopped every stage, attempt, and
@@ -451,453 +409,45 @@ function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun
   return null;
 }
 
-export interface ControlStoreOptions {
-  now?: () => Date;
-  newId?: () => string;
-  bootId?: string;
-  maxDocumentBytes?: number;
-  maxEventsPerRun?: number;
-  /** @internal */
-  persistenceDepsForTest?: PersistenceDeps;
-  /** @internal Exact persisted byte size for durability tests and the explicitly enabled VM benchmark. */
-  persistenceTargetBytesForTest?: number;
-  /** @internal Future migration-edge regression seam. */
-  loadAndMigrateForTest?: typeof loadAndMigrate;
-  /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
-  beforeIterationBoundaryValidationForTest?: (
-    boundary: 'quarantine' | 'restore',
-    target: StoreDocument | QuarantinedRunBundle,
-  ) => void;
+
+/** Invoke the canonical Python card renderer without a shell or caller-provided path. */
+export function createPythonScheduleClaimRenderer(
+  repoRoot: string,
+  now: () => Date = () => new Date(),
+): NonNullable<ControlStoreOptions['renderScheduleClaim']> {
+  const script = join(repoRoot, 'scripts', 'cards.py');
+  return async (input) => {
+    const command = process.platform === 'win32' ? 'py' : 'python3';
+    const args = process.platform === 'win32'
+      ? ['-3', script, '--schedule-occurrence-claim']
+      : [script, '--schedule-occurrence-claim'];
+    const result = spawnSync(command, args, {
+      cwd: repoRoot,
+      input: JSON.stringify({
+        scheduleId: input.scheduleId,
+        scheduledFor: input.scheduledFor,
+        owner: input.owner,
+        mirrorPath: input.mirrorPath,
+        dispatchedAt: now().toISOString(),
+      }),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+    if (result.error || result.status !== 0 || !result.stdout) {
+      throw Object.assign(new Error('schedule-card-renderer-failed'), { status: 503, code: 'schedule-card-renderer-failed' });
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(result.stdout); } catch {
+      throw Object.assign(new Error('schedule-card-renderer-invalid'), { status: 503, code: 'schedule-card-renderer-invalid' });
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw Object.assign(new Error('schedule-card-renderer-invalid'), { status: 503, code: 'schedule-card-renderer-invalid' });
+    }
+    return parsed as { card: Record<string, unknown>; cardBytesSha256: string };
+  };
 }
 
-export interface CreateProposalRevisionInput {
-  proposalRef?: string;
-  expectedPreviousHash?: string | null;
-  sourceComposerRef: string;
-  sourceTurnId: string;
-  title: string;
-  snapshot: JsonObject;
-}
-
-export interface ApproveProposalInput {
-  expectedHash: string;
-  expectedApprovalRevision: 0;
-  decision: ProposalDecision;
-  idempotencyKey: string;
-  note?: string | null;
-}
-
-export interface CreateRunStageInput {
-  stageId: string;
-  title: string;
-  dependsOn: string[];
-  canonicalCardRef?: string | null;
-  /** Must exactly match the approved compiler snapshot for this stage. */
-  assignment?: ResolvedAgentAssignment | null;
-  /** Must exactly match the approved compiler snapshot for this stage. */
-  workflowProfile?: string | null;
-  /** Must exactly match the approved compiler snapshot for this stage. */
-  review?: ProposalReview | null;
-  /** Must exactly match the approved compiler snapshot for this stage. */
-  completionGate?: ProposalCompletionGate | null;
-}
-
-export interface CreateRunInput {
-  title: string;
-  proposalRef: string;
-  proposalRevision: number;
-  expectedProposalHash: string;
-  managerRuntime: string;
-  managerModel: string;
-  /** Must exactly match the approved compiler snapshot for the Manager. */
-  managerAssignment?: ResolvedAgentAssignment | null;
-  idempotencyKey: string;
-  predecessorRunRef?: string | null;
-  expectedPredecessorVersion?: number;
-  /** Internal, server-derived Composer origin; HTTP clients never choose declaration identity. */
-  agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenance | null;
-  /** Exact compiler-owned snapshot. */
-  iterationGroups?: ProposalIterationGroup[];
-  stages: CreateRunStageInput[];
-}
-
-export interface RunActivationInput {
-  expectedRunVersion: number;
-  expectedManagerGeneration: number;
-  idempotencyKey: string;
-}
-
-export interface RunActivationReceipt {
-  run: Run;
-  phase: RunActivationPhase;
-}
-
-export interface CreateAttemptInput {
-  expectedStageVersion: number;
-  runtime: string;
-  model: string;
-}
-
-export interface RecordStageGenerationInput {
-  expectedStageVersion: number;
-  expectedAttemptVersion: number;
-  expectedGeneration: number;
-  operationKey: string;
-  resultHash: string;
-  resultCardRef: string | null;
-  baseCommit: string;
-  canonicalCommit: string;
-}
-
-export interface CreateWorkerSessionInput {
-  expectedAttemptVersion: number;
-}
-
-export interface RerouteStageInput {
-  expectedStageVersion: number;
-  expectedAttemptRef: string;
-  expectedAttemptVersion: number;
-  runtime: string;
-  model: string;
-  idempotencyKey: string;
-}
-
-export interface RerouteStageResult {
-  stage: Stage;
-  attempt: Attempt;
-  session: ManagedSession;
-}
-
-export interface CreateHumanRequestInput {
-  stageRef?: string | null;
-  kind: HumanRequestKind;
-  title: string;
-  prompt: string;
-}
-
-export interface CreateHumanRequestBatchInput {
-  idempotencyKey: string;
-  requests: CreateHumanRequestInput[];
-}
-
-export interface RespondHumanRequestInput {
-  expectedRevision: number;
-  decision: HumanRequestDecision;
-  idempotencyKey: string;
-  response?: string | null;
-}
-
-export interface ArchiveRunInput {
-  idempotencyKey: string;
-  /** Why the operator dismissed this run. Recorded on the resolved requests and in the audit row. */
-  reason?: string | null;
-}
-
-export interface ArchiveRunResult {
-  run: Run;
-  /** Requests this archive resolved, in the same commit that moved the run to `archived`. */
-  resolvedRequests: HumanRequest[];
-  /**
-   * Open requests the archive could NOT resolve: a review completion gate / review intervention is
-   * pinned open by the review lineage invariants (only the review gate resolver may move one), so they
-   * are reported rather than silently corrupted. The archived run leaves every default projection, so
-   * these stop reaching the operator either way.
-   */
-  pinnedRequestRefs: string[];
-}
-
-export interface CloseOrphanedHumanRequestsResult {
-  /** Every request auto-closed this sweep, across every subject and run, in one commit. */
-  closed: HumanRequest[];
-}
-
-export interface RecoverAuthorized20260731ExecutionLockInput {
-  expectedRunVersion: number;
-  expectedManagerGeneration: number;
-  expectedRequestRevision: number;
-  idempotencyKey: string;
-}
-
-export interface RecoverAuthorized20260731ExecutionLockResult {
-  request: HumanRequest;
-  event: OperationalEvent;
-}
-
-export type RecoverAuthorized20260731ExecutionLockPreflight =
-  | { disposition: 'eligible'; result: null }
-  | { disposition: 'replay'; result: RecoverAuthorized20260731ExecutionLockResult };
-
-export interface ReconcileAuthorized20260801FailedRunInput {
-  expectedRunVersion: number;
-  expectedManagerGeneration: number;
-  expectedRequestRevision: number;
-  expectedNextEventCursor: number;
-  expectedProposalHash: string;
-  idempotencyKey: string;
-}
-
-export interface ReconcileAuthorized20260801FailedRunResult {
-  run: Run;
-  event: OperationalEvent;
-  receipt: AuthorizedFailedRunReconciliationReceipt;
-}
-
-export type ReconcileAuthorized20260801FailedRunPreflight =
-  | { disposition: 'eligible'; receipt: null; result: null }
-  | { disposition: 'claimed'; receipt: AuthorizedFailedRunReconciliationReceipt; result: null }
-  | { disposition: 'replay'; receipt: AuthorizedFailedRunReconciliationReceipt; result: ReconcileAuthorized20260801FailedRunResult };
-
-export interface CreateManagerSuccessorInput {
-  expectedManagerGeneration: number;
-  runtime: string;
-  model: string;
-  idempotencyKey: string;
-}
-
-export interface ManagerCommandInput {
-  expectedRunVersion: number;
-  expectedManagerGeneration: number;
-  idempotencyKey: string;
-  kind: 'message' | 'steer' | 'stop';
-  message?: string;
-  checkpoint?: string;
-}
-
-export interface ManagerCommandResult {
-  run: Run;
-  event: OperationalEvent;
-}
-
-export interface RequestRunCancellationInput {
-  expectedRunVersion: number;
-  idempotencyKey: string;
-  reason: string;
-}
-
-export interface CanonicalStageProjectionInput {
-  stageRef: string;
-  expectedStageVersion: number;
-  canonicalCardRef: string;
-  state: Exclude<StageState, 'interrupted'>;
-  attemptRef: string;
-  expectedAttemptVersion: number;
-  attemptState: Exclude<AttemptState, 'interrupted'>;
-  sessionRef: string;
-  expectedSessionVersion: number;
-  sessionState: Exclude<ManagedSessionState, 'interrupted'>;
-}
-
-export interface ReconcileCanonicalProjectionInput {
-  expectedRunVersion: number;
-  expectedProposalHash: string;
-  stages: CanonicalStageProjectionInput[];
-}
-
-export interface BrokerSteeringInput {
-  runRef: string;
-  sessionRef: string;
-  instructionRef: string;
-  instruction: string;
-  /** Null means deliver at the next safe checkpoint; otherwise deliver only at this checkpoint. */
-  checkpoint: string | null;
-  expectedRevision: number;
-  idempotencyKey: string;
-}
-
-export interface BrokerStoreBackend {
-  brokerReserveStart(subject: string, input: { spec: ManagedStartSpec; idempotencyKey: string }):
-    { status: 'reserved'; revision: number } | { status: 'already-active'; revision: number };
-  brokerAppendEvent(subject: string, input: {
-    runRef: string;
-    sessionRef: string;
-    event: PublicOperationalEvent;
-    idempotencyKey: string;
-  }): void;
-  brokerCompleteSession(subject: string, input: {
-    runRef: string;
-    sessionRef: string;
-    state: 'completed' | 'failed' | 'stopped';
-    detail: string | null;
-    expectedRevision: number;
-    idempotencyKey: string;
-  }): BrokerMutation;
-  brokerRequestStop(subject: string, input: {
-    runRef: string;
-    sessionRef: string;
-    expectedRevision: number;
-    idempotencyKey: string;
-  }): BrokerMutation;
-  brokerEnqueueSteering(subject: string, input: BrokerSteeringInput): BrokerMutation;
-  brokerConsumeSteering(subject: string, input: {
-    runRef: string;
-    sessionRef: string;
-    checkpoint: string;
-    expectedRevision: number;
-    idempotencyKey: string;
-  }): BrokerConsumption;
-  brokerInterruptResidue(subject: string, input: {
-    runRef: string;
-    sessionRef: string;
-    idempotencyKey: string;
-  }): BrokerMutation;
-}
-
-export interface ControlPlaneStore extends BrokerStoreBackend {
-  getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision'>;
-  getDeployment(deploymentRef: string): ControlResult<Deployment>;
-  listDeployments(): Deployment[];
-  createDeployment(subject: string, input: CreateDeploymentInput): ControlResult<Deployment>;
-  transitionDeployment(
-    subject: string,
-    deploymentRef: string,
-    input: TransitionDeploymentInput,
-  ): ControlResult<Deployment>;
-
-  listProposalRevisions(subject: string, proposalRef?: string): ProposalRevisionMetadata[];
-  listProposalRevisionsForComposer(subject: string, sourceComposerRef: string, scope?: ReadScope): ProposalRevisionMetadata[];
-  getProposalRevision(subject: string, proposalRef: string, revision: number, scope?: ReadScope): ControlResult<ProposalRevision>;
-  createProposalRevision(subject: string, input: CreateProposalRevisionInput): ControlResult<ProposalRevision>;
-  decideProposal(subject: string, proposalRef: string, revision: number, input: ApproveProposalInput): ControlResult<ProposalRevision>;
-
-  /** `scope` defaults to `'own-subject'` everywhere it appears; only a verified operator session widens
-   *  it (see {@link ReadScope}). Reads first; the operator-driven mutations below take it too. */
-  listRuns(subject: string, scope?: ReadScope): RunMetadata[];
-  getRun(subject: string, runRef: string, scope?: ReadScope): ControlResult<RunDetail>;
-  createRun(subject: string, input: CreateRunInput): ControlResult<RunDetail>;
-  /**
-   * The non-terminal run this SUBJECT already holds for `(proposalRef, revision)`, ignoring the one a
-   * launch keyed `launchOperationKey` would replay.
-   *
-   * A cross-subject launch consults it before creating a run: the operator's launch key is namespaced
-   * away from the owner's key space, so replay can never find the owner's in-flight run, and a second
-   * launch of the same revision would strand it behind a duplicate.
-   */
-  findActiveRunForRevision(
-    subject: string,
-    proposalRef: string,
-    revision: number,
-    launchOperationKey: string,
-  ): RunMetadata | null;
-  /** Read an exact durable activation receipt without claiming a new activation. */
-  getRunActivationReceipt(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt | null>;
-  /** Internal lifecycle guard used to exclude competing Manager recovery while activation owns the run. */
-  hasActiveRunActivation(subject: string, runRef: string): ControlResult<boolean>;
-  /** Atomically bind one exact activation operation and move waiting-human -> recovering. */
-  claimRunActivation(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt>;
-  /** Advance the durable activation outbox without repeating an earlier phase. */
-  advanceRunActivation(
-    subject: string,
-    runRef: string,
-    input: RunActivationInput,
-    phase: Extract<RunActivationPhase, 'roots-activated' | 'dispatched'>,
-  ): ControlResult<RunActivationReceipt>;
-  /** Fail a claimed activation and return an undispatched run to waiting-human. */
-  failRunActivation(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt>;
-  transitionRun(
-    subject: string,
-    runRef: string,
-    expectedVersion: number,
-    state: Exclude<RunLifecycleKind, 'paused-for-deploy'>,
-  ): ControlResult<Run>;
-  /** Terminal operator dismissal: `archived` run + its answerable open requests resolved, one commit. */
-  archiveRun(subject: string, runRef: string, input: ArchiveRunInput, scope?: ReadScope): ControlResult<ArchiveRunResult>;
-  transitionPublication(
-    subject: string,
-    runRef: string,
-    expectedVersion: number,
-    state: Run['publicationState'],
-  ): ControlResult<Run>;
-  /** Privileged all-or-nothing projection after canonical-card identity and audit were verified. */
-  reconcileCanonicalProjection(
-    subject: string,
-    runRef: string,
-    input: ReconcileCanonicalProjectionInput,
-  ): ControlResult<RunDetail>;
-  transitionStage(subject: string, stageRef: string, expectedVersion: number, state: StageState): ControlResult<Stage>;
-  recordStageGeneration(subject: string, stageRef: string, input: RecordStageGenerationInput): ControlResult<StageGeneration>;
-  activateIterationLoop(subject: string, iterationLoopRef: string, input: ActivateIterationLoopInput): ControlResult<IterationLoop>;
-  recordIterationRequest(subject: string, iterationLoopRef: string, input: RecordIterationRequestInput): ControlResult<IterationRequest>;
-  recordIterationReceipt(subject: string, iterationLoopRef: string, input: RecordIterationReceiptInput): ControlResult<IterationReceipt>;
-  advanceIterationTurn(subject: string, iterationLoopRef: string, input: AdvanceIterationTurnInput): ControlResult<IterationLoop>;
-  parkIterationLoop(subject: string, iterationLoopRef: string, input: ParkIterationLoopInput): ControlResult<IterationParkResult>;
-  resolveIterationGate(subject: string, requestRef: string, input: ResolveIterationGateInput, scope?: ReadScope): ControlResult<IterationGateResult>;
-  linkStageCard(subject: string, stageRef: string, expectedVersion: number, canonicalCardRef: string): ControlResult<Stage>;
-  createAttempt(subject: string, stageRef: string, input: CreateAttemptInput): ControlResult<Attempt>;
-  /** Atomically supersedes one never-started queued attempt without rewriting its historical routing. */
-  rerouteStage(subject: string, stageRef: string, input: RerouteStageInput): ControlResult<RerouteStageResult>;
-  transitionAttempt(subject: string, attemptRef: string, expectedVersion: number, state: AttemptState): ControlResult<Attempt>;
-  createWorkerSession(subject: string, attemptRef: string, input: CreateWorkerSessionInput): ControlResult<ManagedSession>;
-  transitionSession(subject: string, sessionRef: string, expectedVersion: number, state: ManagedSessionState): ControlResult<ManagedSession>;
-  createManagerSuccessor(subject: string, runRef: string, input: CreateManagerSuccessorInput): ControlResult<ManagedSession>;
-  recordManagerCommand(subject: string, runRef: string, input: ManagerCommandInput, scope?: ReadScope): ControlResult<ManagerCommandResult>;
-  /** Atomically persists run-wide cancellation intent before any adapter is signaled. */
-  requestRunCancellation(subject: string, runRef: string, input: RequestRunCancellationInput): ControlResult<ManagerCommandResult>;
-
-  getHumanRequest(subject: string, requestRef: string, scope?: ReadScope): ControlResult<HumanRequest>;
-  createHumanRequest(subject: string, runRef: string, input: CreateHumanRequestInput, scope?: ReadScope): ControlResult<HumanRequest>;
-  createHumanRequests(
-    subject: string,
-    runRef: string,
-    input: CreateHumanRequestBatchInput,
-  ): ControlResult<HumanRequest[]>;
-  reviseHumanRequest(subject: string, requestRef: string, expectedRevision: number, title: string, prompt: string): ControlResult<HumanRequest>;
-  respondHumanRequest(subject: string, requestRef: string, input: RespondHumanRequestInput, scope?: ReadScope): ControlResult<HumanRequest>;
-  /**
-   * Housekeeping sweep, not a governed HTTP write — no subject, no session, no idempotency key from a
-   * caller. Auto-closes every OPEN, non-review-linked Human Request whose parent run has reached a
-   * terminal state (mirrors `isTerminalRun`), with an honest `'auto-closed'` response — it never claims
-   * a human answered. `transitionRun` calls the same predicate inline (same commit as the transition);
-   * this method additionally sweeps the WHOLE document, so it also catches a request whose run went
-   * terminal before this shipped or by some path other than a transition. Called from the boot +
-   * interval sweep wired in `humanRequestSweep.ts`. Idempotent: an already-resolved request is simply
-   * skipped on the next sweep.
-   *
-   * TERMINAL STATE IS THE ONLY PREDICATE (ruling, 2026-08-11). An age-based predicate shipped here
-   * first and was removed: closure is IRREVERSIBLE — nothing reopens a resolved request, both
-   * `respondHumanRequest` and `reviseHumanRequest` conflict on one, and `stageBoundary` then refuses
-   * the run forever — so an age heuristic could permanently wedge a run that is legitimately parked on
-   * a human gate simply because the human took a week. A run that is genuinely dead reaches a terminal
-   * state (or an operator archives it, which resolves its requests in the same commit); a run that has
-   * not is still the operator's to answer.
-   */
-  closeOrphanedHumanRequests(nowMs: number): CloseOrphanedHumanRequestsResult;
-  /** Daniel-authorized, exact-run repair for the 2026-07-31 execution-lock launch defect. */
-  preflightAuthorized20260731ExecutionLock(
-    subject: string,
-    input: RecoverAuthorized20260731ExecutionLockInput,
-  ): ControlResult<RecoverAuthorized20260731ExecutionLockPreflight>;
-  recoverAuthorized20260731ExecutionLock(
-    subject: string,
-    input: RecoverAuthorized20260731ExecutionLockInput,
-  ): ControlResult<RecoverAuthorized20260731ExecutionLockResult>;
-  /** Daniel-authorized, exact-run settlement for the failed 2026-07-31 FYT thin-slice launch. */
-  preflightAuthorized20260801FailedRunReconciliation(
-    subject: string,
-    input: ReconcileAuthorized20260801FailedRunInput,
-  ): ControlResult<ReconcileAuthorized20260801FailedRunPreflight>;
-  claimAuthorized20260801FailedRunReconciliation(
-    subject: string,
-    input: ReconcileAuthorized20260801FailedRunInput,
-  ): ControlResult<AuthorizedFailedRunReconciliationReceipt>;
-  commitAuthorized20260801FailedRunReconciliation(
-    subject: string,
-    input: ReconcileAuthorized20260801FailedRunInput,
-    canonicalCommit: string,
-  ): ControlResult<ReconcileAuthorized20260801FailedRunResult>;
-
-  appendEvent(subject: string, runRef: string, input: OperationalEventInput, scope?: ReadScope): ControlResult<OperationalEvent>;
-  listEvents(subject: string, runRef: string, afterCursor?: number, limit?: number, scope?: ReadScope): ControlResult<OperationalEvent[]>;
-
-  /**
-   * Retention. `scope` defaults to `'own-subject'` here exactly as everywhere else; a widened call
-   * resolves the bundle across subjects and then partitions every record it moves by the RUN's OWN
-   * subject, so quarantine and restore never relabel a bundle as the caller's.
-   */
-  inventory(subject: string, scope?: ReadScope): StorageInventory;
-  dryRunQuarantine(subject: string, runRefs: string[], scope?: ReadScope): ControlResult<QuarantinePlan>;
-  quarantineRuns(subject: string, runRefs: string[], expectedPlanHash: string, scope?: ReadScope): ControlResult<StorageInventoryItem[]>;
-  restoreRun(subject: string, runRef: string, scope?: ReadScope): ControlResult<RunMetadata>;
-}
 
 export class ControlStoreLimitError extends Error {}
 export class ControlStoreMigrationLimitError extends ControlStoreLimitError {}
@@ -914,9 +464,10 @@ function genericPersistenceDocument(document: StoreDocument): StoreDocument {
 
 export function emptyStoreDocumentForTest(): StoreDocument {
   return {
-    version: 2,
+    version: 4,
     documentRevision: 0,
     nextEventCursor: 1,
+    scheduleCollectionRevision: 0,
     proposals: [],
     runs: [],
     stages: [],
@@ -931,29 +482,52 @@ export function emptyStoreDocumentForTest(): StoreDocument {
     generationSupersessions: [],
     quarantine: [],
     deployments: [],
+    schedules: [],
+    scheduleTombstones: [],
+    scheduleOccurrenceClaims: [],
+    scheduleSeedImports: [],
+    hostAdvertisements: [],
+    placementLeases: [],
+    v1Idempotency: [],
   };
 }
 
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
-
-function ok<T>(value: T, replayed?: boolean): ControlResult<T> {
+export function ok<T>(value: T, replayed?: boolean): ControlResult<T> {
   return replayed ? { ok: true, value, replayed: true } : { ok: true, value };
 }
 
-function fail<T>(reason: Extract<ControlResult<T>, { ok: false }>['reason'], detail: string): ControlResult<T> {
+export function fail<T>(reason: Extract<ControlResult<T>, { ok: false }>['reason'], detail: string): ControlResult<T> {
   return { ok: false, reason, detail };
 }
 
-function canonicalJson(value: JsonValue): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
-}
+/** Windows production invocation: `py -3 deploy/control_plane_schema.py --round-trip-v3` (stdin JSON). */
+export const GENERATED_PYTHON_ROUND_TRIP_COMMAND = 'py -3 deploy/control_plane_schema.py --round-trip-v3';
 
-function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
+/** Exact generated-Python prepublication validation command used by production startup. */
+export function validateGeneratedPythonControlPlaneRoundTrip(document: StoreDocument): void {
+  const script = fileURLToPath(new URL('../../../deploy/control_plane_schema.py', import.meta.url));
+  const command = process.platform === 'win32' ? 'py' : 'python3';
+  const args = process.platform === 'win32'
+    ? ['-3', script, '--round-trip-v3']
+    : [script, '--round-trip-v3'];
+  const result = spawnSync(command, args, {
+    input: JSON.stringify(genericPersistenceDocument(document)),
+    encoding: 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0 || !result.stdout) {
+    throw new Error(`generated Python control-plane round trip failed${result.stderr ? `: ${result.stderr.trim()}` : ''}`);
+  }
+  let restored: unknown;
+  try {
+    restored = JSON.parse(result.stdout);
+  } catch {
+    throw new Error('generated Python control-plane round trip returned invalid JSON');
+  }
+  if (canonicalJson(restored as JsonValue) !== canonicalJson(genericPersistenceDocument(document) as unknown as JsonValue)) {
+    throw new Error('generated Python control-plane round trip changed the migrated document');
+  }
 }
 
 export function proposalSnapshotHash(snapshot: JsonObject): string {
@@ -980,7 +554,7 @@ function cleanText(value: string, max: number): string {
   return redactSensitiveText(value.replace(/\0/g, '')).slice(0, max);
 }
 
-function validNonEmpty(value: unknown, max: number): value is string {
+export function validNonEmpty(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max && !value.includes('\0');
 }
 
@@ -1003,15 +577,11 @@ function validIterationArtifactSnapshot(
       && value.size === value.afterSize && value.sha256 === value.afterSha256);
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-}
-
 /**
  * The proposal compiler owns this binding. The store repeats its closed-shape checks so a caller
  * cannot substitute a declaration/profile after approval but before durable run creation.
  */
-function normalizeAssignment(value: unknown): ResolvedAgentAssignment | null | undefined {
+export function normalizeAssignment(value: unknown): ResolvedAgentAssignment | null | undefined {
   if (value === undefined || value === null) return null;
   if (!isPlainRecord(value)) return undefined;
   const keys = Object.keys(value).sort();
@@ -1029,7 +599,7 @@ function normalizeAssignment(value: unknown): ResolvedAgentAssignment | null | u
   return { agentId, declarationPath, declarationHash, profileId, runtime, model };
 }
 
-function sameAssignment(left: ResolvedAgentAssignment | null, right: ResolvedAgentAssignment | null): boolean {
+export function sameAssignment(left: ResolvedAgentAssignment | null, right: ResolvedAgentAssignment | null): boolean {
   return left === right || (left !== null && right !== null
     && left.agentId === right.agentId
     && left.declarationPath === right.declarationPath
@@ -1059,7 +629,7 @@ interface CheckerContractProvenance {
   completionGate: ProposalCompletionGate | null;
 }
 
-function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+export function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const keys = Object.keys(value).sort();
   const sortedExpected = [...expected].sort();
   return keys.length === sortedExpected.length && keys.every((key, index) => key === sortedExpected[index]);
@@ -1107,7 +677,7 @@ function normalizeCompletionGate(value: unknown): ProposalCompletionGate | null 
  * The compiler owns checker contracts.  Missing legacy fields normalize to null, but any present
  * value must be one of the exact, bounded shapes the compiler admits.
  */
-function normalizeCheckerContract(
+export function normalizeCheckerContract(
   value: { workflowProfile?: unknown; review?: unknown; completionGate?: unknown; dependsOn: readonly string[] },
 ): CheckerContractProvenance | undefined {
   const workflowProfile = normalizeWorkflowProfile(value.workflowProfile);
@@ -1119,7 +689,7 @@ function normalizeCheckerContract(
   return { workflowProfile, review, completionGate };
 }
 
-function sameCheckerContract(left: CheckerContractProvenance, right: CheckerContractProvenance): boolean {
+export function sameCheckerContract(left: CheckerContractProvenance, right: CheckerContractProvenance): boolean {
   return canonicalJson(left as unknown as JsonValue) === canonicalJson(right as unknown as JsonValue);
 }
 
@@ -1216,7 +786,7 @@ function proposalMetadata(value: StoredProposal): ProposalRevisionMetadata {
   };
 }
 
-function internalRun(value: StoredRun): Run {
+export function internalRun(value: StoredRun): Run {
   const {
     subject: _subject,
     launchOperationKey: _launchOperationKey,
@@ -1227,12 +797,18 @@ function internalRun(value: StoredRun): Run {
     authorizedFailedRunReconciliation: _authorizedFailedRunReconciliation,
     ...run
   } = value;
-  return clone(run);
+  const decoded = decodeRun(run);
+  if (!decoded) throw new Error('invalid control-plane Run transport payload');
+  return decoded;
 }
 
 function publicDeployment(deployment: StoredDeployment): Deployment {
   const { operationReceipts: _operationReceipts, ...result } = deployment;
   return clone(result);
+}
+
+function publicAssetPullIntent(intent: StoredAssetPullIntent): AssetPullIntent {
+  return clone(intent);
 }
 
 export function publicRun(value: StoredRun): RunDto {
@@ -1271,7 +847,7 @@ function publicSession(value: StoredSession): ManagedSession {
   return clone(session);
 }
 
-function publicRequest(value: StoredHumanRequest): HumanRequest {
+export function publicRequest(value: StoredHumanRequest): HumanRequest {
   const {
     subject: _subject,
     operationKey: _operationKey,
@@ -1395,7 +971,7 @@ function autoCloseOpenHumanRequestsForRun(
   return closed;
 }
 
-function publicEvent(value: StoredEvent): OperationalEvent {
+export function publicEvent(value: StoredEvent): OperationalEvent {
   const {
     subject: _subject,
     operationKey: _operationKey,
@@ -1553,561 +1129,38 @@ function validRunActivationInput(input: RunActivationInput): boolean {
     && Number.isSafeInteger(input.expectedManagerGeneration) && input.expectedManagerGeneration >= 1;
 }
 
-export const AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF = 'run-0aa72053-b9d7-41fa-a034-19871b66d214';
-export const AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF = 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e';
-export const AUTHORIZED_20260731_EXECUTION_LOCK_TITLE = 'Automatic execution activation is gated';
-export const AUTHORIZED_20260731_EXECUTION_LOCK_OLD_PROMPT = 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.';
-export const AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT = 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.';
-
-const AUTHORIZED_20260731_STAGE_STATES = new Map<string, StageState>([
-  ['idea', 'ready'],
-  ['story', 'blocked'],
-  ['judge-gate', 'blocked'],
-  ['packaging', 'blocked'],
-  ['visual-plan', 'blocked'],
-  ['shots-merge', 'blocked'],
-  ['slice-contract', 'blocked'],
-  ['images', 'blocked'],
-  ['image-review', 'blocked'],
-  ['audio', 'blocked'],
-  ['audio-plan-merge', 'blocked'],
-  ['render', 'blocked'],
-  ['verify', 'blocked'],
-]);
-const AUTHORIZED_20260731_SOL_STAGES = new Set([
-  'judge-gate', 'shots-merge', 'slice-contract', 'image-review', 'audio-plan-merge', 'verify',
-]);
-
-function authorized20260731RecoveryFingerprint(input: RecoverAuthorized20260731ExecutionLockInput): string {
-  return sha256(canonicalJson({
-    runRef: AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
-    requestRef: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
-    expectedRunVersion: input.expectedRunVersion,
-    expectedManagerGeneration: input.expectedManagerGeneration,
-    expectedRequestRevision: input.expectedRequestRevision,
-    kind: 'intervention',
-    title: AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
-    prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
-  }));
-}
-
-function validateAuthorized20260731RecoveryDurability(
-  humanRequests: readonly StoredHumanRequest[],
-  events: readonly StoredEvent[],
-): void {
-  const recoveryCursors = new Set<number>();
-  const expectedFingerprint = authorized20260731RecoveryFingerprint({
-    expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'validation-only',
-  });
-  for (const request of humanRequests) {
-    const fields = [
-      request.legacyRecoveryOperationKey,
-      request.legacyRecoveryOperationFingerprint,
-      request.legacyRecoveryEventCursor,
-    ];
-    if (fields.every((value) => value == null)) continue;
-    if (fields.some((value) => value == null)
-      || request.requestRef !== AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF
-      || request.runRef !== AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF
-      || request.operationKey != null || request.operationFingerprint != null
-      || !validNonEmpty(request.legacyRecoveryOperationKey, MAX_SHORT_TEXT)
-      || request.legacyRecoveryOperationFingerprint !== expectedFingerprint
-      || !Number.isSafeInteger(request.legacyRecoveryEventCursor) || (request.legacyRecoveryEventCursor ?? 0) < 1
-      || recoveryCursors.has(request.legacyRecoveryEventCursor as number)
-      || request.kind !== 'intervention' || request.revision !== 2
-      || request.title !== AUTHORIZED_20260731_EXECUTION_LOCK_TITLE
-      || request.prompt !== AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT) {
-      throw new Error('invalid control-plane authorized legacy recovery receipt');
-    }
-    const event = events.find((candidate) => candidate.subject === request.subject
-      && candidate.runRef === request.runRef && candidate.cursor === request.legacyRecoveryEventCursor);
-    if (!event || event.kind !== 'governance' || event.source !== 'human' || event.status !== 'success'
-      || event.stageRef !== null || event.attemptRef !== null || event.sessionRef !== null
-      || event.summary !== 'authorized 2026-07-31 execution-lock boundary reclassified to intervention'
-      || event.command !== null || event.toolName !== null || event.path !== null
-      || event.diff !== null || event.checkpoint !== null) {
-      throw new Error('invalid control-plane authorized legacy recovery event');
-    }
-    recoveryCursors.add(request.legacyRecoveryEventCursor as number);
-  }
-}
-
-function exactAuthorized20260731NeverStartedState(
-  document: StoreDocument,
-  subject: string,
-  run: StoredRun,
-  request: StoredHumanRequest,
-  input: RecoverAuthorized20260731ExecutionLockInput,
-): boolean {
-  if (run.runRef !== AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF
-    || request.requestRef !== AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF
-    || request.runRef !== run.runRef
-    || run.publicationState !== 'published' || runLifecycleKind(run.lifecycle) !== 'waiting-human'
-    || input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1
-    || run.version !== input.expectedRunVersion || run.managerGeneration !== input.expectedManagerGeneration
-    || (run.activationReceipts ?? []).length !== 0
-    || request.stageRef !== null || request.kind !== 'governance-refusal'
-    || request.revision !== input.expectedRequestRevision || request.state !== 'open' || request.response !== null
-    || request.title !== AUTHORIZED_20260731_EXECUTION_LOCK_TITLE
-    || request.prompt !== AUTHORIZED_20260731_EXECUTION_LOCK_OLD_PROMPT
-    || request.operationKey != null || request.operationFingerprint != null
-    || request.resolutionOperationFingerprint != null
-    || request.legacyRecoveryOperationKey != null || request.legacyRecoveryOperationFingerprint != null
-    || request.legacyRecoveryEventCursor != null) return false;
-
-  const requests = document.humanRequests.filter((item) => item.subject === subject && item.runRef === run.runRef);
-  if (requests.length !== 1 || requests[0] !== request) return false;
-
-  const stages = document.stages.filter((item) => item.subject === subject && item.runRef === run.runRef);
-  if (stages.length !== AUTHORIZED_20260731_STAGE_STATES.size
-    || new Set(stages.map((stage) => stage.canonicalCardRef)).size !== stages.length
-    || stages.some((stage) => AUTHORIZED_20260731_STAGE_STATES.get(stage.stageId) !== stage.state || stage.version !== 3
-      || stage.canonicalCardRef === null || stage.currentAttemptRef === null
-      || stage.currentGeneration !== 1 || stage.currentGenerationRef !== null || stage.acceptedGenerationRef !== null)) return false;
-
-  const attempts = document.attempts.filter((item) => item.subject === subject && item.runRef === run.runRef);
-  if (attempts.length !== stages.length || attempts.some((attempt) => {
-    const stage = stages.find((candidate) => candidate.stageRef === attempt.stageRef);
-    const expectedModel = stage && AUTHORIZED_20260731_SOL_STAGES.has(stage.stageId) ? 'gpt-5.6-sol' : 'gpt-5.6-terra';
-    return !stage || stage.currentAttemptRef !== attempt.attemptRef || attempt.state !== 'queued' || attempt.version !== 2
-      || attempt.generation !== 1 || attempt.runtime !== 'codex' || attempt.model !== expectedModel
-      || attempt.managedSessionRef === null || attempt.predecessorAttemptRef !== null
-      || attempt.logicalGeneration !== null
-      || attempt.baseGenerationRef !== null || attempt.baseCommit !== null;
-  })) return false;
-
-  const sessions = document.sessions.filter((item) => item.subject === subject && item.runRef === run.runRef);
-  const managers = sessions.filter((session) => session.role === 'manager');
-  const workers = sessions.filter((session) => session.role === 'worker');
-  if (sessions.length !== 14 || managers.length !== 1 || workers.length !== attempts.length) return false;
-  const manager = managers[0];
-  if (!manager || manager.sessionRef !== run.managerSessionRef || manager.generation !== run.managerGeneration
-    || manager.runtime !== 'codex' || manager.model !== 'gpt-5.6-sol' || manager.version !== 1
-    || manager.stageRef !== null || manager.attemptRef !== null || manager.predecessorSessionRef !== null) return false;
-  if (sessions.some((session) => session.state !== 'pending' || session.operationKey != null || session.operationFingerprint != null
-    || session.brokerProfileId != null || session.brokerApprovedPromptHash != null || session.brokerStopRequested === true
-    || (session.brokerSteering ?? []).length !== 0 || (session.brokerReceipts ?? []).length !== 0)) return false;
-  if (workers.some((session) => {
-    const attempt = attempts.find((candidate) => candidate.attemptRef === session.attemptRef);
-    return !attempt || session.stageRef !== attempt.stageRef || attempt.managedSessionRef !== session.sessionRef
-      || session.runtime !== attempt.runtime || session.model !== attempt.model || session.version !== 1
-      || session.generation !== 1 || session.predecessorSessionRef !== null;
-  })) return false;
-
-  const matchesRun = <T extends { subject: string; runRef: string }>(item: T): boolean =>
-    item.subject === subject && item.runRef === run.runRef;
-  if (document.stageGenerations.some(matchesRun) || document.iterationLoops.some(matchesRun)
-    || document.iterationReceipts.some(matchesRun) || document.generationSupersessions.some(matchesRun)) return false;
-
-  const events = document.events.filter(matchesRun);
-  return events.length === 1 && events[0]?.kind === 'governance' && events[0].source === 'system'
-    && events[0].stageRef === null && events[0].attemptRef === null && events[0].sessionRef === null
-    && events[0].status === 'waiting'
-    && events[0].summary === 'canonical run published; runtime activation remains gated'
-    && events[0].command === null && events[0].toolName === null && events[0].path === null
-    && events[0].diff === null && events[0].checkpoint === null;
-}
-
-function classifyAuthorized20260731ExecutionLock(
-  document: StoreDocument,
-  subject: string,
-  input: RecoverAuthorized20260731ExecutionLockInput,
-): ControlResult<RecoverAuthorized20260731ExecutionLockPreflight> {
-  if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)
-    || input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1) {
-    return fail('invalid', 'the exact authorized run, manager, and request CAS plus idempotencyKey are required');
-  }
-  const run = document.runs.find((item) => item.subject === subject
-    && item.runRef === AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF);
-  const request = document.humanRequests.find((item) => item.subject === subject
-    && item.requestRef === AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF);
-  if (!run || !request) return fail('not-found', 'the authorized legacy execution-lock boundary was not found');
-  const fingerprint = authorized20260731RecoveryFingerprint(input);
-  const recoveryFields = [
-    request.legacyRecoveryOperationKey,
-    request.legacyRecoveryOperationFingerprint,
-    request.legacyRecoveryEventCursor,
-  ];
-  if (recoveryFields.some((value) => value != null)) {
-    if (recoveryFields.some((value) => value == null)
-      || request.legacyRecoveryOperationKey !== input.idempotencyKey
-      || request.legacyRecoveryOperationFingerprint !== fingerprint) {
-      return fail('idempotency-conflict', 'legacy recovery idempotencyKey was reused with different content');
-    }
-    const event = document.events.find((item) => item.subject === subject && item.runRef === run.runRef
-      && item.cursor === request.legacyRecoveryEventCursor);
-    if (request.kind !== 'intervention' || request.revision !== 2
-      || request.title !== AUTHORIZED_20260731_EXECUTION_LOCK_TITLE
-      || request.prompt !== AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT
-      || !event || event.kind !== 'governance' || event.source !== 'human' || event.status !== 'success'
-      || event.summary !== 'authorized 2026-07-31 execution-lock boundary reclassified to intervention') {
-      return fail('conflict', 'the recovered legacy execution-lock receipt is inconsistent');
-    }
-    return ok({
-      disposition: 'replay',
-      result: { request: publicRequest(request), event: publicEvent(event) },
-    });
-  }
-  if (!exactAuthorized20260731NeverStartedState(document, subject, run, request, input)) {
-    return fail('conflict', 'the authorized legacy execution-lock run no longer matches its never-started signature');
-  }
-  return ok({ disposition: 'eligible', result: null });
-}
-
-export const AUTHORIZED_20260801_FAILED_RUN_REF = AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF;
-export const AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF = 'proposal-3725fb98-e20e-4619-b6e7-c9055138a50d';
-export const AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH = '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9';
-export const AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY =
-  'reconcile:2026-08-01:run-0aa72053-b9d7-41fa-a034-19871b66d214:failed-launch:v7';
-export const AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF = 'session-54ef91fa-6607-4f0e-a2f6-f9edd87873bb';
-
-export const AUTHORIZED_20260801_FAILED_RUN_STAGES = [
-  { stageId: 'idea', stageRef: 'stage-ea9da6f4-2b54-4664-a4ae-f2a47885e51b', cardRef: 'wf-44c4644fe9fb254f8803fb48', attemptRef: 'attempt-e5672116-acdb-4dfd-887a-5c0566b92ae7', sessionRef: 'session-8445469e-a733-4a66-908f-b6a58f513323', runtime: 'codex', model: 'gpt-5.6-terra' },
-  { stageId: 'story', stageRef: 'stage-80eefd76-49ff-4307-9c4c-c66a1339d561', cardRef: 'wf-84370585b7737c38f03a01a4', attemptRef: 'attempt-ba96da92-a01b-4f5f-9b9e-1cca3e7881bb', sessionRef: 'session-4ee8bf7b-7f3d-4d99-ae5c-8c997cbfc285', runtime: 'codex', model: 'gpt-5.6-terra' },
-  { stageId: 'judge-gate', stageRef: 'stage-cd27c97b-aa9e-44d1-beb9-d6ce652ce7e0', cardRef: 'wf-ceedb44776e9f0b99fb95336', attemptRef: 'attempt-536e1401-aa6b-471b-9835-6769d209f53f', sessionRef: 'session-5e55ff31-4afc-4c17-bb9e-46355e1c425d', runtime: 'codex', model: 'gpt-5.6-sol' },
-  { stageId: 'packaging', stageRef: 'stage-d38f12d7-185d-4bd1-b8e4-f9e9f53cac4c', cardRef: 'wf-6489321a47f5ec64ef65b576', attemptRef: 'attempt-0adcdec3-786c-4992-9a06-49d71f495016', sessionRef: 'session-357f7a4a-e34f-471a-988b-6ae74eee9776', runtime: 'codex', model: 'gpt-5.6-terra' },
-  { stageId: 'visual-plan', stageRef: 'stage-c4b5e74f-2198-4cac-9ae9-b1a02958aa85', cardRef: 'wf-97a7a138bc0243e9f703e6f4', attemptRef: 'attempt-4cd57296-7228-4369-b0e7-aada10d49400', sessionRef: 'session-4d79b327-5ab6-4af8-a068-1ce0f21393ce', runtime: 'codex', model: 'gpt-5.6-terra' },
-  { stageId: 'shots-merge', stageRef: 'stage-07c4a75c-3c5e-4b02-a682-47ec20450aff', cardRef: 'wf-5270609bdb7cb8c2b0100eb8', attemptRef: 'attempt-9021bd2e-6ae4-4855-8b63-bb18639c5d9b', sessionRef: 'session-cc0b4e1d-da87-4435-b8ad-135aa7968733', runtime: 'codex', model: 'gpt-5.6-sol' },
-  { stageId: 'slice-contract', stageRef: 'stage-28ed1538-43de-4e01-a99a-a4aaedc0ae1b', cardRef: 'wf-ccd1e0e57af699cfd88d4dc6', attemptRef: 'attempt-703db9af-289a-4e7b-9c65-95a94d613b9d', sessionRef: 'session-a02036cd-bcaf-4dce-8099-bbad014b9361', runtime: 'codex', model: 'gpt-5.6-sol' },
-  { stageId: 'images', stageRef: 'stage-2dd2e4e4-2e26-4090-aa85-3e199f080d58', cardRef: 'wf-b2474af1b1687c4a7ed2475c', attemptRef: 'attempt-7219abe7-739f-4701-a7a8-c2eb088f90b5', sessionRef: 'session-43a4a0d2-c29d-44c2-96b7-dde19a606a3f', runtime: 'codex', model: 'gpt-5.6-terra' },
-  { stageId: 'image-review', stageRef: 'stage-c9b76af0-728a-4431-a6d8-fc93ad6d3d13', cardRef: 'wf-27e4f71519c58f4deceeff24', attemptRef: 'attempt-a605f573-df49-4b37-8e4f-0990089d608a', sessionRef: 'session-9da0dce9-465e-4e20-988f-d3896b5bfbd8', runtime: 'codex', model: 'gpt-5.6-sol' },
-  { stageId: 'audio', stageRef: 'stage-95f7eccd-7a2c-4c32-a9b4-c847ef7a7101', cardRef: 'wf-3ab267b511946c0a21318d0d', attemptRef: 'attempt-56927bad-37fb-4b69-af60-6afef22ab4df', sessionRef: 'session-021b0f7d-2104-498f-8169-14e02d9f18ee', runtime: 'codex', model: 'gpt-5.6-terra' },
-  { stageId: 'audio-plan-merge', stageRef: 'stage-e7ab5eff-6f41-4851-8558-6c886aa18946', cardRef: 'wf-978552383fd8f556cac9b416', attemptRef: 'attempt-fa5135e6-1973-4489-a529-86a1779aec0d', sessionRef: 'session-4c24da14-beb4-4816-b838-afc1244dc230', runtime: 'codex', model: 'gpt-5.6-sol' },
-  { stageId: 'render', stageRef: 'stage-86f3358e-9ff1-45b5-8c81-505411bb3c83', cardRef: 'wf-ad666acabdf313544d841456', attemptRef: 'attempt-5e44a62f-fb32-41cb-aa23-8ab5ab9167b1', sessionRef: 'session-76a7c42f-345d-4369-b5c7-72cbcde88195', runtime: 'codex', model: 'gpt-5.6-terra' },
-  { stageId: 'verify', stageRef: 'stage-bdee2033-e216-46f4-a20e-f04ab43c09bb', cardRef: 'wf-a767b15b4fd4c74c8b86b258', attemptRef: 'attempt-f83b955e-69d7-4905-8b00-66b532244be2', sessionRef: 'session-7700d49d-3941-40e5-b11f-4e313c366061', runtime: 'codex', model: 'gpt-5.6-sol' },
-] as const;
-
-const AUTHORIZED_20260801_ACTIVATION_RECEIPT: StoredRunActivationReceipt = {
-  idempotencyKey: `activate:${AUTHORIZED_20260801_FAILED_RUN_REF}:4:${AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH}:1`,
-  fingerprint: '9e81be057acedd88e8fd4a5d9cf7c3aa0420db0ee9e274c63fd1a3e322acf205',
-  phase: 'dispatched',
-  claimedAt: '2026-08-01T03:32:45.859Z',
-  updatedAt: '2026-08-01T03:32:47.623Z',
-};
-
-const AUTHORIZED_20260801_EVENT_SIGNATURES = [
-  { cursor: 1, kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated', stageRef: null, attemptRef: null, sessionRef: null, command: null, toolName: null, path: null, diff: null, checkpoint: null, createdAt: '2026-08-01T02:04:04.767Z' },
-  { cursor: 2, kind: 'governance', source: 'human', status: 'success', summary: 'authorized 2026-07-31 execution-lock boundary reclassified to intervention', stageRef: null, attemptRef: null, sessionRef: null, command: null, toolName: null, path: null, diff: null, checkpoint: null, createdAt: '2026-08-01T03:31:39.866Z' },
-  { cursor: 3, kind: 'governance', source: 'human', status: 'success', summary: 'Human Request responded at revision 2', stageRef: null, attemptRef: null, sessionRef: null, command: null, toolName: null, path: null, diff: null, checkpoint: null, createdAt: '2026-08-01T03:32:43.924Z' },
-  { cursor: 4, kind: 'lifecycle', source: 'worker', status: 'failure', summary: 'Codex workspace contains an unsupported changed path', stageRef: 'stage-ea9da6f4-2b54-4664-a4ae-f2a47885e51b', attemptRef: 'attempt-e5672116-acdb-4dfd-887a-5c0566b92ae7', sessionRef: 'session-8445469e-a733-4a66-908f-b6a58f513323', command: null, toolName: null, path: null, diff: null, checkpoint: null, createdAt: '2026-08-01T03:32:49.322Z' },
-  { cursor: 5, kind: 'lifecycle', source: 'system', status: 'interrupted', summary: 'dashboard restarted; active control-plane records were normalized to interrupted', stageRef: null, attemptRef: null, sessionRef: null, command: null, toolName: null, path: null, diff: null, checkpoint: null, createdAt: '2026-08-01T08:18:11.696Z' },
-] as const;
-
-const AUTHORIZED_20260801_RECONCILIATION_SUMMARY =
-  'authorized one-off reconciliation settled the failed 2026-07-31 FYT thin-slice predecessor';
-
-/** The one authorized settlement has exactly one legal input; its digest is the receipt's identity. */
-export const AUTHORIZED_20260801_FAILED_RUN_INPUT: ReconcileAuthorized20260801FailedRunInput = {
-  expectedRunVersion: 7,
-  expectedManagerGeneration: 1,
-  expectedRequestRevision: 2,
-  expectedNextEventCursor: 6,
-  expectedProposalHash: AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH,
-  idempotencyKey: AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY,
-};
-
-function authorized20260801FailedRunFingerprint(input: ReconcileAuthorized20260801FailedRunInput): string {
-  return sha256(canonicalJson({
-    operation: 'authorized-2026-08-01-fyt-failed-run-reconciliation',
-    runRef: AUTHORIZED_20260801_FAILED_RUN_REF,
-    proposalRef: AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF,
-    expectedRunVersion: input.expectedRunVersion,
-    expectedManagerGeneration: input.expectedManagerGeneration,
-    expectedRequestRevision: input.expectedRequestRevision,
-    expectedNextEventCursor: input.expectedNextEventCursor,
-    expectedProposalHash: input.expectedProposalHash,
-    idempotencyKey: input.idempotencyKey,
-  }));
-}
-
-export const AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT =
-  authorized20260801FailedRunFingerprint(AUTHORIZED_20260801_FAILED_RUN_INPUT);
-
-function publicAuthorizedFailedRunReceipt(
-  receipt: StoredAuthorizedFailedRunReconciliation,
-): AuthorizedFailedRunReconciliationReceipt {
-  return clone(receipt);
-}
-
-function exactAuthorized20260801Request(request: StoredHumanRequest): boolean {
-  return request.subject === 'operator'
-    && request.requestRef === AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF
-    && request.runRef === AUTHORIZED_20260801_FAILED_RUN_REF
-    && request.stageRef === null && request.kind === 'intervention' && request.revision === 2
-    && request.state === 'resolved' && request.title === AUTHORIZED_20260731_EXECUTION_LOCK_TITLE
-    && request.prompt === AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT
-    && request.createdAt === '2026-08-01T02:04:04.762Z' && request.updatedAt === '2026-08-01T03:32:43.921Z'
-    && request.operationKey == null && request.operationFingerprint == null
-    && request.resolutionOperationFingerprint == null
-    && request.legacyRecoveryOperationKey === `legacy-execution-lock-recovery:${AUTHORIZED_20260801_FAILED_RUN_REF}:${AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF}:r1`
-    && request.legacyRecoveryOperationFingerprint === '67abeff66b673f7eb834236a928790c0ac4b8f73f2f9472cbeda523989cdc3c3'
-    && request.legacyRecoveryEventCursor === 2
-    && request.response?.requestRevision === 2 && request.response.decision === 'responded'
-    && request.response.respondedBy === 'operator'
-    && request.response.idempotencyKey === `human:${AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF}:2:responded`
-    && request.response.response === null && request.response.respondedAt === '2026-08-01T03:32:43.921Z';
-}
-
-function exactAuthorized20260801Events(
-  document: StoreDocument,
-  subject: string,
-  phase: AuthorizedFailedRunReconciliationPhase | null,
-  receipt: StoredAuthorizedFailedRunReconciliation | null,
-): boolean {
-  const events = document.events.filter((event) => event.subject === subject && event.runRef === AUTHORIZED_20260801_FAILED_RUN_REF);
-  const requiredLength = phase === 'committed' ? 6 : 5;
-  if (events.length !== requiredLength) return false;
-  // `nextEventCursor` is a GLOBAL counter that ANY run's event advances. Only the pre-claim
-  // classification pins it, because that exact value is the operator's declared CAS. Once the
-  // settlement is claimed it must survive an unrelated concurrent event, so from there on the counter
-  // is only required to be at or past the settlement's own allocation.
-  if (phase === null ? document.nextEventCursor !== 6 : document.nextEventCursor < (phase === 'committed' ? 7 : 6)) return false;
-  for (let index = 0; index < AUTHORIZED_20260801_EVENT_SIGNATURES.length; index += 1) {
-    const event = events[index];
-    const expected = AUTHORIZED_20260801_EVENT_SIGNATURES[index];
-    if (!event || !expected || Object.entries(expected).some(([key, value]) => event[key as keyof StoredEvent] !== value)) return false;
-  }
-  if (phase !== 'committed') return true;
-  const event = events[5];
-  return !!event && !!receipt && event.cursor >= 6 && receipt.eventCursor === event.cursor
-    && event.kind === 'governance' && event.source === 'human' && event.status === 'success'
-    && event.summary === AUTHORIZED_20260801_RECONCILIATION_SUMMARY
-    && event.stageRef === null && event.attemptRef === null && event.sessionRef === null
-    && event.command === null && event.toolName === null && event.path === null
-    && event.diff === null && event.checkpoint === null && event.createdAt === receipt.updatedAt;
-}
-
-const AUTHORIZED_20260801_MANAGER_ASSIGNMENT = {
-  agentId: 'fyt-runner',
-  declarationPath: 'agents/fyt-runner.md',
-  declarationHash: 'ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0',
-  profileId: 'manager:codex:gpt-5.6-sol',
-  runtime: 'codex',
-  model: 'gpt-5.6-sol',
-} as const;
-
-const AUTHORIZED_20260801_AGENT_WORKSPACE_LAUNCH = {
-  composerRef: '4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960',
-  agentId: 'fyt-runner',
-  declarationPath: 'agents/fyt-runner.md',
-  declarationHash: 'ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0',
-} as const;
-
-// Takes the OWNERLESS shape so a `StoredProposal` and a projected `ProposalRevision` both satisfy it —
-// the frozen field-by-field comparison below is unchanged and never looks at ownership.
-export function exactAuthorized20260801ProposalRevision(proposal: Omit<ProposalRevision, 'ownerSubject'>): boolean {
-  const approval = proposal.approval as unknown as Record<string, unknown> | null;
-  return proposal.proposalRef === AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF
-    && proposal.sourceComposerRef === 'workflow-registry'
-    && proposal.sourceTurnId === 'thin-slice-run'
-    && proposal.revision === 1
-    && proposal.hash === AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH
-    && proposal.previousHash === null
-    && proposal.title === 'Validate one all-Codex faceless-video opening slice'
-    && proposal.createdAt === '2026-08-01T02:04:02.673Z'
-    && proposalSnapshotHash(proposal.snapshot) === AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH
-    && !!approval && hasExactKeys(approval, ['revision', 'decision', 'decidedBy', 'idempotencyKey', 'decidedAt', 'note'])
-    && approval.revision === 1 && approval.decision === 'approved' && approval.decidedBy === 'operator'
-    && approval.idempotencyKey === 'agent-workspace-launch:4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960:thin-slice-run:f481bfb5-584d-4200-b0f1-8b1fc0556209:decision'
-    && approval.decidedAt === '2026-08-01T02:04:03.315Z' && approval.note === null;
-}
-
-function exactAuthorized20260801Graph(
-  document: StoreDocument,
-  subject: string,
-  phase: AuthorizedFailedRunReconciliationPhase | null,
-): boolean {
-  const run = document.runs.find((candidate) => candidate.subject === subject
-    && candidate.runRef === AUTHORIZED_20260801_FAILED_RUN_REF);
-  const receipt = run?.authorizedFailedRunReconciliation ?? null;
-  if (!run || run.subject !== 'operator' || run.predecessorRunRef !== null
-    || run.title !== 'Validate one all-Codex faceless-video opening slice'
-    || run.proposalRef !== AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF || run.proposalRevision !== 1
-    || run.proposalHash !== AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH
-    || run.publicationState !== 'published' || runLifecycleKind(run.lifecycle) !== 'failed'
-    || run.version !== (phase === 'committed' ? 8 : 7)
-    || run.managerSessionRef !== AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF || run.managerGeneration !== 1
-    || run.launchOperationKey !== 'agent-workspace-launch:4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960:thin-slice-run:f481bfb5-584d-4200-b0f1-8b1fc0556209'
-    || run.launchOperationFingerprint !== '664ccc0a8734e5d5bdcaebb834aa656c609be49107ccfa44d784a309ff886600'
-    || JSON.stringify(run.managerAssignment) !== JSON.stringify(AUTHORIZED_20260801_MANAGER_ASSIGNMENT)
-    || JSON.stringify(run.agentWorkspaceLaunch) !== JSON.stringify(AUTHORIZED_20260801_AGENT_WORKSPACE_LAUNCH)
-    || run.createdAt !== '2026-08-01T02:04:03.640Z'
-    || (phase === 'committed' ? run.updatedAt !== receipt?.updatedAt : run.updatedAt !== '2026-08-01T03:32:49.635Z')
-    || JSON.stringify(run.activationReceipts ?? []) !== JSON.stringify([AUTHORIZED_20260801_ACTIVATION_RECEIPT])) return false;
-
-  const proposal = document.proposals.find((candidate) => candidate.subject === subject
-    && candidate.proposalRef === AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF && candidate.revision === 1);
-  if (!proposal || !exactAuthorized20260801ProposalRevision(proposal)) return false;
-
-  const requests = document.humanRequests.filter((candidate) => candidate.subject === subject
-    && candidate.runRef === AUTHORIZED_20260801_FAILED_RUN_REF);
-  if (requests.length !== 1 || !requests[0] || !exactAuthorized20260801Request(requests[0])) return false;
-
-  const stages = document.stages.filter((candidate) => candidate.subject === subject && candidate.runRef === run.runRef);
-  const attempts = document.attempts.filter((candidate) => candidate.subject === subject && candidate.runRef === run.runRef);
-  const sessions = document.sessions.filter((candidate) => candidate.subject === subject && candidate.runRef === run.runRef);
-  if (stages.length !== AUTHORIZED_20260801_FAILED_RUN_STAGES.length
-    || attempts.length !== AUTHORIZED_20260801_FAILED_RUN_STAGES.length
-    || sessions.length !== AUTHORIZED_20260801_FAILED_RUN_STAGES.length + 1) return false;
-  const proposalStages = Array.isArray(proposal.snapshot.stages)
-    ? proposal.snapshot.stages as unknown as Array<{
-        id: string;
-        dependsOn: string[];
-        assignment: ResolvedAgentAssignment | null;
-        workflowProfile: string | null;
-        review: ProposalReview | null;
-        completionGate: ProposalCompletionGate | null;
-      }>
-    : [];
-  for (const expected of AUTHORIZED_20260801_FAILED_RUN_STAGES) {
-    const stage = stages.find((candidate) => candidate.stageId === expected.stageId);
-    const attempt = attempts.find((candidate) => candidate.attemptRef === expected.attemptRef);
-    const session = sessions.find((candidate) => candidate.sessionRef === expected.sessionRef);
-    const proposalStage = proposalStages.find((candidate) => candidate.id === expected.stageId);
-    const idea = expected.stageId === 'idea';
-    /*
-     * Compare stored provenance against the approved snapshot in the STORE'S OWN normal form, never
-     * raw value against raw value. `normalizeStoredStageCheckerContract` fills a stage's absent
-     * optional keys (workflowProfile/review/completionGate) with null at load time and PERSISTS that,
-     * while the approved snapshot simply omits them — so a raw compare read `null !== undefined` on
-     * every stage and reported the untouched historical run as drifted. Assignment carries the same
-     * hazard (absent vs null, plus key order), so it goes through the same door.
-     */
-    const storedContract = stage ? normalizeCheckerContract(stage) : undefined;
-    const proposalContract = proposalStage ? normalizeCheckerContract(proposalStage) : undefined;
-    const storedAssignment = stage ? normalizeAssignment(stage.assignment) : undefined;
-    const proposalAssignment = proposalStage ? normalizeAssignment(proposalStage.assignment) : undefined;
-    if (!stage || !attempt || !session || !proposalStage
-      || !storedContract || !proposalContract
-      || storedAssignment === undefined || proposalAssignment === undefined
-      || stage.stageRef !== expected.stageRef || stage.canonicalCardRef !== expected.cardRef
-      || stage.currentAttemptRef !== expected.attemptRef || stage.currentGeneration !== 1
-      || stage.currentGenerationRef !== null || stage.acceptedGenerationRef !== null
-      || JSON.stringify(stage.dependsOn) !== JSON.stringify(proposalStage.dependsOn)
-      || !sameAssignment(storedAssignment, proposalAssignment)
-      || !sameCheckerContract(storedContract, proposalContract)
-      || stage.state !== (idea ? 'failed' : phase === 'committed' ? 'stopped' : 'blocked')
-      || stage.version !== (idea ? 5 : phase === 'committed' ? 4 : 3)
-      || attempt.stageRef !== expected.stageRef || attempt.state !== (idea ? 'failed' : phase === 'committed' ? 'stopped' : 'queued')
-      || attempt.version !== (idea ? 5 : phase === 'committed' ? 3 : 2)
-      || attempt.generation !== 1 || attempt.predecessorAttemptRef !== null
-      || attempt.runtime !== expected.runtime || attempt.model !== expected.model
-      || attempt.managedSessionRef !== expected.sessionRef
-      || attempt.logicalGeneration !== null
-      || attempt.baseGenerationRef !== null || attempt.baseCommit !== null
-      || session.stageRef !== expected.stageRef || session.attemptRef !== expected.attemptRef || session.role !== 'worker'
-      || session.generation !== 1 || session.predecessorSessionRef !== null
-      || session.runtime !== expected.runtime || session.model !== expected.model
-      || session.state !== (idea ? 'failed' : phase === 'committed' ? 'stopped' : 'pending')
-      || session.version !== (idea ? 4 : phase === 'committed' ? 2 : 1)
-      || session.operationKey !== null || session.operationFingerprint !== null
-      || session.brokerProfileId != null || session.brokerApprovedPromptHash != null
-      || session.brokerStopRequested === true || (session.brokerSteering ?? []).length !== 0
-      || (session.brokerReceipts ?? []).length !== 0) return false;
-    if (phase === 'committed' && !idea
-      && (stage.updatedAt !== receipt?.updatedAt || attempt.updatedAt !== receipt?.updatedAt || session.updatedAt !== receipt?.updatedAt)) return false;
-  }
-  const manager = sessions.find((candidate) => candidate.role === 'manager');
-  if (!manager || manager.sessionRef !== AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF
-    || manager.stageRef !== null || manager.attemptRef !== null || manager.generation !== 1
-    || manager.predecessorSessionRef !== null || manager.runtime !== 'codex' || manager.model !== 'gpt-5.6-sol'
-    || manager.state !== 'interrupted' || manager.version !== 4
-    || manager.operationKey !== null || manager.operationFingerprint !== null
-    || manager.brokerProfileId != null || manager.brokerApprovedPromptHash != null
-    || manager.brokerStopRequested === true || (manager.brokerSteering ?? []).length !== 0
-    || (manager.brokerReceipts ?? []).length !== 0
-    || manager.createdAt !== '2026-08-01T02:04:03.640Z' || manager.updatedAt !== '2026-08-01T08:18:11.696Z') return false;
-
-  const matchesRun = <T extends { subject: string; runRef: string }>(item: T): boolean =>
-    item.subject === subject && item.runRef === run.runRef;
-  return !document.runs.some((candidate) => candidate.subject === subject && candidate.predecessorRunRef === run.runRef)
-    && !document.stageGenerations.some(matchesRun) && !document.iterationLoops.some(matchesRun)
-    && !document.iterationRequests.some(matchesRun) && !document.iterationReceipts.some(matchesRun)
-    && !document.generationSupersessions.some(matchesRun)
-    && exactAuthorized20260801Events(document, subject, phase, receipt);
-}
-
-function validAuthorized20260801Input(input: ReconcileAuthorized20260801FailedRunInput): boolean {
-  return input.expectedRunVersion === 7 && input.expectedManagerGeneration === 1
-    && input.expectedRequestRevision === 2 && input.expectedNextEventCursor === 6
-    && input.expectedProposalHash === AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH
-    && input.idempotencyKey === AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY;
-}
-
-function classifyAuthorized20260801FailedRun(
-  document: StoreDocument,
-  subject: string,
-  input: ReconcileAuthorized20260801FailedRunInput,
-): ControlResult<ReconcileAuthorized20260801FailedRunPreflight> {
-  if (!validAuthorized20260801Input(input)) return fail('invalid', 'the exact authorized failed-run CAS and fixed idempotencyKey are required');
-  const run = document.runs.find((candidate) => candidate.subject === subject
-    && candidate.runRef === AUTHORIZED_20260801_FAILED_RUN_REF);
-  if (!run) return fail('not-found', 'the authorized failed run was not found');
-  const receipt = run.authorizedFailedRunReconciliation ?? null;
-  if (receipt) {
-    if (receipt.idempotencyKey !== input.idempotencyKey
-      || receipt.fingerprint !== authorized20260801FailedRunFingerprint(input)) {
-      return fail('idempotency-conflict', 'failed-run reconciliation idempotencyKey was reused with different content');
-    }
-    if (receipt.phase === 'claimed') {
-      return exactAuthorized20260801Graph(document, subject, 'claimed')
-        ? ok({ disposition: 'claimed', receipt: publicAuthorizedFailedRunReceipt(receipt), result: null })
-        : fail('conflict', 'the claimed failed-run reconciliation no longer matches its exact historical state');
-    }
-    if (!exactAuthorized20260801Graph(document, subject, 'committed')) {
-      return fail('conflict', 'the committed failed-run reconciliation receipt is inconsistent');
-    }
-    const event = document.events.find((candidate) => candidate.subject === subject
-      && candidate.runRef === run.runRef && candidate.cursor === receipt.eventCursor);
-    if (!event) return fail('conflict', 'the committed failed-run reconciliation event is missing');
-    const publicReceipt = publicAuthorizedFailedRunReceipt(receipt);
-    return ok({
-      disposition: 'replay',
-      receipt: publicReceipt,
-      result: { run: internalRun(run), event: publicEvent(event), receipt: publicReceipt },
-    });
-  }
-  return exactAuthorized20260801Graph(document, subject, null)
-    ? ok({ disposition: 'eligible', receipt: null, result: null })
-    : fail('conflict', 'the authorized failed run no longer matches its exact historical signature');
-}
-
-/**
- * Load-time durability scope, deliberately the same posture as
- * `validateAuthorized20260731RecoveryDurability` above: the receipt's OWN invariants plus the shape of
- * its OWN event. It never re-asserts the whole historical run graph, never reads a global counter, and
- * never looks at other runs — every `load()` runs this, so any predicate that legitimate later
- * mutations (a successor run, a quarantine restore, an unrelated concurrent event) can falsify would
- * make the daemon unable to boot. The settlement's finality is enforced where finality belongs: at
- * MUTATION time (`retryPredecessorRefusal`, reached from `createRun`'s predecessor path).
- */
-function validateAuthorized20260801FailedRunDurability(
-  events: readonly StoredEvent[],
-  run: StoredRun,
-): void {
-  const receipt = run.authorizedFailedRunReconciliation;
-  if (receipt == null) return;
-  if (run.runRef !== AUTHORIZED_20260801_FAILED_RUN_REF
-    || receipt.idempotencyKey !== AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY
-    || receipt.fingerprint !== AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT
-    || !['claimed', 'committed'].includes(receipt.phase)
-    || !validNonEmpty(receipt.claimedAt, MAX_SHORT_TEXT) || !validNonEmpty(receipt.updatedAt, MAX_SHORT_TEXT)
-    || (receipt.phase === 'claimed' && (receipt.canonicalCommit !== null || receipt.eventCursor !== null))
-    || (receipt.phase === 'committed' && (!receipt.canonicalCommit || !/^[a-f0-9]{40}$/.test(receipt.canonicalCommit)
-      || !Number.isSafeInteger(receipt.eventCursor) || (receipt.eventCursor ?? 0) < 1))) {
-    throw new Error('invalid control-plane authorized failed-run reconciliation receipt');
-  }
-  if (receipt.phase !== 'committed') return;
-  const event = events.find((candidate) => candidate.subject === run.subject
-    && candidate.runRef === run.runRef && candidate.cursor === receipt.eventCursor);
-  if (!event || event.kind !== 'governance' || event.source !== 'human' || event.status !== 'success'
-    || event.stageRef !== null || event.attemptRef !== null || event.sessionRef !== null
-    || event.summary !== AUTHORIZED_20260801_RECONCILIATION_SUMMARY
-    || event.command !== null || event.toolName !== null || event.path !== null
-    || event.diff !== null || event.checkpoint !== null || event.createdAt !== receipt.updatedAt) {
-    throw new Error('invalid control-plane authorized failed-run reconciliation event');
-  }
-}
+import {
+  AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+  AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
+  AUTHORIZED_20260801_FAILED_RUN_REF,
+  AUTHORIZED_20260801_FAILED_RUN_STAGES,
+  AUTHORIZED_20260801_RECONCILIATION_SUMMARY,
+  authorized20260731RecoveryFingerprint,
+  authorized20260801FailedRunFingerprint,
+  classifyAuthorized20260731ExecutionLock,
+  classifyAuthorized20260801FailedRun,
+  publicAuthorizedFailedRunReceipt,
+  validateAuthorized20260731RecoveryDurability,
+  validateAuthorized20260801FailedRunDurability,
+} from './authorizedIncidentRecovery.ts';
+export {
+  AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+  AUTHORIZED_20260731_EXECUTION_LOCK_OLD_PROMPT,
+  AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
+  AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
+  AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY,
+  AUTHORIZED_20260801_FAILED_RUN_INPUT,
+  AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
+  AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH,
+  AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF,
+  AUTHORIZED_20260801_FAILED_RUN_REF,
+  AUTHORIZED_20260801_FAILED_RUN_STAGES,
+  exactAuthorized20260801ProposalRevision,
+} from './authorizedIncidentRecovery.ts';
 
 function latestPendingActivationReceipt(run: StoredRun): StoredRunActivationReceipt | undefined {
   const receipts = run.activationReceipts ?? [];
@@ -2213,6 +1266,16 @@ function runCanSucceed(document: StoreDocument, run: StoredRun): boolean {
 
 function validateStoreDocument(document: StoreDocument): void {
   assertDeploymentCollection(document.deployments);
+  assertAssetPullCollection(document.assetPullIntents ?? []);
+  // P6 W1b [P6-C48]: fail closed on a corrupt placement/advertisement/idempotency row rather than
+  // loading it unvalidated — mirrors the same call in migrations.ts's assertDocumentInvariant so both
+  // the migrated-load path and the read-only-harness path (which never runs migration) are covered.
+  assertPlacementCollections({
+    hostAdvertisements: document.hostAdvertisements ?? [],
+    placementLeases: document.placementLeases ?? [],
+    v1Idempotency: document.v1Idempotency ?? [],
+    cursorSecret: document.cursorSecret,
+  });
   const validateRows = (bundle: Pick<StoreDocumentCollections, 'runs' | 'stages'>): void => {
     for (const run of bundle.runs) {
       if (normalizeAssignment(run.managerAssignment) === undefined) {
@@ -2221,6 +1284,7 @@ function validateStoreDocument(document: StoreDocument): void {
       if (normalizeAgentWorkspaceLaunch(run.agentWorkspaceLaunch) === undefined) {
         throw new Error('invalid control-plane agent-workspace launch provenance');
       }
+      if (!decodeStoredRun(run)) throw new Error('invalid control-plane stored run');
     }
     for (const stage of bundle.stages) {
       if (normalizeAssignment(stage.assignment) === undefined) {
@@ -2243,20 +1307,6 @@ function validateStoreDocument(document: StoreDocument): void {
     validateAuthorized20260731RecoveryDurability(bundle.humanRequests, bundle.events);
     validateAuthorized20260801FailedRunDurability(bundle.events, bundle.run);
   }
-}
-
-function iterationDefinitionHash(group: ProposalIterationGroup): string {
-  return sha256(canonicalJson(group as unknown as JsonValue));
-}
-
-function iterationRequestBody(request: StoredIterationRequest): IterationRequest {
-  const { subject: _subject, runRef: _runRef, operationKey: _operationKey,
-    operationFingerprint: _operationFingerprint, ...body } = request;
-  return body;
-}
-
-function iterationRequestFingerprint(request: StoredIterationRequest): string {
-  return sha256(canonicalJson(iterationRequestBody(request) as unknown as JsonValue));
 }
 
 function iterationResidue(
@@ -3024,10 +2074,728 @@ function makeStore(
     });
   };
 
+  const publicSchedule = (schedule: StoredSchedule): Schedule => ({
+    id: schedule.id,
+    owner: clone(schedule.owner),
+    cadence: { ...schedule.cadence },
+    nextAt: schedule.nextAt,
+    lastOutcome: schedule.lastOutcome,
+    armed: schedule.armed,
+    origin: schedule.origin,
+    mirroredAt: schedule.mirroredAt,
+    mirrorPath: schedule.mirrorPath,
+    version: schedule.version,
+  });
+
+  const scheduleSnapshot = (document: StoreDocument): ScheduleSnapshot => ({
+    collectionRevision: document.scheduleCollectionRevision,
+    schedules: document.schedules.map(publicSchedule),
+  });
+
+  // P4 section 3.5 mirror revision. Absent fields default to 0 so a pre-P4 document reads without
+  // error; a mirror-relevant mutation is the only thing that advances the counter [P4-C37].
+  const scheduleMirrorRevisionOf = (document: StoreDocument): number => document.scheduleMirrorRevision ?? 0;
+
+  const advanceScheduleMirrorRevision = (
+    document: StoreDocument,
+    ...rows: Array<{ lastMirrorRevision?: number }>
+  ): number => {
+    const next = scheduleMirrorRevisionOf(document) + 1;
+    document.scheduleMirrorRevision = next;
+    for (const row of rows) row.lastMirrorRevision = next;
+    return next;
+  };
+
+  /**
+   * The mirror projection. `name` is the seed cadence identity the HEARTBEAT file is keyed on — a
+   * row that no seed import produced has none, reads null, and is skipped by the renderer rather
+   * than invented from `owner.id` (which would re-import under a different `seedScheduleId`).
+   * `schedule` is the canonical source expression the file's own consumers parse, never the words.
+   */
+  const scheduleMirrorRow = (schedule: StoredSchedule): ScheduleMirrorRow => {
+    const cadenceName = schedule.launchPayload?.cadenceName;
+    return {
+      id: schedule.id,
+      name: typeof cadenceName === 'string' && cadenceName !== '' ? cadenceName : null,
+      schedule: schedule.cadenceCanonical,
+      agent: schedule.owner.type === 'agent' ? schedule.owner.id : null,
+      armed: schedule.armed,
+      mirrorPath: schedule.mirrorPath,
+      lastMirrorRevision: schedule.lastMirrorRevision ?? 0,
+    };
+  };
+
+  /** The watermark of a store that has never merged a mirror batch. */
+  const unmirroredWatermark = (): ScheduleMirrorWatermark => ({
+    revision: 0,
+    digest: sha256('schedule-mirror-unmirrored'),
+  });
+
+  const storedScheduleMirrorBatch = (document: StoreDocument): ScheduleMirrorBatch | null => {
+    const wrapper = document.scheduleMirrorBatch;
+    if (!wrapper || typeof wrapper !== 'object') return null;
+    const record = (wrapper as JsonObject)['record'];
+    if (record === undefined || record === null) return null;
+    return decodeScheduleMirrorBatch(record);
+  };
+
+  const scheduleMirrorBatchJson = (batch: ScheduleMirrorBatch): JsonObject =>
+    JSON.parse(JSON.stringify(batch)) as JsonObject;
+
+  /**
+   * The additive P4 mirror fields of one row. A live schedule declares them; a tombstone is a
+   * `JsonObject` and reaches them by index, so both are handled through this one view.
+   */
+  type ScheduleMirrorFields = { id: string; lastMirrorRevision?: number; mirroredAt?: string | null };
+  const scheduleMirrorFields = (row: StoredSchedule | StoredScheduleTombstone): ScheduleMirrorFields =>
+    row as unknown as ScheduleMirrorFields;
+
+  const mirrorRows = (document: StoreDocument): ScheduleMirrorFields[] =>
+    [...document.schedules, ...document.scheduleTombstones].map(scheduleMirrorFields);
+
+  /** Materialise the additive P4 fields on an existing document. No version bump, no migration. */
+  const materialiseScheduleMirrorFields = (document: StoreDocument): boolean => {
+    let changed = false;
+    if (document.scheduleMirrorRevision === undefined) {
+      document.scheduleMirrorRevision = 0;
+      changed = true;
+    }
+    for (const row of mirrorRows(document)) {
+      if (row.lastMirrorRevision === undefined) {
+        row.lastMirrorRevision = 0;
+        changed = true;
+      }
+    }
+    return changed;
+  };
+
+  const scheduleFailure = (status: number, code: string): Error & { status: number; code: string } =>
+    Object.assign(new Error(code), { status, code });
+
+  const scheduleReceiptRows = (document: StoreDocument): JsonObject[][] => [
+    ...document.schedules.map((schedule) => schedule.operationReceipts),
+    ...document.scheduleTombstones.map((tombstone) => tombstone.operationReceipts),
+  ];
+
+  const appendScheduleMutationEvent = (
+    document: StoreDocument,
+    target: JsonObject[],
+    input: Omit<ScheduleMutationEvent, 'kind' | 'cursor' | 'createdAt'>,
+  ): void => {
+    const event: ScheduleMutationEvent = {
+      kind: 'schedule-mutation-event',
+      cursor: document.nextEventCursor,
+      createdAt: stamp(),
+      ...input,
+    };
+    document.nextEventCursor += 1;
+    target.push(clone(event as unknown as JsonObject));
+  };
+
+  let scheduleTransactionTail: Promise<void> = Promise.resolve();
+  const scheduleTransaction = <T>(operation: (transaction: ScheduleMutationTransaction) => Promise<T>): Promise<T> => {
+    const run = scheduleTransactionTail.then(async () => {
+      const document = load();
+      let dirty = false;
+      const transaction: ScheduleMutationTransaction = {
+        readScheduleSnapshot: async () => clone(scheduleSnapshot(document)),
+        readMutationReceipt: async (key) => {
+          const row = scheduleReceiptRows(document).flat().find((candidate) =>
+            candidate.operation === key.operation && candidate.target === key.target
+            && candidate.idempotencyKey === key.idempotencyKey);
+          if (!row || typeof row.fingerprint !== 'string' || typeof row.receipt !== 'object' || row.receipt === null) return null;
+          return clone({ fingerprint: row.fingerprint, receipt: row.receipt } as unknown as StoredScheduleMutationReceipt);
+        },
+        writeMutationReceipt: async (key, fingerprint, receipt) => {
+          const target = 'schedule' in receipt
+            ? document.schedules.find((schedule) => schedule.id === receipt.schedule.id)?.operationReceipts
+            : document.scheduleTombstones.find((tombstone) => tombstone.id === receipt.tombstone.id)?.operationReceipts;
+          if (!target) throw scheduleFailure(500, 'schedule-mutation-receipt-target-missing');
+          target.push(clone({ ...key, fingerprint, receipt } as unknown as JsonObject));
+          dirty = true;
+        },
+        createSchedule: async (input: ResolvedCreateScheduleInput) => {
+          if (input.expectedCollectionRevision !== document.scheduleCollectionRevision) {
+            throw scheduleFailure(409, 'stale-schedule-collection');
+          }
+          const id = sha256(`schedule\0operator\0${input.owner.type}\0${input.owner.id}\0${input.idempotencyKey}`);
+          if (document.schedules.some((schedule) => schedule.id === id)
+            || document.scheduleTombstones.some((tombstone) => tombstone.id === id)) {
+            throw scheduleFailure(409, 'schedule-id-conflict');
+          }
+          const schedule: StoredSchedule = {
+            id,
+            owner: clone(input.owner),
+            cadence: { ...input.cadence },
+            cadenceCanonical: input.cadence.source,
+            nextAt: null,
+            lastOutcome: null,
+            armed: false,
+            origin: 'operator',
+            mirroredAt: null,
+            mirrorPath: input.mirrorPath,
+            version: 1,
+            seedBytes: null,
+            seedDigest: null,
+            seedAuthorized: false,
+            launchPayload: null,
+            operationReceipts: [],
+            emissionReceipts: [],
+            mirrorMetadataRevision: 0,
+            tombstone: null,
+          };
+          document.schedules.push(schedule);
+          document.scheduleCollectionRevision += 1;
+          advanceScheduleMirrorRevision(document, schedule);
+          dirty = true;
+          return { schedule: publicSchedule(schedule), collectionRevision: document.scheduleCollectionRevision, replayed: false };
+        },
+        setScheduleArmed: async (id: string, input: SetScheduleArmedInput) => {
+          const schedule = document.schedules.find((candidate) => candidate.id === id);
+          if (!schedule) throw scheduleFailure(404, 'schedule-not-found');
+          if (schedule.version !== input.expectedVersion) throw scheduleFailure(409, 'stale-schedule-version');
+          schedule.armed = input.armed;
+          schedule.version += 1;
+          document.scheduleCollectionRevision += 1;
+          advanceScheduleMirrorRevision(document, schedule);
+          appendScheduleMutationEvent(document, schedule.operationReceipts, {
+            operation: input.armed ? 'armed' : 'disarmed',
+            scheduleId: id,
+            scheduleVersion: schedule.version,
+            collectionRevision: document.scheduleCollectionRevision,
+            idempotencyKey: input.idempotencyKey,
+          });
+          dirty = true;
+          return { schedule: publicSchedule(schedule), collectionRevision: document.scheduleCollectionRevision, replayed: false };
+        },
+        deleteSchedule: async (id: string, input: DeleteScheduleInput): Promise<DeleteScheduleReceipt> => {
+          const index = document.schedules.findIndex((candidate) => candidate.id === id);
+          if (index === -1) throw scheduleFailure(404, 'schedule-not-found');
+          const schedule = document.schedules[index];
+          if (schedule.version !== input.expectedVersion) throw scheduleFailure(409, 'stale-schedule-version');
+          document.scheduleCollectionRevision += 1;
+          appendScheduleMutationEvent(document, schedule.operationReceipts, {
+            operation: 'deleted',
+            scheduleId: id,
+            scheduleVersion: schedule.version + 1,
+            collectionRevision: document.scheduleCollectionRevision,
+            idempotencyKey: input.idempotencyKey,
+          });
+          const tombstone: StoredScheduleTombstone = {
+            id,
+            deletedAt: stamp(),
+            version: schedule.version + 1,
+            operationReceipts: schedule.operationReceipts,
+          };
+          document.schedules.splice(index, 1);
+          document.scheduleTombstones.push(tombstone);
+          advanceScheduleMirrorRevision(document, scheduleMirrorFields(tombstone));
+          dirty = true;
+          return {
+            tombstone: { id, deletedAt: tombstone.deletedAt, version: tombstone.version },
+            collectionRevision: document.scheduleCollectionRevision,
+            replayed: false,
+          };
+        },
+        claimScheduleOccurrence: async (input) => {
+          const schedule = document.schedules.find((candidate) => candidate.id === input.occurrence.scheduleId);
+          if (!schedule) throw scheduleFailure(404, 'schedule-not-found');
+          if (schedule.version !== input.expectedVersion) throw scheduleFailure(409, 'stale-schedule-version');
+          if (!schedule.armed) throw scheduleFailure(409, 'schedule-not-armed');
+          const fingerprint = sha256(canonicalJson(input as unknown as JsonValue));
+          const prior = document.scheduleOccurrenceClaims.find((candidate) =>
+            candidate.scheduleId === input.occurrence.scheduleId && candidate.scheduledFor === input.occurrence.scheduledFor);
+          if (prior) {
+            if (prior.idempotencyKey !== input.idempotencyKey || prior.fingerprint !== fingerprint) {
+              throw scheduleFailure(409, 'schedule-occurrence-conflict');
+            }
+            return clone({
+              scheduleId: prior.scheduleId,
+              scheduledFor: prior.scheduledFor,
+              owner: prior.owner as unknown as RunnableRef,
+              phase: prior.phase,
+              card: prior.card,
+              cardBytesSha256: prior.cardBytesSha256,
+            });
+          }
+          if (!options.renderScheduleClaim) throw scheduleFailure(503, 'schedule-card-renderer-unavailable');
+          const rendered = await options.renderScheduleClaim({
+            scheduleId: schedule.id,
+            scheduledFor: input.occurrence.scheduledFor,
+            nextAt: input.occurrence.nextAt,
+            owner: clone(schedule.owner),
+            mirrorPath: schedule.mirrorPath,
+          });
+          const card = clone(rendered.card) as JsonObject;
+          const meta = card.meta;
+          if (!/^[0-9a-f]{64}$/.test(rendered.cardBytesSha256)
+            || typeof meta !== 'object' || meta === null || Array.isArray(meta)
+            || meta['execution-controller'] !== 'dashboard'
+            || meta.scheduled_for !== input.occurrence.scheduledFor
+            || typeof meta.id !== 'string') throw scheduleFailure(500, 'schedule-card-render-invalid');
+          const claim: StoredScheduleOccurrenceClaim = {
+            scheduleId: schedule.id,
+            scheduledFor: input.occurrence.scheduledFor,
+            nextAt: input.occurrence.nextAt,
+            owner: clone(schedule.owner) as unknown as JsonObject,
+            phase: 'claimed',
+            idempotencyKey: input.idempotencyKey,
+            fingerprint,
+            card,
+            cardBytesSha256: rendered.cardBytesSha256,
+            runRef: null,
+            phaseReceipts: [],
+            completionReceipt: null,
+          };
+          document.scheduleOccurrenceClaims.push(claim);
+          dirty = true;
+          return clone({
+            scheduleId: claim.scheduleId,
+            scheduledFor: claim.scheduledFor,
+            owner: schedule.owner,
+            phase: claim.phase,
+            card: claim.card,
+            cardBytesSha256: claim.cardBytesSha256,
+          });
+        },
+      };
+      const result = await operation(transaction);
+      if (dirty) commit(document);
+      return result;
+    });
+    scheduleTransactionTail = run.then(() => undefined, () => undefined);
+    return run;
+  };
+
+  const claimReceipt = (claim: StoredScheduleOccurrenceClaim): ScheduleOccurrenceClaim => ({
+    scheduleId: claim.scheduleId,
+    scheduledFor: claim.scheduledFor,
+    owner: clone(claim.owner) as unknown as RunnableRef,
+    phase: claim.phase,
+    card: clone(claim.card),
+    cardBytesSha256: claim.cardBytesSha256,
+  });
+
+  const completeStoredScheduleOccurrence = (
+    document: StoreDocument,
+    input: CompleteScheduleOccurrenceInput,
+  ): ScheduleMutationReceipt => {
+    const claim = document.scheduleOccurrenceClaims.find((candidate) =>
+      candidate.scheduleId === input.scheduleId && candidate.scheduledFor === input.scheduledFor);
+    const schedule = document.schedules.find((candidate) => candidate.id === input.scheduleId);
+    if (!claim || !schedule || claim.phase !== 'ledger-appended' || claim.runRef !== input.runRef) {
+      throw scheduleFailure(409, 'schedule-occurrence-conflict');
+    }
+    const fingerprint = sha256(canonicalJson(input as unknown as JsonValue));
+    if (claim.completionReceipt) {
+      if (claim.completionReceipt.idempotencyKey !== input.idempotencyKey
+        || claim.completionReceipt.fingerprint !== fingerprint) throw scheduleFailure(409, 'idempotency-conflict');
+      return clone(claim.completionReceipt.result as unknown as ScheduleMutationReceipt);
+    }
+    schedule.lastOutcome = input.lastOutcome;
+    schedule.nextAt = input.nextAt;
+    schedule.version += 1;
+    document.scheduleCollectionRevision += 1;
+    const result: ScheduleMutationReceipt = {
+      schedule: publicSchedule(schedule),
+      collectionRevision: document.scheduleCollectionRevision,
+      replayed: false,
+    };
+    claim.completionReceipt = clone({ idempotencyKey: input.idempotencyKey, fingerprint, result } as unknown as JsonObject);
+    return result;
+  };
+
+  // --- P4 section 3.4 two-phase reconciliation receipt [P4-C33] ---------------------------------
+  // The real store behind the injected `ReconciliationReceiptPort`. W4 backs the port with an
+  // in-memory fake and never touches this file; here it is substituted and W4's suites re-run
+  // unchanged. Both writes are CAS, serialized on ONE writer tail so `prepare` is an atomic
+  // insert-if-absent and `publish` advances exactly the `prepared` row it read — the publisher has no
+  // other guard against a duplicate effect. `load()` re-reads the persisted document and the whole
+  // transaction body is synchronous (load -> mutate -> commit), so a read always sees prior writes;
+  // a read-your-writes gap would re-classify a replay as `fresh` and re-run its effect.
+  const reconciliationReceiptRowIndex = (document: StoreDocument, idempotencyKey: string): number =>
+    (document.reconciliationReceipts ?? []).findIndex((row) => row['idempotencyKey'] === idempotencyKey);
+
+  const sameStringList = (left: unknown, right: readonly string[]): boolean =>
+    Array.isArray(left) && left.length === right.length && left.every((entry, index) => entry === right[index]);
+
+  const decodeStoredReconciliationResult = (value: unknown): ReconciliationResult => {
+    const record = (value ?? {}) as JsonObject;
+    const detail = record['detail'];
+    return {
+      outcome: record['outcome'] as ReconciliationResult['outcome'],
+      revision: record['revision'] as string,
+      // Verbatim round-trip: `detail` is present iff it was stored, so an exact replay returns a
+      // result with the same optional-field shape as the original, never a spurious `detail:undefined`.
+      ...(typeof detail === 'string' ? { detail } : {}),
+    };
+  };
+
+  const decodeStoredReconciliationReceipt = (row: JsonObject): ReconciliationReceipt => {
+    const base = {
+      idempotencyKey: row['idempotencyKey'] as string,
+      requestSha256: row['requestSha256'] as string,
+      expectedSourceRevision: row['expectedSourceRevision'] as string,
+      expectedStoreRevision: row['expectedStoreRevision'] as string,
+      exactTargets: [...((row['exactTargets'] as string[] | undefined) ?? [])],
+    };
+    if (row['phase'] === 'published') {
+      return {
+        ...base,
+        phase: 'published',
+        result: decodeStoredReconciliationResult(row['result']),
+        auditRef: row['auditRef'] as string,
+      };
+    }
+    return { ...base, phase: 'prepared' };
+  };
+
+  let reconciliationReceiptTail: Promise<unknown> = Promise.resolve();
+  const reconciliationReceiptTransaction = <T>(operation: (document: StoreDocument) => T): Promise<T> => {
+    const run = reconciliationReceiptTail.then(() => operation(load()));
+    reconciliationReceiptTail = run.then(() => undefined, () => undefined);
+    return run;
+  };
+
+  const reconciliationReceiptPortImpl: ReconciliationReceiptPort = {
+    async read(idempotencyKey: string): Promise<ReconciliationReceipt | null> {
+      const document = load();
+      const index = reconciliationReceiptRowIndex(document, idempotencyKey);
+      if (index === -1) return null;
+      return decodeStoredReconciliationReceipt(clone(document.reconciliationReceipts![index]!));
+    },
+    prepare(receipt: PreparedReconciliationReceipt): Promise<PreparedReconciliationReceipt> {
+      return reconciliationReceiptTransaction((document) => {
+        // Insert-if-absent under the single writer tail: a duplicate key surfaces a 409, never the
+        // store's raw error, so the publisher's loser sees the same audited conflict a changed replay
+        // gets [assumption 1, 2].
+        if (reconciliationReceiptRowIndex(document, receipt.idempotencyKey) !== -1) {
+          throw new ReconciliationConflictError(
+            receipt.idempotencyKey, 'a reconciliation receipt already exists for this key',
+          );
+        }
+        const rows = document.reconciliationReceipts ?? [];
+        rows.push(clone(receipt as unknown as JsonObject));
+        document.reconciliationReceipts = rows;
+        commit(document);
+        return receipt;
+      });
+    },
+    publish(receipt: PublishedReconciliationReceipt): Promise<PublishedReconciliationReceipt> {
+      return reconciliationReceiptTransaction((document) => {
+        const rows = document.reconciliationReceipts ?? [];
+        const index = reconciliationReceiptRowIndex(document, receipt.idempotencyKey);
+        const existing = index === -1 ? undefined : rows[index];
+        // CAS on the FULL prepared row: it must be `prepared`, carry the same requestSha256, and match
+        // every expectation/target the preparation staged [assumption 3].
+        if (
+          existing === undefined
+          || existing['phase'] !== 'prepared'
+          || existing['requestSha256'] !== receipt.requestSha256
+          || existing['expectedSourceRevision'] !== receipt.expectedSourceRevision
+          || existing['expectedStoreRevision'] !== receipt.expectedStoreRevision
+          || !sameStringList(existing['exactTargets'], receipt.exactTargets)
+        ) {
+          throw new ReconciliationConflictError(receipt.idempotencyKey, 'reconciliation receipt CAS failed');
+        }
+        rows[index] = clone(receipt as unknown as JsonObject);
+        document.reconciliationReceipts = rows;
+        commit(document);
+        return receipt;
+      });
+    },
+  };
+
   return {
     getControlDocumentMetadata() {
-      const { version, documentRevision } = load();
-      return { version, documentRevision };
+      const { version, documentRevision, scheduleCollectionRevision } = load();
+      return { version, documentRevision, scheduleCollectionRevision };
+    },
+
+    reconciliationReceiptPort() {
+      return reconciliationReceiptPortImpl;
+    },
+
+    getScheduleSnapshot() {
+      return scheduleSnapshot(load());
+    },
+
+    async readScheduleMirrorSnapshot() {
+      const document = load();
+      return { revision: scheduleMirrorRevisionOf(document), rows: document.schedules.map(scheduleMirrorRow) };
+    },
+
+    async readOpenScheduleMirrorBatch() {
+      return storedScheduleMirrorBatch(load());
+    },
+
+    async readMergedScheduleMirrorWatermark() {
+      const merged = load().scheduleMirrorMergedWatermark;
+      return merged === undefined ? unmirroredWatermark() : decodeScheduleMirrorWatermark(merged);
+    },
+
+    // The read and the write both live inside the single-writer schedule transaction, so this call
+    // — not the caller's earlier read — is what makes "at most one open batch" true.
+    commitScheduleMirrorPreparation(batch): Promise<CommitScheduleMirrorPreparationResult> {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const stored = storedScheduleMirrorBatch(document);
+        if (stored && stored.state !== 'merged' && stored.state !== 'failed') {
+          if (stored.id === batch.id) return { outcome: 'replayed' as const, batch: stored };
+          return { outcome: 'batch-open' as const, batch: stored };
+        }
+        // The first batch materialises both additive fields on the existing document [P4-C37].
+        materialiseScheduleMirrorFields(document);
+        // A batch the operator abandoned (state `failed`) is closed by the next preparation instead
+        // of wedging the mirror forever; the close is recorded on the replacing record.
+        const superseded = stored && stored.state === 'failed'
+          ? { id: stored.id, state: 'superseded', at: batch.createdAt }
+          : undefined;
+        document.scheduleMirrorBatch = {
+          record: scheduleMirrorBatchJson(batch),
+          ...(superseded === undefined ? {} : { superseded }),
+        };
+        commit(document);
+        return { outcome: 'committed' as const };
+      });
+    },
+
+    applyScheduleMirrorMerge(input) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        materialiseScheduleMirrorFields(document);
+        const updatedRowIds: string[] = [];
+        // §3.5: CAS only the rows AND tombstones the batch actually covered. A mutation made after
+        // the batch was prepared carries a higher revision and is left for the next batch.
+        for (const row of mirrorRows(document)) {
+          if (!isRowCoveredByMirror(row.lastMirrorRevision ?? 0, input.batch.targetWatermark)) continue;
+          row.mirroredAt = input.mirroredAt;
+          updatedRowIds.push(row.id);
+        }
+        document.scheduleMirrorBatch = { record: scheduleMirrorBatchJson(input.batch) };
+        document.scheduleMirrorMergedWatermark = { ...input.batch.targetWatermark };
+        commit(document);
+        return { updatedRowIds };
+      });
+    },
+
+    recordScheduleMirrorUnchanged(watermark) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const merged = document.scheduleMirrorMergedWatermark;
+        if (merged !== undefined
+          && merged['revision'] === watermark.revision && merged['digest'] === watermark.digest) {
+          return;
+        }
+        materialiseScheduleMirrorFields(document);
+        document.scheduleMirrorMergedWatermark = { ...watermark };
+        commit(document);
+      });
+    },
+
+    markScheduleMirrorBatchFailed(batchId) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const stored = storedScheduleMirrorBatch(document);
+        if (!stored || stored.id !== batchId || stored.state === 'merged' || stored.state === 'failed') {
+          return { failed: false };
+        }
+        const { pr: _pr, ...rest } = stored;
+        document.scheduleMirrorBatch = { record: scheduleMirrorBatchJson({ ...rest, state: 'failed' }) };
+        commit(document);
+        return { failed: true };
+      });
+    },
+
+    async readScheduleSnapshot() {
+      return scheduleSnapshot(load());
+    },
+
+    transaction(operation) {
+      return scheduleTransaction(operation);
+    },
+
+    createSchedule(input) {
+      return scheduleTransaction((transaction) => transaction.createSchedule(input));
+    },
+
+    setScheduleArmed(id, input) {
+      return scheduleTransaction((transaction) => transaction.setScheduleArmed(id, input));
+    },
+
+    deleteSchedule(id, input) {
+      return scheduleTransaction((transaction) => transaction.deleteSchedule(id, input));
+    },
+
+    claimScheduleOccurrence(input) {
+      return scheduleTransaction((transaction) => transaction.claimScheduleOccurrence(input));
+    },
+
+    advanceScheduleOccurrence(input: AdvanceScheduleOccurrenceInput) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const claim = document.scheduleOccurrenceClaims.find((candidate) =>
+          candidate.scheduleId === input.scheduleId && candidate.scheduledFor === input.scheduledFor);
+        if (!claim || claim.nextAt !== input.nextAt) throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        const fingerprint = sha256(canonicalJson(input as unknown as JsonValue));
+        const prior = claim.phaseReceipts.find((receipt) => receipt.idempotencyKey === input.idempotencyKey);
+        if (prior) {
+          if (prior.fingerprint !== fingerprint) throw scheduleFailure(409, 'idempotency-conflict');
+          return claimReceipt(claim);
+        }
+        const phases = ['claimed', 'card-saved', 'ledger-appended'] as const;
+        const current = phases.indexOf(claim.phase);
+        const next = phases.indexOf(input.phase);
+        if (next !== current + 1) throw scheduleFailure(409, 'schedule-phase-conflict');
+        claim.phase = input.phase;
+        claim.phaseReceipts.push({ idempotencyKey: input.idempotencyKey, fingerprint });
+        commit(document);
+        return claimReceipt(claim);
+      });
+    },
+
+    completeScheduleOccurrence(input: CompleteScheduleOccurrenceInput) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const result = completeStoredScheduleOccurrence(document, input);
+        commit(document);
+        return result;
+      });
+    },
+
+    bindScheduleOccurrenceRun(cardId, runRef) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const claims = document.scheduleOccurrenceClaims.filter((candidate) => {
+          const meta = candidate.card.meta;
+          return typeof meta === 'object' && meta !== null && !Array.isArray(meta) && meta.id === cardId;
+        });
+        if (claims.length !== 1 || claims[0].phase !== 'ledger-appended') {
+          throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        }
+        const claim = claims[0];
+        if (claim.runRef !== null && claim.runRef !== runRef) throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        if (claim.runRef === runRef) return;
+        claim.runRef = runRef;
+        commit(document);
+      });
+    },
+
+    resolveScheduleReceiptOwner(cardId) {
+      const claim = load().scheduleOccurrenceClaims.find((candidate) => {
+        const meta = candidate.card.meta;
+        return typeof meta === 'object' && meta !== null && !Array.isArray(meta) && meta.id === cardId;
+      });
+      return claim ? clone(claim.owner) as unknown as RunnableRef : null;
+    },
+
+    isScheduleSeedAuthorized(scheduleId) {
+      return load().schedules.find((schedule) => schedule.id === scheduleId)?.seedAuthorized === true;
+    },
+
+    getScheduleSeedImportMarker() {
+      const marker = load().scheduleSeedImports.at(-1);
+      return marker ? clone({
+        version: 1 as const,
+        releaseSha: marker.releaseSha === '' ? null : marker.releaseSha,
+        seedDigest: marker.seedDigest,
+        importedAt: marker.importedAt,
+      }) : null;
+    },
+
+    commitScheduleSeedImport(plan) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const existing = document.scheduleSeedImports.at(-1);
+        if (existing) {
+          if (existing.seedDigest !== plan.marker.seedDigest
+            || (existing.releaseSha === '' ? null : existing.releaseSha) !== plan.marker.releaseSha) {
+            throw scheduleFailure(409, 'schedule-seed-import-conflict');
+          }
+          return;
+        }
+        if (plan.seeds.some((seed) => document.schedules.some((schedule) => schedule.id === seed.id)
+          || document.scheduleTombstones.some((tombstone) => tombstone.id === seed.id))) {
+          throw scheduleFailure(409, 'schedule-seed-id-conflict');
+        }
+        for (const seed of plan.seeds) {
+          document.schedules.push({
+            id: seed.id,
+            owner: clone(seed.owner),
+            cadence: { ...seed.cadence },
+            cadenceCanonical: seed.cadence.source,
+            nextAt: null,
+            lastOutcome: null,
+            armed: seed.armed,
+            origin: 'seed',
+            mirroredAt: null,
+            mirrorPath: seed.path,
+            version: 1,
+            seedBytes: seed.sourceBytes,
+            seedDigest: seed.sourceDigest,
+            seedAuthorized: plan.marker.releaseSha !== null,
+            launchPayload: { cadenceName: seed.name, disarmedReason: seed.disarmedReason },
+            operationReceipts: [],
+            emissionReceipts: [],
+            mirrorMetadataRevision: 0,
+            tombstone: null,
+          });
+        }
+        document.scheduleSeedImports.push({
+          version: 1,
+          releaseSha: plan.marker.releaseSha ?? '',
+          seedDigest: plan.marker.seedDigest,
+          importedAt: plan.marker.importedAt,
+        });
+        document.scheduleCollectionRevision += 1;
+        // Seed reconciliation is one mirror-relevant event; every imported row carries its revision.
+        const imported = plan.seeds
+          .map((seed) => document.schedules.find((schedule) => schedule.id === seed.id))
+          .filter((schedule): schedule is StoredSchedule => schedule !== undefined);
+        advanceScheduleMirrorRevision(document, ...imported);
+        commit(document);
+      });
+    },
+
+    async readSchedulePauseMarkerReceipt(marker) {
+      for (const schedule of load().schedules) {
+        const receipt = schedule.emissionReceipts.find((candidate) =>
+          candidate.kind === 'legacy-pause-migration' && candidate.marker === marker);
+        if (receipt) return clone({
+          marker: String(receipt.marker),
+          scheduleId: String(receipt.scheduleId),
+          digest: String(receipt.digest),
+          storePhase: receipt.storePhase === true,
+          publisherPhase: receipt.publisherPhase === true,
+        });
+      }
+      return null;
+    },
+
+    async listIncompleteSchedulePauseMarkerReceipts() {
+      return load().schedules.flatMap((schedule) => schedule.emissionReceipts
+        .filter((candidate) => candidate.kind === 'legacy-pause-migration' && candidate.publisherPhase !== true)
+        .map((receipt) => clone({
+          marker: String(receipt.marker),
+          scheduleId: String(receipt.scheduleId),
+          digest: String(receipt.digest),
+          storePhase: receipt.storePhase === true,
+          publisherPhase: false,
+        })));
+    },
+
+    writeSchedulePauseMarkerReceipt(receipt) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const schedule = document.schedules.find((candidate) => candidate.id === receipt.scheduleId);
+        if (!schedule) throw scheduleFailure(409, 'pause-marker-schedule-missing');
+        const index = schedule.emissionReceipts.findIndex((candidate) =>
+          candidate.kind === 'legacy-pause-migration' && candidate.marker === receipt.marker);
+        const stored = clone({ kind: 'legacy-pause-migration', ...receipt } as unknown as JsonObject);
+        if (index === -1) schedule.emissionReceipts.push(stored);
+        else schedule.emissionReceipts[index] = stored;
+        commit(document);
+      });
     },
 
     getDeployment(deploymentRef) {
@@ -3134,6 +2902,74 @@ function makeStore(
       return { ok: true, value: result, replayed: undefined };
     },
 
+    getAssetPullIntent(intentRef) {
+      const intent = (load().assetPullIntents ?? []).find((item) => item.intentRef === intentRef);
+      return intent ? ok(publicAssetPullIntent(intent)) : fail('not-found', 'asset-pull intent was not found');
+    },
+
+    listAssetPullIntents() {
+      return (load().assetPullIntents ?? [])
+        .slice()
+        .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt) || a.intentRef.localeCompare(b.intentRef))
+        .map(publicAssetPullIntent);
+    },
+
+    createAssetPullIntent(subject, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validateCreateAssetPullIntentInput(input)) {
+        return fail('invalid', 'asset-pull intent creation input is invalid');
+      }
+      const document = load();
+      const intents = document.assetPullIntents ?? [];
+      // movement:256 creates one intent per succeeded run; a second create for the same intentRef is a
+      // replay when its pinned fields match, and a conflict otherwise. The intent's `(state, attempts)`
+      // are its idempotency ledger, so no operationReceipts sidecar is kept.
+      const existing = intents.find((item) => item.intentRef === input.intentRef);
+      if (existing) {
+        if (existing.runRef !== input.runRef || existing.manifestDigest !== input.manifestDigest
+          || existing.requestedAt !== input.requestedAt) {
+          return fail('idempotency-conflict', 'asset-pull intentRef was reused with different content');
+        }
+        return ok(publicAssetPullIntent(existing), true);
+      }
+      const intent: StoredAssetPullIntent = {
+        intentRef: input.intentRef,
+        runRef: input.runRef,
+        manifestDigest: input.manifestDigest,
+        state: 'pending',
+        requestedAt: input.requestedAt,
+        attempts: 0,
+        result: null,
+      };
+      intents.push(intent);
+      document.assetPullIntents = intents;
+      commit(document);
+      return ok(publicAssetPullIntent(intent));
+    },
+
+    updateAssetPullIntent(subject, intentRef, input) {
+      if (!validNonEmpty(subject, MAX_SHORT_TEXT) || !validNonEmpty(intentRef, MAX_SHORT_TEXT)
+        || !validateUpdateAssetPullIntentInput(input)) {
+        return fail('invalid', 'asset-pull intent update input is invalid');
+      }
+      const document = load();
+      const intent = (document.assetPullIntents ?? []).find((item) => item.intentRef === intentRef);
+      if (!intent) return fail('not-found', 'asset-pull intent was not found');
+      // A CAS pinned to the exact `(state, attempts)` the caller read: a stale dispatch or settlement
+      // conflicts with NO side effect, so a concurrent double-dispatch converges on one in-flight row.
+      if (intent.state !== input.expectedState || intent.attempts !== input.expectedAttempts
+        || !canTransitionAssetPull(intent.state, input.nextState)) {
+        return fail('conflict', 'asset-pull intent state or attempts changed');
+      }
+      if (input.attemptsDelta === 1 && intent.attempts >= ASSET_PULL_MAX_ATTEMPTS) {
+        return fail('conflict', 'asset-pull intent attempts are exhausted');
+      }
+      intent.state = input.nextState;
+      intent.attempts += input.attemptsDelta;
+      intent.result = input.result === null ? null : clone(input.result);
+      commit(document);
+      return ok(publicAssetPullIntent(intent));
+    },
+
     listProposalRevisions(subject, proposalRef) {
       return load().proposals
         .filter((item) => item.subject === subject && (proposalRef === undefined || item.proposalRef === proposalRef))
@@ -3225,6 +3061,19 @@ function makeStore(
       return ok(publicProposal(proposal));
     },
 
+    listHostAdvertisements() {
+      return [...load().hostAdvertisements];
+    },
+
+    seedHostAdvertisementForTest(advertisement) {
+      const document = load();
+      document.hostAdvertisements = [
+        ...document.hostAdvertisements.filter((existing) => existing.hostId !== advertisement.hostId),
+        advertisement,
+      ];
+      commit(document);
+    },
+
     listRuns(subject, scope = 'own-subject') {
       const document = load();
       return document.runs
@@ -3262,6 +3111,10 @@ function makeStore(
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
       const managerAssignment = normalizeAssignment(input.managerAssignment);
       if (managerAssignment === undefined) return fail('invalid', 'manager assignment provenance is invalid');
+      const owner = decodeRunnableRef(input.owner);
+      const executionHost = decodeHostKind(input.executionHost);
+      if (!owner) return fail('invalid', 'runnable-owner-required');
+      if (!executionHost) return fail('invalid', 'execution host is invalid');
       const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(input.agentWorkspaceLaunch);
       if (agentWorkspaceLaunch === undefined) return fail('invalid', 'agent workspace launch provenance is invalid');
       if (!Array.isArray(input.stages) || input.stages.length === 0 || input.stages.length > MAX_STAGES_PER_RUN) {
@@ -3317,6 +3170,8 @@ function makeStore(
         managerRuntime: input.managerRuntime,
         managerModel: input.managerModel,
         managerAssignment,
+        owner,
+        executionHost,
         agentWorkspaceLaunch,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,
@@ -3400,6 +3255,10 @@ function makeStore(
           return fail('invalid', 'only a terminal or interrupted run can have a Retry successor');
         }
         if (predecessor.proposalHash !== proposal.hash) return fail('conflict', 'Retry successor must bind the same approved proposal hash');
+        if (JSON.stringify(predecessor.owner) !== JSON.stringify(owner)
+          || predecessor.executionHost !== executionHost) {
+          return fail('conflict', 'Retry successor must preserve immutable runnable owner and execution host');
+        }
         if (!sameAssignment(predecessor.managerAssignment, managerAssignment)
           || input.stages.some((stage) => {
             const predecessorStage = document.stages.find((item) =>
@@ -3432,6 +3291,11 @@ function makeStore(
         proposalHash: proposal.hash,
         publicationState: 'pending',
         lifecycle: lifecycleForKind('planned', null),
+        owner: clone(owner),
+        executionHost,
+        terminalOutcome: null,
+        completedAt: null,
+        archivedFrom: null,
         version: 1,
         managerSessionRef,
         managerGeneration: 1,
@@ -3694,6 +3558,11 @@ function makeStore(
       run.lifecycle = lifecycleForKind(state, null);
       run.version += 1;
       run.updatedAt = stamp();
+      if (state === 'succeeded' || state === 'failed' || state === 'stopped') {
+        run.terminalOutcome = state === 'succeeded' ? 'ok' : state;
+        run.completedAt ??= run.updatedAt;
+        run.archivedFrom = null;
+      }
       // A bare transition can land a run on a terminal state (`archived` goes through `archiveRun`
       // exclusively — rejected above). Close its open requests in the SAME commit, so a run that just
       // failed/stopped/succeeded can never leave a haunting ask behind the way the pre-fix zombies did.
@@ -3703,6 +3572,21 @@ function makeStore(
           `Automatically closed — the run reached its terminal state ('${state}') without this being answered.`,
           maxEvents,
         );
+      }
+      if (state === 'succeeded' || state === 'failed' || state === 'stopped') {
+        const claims = document.scheduleOccurrenceClaims.filter((candidate) => candidate.runRef === runRef);
+        if (claims.length > 1) throw scheduleFailure(409, 'schedule-occurrence-conflict');
+        const claim = claims[0];
+        if (claim && claim.completionReceipt === null) {
+          completeStoredScheduleOccurrence(document, {
+            scheduleId: claim.scheduleId,
+            scheduledFor: claim.scheduledFor,
+            runRef,
+            lastOutcome: state === 'succeeded' ? 'ok' : state,
+            nextAt: claim.nextAt,
+            idempotencyKey: `terminal-run:${runRef}`,
+          });
+        }
       }
       commit(document);
       return ok(internalRun(run));
@@ -3837,6 +3721,11 @@ function makeStore(
       run.lifecycle = lifecycleForKind(runState, null);
       run.version += 1;
       run.updatedAt = changedAt;
+      if (runState === 'succeeded' || runState === 'failed' || runState === 'stopped') {
+        run.terminalOutcome = runState === 'succeeded' ? 'ok' : runState;
+        run.completedAt ??= changedAt;
+        run.archivedFrom = null;
+      }
       if (runState === 'succeeded' && !runCanSucceed(document, run)) {
         return fail('invalid', 'canonical projection left a nonterminal descendant');
       }
@@ -5819,9 +5708,18 @@ function makeStore(
           response: reason,
         }, archivedAt);
       }
+      const archivedFrom = runLifecycleKind(run.lifecycle);
       run.lifecycle = lifecycleForKind('archived', null);
       run.version += 1;
       run.updatedAt = archivedAt;
+      run.archivedFrom = archivedFrom as Run['archivedFrom'];
+      if (archivedFrom === 'interrupted') {
+        run.terminalOutcome = 'interrupted';
+        run.completedAt = archivedAt;
+      } else if (archivedFrom === 'waiting-human') {
+        run.terminalOutcome = 'abandoned';
+        run.completedAt = archivedAt;
+      }
       run.archiveOperationKey = input.idempotencyKey;
       run.archiveOperationFingerprint = fingerprint;
       commit(document);
@@ -6025,8 +5923,27 @@ function makeStore(
   };
 }
 
+/**
+ * P6 W6.2 [P6-C55]: a fresh, maximally-capable synthetic advertisement — `pty`/`gpu` true, both CLIs
+ * `ready`, empty connector/skill/root lists (an empty `CapabilityRequirement` is the common case for a
+ * test fixture that never declares one). This is what `createInMemoryControlPlaneStore` seeds by
+ * default so every P2-era launch test — written before placement existed — keeps succeeding without
+ * each of dozens of call sites naming a host explicitly. Pass `initialHostAdvertisements: []` to opt out
+ * and exercise the `no-complete-placement` refusal instead.
+ */
+function defaultTestHostAdvertisement(): StoredHostAdvertisement {
+  return {
+    hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date().toISOString(),
+    connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+    clis: { claude: 'ready', codex: 'ready' }, version: 1,
+  };
+}
+
 export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {}): ControlPlaneStore {
-  let document = emptyStoreDocumentForTest();
+  let document = {
+    ...emptyStoreDocumentForTest(),
+    hostAdvertisements: options.initialHostAdvertisements ?? [defaultTestHostAdvertisement()],
+  };
   const maxBytes = options.maxDocumentBytes ?? MAX_CONTROL_DOCUMENT_BYTES;
   return makeStore(
     () => {
@@ -6046,8 +5963,13 @@ export function createInMemoryControlPlaneStore(options: ControlStoreOptions = {
 }
 
 const READ_ONLY_CONTROL_STORE_METHODS = new Set<keyof ControlPlaneStore>([
-  'getControlDocumentMetadata', 'getDeployment', 'listDeployments',
+  'getControlDocumentMetadata', 'getScheduleSnapshot', 'readScheduleSnapshot', 'resolveScheduleReceiptOwner',
+  'isScheduleSeedAuthorized',
+  'getScheduleSeedImportMarker', 'readSchedulePauseMarkerReceipt', 'listIncompleteSchedulePauseMarkerReceipts',
+  'getDeployment', 'listDeployments',
+  'getAssetPullIntent', 'listAssetPullIntents',
   'listProposalRevisions', 'listProposalRevisionsForComposer', 'getProposalRevision',
+  'listHostAdvertisements',
   'listRuns', 'getRun', 'findActiveRunForRevision', 'getRunActivationReceipt', 'hasActiveRunActivation',
   'getHumanRequest', 'preflightAuthorized20260731ExecutionLock',
   'preflightAuthorized20260801FailedRunReconciliation', 'listEvents', 'inventory', 'dryRunQuarantine',
@@ -6083,6 +6005,13 @@ export function createFileControlPlaneStore(
     }
   }
   let acceptedMaxBytes = maxBytes;
+  // The one post-hydration validation triad every load path runs: full-document schema check, then the
+  // generic iteration-bundle check on the document and each quarantined bundle.
+  const assertHydrated = (document: StoreDocument): void => {
+    validateStoreDocument(document);
+    validateGenericIterationBundle(document);
+    for (const bundle of document.quarantine) validateGenericIterationBundle(bundle);
+  };
   if (access.mode === 'already-locked') assertWriterLeaseForRoot(access.lease, stateRoot);
   if (access.mode === 'read-only-harness') {
     const loadReadOnly = (): StoreDocument => {
@@ -6096,9 +6025,7 @@ export function createFileControlPlaneStore(
         throw new ControlStoreReadOnlyError();
       }
       const document = parsed as StoreDocument;
-      validateStoreDocument(document);
-      validateGenericIterationBundle(document);
-      for (const bundle of document.quarantine) validateGenericIterationBundle(bundle);
+      assertHydrated(document);
       return clone(document);
     };
     loadReadOnly();
@@ -6111,6 +6038,25 @@ export function createFileControlPlaneStore(
   const lease = access.lease;
   const migrateDocument = options.loadAndMigrateForTest ?? loadAndMigrate;
   const startupStamp = (options.now ?? (() => new Date()))().toISOString();
+  const migrationContext = (source: string): MigrationContext => {
+    const raw = JSON.parse(source) as Record<string, unknown>;
+    const supplied = options.p2MigrationContext;
+    if (Number(raw.version) < CONTROL_PLANE_SCHEMA_VERSION
+      && (!supplied || !Array.isArray(supplied.agentDeclarations)
+        || !Array.isArray(supplied.workflowDefinitions)
+        || !Array.isArray(supplied.workflowLaunchAudits)
+        || !Array.isArray(supplied.auditRows))) {
+      throw new Error('control-plane v2 migration requires attested production evidence');
+    }
+    return {
+      stamp: startupStamp,
+      executionHost: process.platform === 'win32' ? 'desktop' : 'vm',
+      ...supplied,
+      // Bind any explicit operator mapping to the exact persisted bytes being
+      // migrated. Callers cannot substitute a checksum for a different store.
+      sourceSha256: createHash('sha256').update(source).digest('hex'),
+    };
+  };
   const bootId = options.bootId ?? lease.bootId;
   const requiresGenericRewrite = (raw: Record<string, unknown>): boolean => {
     const quarantined = Array.isArray(raw.quarantine) ? raw.quarantine as Array<Record<string, unknown>> : [];
@@ -6122,10 +6068,8 @@ export function createFileControlPlaneStore(
         || !Object.hasOwn(bundle, 'iterationReceipts'));
   };
   const hydrate = (encoded: string): StoreDocument => {
-    const migrated = migrateDocument(encoded, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp }).document;
-    validateStoreDocument(migrated);
-    validateGenericIterationBundle(migrated);
-    for (const bundle of migrated.quarantine) validateGenericIterationBundle(bundle);
+    const migrated = migrateDocument(encoded, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(encoded)).document;
+    assertHydrated(migrated);
     return migrated;
   };
   const load = (): StoreDocument => {
@@ -6162,6 +6106,8 @@ export function createFileControlPlaneStore(
   let migrated = false;
   let legacyRewrite = false;
   let sourceBytes = 0;
+  let migrationBackupSource: Buffer | null = null;
+  let migrationBackupFrom = 0;
   if (existsSync(path)) {
     sourceBytes = statSync(path).size;
     const source = readFileSync(path, 'utf8');
@@ -6192,12 +6138,16 @@ export function createFileControlPlaneStore(
     legacyRewrite = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
       && (parsed as Record<string, unknown>).version === 1
       && requiresGenericRewrite(parsed as Record<string, unknown>);
-    const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, { stamp: startupStamp });
+    const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(source));
     recovered = initial.document;
-    validateStoreDocument(recovered);
-    validateGenericIterationBundle(recovered);
-    for (const bundle of recovered.quarantine) validateGenericIterationBundle(bundle);
+    assertHydrated(recovered);
     migrated = initial.applied.length > 0;
+    // P6 [P6-C32]: capture the exact preimage for ANY applied edge, not only v2 -> v3. `from` is the
+    // on-disk source version; `to` is the schema version we migrated up to.
+    if (initial.applied.length > 0) {
+      migrationBackupSource = Buffer.from(source, 'utf8');
+      migrationBackupFrom = Number((parsed as Record<string, unknown>).version);
+    }
   }
   const normalized = normalizeCrash(recovered, { stamp: startupStamp, bootId });
   if (normalized || migrated) {
@@ -6214,6 +6164,18 @@ export function createFileControlPlaneStore(
       ? acceptedMaxBytes + migrationGrowth
       : acceptedMaxBytes;
     acceptedMaxBytes = nextAcceptedMaxBytes;
+    if (migrationBackupSource) {
+      // P6 [P6-C32]: the BACKUP is captured for any applied edge (above), but the cross-language Python
+      // round-trip guard stays scoped to a v2-origin document — the P2 identity/schedule carrier it was
+      // written to validate. A v1 legacy rewrite migrates through its own TS-validated path and never had
+      // this guard; a purely additive v3->v4 has no carrier to cross-check.
+      if (migrationBackupFrom === 2) {
+        (options.generatedPythonRoundTripForTest ?? validateGeneratedPythonControlPlaneRoundTrip)(recovered);
+      }
+      writeControlPlaneMigrationBackupSync(
+        stateRoot, migrationBackupSource, migrationBackupFrom, recovered.version, options.persistenceDepsForTest,
+      );
+    }
     save(recovered, 'deploy-critical');
     if (pureSchemaMigrationOverage) {
       assertWriterLeaseForRoot(lease, stateRoot);

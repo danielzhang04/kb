@@ -19,13 +19,14 @@ describe('registerPlaneA', () => {
     const res = await app.inject({ method: 'GET', url: '/api/index' });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      cards: Record<string, unknown[]>;
+      cards: Record<string, Array<{ updatedAt?: string }>>;
       ledgers: { cost: { stepCount: number; modelMix: Record<string, number> } };
       orgStates: { project: string }[];
     };
 
     // Cards grouped by state (the fixture has one card in `working`).
     expect(body.cards.working).toHaveLength(1);
+    expect(body.cards.working[0]?.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     // Ledger rollup carried through (fixture cost ledger has 3 step rows).
     expect(body.ledgers.cost.stepCount).toBe(3);
     // Org STATEs carried through.

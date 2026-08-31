@@ -6,10 +6,72 @@
  * narrow patcher below understands only block-style `manager` and `stages` assignments and refuses
  * every layout it cannot prove safe.
  */
-import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { sha256Hex } from '../shared/hashing.ts';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import { parseWorkflowDef, type WorkflowDef } from './defs.ts';
+import { DEFAULT_WORK_BRANCH } from '../write/branch.ts';
+import type { DefinitionAmendmentKind, DefinitionAmendmentStore } from './amendmentStore.ts';
+
+export interface BuilderAmendmentReceipt {
+  status: 'pending';
+  operationId: string;
+  replayed: boolean;
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, child]) => [key, canonicalValue(child)]));
+}
+
+export function builderAmendmentFingerprint(input: {
+  kind: DefinitionAmendmentKind;
+  entityPath: string;
+  idempotencyKey: string;
+  baseSourceHash: string;
+  request: unknown;
+}): string {
+  return sha256Hex(JSON.stringify(canonicalValue(input)));
+}
+
+/** The single durable effect gate for Agent and Workflow builder create/edit operations. */
+export async function runBuilderAmendment(
+  store: DefinitionAmendmentStore,
+  input: {
+    kind: Extract<DefinitionAmendmentKind, `${string}-builder-${string}`>;
+    entityPath: string;
+    idempotencyKey: string;
+    baseSourceHash: string;
+    proposedSourceHash: string;
+    request: unknown;
+    effect: () => Promise<void>;
+  },
+): Promise<BuilderAmendmentReceipt> {
+  const fingerprint = builderAmendmentFingerprint(input);
+  const replay = store.lookupRequest(input.entityPath, input.idempotencyKey);
+  if (!replay.ok) throw new Error('builder-amendment-state-invalid');
+  if (replay.record) {
+    if (replay.record.requestFingerprint !== fingerprint) throw new Error('idempotency-body-conflict');
+    if (replay.record.phase !== 'pending-human-merge' && replay.record.phase !== 'settled') throw new Error('builder-amendment-incomplete');
+    return { status: 'pending', operationId: input.idempotencyKey, replayed: true };
+  }
+  const pending = store.lookup(input.entityPath, input.baseSourceHash);
+  if (!pending.ok) throw new Error('builder-amendment-state-invalid');
+  if (pending.record) throw new Error('builder-amendment-pending');
+  const record = {
+    kind: input.kind, workflowPath: input.entityPath, baseSourceHash: input.baseSourceHash,
+    proposedSourceHash: input.proposedSourceHash, branch: DEFAULT_WORK_BRANCH, pr: {}, phase: 'prepared' as const,
+    idempotencyKey: input.idempotencyKey, requestFingerprint: fingerprint,
+  };
+  store.put(record);
+  await input.effect();
+  store.update({ ...record, phase: 'pending-human-merge' });
+  return { status: 'pending', operationId: input.idempotencyKey, replayed: false };
+}
 
 export type AssignmentTarget = { kind: 'manager' } | { kind: 'stage'; stageId: string };
 export type AssignmentValue = { agentId: string; profileId: string } | null;
@@ -40,8 +102,9 @@ export interface PatchedGovernance {
   oldGovernance: GovernanceValue;
 }
 
+/** Checkout-independent identity for authored UTF-8 Workflow definition text. */
 export function sourceHash(bytes: Buffer): string {
-  return createHash('sha256').update(bytes).digest('hex');
+  return normalizedTextSha256(bytes);
 }
 
 export function decodeUtf8(bytes: Buffer): string | null {

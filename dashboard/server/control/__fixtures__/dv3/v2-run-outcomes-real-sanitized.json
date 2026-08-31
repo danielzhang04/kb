@@ -1,0 +1,34 @@
+{
+  "provenance": {
+    "sourcePath": "%LOCALAPPDATA%/kb-dashboard/control/control-plane.json",
+    "sourceSha256": "6aa42d2b5758a715d1f71d0b9226a6b8f0ae2e4deb15818c9dabedbde2ce445b",
+    "extractedAt": "2026-08-21T22:42:30.064Z",
+    "sanitizer": "replace absolute paths under Users/ with <user-home>; replace emails with <email>; replace token-, secret-, password-, and authorization-bearing values with <token>; replace hostnames with <hostname>; preserve real runRef and proposalRef; convert v1 state to the v2 lifecycle field"
+  },
+  "version": 2,
+  "documentRevision": 0,
+  "runs": [
+    {
+      "subject": "operator",
+      "launchOperationKey": "workflow-launch:self-lint-report:e135cb33-dc9a-4daa-97b8-425c11ee8541",
+      "launchOperationFingerprint": "7d99ebb5770fc50e165a3916b0b67ca015a113233b0c3bc4d006ebd18c290cfb",
+      "runRef": "run-7b0b8de8-268e-4d94-bab3-a3b765101c62",
+      "predecessorRunRef": null,
+      "title": "Self-lint report (read-only health scan)",
+      "proposalRef": "proposal-411be4ec-69b1-4c9a-8cd5-f77c1683a634",
+      "proposalRevision": 1,
+      "proposalHash": "5ad31a17e089abc1477b7e8b678d427bf84bf62cc246ed08d94cec8e0ecdd012",
+      "publicationState": "published",
+      "version": 5,
+      "managerSessionRef": "session-31cc5eee-6df1-4ead-85b7-d8ea7bb772ca",
+      "managerGeneration": 1,
+      "createdAt": "2026-07-21T22:29:13.688Z",
+      "updatedAt": "2026-07-21T22:32:01.774Z",
+      "managerAssignment": null,
+      "agentWorkspaceLaunch": null,
+      "activationReceipts": [],
+      "authorizedFailedRunReconciliation": null,
+      "lifecycle": { "kind": "succeeded", "deployPause": null }
+    }
+  ]
+}

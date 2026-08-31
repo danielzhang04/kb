@@ -1,19 +1,18 @@
 /**
  * D3.2 — PTY terminal pane. Deepest sunken surface, mono only, NO accent colour (Daniel's 2026-07-17
  * neutral-chrome override). The house palette fully replaces xterm's default black/green look — the
- * JS `theme` object in Terminal.tsx carries the ANSI colours; this file owns the container chrome.
+ * JS `theme` object in ConsolePane.tsx carries the ANSI colours; this file owns the container chrome.
  */
 
-/* The App keeps the terminal mounted in a persistent wrapper directly under `.mc-main` and toggles it
- * with the `hidden` attribute. `.mc-main` is a definite-height grid cell (app-shell row `1fr` of 100vh),
- * so giving the wrapper `height:100%` hands the whole `.terminal` height chain a definite parent — without
- * it `.terminal`'s own `height:100%` resolves against an auto-height box and collapses. The `:not([hidden])`
- * guard means an author `display` value never overrides the UA `hidden`→`display:none`, so a hidden
- * terminal stays truly gone (no layout, no leaked flex box). The terminal scrolls INSIDE its own xterm
- * viewport, so it never adds a second scrollbar to `.mc-main`. */
+/* P3 W6.4 — Terminal is a MOUNTED FULL-VIEWPORT workspace, not a section inside a scrolling page.
+ *
+ * App keeps this surface mounted under `.mc-main` and toggles it with the `hidden` attribute; on the
+ * Terminal destination `.mc-main--terminal` is a viewport-bounded flex column that does not scroll, so
+ * this wrapper takes the remainder and hands `.terminal` a definite parent height. Without a definite
+ * chain, `.terminal { height: 100% }` resolves against an auto box and collapses. The `:not([hidden])`
+ * guard keeps an author `display` from overriding the UA `hidden` → `display:none`, so a hidden
+ * workspace is truly gone: no layout, no leaked flex box, no second scrollbar. */
 .persistent-terminal-surface:not([hidden]) {
-  /* Flex share of `.mc-main--terminal`'s column (never height:100% — with the workspace tab strip as a
-   * sibling that overflowed the fold). flex-basis 0 so the terminal takes exactly the remainder. */
   flex: 1 1 0;
   min-height: 0;
   display: flex;
@@ -25,27 +24,78 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  padding-inline: var(--content-pad);
 }
 
-.terminal__header {
+/* Point-of-action unlock: one calm line that runs the app's single passkey ceremony on click. */
+.terminal__signin {
+  align-self: flex-start;
+}
+
+/* The empty/unavailable state is the only part of this workspace that may scroll on its own — it is
+ * prose plus launcher buttons, and it must stay reachable on a short viewport. */
+.terminal__empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.terminal__empty::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Workspace chrome ────────────────────────────────────────────────────────────────────────────
+ * The named-session tab strip, the host label, the safe-root selector, the three launchers, and the
+ * detach/close controls, all in one fixed-height band above the grid. Same neutral chrome as the rest
+ * of the view: deepest near-black surfaces, warm off-white text, dim inactive labels, NO accent. */
+.terminal__chrome {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.terminal__chrome [role='tablist'] {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.terminal__chrome [role='tab'] {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  padding: 4px var(--space-2);
+  cursor: pointer;
+}
+
+/* The selected session reads as "raised onto" the grid below by sharing its sunken tone. */
+.terminal__chrome [role='tab'][aria-selected='true'] {
+  background: var(--bg-sunken);
+  border-color: var(--border-strong);
+  color: var(--fg-primary);
+}
+
+.terminal__chrome [role='tab']:hover {
+  color: var(--fg-primary);
+}
+
+.terminal__controls {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-}
-
-.terminal__title {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  margin: 0;
-  margin-right: auto;
-}
-
-/* Persistent identity chip — a quiet neutral pill; the fleet account name is mono. No accent. */
-.terminal__identity {
-  display: inline-flex;
-  align-items: center;
   gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.terminal__host {
   padding: 2px var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -54,124 +104,26 @@
   font-size: var(--text-xs);
 }
 
-.terminal__identity code {
-  font-family: var(--font-mono);
-  color: var(--fg-primary);
-}
-
-.terminal__identity-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--fg-faint); /* neutral, never a status/accent colour */
-}
-
-.terminal__note {
-  margin: 0;
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-  max-width: 68ch;
-}
-
-/* Point-of-action unlock: one calm line that runs the app's single passkey ceremony on click. */
-.terminal__signin {
-  align-self: flex-start;
-}
-
-/* ── Tab bar ─────────────────────────────────────────────────────────────────────────────────────
- * A quiet strip of shell tabs above the terminal panels. Same neutral chrome as the rest of the view:
- * deepest near-black surfaces, warm off-white text, dim inactive labels, NO accent colour. The active
- * tab reads as "raised onto" the panel below it by sharing the panel's border tone. */
-.terminal__tabbar {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
-
-.terminal__tab {
+.terminal__root {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-  overflow: hidden;
-}
-
-.terminal__tab--active {
-  background: var(--bg-sunken);
-  border-color: var(--border-strong);
-}
-
-.terminal__tab-label {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--fg-dim); /* inactive tabs read dim */
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.02em;
-  padding: 4px var(--space-2);
-  cursor: pointer;
-}
-
-.terminal__tab--active .terminal__tab-label {
-  color: var(--fg-primary); /* warm off-white for the active shell */
-}
-
-.terminal__tab-label:hover {
-  color: var(--fg-primary);
-}
-
-.terminal__tab-close {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--fg-faint);
-  font-size: var(--text-sm);
-  line-height: 1;
-  padding: 4px 6px;
-  cursor: pointer;
-}
-
-.terminal__tab-close:hover {
-  color: var(--fg-primary);
-}
-
-/* The `+` new-tab affordance — a neutral square that matches the tab chrome, greyed out at the cap. */
-.terminal__tab-add {
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-panel);
-  color: var(--fg-dim);
-  font-size: var(--text-md);
-  line-height: 1;
-  padding: 0 var(--space-2);
-  min-width: 28px;
-  cursor: pointer;
-}
-
-.terminal__tab-add:hover:not(:disabled) {
-  color: var(--fg-primary);
-  border-color: var(--border-strong);
-}
-
-.terminal__tab-add:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Agent-primed <-> plain-Claude switch for the ACTIVE tab. A two-position segmented control in the same
- * neutral chrome as the tab bar; the ON position uses the house selected-wash, never a decorative hue. */
-.terminal__mode {
-  display: flex;
-  align-items: center;
   gap: var(--space-1);
-  flex-wrap: wrap;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
 }
 
-.terminal__mode-option {
+.terminal__root select {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
+  font: inherit;
+  padding: 2px var(--space-1);
+}
+
+.terminal__launcher,
+.terminal__detach,
+.terminal__close {
   appearance: none;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -183,47 +135,50 @@
   cursor: pointer;
 }
 
-.terminal__mode-option:hover:not(:disabled) {
+.terminal__launcher:hover:not(:disabled),
+.terminal__detach:hover:not(:disabled),
+.terminal__close:hover:not(:disabled) {
   color: var(--fg-primary);
   border-color: var(--border-strong);
 }
 
-.terminal__mode-option--on {
-  background: var(--accent-quiet);
-  color: var(--fg-primary);
-  border-color: var(--border-strong);
-}
-
-.terminal__mode-option:disabled {
+.terminal__detach:disabled,
+.terminal__close:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.terminal__mode-note {
-  color: var(--fg-faint);
+/* Ending a live session is confirmed in place — a real process stops, so the operator says so twice. */
+.terminal__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--fg-primary);
   font-size: var(--text-sm);
 }
 
-/* Inline notice (e.g. server-side too-many-terminals). Neutral warning tone, no accent chrome. */
 .terminal__notice {
   margin: 0;
   color: var(--warning);
   font-size: var(--text-sm);
 }
 
-/* The panel stack: every tab's `<ConsolePane>` occupies the SAME grid cell so switching is a pure
- * visibility flip — inactive panes stay mounted (socket + scrollback preserved), just hidden.
+/* The console grid: every mounted session occupies the SAME cell, so selecting one is a pure
+ * visibility flip — unselected panes stay mounted (socket + scrollback preserved), just hidden.
  *
- * The pane's OWN chrome (the framed well, the xterm host, the error line, and crucially the
- * `display:none` hiding that `fitAndResize` depends on) now lives in `styles/console.css`, shared with
- * every embedded console. All this view still owns is where the stack sits. */
+ * The pane's OWN chrome (the framed well, the xterm host, the diagnostic line, and crucially the
+ * `display:none` hiding that `fitAndResize` depends on) lives in `styles/console.css`, shared with the
+ * Run view's console. All this view owns is where the stack sits and that it never scrolls itself. */
 .terminal__panels {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
+  overflow: hidden;
 }
 
 .terminal__panels > .console-pane {
-  grid-area: 1 / 1; /* stack all panes on top of each other */
+  grid-area: 1 / 1;
 }
+

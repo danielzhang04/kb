@@ -1,643 +1,381 @@
 // @vitest-environment jsdom
-/**
- * U2.5 — App shell: desktop-first left-sidebar navigation driven by the entity-first IA in
- * `src/nav/config.ts`. The groups are UNLABELLED (hairline dividers only — no uppercase group headers,
- * no per-section collapse); a [+ New ▾] menu sits above the first divider with truthful outcome hints.
- * a live item swaps the main content; greyed ("soon") items never become active; a sidebar-wide toggle
- * collapses to an icon rail. The sidebar ENDS at the nav: spec §6 removed the pinned Session/Stop floor,
- * and the stop controls now live on the Sentinel view.
- */
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from './App';
-import { invalidateSessionOnGovernedAuthFailure } from './lib/authClient';
-import { AGENT_PLATFORM_PANELS } from './views/agentPlatform/registry';
+import { clearStoredSession, persistSession } from './lib/authClient';
+import { installTestAuthContext, renderWithTestSession, type InstalledTestAuthContext } from './test/session';
+import { SessionProvider } from './lib/sessionContext';
+import { Agents } from './views/Agents';
+import { SchedulesBody } from './views/Schedules';
+import { Inbox } from './views/Inbox';
+import { Home } from './views/Home';
+import type { HomeResponse } from '../server/home/contracts.ts';
+import { RunDetail } from './views/RunDetail';
+import type { RunDetailDto } from './control/controlClient';
+
+let fetchStub: ReturnType<typeof vi.fn>;
+let authContext: InstalledTestAuthContext;
 
 beforeEach(() => {
-  window.sessionStorage.clear();
-  // Most shell tests exercise the authenticated surface, so start with one fresh tab-scoped session.
-  window.sessionStorage.setItem(
-    'kb-dashboard-session-v1',
-    JSON.stringify({ token: 'test-session', expiresAt: Date.now() + 60_000 }),
-  );
-  window.localStorage.removeItem('kb-composer-open-refs-v1');
-  // Views self-fetch on mount; a never-resolving stub keeps every view on its empty-safe scaffold
-  // (and keeps the sidebar approvals-count at 0, so no badge) without real network or state churn.
-  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+  window.history.replaceState(null, '', '/?view=home');
+  window.localStorage.clear();
+  fetchStub = vi.fn(() => new Promise<Response>(() => undefined));
+  vi.stubGlobal('fetch', fetchStub);
+  authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
+  persistSession({ token: 'app-session', expiresAt: Date.now() + 60_000 });
 });
+
 afterEach(() => {
   cleanup();
+  clearStoredSession();
+  authContext.restore();
   vi.unstubAllGlobals();
 });
 
-/** Resolve the new boot-time mode handshake as desktop while preserving each test's projection mock. */
-async function renderApp(): Promise<ReturnType<typeof render>> {
-  const fetchImpl = globalThis.fetch;
-  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input) === '/api/auth/context') {
-      return Promise.resolve(new Response(JSON.stringify({ mode: 'win32-desktop' }), { status: 200 }));
-    }
-    return fetchImpl(input, init);
-  }));
-  const view = render(<App />);
-  await waitFor(() => expect(screen.queryByLabelText('Starting dashboard')).toBeNull());
-  return view;
+async function renderApp(): Promise<void> {
+  render(<App />);
+  await authContext.ready;
 }
 
-describe('App shell — entity-first sidebar navigation', () => {
-  it('renders the sidebar as unlabelled groups (dividers, no group headers) with every nav item', async () => {
-    await renderApp();
-
-    expect(screen.getByLabelText('Primary navigation')).toBeTruthy();
-
-    // No verb-group headers survive the entity-first regroup.
-    for (const oldGroup of ['Operate', 'Build', 'Knowledge', 'System']) {
-      expect(screen.queryByRole('button', { name: oldGroup })).toBeNull();
-    }
-    // Divider-only separators are present instead (one per group).
-    expect(screen.getAllByRole('separator').length).toBe(3);
-
-    for (const label of [
-      'Home',
-      'Inbox',
-      'Activity',
-      'Atlas',
-      'Terminal',
-      'Schedules',
-      'Workflows',
-      'Agents',
-      'Tasks',
-      'Projects',
-      'Files',
-      'Agent Platform',
-      'Connectors',
-      'Ledgers',
-      'Sentinel',
-    ]) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${label}`) })).toBeTruthy();
-    }
-  });
-
-  it('does not render any dropped verb-IA destination', async () => {
-    await renderApp();
-    // D3.5 makes `Sentinel` a real destination again, so it is not in the dropped set. `Runs` and
-    // `Run Canvas` joined that set when runs collapsed into Workflows.
-    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Runs', 'Run Canvas']) {
-      expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
-    }
-  });
-
-  it('lands on the Home rollup view by default', async () => {
-    await renderApp();
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
-  });
-
-  it('carries NO stop floor: the sidebar ends at the nav and the stop controls live on Sentinel', async () => {
-    await renderApp();
-    // spec §6 — the pinned floor region is gone from the shell entirely: no region, no controls.
-    expect(screen.queryByTestId('stop-floor')).toBeNull();
-    expect(screen.queryByLabelText('Stop floor')).toBeNull();
-    expect(screen.queryByLabelText('Emergency stop')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'STOP everything' })).toBeNull();
-    // Session state left the shell too: the top-bar chip is the app's ONE unlock affordance.
-    expect(screen.queryByTestId('session-state')).toBeNull();
-    expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
-
-    // Still absent after navigating — it was a shell region, so this proves the region, not a view.
-    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.queryByRole('button', { name: 'STOP everything' })).toBeNull();
-
-    // …and reachable in exactly ONE place: the Sentinel view, beside the health readout.
-    fireEvent.click(screen.getByRole('button', { name: 'Sentinel' }));
-    expect(screen.getByLabelText('Emergency stop')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
-  });
-
-  it('shows a neutral boot shell while auth-mode discovery is pending', async () => {
-    window.sessionStorage.clear();
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
-      if (String(input) === '/api/auth/context') {
-        return Promise.resolve(new Response(JSON.stringify({ mode: 'win32-desktop' }), { status: 200 }));
-      }
-      return new Promise<Response>(() => {});
-    }));
-
-    render(<App />);
-
-    expect(screen.getByRole('heading', { name: 'Starting dashboard' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: 'Sign in' })).toBeNull();
-    expect(screen.queryByLabelText('Home view')).toBeNull();
-
-    // Drain the deliberately async mode request before teardown so it cannot outlive this test.
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
-  });
-
-  it('boots tailnet directly into the app without any passkey or execution-arm request', async () => {
-    window.sessionStorage.clear();
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      if (String(input) === '/api/auth/context') {
-        return Promise.resolve(new Response(JSON.stringify({ mode: 'tailnet' }), { status: 200 }));
-      }
-      return new Promise<Response>(() => {});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(<App />);
-
-    expect(await screen.findByLabelText('Home view')).toBeTruthy();
-    expect(screen.getByTestId('session-chip').textContent).toBe('Tailnet · connected');
-    const urls = fetchMock.mock.calls.map(([input]) => String(input));
-    expect(urls).not.toContain('/api/auth/assert/options');
-    expect(urls).not.toContain('/api/auth/assert/verify');
-    expect(urls).not.toContain('/api/control/execution/posture');
-    expect(urls).not.toContain('/api/control/execution/unlock');
-  });
-
-  it('renders the passkey sign-in view before mounting the data shell', async () => {
-    window.sessionStorage.clear();
-    await renderApp();
-    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy();
-    const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
-    expect(chip.textContent).toBe('Unlock');
-    expect(chip.disabled).toBe(false);
-    // No other surface offers an unlock of ANY kind. The execution panel used to carry its own
-    // "Unlock execution" button; execution now arms off this one sign-in (App's ExecutionArmingProvider),
-    // so the chip is the ONLY unlock-named button in the app — and locked, it reads as one.
-    expect(screen.queryAllByRole('button', { name: /unlock/i }).map((b) => b.textContent))
-      .toEqual(['Unlock']);
-    expect(screen.queryByLabelText('Home view')).toBeNull();
-  });
-
-  it('keeps the sign-in view up when every pre-auth projection would reject with 401', async () => {
-    window.sessionStorage.clear();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'unauthenticated' }), {
-      status: 401,
-      headers: { 'content-type': 'application/json' },
-    }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await renderApp();
-    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy();
-    expect(screen.queryByLabelText('Home view')).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(consoleError).not.toHaveBeenCalled();
-  });
-
-  it('restores an unexpired tab session after a refresh-sized remount', async () => {
-    window.sessionStorage.setItem(
-      'kb-dashboard-session-v1',
-      JSON.stringify({ token: 'restored-token', expiresAt: Date.now() + 60_000 }),
-    );
-    await renderApp();
-
-    const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
-    expect(chip.textContent).toMatch(/^Unlocked · expires in \d+m$/);
-    // Unlocked, the chip is an inert readout rather than a second unlock button.
-    expect(chip.disabled).toBe(true);
-  });
-
-  it('drops an in-memory saved session after a governed bad-signature response', async () => {
-    window.sessionStorage.setItem(
-      'kb-dashboard-session-v1',
-      JSON.stringify({ token: 'rotated-secret-token', expiresAt: Date.now() + 60_000 }),
-    );
-    await renderApp();
-    expect(screen.getByTestId('session-chip').textContent).toMatch(/^Unlocked/);
-
-    await invalidateSessionOnGovernedAuthFailure(new Response(JSON.stringify({
-      error: 'unauthenticated',
-      reason: 'bad-signature',
-    }), { status: 401, headers: { 'content-type': 'application/json' } }));
-
-    await waitFor(() => expect(screen.getByTestId('session-chip').textContent).toBe('Unlock'));
-    expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
-  });
-
-  it('lays the sidebar out as a two-zone column: [+ New] header, then the scrollable nav — and ends there', async () => {
-    // U5.1 item 7 — the sidebar is a flex column pinned to the viewport height. jsdom can't compute the
-    // 100dvh/zoom layout, so this pins the STRUCTURE the CSS relies on: the nav zone exists (it carries
-    // overflow-y:auto) and is now the LAST child, because the pinned floor below it was removed (§6).
-    await renderApp();
-    const sidebar = screen.getByLabelText('Primary navigation');
-    expect(sidebar.querySelector('.mc-nav')).toBeTruthy();
-    expect(sidebar.lastElementChild?.className).toBe('mc-nav');
-    // The [+ New] header zone sits inside the sidebar, above the nav list.
-    expect(within(sidebar).getByRole('button', { name: 'New' })).toBeTruthy();
-  });
-
-  it('returns to sign-in when the Home index read reports a governed 401', async () => {
-    let resolveIndex!: (response: Response) => void;
-    const indexResponse = new Promise<Response>((resolve) => { resolveIndex = resolve; });
-    const fetchMock = vi.fn((url: string) => {
-      if (url === '/api/index') {
-        return indexResponse;
-      }
-      return new Promise(() => {});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    await renderApp();
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
-
-    resolveIndex(new Response(JSON.stringify({ error: 'unauthenticated' }), {
-      status: 401,
-      headers: { 'content-type': 'application/json' },
-    }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy());
-    expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
-  });
-
-  it('exposes a quiet theme toggle that flips the pinned data-theme and persists the choice', async () => {
-    window.localStorage.clear();
-    document.documentElement.removeAttribute('data-theme');
-    await renderApp();
-
-    const toggle = screen.getByRole('button', { name: /switch to light theme/i });
-    fireEvent.click(toggle);
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    expect(window.localStorage.getItem('mc-theme')).toBe('light');
-
-    // Toggling back returns to dark (the app default) and re-persists.
-    fireEvent.click(screen.getByRole('button', { name: /switch to dark theme/i }));
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    expect(window.localStorage.getItem('mc-theme')).toBe('dark');
-  });
-
-  it('routes each live destination to its mapped view', async () => {
-    await renderApp();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.getByRole('button', { name: 'Workflows' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByLabelText('Workflows view')).toBeTruthy();
-    expect(screen.queryByLabelText('Control view')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
-    expect(screen.getByLabelText('Human Inbox')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(screen.getByLabelText('Activity view')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Connectors' }));
-    expect(screen.getByLabelText('Connectors view')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
-    expect(screen.getByLabelText('Files view')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
-    expect(screen.getByLabelText('Home view')).toBeTruthy();
-  });
-
-  it('routes Schedules from the sidebar to its live Wave-2 surface', async () => {
-    await renderApp();
-    const btn = screen.getByRole('button', { name: 'Schedules' }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByText(/Reading schedules/)).toBeTruthy();
-  });
-
-  it('routes the Agent Platform destination to its section (Wave-1 U0)', async () => {
-    await renderApp();
-    const btn = screen.getByRole('button', { name: 'Agent Platform' }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real section mounts, with its auto-discovered tiles — not the U3 placeholder. The subject
-    // is a REAL panel (U12 retired the Demo placeholder these assertions used to ride on), and it is
-    // read off the registry so the tile that proves reachability can never become a stale literal.
-    const view = screen.getByLabelText('Agent Platform view');
-    const first = AGENT_PLATFORM_PANELS[0];
-    expect(first).toBeTruthy();
-    expect(within(view).getByText(first.title)).toBeTruthy();
-    expect(within(view).getByText(first.description)).toBeTruthy();
-  });
-
-  it('routes the U3 entity destinations (Agents/Tasks/Projects/Ledgers) to their real views', async () => {
-    await renderApp();
-    for (const label of ['Agents', 'Tasks', 'Projects', 'Ledgers']) {
-      const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
-      expect(btn.disabled).toBe(false);
-      fireEvent.click(btn);
-      expect(btn.getAttribute('aria-current')).toBe('page');
-      // The real view is mounted (self-fetch stubbed to never resolve → empty-safe scaffold), not the
-      // "built in U3" placeholder.
-      const view = screen.getByLabelText(`${label} view`);
-      expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-    }
-  });
-
-  it('routes the Sentinel destination to the layer-panel set with its four sub-tabs (D3.5)', async () => {
-    await renderApp();
-    const btn = screen.getByRole('button', { name: 'Sentinel' }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-current')).toBe('page');
-
-    // The layer-panel host mounts with its three sub-tabs; Sentinel (liveness) is the default panel.
-    // (Atlas V1 retired the Atlas sub-tab — it is now its own top-level nav destination.)
-    const view = screen.getByLabelText('Sentinel view');
-    const tablist = within(view).getByRole('tablist', { name: 'Layer panels' });
-    for (const label of ['Sentinel', 'Quartermaster', 'Flight Recorder']) {
-      expect(within(tablist).getByRole('tab', { name: label })).toBeTruthy();
-    }
-    expect(within(tablist).queryByRole('tab', { name: 'Atlas' })).toBeNull();
-    expect(within(view).getByLabelText('Sentinel panel')).toBeTruthy();
-
-    // Switching sub-tabs swaps the active panel without leaving the destination.
-    fireEvent.click(within(tablist).getByRole('tab', { name: 'Quartermaster' }));
-    expect(screen.getByLabelText('Quartermaster panel')).toBeTruthy();
-    fireEvent.click(within(tablist).getByRole('tab', { name: 'Flight Recorder' }));
-    expect(screen.getByLabelText('Flight Recorder panel')).toBeTruthy();
-  });
-
-  it('routes the live Atlas destination (Atlas V1 voice-worker mirror) to its real view', async () => {
-    await renderApp();
-    // Atlas went live in Atlas V1 — the greyed "soon" stub was promoted to a full top-level view.
-    const btn = screen.getByRole('button', { name: /^Atlas/ }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real Atlas view mounts (self-fetch stubbed to never resolve → empty-safe scaffold), not the
-    // "built in U3" placeholder.
-    const view = screen.getByLabelText('Atlas view');
-    expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-  });
-
-  it('routes the live Terminal destination (D3.2 PTY pane) to its real view', async () => {
-    await renderApp();
-    const btn = screen.getByRole('button', { name: /^Terminal/ }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real authenticated Terminal view mounts, not the U3 placeholder.
-    const view = screen.getByLabelText('Terminal view');
-    expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-    expect(within(view).getByTestId('terminal-tab-add')).toBeTruthy();
-  });
-
-  it('reads the authenticated runtime capability and disables Terminal when PTY is unavailable', async () => {
-    window.sessionStorage.setItem(
-      'kb-dashboard-session-v1',
-      JSON.stringify({ token: 'restored-token', expiresAt: Date.now() + 60_000 }),
-    );
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === '/api/runtime/capabilities') {
-        expect(init?.headers).toEqual(expect.objectContaining({ authorization: 'Bearer restored-token' }));
-        return new Response(JSON.stringify({ pty: false }), { status: 200 });
-      }
-      return new Promise<Response>(() => {});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    await renderApp();
-
-    fireEvent.click(screen.getByRole('button', { name: /^Terminal/ }));
-    expect(await screen.findByText('Terminal is disabled on this host.')).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith('/api/runtime/capabilities', expect.objectContaining({
-      headers: expect.objectContaining({ authorization: 'Bearer restored-token' }),
-    }));
-  });
-
-  it('keeps the Terminal workspace mounted across navigation', async () => {
-    await renderApp();
-    const terminalButton = screen.getByRole('button', { name: /^Terminal/ });
-    fireEvent.click(terminalButton);
-
-    const surface = screen.getByTestId('persistent-terminal-surface') as HTMLDivElement;
-    const terminal = screen.getByLabelText('Terminal view');
-    expect(surface.hidden).toBe(false);
-
-    // Destination navigation hides the same mounted node; returning reveals it rather than remounting it.
-    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(surface.hidden).toBe(true);
-    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
-    fireEvent.click(terminalButton);
-    expect(surface.hidden).toBe(false);
-    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
-
-  });
-
-  it('the sidebar-wide collapse toggle switches the shell into rail mode and back', async () => {
-    await renderApp();
-
-    const toggle = screen.getByRole('button', { name: 'Collapse sidebar' });
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-
-    fireEvent.click(toggle);
-    const expanded = screen.getByRole('button', { name: 'Expand sidebar' });
-    expect(expanded.getAttribute('aria-pressed')).toBe('true');
-    // Nav items stay reachable in rail mode (CSS hides labels, not the DOM/a11y tree).
-    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
-
-    fireEvent.click(expanded);
-    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeTruthy();
-  });
-});
-
-function composerSession(composerRef: string, title: string, state: 'open' | 'archived' = 'open') {
-  const now = '2026-07-18T12:00:00.000Z';
-  return { composerRef, title, state, createdAt: now, updatedAt: now, sourceComposerRef: null, agent: null, turns: [] };
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((yes) => { resolve = yes; });
+  return { promise, resolve };
 }
 
-function unlockForWorkspaceTests(): void {
-  window.sessionStorage.setItem(
-    'kb-dashboard-session-v1',
-    JSON.stringify({ token: 'workspace-token', expiresAt: Date.now() + 60_000 }),
-  );
-}
-
-describe('App shell — Composer workspaces', () => {
-  it('New directly creates a persistent Composer workspace without an entity dropdown', async () => {
-    unlockForWorkspaceTests();
-    const created = composerSession('cw-1', 'Research Atlas');
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url === '/api/composer/sessions' && init?.method === 'POST') {
-        return new Response(JSON.stringify({ session: created }), { status: 200 });
-      }
-      if (url === '/api/composer/sessions') {
-        return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
-      }
-      return new Promise<Response>(() => {});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    await renderApp();
-
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
-
-    expect(await screen.findByRole('tab', { name: 'Research Atlas' })).toBeTruthy();
-    expect(screen.getByTestId('composer-workspace-cw-1').hidden).toBe(false);
-    expect(screen.queryByRole('menu', { name: 'Create new' })).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/composer/sessions',
-      expect.objectContaining({ method: 'POST', body: '{}' }),
-    );
-  });
-
-  it('keeps multiple Composer panes mounted while tabs and destinations switch; Close is browser-only', async () => {
-    unlockForWorkspaceTests();
-    const sessions = [composerSession('cw-1', 'Atlas research'), composerSession('cw-2', 'Build plan')];
-    let createIndex = 0;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === '/api/composer/sessions' && init?.method === 'POST') {
-        return new Response(JSON.stringify({ session: sessions[createIndex++] }), { status: 200 });
-      }
-      if (String(input) === '/api/composer/sessions') {
-        return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
-      }
-      return new Promise<Response>(() => {});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    await renderApp();
-
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
-    await screen.findByRole('tab', { name: 'Atlas research' });
-    fireEvent.click(screen.getByRole('button', { name: '+ New' }));
-    await screen.findByRole('tab', { name: 'Build plan' });
-
-    const firstPane = screen.getByTestId('composer-workspace-cw-1');
-    const secondPane = screen.getByTestId('composer-workspace-cw-2');
-    expect(firstPane.hidden).toBe(true);
-    expect(secondPane.hidden).toBe(false);
-    fireEvent.click(screen.getByRole('tab', { name: 'Atlas research' }));
-    expect(firstPane.hidden).toBe(false);
-    expect(secondPane.hidden).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.getByTestId('composer-workspace-cw-1')).toBe(firstPane);
-    expect(screen.getByTestId('composer-workspace-cw-2')).toBe(secondPane);
-    expect(firstPane.hidden).toBe(true);
-    expect(secondPane.hidden).toBe(true);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Build plan' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Close Build plan' }));
-    expect(screen.queryByTestId('composer-workspace-cw-2')).toBeNull();
-    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/archive'))).toBe(false);
-
-    fireEvent.click(screen.getByText('Recent (1)'));
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen Build plan' }));
-    expect(screen.getByRole('tab', { name: 'Build plan' })).toBeTruthy();
-    expect(screen.getByTestId('composer-workspace-cw-2')).toBeTruthy();
-    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/restore'))).toBe(false);
-  });
-
-  it('forks, archives, and restores workspaces through explicit actions', async () => {
-    unlockForWorkspaceTests();
-    const original = composerSession('cw-1', 'Original');
-    const forked = { ...composerSession('cw-2', 'Original fork'), sourceComposerRef: 'cw-1' };
-    const archived = composerSession('cw-2', 'Original fork', 'archived');
-    const restored = composerSession('cw-2', 'Original fork');
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url === '/api/composer/sessions') {
-        return new Response(JSON.stringify({ sessions: [original] }), { status: 200 });
-      }
-      if (url.endsWith('/fork')) return new Response(JSON.stringify({ session: forked }), { status: 200 });
-      if (url.endsWith('/archive')) return new Response(JSON.stringify({ session: archived }), { status: 200 });
-      if (url.endsWith('/restore')) return new Response(JSON.stringify({ session: restored }), { status: 200 });
-      return new Promise<Response>(() => {});
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    window.localStorage.setItem('kb-composer-open-refs-v1', JSON.stringify(['cw-1']));
-    await renderApp();
-
-    await screen.findByRole('tab', { name: 'Original' });
-    fireEvent.click(screen.getByRole('tab', { name: 'Original' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Fork' }));
-    await screen.findByRole('tab', { name: 'Original fork' });
-    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
-    await waitFor(() => expect(screen.queryByRole('tab', { name: 'Original fork' })).toBeNull());
-    fireEvent.click(screen.getByText('Archived (1)'));
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen Original fork' }));
-    expect(await screen.findByRole('tab', { name: 'Original fork' })).toBeTruthy();
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(
-      expect.arrayContaining([
-        '/api/composer/sessions/cw-1/fork',
-        '/api/composer/sessions/cw-2/archive',
-        '/api/composer/sessions/cw-2/restore',
-      ]),
-    );
-  });
-});
-
-/**
- * spec §5 — the Inbox links OUT, and the shell is what makes that true.
- *
- * The list itself answers no gate; a row is only useful if the shell carries it to the surface that
- * owns the gate. This drives the REAL wiring — App → ViewBody → ApprovalsLive → the nav stack — because
- * the props are optional and a missing one fails silently as a dead click, which no view-level test can
- * see.
- */
-describe('App shell — the Inbox deep-links to the surface that owns each gate', () => {
-  const waitingCard = {
-    meta: {
-      id: 'card-77', project: 'kb', action: 'approve:oauth-gate', target: 'infra/oauth.yaml',
-      'risk-tier': 'T3', owner: 'human-operator', state: 'inbox',
-    },
-    body: '## Work order\n\nCreate the OAuth client.\n',
-    displayName: 'approve:oauth-gate',
-    shortRef: 1,
+describe('App runtime capability wiring', () => {
+  // W6.4 replaced the flat "disabled" line with the workspace's unavailable state (W4's
+  // `TerminalSessionEmpty`), which names the condition and offers the Health path.
+  const DISABLED_COPY = 'Terminal unavailable';
+  const AVAILABLE_CAPABILITIES = {
+    pty: true, host: 'desktop', launchers: ['shell'], roots: ['repo'],
+    checkedAt: '2026-08-22T09:00:00.000Z', localTranscripts: true, platform: 'win32',
   };
 
-  /** Serve only the two feeds this path reads; everything else stays on the never-resolving default. */
-  function serveInbox(): void {
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url === '/api/human-inbox') {
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({
-          items: [{
-            card: waitingCard, category: 'gate', categoryLabel: 'Gate', urgency: 'high',
-            status: 'Waiting on the human operator', reason: 'Assigned to the human operator.',
-            nextAction: 'Carry out the work order, then move the card.', context: 'Create the OAuth client.',
-          }],
-          counts: { total: 1, decision: 0, gate: 1, input: 0, intervention: 0, stranded: 0 },
-        }) } as Response);
-      }
-      if (url === '/api/index') {
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({
-          cards: { inbox: [waitingCard] },
-          ledgers: {
-            dispatch: { count: 0, cards: 0, byProject: {} },
-            cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
-            grades: { count: 0, rows: [] },
-            activity: { count: 0, rows: [] },
-          },
-          orgStates: [],
-        }) } as Response);
-      }
-      return new Promise(() => {});
-    }));
+  /** Render the shell with `/api/runtime/capabilities` answered by exactly this outcome. */
+  async function renderWithCapabilities(outcome: { reject: true } | { payload: unknown }): Promise<void> {
+    fetchStub = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) !== '/api/runtime/capabilities') return new Promise<Response>(() => undefined);
+      return 'reject' in outcome
+        ? Promise.reject(new Error('capabilities unreachable'))
+        : Promise.resolve(new Response(JSON.stringify(outcome.payload), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchStub);
+    authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
+    await renderApp();
+    await waitFor(() => expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/runtime/capabilities')).toBe(true));
   }
 
-  it('carries an inbox row through to the card surface that holds its work order', async () => {
-    serveInbox();
-    await renderApp();
-
-    // The resolved count adds "1 pending" to the accessible name; target the stable nav-label prefix.
-    fireEvent.click(screen.getByRole('button', { name: /^Inbox/ }));
-    const row = await screen.findByTestId('inbox-row-card:card-77');
-    // The row is the plain line + where it lives; it answers nothing itself.
-    expect(row.textContent).toContain('approve:oauth-gate');
-    expect(screen.queryByTestId('respond-form')).toBeNull();
-
-    fireEvent.click(row);
-
-    // The shell landed on Tasks with THAT card open — the work order the decision needs is now in view.
-    // (The empty placeholder shares the `Card detail` label, so this waits for real content, not a node.)
-    expect(screen.getByLabelText('Tasks view')).toBeTruthy();
-    await waitFor(() => expect(screen.getByLabelText('Card detail').textContent).toContain('Create the OAuth client.'));
+  it('never advertises a terminal from a payload the decoder refuses', async () => {
+    // The retired bare-boolean payload: `pty: true` with no closed capability behind it.
+    await renderWithCapabilities({ payload: { pty: true, localTranscripts: true } });
+    await waitFor(() => expect(screen.getByText(DISABLED_COPY)).toBeTruthy());
   });
 
-  it('carries a Home waiting-on-you row to the same card surface', async () => {
-    serveInbox();
+  it('never advertises a terminal when the capability fetch fails', async () => {
+    await renderWithCapabilities({ reject: true });
+    await waitFor(() => expect(screen.getByText(DISABLED_COPY)).toBeTruthy());
+  });
+
+  it('enables the terminal only for a valid available capability', async () => {
+    await renderWithCapabilities({ payload: AVAILABLE_CAPABILITIES });
+    await waitFor(() => expect(screen.queryByText(DISABLED_COPY)).toBe(null));
+  });
+});
+
+describe('App P1 shell', () => {
+  it('preserves an attention-filtered roster deep link through the shell', async () => {
+    window.history.replaceState(null, '', '/?view=agents&filter=attention');
     await renderApp();
+    await waitFor(() => expect(window.location.search).toBe('?view=agents&filter=attention'));
+    // U8: nav buttons now carry aria-labels (for the rail corner badges), so 'Agents' also matches the
+    // nav item — target the Agents view region specifically to prove the deep link landed on the roster.
+    expect(screen.getByRole('region', { name: 'Agents' })).toBeTruthy();
+  });
 
-    // Home is the landing view; its waiting rows deep-link exactly like the Inbox rows do.
-    const row = await screen.findByRole('button', { name: /Open approve:oauth-gate/i });
-    fireEvent.click(row);
+  it('loads the registered D13 Home projection instead of the retired index rollup', async () => {
+    await renderApp();
+    await waitFor(() => expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/home')).toBe(true));
+    expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/index')).toBe(false);
+  });
 
-    expect(screen.getByLabelText('Tasks view')).toBeTruthy();
-    await waitFor(() => expect(screen.getByLabelText('Card detail').textContent).toContain('Create the OAuth client.'));
+  it('renders the exact nine destinations, two dividers, and no retired destination', async () => {
+    await renderApp();
+    expect([...document.querySelectorAll('.mc-nav-item__label')].map((node) => node.textContent)).toEqual([
+      'Home', 'Inbox', 'Schedules', 'Terminal', 'Agents', 'Workflows', 'Projects', 'Files', 'Health',
+    ]);
+    expect(screen.getAllByRole('separator')).toHaveLength(2);
+  });
+
+  it('falls malformed or removed URL ingress back to clean Home', async () => {
+    for (const ingress of ['/?view=atlas&entity=agent%3Aold', '/?view=%']) {
+      window.history.replaceState(null, '', ingress);
+      await renderApp();
+      await waitFor(() => expect(window.location.search).toBe('?view=home'));
+      expect(screen.getByLabelText('Home view')).toBeTruthy();
+      cleanup();
+      window.history.replaceState(null, '', '/?view=home');
+    }
+  });
+
+  it('keeps Terminal mounted without changing the manual sidebar state', async () => {
+    window.history.replaceState(null, '', '/?view=terminal');
+    await renderApp();
+    const terminal = screen.getByTestId('persistent-terminal-surface') as HTMLDivElement;
+    const shell = document.querySelector('.app-shell');
+    expect(terminal.hidden).toBe(false);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    await waitFor(() => expect(window.location.search).toBe('?view=home'));
+    expect(screen.getByTestId('persistent-terminal-surface')).toBe(terminal);
+    expect(terminal.hidden).toBe(true);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+
+    window.history.pushState(null, '', '/?view=terminal');
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate')); });
+    await waitFor(() => expect(terminal.hidden).toBe(false));
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
+  });
+
+  it('does not auto-rail in a narrow viewport and keeps the manual toggle live', async () => {
+    const matchMedia = vi.fn(() => ({
+      matches: true,
+      media: '(max-width: 899px)',
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    } as unknown as MediaQueryList));
+    vi.stubGlobal('matchMedia', matchMedia);
+
+    await renderApp();
+    const shell = document.querySelector('.app-shell');
+    const toggle = document.querySelector<HTMLButtonElement>('.mc-sidebar__collapse-toggle');
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
+    expect(toggle?.hidden).toBe(false);
+
+    fireEvent.click(toggle!);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(true);
+    expect(toggle?.hidden).toBe(false);
+
+    fireEvent.click(toggle!);
+    expect(shell?.classList.contains('app-shell--rail')).toBe(false);
+  });
+
+  it('persists an explicit theme across destination changes', async () => {
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to light theme' }));
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(window.localStorage.getItem('mc-theme')).toBe('light');
+    fireEvent.click(screen.getByRole('button', { name: 'Health' }));
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('sidebar badges use Inbox plus distinct-run Agent and Workflow attention only', async () => {
+    authContext.restore();
+    const inboxResponse = new Response(JSON.stringify({ items: [{
+      id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
+      subject: { cardId: '68a70000-card' }, related: {}, title: 'wake-me', reason: 'Needs you',
+    }], revision: 'e'.repeat(64), sources: {
+      pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+    } }), { status: 200 });
+    const attentionResponse = new Response(JSON.stringify({
+      revision: 'c'.repeat(64),
+      pairs: [
+        { runRef: 'run-agent', owner: { type: 'agent', id: 'writer', sourcePath: 'agents/writer.md' } },
+        { runRef: 'run-agent', owner: { type: 'agent', id: 'writer', sourcePath: 'agents/writer.md' } },
+        { runRef: 'run-workflow', owner: { type: 'workflow', id: 'release', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/release.md' } },
+      ],
+      agents: { 'agent:contradiction': 99 },
+      workflows: { 'workflow:contradiction': 88 },
+    }), { status: 200 });
+    fetchStub = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/inbox') return Promise.resolve(inboxResponse.clone());
+      if (String(input) === '/api/attention') return Promise.resolve(attentionResponse.clone());
+      return new Promise<Response>(() => undefined);
+    });
+    vi.stubGlobal('fetch', fetchStub);
+    authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
+    await renderApp();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Inbox, 1 pending' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Agents, 1 pending' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Workflows, 1 pending' })).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: 'Inbox, 1 pending' }).title).toBe('Inbox, 1 pending');
+    const badged = [...document.querySelectorAll('.mc-nav-item')]
+      .filter((item) => item.querySelector('.mc-nav-item__badge'))
+      .map((item) => item.querySelector('.mc-nav-item__label')?.textContent);
+    expect(badged).toEqual(['Inbox', 'Agents', 'Workflows']);
+    expect(badged.every((label) => ['Inbox', 'Agents', 'Workflows'].includes(label ?? ''))).toBe(true);
+    expect(document.querySelectorAll('.mc-nav-item__badge--inline')).toHaveLength(3);
+    expect(document.querySelectorAll('.mc-nav-item__badge--corner')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(document.querySelectorAll('.mc-nav-item__badge--inline')).toHaveLength(0);
+    expect(document.querySelectorAll('.mc-nav-item__badge--corner')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: 'Inbox, 1 pending' }).title).toBe('Inbox, 1 pending');
+  });
+
+  it('starts one external and one card projection request when a browser fixture opens the Inbox deep link', async () => {
+    window.history.replaceState(null, '', '/?view=inbox');
+    authContext.restore();
+    const inboxResponse = new Response(JSON.stringify({ items: [{
+      id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
+      subject: { cardId: '68a70000-card' }, related: {}, title: 'wake-me', reason: 'Needs you',
+    }], revision: 'e'.repeat(64), sources: {
+      pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+    } }), { status: 200 });
+    fetchStub = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === '/api/inbox') return Promise.resolve(inboxResponse.clone());
+      if (String(input) === '/api/index') return Promise.resolve(new Response(JSON.stringify({ cards: {} }), { status: 200 }));
+      return new Promise<Response>(() => undefined);
+    });
+    vi.stubGlobal('fetch', fetchStub);
+    authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
+    await renderApp();
+    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeTruthy();
+    expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/inbox')).toHaveLength(1);
+    expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/index')).toHaveLength(1);
+  });
+
+  it('bounds a five-frame Inbox burst to one in-flight and one trailing request', async () => {
+    window.history.replaceState(null, '', '/?view=schedules');
+    authContext.restore();
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    const inboxResponse = () => new Response(JSON.stringify({ items: [] }), { status: 200 });
+    fetchStub = vi.fn((input: RequestInfo | URL) => {
+      if (String(input) !== '/api/inbox') return new Promise<Response>(() => undefined);
+      const count = fetchStub.mock.calls.filter(([candidate]) => String(candidate) === '/api/inbox').length;
+      return count === 1 ? first.promise : second.promise;
+    });
+    const sources: Array<{ handlers: Array<(event: { data: string }) => void> }> = [];
+    vi.stubGlobal('EventSource', class {
+      handlers: Array<(event: { data: string }) => void> = [];
+      constructor() { sources.push(this); }
+      addEventListener(_type: string, handler: (event: { data: string }) => void): void { this.handlers.push(handler); }
+      close(): void { /* no-op */ }
+    });
+    vi.stubGlobal('fetch', fetchStub);
+    authContext = installTestAuthContext(fetchStub as unknown as typeof fetch);
+    await renderApp();
+    await waitFor(() => expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/inbox')).toHaveLength(1));
+
+    await act(async () => {
+      for (let frame = 0; frame < 5; frame += 1) {
+        for (const source of sources) source.handlers[0]?.({ data: JSON.stringify({ channel: 'planeA', kind: 'tick' }) });
+      }
+    });
+    expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/inbox')).toHaveLength(1);
+
+    await act(async () => { first.resolve(inboxResponse()); });
+    await waitFor(() => expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/inbox')).toHaveLength(2));
+    await act(async () => { second.resolve(inboxResponse()); });
+    expect(fetchStub.mock.calls.filter(([input]) => String(input) === '/api/inbox')).toHaveLength(2);
+  });
+
+  it('humanizes roster header run-owner Schedules Inbox and Home labels from raw ids', async () => {
+    const rawAgent = 'fyt-api_worker';
+    const summary = { ref: { type: 'agent', id: rawAgent, sourcePath: `agents/${rawAgent}.md` }, humanName: 'FYT API Worker', status: 'idle', modelLabel: 'claude-opus-5', temporalLabel: 'Never run · no schedule', host: 'desktop', gatedRunCount: 0, activeRuns: [], latestRun: null, nextSchedule: null };
+    const entityDetail = { revision: 'detail-1', summary, brief: { purpose: 'Checks APIs.', doingNow: 'Idle.', recentRuns: [], outputs: [], pendingGates: 0, schedule: null, autonomyTier: 'queues-for-me' }, details: { sourcePath: `agents/${rawAgent}.md`, sourceRevision: 'a'.repeat(64), tools: [], declaredCeiling: 'queues-for-me', replaces: [], buildsOn: [], knowledgeSources: [], skills: [], schemas: [], lineage: [], grades: [], ids: [rawAgent] } };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(String(input).endsWith(rawAgent) ? entityDetail : { revision: 'list-1', groups: [{ id: 'kb-ops', label: 'KB Ops', collapsed: false, items: [summary] }], items: [summary] }), { status: 200 })));
+    await renderWithTestSession(<Agents />);
+    const rosterRow = await screen.findByTestId('entity-card');
+    expect(rosterRow.textContent).toContain('FYT API Worker');
+    fireEvent.click(rosterRow);
+    expect(screen.getByTestId('entity-detail-title').textContent).toBe('FYT API Worker');
+    expect(screen.getByTestId('entity-detail-agent').getAttribute('aria-label')).toBe('FYT API Worker detail');
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('FYT API Worker detail');
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).not.toContain(rawAgent);
+    cleanup();
+
+    const runDetail = {
+      ownerSubject: rawAgent,
+      run: { owner: summary.ref, executionHost: 'vm', terminalOutcome: null, completedAt: null, archivedFrom: null,
+        runRef: 'run-humanized', predecessorRunRef: null, title: 'API verification', displayName: 'API verification', shortRef: 1,
+        workflowRef: null, proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64), publicationState: 'published',
+        state: 'running', version: 1, managerSessionRef: 'manager-1', managerGeneration: 1, managerAssignment: null,
+        createdAt: '2026-08-22T00:00:00.000Z', updatedAt: '2026-08-22T00:01:00.000Z' },
+      stages: [], attempts: [], sessions: [], humanRequests: [], stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
+      streamKind: 'transcript', sessionId: null, attemptSessions: [],
+    } as RunDetailDto;
+    render(<SessionProvider><RunDetail runRef="run-humanized" detail={runDetail} events={[]} /></SessionProvider>);
+    expect(screen.getByText(/FYT API Worker/)).toBeTruthy();
+    expect(screen.getByText(/VM/)).toBeTruthy();
+    expect(screen.getByRole('main').textContent).not.toContain(rawAgent);
+    cleanup();
+
+    const rawSchedule = 'daily-digest';
+    const rawProject = 'kb-ops';
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) !== '/api/schedules') return new Response('', { status: 404 });
+      return new Response(JSON.stringify({
+        scheduleCollectionRevision: 1,
+        rows: [{
+          id: 'd'.repeat(64), owner: { type: 'workflow', id: rawSchedule, project: rawProject, sourcePath: `orgs/${rawProject}/workflows/${rawSchedule}.md` },
+          cadence: { source: '0 9 * * mon', words: 'Mon \u00b7 9:00 AM' }, nextAt: null, lastOutcome: null,
+          armed: true, origin: 'operator', mirroredAt: null, mirrorPath: `orgs/${rawProject}/HEARTBEAT.md`, version: 1,
+        }],
+      }), { status: 200 });
+    }));
+    render(<SessionProvider><SchedulesBody /></SessionProvider>);
+    const scheduleRow = await screen.findByTestId(`schedules-row-${'d'.repeat(64)}`);
+    expect(within(scheduleRow).getByText('KB Ops').getAttribute('title')).toBe(rawProject);
+    expect(within(scheduleRow).getByText('Daily Digest').getAttribute('title')).toBe(rawSchedule);
+    cleanup();
+
+    const rawInbox = 'wake-me_runner-failed';
+    const inboxPayload = { items: [{
+      id: 'a'.repeat(64), createdAt: '2026-08-21T00:00:00.000Z', revision: 'b'.repeat(64), kind: 'escalation',
+      subject: { cardId: '68a70000-card' }, related: {}, title: rawInbox, reason: 'Needs you',
+    }], revision: 'e'.repeat(64), sources: {
+      pr: { status: 'verified', revision: 'f'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      escalation: { status: 'verified', revision: '0'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      deployment: { status: 'verified', revision: '1'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+      assetPull: { status: 'verified', revision: '2'.repeat(64), verifiedAt: '2026-08-21T00:00:00.000Z' },
+    } };
+    const inboxFetch = vi.fn(async (input: RequestInfo | URL) => new Response(
+      JSON.stringify(String(input) === '/api/index' ? { cards: {} } : inboxPayload),
+      { status: 200 },
+    ));
+    render(<SessionProvider><Inbox fetchImpl={inboxFetch} sseFactory={() => ({ addEventListener: () => undefined, close: () => undefined })} /></SessionProvider>);
+    const inboxLabel = await screen.findByText('Wake Me Runner Failed');
+    // The raw id is preserved for hover via the `title` attribute; it is NOT also exposed as a
+    // `data-raw-id` (that unnecessary raw exposure was dropped in Inbox.tsx).
+    expect(inboxLabel.getAttribute('title')).toBe(rawInbox);
+    cleanup();
+
+    clearStoredSession();
+    const rawHome = 'publish_daily-brief';
+    const homeResponse: HomeResponse = {
+      revision: 'home-humanized',
+      generatedAt: '2026-08-22T00:00:00.000Z',
+      sections: [
+        { state: 'ready', data: { section: 'running-now', runs: [{
+          runRef: 'run-home', title: 'Publish Daily Brief', owner: { type: 'agent', id: rawHome, sourcePath: `agents/${rawHome}.md` },
+          lifecycle: 'running', outcome: null, createdAt: '2026-08-22T00:00:00.000Z', completedAt: null, streamKind: 'transcript',
+        }] } },
+        { state: 'ready', data: { section: 'attention-counts', agents: 0, workflows: 0, inbox: 0 } },
+        { state: 'ready', data: { section: 'next-schedules', occurrences: [] } },
+        { state: 'unavailable', reason: 'release-unavailable' },
+        { state: 'ready', data: { section: 'recent-outcomes', outcomes: [] } },
+      ],
+    };
+    render(<SessionProvider><Home response={homeResponse} /></SessionProvider>);
+    expect(screen.getByText('Publish Daily Brief')).toBeTruthy();
+    expect(screen.getByLabelText('Home').textContent).not.toContain(rawHome);
   });
 });

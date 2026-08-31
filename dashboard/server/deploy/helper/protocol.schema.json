@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kb.local/deploy-helper/v1",
+  "title": "kb desktop-helper protocol v1",
+  "description": "P5's line-by-line transcription of movement spec §3 (docs/specs/2026-08-20-desk-vm-movement-design.md:235 request union, :237 receipt). The helper is NOT rewritten [P5-C27]; only its messages are validated, both directions, against this schema. Timing sentences (one-deploy-plus-five-minute cooldown; independently idempotent/rate-limited pull/result) have no JSON slot and are enforced by the client guard keyed on the closed verb identity this schema fixes.",
+  "$defs": {
+    "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "digestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "ref": { "type": "string", "minLength": 1 },
+    "request": {
+      "description": "movement:235 closed verb union — exactly three verbs, each with its exact field list and no other field (no path, host, command, or key).",
+      "oneOf": [
+        { "$ref": "#/$defs/deployRequest" },
+        { "$ref": "#/$defs/pullAssetsRequest" },
+        { "$ref": "#/$defs/deploymentResultRequest" }
+      ]
+    },
+    "deployRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verb", "sourceCommit", "attestationDigest", "requestRef"],
+      "properties": {
+        "verb": { "const": "deploy" },
+        "sourceCommit": { "$ref": "#/$defs/commitSha" },
+        "attestationDigest": { "$ref": "#/$defs/digestSha256" },
+        "requestRef": { "$ref": "#/$defs/ref" }
+      }
+    },
+    "pullAssetsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verb", "intentRef", "runRef", "manifestDigest"],
+      "properties": {
+        "verb": { "const": "pull-assets" },
+        "intentRef": { "$ref": "#/$defs/ref" },
+        "runRef": { "$ref": "#/$defs/ref" },
+        "manifestDigest": { "$ref": "#/$defs/digestSha256" }
+      }
+    },
+    "deploymentResultRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verb", "deploymentRef", "outcome"],
+      "properties": {
+        "verb": { "const": "deployment-result" },
+        "deploymentRef": { "$ref": "#/$defs/ref" },
+        "outcome": { "enum": ["succeeded", "aborted", "failed"] }
+      }
+    },
+    "receipt": {
+      "description": "movement:237 canonical JSONL receipt fields, VERBATIM — time, request ref, short SHA, caller node, outcome — and NOTHING else. additionalProperties:false is the design 527 guarantee that no secret or signature field can decode.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["time", "requestRef", "shortSha", "callerNode", "outcome"],
+      "properties": {
+        "time": { "type": "string", "minLength": 1 },
+        "requestRef": { "$ref": "#/$defs/ref" },
+        "shortSha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "callerNode": { "type": "string", "minLength": 1 },
+        "outcome": { "enum": ["accepted", "refused", "failed"] }
+      }
+    }
+  }
+}

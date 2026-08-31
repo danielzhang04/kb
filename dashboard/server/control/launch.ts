@@ -20,12 +20,26 @@ import { loadPolicy } from '../routing/policy.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { validateServerCompiledPlanProposal } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
+import type { CompiledStagePolicy } from './compiler.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
 import { OPERATOR_SUBJECT, type CreateHumanRequestInput } from './store.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 import { runLifecycleKind } from './runLifecycle.ts';
+import { decodeHostKind, decodeRunnableRef } from './p2Decoders.ts';
+import type { HostKind, RunnableRef } from './p2Contracts.ts';
+
+/**
+ * P6 W6.2 [P6-C80]: the ONE reusable binding of `write/asyncGit.ts`'s real transaction span, exported
+ * under a name that is NOT the literal `withOpsTransaction` token — `workflows/routes.ts`'s amendment
+ * path binds `services/entityService.ts#amendWorkflowDefinition`'s injected `AmendPort.withOpsTransaction`
+ * to this function so that file never imports `withOpsTransaction` by that name itself; the CAS span it
+ * opens is the identical, reentrant one every other launch/amendment surface already uses.
+ */
+export function runOpsTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  return withOpsTransaction(fn);
+}
 
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
 export interface LaunchOutcome {
@@ -64,6 +78,36 @@ export interface ApprovedLaunchInput {
   source?: string;
   /** Optional, trusted origin resolved by the HTTP workflow route from an owned Composer workspace. */
   agentWorkspaceLaunch?: AgentWorkspaceLaunchProvenance | null;
+  /** Mandatory server-resolved execution identity. HTTP bodies never populate this field. */
+  identity: { owner: RunnableRef; executionHost: HostKind };
+}
+
+export function validateTrustedLaunchIdentity(value: unknown):
+  | { ok: true; value: { owner: RunnableRef; executionHost: HostKind } }
+  | { ok: false; code: 'runnable-owner-required' } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, code: 'runnable-owner-required' };
+  }
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).sort().join(',') !== 'executionHost,owner') {
+    return { ok: false, code: 'runnable-owner-required' };
+  }
+  const owner = decodeRunnableRef(row.owner);
+  const executionHost = decodeHostKind(row.executionHost);
+  return owner && executionHost
+    ? { ok: true, value: { owner, executionHost } }
+    : { ok: false, code: 'runnable-owner-required' };
+}
+
+function sameTrustedLaunchIdentity(
+  left: { owner: RunnableRef; executionHost: HostKind },
+  right: { owner: RunnableRef; executionHost: HostKind },
+): boolean {
+  return left.executionHost === right.executionHost
+    && left.owner.type === right.owner.type
+    && left.owner.id === right.owner.id
+    && left.owner.sourcePath === right.owner.sourcePath
+    && (left.owner.type !== 'workflow' || (right.owner.type === 'workflow' && left.owner.project === right.owner.project));
 }
 
 export function statusOf(result: Extract<ControlResult<unknown>, { ok: false }>): number {
@@ -91,6 +135,34 @@ export function defaultWorkers(repoRoot: string): Record<string, string> {
 }
 
 /**
+ * The ONE compiled-policy re-proof shared by both root-activation ceremonies: recompile the stored
+ * proposal against the CURRENT canonical head and confirm its `stagePolicies` still serialise byte-for
+ * byte to the `baseline` the caller compiled earlier. Returns `true` when unchanged.
+ *
+ * Called after any git step that moved the local checkout onto a newer head (the reconciling
+ * `pull --rebase` of a rejected push, and the managed-root activation's own post-prepare gate), so a
+ * routing decision is never published against a head whose policy silently differs. Both callers wrap
+ * it identically — `launch.ts#executeApprovedLaunch` throws on a `false` to park the run, and
+ * `routes.ts#activateRunUnderOwner` reads the boolean directly — but the recompile-and-compare itself
+ * is one body so the two can never drift.
+ */
+export function compiledPolicyUnchanged(
+  ctx: SurfaceContext,
+  stored: { snapshot: JsonObject; hash: string },
+  baseline: CompiledStagePolicy[],
+): boolean {
+  const currentProposal = validateServerCompiledPlanProposal(stored.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+  const currentCompiled = currentProposal.ok
+    ? compileApprovedProposal(currentProposal.value, stored.hash, stored.hash, {
+        policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
+        defaultWorkers: defaultWorkers(ctx.repoRoot),
+      })
+    : null;
+  return !!currentCompiled?.ok
+    && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(baseline);
+}
+
+/**
  * Launch an approved revision. One ops transaction: reconcile, compile, publish cards + audit,
  * activate. Nested transaction helpers (prepare/commit/audit/activate) reenter the held lock instead
  * of deadlocking.
@@ -106,6 +178,8 @@ export async function executeApprovedLaunch(
   input: ApprovedLaunchInput,
 ): Promise<LaunchOutcome> {
   const { proposalRef, revision, storedHash, snapshot } = input;
+  const trustedIdentity = validateTrustedLaunchIdentity(input.identity);
+  if (!trustedIdentity.ok) return { status: 409, body: { error: trustedIdentity.code } };
   const actorSubject = input.actorSubject ?? sub;
   const crossSubject = actorSubject !== sub;
   /**
@@ -177,6 +251,7 @@ export async function executeApprovedLaunch(
     // accepts the server-compiled shape here.
     const parsed = validateServerCompiledPlanProposal(snapshot, registry);
     if (!parsed.ok) return { status: 409, body: { error: 'stored-proposal-invalid', detail: parsed.detail } };
+    let derivedIdentity = trustedIdentity.value;
     const compiled = compileApprovedProposal(parsed.value, storedHash, storedHash, {
       policy: loadPolicyEnvironment(ctx.repoRoot, parsed.value.project, parsed.value.governanceRefs),
       defaultWorkers: defaultWorkers(ctx.repoRoot),
@@ -193,6 +268,17 @@ export async function executeApprovedLaunch(
         || predecessor.value.run.proposalHash !== storedHash) {
         return { status: 409, body: { error: 'retry-predecessor-changed' } };
       }
+      const predecessorIdentity = {
+        owner: predecessor.value.run.owner,
+        executionHost: predecessor.value.run.executionHost,
+      };
+      if (!sameTrustedLaunchIdentity(trustedIdentity.value, predecessorIdentity)) {
+        return { status: 409, body: { error: 'runnable-owner-conflict' } };
+      }
+      // Retry is a continuation of the same server-owned runnable. Current
+      // declaration/workflow selectors may have changed since the predecessor
+      // launched; they cannot transfer ownership or host on a successor.
+      derivedIdentity = predecessorIdentity;
       const canonical = await reconcileCanonicalPublication({
         repoRoot: ctx.repoRoot, runRef: predecessorRunRef, proposal: parsed.value,
         defaultWorkers: defaultWorkers(ctx.repoRoot), runGit: ctx.opsGit ?? defaultGitRunner,
@@ -207,6 +293,8 @@ export async function executeApprovedLaunch(
         };
       }
     }
+    const launchIdentity = validateTrustedLaunchIdentity(derivedIdentity);
+    if (!launchIdentity.ok) return { status: 409, body: { error: launchIdentity.code } };
     const created = ctx.controlStore.createRun(sub, {
       title: parsed.value.title,
       proposalRef,
@@ -215,6 +303,8 @@ export async function executeApprovedLaunch(
       managerRuntime: parsed.value.manager.runtime,
       managerModel: parsed.value.manager.model,
       managerAssignment: parsed.value.manager.assignment ?? null,
+      owner: launchIdentity.value.owner,
+      executionHost: launchIdentity.value.executionHost,
       idempotencyKey,
       predecessorRunRef,
       expectedPredecessorVersion: predecessorRunRef === null ? undefined : input.expectedPredecessorVersion,
@@ -346,15 +436,7 @@ export async function executeApprovedLaunch(
      * policy differs. A change throws, which parks the run exactly as a bare failure would have.
      */
     const reassertCompiledPolicy = (): void => {
-      const currentProposal = validateServerCompiledPlanProposal(snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-      const currentCompiled = currentProposal.ok
-        ? compileApprovedProposal(currentProposal.value, storedHash, storedHash, {
-            policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-            defaultWorkers: defaultWorkers(ctx.repoRoot),
-          })
-        : null;
-      if (!currentCompiled?.ok
-        || JSON.stringify(currentCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
+      if (!compiledPolicyUnchanged(ctx, { snapshot, hash: storedHash }, compiled.value.stagePolicies)) {
         throw new Error('managed root activation policy changed');
       }
     };
@@ -426,7 +508,7 @@ export async function executeApprovedLaunch(
       }
       const published = ctx.controlStore.transitionPublication(sub, runRef, publishing.value.version, 'published');
       if (!published.ok) throw new Error(published.detail);
-      if (!ctx.controlBroker || !ctx.runAutomatic) {
+      if (!ctx.attemptPort || !ctx.runAutomatic) {
         const waiting = ctx.controlStore.transitionRun(sub, runRef, published.value.version, 'waiting-human');
         if (!waiting.ok) throw new Error(waiting.detail);
         ctx.controlStore.createHumanRequest(sub, runRef, {
@@ -445,6 +527,9 @@ export async function executeApprovedLaunch(
       const rootStageIds = new Set(parsed.value.stages.filter((stage) => stage.dependsOn.length === 0).map((stage) => stage.id));
       const rootCards = outcome.cards.filter((card) => rootStageIds.has(card.stageId)).map((card) => card.cardId);
       if (rootCards.length !== rootStageIds.size) throw new Error('managed root card projection differs from the approved proposal');
+      // [P4-C14] managed-root activation: atomic multi-root T3-authorized publication, audited via its own
+      // authorize row (reassertCompiledPolicy emits the control-run-activate-authorize row) — intentionally
+      // NOT a reconciliation `card-transition` intent, so it stays a direct executor (R2).
       await activateManagedRootCards({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,

@@ -2,7 +2,7 @@
  * R2 — the shared per-entity routing control: a mono effective-model chip with a provenance tag, that
  * opens a small popover to pick runtime + model (+ optional TTL) and writes through a GOVERNED endpoint.
  * Endpoint-agnostic: the parent supplies `onApply` / `onClear` (Agents -> routing-override agent scope;
- * Tasks -> card-routing card scope), so this component never calls fetch directly and never chooses a
+ * Inbox card detail -> card-routing scope), so this component never calls fetch directly and never chooses a
  * write path. Unlock is point-of-action through the shared session context: the parent's `onApply`/
  * `onClear` mint if the tab is locked and return a plain refusal when the ceremony is refused.
  *
@@ -51,7 +51,7 @@ export interface RoutingControlProps {
   /** Whether a "clear override" affordance should show (an override/stamp currently exists). */
   canClear?: boolean;
   /** When set, the control is frozen: the chip is disabled and this quiet reason is shown inline. Used
-   *  by the Tasks card-scope toggle when the card is under an active approval (approvals/approved) — the
+   *  by the Inbox card-scope toggle when the card is under an active approval (approvals/approved) — the
    *  server refuses the write too, so this is an upfront, legible mirror of that refusal (no new colors). */
   lockedReason?: string | null;
   onApply: (runtime: string, model: string, expires: string | null) => Promise<WriteResult>;

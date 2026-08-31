@@ -1,10 +1,9 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { existsSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, fsyncSync, closeSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolvePython } from './python.ts';
-import { createInMemoryControlPlaneStore } from '../control/store.ts';
 
 export interface EvidencePayload {
   schema: 'kb.phase1-evidence/v1';
@@ -42,7 +41,6 @@ export interface EvidenceIo {
 
 /** The non-secret host observations required by the deferred Linux surface probe. */
 export interface UnsupportedVmSurfacesProbeIo {
-  composerTurn(): Promise<number>;
   mainPid(): number;
   cmdline(pid: number): string;
   descendantPids(pid: number): number[];
@@ -77,7 +75,7 @@ export function canonicalJson(value: unknown): string {
   return `${JSON.stringify(sorted(value)).replace(/[^\x00-\x7f]/g, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`)}\n`;
 }
 
-function sha256(value: string): string { return createHash('sha256').update(value, 'utf8').digest('hex'); }
+function sha256(value: string): string { return sha256Hex(value); }
 function sameKeys(value: unknown, expected: Set<string>): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value as Record<string, unknown>).length === expected.size
@@ -254,7 +252,7 @@ function hasForbiddenVmExecutable(cmdline: string): boolean {
   return /(?:^|[\0\\/])(?:powershell|schtasks)\.exe(?:$|[\0\\/])/i.test(cmdline);
 }
 
-function hasComposerChild(cmdline: string): boolean {
+function hasAgentCliChild(cmdline: string): boolean {
   return /(?:^|[\0\\/])claude(?:\.exe)?(?:$|[\0\\/])/i.test(cmdline);
 }
 
@@ -285,37 +283,7 @@ function procDescendants(mainPid: number): number[] {
   return descendants;
 }
 
-async function localComposerRefusal(): Promise<number> {
-  const [{ buildApp }, { runtimeCapabilities }, { mintSessionFromVerifiedAssertion }] = await Promise.all([
-    import('../index.ts'),
-    import('./capabilities.ts'),
-    import('../auth/session.ts'),
-  ]);
-  // The probe's bearer is freshly minted from the verified-assertion boundary and is confined to this
-  // in-process request. It is never read from the environment, rendered, or written to the evidence files.
-  const sessionConfig = { secret: Buffer.from('gate2-probe-session-secret-32-bytes'), ttlMs: 60_000 };
-  const built = buildApp({
-    validateData: false,
-    runtimeCapabilities: runtimeCapabilities('linux'),
-    sessionConfig,
-    controlStore: createInMemoryControlPlaneStore(),
-  });
-  try {
-    const token = mintSessionFromVerifiedAssertion({ verified: true }, 'gate2-human-armed', sessionConfig).token;
-    const response = await built.inject({
-      method: 'POST',
-      url: '/api/composer/sessions/gate2-probe/turns',
-      headers: { authorization: `Bearer ${token}` },
-      payload: { prompt: 'probe unsupported surface' },
-    });
-    return response.statusCode;
-  } finally {
-    await built.close();
-  }
-}
-
 export const productionUnsupportedVmSurfacesProbeIo: UnsupportedVmSurfacesProbeIo = {
-  composerTurn: localComposerRefusal,
   mainPid: () => {
     const mainPid = Number(process.env.DASHBOARD_MAIN_PID);
     if (!Number.isInteger(mainPid) || mainPid <= 0) throw new Error('DASHBOARD_MAIN_PID is required for the unsupported-surface probe');
@@ -332,11 +300,10 @@ async function runUnsupportedVmSurfacesProbe(
 ): Promise<EvidencePayload> {
   return writeEvidence(input, io, async () => {
     const mainPid = probe.mainPid();
-    const composerStatus = await probe.composerTurn();
     const mainPidHasForbiddenExecutable = hasForbiddenVmExecutable(probe.cmdline(mainPid));
-    const composerChildPids = probe.descendantPids(mainPid).filter((pid) => hasComposerChild(probe.cmdline(pid)));
-    const passed = composerStatus === 503 && !mainPidHasForbiddenExecutable && composerChildPids.length === 0;
-    const stdout = `${JSON.stringify({ mainPid, composerStatus, mainPidHasForbiddenExecutable, composerChildPids })}\n`;
+    const agentCliChildPids = probe.descendantPids(mainPid).filter((pid) => hasAgentCliChild(probe.cmdline(pid)));
+    const passed = !mainPidHasForbiddenExecutable && agentCliChildPids.length === 0;
+    const stdout = `${JSON.stringify({ mainPid, mainPidHasForbiddenExecutable, agentCliChildPids })}\n`;
     return {
       exitCode: passed ? 0 : 1,
       stdout,

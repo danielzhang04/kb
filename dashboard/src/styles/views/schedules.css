@@ -1,0 +1,20 @@
+.schedules { display: grid; gap: var(--space-3); }
+.schedules h4, .schedules p { margin: 0; }
+.schedules__intro { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.schedules__intro h4 { color: var(--fg-primary); font-size: var(--text-md); letter-spacing: -0.01em; }
+.schedules__intro h4 span, .schedules__intro p, .schedules__quiet { color: var(--fg-faint); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 400; letter-spacing: var(--tracking-eyebrow); }
+.schedules__error { display: flex; align-items: center; gap: var(--space-2); }
+.schedules__list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.schedules__card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--bg-panel); }
+.schedules__card-main { display: grid; min-width: 0; gap: var(--space-1); }
+.schedules__title, .schedules__actions, .schedules__cadence-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.schedules__title strong { color: var(--fg-primary); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.schedules__project { color: var(--fg-faint); font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-eyebrow); }
+.schedules__recurrence { color: var(--fg-dim); font-size: var(--text-sm); }
+.schedules__outcome { color: var(--fg-dim); border-color: var(--border-strong); background: var(--bg-elevated); }
+.schedules__sheet { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--bg-panel); }
+.schedules__new { width: min(38rem, 100%); }
+.schedules__cadence { display: grid; gap: var(--space-1); color: var(--fg-primary); font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-eyebrow); }
+.schedules__cadence input, .schedules__cadence select { border-color: var(--border-strong); }
+.schedules__sheet-actions { display: flex; justify-content: end; }
+@media (max-width: 38rem) { .schedules__card { grid-template-columns: 1fr; } }

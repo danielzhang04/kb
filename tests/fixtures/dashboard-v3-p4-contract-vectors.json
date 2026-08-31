@@ -1,0 +1,1683 @@
+{
+  "schema": "kb.dashboard-v3-p4-contract-vectors/v1",
+  "note": "W0 contract vectors. Values are computed independently of the TS modules; the suites assert the modules reproduce them.",
+  "constants": {
+    "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+    "mergeCommit": "fedcba9876543210fedcba9876543210fedcba98",
+    "batchId": "learn-0c91b646f215c10de9fb3ddf",
+    "recordPath": "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md",
+    "mirrorBatchId": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28"
+  },
+  "proposalRecords": {
+    "valid": [
+      {
+        "name": "proposed lesson",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "implemented agent-improvement",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-02",
+          "kind": "agent-improvement",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "implemented",
+          "batch-id": "learn-0c91b646f215c10de9fb3ddf",
+          "implemented-at": "2026-08-20T06:00:00Z",
+          "content-hash": "62e09b7e87e9b55e7f763c950bdc165db1a7ba01eeb7cd1f697e3b9d4f9dcb5d",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "records-only hygiene kind",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "hygiene-run_01HXYA-01",
+          "kind": "hygiene",
+          "source-agent": "hygiene",
+          "source-run": "run_01HXYA",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "governance/risk-tiers.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "df04db8d40429bd2619d5c74afb7ec99d48ad26996b24ca25838c01c316f6458",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "extra frontmatter key",
+        "field": "record",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change.",
+          "priority": "high"
+        }
+      },
+      {
+        "name": "unknown kind",
+        "field": "record.kind",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "deployment",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "a04af664cdf359b46222b5c9780b5745dff1108399597d2d10a6d941b251783e",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "absolute target",
+        "field": "record.target",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "/etc/passwd",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "eddbec450bbb66a192ddd606c90d7589aaee80eaa46fea8667ccc28a58fe5404",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "dot traversal target",
+        "field": "record.target",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "../agents/x.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "626e606b1c2ed00e65fc11f5658b8a00bd9a4c304fd8c56dee9e290a1039bbae",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "non-canonical created-at",
+        "field": "record.created-at",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00.500Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "proposed record carrying a batch-id",
+        "field": "record.status",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": "learn-0c91b646f215c10de9fb3ddf",
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "id disagreeing with source agent/run",
+        "field": "record.id",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "other-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "zero evidence rows",
+        "field": "evidence",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "0dc28c2b1d3d5db14024c7921b550dec5e9a62f0d370b229bd8e364ba868978e",
+          "evidence": [],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "twenty-one evidence rows",
+        "field": "evidence",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "066b1cf89881e61dba59241603d60746d27dcaa5b5d3919d317876c6ab7659f8",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            },
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "missing content-hash",
+        "field": "record.content-hash",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "content-hash of the wrong shape",
+        "field": "record.content-hash",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "NOTAHASH",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a NUL",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a\u0000b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying an ANSI escape",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "\u001b[2J\u001b[31mFAKE"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying CRLF",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "x\r\n- path: injected/p.md"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a bidi override",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a‮b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a zero-width space",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a​b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator carrying a byte-order mark",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "a﻿b"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "locator over 512 bytes",
+        "field": "evidence.locator",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "evidence path over 256 bytes",
+        "field": "evidence.path",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.md",
+              "locator": "row 1"
+            }
+          ],
+          "proposed-change": "One bounded, testable change."
+        }
+      },
+      {
+        "name": "proposed change carrying a vertical tab",
+        "field": "record.proposed-change",
+        "value": {
+          "schema": "kb.learning-proposal/v1",
+          "id": "lessons-miner-run_01HXYZ-01",
+          "kind": "lesson",
+          "source-agent": "lessons-miner",
+          "source-run": "run_01HXYZ",
+          "created-at": "2026-08-20T05:30:00Z",
+          "target": "agents/fyt-checker.md",
+          "status": "proposed",
+          "batch-id": null,
+          "implemented-at": null,
+          "content-hash": "bd1f3d40e69dbef5596c81503754641f018d441be935649bd6c937c7d76feda3",
+          "evidence": [
+            {
+              "path": "memory/lessons-miner.md",
+              "locator": "2026-08-20 run_01HXYZ"
+            }
+          ],
+          "proposed-change": "one\u000bchange"
+        }
+      }
+    ]
+  },
+  "inbox": {
+    "valid": [
+      {
+        "name": "pr + escalation, both sources verified",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://github.com/danielzt/kb/pull/42"
+            },
+            {
+              "kind": "escalation",
+              "id": "aee80bb66cd2e5f8ec506af088f32edf33a3969f5edadd655b8da898853a1065",
+              "createdAt": "2026-08-21T09:00:00Z",
+              "revision": "31ee9b79e368b27cfebf39aae88c368678c8c5f584c4cb619fdbdbb8912aaf72",
+              "subject": {
+                "cardId": "queue/inbox/6a714a06-cb14d1ca.md"
+              },
+              "related": {
+                "runRef": "run-4f2c"
+              },
+              "title": "System Sweeper fire failed",
+              "reason": "sweeper-failure"
+            }
+          ],
+          "revision": "767a019ac7b341465e7c67e10459fb9a129534806ab7d4f16785258bd9866b75",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            }
+          }
+        }
+      },
+      {
+        "name": "failed pr source retains last-good items",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://github.com/danielzt/kb/pull/42"
+            }
+          ],
+          "revision": "82a9c17243c54aba1689390a41709e35874b06284c2d1c664907dc23328eabe2",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "failed",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z",
+              "errorCode": "timeout",
+              "stale": true
+            }
+          }
+        }
+      },
+      {
+        "name": "legal empty inbox",
+        "value": {
+          "items": [],
+          "revision": "34f5523af0b6de8954385888baf8f52859b1663ff0e9f738cc585faacf423c21",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            }
+          }
+        }
+      },
+      {
+        "name": "stale-but-verified pr source served from inside the 30 s budget window",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://github.com/danielzt/kb/pull/42"
+            },
+            {
+              "kind": "escalation",
+              "id": "aee80bb66cd2e5f8ec506af088f32edf33a3969f5edadd655b8da898853a1065",
+              "createdAt": "2026-08-21T09:00:00Z",
+              "revision": "31ee9b79e368b27cfebf39aae88c368678c8c5f584c4cb619fdbdbb8912aaf72",
+              "subject": {
+                "cardId": "queue/inbox/6a714a06-cb14d1ca.md"
+              },
+              "related": {
+                "runRef": "run-4f2c"
+              },
+              "title": "System Sweeper fire failed",
+              "reason": "sweeper-failure"
+            }
+          ],
+          "revision": "22a9196945ca80f241eec45482950ee28a09b34f1ab5d9deed630d74a4cc511c",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z",
+              "stale": true
+            }
+          }
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "run subject",
+        "field": "item.kind",
+        "value": {
+          "items": [
+            {
+              "kind": "run",
+              "id": "acba25512100f80b56fc3ccd14c65be55d94800cda77585c5f41a887e398f9be",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "454349e422f05297191ead13e21d3db520e5abef52055e4964b82fb213f593a1",
+              "subject": {
+                "runRef": "run-4f2c"
+              },
+              "title": "waiting run"
+            }
+          ],
+          "revision": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            }
+          }
+        }
+      },
+      {
+        "name": "client-supplied href",
+        "field": "item.href",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://evil.example/pull/42"
+            }
+          ],
+          "revision": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            }
+          }
+        }
+      },
+      {
+        "name": "unknown source error code",
+        "field": "source.errorCode",
+        "value": {
+          "items": [],
+          "revision": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "failed",
+              "errorCode": "exploded",
+              "stale": false
+            }
+          }
+        }
+      },
+      {
+        "name": "revision not derived from its inputs",
+        "field": "inbox.revision",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://github.com/danielzt/kb/pull/42"
+            },
+            {
+              "kind": "escalation",
+              "id": "aee80bb66cd2e5f8ec506af088f32edf33a3969f5edadd655b8da898853a1065",
+              "createdAt": "2026-08-21T09:00:00Z",
+              "revision": "31ee9b79e368b27cfebf39aae88c368678c8c5f584c4cb619fdbdbb8912aaf72",
+              "subject": {
+                "cardId": "queue/inbox/6a714a06-cb14d1ca.md"
+              },
+              "related": {
+                "runRef": "run-4f2c"
+              },
+              "title": "System Sweeper fire failed",
+              "reason": "sweeper-failure"
+            }
+          ],
+          "revision": "8810ad581e59f2bc3928b261707a71308f7e139eb04820366dc4d5c18d980225",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            }
+          }
+        }
+      },
+      {
+        "name": "verified source with stale false",
+        "value": {
+          "items": [
+            {
+              "kind": "pr",
+              "id": "e47ead18e5f1a083c3aaacd0249cfb3c1d6234a9677e3b59277bcd70c255d74e",
+              "createdAt": "2026-08-22T10:00:00Z",
+              "revision": "1ece6d54f0fd6dae52377048abb8bdd92e24dacbff61ecf1cc30609046a24c0f",
+              "subject": {
+                "owner": "danielzt",
+                "repo": "kb",
+                "number": 42
+              },
+              "title": "P4 learnings batch",
+              "href": "https://github.com/danielzt/kb/pull/42"
+            },
+            {
+              "kind": "escalation",
+              "id": "aee80bb66cd2e5f8ec506af088f32edf33a3969f5edadd655b8da898853a1065",
+              "createdAt": "2026-08-21T09:00:00Z",
+              "revision": "31ee9b79e368b27cfebf39aae88c368678c8c5f584c4cb619fdbdbb8912aaf72",
+              "subject": {
+                "cardId": "queue/inbox/6a714a06-cb14d1ca.md"
+              },
+              "related": {
+                "runRef": "run-4f2c"
+              },
+              "title": "System Sweeper fire failed",
+              "reason": "sweeper-failure"
+            }
+          ],
+          "revision": "767a019ac7b341465e7c67e10459fb9a129534806ab7d4f16785258bd9866b75",
+          "sources": {
+            "escalation": {
+              "status": "verified",
+              "revision": "c36763f3e73d717930a4d5caaf320512d30c04efb3ec3edb0681a13ca77bf2f7",
+              "verifiedAt": "2026-08-22T10:00:05Z"
+            },
+            "pr": {
+              "status": "verified",
+              "revision": "a4f6f34e0f7ea73409420d846d259c98f1c7bdc9e7b05fa949a44a682ff16711",
+              "verifiedAt": "2026-08-22T10:00:05Z",
+              "stale": false
+            }
+          }
+        }
+      }
+    ],
+    "refreshParams": {
+      "accept": [
+        "pr",
+        "escalation"
+      ],
+      "refuse": [
+        "run",
+        "all",
+        ""
+      ]
+    }
+  },
+  "reconciliation": {
+    "valid": [
+      {
+        "name": "card-transition",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "card-transition",
+          "actor": "human-operator",
+          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:044273d84e06c63e64ab93cffae305880421e0acb772c44cef622a73a0369f21",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [
+            "queue/inbox/6a714a06-cb14d1ca.md"
+          ],
+          "cardId": "queue/inbox/6a714a06-cb14d1ca.md",
+          "expectedCardSha256": "c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151",
+          "fromState": "inbox",
+          "toState": "done",
+          "write": {
+            "section": "Result",
+            "block": "verified by Daniel"
+          }
+        }
+      },
+      {
+        "name": "escalation-card from the supervisor",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "escalation-card",
+          "actor": "dashboard-supervisor",
+          "idempotencyKey": "escalation:sweeper-failure:system-sweeper-run-91",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [],
+          "source": {
+            "kind": "sweeper-failure",
+            "ref": "system-sweeper-run-91",
+            "createdAt": "2026-08-22T11:15:00Z"
+          },
+          "title": "System Sweeper fire failed",
+          "reason": "supervisor detected a failed fire",
+          "related": {
+            "runRef": "run-4f2c"
+          }
+        }
+      },
+      {
+        "name": "schedule-mirror",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "schedule-mirror",
+          "actor": "system-sweeper",
+          "idempotencyKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [
+            "HEARTBEAT.md",
+            "orgs/faceless-youtube/HEARTBEAT.md"
+          ],
+          "batchId": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "targetWatermark": {
+            "revision": 7,
+            "digest": "0e0ce21c51b7dcda4114e9636ae4bff66c5aacc25fa9607c06eb118d4eea3bce"
+          },
+          "manifest": {
+            "schema": "kb.durable-path-manifest/v1",
+            "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+            "purpose": "schedule-mirror",
+            "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+            "relpaths": [
+              "HEARTBEAT.md",
+              "orgs/faceless-youtube/HEARTBEAT.md"
+            ]
+          }
+        }
+      },
+      {
+        "name": "mirror-merged",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "mirror-merged",
+          "actor": "system-sweeper",
+          "idempotencyKey": "mirror-merged:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28:fedcba9876543210fedcba9876543210fedcba98",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [],
+          "batchId": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "pr": {
+            "owner": "danielzt",
+            "repo": "kb",
+            "number": 43,
+            "mergeCommit": "fedcba9876543210fedcba9876543210fedcba98"
+          },
+          "mergedAt": "2026-08-22T12:00:00Z"
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "unknown actor",
+        "field": "intent.actor",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "card-transition",
+          "actor": "worker",
+          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:044273d84e06c63e64ab93cffae305880421e0acb772c44cef622a73a0369f21",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [
+            "queue/inbox/6a714a06-cb14d1ca.md"
+          ],
+          "cardId": "queue/inbox/6a714a06-cb14d1ca.md",
+          "expectedCardSha256": "c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151",
+          "fromState": "inbox",
+          "toState": "done",
+          "write": {
+            "section": "Result",
+            "block": "verified by Daniel"
+          }
+        }
+      },
+      {
+        "name": "unknown intent kind",
+        "field": "intent.kind",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "deploy",
+          "actor": "human-operator",
+          "idempotencyKey": "card-transition:human-operator:queue/inbox/6a714a06-cb14d1ca.md:c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151:done:044273d84e06c63e64ab93cffae305880421e0acb772c44cef622a73a0369f21",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [
+            "queue/inbox/6a714a06-cb14d1ca.md"
+          ],
+          "cardId": "queue/inbox/6a714a06-cb14d1ca.md",
+          "expectedCardSha256": "c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151",
+          "fromState": "inbox",
+          "toState": "done",
+          "section": "Result",
+          "block": "verified by Daniel"
+        }
+      },
+      {
+        "name": "idempotency key not the formula",
+        "field": "intent.idempotencyKey",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "card-transition",
+          "actor": "human-operator",
+          "idempotencyKey": "card-transition:whatever",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [
+            "queue/inbox/6a714a06-cb14d1ca.md"
+          ],
+          "cardId": "queue/inbox/6a714a06-cb14d1ca.md",
+          "expectedCardSha256": "c1a098144733e3da325075075074e035edfd264391112df9ef4413235ba25151",
+          "fromState": "inbox",
+          "toState": "done",
+          "write": {
+            "section": "Result",
+            "block": "verified by Daniel"
+          }
+        }
+      },
+      {
+        "name": "unsorted exactTargets",
+        "field": "intent.exactTargets",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "schedule-mirror",
+          "actor": "system-sweeper",
+          "idempotencyKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [
+            "orgs/faceless-youtube/HEARTBEAT.md",
+            "HEARTBEAT.md"
+          ],
+          "batchId": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "targetWatermark": {
+            "revision": 7,
+            "digest": "0e0ce21c51b7dcda4114e9636ae4bff66c5aacc25fa9607c06eb118d4eea3bce"
+          },
+          "manifest": {
+            "schema": "kb.durable-path-manifest/v1",
+            "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+            "purpose": "schedule-mirror",
+            "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+            "relpaths": [
+              "HEARTBEAT.md",
+              "orgs/faceless-youtube/HEARTBEAT.md"
+            ]
+          }
+        }
+      },
+      {
+        "name": "short merge commit",
+        "field": "intent.pr.mergeCommit",
+        "value": {
+          "schema": "kb.reconciliation-intent/v1",
+          "kind": "mirror-merged",
+          "actor": "system-sweeper",
+          "idempotencyKey": "mirror-merged:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28:fedcba9876543210fedcba9876543210fedcba98",
+          "expectedSourceRevision": "ef5547acc0b2dcedecd0f6d66e39ea9a1b47f99dd54fe883bab8e3f7d2ca3bd2",
+          "expectedStoreRevision": "08ef342e40952e602e587ca7ad2416356e630c84d6eefb860633ef0ea1ee0ec2",
+          "exactTargets": [],
+          "batchId": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "pr": {
+            "owner": "danielzt",
+            "repo": "kb",
+            "number": 43,
+            "mergeCommit": "fedcba9"
+          },
+          "mergedAt": "2026-08-22T12:00:00Z"
+        }
+      }
+    ]
+  },
+  "scheduleMirror": {
+    "valid": [
+      {
+        "name": "prepared batch",
+        "value": {
+          "schema": "kb.schedule-mirror-batch/v1",
+          "id": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "baseWatermark": {
+            "revision": 6,
+            "digest": "aa447e28bc088b65d22eae5b48c20558abed14aec5f1e5f3b2f968aa3d4623c3"
+          },
+          "targetWatermark": {
+            "revision": 7,
+            "digest": "0e0ce21c51b7dcda4114e9636ae4bff66c5aacc25fa9607c06eb118d4eea3bce"
+          },
+          "paths": [
+            {
+              "path": "HEARTBEAT.md",
+              "digest": "a29833dc1161ee6cb277d7daa4a0dd42c8ab8d319ca5ea3ffc9537307e7cd4de"
+            }
+          ],
+          "state": "prepared",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "createdAt": "2026-08-22T11:00:00Z"
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "id not the target-watermark hash",
+        "field": "batch.id",
+        "value": {
+          "schema": "kb.schedule-mirror-batch/v1",
+          "id": "8810ad581e59f2bc3928b261707a71308f7e139eb04820366dc4d5c18d980225",
+          "baseWatermark": {
+            "revision": 6,
+            "digest": "aa447e28bc088b65d22eae5b48c20558abed14aec5f1e5f3b2f968aa3d4623c3"
+          },
+          "targetWatermark": {
+            "revision": 7,
+            "digest": "0e0ce21c51b7dcda4114e9636ae4bff66c5aacc25fa9607c06eb118d4eea3bce"
+          },
+          "paths": [
+            {
+              "path": "HEARTBEAT.md",
+              "digest": "a29833dc1161ee6cb277d7daa4a0dd42c8ab8d319ca5ea3ffc9537307e7cd4de"
+            }
+          ],
+          "state": "prepared",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "createdAt": "2026-08-22T11:00:00Z"
+        }
+      },
+      {
+        "name": "non-mirror path",
+        "field": "batch.paths.path",
+        "value": {
+          "schema": "kb.schedule-mirror-batch/v1",
+          "id": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "baseWatermark": {
+            "revision": 6,
+            "digest": "aa447e28bc088b65d22eae5b48c20558abed14aec5f1e5f3b2f968aa3d4623c3"
+          },
+          "targetWatermark": {
+            "revision": 7,
+            "digest": "0e0ce21c51b7dcda4114e9636ae4bff66c5aacc25fa9607c06eb118d4eea3bce"
+          },
+          "paths": [
+            {
+              "path": "agents/hygiene.md",
+              "digest": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+            }
+          ],
+          "state": "prepared",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "createdAt": "2026-08-22T11:00:00Z"
+        }
+      },
+      {
+        "name": "prepared batch carrying a pr",
+        "field": "batch.state",
+        "value": {
+          "schema": "kb.schedule-mirror-batch/v1",
+          "id": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "baseWatermark": {
+            "revision": 6,
+            "digest": "aa447e28bc088b65d22eae5b48c20558abed14aec5f1e5f3b2f968aa3d4623c3"
+          },
+          "targetWatermark": {
+            "revision": 7,
+            "digest": "0e0ce21c51b7dcda4114e9636ae4bff66c5aacc25fa9607c06eb118d4eea3bce"
+          },
+          "paths": [
+            {
+              "path": "HEARTBEAT.md",
+              "digest": "a29833dc1161ee6cb277d7daa4a0dd42c8ab8d319ca5ea3ffc9537307e7cd4de"
+            }
+          ],
+          "state": "prepared",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "createdAt": "2026-08-22T11:00:00Z",
+          "pr": {
+            "owner": "danielzt",
+            "repo": "kb",
+            "number": 43
+          }
+        }
+      },
+      {
+        "name": "target revision before base",
+        "field": "batch.targetWatermark",
+        "value": {
+          "schema": "kb.schedule-mirror-batch/v1",
+          "id": "4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "baseWatermark": {
+            "revision": 9,
+            "digest": "1d9283d848ea941ace1fe0d2378ef8b70056a0d4d1648b95a322d90163e78285"
+          },
+          "targetWatermark": {
+            "revision": 7,
+            "digest": "0e0ce21c51b7dcda4114e9636ae4bff66c5aacc25fa9607c06eb118d4eea3bce"
+          },
+          "paths": [
+            {
+              "path": "HEARTBEAT.md",
+              "digest": "a29833dc1161ee6cb277d7daa4a0dd42c8ab8d319ca5ea3ffc9537307e7cd4de"
+            }
+          ],
+          "state": "prepared",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "createdAt": "2026-08-22T11:00:00Z"
+        }
+      }
+    ]
+  },
+  "durableManifest": {
+    "valid": [
+      {
+        "name": "learning-proposal (coordination)",
+        "mode": "coordination",
+        "requiresDurablePrWrites": false,
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-proposal:lessons-miner:run_01HXYZ",
+          "purpose": "learning-proposal",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md"
+          ]
+        }
+      },
+      {
+        "name": "learning-implementation (pr)",
+        "mode": "pr",
+        "requiresDurablePrWrites": true,
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-implementation:learn-0c91b646f215c10de9fb3ddf",
+          "purpose": "learning-implementation",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "agents/fyt-checker.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md"
+          ]
+        }
+      },
+      {
+        "name": "learning-record-retire (coordination)",
+        "mode": "coordination",
+        "requiresDurablePrWrites": false,
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-record-retire:learn-0c91b646f215c10de9fb3ddf:fedcba9876543210fedcba9876543210fedcba98",
+          "purpose": "learning-record-retire",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md"
+          ]
+        }
+      },
+      {
+        "name": "schedule-mirror (pr)",
+        "mode": "pr",
+        "requiresDurablePrWrites": true,
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "purpose": "schedule-mirror",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "HEARTBEAT.md",
+            "orgs/faceless-youtube/HEARTBEAT.md"
+          ]
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "thirty-three paths",
+        "field": "relpaths",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-proposal:lessons-miner:run_01HXYZ",
+          "purpose": "learning-proposal",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-00.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-02.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-03.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-04.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-05.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-06.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-07.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-08.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-09.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-10.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-11.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-12.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-13.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-14.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-15.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-16.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-17.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-18.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-19.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-20.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-21.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-22.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-23.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-24.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-25.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-26.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-27.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-28.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-29.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-30.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-31.md",
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-32.md"
+          ]
+        }
+      },
+      {
+        "name": "unsorted paths",
+        "field": "relpaths",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-implementation:learn-0c91b646f215c10de9fb3ddf",
+          "purpose": "learning-implementation",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md",
+            "agents/fyt-checker.md"
+          ]
+        }
+      },
+      {
+        "name": "case-fold duplicate",
+        "field": "relpaths",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-implementation:learn-0c91b646f215c10de9fb3ddf",
+          "purpose": "learning-implementation",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "agents/FYT-checker.md",
+            "agents/fyt-checker.md"
+          ]
+        }
+      },
+      {
+        "name": "learning-proposal reaching a target",
+        "field": "manifest.relpaths",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-proposal:lessons-miner:run_01HXYZ",
+          "purpose": "learning-proposal",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "agents/fyt-checker.md"
+          ]
+        }
+      },
+      {
+        "name": "learning-implementation reaching another docs/proposals path",
+        "field": "manifest.relpaths",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "learning-implementation:learn-0c91b646f215c10de9fb3ddf",
+          "purpose": "learning-implementation",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "docs/proposals/lessons/session-miner-synthetic.md"
+          ]
+        }
+      },
+      {
+        "name": "schedule-mirror reaching a record",
+        "field": "manifest.relpaths",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "purpose": "schedule-mirror",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "docs/proposals/learnings/2026-08-20-lessons-miner-run_01HXYZ-01.md"
+          ]
+        }
+      },
+      {
+        "name": "short base commit",
+        "field": "manifest.baseCommit",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "purpose": "schedule-mirror",
+          "baseCommit": "abc123",
+          "relpaths": [
+            "HEARTBEAT.md",
+            "orgs/faceless-youtube/HEARTBEAT.md"
+          ]
+        }
+      },
+      {
+        "name": "unknown purpose",
+        "field": "manifest.purpose",
+        "value": {
+          "schema": "kb.durable-path-manifest/v1",
+          "operationKey": "schedule-mirror:4425ba7525806a5e1e9e3c5dee61c4a42afb9ea86d076ebb890394dd2c14ad28",
+          "purpose": "deploy",
+          "baseCommit": "0123456789abcdef0123456789abcdef01234567",
+          "relpaths": [
+            "HEARTBEAT.md",
+            "orgs/faceless-youtube/HEARTBEAT.md"
+          ]
+        }
+      }
+    ],
+    "receipts": {
+      "valid": [
+        {
+          "name": "pr arm",
+          "value": {
+            "mode": "pr",
+            "branch": "dv3-p4/schedule-mirror-0123456789abcdef",
+            "pr": {
+              "owner": "danielzt",
+              "repo": "kb",
+              "number": 43,
+              "url": "https://github.com/danielzt/kb/pull/43"
+            }
+          }
+        },
+        {
+          "name": "coordination arm",
+          "value": {
+            "mode": "coordination",
+            "branch": "ops",
+            "commit": "fedcba9876543210fedcba9876543210fedcba98"
+          }
+        }
+      ],
+      "invalid": [
+        {
+          "name": "pr arm missing the pinned owner",
+          "field": "pr",
+          "value": {
+            "mode": "pr",
+            "branch": "dv3-p4/x",
+            "pr": {
+              "repo": "kb",
+              "number": 43,
+              "url": "https://github.com/danielzt/kb/pull/43"
+            }
+          }
+        },
+        {
+          "name": "coordination arm carrying a pr",
+          "field": "receipt",
+          "value": {
+            "mode": "coordination",
+            "branch": "ops",
+            "commit": "fedcba9876543210fedcba9876543210fedcba98",
+            "pr": {
+              "owner": "danielzt",
+              "repo": "kb",
+              "number": 43,
+              "url": "u"
+            }
+          }
+        },
+        {
+          "name": "coordination arm on another branch",
+          "field": "receipt.branch",
+          "value": {
+            "mode": "coordination",
+            "branch": "main",
+            "commit": "fedcba9876543210fedcba9876543210fedcba98"
+          }
+        },
+        {
+          "name": "unknown mode",
+          "field": "receipt.mode",
+          "value": {
+            "mode": "direct",
+            "branch": "ops",
+            "commit": "fedcba9876543210fedcba9876543210fedcba98"
+          }
+        }
+      ]
+    }
+  },
+  "repoPin": {
+    "accept": [
+      {
+        "url": "https://github.com/danielzt/kb.git",
+        "owner": "danielzt",
+        "repo": "kb"
+      },
+      {
+        "url": "https://github.com/danielzt/kb",
+        "owner": "danielzt",
+        "repo": "kb"
+      },
+      {
+        "url": "git@github.com:danielzt/kb.git",
+        "owner": "danielzt",
+        "repo": "kb"
+      },
+      {
+        "url": "ssh://git@github.com/danielzt/kb.git",
+        "owner": "danielzt",
+        "repo": "kb"
+      }
+    ],
+    "refuse": [
+      {
+        "url": "https://gitlab.com/danielzt/kb.git",
+        "reason": "non-github"
+      },
+      {
+        "url": "https://github.com/danielzt",
+        "reason": "unparseable"
+      },
+      {
+        "url": "https://github.com/danielzt/kb/extra",
+        "reason": "unparseable"
+      },
+      {
+        "url": "",
+        "reason": "missing"
+      }
+    ]
+  },
+  "compileNegatives": [
+    {
+      "id": "extra-proposal-key",
+      "description": "an object literal with a key outside the closed frontmatter set is not a ProposalRecordWire"
+    },
+    {
+      "id": "run-subject",
+      "description": "kind: 'run' is not a member of P4InboxItem"
+    },
+    {
+      "id": "direct-sweeper-effect",
+      "description": "SweeperPorts<T> collapses to never when T carries an effect member"
+    },
+    {
+      "id": "changed-replay",
+      "description": "a persisted receipt is readonly, so a replay cannot rewrite requestSha256"
+    },
+    {
+      "id": "thirty-third-manifest-path",
+      "description": "manifestRelpaths refuses a literal list of 33 paths"
+    }
+  ]
+}

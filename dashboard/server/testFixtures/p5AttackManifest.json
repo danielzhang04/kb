@@ -1,0 +1,122 @@
+{
+  "note": "P5 W6.4 adversarial manifest, frozen by W0 [P5-C24]. Freezes (a) the exact section-7 focused test-file set and (b) the twelve section-9 attack ids expanded from design 619's nine checklist entries [P5-C40]. assertP5GateResults.ts is invoked ONCE with all four flags and validates BOTH the vitest gate JSON (--results: no failed/skipped/todo, gateFiles set-equal the results, every attack owned by a passing test titled 'refuses: <id>') AND the per-attack artifact JSON (--attack-root: each id present once, passed:true, nonempty assertion, artifact path; --require-exact forbids a stray or missing artifact). The manifest path is an internal constant in the tool, never a flag [P5-C44]. server/control/deploymentState.test.ts is deliberately absent: with abortReason withdrawn, no P5 task edits deploymentState.ts [P5-C58, P5-C62].",
+  "gateFiles": [
+    "server/deploy/contracts.test.ts",
+    "server/deploy/helperClient.test.ts",
+    "server/deploy/helper/protocolCheck.test.ts",
+    "server/deploy/deploymentService.test.ts",
+    "server/deploy/assetPullService.test.ts",
+    "server/deploy/quiescence.test.ts",
+    "server/control/humanResponse.test.ts",
+    "server/control/routes.test.ts",
+    "server/auth/routes.test.ts",
+    "server/inbox/deploymentContracts.test.ts",
+    "server/inbox/deploymentSubjects.test.ts",
+    "server/inbox/assetPullSubjects.test.ts",
+    "server/inbox/actionResolver.test.ts",
+    "server/inbox/project.test.ts",
+    "server/inbox/routes.test.ts",
+    "server/health/probeBudget.test.ts",
+    "server/health/machineReaders.test.ts",
+    "server/health/releaseReader.test.ts",
+    "server/health/deployReader.test.ts",
+    "server/health/service.test.ts",
+    "server/health/routes.test.ts",
+    "server/home/contracts.test.ts",
+    "server/home/project.test.ts",
+    "server/home/routes.test.ts",
+    "server/control/store.test.ts",
+    "server/control/assetPullState.test.ts",
+    "server/control/migrations.test.ts",
+    "server/release/quiescence.test.ts",
+    "server/pty/sessionRecord.test.ts",
+    "server/http/surface.test.ts",
+    "server/http/context.test.ts",
+    "server/deploy/deployReady.test.ts",
+    "server/index.test.ts",
+    "server/testFixtures/p1BrowserFixture.test.ts",
+    "server/testFixtures/assertP5GateResults.test.ts",
+    "server/testFixtures/p5FixtureLifecycle.test.ts",
+    "server/testFixtures/p5ActualBrowserRunner.test.ts",
+    "src/lib/inboxClient.test.ts",
+    "src/lib/homeClient.test.ts",
+    "src/lib/healthClient.test.ts",
+    "src/views/Inbox.test.tsx",
+    "src/views/Health.test.tsx",
+    "src/views/Home.test.tsx"
+  ],
+  "attacks": [
+    {
+      "id": "forged-node",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: forged-node",
+      "summary": "A caller whose Tailscale-derived node identity is not the pinned VM is refused before any signer call; the receipt records refused and the dashboard code is helper-refused."
+    },
+    {
+      "id": "forged-source",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: forged-source",
+      "summary": "A sourceCommit that is not a strict descendant of the live SHA is refused and no request is sent."
+    },
+    {
+      "id": "forged-attestation",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: forged-attestation",
+      "summary": "An attestationDigest disagreeing with the archive digest is refused; no partial activation occurs."
+    },
+    {
+      "id": "unknown-verb",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: unknown-verb",
+      "summary": "A verb outside the movement 235 union fails closed protocol-invalid with no store write and no request sent."
+    },
+    {
+      "id": "unknown-field",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: unknown-field",
+      "summary": "An extra request field and an extra receipt key each fail the protocol.schema.json wall closed with no store write."
+    },
+    {
+      "id": "repeat-key",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: repeat-key",
+      "summary": "The same idempotency key returns the original receipt and opens no second request."
+    },
+    {
+      "id": "cooldown",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: cooldown",
+      "summary": "A second deploy inside five minutes is refused, the receipt records refused, and no swap begins."
+    },
+    {
+      "id": "stale-revision",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: stale-revision",
+      "summary": "A transition pinned to an outdated Deployment revision is 409 revision-changed dashboard-side, with no helper invocation and therefore no wire code."
+    },
+    {
+      "id": "active-pty",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: active-pty",
+      "summary": "A deployment with live PTYs offers only close-ptys-and-continue, and a closeAndWait timeout refuses 409 pty-not-confirmed while leaving the revision untouched."
+    },
+    {
+      "id": "failed-swap",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: failed-swap",
+      "summary": "An injected swap failure lands in failed with the error retained and only Acknowledge offered."
+    },
+    {
+      "id": "rollback",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: rollback",
+      "summary": "A rollback is a deliberate movement section 2.5 transition and is never reachable as an Inbox Abort."
+    },
+    {
+      "id": "misleading-symlink",
+      "suite": "server/testFixtures/p5FixtureLifecycle.test.ts",
+      "title": "refuses: misleading-symlink",
+      "summary": "A current symlink pointing outside /opt/kb-releases is refused by the release reader, which reports unavailable rather than a wrong SHA."
+    }
+  ]
+}

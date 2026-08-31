@@ -253,7 +253,7 @@ export async function main(options: SyntheticAcceptanceOptions = {}): Promise<nu
 
     const controlStore = createFileControlPlaneStore(stateRoot, { mode: 'already-locked', lease });
     const ctx = makeSurfaceContext({ controlStore });
-    record(checks, 'gate ON: runAutomatic + controlBroker constructed', ctx.runAutomatic !== undefined && ctx.controlBroker !== undefined);
+    record(checks, 'gate ON: runAutomatic + attemptPort constructed', ctx.runAutomatic !== undefined && ctx.attemptPort !== undefined);
     const execution = ctx.executionLatch?.current();
     if (!execution) throw new AcceptanceRefusal('execution latch did not expose the armed harness window');
 

@@ -1,6 +1,6 @@
 /**
  * U6 — `GET /api/trace/:sessionId` over an injected fixture root (Fastify `inject`, the
- * `panels/routes.test.ts` idiom): the envelope shape, the nested-project-dir lookup, and the
+ * standard Fastify-injection idiom): the envelope shape, the nested-project-dir lookup, and the
  * path-safety rejections that keep a session id from reaching outside the configured root.
  */
 import { afterEach, describe, expect, it } from 'vitest';

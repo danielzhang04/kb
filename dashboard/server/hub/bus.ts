@@ -66,7 +66,7 @@ export function createBus(): EventBus {
 export function wirePlaneA(
   bus: EventBus,
   repoRoot: string,
-  opts: { debounceMs?: number } = {},
+  opts: { debounceMs?: number; onWatcher?: (watcher: FSWatcher) => void } = {},
 ): Promise<FSWatcher> {
   return watchPlaneA(
     repoRoot,

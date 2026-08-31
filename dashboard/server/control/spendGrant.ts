@@ -1,4 +1,5 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { sha256Hex } from '../shared/hashing.ts';
 import { isAbsolute, join, resolve } from 'node:path';
 import { createAtomicJsonDocument } from './atomicJsonDocument.ts';
 import { FYT_PAID_ACTION_DEFINITIONS, type PaidActionOperation } from './paidActionService.ts';
@@ -204,7 +205,7 @@ export function createSpendGrantStore(options: SpendGrantStoreOptions): {
         maxCostUsdMicros: caps.maxCostUsdMicros,
         maxCharacters: caps.maxCharacters,
         maxOutputs: caps.maxOutputs,
-        tokenHash: createHash('sha256').update(token).digest('hex'),
+        tokenHash: sha256Hex(token),
         subject: input.subject,
         gateRequestRef: input.gateRequestRef,
         mintedAt: minted.toISOString(),
@@ -225,7 +226,7 @@ export function createSpendGrantStore(options: SpendGrantStoreOptions): {
 
     resolve(token, at) {
       if (typeof token !== 'string' || token.length === 0 || token.length > MAX_TOKEN_CHARS) return null;
-      const candidateHash = Buffer.from(createHash('sha256').update(token).digest('hex'), 'hex');
+      const candidateHash = Buffer.from(sha256Hex(token), 'hex');
       const nowMs = (at ?? now()).getTime();
       let matched: SpendGrant | null = null;
       // No early break: compare against every stored hash so a match's position cannot leak by timing.

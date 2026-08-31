@@ -1,0 +1,76 @@
+.v-health {
+  min-width: 0;
+}
+
+.v-health__section {
+  margin-top: 24px;
+}
+
+.v-health__section h2 {
+  margin: 0 0 8px;
+}
+
+.v-health__rows {
+  border-top: 1px solid var(--hairline);
+}
+
+.v-health__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 2fr) minmax(110px, 1fr) auto;
+  align-items: center;
+  min-height: 40px;
+  gap: 12px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.v-health__value,
+.v-health__source,
+.v-health__observed {
+  color: var(--muted);
+}
+
+.v-health__source,
+.v-health__observed {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.v-health__stop-slot {
+  min-height: 0;
+}
+
+/* P5 W6.2 [P5-C37, P5-C43]: fixed labelled fragments for the DaemonRow/ReleaseRow/DeployRow object
+ * values and the cpu/memory/disk/uptime MachineRow keys — the only CSS P5 touches. */
+.v-health__value-fragment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.v-health__value-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.v-health__value-field-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.v-health__value-field-data {
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 720px) {
+  .v-health__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 8px 0;
+  }
+}

@@ -13,6 +13,7 @@
     "dev:server": "node server/index.ts",
     "start": "node server/index.ts",
     "build": "vite build",
+    "build:pty-broker": "node scripts/build-pty-broker.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

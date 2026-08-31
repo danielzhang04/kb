@@ -7,8 +7,7 @@
  * component over its own DTO slice, which is what makes each one testable with a literal fixture and
  * no fetch mock.
  *
- * `render()`-per-section matches the tabbed-panel convention already in `App.tsx` (the Sentinel layer
- * panels are `{ id, label, render }` too), so this introduces no new pattern.
+ * `render()`-per-section matches the tabbed-panel convention already used by the app shell.
  *
  * Visual rules (binding): the active tab and the selected anything use the exact pair learned in
  * `.mc-nav-item--active` — the 2px LEFT-BORDER marker plus `--accent-quiet`, which app.css defines as
@@ -16,7 +15,7 @@
  * colours in here are data-encoding: the status dot and the amber attention dot. Ids/hashes/counts/timestamps are
  * mono + tabular-nums via `.mc-mono`.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
 
@@ -72,6 +71,12 @@ export interface EntityDetailProps {
   backLabel?: string;
   /** Governed mutations live in the header, never inside a section, so they stay in one place. */
   actions?: React.ReactNode;
+  /** Optional form-first editor opened by the header Edit action. */
+  editorContent?: React.ReactNode;
+  /** W4 entity rosters stay mounted while this raised right-hand panel is open. */
+  overlay?: boolean;
+  onClose?: () => void;
+  detailsContent?: React.ReactNode;
 }
 
 /** Map a status tone onto the existing `mc-status-dot--*` vocabulary. No new hues. */
@@ -97,6 +102,10 @@ export function EntityDetail({
   onBack,
   backLabel,
   actions,
+  editorContent,
+  overlay = false,
+  onClose,
+  detailsContent,
 }: EntityDetailProps): React.JSX.Element {
   // Controlled/uncontrolled, the standard way round: when the nav stack drives `activeSectionId` it
   // wins, so back-navigation can restore a tab. With no controller the component still has to be
@@ -104,18 +113,75 @@ export function EntityDetail({
   // standalone would be a defect, not a simplification. Either way a stale id (after the section set
   // changes) falls back to the first section rather than rendering an empty body.
   const [internalSectionId, setInternalSectionId] = useState<string | undefined>(undefined);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const entityRef = useRef(entity);
+  onCloseRef.current = onClose;
+  entityRef.current = entity;
+  const allSections: DetailSection[] = sections.some((section) => section.id === 'details') ? sections : [...sections, {
+    id: 'details', label: 'Details', render: () => <div data-testid="entity-detail-disclosure">{detailsContent ?? 'No additional loaded details.'}</div>,
+  }];
   const selectedId = activeSectionId ?? internalSectionId;
-  const active = sections.find((section) => section.id === selectedId) ?? sections[0];
+  const active = allSections.find((section) => section.id === selectedId) ?? allSections[0];
 
   const selectSection = (id: string): void => {
     setInternalSectionId(id);
     onSectionChange?.(id);
   };
 
-  return (
+  useEffect(() => {
+    if (!overlay || typeof document === 'undefined') return;
+    restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    const trapFocus = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = closeRef.current?.closest<HTMLElement>('.entity-detail__overlay');
+      const focusable = panel ? Array.from(panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((node) => !node.hidden) : [];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', trapFocus);
+    return () => {
+      document.removeEventListener('keydown', trapFocus);
+      const opener = restoreFocus.current;
+      if (opener && opener !== document.body && opener.isConnected) {
+        opener.focus();
+        return;
+      }
+      const closingEntity = entityRef.current;
+      const matchingCard = Array.from(document.querySelectorAll<HTMLElement>('[data-entity-kind][data-entity-id]'))
+        .find((candidate) => candidate.dataset.entityKind === closingEntity.kind && candidate.dataset.entityId === closingEntity.id);
+      if (matchingCard) {
+        matchingCard.focus();
+        return;
+      }
+      const viewHeading = document.querySelector<HTMLElement>('.entity-roster h2');
+      if (viewHeading) {
+        viewHeading.tabIndex = -1;
+        viewHeading.focus();
+      }
+    };
+  }, [overlay]);
+
+  const detail = (
     <section
       className="entity-detail"
-      aria-label={`${entity.kind} ${entity.id}`}
+      aria-label={`${title} detail`}
       data-testid={`entity-detail-${entity.kind}`}
     >
       {onBack ? (
@@ -149,6 +215,8 @@ export function EntityDetail({
         </div>
         {actions ? <div className="entity-detail__actions">{actions}</div> : null}
       </header>
+
+      {editorContent ? <div className="entity-detail__editor">{editorContent}</div> : null}
 
       {facts.length ? (
         <dl className="entity-detail__facts" data-testid="entity-detail-facts">
@@ -185,9 +253,9 @@ export function EntityDetail({
         className="entity-detail__tabs"
         role="tablist"
         aria-label={`${entity.kind} sections`}
-        hidden={sections.length < 2}
+        hidden={allSections.length < 2}
       >
-        {sections.map((section) => (
+        {allSections.map((section) => (
           <button
             key={section.id}
             type="button"
@@ -216,5 +284,16 @@ export function EntityDetail({
         {active?.render()}
       </div>
     </section>
+  );
+
+  if (!overlay) return detail;
+  return (
+    <div className="entity-detail__layer" role="presentation">
+      <button type="button" className="entity-detail__backdrop" aria-label="Close detail" data-testid="entity-detail-backdrop" onClick={onClose} />
+      <aside className="entity-detail__overlay" role="dialog" aria-modal="true" aria-label={`${title} detail`}>
+        <button ref={closeRef} type="button" className="entity-detail__close" data-testid="entity-detail-close" onClick={onClose}>Close</button>
+        {detail}
+      </aside>
+    </div>
   );
 }

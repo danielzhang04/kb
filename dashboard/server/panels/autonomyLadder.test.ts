@@ -14,7 +14,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import Fastify from 'fastify';
 import {
   status,
   isFrozen,
@@ -25,7 +24,6 @@ import {
   TIERS,
   type GradeRow,
 } from './autonomyLadder.ts';
-import { registerPanels } from './routes.ts';
 
 /**
  * The write tripwire. `node:fs`'s ESM namespace is not configurable, so `vi.spyOn(fs, 'writeFileSync')`
@@ -421,25 +419,17 @@ describe('READ-ONLY acceptance', () => {
     const shard = join(root, 'ledgers', 'grades', 'inspector-2026-08-18.tsv');
     const before = statSync(shard).mtimeMs;
 
-    const app = Fastify({ logger: false });
-    registerPanels(app, root);
-    await app.ready();
-
     tripwire.armed = true;
     try {
-      // Both entry points: the pure builder and the HTTP route the panel actually calls.
+      // Exercise the retained pure builder with the write tripwire armed.
       const panel = buildAutonomyLadderPanel(root);
       expect(panel.keys[0].verdict).toBe(A);
 
       // The declared agents and the queue card ARE seen — i.e. `displayFor` really ran on this path.
       expect(panel.workers.map((w) => w.worker)).toContain('ladder-architect');
 
-      const res = await app.inject({ method: 'GET', url: '/api/panels/autonomy-ladder' });
-      expect(res.statusCode).toBe(200);
-      expect((res.json() as { keys: { verdict: string }[] }).keys[0].verdict).toBe(A);
     } finally {
       tripwire.armed = false;
-      await app.close();
     }
 
     expect(tripwire.calls).toEqual([]);

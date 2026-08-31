@@ -472,11 +472,50 @@ describe('managed canonical root activation', async () => {
 
     calls.length = 0;
     expect(await activateManagedRootCards({
-      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, reassertAfterReconcile: () => {},
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     }))
       .toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
     expect(calls.some((args) => args[0] === 'commit')).toBe(false);
     expect(calls.findIndex((args) => args[0] === 'show')).toBeGreaterThan(calls.findIndex((args) => args[0] === 'push'));
+  });
+
+  /**
+   * [P4-C14] / R2 — managed-root activation is the documented THIRD direct-mutation site (alongside
+   * `write/cardRespond.ts` and the reconciliation publisher channel). It is NOT a reconciliation intent:
+   * it publishes multiple roots in ONE atomic T3-authorized commit. This proves the mutation is not a
+   * silent bypass — the `authorizeAfterPrepare` hook (whose body emits the T3 `control-run-activate-authorize`
+   * audit row in production) runs BEFORE the cards.py apply that moves the card.
+   */
+  it('runs the T3 authorize hook before the card-mutation apply [P4-C14/R2]', async () => {
+    const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
+    const repoRoot = mkdtempSync(join(tmpdir(), 'managed-authorize-order-'));
+    const cardPath = join(repoRoot, 'queue', 'inbox', `${cardRef}.md`);
+    mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
+    writeFileSync(cardPath, 'state: blocked\nexecution-controller: dashboard\n');
+    const order: string[] = [];
+    const runGit = (_root: string, args: string[]): string => {
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'show') return readFileSync(cardPath, 'utf8');
+      return '';
+    };
+    const runPy: PyRunner = (_root, _code, raw) => {
+      const operation = JSON.parse(raw) as { mode: 'probe' | 'apply' };
+      if (operation.mode === 'apply') {
+        order.push('apply-mutation');
+        writeFileSync(cardPath, 'state: inbox\nexecution-controller: dashboard\n');
+      }
+      return { exitCode: 0, stderr: '', stdout: JSON.stringify({
+        cards: [{ cardRef, path: `queue/inbox/${cardRef}.md`, completed: false, changed: true }],
+      }) };
+    };
+    await activateManagedRootCards({
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare: () => { order.push('T3-authorize-audit-row'); },
+      reassertAfterReconcile: () => {},
+    });
+    // The authorize hook (T3 audit row + claim) is strictly BEFORE the card-mutation apply — never after.
+    expect(order).toEqual(['T3-authorize-audit-row', 'apply-mutation']);
   });
 
   it('requires remote proof for a terminal root and leaves its canonical done path untouched', async () => {
@@ -500,7 +539,7 @@ describe('managed canonical root activation', async () => {
     const verifyCompletedRoots = vi.fn(async () => {});
     await expect(activateManagedRootCards({
       repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, verifyCompletedRoots,
-      reassertAfterReconcile: () => {},
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     })).resolves.toEqual({ replayed: true, cardPaths: [`queue/done/${cardRef}.md`] });
     expect(verifyCompletedRoots).toHaveBeenCalledWith({ runRef: 'wf-test-0001', cardRefs: [cardRef] });
     expect(seen).not.toContain('commit');
@@ -514,7 +553,7 @@ describe('managed canonical root activation', async () => {
     }) });
     await expect(activateManagedRootCards({
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: [cardRef], runGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '', runPy,
-      verifyCompletedRoots: async () => {}, reassertAfterReconcile: () => {},
+      verifyCompletedRoots: async () => {}, authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     })).rejects.toThrow('completion state changed');
   });
 
@@ -527,7 +566,7 @@ describe('managed canonical root activation', async () => {
     };
     await expect(activateManagedRootCards({
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
-      reassertAfterReconcile: () => {},
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile: () => {},
     })).rejects.toThrow(/dirty index/);
     expect(runPy).not.toHaveBeenCalled();
   });
@@ -545,6 +584,22 @@ describe('managed canonical root activation', async () => {
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
       authorizeAfterPrepare: () => {},
     })).rejects.toThrow(/requires a reassertAfterReconcile re-proof/);
+    expect(runGit).not.toHaveBeenCalled();
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * M1 (P4 W6.2 review) — the T3 authorize hook must be exactly as required as its reassert twin above:
+   * a caller that omits it must never reach the atomic multi-root `cards.transition` mutation with no T3
+   * authorize audit row and no activation claim. Mirrors the reassert-absence precedence test.
+   */
+  it('refuses at entry when no authorize step is supplied, before touching git or python', async () => {
+    const runPy = vi.fn<PyRunner>();
+    const runGit = vi.fn((_root: string, _args: string[]) => 'ops\n');
+    await expect(activateManagedRootCards({
+      repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
+      reassertAfterReconcile: () => {},
+    })).rejects.toThrow(/requires an authorizeAfterPrepare audit step/);
     expect(runGit).not.toHaveBeenCalled();
     expect(runPy).not.toHaveBeenCalled();
   });
@@ -632,7 +687,8 @@ describe('managed canonical root activation', async () => {
     const reassertAfterReconcile = vi.fn(() => { order.push('reassert'); });
 
     await expect(activateManagedRootCards({
-      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, reassertAfterReconcile,
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare: () => {}, reassertAfterReconcile,
     })).resolves.toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
 
     expect(order.some((step) => step === 'commit')).toBe(false);

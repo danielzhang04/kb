@@ -1,8 +1,8 @@
 /**
- * Boot + tick wiring for `ControlPlaneStore#closeOrphanedHumanRequests` (store.ts) — the daemon-side
- * cousin of `write/mergeGateReconciler.ts` and `write/strandedArchiver.ts`, but far lower-risk: it only
- * ever mutates the control-plane JSON document it already owns (no filesystem move, no git commit, no
- * external process), so unlike the stranded-card archiver it is ON BY DEFAULT.
+ * Boot + tick wiring for `ControlPlaneStore#closeOrphanedHumanRequests` (store.ts) — a low-risk
+ * daemon-side sweeper: it only ever mutates the control-plane JSON document it already owns (no
+ * filesystem move, no git commit, no external process), so it is ON BY DEFAULT. (The old
+ * `write/mergeGateReconciler.ts`/`write/strandedArchiver.ts` cousins were deleted in P4 W6.2.)
  *
  * WHY THIS EXISTS: seven Human Requests sat open in the live store on 2026-08-11, and the ones that were
  * genuinely dead sat on runs that had already gone terminal with a manager that never came back.
@@ -22,11 +22,10 @@
  * local append leaves `ledgers/audit/dashboard-audit.ndjson` dirty in the shared `dashboard-ops` checkout,
  * and `prepareCoordination` (write/branch.ts) runs a plain `git pull --rebase origin ops` with NO
  * autostash — so one dirty ledger aborts EVERY subsequent coordination write in the daemon (queue-bridge
- * dispatch, merge-gate reconciler, stranded archiver, stage launch, publication reconcile). The boot sweep
- * fires on the very first boot, by design, so this was not a rare path. The merge-gate reconciler and
- * stranded archiver may append locally precisely because each one already OWNS an ops transaction whose
- * commit stages `AUDIT_REL_PATH` alongside its card paths — the local append and the commit sit inside the
- * same lock. This sweep has no card mutation to commit alongside (its only mutation is the control-plane
+ * dispatch, stage launch, publication reconcile). The boot sweep fires on the very first boot, by design,
+ * so this was not a rare path. A coordination writer that already OWNS an ops transaction may append
+ * locally precisely because its commit stages `AUDIT_REL_PATH` alongside its own paths — the local append
+ * and the commit sit inside the same lock. This sweep has no card mutation to commit alongside (its only mutation is the control-plane
  * JSON document it owns, which is not repo content), so there is nothing to stage with; it uses the other
  * half of the same seam instead. `appendAudit` is that half: append + `pull --rebase --autostash` + commit
  * + push, all inside ONE `withOpsTransaction` span, which is exactly the pairing audit/log.ts requires.

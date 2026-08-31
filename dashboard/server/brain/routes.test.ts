@@ -150,7 +150,7 @@ describe('defaultRunQuery (the real, non-stubbed argv construction)', () => {
   it('builds argv with flags before "--" and the raw query as the sole positional after it', async () => {
     mockExecFile.mockClear();
     const app = Fastify({ logger: false });
-    registerBrainSearch(app, { repoRoot: 'C:\\repo' });
+    registerBrainSearch(app, { repoRoot: 'C:\\repo', platform: 'win32' });
     await app.ready();
 
     // A dash-leading query is exactly the case the "--" separator exists to protect: without

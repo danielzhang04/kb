@@ -1,8 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import {
   createDeploymentFixture,
+  createExistingRootFileStoreHarnessForTest,
   createLeasedFileStoreForTest,
 } from './test-fixtures/controlStore.ts';
 
@@ -20,7 +23,13 @@ const fixture = (name: string): Record<string, any> => JSON.parse(readFileSync(f
 
 const readDocument = (path: string): Record<string, any> => JSON.parse(readFileSync(path, 'utf8'));
 
-function pausedV2Fixture({ resumeClaimBootId }: { resumeClaimBootId: string }): Record<string, any> {
+function pausedV2Fixture({
+  resumeClaimBootId,
+  executionHost = 'desktop',
+}: {
+  resumeClaimBootId: string;
+  executionHost?: 'desktop' | 'vm';
+}): Record<string, any> {
   const document = fixture('v2-empty.json');
   document.runs = [{
     subject: 'operator',
@@ -30,6 +39,8 @@ function pausedV2Fixture({ resumeClaimBootId }: { resumeClaimBootId: string }): 
     proposalRef: 'proposal-paused',
     proposalRevision: 1,
     proposalHash: 'c'.repeat(64),
+    owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    executionHost,
     publicationState: 'published',
     lifecycle: {
       kind: 'paused-for-deploy',
@@ -70,12 +81,29 @@ function readPaused(path: string): Record<string, any> {
   };
 }
 
-it('migrates once, commits CAS once, and reopens byte-identically', () => {
-  const opened = createLeasedFileStoreForTest({}, fixture('v1-supported.json'));
+it('backs up and migrates v2 once, commits CAS once, and reopens byte-identically', () => {
+  let validationCalls = 0;
+  const opened = createLeasedFileStoreForTest({
+    generatedPythonRoundTripForTest: (document) => {
+      validationCalls += 1;
+      // P6 W1: a v2 document now migrates to the current schema v4 (chaining 2->3->4) [P6-C32, P6-C48].
+      expect(document.version).toBe(4);
+    },
+  }, fixture('v2-empty.json'));
   let bytes: Buffer;
   let document: Record<string, any>;
   try {
-    expect(readDocument(opened.path)).toMatchObject({ version: 2, documentRevision: 1, deployments: [] });
+    expect(readDocument(opened.path)).toMatchObject({
+      version: 4, documentRevision: 1, scheduleCollectionRevision: 0, deployments: [], schedules: [],
+    });
+    expect(validationCalls).toBe(1);
+    const backups = join(dirname(opened.path), 'backups');
+    expect(existsSync(backups)).toBe(true);
+    // The generalised backup filename records the full from/to span of the applied migration [P6-C32].
+    expect(readdirSync(backups)).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^control-plane-v2-to-v4-[a-f0-9]{64}\.json$/),
+      expect.stringMatching(/^control-plane-v2-to-v4-[a-f0-9]{64}\.json\.sha256$/),
+    ]));
     const input = createDeploymentFixture();
     const made = opened.store.createDeployment('operator', input);
     expect(made.ok).toBe(true);
@@ -96,9 +124,29 @@ it('migrates once, commits CAS once, and reopens byte-identically', () => {
   }
 });
 
+it('aborts generated-Python prepublication validation before backup or store publication', () => {
+  const root = mkdtempSync(join(tmpdir(), 'control-python-prepublish-'));
+  const harness = createExistingRootFileStoreHarnessForTest();
+  const path = join(root, 'control', 'control-plane.json');
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    const source = Buffer.from(`${JSON.stringify(fixture('v2-empty.json'))}\n`, 'utf8');
+    writeFileSync(path, source);
+    expect(() => harness.open(root, {
+      generatedPythonRoundTripForTest: () => { throw new Error('generated Python rejected clone'); },
+    })).toThrow(/generated Python rejected clone/);
+    expect(readFileSync(path)).toEqual(source);
+    expect(existsSync(join(dirname(path), 'backups'))).toBe(false);
+  } finally {
+    harness.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it('normalizes a stale resume claim only at construction', () => {
   const opened = createLeasedFileStoreForTest(
-    {}, pausedV2Fixture({ resumeClaimBootId: 'boot-old' }), 'boot-new',
+    { p2MigrationContext: { executionHost: 'desktop' } },
+    pausedV2Fixture({ resumeClaimBootId: 'boot-old' }), 'boot-new',
   );
   try {
     expect(readPaused(opened.path).lifecycle.deployPause.resumeClaim).toBeNull();
@@ -106,6 +154,20 @@ it('normalizes a stale resume claim only at construction', () => {
     expect(opened.store.appendEvent('operator', RUN_REF,
       { kind: 'message', source: 'manager', summary: 'ordinary mutation' })).toMatchObject({ ok: true });
     expect(readPaused(opened.path).lifecycle.kind).toBe('paused-for-deploy');
+    expect(readPaused(opened.path).pendingActivation).toEqual(PENDING_ACTIVATION_FIXTURE);
+  } finally {
+    opened.close();
+  }
+});
+
+it('uses the supplied migration host to normalize a stale resume claim', () => {
+  const executionHost = process.platform === 'win32' ? 'vm' : 'desktop';
+  const opened = createLeasedFileStoreForTest(
+    { p2MigrationContext: { executionHost } },
+    pausedV2Fixture({ resumeClaimBootId: 'boot-old', executionHost }), 'boot-new',
+  );
+  try {
+    expect(readPaused(opened.path).lifecycle.deployPause.resumeClaim).toBeNull();
     expect(readPaused(opened.path).pendingActivation).toEqual(PENDING_ACTIVATION_FIXTURE);
   } finally {
     opened.close();

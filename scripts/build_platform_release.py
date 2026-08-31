@@ -22,7 +22,33 @@ from deploy.control_plane_schema import (
 RELEASE_ROOTS = (
     "dashboard/dist", "dashboard/server", "dashboard/src", "dashboard/node_modules",
     "dashboard/package.json", "dashboard/package-lock.json",
-    "dashboard/config/repositories.json", "scripts", "schemas", "deploy",
+    "dashboard/config/repositories.json", "dashboard/dist-server/kb-shell-broker.tar.gz",
+    "scripts", "schemas", "deploy",
+)
+# The PTY broker install payload produced by `npm run build:pty-broker`. It rides inside the platform
+# release so MANIFEST.sha256 covers it: deploy/install_pty_broker.py takes that manifest digest as the
+# archive's identity, so an unpackaged or unhashed broker archive must fail the release build, not the
+# install.
+BROKER_ARCHIVE = "dashboard/dist-server/kb-shell-broker.tar.gz"
+# A `BREAKING` file at the source root marks the release as a breaking deploy; the VM deploy-ready
+# reader keys the Inbox Confirm-vs-Deploy verb on the marker's presence in the release tree [P5-C42].
+BREAKING_MARKER = "BREAKING"
+BROKER_REQUIRED_MEMBERS = ("main.js", "package.json", "server/pty/linuxBrokerMain.js",
+                           "node_modules/node-pty/package.json", "node_modules/koffi/package.json")
+# The broker resolves both of these at runtime from an install root with no node_modules above it:
+# node-pty for the PTY itself, koffi for the SO_PEERCRED read on EVERY inbound connection. Each must
+# ship with a loadable native, or the service starts, reports active, and refuses every connection.
+BROKER_NATIVE_PREFIXES = (("node-pty", "node_modules/node-pty/"),
+                          ("koffi", "node_modules/@koromix/koffi-linux-"))
+ELF_MAGIC = b"\x7fELF"
+ELF_CLASS_64 = 2
+ELF_DATA_LSB = 1
+# x86-64 and aarch64: the only machines a kb VM runs.
+ELF_MACHINES = (0x3E, 0xB7)
+ATTESTED_SCHEDULE_SOURCES = (
+    "HEARTBEAT.md",
+    "orgs/*/HEARTBEAT.md",
+    "agents/*.md",
 )
 NATIVE_BUILD_KEEP_SUFFIXES = {".node", ".dll", ".so", ".dylib", ".exe"}
 
@@ -68,12 +94,79 @@ def release_files(source: Path) -> list[Path]:
                 and not _is_node_gyp_intermediate(item, build_roots)
             )
         )
-    return sorted(files, key=lambda item: item.relative_to(source).as_posix())
+    for pattern in ATTESTED_SCHEDULE_SOURCES:
+        matches = sorted(path for path in source.glob(pattern) if path.is_file())
+        if not matches:
+            raise FileNotFoundError(pattern)
+        files.extend(matches)
+    # The BREAKING marker is optional and additive: it ships (covered by MANIFEST.sha256, so the
+    # deploy-ready reader can never be spoofed by a planted marker) exactly when a `BREAKING` file
+    # sits at the source root, and is absent otherwise [P5-C42]. Its content is irrelevant — the VM
+    # reader keys only on presence — so it is shipped verbatim.
+    marker = source / BREAKING_MARKER
+    if marker.is_file():
+        files.append(marker)
+    return sorted(set(files), key=lambda item: item.relative_to(source).as_posix())
 
 
-def build_release(source: Path, version: str, output: Path, attestation: Path) -> None:
+def _assert_loadable_linux_native(bundle: tarfile.TarFile, member: tarfile.TarInfo) -> None:
+    """The VM loads these bytes verbatim: a 32-bit, big-endian, or foreign-arch .node is unloadable."""
+    extracted = bundle.extractfile(member)
+    header = b"" if extracted is None else extracted.read(20)
+    if len(header) < 20 or header[:4] != ELF_MAGIC:
+        raise ValueError(f"broker archive native module is not ELF: {member.name}")
+    if header[4] != ELF_CLASS_64:
+        raise ValueError(f"broker archive native module is not ELF class 64: {member.name}")
+    if header[5] != ELF_DATA_LSB:
+        raise ValueError(f"broker archive native module is not little-endian ELF: {member.name}")
+    machine = int.from_bytes(header[18:20], "little")
+    if machine not in ELF_MACHINES:
+        raise ValueError(
+            f"broker archive native module targets machine 0x{machine:x}: {member.name}")
+
+
+def assert_broker_archive(source: Path, host_platform: str = sys.platform) -> str:
+    """Prove the broker payload is installable on the VM, then return its sha256.
+
+    The installer never compiles anything: whatever ships here IS what runs as the PTY broker, so the
+    packaging assertions belong on this side - the entrypoint the unit's ExecStart pins, the ESM
+    marker that makes it load, and a loadable Linux native for BOTH runtime dependencies.
+
+    A non-Linux build host cannot produce any of that: npm installs only the host's native sidecars,
+    so the archive would ship a PE `pty.node`/`koffi.node` that fails at first broker spawn or first
+    connection - deep inside the VM, long after the release was signed. There is deliberately no
+    "accept a foreign native" path: the release is refused here instead.
+    """
+    if host_platform != "linux":
+        raise ValueError(
+            "the Linux broker archive can only be packed on a Linux build host; "
+            f"this host is {host_platform}")
+    archive = source / BROKER_ARCHIVE
+    if not archive.is_file():
+        raise FileNotFoundError(BROKER_ARCHIVE)
+    with tarfile.open(archive, "r:gz") as bundle:
+        members = bundle.getmembers()
+        if any(not member.isfile() for member in members):
+            raise ValueError("broker archive must contain regular files only")
+        names = {member.name for member in members}
+        missing = [name for name in BROKER_REQUIRED_MEMBERS if name not in names]
+        if missing:
+            raise ValueError(f"broker archive is missing {', '.join(missing)}")
+        for package, prefix in BROKER_NATIVE_PREFIXES:
+            natives = [member for member in members
+                       if member.name.startswith(prefix) and member.name.endswith(".node")]
+            if not natives:
+                raise ValueError(f"broker archive ships no {package} native module")
+            for member in natives:
+                _assert_loadable_linux_native(bundle, member)
+    return hashlib.sha256(archive.read_bytes()).hexdigest()
+
+
+def build_release(source: Path, version: str, output: Path, attestation: Path,
+                  host_platform: str = sys.platform) -> None:
     if len(version) != 40 or any(char not in "0123456789abcdef" for char in version):
         raise ValueError("version must be a full lowercase git commit")
+    assert_broker_archive(source, host_platform=host_platform)
     expected_name = f"kb-platform-{version}.tar.gz"
     if output.name != expected_name:
         raise ValueError(f"release archive must be named {expected_name}")

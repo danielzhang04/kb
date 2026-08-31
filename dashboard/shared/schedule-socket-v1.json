@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "operations": ["snapshot", "claim", "advance", "complete"],
+  "examples": [
+    {
+      "operation": "snapshot",
+      "request": { "version": 1, "operation": "snapshot" },
+      "response": {
+        "ok": true,
+        "version": 1,
+        "operation": "snapshot",
+        "snapshot": { "collectionRevision": 7, "schedules": [] }
+      }
+    },
+    {
+      "operation": "claim",
+      "request": {
+        "version": 1,
+        "operation": "claim",
+        "scheduleId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "scheduledFor": "2026-08-21T12:15:00-04:00",
+        "nextAt": "2026-08-21T12:30:00-04:00",
+        "expectedVersion": 3,
+        "idempotencyKey": "schedule-claim:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2026-08-21T12:15:00-04:00"
+      },
+      "response": {
+        "ok": true,
+        "version": 1,
+        "operation": "claim",
+        "claim": {
+          "scheduleId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scheduledFor": "2026-08-21T12:15:00-04:00",
+          "owner": { "type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md" },
+          "phase": "claimed",
+          "card": {
+            "meta": {
+              "schema-version": 1,
+              "id": "96b5fff9-ef10702d",
+              "project": "kb",
+              "action": "cadence:hygiene",
+              "target": "agents/hygiene.md",
+              "risk-tier": "T1",
+              "owner": "hygiene",
+              "claim-token": null,
+              "state": "inbox",
+              "approval": null,
+              "workflow": null,
+              "depends-on": [],
+              "variant-group": null,
+              "role": "work",
+              "session-id": null,
+              "runtime": null,
+              "model": null,
+              "execution-controller": "dashboard",
+              "scheduled_for": "2026-08-21T12:15:00-04:00",
+              "dispatched_at": "2026-08-21T12:15:01-04:00"
+            },
+            "body": "## Work order\n\nRun the scheduled hygiene agent.\n"
+          },
+          "cardBytesSha256": "7d528784d4e0066691491cb7596c2a42889582dadfb45309b90ab21b0b1975bb"
+        }
+      }
+    },
+    {
+      "operation": "advance",
+      "request": {
+        "version": 1,
+        "operation": "advance",
+        "scheduleId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "scheduledFor": "2026-08-21T12:15:00-04:00",
+        "nextAt": "2026-08-21T12:30:00-04:00",
+        "phase": "card-saved",
+        "idempotencyKey": "schedule-claim:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2026-08-21T12:15:00-04:00:card-saved"
+      },
+      "response": {
+        "ok": true,
+        "version": 1,
+        "operation": "advance",
+        "claim": {
+          "scheduleId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scheduledFor": "2026-08-21T12:15:00-04:00",
+          "owner": { "type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md" },
+          "phase": "card-saved",
+          "card": {
+            "meta": {
+              "schema-version": 1,
+              "id": "96b5fff9-ef10702d",
+              "project": "kb",
+              "action": "cadence:hygiene",
+              "target": "agents/hygiene.md",
+              "risk-tier": "T1",
+              "owner": "hygiene",
+              "claim-token": null,
+              "state": "inbox",
+              "approval": null,
+              "workflow": null,
+              "depends-on": [],
+              "variant-group": null,
+              "role": "work",
+              "session-id": null,
+              "runtime": null,
+              "model": null,
+              "execution-controller": "dashboard",
+              "scheduled_for": "2026-08-21T12:15:00-04:00",
+              "dispatched_at": "2026-08-21T12:15:01-04:00"
+            },
+            "body": "## Work order\n\nRun the scheduled hygiene agent.\n"
+          },
+          "cardBytesSha256": "7d528784d4e0066691491cb7596c2a42889582dadfb45309b90ab21b0b1975bb"
+        }
+      }
+    },
+    {
+      "operation": "complete",
+      "request": {
+        "version": 1,
+        "operation": "complete",
+        "scheduleId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "scheduledFor": "2026-08-21T12:15:00-04:00",
+        "runRef": "run-hygiene-1",
+        "lastOutcome": "ok",
+        "nextAt": "2026-08-21T12:30:00-04:00",
+        "idempotencyKey": "schedule-complete:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2026-08-21T12:15:00-04:00"
+      },
+      "response": {
+        "ok": true,
+        "version": 1,
+        "operation": "complete",
+        "receipt": {
+          "schedule": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "owner": { "type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md" },
+            "cadence": { "source": "*/15 * * * *", "words": "Every 15 minutes" },
+            "nextAt": "2026-08-21T12:30:00-04:00",
+            "lastOutcome": "ok",
+            "armed": true,
+            "origin": "seed",
+            "mirroredAt": null,
+            "mirrorPath": "HEARTBEAT.md",
+            "version": 4
+          },
+          "collectionRevision": 8,
+          "replayed": false
+        }
+      }
+    }
+  ]
+}

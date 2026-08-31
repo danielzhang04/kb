@@ -33,7 +33,16 @@ export function createExistingRootFileStoreHarnessForTest(): {
       lease = acquireWriterLease({ stateRoot: root, bootId });
       leases.set(root, lease);
     }
-    return createFileControlPlaneStore(root, { mode: 'already-locked', lease }, options);
+    return createFileControlPlaneStore(root, { mode: 'already-locked', lease }, {
+      ...options,
+      p2MigrationContext: {
+        agentDeclarations: [],
+        workflowDefinitions: [],
+        workflowLaunchAudits: [],
+        auditRows: [],
+        ...options.p2MigrationContext,
+      },
+    });
   };
   return {
     open,

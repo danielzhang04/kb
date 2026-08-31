@@ -14,7 +14,7 @@
  * Nothing in this module is constructed unless the activation gate is on (see `activation.ts`); with the
  * gate off it is never imported into a live code path.
  */
-import type { ManagedSessionBroker } from './broker.ts';
+import type { AttemptExecutionPort } from '../pty/contracts.ts';
 import type { ExecutionCancellationController, ManagerAdapter } from './execution.ts';
 
 /**
@@ -51,12 +51,13 @@ export function createWorkerCancellationRegistry(): WorkerCancellationRegistry {
   };
 }
 
+/**
+ * The manager adapter takes no process authority at all. P3 removed the only supervisor that could
+ * have given it one, and the metadata-only realization below spawns nothing, so there is deliberately
+ * nothing to inject.
+ */
 export interface BrokerManagerAdapterOptions {
-  /**
-   * Reserved for the D3(b→a) upgrade path (a broker-backed `claude` manager session). Unused under the
-   * default D3(b) realization: `ensure()` spawns nothing, so no broker is required to construct one.
-   */
-  broker?: ManagedSessionBroker;
+  never?: never;
 }
 
 /**
@@ -97,27 +98,30 @@ export function createBrokerManagerAdapter(_options: BrokerManagerAdapterOptions
 }
 
 export interface BrokerCancellationControllerOptions {
-  /** Used only to stop a manager session (a no-op under D3(b), where no manager child is live). */
-  broker: Pick<ManagedSessionBroker, 'stop'>;
+  /** The attempt authority. `null` when the daemon has no PTY host, in which case nothing is live. */
+  attemptPort: Pick<AttemptExecutionPort, 'cancel'> | null;
   /** The shared registry the worker adapter populated at spawn. */
   registry: Pick<WorkerCancellationRegistry, 'cancel'>;
 }
 
 /**
- * The injected, idempotent stop authority. `cancelManager` delegates to `broker.stop` (which returns
- * false for an unknown/already-stopped session, so it is safe to call repeatedly). `cancelWorker` maps
- * the attempt reference to its `automatic-attempt:<attemptRef>` operationKey and invokes the worker
- * adapter's registered idempotent cancel; an unknown reference is a no-op.
+ * The injected, idempotent stop authority. `cancelManager` is a no-op: the metadata-only manager owns
+ * no child, so there is no process to signal. `cancelWorker` maps the attempt reference to its
+ * `automatic-attempt:<attemptRef>` operationKey, cancels the attempt session through the attempt port
+ * (an unknown key is a refusal, never a throw) and invokes the worker adapter's registered idempotent
+ * cancel; an unknown reference is a no-op on both.
  */
 export function createBrokerCancellationController(
   options: BrokerCancellationControllerOptions,
 ): ExecutionCancellationController {
   return {
-    async cancelManager(input) {
-      options.broker.stop(input.sessionRef);
+    async cancelManager(_input) {
+      // Metadata-only manager: the engine coordinates the DAG in-process and owns no manager child.
     },
     async cancelWorker(input) {
-      options.registry.cancel(`automatic-attempt:${input.attemptRef}`);
+      const operationKey = `automatic-attempt:${input.attemptRef}`;
+      await options.attemptPort?.cancel({ operationKey, reason: 'operator cancelled the run' });
+      options.registry.cancel(operationKey);
     },
   };
 }

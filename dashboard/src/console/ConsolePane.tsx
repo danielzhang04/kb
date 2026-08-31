@@ -1,44 +1,84 @@
 /**
- * `<ConsolePane>` — ONE live shell, rendered anywhere.
+ * `<ConsolePane>` — ONE v2 PTY session, rendered anywhere.
  *
- * This is the pane that used to be `TerminalTab` inside `views/Terminal.tsx`, extracted verbatim in
- * behaviour so that the Terminal view is now a pure TAB MANAGER over it and other surfaces (an agent's
- * detail, a workflow's detail) can embed the same console without forking a second xterm/socket stack.
+ * The pane owns the lazy xterm + fit-addon construction, one {@link PtyConnection}, the typed frame
+ * protocol, the keystroke pump, the fit/resize chain, the detach/close controls, the reconnect cursor,
+ * and the closed diagnostics rendering. It owns no tabs, no persistence, no page chrome, and no policy
+ * about WHEN a console should exist — the Terminal workspace and the Run view decide that.
  *
- * What it owns: the lazy xterm + fit-addon construction, the `/api/pty` WebSocket, the control-frame
- * protocol (`{type:'error'}` / `{type:'session'}`), the keystroke pump, the fit/resize chain, the
- * imperative close control, and the connection-state rendering. What it does NOT own: tabs, caps,
- * persistence, page chrome, or any policy about WHEN a console should exist — all of that stays with
- * whoever renders it.
+ * ── The protocol, in full ──────────────────────────────────────────────────────────────────────────
  *
- * ── The one invariant this file exists to hold: A REMOUNT MUST NOT RESPAWN ──
+ * There is no raw-string path in either direction. The socket URL carries no query; the FIRST frame is
+ * `create` (launcher + registered root id + relative cwd + geometry) or `attach` (session id + the
+ * cursor to resume from). Keystrokes are `input` frames carrying base64. Output arrives as `data`
+ * frames whose `sequence` is a BYTE OFFSET ([C-R6]), so this pane's reconnect cursor is
+ * `sequence + byteLength(data)`: a dropped socket keeps the scrollback and offers Reattach, which
+ * re-opens and asks for exactly the bytes it has not seen. The server answers with the `replayFrom` it
+ * could honour and the `nextSequence` to hold — and when it had to start later than the pane asked, the
+ * pane writes {@link LOST_OUTPUT_NOTICE} rather than pretending the stream is continuous. Frames
+ * flagged `replay: true` are scrollback, not live output.
  *
- * `TerminalTab` keyed its connection effect on the `spawn` OBJECT and on every callback prop, which was
- * safe only because the tab manager happened to hand it state-held objects and `useCallback` sinks. An
- * EMBEDDED console is rendered with inline literals (`{ mode:'spawn', spawn:{ mode:'agent', agentId } }`)
- * and inline arrow callbacks — under the old deps that is a fresh identity every render, so every parent
- * re-render would tear down the socket and SPAWN ANOTHER SHELL, leaking shells into the daemon's 8-session
- * cap. So here the connection effect keys on a derived STRING ({@link consoleTargetKey}) and reads the
- * live target and callbacks out of refs. Identity churn in props is now structurally incapable of
- * reconnecting; only a genuine change of target can.
+ * ── Read-only replay ───────────────────────────────────────────────────────────────────────────────
  *
- * ── Hiding is by `display`, deliberately ──
+ * A `replay` target attaches like any other reader but NEVER sends `input` or `resize`: stdin is
+ * disabled on the grid, no keystroke handler is wired, and the pane says so out loud. Read-only here is
+ * structural (no frame is constructible), not a disabled button.
+ *
+ * ── Hiding is by `display`, deliberately ───────────────────────────────────────────────────────────
  *
  * `fitAndResize` no-ops when `host.offsetParent === null`, which is how it detects "I am hidden and my
  * dimensions are a lie". That test only works for `display:none` hiding — a `visibility:hidden` or
  * `opacity:0` pane still has an offsetParent and would be fitted against a stale box. `.console-pane`
  * therefore hides with `display:none`; do not change it to any other hiding mechanism.
- *
- * Protocol (unchanged, do not touch): SERVER→BROWSER is raw PTY output as text frames (write straight to
- * xterm) plus occasional `{"type":"error","reason":"…"}` / `{"type":"session","sessionId":"…"}` JSON;
- * BROWSER→SERVER is raw keystrokes as text plus `{"type":"resize",…}` / `{"type":"close"}` JSON.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import '../styles/console.css';
 import { useOptionalSession } from '../lib/sessionContext';
-import { defaultPtySocketFactory, defaultTerminalSessionsClient, ptyQuery } from '../lib/terminalClient';
-import type { PtySocketFactory, PtySpawnTarget, TerminalSessionsClient } from '../lib/terminalClient';
+import {
+  attachFrame,
+  closeFrame,
+  createFrame,
+  decodeOutput,
+  defaultPtySocketFactory,
+  defaultTerminalSessionsClient,
+  detachFrame,
+  inputFrame,
+  openPtyConnection,
+  outputByteLength,
+  refusalMessage,
+  resizeFrame,
+} from '../lib/terminalClient';
+import type {
+  PtyConnection,
+  PtyConnectionClosure,
+  PtySocketFactory,
+  TerminalSessionsClient,
+} from '../lib/terminalClient';
+import type {
+  BrowserServerFrame,
+  SafeRootId,
+  SessionLauncher,
+  SessionSummary,
+} from '../../shared/ptyProtocol.ts';
+
+/**
+ * The one line the grid ever writes on its own behalf. A reattach whose scrollback starts later than
+ * the pane's cursor has a hole in it; the operator is told in plain words instead of reading a seam
+ * that looks like output. No numbers, no cursor, no byte counts — none of that is theirs to reconcile.
+ */
+export const LOST_OUTPUT_NOTICE = 'Earlier output was not kept.';
+
+/** One sentence per member of the closed close-reason set. A shed reader must not read "still running". */
+export function closureMessage(closure: PtyConnectionClosure): string {
+  switch (closure) {
+    case 'backpressure': return 'Disconnected \u2014 output outpaced this connection. Reattach to continue.';
+    case 'tooLarge': return 'Disconnected \u2014 a message was too large to send. Reattach to continue.';
+    case 'policy': return 'Disconnected \u2014 this connection was refused. Reattach to continue.';
+    case 'error': return 'Disconnected \u2014 the connection failed. Reattach to continue.';
+    default: return 'Disconnected. The session is still running.';
+  }
+}
 
 /**
  * xterm theme mapped ENTIRELY onto the house near-black palette (app.css tokens, resolved to literals
@@ -70,84 +110,72 @@ export const HOUSE_XTERM_THEME = {
 } as const;
 
 /**
- * WHAT this console connects to — a discriminated union, so the two entry shapes cannot be combined.
- *
- * The old prop pair (`attachSessionId?` + `spawn?`) let a caller pass both, and `ptyQuery` silently
- * dropped the spawn because an attach wins server-side. "Silently ignored" is exactly the class of bug
- * this leg is removing: a caller either reattaches to a shell that exists, or opens one.
- *
- * `spawn` is optional WITHIN the spawn variant because the login shell is the absence of a spawn
- * request on the wire (`?` with no parameters) — the server's grammar has no `shell` mode to name, and
- * inventing one client-side would be a second, lying source of truth.
+ * WHAT this console connects to. `create` mints a session (the registry names it and mints its id);
+ * `attach` resumes an existing one with control; `replay` resumes one read-only. The three are a closed
+ * union so "attach AND spawn" — the old silently-dropped combination — is not expressible.
  */
 export type ConsoleTarget =
-  | { mode: 'spawn'; spawn?: PtySpawnTarget }
-  | { mode: 'attach'; sessionId: string };
+  | { mode: 'create'; launcher: SessionLauncher; rootId: SafeRootId; relativeCwd: string }
+  | { mode: 'attach'; sessionId: string }
+  | { mode: 'replay'; sessionId: string };
 
-/** Per-console connection state. Streaming-only — there is no passkey handshake in this path. */
-export type ConsoleConnState = 'connecting' | 'connected' | 'closed' | 'error';
-
-/** A parsed server control frame, or `null` for ordinary raw PTY output. */
-type PtyControlFrame = { type: 'error'; reason: string } | { type: 'session'; sessionId: string };
+/** Per-console connection state, as the operator sees it. */
+export type ConsoleConnState = 'connecting' | 'live' | 'detached' | 'closed' | 'error';
 
 /**
- * Detect a server control frame. Every non-control frame is raw PTY bytes destined for xterm. We only
- * treat a frame as control when it parses AND carries an exact known shape, so ordinary shell output
- * that merely starts with `{` still streams.
- */
-export function parseControlFrame(raw: string): PtyControlFrame | null {
-  if (raw.length === 0 || raw[0] !== '{') return null;
-  try {
-    const parsed = JSON.parse(raw) as { type?: unknown; reason?: unknown; sessionId?: unknown } | null;
-    if (parsed !== null && typeof parsed === 'object') {
-      if (parsed.type === 'error' && typeof parsed.reason === 'string') {
-        return { type: 'error', reason: parsed.reason };
-      }
-      if (parsed.type === 'session' && typeof parsed.sessionId === 'string') {
-        return { type: 'session', sessionId: parsed.sessionId };
-      }
-    }
-  } catch {
-    /* not JSON → raw PTY bytes */
-  }
-  return null;
-}
-
-/**
- * The ONE value the connection effect keys on. Two targets with this same key are the same connection,
- * however many times their object literals are rebuilt. An attach and a spawn can never collide because
- * the prefixes differ, and two different spawn requests differ in their query.
+ * The ONE value the connection effect keys on. Two targets with this key are the same connection,
+ * however many times their object literals are rebuilt — so a parent re-render passing inline literals
+ * can never tear down a socket and mint a second session behind the operator's back.
  */
 export function consoleTargetKey(target: ConsoleTarget): string {
-  return target.mode === 'attach'
-    ? `attach:${target.sessionId}`
-    : `spawn:${ptyQuery(undefined, target.spawn)}`;
+  if (target.mode === 'create') return `create:${target.launcher}:${target.rootId}:${target.relativeCwd}`;
+  return `${target.mode}:${target.sessionId}`;
 }
 
-/** An imperative handle a host registers, so ITS close affordance can ask this console to tear down its
- *  own (persistent) shell — the pane is the only holder of the live socket + the confirmed session id. */
+/** An imperative handle a host registers, so ITS chrome can drive this pane's session. */
 export interface ConsoleControl {
+  /** End the session on the host (a `close` frame while live, else the REST DELETE). */
   requestClose(): void;
+  /** Leave the session running and drop this attachment. */
+  requestDetach(): void;
+  /** Re-open the socket and resume from the cursor. */
+  reconnect(): void;
 }
+
+/** One [C-R6] replay frame as the pane consumes it: base64 payload at a byte offset. */
+export type ConsoleReplayFrame = { sequence: number; encoding: 'base64'; data: string };
+
+/**
+ * A whole terminal attempt's transcript, already read. `lostOutput` says the retention window dropped
+ * the head, so the pane writes {@link LOST_OUTPUT_NOTICE} before the bytes instead of presenting a
+ * spliced stream as continuous; `notice` is the ONE sentence a refused read shows instead of frames.
+ */
+export type ConsoleReplayLoad =
+  | { ok: true; frames: readonly ConsoleReplayFrame[]; lostOutput?: boolean }
+  | { ok: false; notice: string };
 
 export interface ConsolePaneProps {
-  /** What to connect to. See {@link ConsoleTarget}. */
   target: ConsoleTarget;
+  /**
+   * Where a `replay` target's bytes come from. Supplied, the pane opens NO socket: it writes the read
+   * transcript into the same single xterm this pane already owns ([C-R6] — replay creates no second
+   * grid and has no input, resize, or close path). Absent, a `replay` target still resumes over the
+   * live socket read-only, which is how the Terminal workspace observes a session it does not control.
+   */
+  replaySource?: (sessionId: string) => Promise<ConsoleReplayLoad>;
   /**
    * Whether this console is the visible one. Drives `display` (NOT unmounting — a hidden console keeps
    * its socket and its scrollback) and a re-fit when it becomes visible again.
    */
   visible: boolean;
   socketFactory?: PtySocketFactory;
-  /** Persistence client; only its `remove` is used here, to kill a shell whose socket is already gone. */
+  /** REST client, used only to close a session whose socket is already gone. */
   sessionsClient?: TerminalSessionsClient;
-  /** The server's `{type:'session'}` bind frame — the confirmed id for this console. */
-  onSession?: (sessionId: string) => void;
-  /** The server shell ENDED (shell exit / operator close); the reason is the socket's close reason. */
-  onExit?: (reason: string) => void;
-  /** A server `{type:'error'}` frame (e.g. `too-many-terminals`). Also rendered in-pane. */
-  onError?: (reason: string) => void;
-  /** Publish/withdraw this console's imperative close control. */
+  /** Every decoded server frame, so a manager can fold it into the W4 workspace model. */
+  onServerFrame?: (frame: BrowserServerFrame) => void;
+  /** This console's session, the moment the host confirms it. */
+  onSession?: (session: SessionSummary) => void;
+  /** Publish/withdraw this console's imperative controls. */
   registerControl?: (control: ConsoleControl | null) => void;
   /** Appended to every `data-testid` here, so a manager can address one console among many. */
   testIdSuffix?: string;
@@ -159,11 +187,11 @@ export interface ConsolePaneProps {
 export function ConsolePane({
   target,
   visible,
+  replaySource,
   socketFactory = defaultPtySocketFactory,
   sessionsClient = defaultTerminalSessionsClient,
+  onServerFrame,
   onSession,
-  onExit,
-  onError,
   registerControl,
   testIdSuffix = '',
   role,
@@ -172,26 +200,26 @@ export function ConsolePane({
   // The bearer comes from the app's ONE session, not a prop. Optional so an embedded console inside a
   // presentational surface rendered standalone degrades to "connects nothing" instead of throwing.
   const sessionToken = useOptionalSession()?.session?.token;
+  const readOnly = target.mode === 'replay';
   const hostRef = useRef<HTMLDivElement>(null);
-  // Live handles kept in refs so the resize/fit effects can reach them without re-running the mount effect.
-  const xtermRef = useRef<{ cols: number; rows: number; write(d: string): void; dispose(): void } | null>(null);
+  const xtermRef = useRef<{ cols: number; rows: number; write(d: string): void; clear(): void; dispose(): void } | null>(null);
   const fitRef = useRef<{ fit(): void } | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  // The server-confirmed sessionId for THIS console (from the bind frame, or the id we attached to).
-  const sessionIdRef = useRef<string | null>(target.mode === 'attach' ? target.sessionId : null);
+  const connectionRef = useRef<PtyConnection | null>(null);
+  // The host-confirmed session id and attachment for THIS console, plus the reconnect cursor.
+  const sessionIdRef = useRef<string | null>(target.mode === 'create' ? null : target.sessionId);
+  const attachmentIdRef = useRef<string | null>(null);
+  const cursorRef = useRef(0);
   const [state, setState] = useState<ConsoleConnState>('connecting');
-  const [errorReason, setErrorReason] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
+  const [reconnectTick, setReconnectTick] = useState(0);
 
-  // Everything the connection effect must READ but must never RE-RUN for. See the header note: a caller
-  // passing inline objects/arrows would otherwise reconnect — i.e. respawn — on every parent render.
+  // Everything the connection effect must READ but must never RE-RUN for.
   const targetRef = useRef(target);
   targetRef.current = target;
+  const onServerFrameRef = useRef(onServerFrame);
+  onServerFrameRef.current = onServerFrame;
   const onSessionRef = useRef(onSession);
   onSessionRef.current = onSession;
-  const onExitRef = useRef(onExit);
-  onExitRef.current = onExit;
-  const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
   const sessionsClientRef = useRef(sessionsClient);
   sessionsClientRef.current = sessionsClient;
   const registerControlRef = useRef(registerControl);
@@ -200,15 +228,14 @@ export function ConsolePane({
   const targetKey = consoleTargetKey(target);
 
   /**
-   * Fit the terminal to its pane and relay the resulting geometry to the PTY. No-ops while hidden (a
-   * `display:none` pane measures 0×0 and would corrupt the grid) — the `visible` effect below re-fits
-   * the moment it comes back.
+   * Fit the terminal to its pane and relay the resulting geometry to the host. No-ops while hidden (a
+   * `display:none` pane measures 0×0 and would corrupt the grid) and in read-only replay, where this
+   * console has no attachment it may resize.
    */
   const fitAndResize = useCallback(() => {
     const host = hostRef.current;
     const fitAddon = fitRef.current;
     const xterm = xtermRef.current;
-    const ws = socketRef.current;
     if (!host || !fitAddon || !xterm) return;
     if (host.offsetParent === null) return; // hidden pane — dimensions are unreliable
     try {
@@ -216,138 +243,261 @@ export function ConsolePane({
     } catch {
       return; // fit can throw if the element was detached mid-teardown
     }
-    if (ws && ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'resize', cols: xterm.cols, rows: xterm.rows }));
+    if (readOnly) return;
+    const sessionId = sessionIdRef.current;
+    const attachmentId = attachmentIdRef.current;
+    const connection = connectionRef.current;
+    if (connection?.isOpen && sessionId && attachmentId) {
+      connection.send(resizeFrame(sessionId, attachmentId, xterm.cols, xterm.rows));
     }
-  }, []);
+  }, [readOnly]);
 
-  // Connect: lazily create xterm + fit addon, open the socket, wire the streaming path. Runs once per
-  // (token, target) — NOT per render. Cleanup closes the socket (which merely DETACHES the persistent
-  // shell server-side; the shell keeps running) and disposes the terminal.
+  /**
+   * The ONE grid this pane will ever own. Every path that needs to write output — the socket pump and
+   * the read-only replay reader — goes through here, so a pane can never end up with two xterms
+   * ([C-R6]); a reconnect and a replay reload both keep the scrollback that is already on screen.
+   */
+  const ensureGrid = useCallback(async (): Promise<typeof xtermRef.current> => {
+    if (xtermRef.current) return xtermRef.current;
+    const [{ Terminal: XTerm }, { FitAddon }] = await Promise.all([
+      import('@xterm/xterm'),
+      import('@xterm/addon-fit'),
+    ]);
+    if (!hostRef.current) return null;
+    if (xtermRef.current) return xtermRef.current; // a concurrent caller won the race
+    const created = new XTerm({
+      theme: HOUSE_XTERM_THEME,
+      fontFamily: "ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace",
+      fontSize: 13,
+      cursorBlink: !readOnly,
+      cursorStyle: 'block',
+      convertEol: true,
+      disableStdin: readOnly,
+    });
+    const fitAddon = new FitAddon();
+    created.loadAddon(fitAddon);
+    created.open(hostRef.current);
+    xtermRef.current = created as unknown as typeof xtermRef.current;
+    fitRef.current = fitAddon as unknown as typeof fitRef.current;
+    fitAndResize(); // initial size (guarded no-op if this console mounts hidden)
+    if (!readOnly) {
+      created.onData((data: string) => {
+        const sessionId = sessionIdRef.current;
+        const attachmentId = attachmentIdRef.current;
+        const connection = connectionRef.current;
+        if (!connection?.isOpen || !sessionId || !attachmentId) return;
+        connection.send(inputFrame(sessionId, attachmentId, data));
+      });
+    }
+    return xtermRef.current;
+  }, [fitAndResize, readOnly]);
+
+  /**
+   * Read-only replay from a REST source ([C-R6]). No socket, no attachment, no cursor to hold: the
+   * whole retained transcript is read once and written into the pane's own grid. A refused read is one
+   * sentence, never an empty grid that looks like an attempt that printed nothing.
+   */
   useEffect(() => {
-    // Never open a bare socket without a bearer (locked, or no session context at all).
-    if (!sessionToken) return;
-    const connectTarget = targetRef.current;
-    const attachSessionId = connectTarget.mode === 'attach' ? connectTarget.sessionId : undefined;
-    const spawn = connectTarget.mode === 'spawn' ? connectTarget.spawn : undefined;
+    // Keyed on the STRING `targetKey`, exactly like the socket effect below. `target` is a fresh object
+    // literal on every parent render, so depending on it re-ran this effect on each detail refresh: the
+    // whole transcript was re-downloaded and appended to the grid it was already in. The grid is also
+    // cleared before the write, so a genuine re-run (a real target change, or a reconnect) replaces the
+    // transcript instead of duplicating it.
+    const replayTarget = targetRef.current;
+    if (!replaySource || replayTarget.mode !== 'replay') return;
     let disposed = false;
     setState('connecting');
-    setErrorReason(null);
-    sessionIdRef.current = attachSessionId ?? null;
+    setDiagnostic(null);
+    void (async () => {
+      const [grid, load] = await Promise.all([ensureGrid(), replaySource(replayTarget.sessionId)]);
+      if (disposed) return;
+      if (!load.ok) {
+        setState('error');
+        setDiagnostic(load.notice);
+        return;
+      }
+      grid?.clear();
+      if (load.lostOutput) grid?.write(`${LOST_OUTPUT_NOTICE}\r\n`);
+      for (const frame of load.frames) grid?.write(decodeOutput(frame.data));
+      setState('closed');
+      fitAndResize();
+    })();
+    return () => { disposed = true; };
+  }, [ensureGrid, fitAndResize, replaySource, targetKey, reconnectTick]);
+
+  // Connect: lazily create xterm + fit addon, open ONE socket, send the opening frame, pump the rest.
+  // Runs once per (token, target, reconnect) — never per render. Cleanup closes the socket, which merely
+  // DETACHES the session host-side; the session keeps running and can be reattached from the cursor.
+  useEffect(() => {
+    if (!sessionToken) return;
+    // A replay fed from the REST source never opens a socket — that read IS the transcript.
+    if (replaySource && targetRef.current.mode === 'replay') return;
+    const connectTarget = targetRef.current;
+    let disposed = false;
+    setState('connecting');
 
     void (async () => {
-      const [{ Terminal: XTerm }, { FitAddon }] = await Promise.all([
-        import('@xterm/xterm'),
-        import('@xterm/addon-fit'),
-      ]);
-      if (disposed || !hostRef.current) return;
+      // A pane that already has a grid (a reconnect) keeps it: the scrollback is the whole point.
+      const grid = await ensureGrid();
+      if (disposed || grid === null) return;
 
-      const xterm = new XTerm({
-        theme: HOUSE_XTERM_THEME,
-        fontFamily: "ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace",
-        fontSize: 13,
-        cursorBlink: true,
-        cursorStyle: 'block',
-        convertEol: true,
-      });
-      const fitAddon = new FitAddon();
-      xterm.loadAddon(fitAddon);
-      xterm.open(hostRef.current);
-      xtermRef.current = xterm as unknown as typeof xtermRef.current;
-      fitRef.current = fitAddon as unknown as typeof fitRef.current;
-      fitAndResize(); // initial size (guarded no-op if this console mounts hidden)
-
-      const ws = socketFactory(sessionToken, attachSessionId, spawn);
-      socketRef.current = ws;
-      ws.onopen = () => {
-        if (disposed) return;
-        setState('connected');
-        fitAndResize(); // send the PTY its first real window size
-      };
-      ws.onmessage = (ev) => {
-        if (disposed) return;
-        const raw = typeof ev.data === 'string' ? ev.data : '';
-        if (raw.length === 0) return;
-        // Control path FIRST: server error/session frames are handled, never written to the grid.
-        const frame = parseControlFrame(raw);
-        if (frame) {
+      const connection = openPtyConnection(sessionToken, {
+        onOpen: () => {
+          if (disposed) return;
+          const cols = grid?.cols ?? 80;
+          const rows = grid?.rows ?? 24;
+          if (connectTarget.mode === 'create' && sessionIdRef.current === null) {
+            connection.send(createFrame({
+              launcher: connectTarget.launcher,
+              rootId: connectTarget.rootId,
+              relativeCwd: connectTarget.relativeCwd,
+              cols,
+              rows,
+            }));
+            return;
+          }
+          // Everything else — an explicit attach, a replay, and a reconnect after a create — resumes the
+          // named session from the cursor. A reconnect must never mint a second session.
+          const sessionId = sessionIdRef.current ?? (connectTarget.mode === 'create' ? null : connectTarget.sessionId);
+          if (sessionId === null) return;
+          connection.send(attachFrame(sessionId, cursorRef.current));
+        },
+        onFrame: (frame) => {
+          if (disposed) return;
+          onServerFrameRef.current?.(frame);
+          if (frame.type === 'created' || frame.type === 'attached') {
+            sessionIdRef.current = frame.session.sessionId;
+            attachmentIdRef.current = frame.attachmentId;
+            if (frame.type === 'attached') {
+              // The server's cursor wins: it knows what it actually replayed. If it had to start later
+              // than this pane asked for, the bytes in between are gone for good — say so once, in
+              // plain words, on its own line, rather than splicing an invisible hole into the grid.
+              const asked = cursorRef.current;
+              cursorRef.current = frame.nextSequence;
+              if (frame.replayFrom > asked) grid?.write(`\r\n${LOST_OUTPUT_NOTICE}\r\n`);
+            }
+            setState('live');
+            setDiagnostic(null);
+            onSessionRef.current?.(frame.session);
+            fitAndResize();
+            return;
+          }
+          if (frame.type === 'session') {
+            onSessionRef.current?.(frame.session);
+            return;
+          }
+          if (frame.type === 'data') {
+            // The cursor is a BYTE offset: it advances past the bytes this frame carried, live or
+            // replayed. Never backwards — a replayed frame the pane already holds must not rewind it.
+            const after = frame.sequence + outputByteLength(frame.data);
+            if (after > cursorRef.current) cursorRef.current = after;
+            grid?.write(decodeOutput(frame.data));
+            return;
+          }
+          if (frame.type === 'exit') {
+            setState('closed');
+            setDiagnostic(frame.exit.exitCode === null
+              ? `Session ended (${frame.exit.reason}).`
+              : `Session ended with exit code ${frame.exit.exitCode}.`);
+            return;
+          }
+          if (frame.type === 'ack' && frame.action === 'close') {
+            setState('closed');
+            setDiagnostic('Session closed.');
+            return;
+          }
+          if (frame.type === 'ack' && frame.action === 'detach') {
+            attachmentIdRef.current = null;
+            setState('detached');
+            setDiagnostic('Detached. This session is still running.');
+            return;
+          }
           if (frame.type === 'error') {
             setState('error');
-            setErrorReason(frame.reason);
-            onErrorRef.current?.(frame.reason);
-          } else {
-            sessionIdRef.current = frame.sessionId;
-            onSessionRef.current?.(frame.sessionId);
+            setDiagnostic(refusalMessage(frame.code));
           }
-          return;
-        }
-        xterm.write(raw);
-      };
-      ws.onclose = (ev?: { reason?: string }) => {
-        if (disposed) return;
-        setState('closed');
-        // A clean server-driven end (shell exited / operator close) is reported up; an UNEXPECTED
-        // disconnect (daemon restart, code 1006 / no reason) is NOT — the console stays with its error
-        // display, and the next reconcile decides whether its shell is really gone.
-        const reason = ev?.reason ?? '';
-        if (reason === 'shell exited' || reason === 'closed by operator') onExitRef.current?.(reason);
-      };
-      ws.onerror = () => !disposed && setState('error');
-      // Keystrokes → the PTY stdin (raw text frames).
-      xterm.onData((d: string) => {
-        if (ws.readyState === ws.OPEN) ws.send(d);
-      });
+        },
+        onProtocolViolation: () => {
+          if (disposed) return;
+          setState('error');
+          setDiagnostic('The dashboard received a frame it could not verify.');
+          // A peer that violated the protocol keeps no socket: whatever it sends next is unverifiable too.
+          connectionRef.current?.close();
+        },
+        onClose: (closure) => {
+          if (disposed) return;
+          attachmentIdRef.current = null;
+          // A closed/exited session stays closed; anything else is a lost socket the operator may resume.
+          setState((current) => (current === 'closed' ? current : closure === 'error' ? 'error' : 'detached'));
+          setDiagnostic((current) => current ?? closureMessage(closure));
+        },
+      }, socketFactory);
+      connectionRef.current = connection;
+      if (disposed) connection.close();
     })();
 
     return () => {
       disposed = true;
-      try {
-        // Closing the socket only DETACHES the persistent shell server-side — it keeps running. A console
-        // truly being closed has already killed its shell via the close frame / REST DELETE.
-        socketRef.current?.close();
-      } catch {
-        /* socket may not have opened */
-      }
-      xtermRef.current?.dispose();
-      socketRef.current = null;
-      xtermRef.current = null;
-      fitRef.current = null;
+      connectionRef.current?.close();
+      connectionRef.current = null;
+      attachmentIdRef.current = null;
     };
-  }, [sessionToken, targetKey, socketFactory, fitAndResize]);
+  }, [sessionToken, targetKey, socketFactory, fitAndResize, ensureGrid, replaySource, reconnectTick]);
 
-  // Publish an imperative close control: a graceful `{type:'close'}` when the socket is live (the server
-  // kills + closes, and `onclose` reports the exit), else a REST DELETE for a session whose socket is
-  // already gone.
+  // Dispose the grid only when the pane itself unmounts — a reconnect keeps the scrollback.
+  useEffect(() => () => {
+    xtermRef.current?.dispose();
+    xtermRef.current = null;
+    fitRef.current = null;
+  }, []);
+
   const requestClose = useCallback(() => {
-    const ws = socketRef.current;
+    const connection = connectionRef.current;
     const sessionId = sessionIdRef.current;
-    if (ws && ws.readyState === ws.OPEN) {
-      try {
-        ws.send(JSON.stringify({ type: 'close' }));
-      } catch {
-        onExitRef.current?.('closed by operator');
-      }
+    if (!sessionId) return;
+    if (connection?.isOpen) {
+      connection.send(closeFrame(sessionId));
       return;
     }
-    if (sessionId && sessionToken) void sessionsClientRef.current.remove(sessionId, sessionToken);
-    onExitRef.current?.('closed by operator');
+    if (!sessionToken) return;
+    void sessionsClientRef.current.remove(sessionId, sessionToken).then((result) => {
+      if (result.ok) {
+        setState('closed');
+        setDiagnostic('Session closed.');
+        return;
+      }
+      setDiagnostic(result.reason === 'exit-unconfirmed'
+        ? 'The host has not confirmed this session ended.'
+        : 'That session is no longer available.');
+    });
   }, [sessionToken]);
 
-  useEffect(() => {
-    registerControlRef.current?.({ requestClose });
-    return () => registerControlRef.current?.(null);
-  }, [requestClose]);
+  const requestDetach = useCallback(() => {
+    const connection = connectionRef.current;
+    const sessionId = sessionIdRef.current;
+    const attachmentId = attachmentIdRef.current;
+    if (!connection?.isOpen || !sessionId || !attachmentId) return;
+    connection.send(detachFrame(sessionId, attachmentId));
+  }, []);
 
-  // Re-fit whenever this console becomes visible — a hidden pane could not be measured, so its grid may
-  // be stale after a resize that happened while it was in the background.
+  const reconnect = useCallback(() => {
+    setDiagnostic(null);
+    setReconnectTick((tick) => tick + 1);
+  }, []);
+
+  useEffect(() => {
+    registerControlRef.current?.({ requestClose, requestDetach, reconnect });
+    return () => registerControlRef.current?.(null);
+  }, [requestClose, requestDetach, reconnect]);
+
+  // Re-fit whenever this console becomes visible — a hidden pane could not be measured.
   useEffect(() => {
     if (!visible) return;
     const raf = requestAnimationFrame(() => fitAndResize());
     return () => cancelAnimationFrame(raf);
   }, [visible, fitAndResize]);
 
-  // Reflow on container/window resize. The ResizeObserver catches panel/layout changes; the window
-  // listener is belt-and-suspenders. Both funnel through the guarded `fitAndResize`.
+  // Reflow on container/window resize. Both funnel through the guarded `fitAndResize`.
   useEffect(() => {
     const host = hostRef.current;
     if (!host || typeof ResizeObserver === 'undefined') return;
@@ -361,9 +511,8 @@ export function ConsolePane({
     };
   }, [fitAndResize]);
 
-  // One robustness refit once the web fonts have loaded. The first fit can run against fallback-font
-  // metrics; when the mono face swaps in the cell size changes, which would otherwise leave the bottom
-  // row clipped until the next resize. `document.fonts.ready` fires once; the guarded fit no-ops if hidden.
+  // One robustness refit once the web fonts have loaded: the first fit can run against fallback-font
+  // metrics, and when the mono face swaps in the cell size changes.
   useEffect(() => {
     if (typeof document === 'undefined' || !document.fonts?.ready) return;
     let cancelled = false;
@@ -382,11 +531,27 @@ export function ConsolePane({
       aria-label={ariaLabel}
       aria-hidden={!visible}
       data-state={state}
+      data-readonly={readOnly ? 'true' : undefined}
       data-testid={`console-panel${testIdSuffix}`}
     >
-      {errorReason ? (
-        <p className="console-pane__error" role="status" data-testid={`console-panel-error${testIdSuffix}`}>
-          Terminal error: {errorReason}
+      {readOnly ? (
+        <p className="console-pane__note" data-testid={`console-panel-readonly${testIdSuffix}`}>
+          Read-only replay — this transcript cannot be typed into.
+        </p>
+      ) : null}
+      {diagnostic ? (
+        <p className="console-pane__error" role="status" data-testid={`console-panel-diagnostic${testIdSuffix}`}>
+          {diagnostic}
+          {state === 'detached' ? (
+            <button
+              type="button"
+              className="console-pane__reattach"
+              onClick={reconnect}
+              data-testid={`console-panel-reattach${testIdSuffix}`}
+            >
+              Reattach
+            </button>
+          ) : null}
         </p>
       ) : null}
       {/* The `.console-pane__surface` is the visual well (border/rounding/overflow/sunken shadow); the

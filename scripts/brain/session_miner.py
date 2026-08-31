@@ -1,12 +1,10 @@
-"""Deterministically mine a Claude JSONL transcript into reviewable ADD proposals.
+"""Deterministically mine a Claude JSONL transcript into candidate lessons.
 
-Usage: ``py -3 -m scripts.brain.session_miner mine TRANSCRIPT [--out PATH]``.
+Usage: ``py -3 -m scripts.brain.session_miner mine TRANSCRIPT`` -- JSON on stdout.
 
-This is deliberately an upstream producer for ``scripts/dream.py`` rather than a
-second memory consolidator.  Its markdown uses Dream's ADD vocabulary and carries
-the comparable summary/provenance facts, but Dream currently reads only
-``memory/*.md``.  A human or a future trusted Dream intake must accept these
-candidate facts; this module never writes ``memory/``.
+The miner is JSON-only: it holds no file-write path at all, and rendering/publishing a
+learning-proposal record belongs to ``scripts/learning_proposals.py`` and the server-owned
+publisher.  A human or a future trusted Dream intake must accept these candidate facts.
 
 Small deterministic signals only: a failed tool call retried with changed inputs
 and later success, plus explicit assistant lesson markers. They generate
@@ -17,7 +15,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass
+import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -219,54 +218,15 @@ def mine_transcript(transcript: Path | str) -> list[Candidate]:
     return unique
 
 
-def default_output_path(transcript: Path | str) -> Path:
-    """The committed, reviewable proposal area; deliberately outside ``memory/``."""
-    return Path("docs") / "proposals" / "lessons" / f"{Path(transcript).stem}.md"
-
-
-def _assert_not_memory(path: Path) -> Path:
-    resolved = path.resolve()
-    if any(part.casefold() == "memory" for part in resolved.parts):
-        raise ValueError("refusing to write lesson proposals inside memory/")
-    return resolved
-
-
-def render_proposals(transcript: Path | str, candidates: list[Candidate]) -> str:
-    """Render the small markdown contract read by the proposal route."""
-    source_session = Path(transcript).stem
-    lines = [
-        "# Proposed lessons", "", "status: PROPOSED", f"source_session: {source_session}",
-        "operation: ADD", "",
-        "> Candidate ADDs only. A human or dream.py must accept a lesson into memory/; this file does not do that.",
-        "> Dream's current dry-run reads memory/*.md only, so this reviewable file is its documented future intake seam.",
-    ]
-    for index, candidate in enumerate(candidates, start=1):
-        lines.extend([
-            "", f"## ADD {index}", f"- lesson: {candidate.lesson}",
-            f"- confidence: {candidate.confidence}", f"- evidence: {candidate.evidence}",
-            f"- source_session: {candidate.source_session}", f"- reason: {candidate.reason}",
-            f"- date: {candidate.date}",
-        ])
-    return "\n".join(lines) + "\n"
-
-
-def write_proposals(transcript: Path | str, out: Path | str | None = None) -> Path:
-    """Write exactly one reviewable proposal file, refusing the memory boundary."""
-    output = _assert_not_memory(Path(out) if out is not None else default_output_path(transcript))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render_proposals(transcript, mine_transcript(transcript)), encoding="utf-8")
-    return output
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    mine = commands.add_parser("mine", help="mine a transcript into candidate ADD proposals")
+    mine = commands.add_parser("mine", help="mine a transcript into candidate lessons as JSON")
     mine.add_argument("transcript", type=Path)
-    mine.add_argument("--out", type=Path, help="proposal markdown path (never under memory/)")
     args = parser.parse_args(argv)
     if args.command == "mine":
-        print(write_proposals(args.transcript, args.out))
+        json.dump([asdict(candidate) for candidate in mine_transcript(args.transcript)], sys.stdout)
+        sys.stdout.write("\n")
         return 0
     return 2
 
