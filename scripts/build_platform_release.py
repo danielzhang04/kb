@@ -20,7 +20,7 @@ from deploy.control_plane_schema import (
 )
 
 RELEASE_ROOTS = (
-    "dashboard/dist", "dashboard/server", "dashboard/src", "dashboard/node_modules",
+    "dashboard/dist", "dashboard/server", "dashboard/shared", "dashboard/src", "dashboard/node_modules",
     "dashboard/package.json", "dashboard/package-lock.json",
     "dashboard/config/repositories.json", "dashboard/dist-server/kb-shell-broker.tar.gz",
     "scripts", "schemas", "deploy",
