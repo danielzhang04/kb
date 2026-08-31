@@ -549,7 +549,7 @@ export async function start(
     bootId: randomUUID(),
   });
   try {
-    const repoRoot = options.repoRoot ?? fileURLToPath(new URL('../../', import.meta.url));
+    const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
     let controlStore: ControlPlaneStore | undefined;
     if (!options.buildApplication) {
       controlStore = createFileControlPlaneStore(lease.stateRoot, { mode: 'already-locked', lease }, {
