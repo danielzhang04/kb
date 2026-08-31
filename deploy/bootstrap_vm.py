@@ -7,7 +7,9 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 try:
@@ -18,6 +20,7 @@ try:
         install_units as install_broker_units,
         provision_account_and_directories as provision_broker_account,
     )
+    from .validate_vm_runtime import EXPECTED_UNIT_ENV
 except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
     from control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
     from install_pty_broker import (
@@ -26,6 +29,7 @@ except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
         install_units as install_broker_units,
         provision_account_and_directories as provision_broker_account,
     )
+    from validate_vm_runtime import EXPECTED_UNIT_ENV
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
@@ -49,6 +53,25 @@ HOST_NODE_MAP_DIR = "/etc/kb-dashboard"
 HOST_NODE_MAP_PATH = "/etc/kb-dashboard/host-nodes.json"
 HOST_NODE_MAP_SCHEMA = "kb.host-node-map/v1"
 NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{5,32}$")
+
+# The resident root-owned tree. Shared by `bootstrap` and `upgrade`: both must leave byte-identical
+# helper copies behind, so the list lives here once rather than in each caller.
+RESIDENT_ROOT = "/usr/local/lib/kb"
+RESIDENT_HELPERS = (
+    "activate_release.py",
+    "control_plane_schema.py",
+    "validate_vm_runtime.py",
+    "apply_ops_reconciliation.py",
+    "export_tier0.py",
+)
+# Generated from the operator's key at bootstrap and NEVER regenerated afterwards: an upgrade that
+# rewrote it could silently re-key release verification on a live VM.
+RELEASE_SIGNING_MODULE = "release_signing_public.py"
+DASHBOARD_UNIT = "kb-dashboard.service"
+DASHBOARD_UNIT_PATH = f"/etc/systemd/system/{DASHBOARD_UNIT}"
+UNIT_BACKUP_DIR = "/root"
+RELEASE_STAGING_DIR = "/var/lib/kb-release-staging"
+UNIT_ENVIRONMENT_PATTERN = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(.*)")
 
 
 def validate_host_node_map(data: object) -> dict:
@@ -236,12 +259,57 @@ def public_key_module_source(public_key: str) -> str:
     return f"RELEASE_PUBLIC_KEY = {f'ssh-ed25519 {encoded}'!r}\n"
 
 
+def install_resident_helpers(
+    run=subprocess.run,
+    install_root: PurePosixPath | Path = PurePosixPath(RESIDENT_ROOT),
+    source_root: Path | None = None,
+) -> None:
+    """Refresh the root-owned resident helper scripts from the deploy/ tree this script runs from.
+
+    Pure code, no state: every helper is a fresh read-only copy of a file already under review, so a
+    re-run on an existing VM is a byte-for-byte no-op unless the release actually changed the helper.
+    """
+    deploy_root = Path(__file__).resolve().parent if source_root is None else source_root
+    run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", str(install_root)], check=True)
+    for helper in RESIDENT_HELPERS:
+        run([
+            "install", "-o", "root", "-g", "root", "-m", "0555",
+            str(deploy_root / helper), str(install_root / helper),
+        ], check=True)
+
+
+def install_dashboard_unit(
+    tailnet_host: str,
+    tailnet_operator: str,
+    run=subprocess.run,
+    unit_path: PurePosixPath | Path = PurePosixPath(DASHBOARD_UNIT_PATH),
+) -> None:
+    """Render the repo unit fragment for this VM, install it root-owned 0444, reload and enable.
+
+    Shared by `bootstrap` and `upgrade` so a converged VM and a fresh one carry the same unit bytes.
+    Rendering the WHOLE fragment (rather than patching the installed file) is what makes the upgrade
+    safe after partial manual provisioning: hand-injected Environment lines are discarded, not merged.
+    """
+    descriptor, generated_name = tempfile.mkstemp(prefix="kb-dashboard-service-")
+    generated = Path(generated_name)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(unit_fragment_source(tailnet_host, tailnet_operator))
+    generated.chmod(0o400)
+    try:
+        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(unit_path)], check=True)
+    finally:
+        generated.chmod(0o600)
+        generated.unlink(missing_ok=True)
+    run(["systemctl", "daemon-reload"], check=True)
+    run(["systemctl", "enable", DASHBOARD_UNIT], check=True)
+
+
 def install_root_validators(
     release_public_key: Path,
     tailnet_host: str,
     tailnet_operator: str,
     run=subprocess.run,
-    install_root: PurePosixPath = PurePosixPath("/usr/local/lib/kb"),
+    install_root: PurePosixPath = PurePosixPath(RESIDENT_ROOT),
 ) -> None:
     validate_tailnet_host(tailnet_host)
     validate_tailnet_operator(tailnet_operator)
@@ -253,32 +321,9 @@ def install_root_validators(
         with os.fdopen(descriptor, "w", encoding="ascii", newline="") as output:
             output.write(source)
         generated.chmod(0o400)
-        deploy_root = Path(__file__).resolve().parent
-        run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", str(install_root)], check=True)
-        for helper in (
-            "activate_release.py",
-            "control_plane_schema.py",
-            "validate_vm_runtime.py",
-            "apply_ops_reconciliation.py",
-            "export_tier0.py",
-        ):
-            run([
-                "install", "-o", "root", "-g", "root", "-m", "0555",
-                str(deploy_root / helper), str(install_root / helper),
-            ], check=True)
-        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(install_root / "release_signing_public.py")], check=True)
-        unit_descriptor, unit_generated_name = tempfile.mkstemp(prefix="kb-dashboard-service-")
-        unit_generated = Path(unit_generated_name)
-        with os.fdopen(unit_descriptor, "wb") as output:
-            output.write(unit_fragment_source(tailnet_host, tailnet_operator))
-        unit_generated.chmod(0o400)
-        try:
-            run(["install", "-o", "root", "-g", "root", "-m", "0444", str(unit_generated), "/etc/systemd/system/kb-dashboard.service"], check=True)
-        finally:
-            unit_generated.chmod(0o600)
-            unit_generated.unlink(missing_ok=True)
-        run(["systemctl", "daemon-reload"], check=True)
-        run(["systemctl", "enable", "kb-dashboard.service"], check=True)
+        install_resident_helpers(run=run, install_root=install_root)
+        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(install_root / RELEASE_SIGNING_MODULE)], check=True)
+        install_dashboard_unit(tailnet_host, tailnet_operator, run=run)
     finally:
         if generated.exists():
             generated.chmod(0o600)
@@ -297,6 +342,203 @@ def provision_pty_broker(run=subprocess.run, layout: BrokerLayout | None = None)
     install_broker_units(layout, run, source_root=Path(__file__).resolve().parents[1])
     run(["systemctl", "daemon-reload"], check=True)
     run(["systemctl", "enable", SOCKET_UNIT], check=True)
+
+
+def unit_environment(text: str) -> dict[str, str]:
+    """Every `Environment=NAME=VALUE` assignment in an installed unit, LAST assignment wins.
+
+    Deliberately more tolerant than the boot validator's own reader: an operator who hand-patched the
+    old unit may well have appended a duplicate assignment, and this reader exists only to recover the
+    two site-specific values before the whole file is re-rendered from the repo fragment. Quoting is
+    not unwrapped - the values this recovers are validated against their own patterns by the caller,
+    and a quoted value simply fails that validation loudly.
+    """
+    assigned: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("Environment="):
+            continue
+        for token in stripped.removeprefix("Environment=").split():
+            match = UNIT_ENVIRONMENT_PATTERN.fullmatch(token)
+            if match is not None:
+                assigned[match.group(1)] = match.group(2)
+    return assigned
+
+
+def installed_tailnet_identity(unit_path: Path) -> tuple[str, str]:
+    """The site-specific host and operator carried by the CURRENTLY installed unit.
+
+    An upgrade must never invent these: the host is what `tailscale serve` publishes this VM at, and
+    the operator is the single pinned identity that IS the operator. Absent or malformed, the upgrade
+    refuses rather than guessing a value that would silently re-point authority.
+    """
+    if not unit_path.is_file():
+        raise RuntimeError(f"installed dashboard unit is absent: {unit_path}; this VM was never bootstrapped")
+    environment = unit_environment(unit_path.read_text(encoding="utf-8"))
+    missing = [name for name in ("DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR") if name not in environment]
+    if missing:
+        raise RuntimeError(
+            f"installed dashboard unit {unit_path} does not assign " + ",".join(missing)
+            + "; refusing to guess this VM's tailnet identity")
+    tailnet_host = environment["DASHBOARD_TAILNET_HOST"]
+    tailnet_operator = environment["DASHBOARD_TAILNET_OPERATOR"]
+    validate_tailnet_host(tailnet_host)
+    validate_tailnet_operator(tailnet_operator)
+    return tailnet_host, tailnet_operator
+
+
+def _account_uid(name: str) -> int | None:
+    """The uid of an existing local account, or None when it does not exist.
+
+    A `pwd` lookup rather than an `id -u` subprocess on purpose: it is the one preflight answer that
+    decides whether the upgrade refuses, and `--dry-run` must be able to reach it while running
+    nothing at all. Absent `pwd` (Windows, tests) the account cannot exist.
+    """
+    try:
+        import pwd
+    except ImportError:
+        return None
+    try:
+        return pwd.getpwnam(name).pw_uid
+    except KeyError:
+        return None
+
+
+def _utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+class DryRunner:
+    """The `run=` stand-in for `--dry-run`: records and prints argv, executes nothing.
+
+    The one probe whose ANSWER changes the plan - the broker installer's `id -u <account>` - is
+    answered from the read-only account lookup instead of a subprocess, so the printed plan is the
+    plan a real run would actually follow rather than an optimistic one.
+    """
+
+    def __init__(self, lookup_uid=_account_uid, emit=print) -> None:
+        self.commands: list[list[str]] = []
+        self._lookup_uid = lookup_uid
+        self._emit = emit
+
+    def __call__(self, argv, **kwargs) -> subprocess.CompletedProcess:
+        rendered = [str(token) for token in argv]
+        self.commands.append(rendered)
+        self._emit("would run: " + " ".join(rendered))
+        if len(rendered) == 3 and rendered[0].rsplit("/", 1)[-1] == "id" and rendered[1] == "-u":
+            uid = self._lookup_uid(rendered[2])
+            if uid is None:
+                return subprocess.CompletedProcess(rendered, 1, "", f"id: '{rendered[2]}': no such user\n")
+            return subprocess.CompletedProcess(rendered, 0, f"{uid}\n", "")
+        return subprocess.CompletedProcess(rendered, 0, "", "")
+
+
+def _report_unrendered_unit_env(tailnet_host: str, tailnet_operator: str, emit=print) -> tuple[str, ...]:
+    """Warn about names the resident boot validator REQUIRES that the repo fragment does not render.
+
+    Read-only and advisory: the upgrade must not invent a value for an env the fragment has no
+    producer for, but it must not let the operator discover the gap as an ExecStartPre failure either.
+    """
+    rendered = set(unit_environment(unit_fragment_source(tailnet_host, tailnet_operator).decode("utf-8")))
+    missing = tuple(sorted(EXPECTED_UNIT_ENV - rendered))
+    if missing:
+        emit("WARNING: the rendered unit does not assign " + ",".join(missing)
+             + ", which validate_vm_runtime.py requires at boot; the service will fail ExecStartPre"
+             " until deploy/systemd/kb-dashboard.service gains a producer for it")
+    return missing
+
+
+def upgrade(
+    run=subprocess.run,
+    unit_path: Path = Path(DASHBOARD_UNIT_PATH),
+    install_root: Path = Path(RESIDENT_ROOT),
+    host_node_map_path: Path = Path(HOST_NODE_MAP_PATH),
+    backup_dir: Path = Path(UNIT_BACKUP_DIR),
+    dry_run: bool = False,
+    lookup_uid=_account_uid,
+    now=_utc_stamp,
+    emit=print,
+) -> None:
+    """Converge an ALREADY-bootstrapped VM onto the current runtime contract, touching no state.
+
+    The VM this exists for was bootstrapped before dashboard-v3 P6: its unit predates
+    DASHBOARD_NODE_PROXY_UID and RuntimeDirectory=kb-dashboard, and it has neither the node-proxy nor
+    the PTY-broker host side. Idempotent, and safe after partial manual provisioning: every account
+    creation tolerates an existing account, every directory action is an `install -d`, and the unit is
+    re-RENDERED from the repo fragment rather than patched, so hand-injected lines are simply gone.
+
+    Every line of `bootstrap()` was triaged into one of three buckets. NEVER means the action touches
+    data or state that a live VM already owns:
+
+    | bootstrap() action                                    | upgrade   | why                                                                       |
+    |-------------------------------------------------------|-----------|---------------------------------------------------------------------------|
+    | validate_tailnet_host / _operator                     | DO        | applied to the values RECOVERED from the installed unit, before any change |
+    | systemctl disable --now kb-dashboard.service          | SKIP      | bootstrap stops a service that would write into the tree it is about to    |
+    |                                                       |           | clone; upgrade clones nothing, and taking the live dashboard down is not   |
+    |                                                       |           | this script's call. daemon-reload + enable only; the operator restarts.    |
+    | useradd kb-dashboard                                  | SKIP      | present: the running service is already User=kb-dashboard                  |
+    | install -d /opt/kb-releases                           | SKIP      | present, and it is the parent of the release trees this must not touch     |
+    | install -d STATE_ROOT + outbox/{ready,receipts,...}   | NEVER     | live state; `install -d` re-chowns an existing directory                   |
+    | install -d -m 0700 STATE_ROOT/control                 | NEVER     | live state                                                                 |
+    | seed_control_plane(state_root)                        | NEVER     | writes the control-plane document                                          |
+    | chown STATE_ROOT/control/control-plane.json           | NEVER     | live state                                                                 |
+    | install -d /var/lib/kb-release-staging                | DO        | may be absent on a pre-P6 VM; `install -d` is idempotent and holds no data |
+    | install -d /var/lib/kb/ops                            | SKIP      | present, and it is the ops checkout's own directory                        |
+    | git clone --branch ops ... /var/lib/kb/ops            | NEVER     | would destroy the live ops checkout                                        |
+    | git -C /var/lib/kb/ops config user.email / user.name  | NEVER     | rewrites the live checkout's .git/config                                   |
+    | git -C ... sparse-checkout set / checkout ops         | NEVER     | rewrites the live working tree                                             |
+    | git -C ... update-ref refs/kb-outbox/spooled HEAD     | NEVER     | would rewind the outbox spool pointer and re-publish banked coordination   |
+    | git -C ... remote set-url origin disabled://...       | NEVER     | live checkout config; already applied at bootstrap                         |
+    | chown -R kb-dashboard:kb-dashboard /var/lib/kb/ops .. | NEVER     | recursive ownership rewrite across ops AND state                           |
+    | install_root_validators: resident helper scripts      | DO        | pure code, sourced from THIS deploy/ tree; idempotent overwrite            |
+    | install_root_validators: release_signing_public.py    | NEVER     | already on the VM; regenerating it would re-key release verification.      |
+    |                                                       |           | Its ABSENCE is a hard refusal - that VM was never bootstrapped.            |
+    | install_root_validators: unit render + install        | DO        | the whole point; host/operator preserved, old unit backed up first         |
+    | install_root_validators: daemon-reload + enable       | DO        | idempotent                                                                 |
+    | provision_pty_broker(run)                             | DO        | account + units + enabled socket; no broker code until activation          |
+    | provision_node_proxy(run)                             | DO        | the missing DASHBOARD_NODE_PROXY_UID identity; refuses on a uid conflict   |
+    | (not in bootstrap) host-node map                      | NEVER     | Daniel-authored; absence is WARNED about, never filled in                  |
+    """
+    if dry_run:
+        run = DryRunner(lookup_uid=lookup_uid, emit=emit)
+
+    # --- preflight: read-only, and every refusal fires before the first mutation ------------------
+    emit("[upgrade] preflight")
+    existing_uid = lookup_uid(NODE_PROXY_USER)
+    if existing_uid is not None and existing_uid != NODE_PROXY_UID:
+        raise RuntimeError(
+            f"account {NODE_PROXY_USER} already exists with uid {existing_uid}, not the pinned"
+            f" {NODE_PROXY_UID}; the injected DASHBOARD_NODE_PROXY_UID would not match `id -u` and the"
+            " dashboard would refuse every node request. Resolve the uid by hand before upgrading.")
+    tailnet_host, tailnet_operator = installed_tailnet_identity(unit_path)
+    emit(f"[upgrade] preserving DASHBOARD_TAILNET_HOST={tailnet_host}"
+         f" DASHBOARD_TAILNET_OPERATOR={tailnet_operator}")
+    signing_module = install_root / RELEASE_SIGNING_MODULE
+    if not signing_module.is_file():
+        raise RuntimeError(
+            f"release signing public key module is absent: {signing_module}; upgrade never generates"
+            " one - bootstrap this VM instead of upgrading it")
+    if not host_node_map_path.is_file():
+        emit(f"WARNING: {host_node_map_path} is absent; node routes stay fail-closed until the"
+             " Daniel-authored host-node map is installed (upgrade never creates it)")
+    _report_unrendered_unit_env(tailnet_host, tailnet_operator, emit=emit)
+
+    # --- converge ---------------------------------------------------------------------------------
+    emit("[upgrade] release staging directory")
+    run(["install", "-d", "-o", "root", "-g", "root", "-m", "0700", RELEASE_STAGING_DIR], check=True)
+    emit("[upgrade] node-proxy account and units")
+    provision_node_proxy(run=run)
+    emit("[upgrade] PTY broker account, filesystem and units")
+    provision_pty_broker(run=run)
+    emit("[upgrade] resident root helpers")
+    install_resident_helpers(run=run, install_root=install_root)
+    emit("[upgrade] backing up the installed dashboard unit")
+    backup = backup_dir / f"{DASHBOARD_UNIT}.pre-upgrade-{now()}"
+    run(["install", "-o", "root", "-g", "root", "-m", "0400", str(unit_path), str(backup)], check=True)
+    emit(f"[upgrade] re-rendering {unit_path}")
+    install_dashboard_unit(tailnet_host, tailnet_operator, run=run, unit_path=unit_path)
+    emit("[upgrade] converged; the dashboard was NOT restarted - activate a release, then"
+         f" `systemctl restart {DASHBOARD_UNIT}`")
 
 
 def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tailnet_operator: str, run=subprocess.run) -> None:
@@ -330,13 +572,47 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tai
     provision_node_proxy(run=run)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Perform the one-time kb VM bootstrap")
-    parser.add_argument("--ops-bundle", type=Path, required=True)
-    parser.add_argument("--release-public-key", type=Path, required=True)
-    parser.add_argument("--tailnet-host", required=True, help="the bare `tailscale serve` hostname this VM is published at")
-    parser.add_argument("--tailnet-operator", default=DEFAULT_TAILNET_OPERATOR, help="the single tailnet login that IS the operator")
-    args = parser.parse_args()
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Provision a fresh kb VM, or converge an existing one")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    boot = subparsers.add_parser("bootstrap", help="one-time provisioning of a fresh VM",
+                                 description="Perform the one-time kb VM bootstrap")
+    boot.add_argument("--ops-bundle", type=Path, required=True)
+    boot.add_argument("--release-public-key", type=Path, required=True)
+    boot.add_argument("--tailnet-host", required=True, help="the bare `tailscale serve` hostname this VM is published at")
+    boot.add_argument("--tailnet-operator", default=DEFAULT_TAILNET_OPERATOR, help="the single tailnet login that IS the operator")
+
+    converge = subparsers.add_parser(
+        "upgrade",
+        help="converge an existing VM onto the current runtime contract",
+        description="Converge an already-bootstrapped VM onto the current runtime contract."
+                    " Touches no state: never the ops checkout, the state root, or a release tree.")
+    converge.add_argument("--dry-run", action="store_true", help="print every command that would run, execute nothing")
+    # Path seams. Defaults are the real VM locations; overriding them is for rehearsal and tests.
+    converge.add_argument("--unit-path", type=Path, default=Path(DASHBOARD_UNIT_PATH), help="the installed dashboard unit to read the tailnet identity from and re-render")
+    converge.add_argument("--install-root", type=Path, default=Path(RESIDENT_ROOT), help="the resident root-owned helper directory")
+    converge.add_argument("--host-node-map", type=Path, default=Path(HOST_NODE_MAP_PATH), help="the Daniel-authored host-node map, checked for but never created")
+    converge.add_argument("--backup-dir", type=Path, default=Path(UNIT_BACKUP_DIR), help="where the pre-upgrade copy of the unit is kept")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    tokens = list(sys.argv[1:] if argv is None else argv)
+    # Backward compatible: before the subcommands existed, the whole CLI was the bootstrap flags. A
+    # leading flag therefore still means `bootstrap`, so every existing caller keeps working verbatim.
+    if tokens and tokens[0].startswith("-") and tokens[0] not in ("-h", "--help"):
+        tokens.insert(0, "bootstrap")
+    args = build_parser().parse_args(tokens)
+    if args.command == "upgrade":
+        upgrade(
+            unit_path=args.unit_path,
+            install_root=args.install_root,
+            host_node_map_path=args.host_node_map,
+            backup_dir=args.backup_dir,
+            dry_run=args.dry_run,
+        )
+        return 0
     bootstrap(args.ops_bundle, args.release_public_key, tailnet_host=args.tailnet_host, tailnet_operator=args.tailnet_operator)
     return 0
 
