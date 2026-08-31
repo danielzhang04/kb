@@ -32,5 +32,20 @@ resolves platform + payment continuity before we train a persona LoRA worth prot
 
 ## Deferred (not now)
 
-Explicit-lane GPU hardware (16–24 GB, ~$1.2–2.5K one-time) — decide only after the trial
-proves the pipeline. Short.io custom domain + hosting (~$10–20/mo) — starts at W4.
+**Compute for the long run (R8 settled this).** Hetzner has no cloud-GPU product — only
+dedicated GEX servers. GEX44 (RTX 4000 SFF Ada, 20 GB) is €232.30/mo + €114 setup, no
+minimum term; GEX131 (96 GB) is €1,197–2,297/mo. So Hetzner is a *standing-cost* option,
+wrong for a one-off trial: RunPod hourly (~$15) stays correct for the trial itself.
+Afterwards the real choice is three-way — RunPod hourly at low utilisation, GEX44 flat
+once utilisation is high, or buying a 16–24 GB card (~$1.2–2.5K, break-even vs GEX44 in
+~4.6–9.5 months). Decide after the trial produces real throughput numbers. Note GEX44's
+20 GB covers LoRA training and stills but is marginal for Wan/Hunyuan video.
+
+**Lane 2 on Hetzner — plausible, unconfirmed.** Their AGB 8.2 bans *publishing*
+pornographic material and enforcement works by locking the IP the content is reachable
+on — wording aimed at public exposure, not private generation on a rented box. Hetzner
+never says so explicitly, so it is a reading, not a permission. Default stays
+buy-hardware for lane 2 unless Hetzner confirms in writing (see r8 for the exact
+questions to ask).
+
+Short.io custom domain + hosting (~$10–20/mo) — starts at W4.
