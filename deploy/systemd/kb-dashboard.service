@@ -30,6 +30,10 @@ Environment=DASHBOARD_AUTH_MODE=tailnet
 # REQUIRED, fail-closed (Daniel, 2026-08-18): the single tailnet identity that IS the operator. Pinned
 # because tailnet membership on this VM is root-equivalent (passwordless sudo), so an unpinned operator
 # would grant authority to every node on the tailnet. bootstrap_vm.py injects the value.
+# Also injected there, and equally REQUIRED (dashboard-v3 P5 [P5-C42]): DASHBOARD_DESKTOP_HELPER_ORIGIN,
+# the one desktop-helper tailnet address the deploy/asset-pull client speaks to. The client fails
+# composition without it, and bootstrap_vm.py refuses to render a unit missing anything
+# validate_vm_runtime.py's EXPECTED_UNIT_ENV requires.
 UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
 ExecStartPre=/usr/bin/python3 -I -B /usr/local/lib/kb/validate_vm_runtime.py --phase static --ops-root /var/lib/kb/ops --unit kb-dashboard.service
 ExecStart=/usr/bin/node --experimental-strip-types server/index.ts

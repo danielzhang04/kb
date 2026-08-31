@@ -138,12 +138,13 @@ def installed_root_validator_files(tmp_path: Path) -> list[str]:
         release_public_key,
         "kb.command.ts.net",
         "daniel.zhang.t1@gmail.com",
+        "https://kb-desk.command.ts.net",
         run=run,
     )
     return [
         Path(command[-1]).name
         for command in commands
-        if command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0555"]
+        if command[:7] == [bootstrap_vm.INSTALL_BIN, "-o", "root", "-g", "root", "-m", "0555"]
     ]
 
 
@@ -215,7 +216,10 @@ def test_resident_parser_rejects_structurally_invalid_v2_values(tmp_path, field,
 
 
 @pytest.mark.parametrize(("field", "value"), [
-    ("stateSchema", "4"),
+    # Each value must be structurally VALID but not what the registry records. STATE_SCHEMA is '4', so
+    # this row moved to '5' when P6 bumped it - '4' stopped being a non-registry value and the case
+    # silently stopped testing anything.
+    ("stateSchema", "5"),
     ("rollbackStateSchema", "1"),
     ("stateMigration", "compatible"),
 ])
