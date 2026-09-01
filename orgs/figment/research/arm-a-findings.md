@@ -32,7 +32,7 @@ variants (Apache-2.0). No InsightFace package, no antelopev2/buffalo_l on the ma
 no INSIGHTFACE node input used. **Commercially usable** — the FaceID/InstantID
 non-commercial trap was avoided.
 
-## Framing: FAIL — the real blocker
+## Framing: FIXED (was the blocker)
 
 - **Full body: 0/5** achieved head-to-feet. All collapsed to chest-up, even at
   832x1216 portrait aspect with explicit framing language that worked in isolated
@@ -42,9 +42,25 @@ non-commercial trap was avoided.
   generation back toward frontal.
 - Close-up / bust / mid framing works fine.
 
-Consequence: the current reference set cannot train a production LoRA — it would bake
-"always tight frontal crop" into the identity itself. Fixing framing is the gating
-task before any LoRA training.
+**Diagnosis (controlled, not assumed):** seed 502 produced a genuine full-body shot on
+the BARE checkpoint; the identical seed through 4 different IP-Adapter configurations
+(weights 0.2-0.8, start_at 0.0-0.75, incl. a composition-zeroed style/composition split)
+failed all 4. 0/16 full-body successes across every weight/schedule variant. IP-Adapter
+conditioning on a frontal tight-crop anchor was suppressing composition — not fixable by
+tuning the knob.
+
+**Full-body fix:** T2I-Adapter OpenPose SDXL (TencentARC, 316 MB, free) with a
+programmatically synthesised standing skeleton at ControlNet strength 0.6-0.7 (0.9
+distorted anatomy), layered with low-weight IP-Adapter (0.3) for identity. **10/10
+genuine head-to-toe.**
+
+**Profile fix:** no ControlNet needed — delay IP-Adapter `start_at` to 0.8-0.85 (weight
+0.4-0.5) so early denoising sets head orientation before identity conditioning refines
+detail. **6/6 true 90-degree profiles.**
+
+**Cost:** peak ~6.8 GB VRAM of 8 GB with checkpoint + IP-Adapter + ControlNet loaded, no
+OOM. 22-84 s/image. Residual defect: "three-quarter" still comes out as a mild head-turn
+rather than a strong three-quarter — flagged, not solved.
 
 ## Other defects
 
@@ -58,6 +74,10 @@ task before any LoRA training.
 
 ## Verdict
 
-Realism is solved. Identity is 70% solved and has a known path (LoRA). **Framing is
-unsolved and blocks LoRA training.** Next: force composition with ControlNet
-(OpenPose/depth) to obtain genuine full-body and profile coverage, then train.
+Realism solved. Framing solved. Identity ~70% and has a known path: train a character
+LoRA on a reference set built with the fixed recipe. Nothing now blocks that.
+
+Recipe of record for reference-set generation:
+- full-body -> T2I-Adapter OpenPose skeleton @ 0.6-0.7 + IP-Adapter 0.3
+- profile   -> no ControlNet, IP-Adapter weight 0.4-0.5 with start_at 0.8-0.85
+- close/bust/mid -> IP-Adapter 0.35, no ControlNet (as before)
