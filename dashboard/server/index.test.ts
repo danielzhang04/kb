@@ -59,6 +59,7 @@ import { createExistingRootFileStoreHarnessForTest } from './control/test-fixtur
 import { readDevelopmentScheduleSeedSource } from './schedules/seedImport.ts';
 import { publishVerifiedScheduleMarkerRemoval } from './write/branch.ts';
 import type { GitRunner } from './write/branch.ts';
+import { DEFAULT_OUTBOX_ROOT } from './write/outbox.ts';
 
 let app: FastifyInstance | undefined;
 let testStateRoot: string | undefined;
@@ -438,6 +439,14 @@ describe('server', () => {
       rmSync(stateRoot, { recursive: true, force: true });
       rmSync(outboxRoot, { recursive: true, force: true });
     }
+  });
+
+  it('shares one default spool root between the boot migration and the request surface', () => {
+    // `runScheduleBootMigrations` defaults its publisher's `outboxRoot` to DEFAULT_OUTBOX_ROOT, and
+    // `makeSurfaceContext` defaults `ctx.outboxRoot` to the same constant — so a boot-time spool and a
+    // request-time spool can never land on two different roots. The literal value is pinned in
+    // `write/outbox.test.ts`; this equality is what keeps the two paths from drifting apart.
+    expect(makeSurfaceContext().outboxRoot).toBe(DEFAULT_OUTBOX_ROOT);
   });
 
   it('derives operator schedule mirror paths from the server-owned Agent declaration', async () => {

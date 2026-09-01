@@ -67,7 +67,7 @@ import type { PreambleRunner } from '../write/preambleGate.ts';
 import { quiescence } from '../release/quiescence.ts';
 import { serviceCgroupChildCount } from '../release/serviceCgroup.ts';
 import { defaultGitRunner, defaultPrOpener, prepareCoordination } from '../write/branch.ts';
-import { resolveCoordinationPublication } from '../write/outbox.ts';
+import { DEFAULT_OUTBOX_ROOT, resolveCoordinationPublication } from '../write/outbox.ts';
 import { admit } from '../control/admission.ts';
 import { outboxStatus } from '../write/outboxStatus.ts';
 import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capabilities.ts';
@@ -177,7 +177,7 @@ export function makeSurfaceContext(
   const traceRoot = overrides.traceRoot === undefined
     ? resolveSessionRoot(activation.env as NodeJS.ProcessEnv | undefined)
     : overrides.traceRoot;
-  const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
+  const outboxRoot = overrides.outboxRoot ?? DEFAULT_OUTBOX_ROOT;
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? (overrides.fileControlAccess
       ? createFileControlPlaneStore(stateRoot, overrides.fileControlAccess, {

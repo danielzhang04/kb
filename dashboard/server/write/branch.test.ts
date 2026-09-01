@@ -145,6 +145,51 @@ describe('verified legacy Schedule marker publication', () => {
   });
 
   /**
+   * The SECOND crash window: the receipt's publisher phase is written after this call returns, so a
+   * crash between the removal commit and that write re-enters here with the marker gone from the
+   * worktree AND already committed. Re-staging it would fail on `git add`'s pathspec and start a fresh
+   * boot crash loop, so nothing left to stage means already published.
+   */
+  it('treats an already-committed removal as published instead of re-staging a deleted path', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-marker-published-'));
+    const marker = MARKER_GOLDEN[0].marker;
+    const digest = createHash('sha256').update('legacy marker bytes').digest('hex');
+    const calls: string[][] = [];
+    // git no longer tracks the path: the previous boot's commit already removed it.
+    const runGit: GitRunner = async (_root, args) => { calls.push(args); return ''; };
+    const commit = vi.fn(async () => undefined);
+    const prepare = vi.fn(async () => undefined);
+    try {
+      await expect(publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, {
+        runGit, prepare, commit,
+      })).resolves.toBeUndefined();
+      expect(calls).toContainEqual(['ls-files', '--', marker]);
+      expect(commit).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('still commits a missing marker that git can stage (crash between unlink and publication)', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-marker-staged-'));
+    const marker = MARKER_GOLDEN[0].marker;
+    const digest = createHash('sha256').update('legacy marker bytes').digest('hex');
+    // The deletion is still stageable: tracked in the index, absent from the worktree.
+    const runGit: GitRunner = async (_root, args) => (args[0] === 'ls-files' ? `${marker}\n` : '');
+    const commit = vi.fn(async () => undefined);
+    try {
+      await publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, {
+        runGit, prepare: async () => undefined, commit,
+      });
+      expect(commit).toHaveBeenCalledTimes(1);
+      expect(commit).toHaveBeenCalledWith(repoRoot, marker);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  /**
    * The boot crash this publication mode exists to close: the VM runs `KB_COORDINATION_PUBLICATION=outbox`
    * with its ops checkout's origin deliberately set to `disabled://desktop-promotion-only`. With the
    * publisher's DEFAULT prepare/commit closures on `direct`, the boot migration ran

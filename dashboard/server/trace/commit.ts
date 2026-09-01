@@ -19,7 +19,7 @@ import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
 import { isCoordinationPath } from '../write/branch.ts';
-import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
+import { DEFAULT_OUTBOX_ROOT, recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
 
 /**
  * A git invocation runner. `args` is the full argv AFTER `git`. Injected so tests need no real git and
@@ -76,7 +76,7 @@ export async function commitTraceToOps(
   // Reconcile with remote ops before writing history, stage ONLY the trace dir, commit.
   if ((options.publication ?? 'direct') === 'outbox') {
     await recoverUnspooledCoordinationCommits({
-      repoRoot, spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox', runGit, isCoordinationPath,
+      repoRoot, spoolRoot: options.outboxRoot ?? DEFAULT_OUTBOX_ROOT, runGit, isCoordinationPath,
     });
   } else {
     await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
@@ -88,7 +88,7 @@ export async function commitTraceToOps(
   // and retry, bounded (`write/opsPushRetry.ts`).
   if ((options.publication ?? 'direct') === 'outbox') {
     await recoverUnspooledCoordinationCommits({
-      repoRoot, spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox', runGit, isCoordinationPath,
+      repoRoot, spoolRoot: options.outboxRoot ?? DEFAULT_OUTBOX_ROOT, runGit, isCoordinationPath,
     });
   } else {
     await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });

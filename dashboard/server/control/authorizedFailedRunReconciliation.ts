@@ -780,8 +780,16 @@ export async function reconcileAuthorized20260801FailedRun(
       if ((await reconciliationChanges(deps, runGit)).length !== 0) {
         throw new Error('authorized reconciliation replay workspace is not clean');
       }
-      await runGit(deps.repoRoot, ['fetch', 'origin', 'ops']);
-      const remote = (await runGit(deps.repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+      // Same publication split as `isPreparedSettlementCommit`: an outbox deployment's ops checkout has
+      // no usable remote, so canonicality is proved against the durable spool anchor instead of by
+      // fetching `origin ops` — which on the VM answers `'remote-disabled' is not a git command`.
+      let remote: string;
+      if ((deps.publication ?? 'direct') === 'outbox') {
+        remote = (await runGit(deps.repoRoot, ['rev-parse', '--verify', 'refs/kb-outbox/spooled'])).trim();
+      } else {
+        await runGit(deps.repoRoot, ['fetch', 'origin', 'ops']);
+        remote = (await runGit(deps.repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+      }
       try { await runGit(deps.repoRoot, ['merge-base', '--is-ancestor', canonicalCommit, remote]); }
       catch { throw new Error('authorized reconciliation replay commit is not canonical on origin/ops'); }
       await validateSettlementCommitObject(deps, runGit, canonicalCommit);

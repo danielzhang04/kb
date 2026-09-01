@@ -721,4 +721,75 @@ print(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, width=10**9), en
     expect(f.storeImpl.phase).toBe('eligible');
     expect(f.gitCalls).toEqual([]);
   }, 30_000);
+
+  /**
+   * The replay disposition's canonicality proof, isolated from the real-git fixture: on an outbox
+   * deployment the ops checkout has no usable remote, so `fetch origin ops` answers
+   * `'remote-disabled' is not a git command`. The proof reads the durable spool anchor instead — the
+   * same publication split `isPreparedSettlementCommit` already applies.
+   */
+  describe('replay canonicality proof — publication split', () => {
+    const CANONICAL = 'c'.repeat(40);
+
+    function replayDeps(overrides: Record<string, unknown> = {}) {
+      const root = mkdtempSync(join(tmpdir(), 'authorized-replay-guard-'));
+      const repoRoot = join(root, 'repo');
+      const stateRoot = join(root, 'state');
+      for (const directory of ['inbox', 'working', 'approvals', 'done']) {
+        mkdirSync(join(repoRoot, 'queue', directory), { recursive: true });
+      }
+      seedAccounting(stateRoot);
+      mkdirSync(join(stateRoot, 'control', 'worktrees', AUTHORIZED_20260801_FAILED_RUN_REF), { recursive: true });
+      const { workflow, artifactPaths, proposalSnapshot } = exactWorkflow();
+      const calls: string[][] = [];
+      // Records every argv and refuses the ancestry proof, so the run stops on the named replay error
+      // immediately after the guard under test — no python, no real git, no fixture repository.
+      const runGit: GitRunner = async (_root, args) => {
+        calls.push([...args]);
+        if (args[0] === 'merge-base') throw new Error('not an ancestor');
+        return '';
+      };
+      const store = {
+        preflightAuthorized20260801FailedRunReconciliation: () => ({
+          ok: true,
+          value: { disposition: 'replay', result: { receipt: { canonicalCommit: CANONICAL } } },
+        }),
+      } as unknown as ControlPlaneStore;
+      return {
+        calls,
+        root,
+        deps: {
+          repoRoot, stateRoot, subject: 'operator', input: INPUT,
+          proposalSnapshot, workflow, artifactPaths, store,
+          assertAuthorized: vi.fn(), runGit,
+          ...overrides,
+        },
+      };
+    }
+
+    it('proves replay canonicality against the spool anchor in outbox mode, never fetching', async () => {
+      const f = replayDeps({ publication: 'outbox' });
+      try {
+        await expect(reconcileAuthorized20260801FailedRun(f.deps as never))
+          .rejects.toThrow('replay commit is not canonical on origin/ops');
+        expect(f.calls).toContainEqual(['rev-parse', '--verify', 'refs/kb-outbox/spooled']);
+        expect(f.calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
+      } finally {
+        rmSync(f.root, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps the direct-mode replay proof on fetch origin ops', async () => {
+      const f = replayDeps();
+      try {
+        await expect(reconcileAuthorized20260801FailedRun(f.deps as never))
+          .rejects.toThrow('replay commit is not canonical on origin/ops');
+        expect(f.calls).toContainEqual(['fetch', 'origin', 'ops']);
+        expect(f.calls).toContainEqual(['rev-parse', 'refs/remotes/origin/ops']);
+        expect(f.calls.some((args) => args[1] === 'refs/kb-outbox/spooled')).toBe(false);
+      } finally {
+        rmSync(f.root, { recursive: true, force: true });
+      }
+    });
+  });
 });

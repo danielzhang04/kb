@@ -10,6 +10,7 @@ import {
   type GitRunner,
 } from './branch.ts';
 import {
+  DEFAULT_OUTBOX_ROOT,
   fsyncPath,
   recoverUnspooledCoordinationCommits,
   spoolCoordinationCommit,
@@ -42,6 +43,13 @@ function fixtureSpool(overrides: Partial<SpoolInput> & { parents?: string } = {}
 }
 
 describe('coordination outbox', () => {
+  // Every outbox writer defaults to this one constant, and the VM deployment mounts exactly this path.
+  // Pinning the literal here is what makes the boot path and the request path provably equal: both read
+  // DEFAULT_OUTBOX_ROOT, and a silent edit to it would land on a spool root the VM does not mount.
+  it('pins the durable spool root every writer defaults to', () => {
+    expect(DEFAULT_OUTBOX_ROOT).toBe('/var/lib/kb/state/outbox');
+  });
+
   it('spools an exact coordination commit and publishes the manifest last', async () => {
     const spoolRoot = mkdtempSync(join(tmpdir(), 'outbox-'));
     const runGit: GitRunner = async (_root, args) => {
