@@ -38,6 +38,9 @@ import type {
 import type {
   StoredHostAdvertisement,
 } from '../placement/contracts.ts';
+// P6 W6.3: the advertisement CAS decodes its body through the SAME W0 decoder the node route uses, so
+// there is exactly one validation of a `HostAdvertisement` in the daemon.
+import { decodeHostAdvertisement } from '../placement/contracts.ts';
 // P6 W1b [P6-C48]: the store-open document invariant must decode every placement collection row through
 // its W0 exact-key decoder, not just confirm the collections are bounded arrays.
 import { assertPlacementCollections } from './placementState.ts';
@@ -373,6 +376,7 @@ export type {
   ReconcileCanonicalProjectionInput,
   BrokerSteeringInput,
   BrokerStoreBackend,
+  HostAdvertisementUpsertResult,
   ControlPlaneStore,
 } from './storeTypes.ts';
 
@@ -3063,6 +3067,25 @@ function makeStore(
 
     listHostAdvertisements() {
       return [...load().hostAdvertisements];
+    },
+
+    upsertHostAdvertisement(advertisement, expectedVersion) {
+      // ONE row per host by construction (`hostId` is the primary key), so a second daemon beat can never
+      // append a duplicate. The load/compare/commit runs inside this single method, which under the
+      // writer lease is the store's unit of atomicity — the same shape `claimLease` relies on.
+      const document = load();
+      const current = document.hostAdvertisements.find((row) => row.hostId === advertisement.hostId)?.version;
+      if (current !== expectedVersion) return { ok: false, current: current ?? 0 };
+      const version = (current ?? 0) + 1;
+      // Decode HERE, before the row is committed: the store never persists an advertisement the W0
+      // contract would reject on the way back out (`assertPlacementCollections` at open would fail closed).
+      const stored: StoredHostAdvertisement = { ...decodeHostAdvertisement(advertisement), version };
+      document.hostAdvertisements = [
+        ...document.hostAdvertisements.filter((existing) => existing.hostId !== advertisement.hostId),
+        stored,
+      ];
+      commit(document);
+      return { ok: true, version };
     },
 
     seedHostAdvertisementForTest(advertisement) {

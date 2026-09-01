@@ -54,6 +54,9 @@ import {
   start,
 } from './index.ts';
 import type { DesktopClient } from './placement/desktopClient.ts';
+import { resolveDaemonVersion } from './placement/selfAdvertise.ts';
+import { ADVERTISEMENT_INTERVAL_MS } from './placement/contracts.ts';
+import { selectPlacementHost } from './placement/select.ts';
 import type { WriterLease } from './control/writerLease.ts';
 import { createExistingRootFileStoreHarnessForTest } from './control/test-fixtures/controlStore.ts';
 import { readDevelopmentScheduleSeedSource } from './schedules/seedImport.ts';
@@ -727,6 +730,62 @@ describe('Human Request orphan-sweep wiring — ON BY DEFAULT (data-only, no fil
       auditFailures: ['request-1'],
     });
     expect(line).toContain('AUDIT ROW FAILED for request-1');
+  });
+});
+
+// P6 W6.3: before this wiring existed the daemon booted with an EMPTY `hostAdvertisements` collection and
+// every launch refused `409 no-complete-placement` forever, because `advertise.ts` had a builder and no
+// sender. These assertions are on the boot composition, not on the beat (see placement/selfAdvertise.test.ts).
+describe('P6 W6.3 — daemon self-advertisement wiring [§3.1]', () => {
+  const emptyPlacementStore = () => createInMemoryControlPlaneStore({ initialHostAdvertisements: [] });
+  const EMPTY_REQUIREMENT = {
+    connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [] as Array<'claude' | 'codex'>,
+  };
+
+  it('beats ONCE at boot, so a launch in the first 30 s finds a complete placement instead of a 409', async () => {
+    const store = emptyPlacementStore();
+    expect(selectPlacementHost(EMPTY_REQUIREMENT, store.listHostAdvertisements(), Date.now()))
+      .toEqual({ outcome: 'no-complete-placement' });
+
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'),
+    });
+
+    const rows = store.listHostAdvertisements();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ hostId: 'vm', version: 1, pty: false });
+    expect(rows[0]!.daemonVersion).toBe(resolveDaemonVersion());
+    expect(selectPlacementHost(EMPTY_REQUIREMENT, rows, Date.now())).toEqual({ outcome: 'placed', hostId: 'vm' });
+  });
+
+  it('advertises the host the composed capability names — `desktop` on the Windows daemon, no platform branch here', async () => {
+    const store = emptyPlacementStore();
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('win32'),
+      ptySessionHost: refusingSessionHost(),
+    });
+    expect(store.listHostAdvertisements()).toMatchObject([{ hostId: 'desktop', pty: false, version: 1 }]);
+  });
+
+  it('refreshes on the shared interval and STOPS on shutdown, alongside the other intervals buildApp owns', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = emptyPlacementStore();
+      const built = buildApp({
+        controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+        runtimeCapabilities: runtimeCapabilities('linux'),
+      });
+      expect(store.listHostAdvertisements()[0]!.version).toBe(1);
+      vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 2);
+      expect(store.listHostAdvertisements()[0]!.version).toBe(3);
+      await built.close();
+      vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 10);
+      // No beat after close: the interval is cleared by the onClose hook, not left running on a dead app.
+      expect(store.listHostAdvertisements()[0]!.version).toBe(3);
+      expect(store.listHostAdvertisements()).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
   });
 });
 

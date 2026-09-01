@@ -29,6 +29,7 @@ import { applyMigrationEdgeForTest, loadAndMigrate } from './migrations.ts';
 import { createNodePersistenceDeps } from './persistence.ts';
 import { acquireWriterLease } from './writerLease.ts';
 import type { CanonicalStageProjectionInput, ControlPlaneStore } from './store.ts';
+import type { HostAdvertisement } from '../placement/contracts.ts';
 import type { JsonObject, ProposalRevision, Run } from './types.ts';
 import { ScheduleService } from '../schedules/service.ts';
 import { scheduleMirrorSnapshotDigest } from '../schedules/mirror.ts';
@@ -5534,5 +5535,78 @@ describe('P6 W1b — placement collections wired into the store-open invariant [
     const fixture = createLeasedFileStoreForTest({}, v3);
     expect(fixture.store.getControlDocumentMetadata().version).toBe(4);
     fixture.close();
+  });
+
+  describe('upsertHostAdvertisement — the ONE production advertisement writer [P6 W6.3]', () => {
+    // The `validAdvertisement` body above, minus the store-assigned `version`: what a daemon actually
+    // sends. Declared against the contract type so the CLI statuses stay the closed union.
+    const advertisement: HostAdvertisement = {
+      hostId: 'vm', daemonVersion: 'abc', reportedAt: AT, connectors: [], skills: [], filesystemRoots: [],
+      pty: true, gpu: false, clis: { claude: 'ready', codex: 'ready' },
+    };
+
+    it('writes the first row at version 1 when the caller expected no row, and persists it', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        expect(fixture.store.listHostAdvertisements()).toEqual([]);
+        expect(fixture.store.upsertHostAdvertisement(advertisement, undefined)).toEqual({ ok: true, version: 1 });
+        expect(fixture.store.listHostAdvertisements()).toEqual([{ ...advertisement, version: 1 }]);
+        const persisted = JSON.parse(readFileSync(fixture.path, 'utf8')) as { hostAdvertisements: unknown[] };
+        expect(persisted.hostAdvertisements).toEqual([{ ...advertisement, version: 1 }]);
+      } finally { fixture.close(); }
+    });
+
+    it('bumps by exactly one and keeps ONE row per host — a re-advertise never appends a duplicate', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        fixture.store.upsertHostAdvertisement(advertisement, undefined);
+        const later = { ...advertisement, reportedAt: '2026-08-24T00:00:30.000Z' };
+        expect(fixture.store.upsertHostAdvertisement(later, 1)).toEqual({ ok: true, version: 2 });
+        expect(fixture.store.listHostAdvertisements()).toEqual([{ ...later, version: 2 }]);
+      } finally { fixture.close(); }
+    });
+
+    it('refuses a stale expectedVersion with the current version — never a silent overwrite', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        fixture.store.upsertHostAdvertisement(advertisement, undefined);
+        const clobber = { ...advertisement, daemonVersion: 'clobber' };
+        expect(fixture.store.upsertHostAdvertisement(clobber, undefined)).toEqual({ ok: false, current: 1 });
+        expect(fixture.store.upsertHostAdvertisement(clobber, 99)).toEqual({ ok: false, current: 1 });
+        expect(fixture.store.listHostAdvertisements()).toEqual([{ ...advertisement, version: 1 }]);
+      } finally { fixture.close(); }
+    });
+
+    it('keeps the two hosts on independent version lines', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        fixture.store.upsertHostAdvertisement(advertisement, undefined);
+        fixture.store.upsertHostAdvertisement(advertisement, 1);
+        const desktop = { ...advertisement, hostId: 'desktop' as const, pty: false };
+        expect(fixture.store.upsertHostAdvertisement(desktop, undefined)).toEqual({ ok: true, version: 1 });
+        expect(fixture.store.listHostAdvertisements().map((row) => [row.hostId, row.version]))
+          .toEqual([['vm', 2], ['desktop', 1]]);
+      } finally { fixture.close(); }
+    });
+
+    it('decodes the body BEFORE committing: an invalid advertisement leaves the collection untouched', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        expect(() => fixture.store.upsertHostAdvertisement(
+          { ...advertisement, daemonVersion: 'NOT A VERSION' }, undefined,
+        )).toThrow();
+        expect(fixture.store.listHostAdvertisements()).toEqual([]);
+      } finally { fixture.close(); }
+    });
+
+    it('is a MUTATION, so the read-only harness refuses it while still serving the read', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        fixture.store.upsertHostAdvertisement(advertisement, undefined);
+        const readOnly = openFileControlPlaneStore(fixture.root, { mode: 'read-only-harness' });
+        expect(readOnly.listHostAdvertisements()).toHaveLength(1);
+        expect(() => readOnly.upsertHostAdvertisement(advertisement, 1)).toThrow(ControlStoreReadOnlyError);
+      } finally { fixture.close(); }
+    });
   });
 });

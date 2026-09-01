@@ -9,7 +9,7 @@ import type { PersistenceDeps } from './persistence.ts';
 import { loadAndMigrate, type MigrationContext } from './migrations.ts';
 import type { ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
 import type { HostKind, RunnableRef, Schedule } from './p2Contracts.ts';
-import type { PlacementLease, StoredHostAdvertisement } from '../placement/contracts.ts';
+import type { HostAdvertisement, PlacementLease, StoredHostAdvertisement } from '../placement/contracts.ts';
 import type { V1IdempotencyRecord } from '../api/v1/idempotency.ts';
 import type {
   ScheduleOccurrenceClaim,
@@ -699,6 +699,15 @@ export interface BrokerStoreBackend {
   }): BrokerMutation;
 }
 
+/**
+ * P6 W6.3: the result of the advertisement CAS. Shaped to match the node route's `AdvertiseStorePort`
+ * exactly (`{ok:true,version}` / `{ok:false,current}`), so that route can bind straight to the store
+ * method without a second result vocabulary. `current` is `0` when no row exists for the host yet.
+ */
+export type HostAdvertisementUpsertResult =
+  | { readonly ok: true; readonly version: number }
+  | { readonly ok: false; readonly current: number };
+
 export interface ControlPlaneStore
   extends BrokerStoreBackend, AtomicScheduleStorePort, ScheduleSocketStorePort, ScheduleMirrorStorePort {
   getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision' | 'scheduleCollectionRevision'>;
@@ -751,10 +760,23 @@ export interface ControlPlaneStore
    */
   listHostAdvertisements(): StoredHostAdvertisement[];
   /**
+   * P6 W6.3: the ONE production writer of a `hostAdvertisements` row — the store method behind the node
+   * route's `AdvertiseStorePort` (`api/v1/routes.ts`) and the method the daemon's own self-advertisement
+   * timer (`placement/selfAdvertise.ts`) calls on its own store. Same CAS discipline the route's port
+   * declares: `expectedVersion` is the version the caller last read (`undefined` = "no row for this host
+   * yet"), a mismatch is a REFUSAL carrying the current version rather than a silent overwrite, and a
+   * success bumps the plan-owned `version` by exactly one. The body is decoded through the W0 contract
+   * before it is committed, so an invalid advertisement can never enter the document.
+   */
+  upsertHostAdvertisement(
+    advertisement: HostAdvertisement,
+    expectedVersion: number | undefined,
+  ): HostAdvertisementUpsertResult;
+  /**
    * @internal P6 W6.2 test-only seam: append/replace one advertisement by `hostId` so a fixture can give
    * the launch-time placement decision a fresh candidate without a real `PUT /api/v1/hosts/:hostId`
-   * round trip. Production advertises only through that route (W6.3's daemon timer). Never called from
-   * a route handler.
+   * round trip or a CAS read. Production advertises only through `upsertHostAdvertisement` above. Never
+   * called from a route handler.
    */
   seedHostAdvertisementForTest(advertisement: StoredHostAdvertisement): void;
 

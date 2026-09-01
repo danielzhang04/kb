@@ -23,6 +23,9 @@ import { requireSession, surfaceRateLimitHook } from './http/middleware.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerV1Routes } from './api/v1/routes.ts';
 import { forwardDesktopReadProxy } from './placement/desktopReadProxy.ts';
+import {
+  resolveDaemonVersion, selfAdvertiseLogLine, startSelfAdvertiseTimer,
+} from './placement/selfAdvertise.ts';
 import type { DesktopClient } from './placement/desktopClient.ts';
 import { ScheduleService, registerScheduleRoutes } from './schedules/service.ts';
 import { resolveScheduleOwner } from './schedules/owners.ts';
@@ -434,6 +437,29 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     resolveHumanRequestSweepIntervalMs(),
   );
   app.addHook('onClose', async () => { stopHumanRequestSweeper(); });
+
+  // P6 W6.3 §3.1: the daemon's SELF-advertisement beat — the sender W3 deliberately deferred. Until this
+  // was wired the `hostAdvertisements` collection stayed EMPTY on a booted daemon, so every launch site
+  // (control/routes.ts:650, workflows/routes.ts:538, control/queueBridge.ts:693) found zero fresh matches
+  // and refused `409 no-complete-placement` forever. It advertises exactly ONE host — this daemon's own,
+  // `runtimeExecutionHost` over the composed capability, which is `vm` on the Linux VM and `desktop` on the
+  // Windows desktop with no platform special-case here — into this daemon's OWN store, through the same
+  // `upsertHostAdvertisement` CAS the node route's `AdvertiseStorePort` names. It fires once immediately
+  // (an empty table until the first 30-s beat still 409s the boot window) and then on
+  // `ADVERTISEMENT_INTERVAL_MS`. A failed beat only logs: freshness expiry is the safety net, so a daemon
+  // that cannot advertise goes stale and stops attracting launches rather than crashing.
+  const stopSelfAdvertise = startSelfAdvertiseTimer({
+    store: surfaceCtx.controlStore,
+    capabilities: surfaceCtx.runtimeCapabilities,
+    daemonVersion: resolveDaemonVersion(),
+    ...(surfaceCtx.now ? { now: surfaceCtx.now } : {}),
+    onBeat: (outcome) => {
+      const line = selfAdvertiseLogLine(outcome);
+      // eslint-disable-next-line no-console
+      if (line) console.error(line);
+    },
+  });
+  app.addHook('onClose', async () => { stopSelfAdvertise(); });
 
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact
