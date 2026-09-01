@@ -6,6 +6,7 @@ import type {
   BrokerClientFrame,
   BrokerServerFrame,
   HostRefusalCode,
+  SessionLauncher,
 } from '../../shared/ptyProtocol.ts';
 import {
   BROKER_MAX_QUEUED_INPUT_BYTES,
@@ -13,6 +14,7 @@ import {
   BROKER_PROTOCOL,
   BrokerFrameDecoder,
   BrokerProtocolError,
+  canonicalLaunchers,
   decodeBrokerClientFrame,
   encodeBrokerFrame,
 } from './brokerProtocol.ts';
@@ -87,6 +89,13 @@ export type LinuxBrokerServerOptions = {
   expectedClientUid: number;
   expectedClientGid: number;
   launcher: BrokerPtyLauncher;
+  /**
+   * Which launchers this broker can ACTUALLY launch, answered by inspecting the real filesystem as
+   * `kb-shell` (production wires `enumerateBrokerLaunchers`). Injected rather than imported so a test
+   * can state the machine it is describing; ABSENT means "this broker enumerates nothing", which is
+   * the fail-closed answer, not an unanswered question.
+   */
+  enumerateLaunchers?: () => Promise<readonly SessionLauncher[]>;
   makeSessionId: () => string;
   now: () => string;
   recoveredSessions?: readonly BrokerRuntimeSession[];
@@ -239,6 +248,18 @@ export class LinuxBrokerServer {
       const queued = this.createTail.then(() => this.create(socket, frame));
       this.createTail = queued.catch(() => {});
       await queued;
+      return;
+    }
+    if (frame.type === 'launchers') {
+      // Sessionless, like `create`, and answered before the session lookup below. An enumeration that
+      // throws, or a broker wired with no enumerator at all, answers the EMPTY SET rather than an
+      // error: the caller is the capability probe, and "I could not tell" and "I can launch nothing"
+      // must reach it as the same fail-closed answer. An `error` frame here would be read as a broken
+      // broker and would take the whole terminal down with it.
+      let enumerated: readonly SessionLauncher[] = [];
+      try { enumerated = await this.options.enumerateLaunchers?.() ?? []; } catch { enumerated = []; }
+      this.send(socket, { type: 'launchers', requestId: frame.requestId, sessionId: null,
+        epochId: this.options.epochId, launchers: canonicalLaunchers(enumerated) });
       return;
     }
     const session = this.sessions.get(frame.sessionId);

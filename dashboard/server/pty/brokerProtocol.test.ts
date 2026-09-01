@@ -28,7 +28,7 @@ const epochId = 'epoch-0123456789abcdef0123456789abcdef';
 const brokerVectorRules: Record<string, { owner: 'W4' } | {
   message: string;
   refusal?: string;
-  marker?: 'rawBytes' | 'queuedBytes' | 'decodedBytes';
+  marker?: 'rawBytes' | 'queuedBytes' | 'decodedBytes' | 'serverFrame';
   reaches?: { frame: Record<string, unknown>; message: string };
 }> = {
   'request-id-short': { message: 'broker frame keys are invalid',
@@ -50,6 +50,11 @@ const brokerVectorRules: Record<string, { owner: 'W4' } | {
   'queued-input-over-262144': { marker: 'queuedBytes', message: 'enforced by LinuxBrokerServer' },
   'decoded-input-over-65536': { marker: 'decodedBytes', message: 'decoded input exceeds 65,536 bytes',
     refusal: 'input-too-large' },
+  // Server-frame vectors: the enumerated launcher set has exactly one wire form, and the rule that
+  // enforces it lives in the SERVER decoder, so these are driven through `decodeBrokerServerFrame`.
+  'launchers-duplicated': { marker: 'serverFrame', message: 'enumerated launchers are invalid' },
+  'launchers-out-of-order': { marker: 'serverFrame', message: 'enumerated launchers are invalid' },
+  'launchers-unknown-member': { marker: 'serverFrame', message: 'enumerated launchers are invalid' },
   'attachment-id-short': { owner: 'W4' },
   'cols-below-min': { owner: 'W4' },
   'cols-above-max': { owner: 'W4' },
@@ -101,6 +106,12 @@ describe('brokerProtocol', () => {
         const error = refusalOf(() => new BrokerFrameDecoder(decodeBrokerClientFrame).push(header));
         expect(error.message, vector.case).toBe(rule.message);
         expect(error.refusal, vector.case).toBe('invalid-request');
+        continue;
+      }
+      if (rule.marker === 'serverFrame') {
+        const error = refusalOf(() => decodeBrokerServerFrame(vector.frame));
+        expect(error.message, vector.case).toBe(rule.message);
+        expect(error.refusal, vector.case).toBe(rule.refusal ?? 'invalid-request');
         continue;
       }
       if (rule.marker === 'queuedBytes') {

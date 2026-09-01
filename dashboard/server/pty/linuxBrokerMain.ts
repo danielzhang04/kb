@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { constants as fsConstants, fstatSync } from 'node:fs';
 import { open, readFile, rename, stat } from 'node:fs/promises';
-import { createServer, type Socket } from 'node:net';
+import { createServer } from 'node:net';
 import { pathToFileURL } from 'node:url';
 
 import type { IPty } from 'node-pty';
@@ -9,6 +9,7 @@ import { BROKER_MAX_SESSIONS, BROKER_PROTOCOL } from './brokerProtocol.ts';
 import {
   BROKER_RUNTIME_POLICY,
   BROKER_SOCKET_PATH,
+  enumerateBrokerLaunchers,
   pinBrokerLaunch,
   type BrokerLaunchSpec,
 } from './fdPinnedPaths.ts';
@@ -16,30 +17,27 @@ import {
   LinuxBrokerServer,
   MAX_BROKER_RECEIPTS,
   listenOnUnixSocket,
-  type BrokerPeerIdentity,
   type BrokerProcessIdentity,
   type BrokerPty,
   type BrokerPtyLauncher,
   type BrokerRuntimeSession,
   type BrokerRuntimeState,
 } from './linuxBrokerServer.ts';
+// The peer-credential read and the passwd/group parsing are shared with the DASHBOARD side of this
+// socket (`brokerProbe.ts`), so they live in their own module rather than here: the broker payload and
+// the daemon must resolve `kb-shell` to the same numbers or the identity checks are theatre.
+import { namedId, readUnixPeerIdentity } from './unixServiceIdentity.ts';
+
+export { readUnixPeerIdentity };
 
 const MAX_RUNTIME_STATE_BYTES = 262_144;
 const brokerSessionPattern = /^pty-[0-9a-f]{32}$/;
 const brokerEpochPattern = /^epoch-[0-9a-f]{32}$/;
 const brokerOperationPattern = /^op-[0-9a-f]{64}$/;
 
-type SocketWithFd = Socket & { _handle?: { fd?: number } };
 export type ServiceIdentities = {
   shellUid: number; shellGid: number; dashboardUid: number; dashboardGid: number;
 };
-
-function namedId(document: string, name: 'kb-shell' | 'kb-dashboard', field: number): number {
-  const row = document.split(/\r?\n/).find((line) => line.split(':')[0] === name);
-  const value = row === undefined ? Number.NaN : Number(row.split(':')[field]);
-  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} identity is missing`);
-  return value;
-}
 
 export function validateServiceIdentity(passwd: string, groups: string,
   effective: { uid: number; gid: number }): ServiceIdentities {
@@ -206,21 +204,6 @@ async function storeRuntimeState(statePath: string, state: BrokerRuntimeState): 
   try { await directory.sync(); } finally { await directory.close(); }
 }
 
-export async function readUnixPeerIdentity(socket: Socket): Promise<BrokerPeerIdentity> {
-  if (process.platform !== 'linux') throw new Error('Unix peer identity is Linux-only');
-  const fd = (socket as SocketWithFd)._handle?.fd;
-  if (!Number.isInteger(fd) || (fd as number) < 0) throw new Error('Unix peer descriptor unavailable');
-  const koffi = (await import('koffi')).default;
-  const libc = koffi.load(null);
-  const getsockopt = libc.func('int getsockopt(int, int, int, _Out_ void *, _Inout_ unsigned int *)');
-  const credentials = Buffer.alloc(12);
-  const length = Buffer.alloc(4);
-  length.writeUInt32LE(credentials.byteLength, 0);
-  const result = getsockopt(fd, 1, 17, credentials, length) as number;
-  if (result !== 0 || length.readUInt32LE(0) !== 12) throw new Error('SO_PEERCRED failed');
-  return { pid: credentials.readInt32LE(0), uid: credentials.readUInt32LE(4), gid: credentials.readUInt32LE(8) };
-}
-
 /** node-pty's master socket, the only writability signal the library exposes. */
 type PtyMasterSocket = { writableNeedDrain?: boolean; once(event: string, listener: () => void): unknown };
 
@@ -341,6 +324,10 @@ export async function startLinuxBrokerMain(socketFd = 3): Promise<LinuxBrokerMai
     expectedClientUid: identities.dashboardUid,
     expectedClientGid: identities.dashboardGid,
     launcher: await createPinnedLauncher(identities),
+    // Asked fresh each time the dashboard's capability probe asks, and answered against the same
+    // `rootUid: 0` identity set the pinned launcher uses — the enumeration and the launch are looking
+    // at the same filesystem through the same rules, as the same user.
+    enumerateLaunchers: () => enumerateBrokerLaunchers({ rootUid: 0, ...identities }),
     makeSessionId: () => `pty-${randomBytes(16).toString('hex')}`,
     now: () => new Date().toISOString(),
     recoveredSessions,

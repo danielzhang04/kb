@@ -10,7 +10,7 @@ import {
 import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 
-import type { LaunchRecipe, SafeRootId, SessionSize } from '../../shared/ptyProtocol.ts';
+import type { LaunchRecipe, SafeRootId, SessionLauncher, SessionSize } from '../../shared/ptyProtocol.ts';
 import { decodeLaunchRecipe } from './brokerProtocol.ts';
 
 export const LINUX_ROOTS = {
@@ -250,25 +250,50 @@ export type PinnedBrokerLaunch = {
   close(): Promise<void>;
 };
 
+/** The service accounts every metadata rule in the walk below is written against. */
+export type PinIdentities = {
+  rootUid: number; shellUid: number; shellGid: number; dashboardUid: number; dashboardGid: number;
+};
+
+/**
+ * The only directories a broker child may be executed out of. Exported because the capability probe
+ * asks "would pinning this launcher succeed?" against the SAME list the launch asks it against — a
+ * second copy would drift, and a probe answering about a different root set is a probe that lies.
+ */
+export const APPROVED_EXECUTABLE_ROOTS = [
+  '/bin', '/usr/bin', '/usr/local/bin', '/var/lib/kb-shell/home/.local',
+] as const;
+
+/**
+ * The shebang allowlist, in one place. `#!/usr/bin/env node` is rewritten to the concrete interpreter
+ * (env resolves through PATH, which a pinned launch may not depend on); anything else must already be
+ * an absolute `/bin` or `/usr/bin` name. `null` means "not approved" and is always fatal.
+ */
+function shebangInterpreter(prefix: string): string | null {
+  const firstLine = prefix.split(/\r?\n/, 1)[0]!.slice(2).trim();
+  return firstLine === '/usr/bin/env node' ? '/usr/bin/node'
+    : /^\/(?:usr\/)?bin\/[A-Za-z0-9._-]+$/.test(firstLine) ? firstLine : null;
+}
+
+type PinWalk = {
+  openAbsolute(absolute: string, leafKind: 'file' | 'directory', allowedRoots: readonly string[]): number;
+  /** Re-lstat every pathname opened so far and refuse if any moved under our own handles. */
+  verifyRechecks(): void;
+  closeHeld(): void;
+};
+
 /**
  * Linux openat-style primitive: open `/` once, then open every component through
  * `/proc/self/fd/<pinned-dirfd>/<component>` with O_NOFOLLOW (and O_DIRECTORY for directories).
  * Symlink objects are themselves pinned with O_PATH|O_NOFOLLOW before their target is traversed.
- * Every original pathname identity is rechecked before returning, while launch uses only proc-fd paths.
+ * Every original pathname identity is rechecked before use, while launch uses only proc-fd paths.
+ *
+ * One walk, two callers: `pinBrokerLaunch`, which then spawns, and `pinnableLauncher`, which then
+ * throws the descriptors away. They must never diverge — the moment the probe validates something
+ * weaker than the launch, the daemon starts advertising launchers that refuse at `create`, which is
+ * the same class of lie as advertising a launcher nobody looked for.
  */
-export async function pinBrokerLaunch(
-  launch: BrokerLaunchSpec,
-  identities: { rootUid: number; shellUid: number; shellGid: number; dashboardUid: number; dashboardGid: number },
-  fs: PinningFileSystem = productionPinningFs,
-): Promise<PinnedBrokerLaunch> {
-  if (!Object.values(LINUX_ROOTS).some((root) => isWithin(launch.cwd, root))
-      || deniedRoots.some((root) => isWithin(launch.cwd, root))) {
-    throw new FdPinnedPathError('cwd is outside an approved root');
-  }
-  const executableRoots = ['/bin', '/usr/bin', '/usr/local/bin', '/var/lib/kb-shell/home/.local'];
-  if (!executableRoots.some((root) => isWithin(launch.executable, root))) {
-    throw new FdPinnedPathError('executable is outside an approved root');
-  }
+function beginPinWalk(identities: PinIdentities, fs: PinningFileSystem): PinWalk {
   const held: number[] = [];
   const rechecks: Array<{ path: string; identity: PinnedIdentity }> = [];
   const closeHeld = (): void => {
@@ -366,25 +391,47 @@ export async function pinBrokerLaunch(
     return parentFd;
   };
 
-  try {
-    const cwdRoot = Object.values(LINUX_ROOTS).find((root) => isWithin(launch.cwd, root))!;
-    const cwdFd = openAbsolute(launch.cwd, 'directory', [cwdRoot]);
-    const entrypointFd = openAbsolute(launch.executable, 'file', executableRoots);
+  const verifyRechecks = (): void => {
     for (const check of rechecks) {
       const current = fs.identityAt(check.path, check.identity);
       if (current.dev !== check.identity.dev || current.ino !== check.identity.ino || current.kind !== check.identity.kind) {
         throw new FdPinnedPathError('pinned ancestor identity changed');
       }
     }
+  };
+
+  return {
+    openAbsolute: (absolute, leafKind, allowedRoots) => openAbsolute(absolute, leafKind, allowedRoots),
+    verifyRechecks,
+    closeHeld,
+  };
+}
+
+export async function pinBrokerLaunch(
+  launch: BrokerLaunchSpec,
+  identities: PinIdentities,
+  fs: PinningFileSystem = productionPinningFs,
+): Promise<PinnedBrokerLaunch> {
+  if (!Object.values(LINUX_ROOTS).some((root) => isWithin(launch.cwd, root))
+      || deniedRoots.some((root) => isWithin(launch.cwd, root))) {
+    throw new FdPinnedPathError('cwd is outside an approved root');
+  }
+  if (!APPROVED_EXECUTABLE_ROOTS.some((root) => isWithin(launch.executable, root))) {
+    throw new FdPinnedPathError('executable is outside an approved root');
+  }
+  const walk = beginPinWalk(identities, fs);
+  try {
+    const cwdRoot = Object.values(LINUX_ROOTS).find((root) => isWithin(launch.cwd, root))!;
+    const cwdFd = walk.openAbsolute(launch.cwd, 'directory', [cwdRoot]);
+    const entrypointFd = walk.openAbsolute(launch.executable, 'file', APPROVED_EXECUTABLE_ROOTS);
+    walk.verifyRechecks();
     const prefix = Buffer.from(fs.read(entrypointFd, 256)).toString('utf8');
     let executableFd = entrypointFd;
     let args = launch.args;
     if (prefix.startsWith('#!')) {
-      const firstLine = prefix.split(/\r?\n/, 1)[0]!.slice(2).trim();
-      const interpreter = firstLine === '/usr/bin/env node' ? '/usr/bin/node'
-        : /^\/(?:usr\/)?bin\/[A-Za-z0-9._-]+$/.test(firstLine) ? firstLine : null;
+      const interpreter = shebangInterpreter(prefix);
       if (interpreter === null) throw new FdPinnedPathError('script interpreter is not approved');
-      executableFd = openAbsolute(interpreter, 'file', executableRoots);
+      executableFd = walk.openAbsolute(interpreter, 'file', APPROVED_EXECUTABLE_ROOTS);
       args = [`/proc/self/fd/${entrypointFd}`, ...args];
     }
     const cwdProcPath = `/proc/self/fd/${cwdFd}`;
@@ -397,10 +444,93 @@ export async function pinBrokerLaunch(
       },
       executableFd,
       cwdFd,
-      close: async () => closeHeld(),
+      close: async () => walk.closeHeld(),
     };
   } catch (error) {
-    closeHeld();
+    walk.closeHeld();
     throw error instanceof FdPinnedPathError ? error : new FdPinnedPathError('fd-pinned launch refused');
   }
+}
+
+/**
+ * The recipe a launcher is PROBED with. It exists so the executable path comes out of
+ * `buildBrokerLaunch` — the same table launch reads — instead of a second copy of
+ * `/var/lib/kb-shell/home/.local/bin/<name>`. The model is the first approved one purely because
+ * `buildBrokerLaunch` refuses an unapproved model; nothing is spawned, so the choice has no other
+ * effect, and the args it produces are discarded.
+ */
+function probeRecipe(launcher: SessionLauncher): LaunchRecipe {
+  if (launcher === 'shell') {
+    return { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'shell-default', sandbox: 'interactive' };
+  }
+  return launcher === 'claude'
+    ? { launcher: 'claude', mode: 'interactive', model: APPROVED_MODELS.claude[0], toolPolicyId: 'standard', sandbox: 'claude-policy' }
+    : { launcher: 'codex', mode: 'interactive', model: APPROVED_MODELS.codex[0], toolPolicyId: 'standard', sandbox: 'codex-workspace-write' };
+}
+
+/** The executable a launcher resolves to, straight out of the launch table. */
+export function launcherExecutable(launcher: SessionLauncher): string {
+  return buildBrokerLaunch(probeRecipe(launcher), 'repo', '', { cols: 80, rows: 24 }).executable;
+}
+
+/**
+ * "Would pinning this launcher succeed right now?" — answered by walking the executable exactly as
+ * `pinBrokerLaunch` does (O_NOFOLLOW component by component, the ownership/mode matrix, the symlink
+ * depth limit, the recheck sweep, the shebang allowlist and its interpreter) and then dropping the
+ * descriptors instead of spawning. It deliberately does NOT walk a cwd: a broken approved root is a
+ * property of the host, not of a launcher, and letting it answer "codex is missing" would misname the
+ * fault — the host's own root policy is checked where it belongs, at `create`.
+ *
+ * FAIL CLOSED, without exception. Every refusal, every errno, every unexpected throw returns `false`.
+ * There is no error this function can see that means "the launcher is probably fine": the entire point
+ * of the enumeration is that a launcher it names is one an operator may be routed onto.
+ */
+export async function pinnableLauncher(
+  launcher: SessionLauncher,
+  identities: PinIdentities,
+  fs: PinningFileSystem = productionPinningFs,
+): Promise<boolean> {
+  let executable: string;
+  let walk: PinWalk;
+  try {
+    executable = launcherExecutable(launcher);
+    if (!APPROVED_EXECUTABLE_ROOTS.some((root) => isWithin(executable, root))) return false;
+    walk = beginPinWalk(identities, fs);
+  } catch { return false; }
+  try {
+    const entrypointFd = walk.openAbsolute(executable, 'file', APPROVED_EXECUTABLE_ROOTS);
+    walk.verifyRechecks();
+    const prefix = Buffer.from(fs.read(entrypointFd, 256)).toString('utf8');
+    if (prefix.startsWith('#!')) {
+      const interpreter = shebangInterpreter(prefix);
+      if (interpreter === null) return false;
+      walk.openAbsolute(interpreter, 'file', APPROVED_EXECUTABLE_ROOTS);
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    walk.closeHeld();
+  }
+}
+
+/**
+ * The broker's answer to "which launchers can I actually launch?", produced by inspecting the real
+ * filesystem AS `kb-shell` — the only principal that can see inside `/var/lib/kb-shell/home` (0700,
+ * `kb-shell`), which is exactly why this runs in the broker and not in the daemon.
+ *
+ * Every launcher is asked independently and every failure is that launcher's own: one launcher that
+ * throws can never remove another from the set, and can never add itself to it.
+ */
+export async function enumerateBrokerLaunchers(
+  identities: PinIdentities,
+  fs: PinningFileSystem = productionPinningFs,
+): Promise<SessionLauncher[]> {
+  const available: SessionLauncher[] = [];
+  for (const launcher of ['shell', 'claude', 'codex'] as const) {
+    let pinnable = false;
+    try { pinnable = await pinnableLauncher(launcher, identities, fs); } catch { pinnable = false; }
+    if (pinnable) available.push(launcher);
+  }
+  return available;
 }

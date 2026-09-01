@@ -133,11 +133,37 @@ export type BrokerClientFrame =
       encoding: 'base64'; data: string }
   | { type: 'resize'; requestId: string; sessionId: string; epochId: string; sequence: number;
       cols: number; rows: number }
-  | { type: 'close'; requestId: string; sessionId: string; epochId: string; sequence: number };
+  | { type: 'close'; requestId: string; sessionId: string; epochId: string; sequence: number }
+  /**
+   * "Which launchers can you ACTUALLY launch?" — asked once, by the capability probe, never by a
+   * session. It is a REQUEST rather than a field on `ready` for two reasons, and the protocol version
+   * stays `kb-shell-broker/v1` because of the first.
+   *
+   *  1. This grammar's decoder is exact-key (`brokerProtocol.ts` `exact()`), so a new optional key on
+   *     `ready` is NOT additive: a broker that sent one would produce a `ready` frame that every
+   *     dashboard not carrying this change rejects outright, killing a terminal that works today. That
+   *     is a breaking change wearing an optional field's clothes, and it would force the version bump
+   *     — and with it the coordinated broker+dashboard deploy that `deploy/install_pty_broker.py`'s
+   *     `--print-protocol-version` gate exists to make deliberate. A new frame type costs neither: an
+   *     old dashboard simply never sends it, and an old broker answers a request it does not know with
+   *     `invalid-request`, which the probe reads as "no launchers enumerated" and fails closed.
+   *  2. Enumeration walks the real filesystem as `kb-shell`. On `ready` that walk would run on every
+   *     connect, including the session host's; as its own request it runs once, when the probe asks.
+   */
+  | { type: 'launchers'; requestId: string; sessionId: null; epochId: string };
 export type BrokerServerFrame =
   | { type: 'ready'; requestId: string; sessionId: null; protocol: 'kb-shell-broker/v1';
       epochId: string; maxFrameBytes: 98_304; maxInputBytes: 65_536;
       maxQueuedInputBytes: 262_144; sessions: { sessionId: string; epochId: string }[] }
+  /**
+   * The launchers the broker resolved by inspecting the real filesystem AS `kb-shell`, through the
+   * same fd-pinning validator that runs at launch. The set is the ANSWER, not a claim: an empty array
+   * is a legal, meaningful reply ("this broker can launch nothing"), and a launcher named here is one
+   * that would pin today. `kb-dashboard` cannot check any of this itself — `/var/lib/kb-shell/home` is
+   * 0700 `kb-shell` by design — which is the whole reason the question crosses the socket.
+   */
+  | { type: 'launchers'; requestId: string; sessionId: null; epochId: string;
+      launchers: SessionLauncher[] }
   | { type: 'ack'; requestId: string; action: 'create'; sessionId: string;
       epochId: string; sequence: number; operationKey: string; replayed: boolean }
   | { type: 'ack'; requestId: string; action: 'attach'; sessionId: string;

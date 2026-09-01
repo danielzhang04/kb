@@ -1,10 +1,10 @@
 import { Duplex } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
-import type { SessionHost, SessionSink } from './contracts.ts';
+import type { PtyCapabilityProbe, SessionHost, SessionSink } from './contracts.ts';
 import { encodeBrokerFrame } from './brokerProtocol.ts';
 import { LinuxBrokerClient } from './linuxBrokerClient.ts';
-import { LinuxBrokerServer, type BrokerPty } from './linuxBrokerServer.ts';
+import { LinuxBrokerServer, type BrokerPty, type LinuxBrokerServerOptions } from './linuxBrokerServer.ts';
 import { createSessionRecordRegistry } from './sessionRecord.ts';
 import { createEmptyPtySessionsDocument, enforcePtySessionRetention } from './sessionPersistence.ts';
 import type { SessionPersistence } from './sessionPersistence.ts';
@@ -62,6 +62,49 @@ describe('LinuxBrokerClient', () => {
     expect(exits).toEqual(['closed']);
   });
 
+  it('reports the launchers the BROKER enumerated, not a literal, and fails closed when it cannot', async () => {
+    const probeAgainst = async (
+      enumerateLaunchers: LinuxBrokerServerOptions['enumerateLaunchers'],
+    ): Promise<PtyCapabilityProbe> => {
+      const [clientSocket, serverSocket] = pair();
+      const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+        launcher: { launch: async () => new FakePty() }, enumerateLaunchers,
+        makeSessionId: () => sessionId, now: () => '2026-08-22T00:00:00.000Z' });
+      server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+      let request = 0;
+      const client = new LinuxBrokerClient({ connect: async () => clientSocket, dashboardEpochId: epochId,
+        makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}` });
+      const probed = await client.probe();
+      client.disconnect();
+      return probed;
+    };
+
+    // The machine's answer travels the wire verbatim. Each of these is a different real VM.
+    const full = await probeAgainst(async () => ['shell', 'claude', 'codex']);
+    expect(full).toMatchObject({ available: true, launchers: ['shell', 'claude', 'codex'] });
+    expect(await probeAgainst(async () => ['shell']))
+      .toMatchObject({ available: true, launchers: ['shell'] });
+    expect(await probeAgainst(async () => ['shell', 'claude']))
+      .toMatchObject({ available: true, launchers: ['shell', 'claude'] });
+
+    // An enumeration that throws is the empty set, and a broker with no enumerator at all is too.
+    // Neither may produce a launcher: a `ready` frame is proof of a broker, never proof of a CLI.
+    for (const broken of [async (): Promise<never> => { throw new Error('EIO'); }, undefined]) {
+      const probed = await probeAgainst(broken);
+      expect(probed).toMatchObject({ available: true, launchers: [] });
+      expect(probed.available && probed.launchers).not.toContain('claude');
+      expect(probed.available && probed.launchers).not.toContain('codex');
+    }
+
+    // A duplicated or out-of-order set never reaches the client: the broker canonicalizes before it
+    // answers, so `claude,shell,claude` comes back as the one wire form this protocol admits.
+    expect(await probeAgainst(async () => ['claude', 'shell', 'claude'] as never))
+      .toMatchObject({ available: true, launchers: ['shell', 'claude'] });
+
+    // `roots` stays the compiled-in policy pair; only launchers are enumerated.
+    expect(full.available && full.roots).toEqual(['repo', 'worktrees']);
+  });
+
   it('refuses an old-epoch frame after drain and suppresses late exit exactly once', async () => {
     const child = new FakePty();
     const [clientSocket, serverSocket] = pair();
@@ -98,6 +141,11 @@ describe('LinuxBrokerClient', () => {
     let minted = 0;
     const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
       launcher: { launch: async () => new FakePty() },
+      // `sessionRecord.ts` re-probes the host on every create and refuses a launcher the host does not
+      // name, so a broker fixture that admits a `shell` create must enumerate one. Before enumeration
+      // the client asserted `shell,claude,codex` for any broker that answered `ready`, which is exactly
+      // the fabrication this fixture no longer gets for free.
+      enumerateLaunchers: async () => ['shell', 'claude', 'codex'],
       makeSessionId: () => `pty-${(++minted).toString(16).padStart(32, '0')}`,
       now: () => '2026-08-22T00:00:00.000Z' });
     server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
