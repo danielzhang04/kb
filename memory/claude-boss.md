@@ -133,3 +133,40 @@
 - **Background-task red notifications race output flush** — two "failed" notifs were phantom (task exit 0, artifacts present). Verify from artifacts (files on disk, sha) before believing a red; conversely `run_in_background` tasks killed by the harness can leave TRUNCATED artifacts (a half-written tar) — re-verify integrity after any kill.
 - **promote_vm_outbox gotchas:** `--trusted-ops-head` = the outbox CHAIN BASE (`parents - commits` over the manifests), NOT current origin/ops (histories drift; tool cherry-picks onto today's tip). Final reconciliation leg REQUIRES quiescent runtime — lock execution before the run, `systemctl restart kb-dashboard` after to re-arm. Instruction-shaped bundles (queue/*) need Daniel's ssh-sign as `kb-ops-approver`/ns `kb-ops-instructions`; signer file at kb-backups/kb-ops-approver.allowed-signers is reusable.
 - **Worker worktrees lack node_modules (ACL)** — verification junction `cmd /c mklink /J <wt>/dashboard/node_modules <dv3-gate>/dashboard/node_modules` (lockfile-identical), remove after; bare `npx tsc` resolves a decoy global — always `node ./node_modules/typescript/bin/tsc`.
+
+## 2026-09-01 — ops reconciliation completed (the leg that had NEVER worked)
+- **A validator can be broken by ordinary traffic and nobody notices for weeks.** The VM-side ops
+  reconciliation had never once succeeded since 2026-08-19. `parse_raw_diff` accepted only
+  `(header, path)` PAIRS, but `git diff --raw -z` emits THREE fields for a rename — and cards moving
+  `inbox -> working -> done` ARE renames (~98% similar). Every attempt died on the fleet's own normal
+  behaviour. LESSON: when a leg "has never completed", suspect it is incompatible with routine
+  traffic, not that the operator keeps mis-running it.
+- **Fix a validator by making it see MORE, not less.** `--no-renames` was right over teaching the
+  parser 3-field records: with rename detection ON, `--name-only` reports only the DESTINATION, so a
+  3-field parser must drop the source path — and then `git mv deploy/x.py queue/y.md` shows one
+  allowlisted path while deleting a protected file. Decomposing to delete+add checks both ends.
+- **Split an allowlist, do not widen it.** `COORDINATION` (VM-originated, narrow) vs a new
+  `RECONCILED` superset (inbound). The VM can RECEIVE an agent-catalog edit but never ORIGINATE one.
+  Build the superset by appending to the narrow one's `.pattern` so the relation holds by construction.
+- **Locking to reach quiescence WRITES AN AUDIT ROW FIRST** (`routes.ts:753-760`), which spools a new
+  outbox bundle, which changes `chainDigest` and voids an already-signed approval. There was no
+  ordering of the documented command that could work. Lock FIRST, then generate the approval from
+  whatever chain exists at that moment — never pre-compute the bundle count.
+- **`git mv` renames the INDEX ENTRY from the already-staged blob** and does NOT re-read the working
+  tree. `sed` + `git mv` commits the move WITHOUT the content edit. Always `git add` after, and read
+  the commit stat: "N insertions(+), 0 deletions(-)" plus "rename ... (100%)" means content was lost.
+- **Windows path/pipe traps, all hit in one session:** PowerShell corrupts `git archive | tar -x`
+  (decodes a binary stream); BOTH `tar` and `scp` read a leading `C:\` as a REMOTE HOST
+  ("Cannot connect to C"); `git -C <repo> archive -o rel.tar` writes relative to the REPO, not the
+  caller. Pattern that works: absolute `-o` for git, then run tar/scp from INSIDE the staging dir
+  with relative paths. TEST the staging half locally before shipping any command to the human.
+- **Precondition checks must fetch before they test, and test CONTENT not commit messages.** My
+  step-3 script grepped `origin/main` for a commit-message string before fetching, and told Daniel his
+  merge had not landed. A squash/rebase merge rewrites the message anyway — grep the file.
+- **Verify a subagent's headline claims yourself against live state.** Both opus agents were right,
+  but the cheap re-checks (612 paths / 0 rejected / 0 renames; the untracked wake card it only
+  PREDICTED) are what made it safe to hand a human a production command.
+- **Steady state does not converge:** unlocking spools an audit bundle, and receipts can only be
+  written during a quiescent window — so every drain needs a lock window. A short-interval drain
+  cadence would pause the fleet constantly. Raising `outboxStatus.ts:142`'s 15-minute `maxAgeMs`
+  (keeping the 100-bundle count guard) is probably the better half of the fix. Open question D-1.
