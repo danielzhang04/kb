@@ -19,6 +19,7 @@ import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
 import { registerAgents } from '../agents/routes.ts';
 import { projectRunAttention } from '../control/attention.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { advertiseSelfOnce } from '../placement/selfAdvertise.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('workflow-route-test-secret-32byte!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -226,6 +227,39 @@ describe('Workflow P2 routes', () => {
     expect(refused.statusCode).toBe(409);
     expect(refused.json()).toEqual({ error: 'no-complete-placement' });
     expect(store.listRuns('operator', 'all-subjects')).toEqual([]);
+  });
+
+  // P6 W6.3: `upsertHostAdvertisement` deliberately leaves `documentRevision` alone, so this collection
+  // revision has to fold the advertisement collection in itself — the never-run host chip is projected
+  // from `listHostAdvertisements()` and the route serves 304s off that revision. Without the fold, a chip
+  // computed while no host was fresh would keep being served after one started advertising.
+  it('the workflow revision moves when a self-advertisement beat lands, with NO coordinated write [W6.3]', async () => {
+    const listing = async () => (await app.inject({ method: 'GET', url: '/api/workflows' })).json();
+
+    // Stale the seeded advertisement out: with nothing fresh, the chip is `projectNeverRunHost`'s
+    // self-identity fallback rather than a placement.
+    store.seedHostAdvertisementForTest({
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date(0).toISOString(),
+      connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: true,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    });
+    const staleRevision = (await listing()).revision as string;
+    expect(typeof staleRevision).toBe('string');
+    const documentRevision = store.getControlDocumentMetadata().documentRevision;
+
+    // One beat through the production writer — the ONLY thing it changes is the advertisement row.
+    const beat = advertiseSelfOnce({
+      store, capabilities: runtimeCapabilities('linux'), daemonVersion: '1.0.0',
+    });
+    expect(beat).toMatchObject({ outcome: 'advertised', hostId: 'vm' });
+    expect(store.getControlDocumentMetadata().documentRevision).toBe(documentRevision);
+
+    // The collection ETag moved anyway, so the refreshed chip is actually served instead of 304'd away.
+    const fresh = await listing();
+    expect(fresh.revision).not.toBe(staleRevision);
+    const chip = (fresh.items as Array<{ ref: { id: string }; host: string }>)
+      .find((entity) => entity.ref.id === 'amendable');
+    expect(chip?.host).toBe('vm');
   });
 
   it('launchDeclaredAgent (the entity host-preview launch path) refuses 409 no-complete-placement and creates no Run row [W6.2b]', async () => {

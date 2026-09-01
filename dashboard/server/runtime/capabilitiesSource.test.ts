@@ -121,7 +121,12 @@ describe('production sources', () => {
     expect(sources.some((source) => source.path === 'server/runtime/capabilities.ts')).toBe(true);
   });
 
+  // This walks AND scans the whole production tree (~250 files), so it is I/O-bound and load-sensitive:
+  // measured here on a warm cache it runs 1.5-4.2 s, and a cold cache or a parallel batch run pushes it
+  // past the 5-s default. The straddle is a property of the walk, not of any one source — adding
+  // `runtime/capabilityProbes.ts` (8.6 KB) cost a measured 23 ms of scan, and the same 1.5-4.2 s spread
+  // was present without it. An explicit budget, so this gate fails on findings and not on machine load.
   it('derives no pty capability from the operating system anywhere in production source', () => {
     expect(findOsDerivedPtyFlows(productionSources()).map(formatFinding)).toEqual([]);
-  });
+  }, 30_000);
 });

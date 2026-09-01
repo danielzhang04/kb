@@ -5,11 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
-import { probeRepoSkills } from '../runtime/capabilityProbes.ts';
+import { advertisedCliStatuses, probeFilesystemRoots, probeRepoSkills } from '../runtime/capabilityProbes.ts';
+import { overlayAdvertisementCapabilities } from '../runtime/capabilitySources.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import type { PublicPtyCapability } from '../pty/contracts.ts';
 import { computeCapabilityRequirement } from './requirements.ts';
 import {
-  decodeHostAdvertisement, ADVERTISEMENT_INTERVAL_MS, isAdvertisementFresh, type CliStatus,
+  decodeHostAdvertisement, ADVERTISEMENT_INTERVAL_MS, isAdvertisementFresh,
 } from './contracts.ts';
 import { selectPlacementHost } from './select.ts';
 import {
@@ -32,6 +34,20 @@ function emptyStore() {
 
 const LINUX_VM = runtimeCapabilities('linux');
 const WINDOWS_DESKTOP = runtimeCapabilities('win32');
+
+const CLOSED_PTY: PublicPtyCapability = {
+  pty: false,
+  diagnostic: { reason: 'broker-unavailable', detail: null, checkedAt: '2026-08-25T00:00:00.000Z' },
+};
+/** The ONLY launcher set `pty/brokerProbe.ts` accepts from the VM broker. */
+const VM_PTY: PublicPtyCapability = {
+  pty: true, host: 'vm', launchers: ['shell', 'claude', 'codex'],
+  roots: ['repo', 'worktrees'], checkedAt: '2026-08-25T00:00:00.000Z',
+};
+const DESKTOP_SHELL_ONLY: PublicPtyCapability = {
+  pty: true, host: 'desktop', launchers: ['shell'],
+  roots: ['repo', 'worktrees'], checkedAt: '2026-08-25T00:00:00.000Z',
+};
 
 describe('advertiseSelfOnce — one beat writes the daemon\'s OWN host row', () => {
   it('lands a decodable advertisement in a previously empty store, at version 1', () => {
@@ -238,10 +254,16 @@ describe('the 409 this exists to remove', () => {
 // one from the assigned agents, and `placement/requirements.ts` turns each agent's declared `runtime`
 // into a `clis` requirement. So an advertisement carrying the fail-closed `clis: missing` default keeps
 // every agent- and workflow-owned launch at 409 even though a host IS advertising. This runs the REAL
-// repo catalog against the three CLI states so the gap cannot silently come back.
+// repo catalog against real PTY-capability shapes so the gap cannot silently come back.
+//
+// The CLI statuses are DERIVED from the PTY capability's `launchers` (`runtime/capabilityProbes.ts`), so
+// the matrix is keyed on that capability, not on an independent CLI probe. On the VM the broker is
+// accepted only with the launcher set exactly `shell,claude,codex`, which makes the linux matrix binary:
+// terminal available -> every agent placeable; terminal unavailable -> none. Windows is per-launcher.
 describe('what the real agents/ catalog requires of an advertised host [P6 §3.2]', () => {
   const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
   const declarations = [...readDeclaredAgentDetails(REPO_ROOT).values()];
+  const allIds = declarations.map((declaration) => declaration.id).sort();
 
   const requirementFor = (declaration: (typeof declarations)[number]) => computeCapabilityRequirement({}, [{
     skills: declaration.skills ?? [],
@@ -250,18 +272,27 @@ describe('what the real agents/ catalog requires of an advertised host [P6 §3.2
     runtime: declaration.runtime,
   }]);
 
-  const advertisementWith = (clis: { claude: CliStatus; codex: CliStatus }) => {
+  /** Compose exactly as `start()` does: probe the slice off a PTY capability, overlay, advertise. */
+  const advertisementFor = (pty: PublicPtyCapability) => {
     const store = emptyStore();
     advertiseSelfOnce({
       store,
-      capabilities: { ...LINUX_VM, clis, skills: probeRepoSkills(REPO_ROOT) },
+      capabilities: overlayAdvertisementCapabilities(
+        runtimeCapabilities(pty.pty && pty.host === 'desktop' ? 'win32' : 'linux', pty),
+        {
+          connectors: [], gpu: false,
+          clis: advertisedCliStatuses(pty),
+          skills: probeRepoSkills(REPO_ROOT),
+          filesystemRoots: probeFilesystemRoots(pty),
+        },
+      ),
       daemonVersion: '1.2.3',
     });
     return store.listHostAdvertisements();
   };
 
-  const placeable = (clis: { claude: CliStatus; codex: CliStatus }): string[] => {
-    const advertisements = advertisementWith(clis);
+  const placeable = (pty: PublicPtyCapability): string[] => {
+    const advertisements = advertisementFor(pty);
     const now = Date.now();
     return declarations
       .filter((declaration) => selectPlacementHost(requirementFor(declaration), advertisements, now).outcome === 'placed')
@@ -279,23 +310,24 @@ describe('what the real agents/ catalog requires of an advertised host [P6 §3.2
     expect(idsWithRuntime('codex').length).toBeGreaterThan(0);
   });
 
-  it('with BOTH CLIs missing — the VM today — NO agent is placeable, however fresh the advertisement', () => {
-    expect(placeable({ claude: 'missing', codex: 'missing' })).toEqual([]);
-    // login-required fails exactly like missing (`match()` accepts only 'ready').
-    expect(placeable({ claude: 'login-required', codex: 'login-required' })).toEqual([]);
+  it('linux with NO pty capability — the VM today — places NO agent, however fresh the advertisement', () => {
+    expect(placeable(CLOSED_PTY)).toEqual([]);
   });
 
-  it('installing claude alone makes exactly the claude-runtime agents placeable', () => {
-    expect(placeable({ claude: 'ready', codex: 'missing' })).toEqual(idsWithRuntime('claude'));
+  it('linux with the broker\'s accepted launcher set places EVERY declared agent', () => {
+    // `pty/brokerProbe.ts` refuses any set other than `shell,claude,codex`, so on the VM there is no
+    // partial state to test: provisioning the broker provisions both CLIs.
+    expect(placeable(VM_PTY)).toEqual(allIds);
   });
 
-  it('installing codex alone makes exactly the codex-runtime agents placeable', () => {
-    expect(placeable({ claude: 'missing', codex: 'ready' })).toEqual(idsWithRuntime('codex'));
+  it('a shell-only desktop terminal places no agent — a terminal alone is not a CLI', () => {
+    expect(placeable(DESKTOP_SHELL_ONLY)).toEqual([]);
   });
 
-  it('with both installed every declared agent is placeable on the probed linux advertisement', () => {
-    expect(placeable({ claude: 'ready', codex: 'ready' }))
-      .toEqual(declarations.map((declaration) => declaration.id).sort());
+  it('windows drops launchers individually, so one CLI places exactly its own runtime\'s agents', () => {
+    expect(placeable({ ...DESKTOP_SHELL_ONLY, launchers: ['shell', 'claude'] })).toEqual(idsWithRuntime('claude'));
+    expect(placeable({ ...DESKTOP_SHELL_ONLY, launchers: ['shell', 'codex'] })).toEqual(idsWithRuntime('codex'));
+    expect(placeable({ ...DESKTOP_SHELL_ONLY, launchers: ['shell', 'claude', 'codex'] })).toEqual(allIds);
   });
 
   it('the probed skills list satisfies every skill the catalog declares', () => {

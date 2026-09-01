@@ -672,17 +672,26 @@ export async function start(
     // `placement/requirements.ts` turns into a permanent `409 no-complete-placement` for every agent- and
     // workflow-owned launch, because each assigned agent's declared `runtime` becomes a `clis` requirement.
     //
-    // Boot cost is a handful of `fs.access` calls plus one skills-directory walk, and every probe is
-    // fail-closed (`probeAdvertisementCapabilities` swallows a throwing probe into the closed default), so
-    // this can slow boot only marginally and can never fail it.
+    // It runs AFTER the PTY probe and consumes it: `clis` and `filesystemRoots` are read off that
+    // capability's own `launchers`/`roots`, because on Linux only the broker (running as `kb-shell`) can
+    // see the CLI binaries at all — `/var/lib/kb-shell/home` is 0700 `kb-shell` by design, so a probe from
+    // this daemon would answer EACCES/`missing` forever. Boot cost is therefore one skills-directory walk,
+    // and every port is fail-closed (`probeAdvertisementCapabilities` swallows a throwing probe into the
+    // closed default), so this can slow boot only marginally and can never fail it.
     //
     // ONCE, not per beat: a CLI installed after boot is not advertised until the daemon restarts, exactly
-    // as a PTY stack installed after boot is not. Release activation restarts the service, so an install
-    // that arrives through a deploy is picked up; a hand-install on the VM needs a restart to take effect.
-    // The alternative — re-probing every 30-s beat — spawns filesystem work forever to catch an event that
-    // happens once, and would let the advertised capability drift from the published one.
+    // as a PTY stack installed after boot is not — and on Linux it is literally the same event, since the
+    // CLIs and the broker are provisioned together. Release activation restarts the service, so an install
+    // arriving through a deploy is picked up; a hand-install on the VM needs a restart to take effect.
     const probedCapabilities = await (options.probeAdvertisementCapabilities ?? probeAdvertisementCapabilities)(
-      productionCapabilitySourcePorts({ repoRoot, pty: ptyCapability }),
+      productionCapabilitySourcePorts({
+        repoRoot,
+        pty: ptyCapability,
+        // The skills scan is the only filesystem read left here, so it is the only place an
+        // "installed but invisible" catalog can hide. Say so once, loudly, at boot.
+        // eslint-disable-next-line no-console
+        onSkillsRefusal: (detail) => console.error(`[self-advertise] ${detail}`),
+      }),
     ).catch(() => undefined);
     const composedCapabilities = probedCapabilities === undefined
       ? runtimeCapabilities(process.platform, ptyCapability)

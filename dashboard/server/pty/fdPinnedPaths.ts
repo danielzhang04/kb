@@ -19,16 +19,6 @@ export const LINUX_ROOTS = {
 } as const satisfies Record<SafeRootId, string>;
 
 export const BROKER_SOCKET_PATH = '/run/kb-shell/broker.sock';
-/**
- * The EXACT CLI binaries `buildBrokerLaunch` execs. `childEnvironment` does put `.local/bin` on the
- * child's PATH, but the executable itself is always this absolute path — PATH is never searched — so
- * anything asking "is the claude/codex CLI installed on this host" (P6 §3.1's `clis` advertisement)
- * must stat THESE, never a PATH lookup. One constant, so the probe and the launcher cannot disagree.
- */
-export const LINUX_CLI_LAUNCHERS = {
-  claude: '/var/lib/kb-shell/home/.local/bin/claude',
-  codex: '/var/lib/kb-shell/home/.local/bin/codex',
-} as const;
 export const LINUX_CHILD_ENV_KEYS = ['HOME', 'PATH', 'LANG', 'TERM', 'COLUMNS', 'LINES'] as const;
 /**
  * Runtime-directory + state-file facts the BROKER PROCESS checks at boot. It carries no copy of the
@@ -202,7 +192,7 @@ export function buildBrokerLaunch(
     args.push('--model', recipe.model!);
     if (recipe.resumeRef !== undefined) args.push('--resume', recipe.resumeRef);
     args.push('--allowedTools', policy.allowedTools.join(','), '--permission-mode', policy.permissionMode);
-    return { executable: LINUX_CLI_LAUNCHERS.claude, args, ...common };
+    return { executable: '/var/lib/kb-shell/home/.local/bin/claude', args, ...common };
   }
 
   if (!codexPolicies.has(recipe.toolPolicyId)) throw new FdPinnedPathError('unknown Codex tool policy');
@@ -211,7 +201,7 @@ export function buildBrokerLaunch(
       ? ['exec', '-', '--json', '--model', recipe.model!, '-s', 'workspace-write', ...pinnedCodexConfig, '--cd', cwd]
       : ['exec', 'resume', recipe.resumeRef, '-', '--json', '-c', `model=${recipe.model!}`, ...pinnedCodexConfig]
     : ['--model', recipe.model!, '-s', 'workspace-write', ...pinnedCodexConfig, '--cd', cwd];
-  return { executable: LINUX_CLI_LAUNCHERS.codex, args, ...common };
+  return { executable: '/var/lib/kb-shell/home/.local/bin/codex', args, ...common };
 }
 
 function identity(stats: BigIntStats): PinnedIdentity {

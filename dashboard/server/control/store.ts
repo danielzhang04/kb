@@ -3099,7 +3099,15 @@ function makeStore(
       // verbatim spec fields precisely because it is the advertisement ETag domain
       // [placement/contracts.ts §3.1:142] — that is what this CAS advances. Persistence is untouched:
       // `commit` is exactly `documentRevision += 1` followed by this same `save`, so durability, the
-      // document size limit, and the atomic rename all behave identically.
+      // document size limit, and the atomic rename all behave identically. Consumers that PROJECT an
+      // advertisement therefore have to fold this per-row `version` into their own ETag rather than lean
+      // on `documentRevision` — `workflows/routes.ts`'s `hostAdvertisementRevision` is the one such site.
+      //
+      // KNOWN AND ACCEPTED: `scheduleTransaction` above loads its document before its `await`s and commits
+      // it at the end, so a beat landing inside that window is overwritten by the transaction's older
+      // snapshot. It is self-healing and bounded — the next beat (≤ 30 s, well inside the 90-s freshness
+      // window) re-reads and rewrites the row — so a clobbered beat can never make a fresh host go stale.
+      // Closing it properly means narrowing that transaction's snapshot, which is a schedule-side change.
       save(document);
       return { ok: true, version };
     },

@@ -5,74 +5,48 @@
 // assigned agent's declared `runtime`, so a permanently-`missing` advertisement makes EVERY agent and
 // workflow launch refuse `409 no-complete-placement` even once a host is advertising.
 //
-// Every probe here answers about THIS host and nothing else. Where the daemon has no honest host-level
-// signal (connectors, gpu) the probe returns explicit emptiness with the reason, rather than inventing
+// Every value here answers about THIS host and nothing else. Where the daemon has no honest host-level
+// signal (connectors, gpu) the port returns explicit emptiness with the reason, rather than inventing
 // one — a fabricated `ready` is worse than a `missing`, because it routes work to a host that cannot run it.
-import { access } from 'node:fs/promises';
-import { constants as fsConstants } from 'node:fs';
-import { LINUX_CLI_LAUNCHERS } from '../pty/fdPinnedPaths.ts';
-import { deriveWindowsLauncherPaths } from '../pty/launcherProfiles.ts';
 import { indexSkills } from '../registry/skills.ts';
 import { CANONICAL_ID, MAX_FILESYSTEM_ROOTS, MAX_SKILLS, type CliStatus } from '../placement/contracts.ts';
 import { CLOSED_CLIS } from './capabilities.ts';
 import type { CapabilitySourcePorts } from './capabilitySources.ts';
 import type { PublicPtyCapability } from '../pty/contracts.ts';
 
-/** `fs.promises.access`, injectable so a test drives a host layout it does not have to create. */
-export type AccessPort = (path: string, mode?: number) => Promise<void>;
-
 /**
- * Every file that must be reachable for ONE CLI launcher to work, per platform. This is deliberately the
- * launcher's own path set, not a PATH lookup: `pty/fdPinnedPaths.ts` and `pty/launcherProfiles.ts` both
- * exec an absolute pinned path and never consult PATH, so a PATH-resolved `claude` would advertise
- * `ready` for a binary the daemon would never run. Windows mirrors `pty/probe.ts:57-65` exactly, where
- * `codex` needs the shim, the package entry point, AND node — it is launched as `node codex.js`.
- * `null` means "this host's launcher layout could not even be derived", which is a closed answer.
- */
-export function cliLauncherPaths(
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv = process.env,
-): { readonly claude: readonly string[]; readonly codex: readonly string[] } | null {
-  if (platform !== 'win32') {
-    return { claude: [LINUX_CLI_LAUNCHERS.claude], codex: [LINUX_CLI_LAUNCHERS.codex] };
-  }
-  try {
-    const paths = deriveWindowsLauncherPaths(env);
-    return { claude: [paths.claude], codex: [paths.codexShim, paths.codexEntry, paths.node] };
-  } catch {
-    // A service environment missing SystemRoot/USERPROFILE/APPDATA cannot name its launchers at all.
-    return null;
-  }
-}
-
-/**
- * `ready` iff every file that launcher execs is present and executable; `missing` otherwise.
+ * CLI readiness read off the composed PTY capability's OWN `launchers` — never a filesystem probe of the
+ * daemon's own. This is the only honest source available here, because on each platform `launchers` was
+ * already resolved by the party that will actually run the binary:
  *
- * `login-required` is never emitted: the daemon has no way to observe a CLI's auth state without running
- * it, and `match()` treats `login-required` exactly like `missing` anyway, so guessing would add a
- * distinction with no consumer. A logged-out CLI therefore advertises `ready` and fails at run time —
- * the same failure the launcher already surfaces, not a new one this probe introduced.
+ *  - Linux: the broker resolved it, and the broker runs AS `kb-shell`. The daemon (`kb-dashboard`) cannot
+ *    answer this question itself — `/var/lib/kb-shell/home` is mode 0700 `kb-shell` by DELIBERATE design
+ *    (`deploy/install_pty_broker.py`), so an `fs.access` from the daemon returns EACCES for an installed
+ *    CLI and would advertise `missing` forever. It would also be answering "can kb-dashboard exec this"
+ *    when the question is "can kb-shell exec this".
+ *  - Windows: `pty/probe.ts` already ran the launcher-path access probes as the daemon's own user, which
+ *    IS the principal that launches there.
+ *
+ * GRANULARITY CONSEQUENCE on Linux, by design and worth knowing: `pty/brokerProbe.ts` accepts the broker
+ * only when its launcher set is EXACTLY `shell,claude,codex`; anything else is a
+ * `broker-identity-mismatch` and the whole PTY capability comes back unavailable. So a VM either has the
+ * full launcher set (both CLIs `ready`) or no terminal at all (both `missing`) — a partial CLI install is
+ * not a state the VM can be in. Windows is genuinely per-launcher: `claude` and `codex` are optional there
+ * and are dropped individually, so a desktop CAN advertise one and not the other.
+ *
+ * `login-required` is never emitted: nothing observable to the daemon distinguishes a logged-out CLI from
+ * a logged-in one, and `match()` treats `login-required` exactly like `missing`, so guessing would add a
+ * distinction with no consumer.
  */
-export async function probeCliStatuses(options: {
-  platform?: NodeJS.Platform;
-  env?: NodeJS.ProcessEnv;
-  access?: AccessPort;
-}): Promise<{ claude: CliStatus; codex: CliStatus }> {
-  const paths = cliLauncherPaths(options.platform ?? process.platform, options.env ?? process.env);
-  if (paths === null) return { ...CLOSED_CLIS };
-  const accessPath = options.access ?? access;
-  const reachable = async (files: readonly string[]): Promise<CliStatus> => {
-    try {
-      // X_OK is a no-op on Windows (it degrades to an existence check), which is the same question
-      // `pty/probe.ts` asks there.
-      await Promise.all(files.map((file) => accessPath(file, fsConstants.X_OK)));
-      return 'ready';
-    } catch {
-      return 'missing';
-    }
+export function advertisedCliStatuses(pty: PublicPtyCapability): { claude: CliStatus; codex: CliStatus } {
+  // No terminal means no launcher probe ran at all, so there is nothing to claim. This CONSUMES the
+  // probed capability; the discriminant decides, exactly as it does for `pty` itself.
+  if (!pty.pty) return { ...CLOSED_CLIS };
+  const launchers = pty.launchers;
+  return {
+    claude: launchers.includes('claude') ? 'ready' : 'missing',
+    codex: launchers.includes('codex') ? 'ready' : 'missing',
   };
-  const [claude, codex] = await Promise.all([reachable(paths.claude), reachable(paths.codex)]);
-  return { claude, codex };
 }
 
 /** Sorted, unique, canonical, bounded — the exact shape `decodeHostAdvertisement` will accept. */
@@ -88,6 +62,9 @@ function canonicalIdList(values: readonly string[], max: number): string[] {
  * the EXISTING scanner (`registry/skills.ts`) rather than a second directory walk. The slug (the
  * `skills/<tier>/<slug>/` directory name) is the id; a slug outside the canonical charset is dropped
  * rather than allowed to throw the whole beat.
+ *
+ * This is the ONE remaining filesystem read in the advertisement path, and it reads the daemon's own
+ * checkout — none of the cross-principal permission problem that rules out probing the CLI binaries.
  */
 export function probeRepoSkills(
   repoRoot: string,
@@ -97,9 +74,30 @@ export function probeRepoSkills(
 }
 
 /**
+ * `probeRepoSkills` plus the one distinction an operator cannot otherwise make: a catalog that is ABSENT
+ * (ENOENT — this deployment ships no skills) versus one that is present but UNREADABLE (EACCES/EPERM —
+ * skills are installed and INVISIBLE, silently narrowing placement). Both degrade to an empty list, so
+ * only the message differs; the composition root decides whether to log it.
+ */
+export function probeSkillsWithDiagnostics(
+  repoRoot: string,
+  indexer: (root: string) => { items: ReadonlyArray<{ slug: string }> } = indexSkills,
+): { skills: string[]; refusal: string | null } {
+  try {
+    return { skills: probeRepoSkills(repoRoot, indexer), refusal: null };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    const detail = code === 'EACCES' || code === 'EPERM'
+      ? `skills catalog under ${repoRoot} is present but UNREADABLE (${code}) — installed skills are invisible to placement`
+      : `skills catalog under ${repoRoot} could not be read (${code ?? 'unknown'})`;
+    return { skills: [], refusal: detail };
+  }
+}
+
+/**
  * The symbolic filesystem roots this host can actually open a session in — the composed PTY capability's
- * OWN `roots`, read off its discriminant exactly as `pty` is. A host with no terminal can start no
- * session, so it grants no root: the closed branch is empty, never a guess about what exists on disk.
+ * OWN `roots`, read off its discriminant exactly as the CLI statuses are. A host with no terminal can
+ * start no session, so it grants no root: the closed branch is empty, never a guess about what is on disk.
  */
 export function probeFilesystemRoots(pty: PublicPtyCapability): string[] {
   return pty.pty ? canonicalIdList(pty.roots, MAX_FILESYSTEM_ROOTS) : [];
@@ -107,12 +105,11 @@ export function probeFilesystemRoots(pty: PublicPtyCapability): string[] {
 
 export interface CapabilityProbeOptions {
   repoRoot: string;
-  /** The ONE composition-time PTY probe result; roots are read off it, never re-derived. */
+  /** The ONE composition-time PTY probe result. CLIs and roots are read off it, never re-derived. */
   pty: PublicPtyCapability;
-  platform?: NodeJS.Platform;
-  env?: NodeJS.ProcessEnv;
-  access?: AccessPort;
   indexSkillsFor?: (root: string) => { items: ReadonlyArray<{ slug: string }> };
+  /** Called once per composition when the skills catalog could not be read; production logs it. */
+  onSkillsRefusal?: (detail: string) => void;
 }
 
 /**
@@ -122,15 +119,12 @@ export interface CapabilityProbeOptions {
  */
 export function productionCapabilitySourcePorts(options: CapabilityProbeOptions): CapabilitySourcePorts {
   return {
-    probeClis: async () => probeCliStatuses({
-      ...(options.platform ? { platform: options.platform } : {}),
-      ...(options.env ? { env: options.env } : {}),
-      ...(options.access ? { access: options.access } : {}),
-    }),
-    probeSkills: async () => probeRepoSkills(
-      options.repoRoot,
-      options.indexSkillsFor ?? indexSkills,
-    ),
+    probeClis: async () => advertisedCliStatuses(options.pty),
+    probeSkills: async () => {
+      const probed = probeSkillsWithDiagnostics(options.repoRoot, options.indexSkillsFor ?? indexSkills);
+      if (probed.refusal !== null) options.onSkillsRefusal?.(probed.refusal);
+      return probed.skills;
+    },
     probeFilesystemRoots: async () => probeFilesystemRoots(options.pty),
     // EXPLICIT emptiness, not an unwired port. A connector is MCP wiring the CLI loads per project from
     // `orgs/<project>/.claude/settings.json` (`registry/connections.ts` reads exactly that) — it is not
