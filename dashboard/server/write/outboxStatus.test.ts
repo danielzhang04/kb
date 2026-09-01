@@ -38,4 +38,23 @@ describe('outboxStatus', () => {
     const spool = fixtureManifest({ createdAt });
     expect(outboxStatus(spool)).toMatchObject({ degraded: true, reasons: ['manifest-invalid'] });
   });
+
+  it('does not degrade a 16-minute-old bundle under the default max age', () => {
+    const spool = fixtureManifest({ createdAt: new Date(Date.now() - 16 * 60_000).toISOString() });
+    const result = outboxStatus(spool);
+    expect(result.degraded).toBe(false);
+    expect(result.reasons).not.toContain('oldest-age-limit');
+  });
+
+  it('degrades a 25-hour-old bundle under the default max age', () => {
+    const spool = fixtureManifest({ createdAt: new Date(Date.now() - 25 * 60 * 60_000).toISOString() });
+    const result = outboxStatus(spool);
+    expect(result.degraded).toBe(true);
+    expect(result.reasons).toContain('oldest-age-limit');
+  });
+
+  it('leaves the capacity guard untouched by the default max age', () => {
+    const spool = fixtureManifest({ createdAt: new Date(Date.now() - 60_000).toISOString() });
+    expect(outboxStatus(spool, { maxPending: 1 })).toMatchObject({ degraded: true, reasons: ['pending-limit'] });
+  });
 });
