@@ -625,3 +625,22 @@
   LESSON, reinforced: on a fresh cloud clone recurring drift always LOOKS novel -- READ memory
   and diff today's --check against the newest standing drift card (6a7c0ebf) BEFORE touching any card.
 - Push path: recorded in the run summary.
+
+## 2026-09-01 nightly-review (cadence card 6a966fc6-571f94b0)
+- Clean gates: preamble OK, pyyaml OK, sync_skills --check EXIT 0 (skills in sync).
+- Dispatch emitted 1 card (cadence:nightly-review, project kb, self-executed): regen dashboards
+  (executive.md + handover.md), append memory, commit coordination paths.
+- DRIFT CHANGED this run: sync_daemon_dirs --check (main copy, refs-fallback; script still absent
+  on ops per 6a605ebb) grew 1 -> 12. The 08-22 reconciliation is UNDONE for a NEW reason: a fresh
+  agent roster (8 main-only agents/*.md + 3 content-differ, NOT the old fyt-* set) landed on main
+  and is unmirrored to ops; the single ops-only acceptance-run.md still stands.
+- PROCESS WIN: caught myself mid-slip -- I first filed a fresh standalone drift card (6a966fb0)
+  BEFORE reading this shard. Reading memory surfaced the umbrella tracker is 6a7c0ebf (08-22 refresh
+  pattern) and script-absence is 6a605ebb. Deleted the standalone card, appended a "2026-09-01
+  nightly refresh" section to 6a7c0ebf instead (mirrors the 08-22 refresh). LESSON REINFORCED: on a
+  fresh cloud clone, ALWAYS read this shard and diff today's --check against the newest standing
+  drift card BEFORE filing/editing anything. When drift CHANGED, refresh the umbrella card; when
+  UNCHANGED, do nothing. Never open a new card for tracked drift.
+- Anomalies for the desk: stale working card 6a6bc3dd-5494006b (kb-ops iter-smoke-t2, stuck since
+  2026-07-30, >30d); 23 inbox cards.
+- Push path: recorded in the run summary.

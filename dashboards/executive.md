@@ -1,47 +1,41 @@
 # Executive Dashboard
-_Generated: 2026-08-19 06:19 UTC by dispatcher-cloud_
+_Generated: 2026-09-01T06:26Z by dispatcher-cloud_
 
 ## Action required
-- **Approvals queue: None** (`queue/approvals/` empty — nothing awaiting a signed/possession approval).
-- Standing wake-me cards still await Daniel at the desk (see Anomalies): the main→ops
-  daemon-dir sync and a back-port-or-prune decision on `acceptance-run.md`.
+None — `queue/approvals/` is empty (0 cards awaiting human approval).
 
 ## Queue
-| state | count |
-|-------|-------|
-| inbox | 17 |
-| blocked | 10 |
-| working | 1 (this nightly-review card) |
-| halted | 1 (misfiled in `queue/working/`) |
-| done | 641 |
-| approvals | 0 |
+| state     | count |
+|-----------|-------|
+| inbox     | 23    |
+| working   | 2     |
+| done      | 1163  |
+| approvals | 0     |
+| archived  | 10    |
 
 ## Last 24h
-- **Cadences:** `nightly-review` dispatched on schedule (08-19 card `6a854ae6`; 08-18 card `6a83f8dc`).
-- **Cost:** ~$2.56 spent (boss-session bricks v2 image regen, gemini-3-pro-image, from raw
-  `ledgers/cost/claude-boss-2026-08-19.tsv`; 13 codex rows all subscription $0). **Budget:
-  ~$27.44 of $30.00/day remaining.** Note: `ledger.read_day` misses the boss TSV rows — trust
-  the raw TSV last column for USD.
-- **Notable:** faceless-youtube bricks v2 residual-taste regen (10/10 shots verified under v2
-  doctrine); preamble + sync_skills checks green this run.
+- **Cadences run:** `nightly-dispatch` (2026-08-31, model claude-opus-4-8) and `nightly-review`
+  dispatched today (2026-09-01, card `6a966fc6-571f94b0`, project kb).
+- **Cost:** $0.00 spent today; $0.00 yesterday (all 4 ledgered steps were subscription-billed
+  codex runs, gpt-5.6-terra, exit 0). Budget remaining: **$30.00 / $30.00** daily limit.
+- **Notable:** Skills mirror in sync (`sync_skills.py --check` exit 0). Preamble green.
 
 ## Projects
-- **atlas** — V1 "Hands" wave COMPLETE; PR #44 merged + prod rolled out (2026-07-21), Atlas
-  view LIVE on 127.0.0.1:5317 with live worker passthrough. V2 "Trust" planning = Daniel's go/no-go.
-- **faceless-youtube** — Active run `bricks-fresh`; overnight run left scene-tenth verification
-  (17 verified / 8 parked) and a board artifact (5482e438) at Daniel's morning gate; branch
-  `claude/bricks-taste-forensics`, handoff `2026-08-18-fyt-bricks-overnight-run.md`.
-- **kb-ops** — Wave A complete (governed executor proven live 2026-07-21); daily
-  `self-lint-report` cadence exists but is DORMANT (no scheduler; manual launches only).
+- **atlas** — Omni-interface foundation + adversarial remediation complete locally on
+  `codex/atlas-enhancements-20260820` (280a67a9 + unstaged >400-line diff); awaiting Daniel
+  review/commit and explicit `origin` push approval. V1 "Hands" shipped and live earlier (PR #44).
+- **faceless-youtube** — Production run **bricks-fresh** paused at P1–P5 human gate; Variant D
+  trial extended to L01–L25 (25/25 verified, board artifact filed) awaiting Daniel's
+  keep/edit/iterate/revert decision.
+- **kb-ops** — Wave A complete; governed executor proven live. `self-lint-report` cadence exists
+  but is DORMANT (no scheduler; manual launch only while the gate is held in a watched session).
 
 ## Anomalies
-- **main→ops daemon-dir drift (11 files), unchanged.** 5 main-only + 5 content-differs + 1
-  ops-only (`orgs/kb-ops/workflows/acceptance-run.md`). Tracked by standing cards `6a7c0ebf`,
-  `6a6c3d8e`, `6a718533`; desktop `python scripts/sync_daemon_dirs.py --sync` (from dashboard-ops
-  worktree) is owed, plus a back-port-or-prune decision on the ops-only file. No duplicate card
-  filed this run (byte-identical drift).
-- **`scripts/sync_daemon_dirs.py` absent on `ops`** (mirrored only on `main`) — step 2b's check
-  had to run the `main` copy in refs-fallback. Tracked by card `6a605ebb`.
-- **Halted card `6a6bc3dd` stranded in `queue/working/`** (state: halted, wrong directory) —
-  queue hygiene; not touched by this T1 dashboard task.
-- 10 blocked + 17 inbox cards accumulating (several are the standing wake-me/drift cards above).
+- **Daemon-dir drift (main→ops):** `sync_daemon_dirs --check` reports 8 `agents/*.md` missing
+  from ops, 3 content-differ, 1 ops-only extra under `orgs/kb-ops/workflows/`. Wake-me card
+  `6a966fb0-614bc01e` filed; a desktop `python scripts/sync_daemon_dirs.py --sync` is owed. The
+  sync script itself is also absent from the `ops` branch (present only on `origin/main`).
+- **Stale working card:** `6a6bc3dd-5494006b` (kb-ops, `iter-smoke-t2`, owner codex-worker) has
+  sat in `working/` since 2026-07-30 (>30 days) — well past the 48h window. Candidate for the
+  stranded-archiver or manual reconciliation.
+- **Inbox backlog:** 23 cards in `queue/inbox/`.

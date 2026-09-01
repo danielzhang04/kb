@@ -1,25 +1,26 @@
 # System Handover
-_Generated: 2026-08-19 06:19 UTC_
+_Generated: 2026-09-01T06:26Z_
 
-Quiet night. The nightly cloud dispatcher ran cleanly: preamble passed, the skills-mirror
-check found no drift, and dashboards were regenerated. About $2.56 was spent today — the
-boss-session bricks v2 image regen on gemini-3-pro-image — leaving roughly $27.44 of the
-$30/day budget.
+Overnight the cloud nightly dispatcher ran cleanly: preamble green, skills mirror in sync, and
+the `nightly-review` cadence card was dispatched and self-executed to regenerate these
+dashboards. Spend stayed at $0.00 against the $30 daily limit; the only billed activity in the
+last day was three subscription-billed codex smoke runs (all exit 0).
 
-**Waiting on you.** Nothing is parked in the approvals queue, but two standing items still
-need a hand at the desktop. First, the main→ops daemon-dir drift (11 files) has not moved —
-it needs `python scripts/sync_daemon_dirs.py --sync` run from the dashboard-ops worktree, plus
-a decision on the one ops-only file `acceptance-run.md` (back-port it to main, or `--sync
---prune` to drop it). Second, the sync script itself still lives only on `main`, not `ops`, so
-the cloud routine keeps running it in refs-fallback. Both are already tracked by wake-me cards
-in the inbox (`6a7c0ebf`, `6a605ebb`) — no new cards were filed tonight since nothing changed.
+Two things are waiting on you. First, a daemon-dir drift between `main` and `ops` was detected
+(eight agent definitions missing from ops, three differing, one stray workflow file). It does not
+block anything, but a desktop `python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops
+worktree is owed to reconcile it — wake-me card `6a966fb0-614bc01e` has the full report. The sync
+script itself is also missing from the `ops` branch and should be mirrored over. Second, two
+projects sit at human gates: **atlas** has a completed, re-reviewed omni-interface remediation
+(>400 lines) that needs your review before commit and an explicit push approval, and
+**faceless-youtube**'s bricks-fresh run is paused at the P1–P5 board gate with a Variant D trial
+(L01–L25, all verified) awaiting your keep/edit/iterate/revert call.
 
-On the project side, faceless-youtube's bricks overnight run left a review board artifact
-(5482e438) at your morning gate; that's the one thing with your name on it for creative sign-off.
-Atlas remains live in prod and idle pending your V2 "Trust" go/no-go. kb-ops is quiet.
+Housekeeping: a kb-ops smoke card (`6a6bc3dd-5494006b`) has been stuck in `working/` since late
+July and should be archived or reconciled; the inbox holds 23 cards. Nothing requires formal
+approval right now (approvals queue empty).
 
-**What runs next unattended.** The nightly-review cadence will fire again tomorrow and repeat
-this same health sweep. It reports drift but never fixes it, so the daemon-dir sync will keep
-being flagged until you run it. One bit of housekeeping worth noting: a halted smoke-test card
-(`6a6bc3dd`) is sitting in the wrong queue folder — harmless, but a stray. Nothing else is
-blocked on the system; it's blocked on you for the two desktop actions above.
+Unattended, the system will keep running its nightly cadence — dispatching and self-executing the
+review, regenerating dashboards, and filing wake-me cards for anything it can't safely handle
+alone. It will not touch the atlas remediation, push atlas to origin, advance the faceless-youtube
+run past its gate, or perform the owed desktop sync — all of those need you.
