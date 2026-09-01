@@ -64,6 +64,7 @@ import { loadPolicyEnvironment } from './environment.ts';
 import type { PolicyEnvironment } from './policy.ts';
 import type { ControlPlaneStore } from './store.ts';
 import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
+import type { CoordinationPublication } from '../write/outbox.ts';
 import {
   createBrokerCancellationController,
   createBrokerManagerAdapter,
@@ -316,6 +317,15 @@ export interface BuildActivatedExecutionOptions {
    * injects the executor directly; the integrator then fails closed if a canonical card walk is reached.
    */
   reconciliationPublisher?: ReconciliationPublisher;
+  /**
+   * Coordination publication mode, taken from the surface context. Both coordination git writers built
+   * here — the canonical result integrator's prepare phase and the post-run fleet-ledger settlement —
+   * carry it; without it an outbox deployment reaches `pull --rebase`/`push origin ops` against an ops
+   * checkout that has no usable remote.
+   */
+  coordinationPublication?: CoordinationPublication;
+  /** Durable local spool root used only when {@link coordinationPublication} is `outbox`. */
+  outboxRoot?: string;
   deps?: Partial<ActivationDeps>;
 }
 
@@ -461,6 +471,8 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     // the surface composed that publisher over, so the publisher's freshness gate never sees a stale value.
     reconciliationPublisher: options.reconciliationPublisher,
     readStoreRevision: () => String(options.controlStore.getControlDocumentMetadata().documentRevision),
+    publication: options.coordinationPublication,
+    outboxRoot: options.outboxRoot,
   });
 
   const registry = deps.createRegistry();
@@ -582,7 +594,12 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
       const outcome = await engine.runToBoundary(input);
       try {
         await settleLedgerForRun(
-          { controlStore: options.controlStore, repoRoot },
+          {
+            controlStore: options.controlStore,
+            repoRoot,
+            publication: options.coordinationPublication,
+            outboxRoot: options.outboxRoot,
+          },
           { subject: input.subject, runRef: input.runRef, readUsageMicros },
         );
       } catch (err) {

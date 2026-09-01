@@ -5,7 +5,7 @@
 // the fail-closed fallback. Pure functions with injected ports (wave rule) — no timer, no `register*`.
 import type { CliStatus } from '../placement/contracts.ts';
 import { CLOSED_CLIS } from './capabilities.ts';
-import type { RuntimeHostCapabilities } from './capabilities.ts';
+import type { RuntimeCapabilities, RuntimeHostCapabilities } from './capabilities.ts';
 
 export type AdvertisementCapabilitySlice =
   Pick<RuntimeHostCapabilities, 'connectors' | 'skills' | 'filesystemRoots' | 'gpu' | 'clis'>;
@@ -54,4 +54,20 @@ export async function withAdvertisementCapabilities(
   ports: CapabilitySourcePorts = {},
 ): Promise<RuntimeHostCapabilities> {
   return { ...base, ...(await probeAdvertisementCapabilities(ports)) };
+}
+
+/**
+ * The same overlay applied to a FULL `RuntimeCapabilities` — the composition root's shape, PTY slice
+ * included — so one composed capability object serves both `/api/runtime/capabilities` and the
+ * advertisement. There is still no second composition: this only replaces the five advertisement-bound
+ * fields with their probed values and touches nothing else.
+ */
+export function overlayAdvertisementCapabilities(
+  capabilities: RuntimeCapabilities,
+  slice: AdvertisementCapabilitySlice,
+): RuntimeCapabilities {
+  // Both branches are textually identical on purpose — spreading a discriminated union loses the
+  // discriminant's link to its payload, so TS must be handed one spread per already-narrowed arm. Same
+  // reason `composeRuntimeCapabilities` is written this way.
+  return capabilities.pty ? { ...capabilities, ...slice } : { ...capabilities, ...slice };
 }

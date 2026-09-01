@@ -38,6 +38,9 @@ import type {
 import type {
   StoredHostAdvertisement,
 } from '../placement/contracts.ts';
+// P6 W6.3: the advertisement CAS decodes its body through the SAME W0 decoder the node route uses, so
+// there is exactly one validation of a `HostAdvertisement` in the daemon.
+import { decodeHostAdvertisement } from '../placement/contracts.ts';
 // P6 W1b [P6-C48]: the store-open document invariant must decode every placement collection row through
 // its W0 exact-key decoder, not just confirm the collections are bounded arrays.
 import { assertPlacementCollections } from './placementState.ts';
@@ -373,6 +376,7 @@ export type {
   ReconcileCanonicalProjectionInput,
   BrokerSteeringInput,
   BrokerStoreBackend,
+  HostAdvertisementUpsertResult,
   ControlPlaneStore,
 } from './storeTypes.ts';
 
@@ -3063,6 +3067,49 @@ function makeStore(
 
     listHostAdvertisements() {
       return [...load().hostAdvertisements];
+    },
+
+    upsertHostAdvertisement(hostId, advertisement, expectedVersion) {
+      // Port-shape parity with the node route's `AdvertiseStorePort`: the addressed host is an EXPLICIT
+      // argument (the route derives it from the peer map, never from the body), and a body that disagrees
+      // is a caller bug — refused loudly rather than silently writing whichever host the body named.
+      if (advertisement.hostId !== hostId) {
+        throw new Error(`host advertisement is for ${advertisement.hostId}, not the addressed host ${hostId}`);
+      }
+      // ONE row per host by construction (`hostId` is the primary key), so a second daemon beat can never
+      // append a duplicate. The load/compare/save runs inside this single method, which under the writer
+      // lease is the store's unit of atomicity — the same shape `claimLease` relies on.
+      const document = load();
+      const current = document.hostAdvertisements.find((row) => row.hostId === hostId)?.version;
+      if (current !== expectedVersion) return { ok: false, current: current ?? 0 };
+      const version = (current ?? 0) + 1;
+      // Decode HERE, before the row is persisted: the store never persists an advertisement the W0
+      // contract would reject on the way back out (`assertPlacementCollections` at open would fail closed).
+      const stored: StoredHostAdvertisement = { ...decodeHostAdvertisement(advertisement), version };
+      document.hostAdvertisements = [
+        ...document.hostAdvertisements.filter((existing) => existing.hostId !== hostId),
+        stored,
+      ];
+      // `save`, NOT `commit`: an advertisement must NOT bump `documentRevision`. That counter is the
+      // revision of the COORDINATED control-plane state — `reconciliation/publisher.ts` gates every card
+      // walk on it (a changed value refuses the intent as `stale store revision`), and Home/Agents/
+      // Workflows derive their browser ETags from it. A 30-s liveness beat that bumped it would abort
+      // in-flight reconciliation intents and invalidate every cached projection, forever. The
+      // advertisement has its OWN revision line: the plan-owned per-row `version` that sits beside the
+      // verbatim spec fields precisely because it is the advertisement ETag domain
+      // [placement/contracts.ts §3.1:142] — that is what this CAS advances. Persistence is untouched:
+      // `commit` is exactly `documentRevision += 1` followed by this same `save`, so durability, the
+      // document size limit, and the atomic rename all behave identically. Consumers that PROJECT an
+      // advertisement therefore have to fold this per-row `version` into their own ETag rather than lean
+      // on `documentRevision` — `workflows/routes.ts`'s `hostAdvertisementRevision` is the one such site.
+      //
+      // KNOWN AND ACCEPTED: `scheduleTransaction` above loads its document before its `await`s and commits
+      // it at the end, so a beat landing inside that window is overwritten by the transaction's older
+      // snapshot. It is self-healing and bounded — the next beat (≤ 30 s, well inside the 90-s freshness
+      // window) re-reads and rewrites the row — so a clobbered beat can never make a fresh host go stale.
+      // Closing it properly means narrowing that transaction's snapshot, which is a schedule-side change.
+      save(document);
+      return { ok: true, version };
     },
 
     seedHostAdvertisementForTest(advertisement) {

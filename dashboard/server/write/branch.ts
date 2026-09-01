@@ -51,6 +51,7 @@ import {
 } from './durableManifest.ts';
 import { buildGovernedSaveManifest } from './durableManifestService.ts';
 import {
+  DEFAULT_OUTBOX_ROOT,
   recoverUnspooledCoordinationCommits,
   type CoordinationPublication,
 } from './outbox.ts';
@@ -649,7 +650,7 @@ export async function prepareCoordination(
   repoRoot: string,
   runGit: GitRunner = defaultGitRunner,
   publication: CoordinationPublication = 'direct',
-  outboxRoot = '/var/lib/kb/state/outbox',
+  outboxRoot = DEFAULT_OUTBOX_ROOT,
 ): Promise<void> {
   // Reentrant: a caller that already holds the ops-transaction span joins it; a careless future caller
   // that forgot the span lock at least serializes this individual step.
@@ -1072,7 +1073,7 @@ export async function commitPreparedCoordination(
     }
     await recoverUnspooledCoordinationCommits({
       repoRoot,
-      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      spoolRoot: options.outboxRoot ?? DEFAULT_OUTBOX_ROOT,
       runGit,
       isCoordinationPath,
     });
@@ -1097,7 +1098,7 @@ export async function commitPreparedCoordination(
     }
     await recoverUnspooledCoordinationCommits({
       repoRoot,
-      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      spoolRoot: options.outboxRoot ?? DEFAULT_OUTBOX_ROOT,
       runGit,
       isCoordinationPath,
     });
@@ -1307,7 +1308,7 @@ export async function publishPreparedCoordinationCommit(
         try {
           await recoverUnspooledCoordinationCommits({
             repoRoot,
-            spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+            spoolRoot: options.outboxRoot ?? DEFAULT_OUTBOX_ROOT,
             runGit,
             isCoordinationPath,
           });
@@ -1445,13 +1446,24 @@ export async function discoverLegacyScheduleMarkers(
   return markers;
 }
 
-interface VerifiedScheduleMarkerRemovalOptions {
+export interface VerifiedScheduleMarkerRemovalOptions {
   /** Test seam; production uses the coordination publisher's prepare phase. */
   prepare?: (repoRoot: string) => Promise<void>;
   /** Test seam; production commits the exact removed coordination path. */
   commit?: (repoRoot: string, marker: string) => Promise<void>;
   /** Fault seam proving a crash after unlink is resumable. */
   afterUnlink?: () => Promise<void>;
+  /** Git runner the DEFAULT prepare/commit closures use. Injected for hermetic tests. */
+  runGit?: GitRunner;
+  /**
+   * Coordination publication mode, threaded into the default prepare/commit closures. Desktop defaults
+   * to direct remote publication; an outbox deployment (whose `ops` checkout has NO usable remote) must
+   * pass `'outbox'` here or the boot migration's prepare phase runs `pull --rebase origin ops` against a
+   * deliberately disabled origin and crash-loops the daemon.
+   */
+  publication?: CoordinationPublication;
+  /** Durable local spool root used only when {@link publication} is `outbox`. */
+  outboxRoot?: string;
 }
 
 /**
@@ -1474,9 +1486,35 @@ export async function publishVerifiedScheduleMarkerRemoval(
   if (bounded === '' || bounded === '..' || bounded.startsWith('../') || bounded.startsWith('..\\')) {
     throw new Error('pause-marker-migration-invalid');
   }
-  const prepare = options.prepare ?? (async (targetRoot) => prepareCoordination(targetRoot));
-  const commit = options.commit ?? (async (targetRoot, targetMarker) =>
-    commitPreparedCoordination(targetRoot, targetMarker));
+  // Both defaults carry the caller's publication mode: in `outbox` the prepare phase recovers/spools
+  // instead of pulling, and the commit spools the local commit instead of pushing. Passing `undefined`
+  // through leaves each callee on its own `'direct'` default, so desktop behaviour is unchanged.
+  const prepare = options.prepare ?? (async (targetRoot) =>
+    prepareCoordination(targetRoot, options.runGit, options.publication, options.outboxRoot));
+  const commit = options.commit ?? (async (targetRoot, targetMarker) => {
+    await commitPreparedCoordination(targetRoot, targetMarker, {
+      runGit: options.runGit,
+      publication: options.publication,
+      outboxRoot: options.outboxRoot,
+    });
+  });
+  /**
+   * Is the already-missing marker still something git can stage? The receipt's publisher phase is
+   * recorded AFTER this call returns (`schedules/seedImport.ts`), so a crash in that window re-enters
+   * here with the removal ALREADY committed: the path is gone from the worktree AND from the index, and
+   * a second `git add -- <marker>` fails with `pathspec ... did not match any files` — a fresh boot
+   * crash loop. Nothing left to stage therefore means already published. Anything that cannot PROVE the
+   * path is gone (a non-repo root, a refused subcommand, a git fault) answers `true` and keeps the
+   * pre-existing commit path, so this can only ever skip a commit that would have failed anyway.
+   */
+  const stillStageable = async (): Promise<boolean> => {
+    try {
+      const tracked = await (options.runGit ?? defaultGitRunner)(root, ['ls-files', '--', normalized]);
+      return tracked.trim().length > 0;
+    } catch {
+      return true;
+    }
+  };
 
   await withOpsTransaction(async () => {
     let pathStat;
@@ -1484,7 +1522,9 @@ export async function publishVerifiedScheduleMarkerRemoval(
       pathStat = await lstat(absolute);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        await commit(root, normalized);
+        // Resumable state left by a crash between unlink and publication — unless the publication also
+        // already happened, in which case this is a no-op success and the caller records its receipt.
+        if (await stillStageable()) await commit(root, normalized);
         return;
       }
       throw error;

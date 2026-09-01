@@ -110,6 +110,14 @@ export function publishControlTick(bus: EventBus): void {
 /**
  * Watch the control-plane document for coarse state changes. The store has no subscription seam;
  * this intentionally reads nothing and collapses burst writes into a single trailing-edge tick.
+ *
+ * KNOWN AND ACCEPTED [P6 W6.3]: this watches the FILE, so the 30-s self-advertisement beat
+ * (`placement/selfAdvertise.ts`) ticks every connected browser every 30 s even on a fully idle daemon —
+ * a durable freshness protocol has to write. What that beat deliberately does NOT do is bump
+ * `documentRevision` (see `upsertHostAdvertisement` in `control/store.ts`), so the refetches these ticks
+ * provoke find unchanged entity revisions and answer 304 rather than shipping payloads. The residue is
+ * idle network chatter, not idle re-rendering; removing it would need a store subscription seam able to
+ * tell a liveness write from a coordinated one.
  */
 export function wireControlStoreTick(
   bus: EventBus,

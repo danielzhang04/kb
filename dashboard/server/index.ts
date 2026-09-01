@@ -23,6 +23,10 @@ import { requireSession, surfaceRateLimitHook } from './http/middleware.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerV1Routes } from './api/v1/routes.ts';
 import { forwardDesktopReadProxy } from './placement/desktopReadProxy.ts';
+import {
+  resolveDaemonVersion, selfAdvertiseLogLine, startSelfAdvertiseTimer,
+} from './placement/selfAdvertise.ts';
+import { ADVERTISEMENT_INTERVAL_MS } from './placement/contracts.ts';
 import type { DesktopClient } from './placement/desktopClient.ts';
 import { ScheduleService, registerScheduleRoutes } from './schedules/service.ts';
 import { resolveScheduleOwner } from './schedules/owners.ts';
@@ -39,6 +43,9 @@ import { createLearningRecordRetire } from './reconciliation/realPorts.ts';
 import type { MergedPrStatus, PrMergeReader } from './reconciliation/mergePoll.ts';
 import { resolveRepositoryPin, RepositoryPinError } from './runtime/repoPin.ts';
 import { defaultGitRunner, resolveBaseCommit } from './write/branch.ts';
+import type { GitRunner } from './write/branch.ts';
+import { DEFAULT_OUTBOX_ROOT, resolveCoordinationPublication } from './write/outbox.ts';
+import type { CoordinationPublication } from './write/outbox.ts';
 import { runTrackedProcess } from './write/asyncGit.ts';
 import { isCommitSha } from './write/durableManifest.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
@@ -46,6 +53,10 @@ import type { SurfaceContext } from './http/context.ts';
 import {
   probePublicPtyCapability, runtimeCapabilities, unavailablePtyCapability, type RuntimeCapabilities,
 } from './runtime/capabilities.ts';
+import {
+  overlayAdvertisementCapabilities, probeAdvertisementCapabilities,
+} from './runtime/capabilitySources.ts';
+import { productionCapabilitySourcePorts } from './runtime/capabilityProbes.ts';
 import type { PublicPtyCapability } from './pty/contracts.ts';
 import type { VibeSpawner } from './vibe/session.ts';
 import { resolveDashboardStateRoot } from './composer/store.ts';
@@ -86,6 +97,23 @@ export function resolveHumanRequestSweepIntervalMs(env: NodeJS.ProcessEnv = proc
   if (raw === undefined || raw === '') return DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+}
+
+/** The strings that turn a boolean daemon knob OFF. Anything else — unset included — leaves it ON. */
+const DISABLED_FLAGS = new Set(['0', 'false', 'no', 'off']);
+
+/**
+ * Self-advertisement cadence [P6 §3.1]. It is a BOOLEAN knob, not an interval one: the 30-s beat and the
+ * 90-s freshness window are ONE constant pair [P6-C44], so an operator-chosen interval could silently sit
+ * above the window and 409 every launch. `DASHBOARD_SELF_ADVERTISE=0` (or `false`/`no`/`off`) returns 0,
+ * which `startSelfAdvertiseTimer` reads as a full disable — no timer AND no immediate beat, so the daemon
+ * advertises nothing at all rather than leaving one row to go stale. Every other value keeps the shared
+ * interval. The escape hatch exists for a daemon deliberately taken out of the placement pool.
+ */
+export function resolveSelfAdvertiseIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.DASHBOARD_SELF_ADVERTISE;
+  if (raw !== undefined && DISABLED_FLAGS.has(raw.trim().toLowerCase())) return 0;
+  return ADVERTISEMENT_INTERVAL_MS;
 }
 
 /**
@@ -212,6 +240,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   // P6 W6.3 [P6-C34, P6-C53]: Desktop mode is an EXPLICIT, minimal inventory and returns here — it never
   // reaches the VM write surface, node routes, human-response route, or schedule mutations below.
+  //
+  // It therefore never reaches the self-advertisement timer either, and that is correct: a Desktop-MODE
+  // daemon is a CLIENT of the VM's node routes, so its advertisement belongs in the VM's store and must
+  // travel over `PUT /api/v1/hosts/:hostId` (not built here — W6.1's route has no production port binding
+  // yet). Do not confuse that with the Windows desktop running the FULL surface: that daemon does fall
+  // through and self-advertise, but into its OWN state root's control-plane document, never the VM's. Two
+  // full-surface daemons therefore hold two independent single-host tables; nothing here federates them.
   if (mode === 'desktop') {
     composeDesktopMode(app, surfaceCtx, options);
     return app;
@@ -414,6 +449,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       store: surfaceCtx.controlStore,
       repoRoot: surfaceCtx.repoRoot,
       appendAudit: surfaceCtx.appendAudit,
+      // Same publication mode as every other coordination writer on this context: without it the boot
+      // sweep's real `appendAudit` runs `pull --rebase --autostash origin ops` on an outbox deployment,
+      // whose ops checkout has no usable remote.
+      auditOptions: {
+        publication: surfaceCtx.coordinationPublication,
+        outboxRoot: surfaceCtx.outboxRoot,
+      },
       now: surfaceCtx.now,
       onSweep: (result) => {
         const line = humanRequestSweepLogLine(result);
@@ -424,6 +466,30 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     resolveHumanRequestSweepIntervalMs(),
   );
   app.addHook('onClose', async () => { stopHumanRequestSweeper(); });
+
+  // P6 W6.3 §3.1: the daemon's SELF-advertisement beat — the sender W3 deliberately deferred. Until this
+  // was wired the `hostAdvertisements` collection stayed EMPTY on a booted daemon, so every launch site
+  // (control/routes.ts:650, workflows/routes.ts:538, control/queueBridge.ts:693) found zero fresh matches
+  // and refused `409 no-complete-placement` forever. It advertises exactly ONE host — this daemon's own,
+  // `runtimeExecutionHost` over the composed capability, which is `vm` on the Linux VM and `desktop` on the
+  // Windows desktop with no platform special-case here — into this daemon's OWN store, through the same
+  // `upsertHostAdvertisement` CAS the node route's `AdvertiseStorePort` names. It fires once immediately
+  // (an empty table until the first 30-s beat still 409s the boot window) and then on
+  // `ADVERTISEMENT_INTERVAL_MS`. A failed beat only logs: freshness expiry is the safety net, so a daemon
+  // that cannot advertise goes stale and stops attracting launches rather than crashing.
+  const stopSelfAdvertise = startSelfAdvertiseTimer({
+    store: surfaceCtx.controlStore,
+    capabilities: surfaceCtx.runtimeCapabilities,
+    daemonVersion: resolveDaemonVersion(),
+    intervalMs: resolveSelfAdvertiseIntervalMs(),
+    ...(surfaceCtx.now ? { now: surfaceCtx.now } : {}),
+    onBeat: (outcome) => {
+      const line = selfAdvertiseLogLine(outcome);
+      // eslint-disable-next-line no-console
+      if (line) console.error(line);
+    },
+  });
+  app.addHook('onClose', async () => { stopSelfAdvertise(); });
 
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact
@@ -504,15 +570,39 @@ export interface StartOptions {
   buildApplication?: typeof buildApp;
   /** @internal The one composition-time PTY probe; production runs the real host probe. */
   probePtyCapability?: typeof probePublicPtyCapability;
+  /** @internal The one composition-time advertisement-capability probe (CLIs, skills, roots). */
+  probeAdvertisementCapabilities?: typeof probeAdvertisementCapabilities;
+}
+
+/** Coordination seams the boot migration's DEFAULT marker publisher is composed from. */
+export interface ScheduleBootMigrationOptions {
+  /** Publication mode; defaults to the same env resolution `makeSurfaceContext` uses. */
+  publication?: CoordinationPublication;
+  /** Durable local spool root used only when {@link publication} is `outbox`. */
+  outboxRoot?: string;
+  /** @internal Git runner for the default publisher's prepare/commit closures. */
+  runGit?: GitRunner;
 }
 
 /** Production Schedule boot unit, exported so crash/restart tests exercise the exact startup path. */
 export async function runScheduleBootMigrations(
   repoRoot: string,
   controlStore: ControlPlaneStore,
-  publishRemoval: (marker: string, digest: string) => Promise<void> =
-    (marker, digest) => publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest),
+  publishRemoval?: (marker: string, digest: string) => Promise<void>,
+  options: ScheduleBootMigrationOptions = {},
 ): Promise<void> {
+  // The marker publisher writes coordination git, so it must run in the SAME publication mode the rest
+  // of the server resolves — an `outbox` deployment's ops checkout has no usable remote, and the default
+  // `direct` prepare phase ran `pull --rebase origin ops` against a disabled origin and crash-looped the
+  // daemon at boot (the legacy pause markers make `convertPauseMarkers` fire on every start).
+  const publication = options.publication ?? resolveCoordinationPublication();
+  const outboxRoot = options.outboxRoot ?? DEFAULT_OUTBOX_ROOT;
+  const publish = publishRemoval ?? ((marker: string, digest: string) =>
+    publishVerifiedScheduleMarkerRemoval(repoRoot, marker, digest, {
+      runGit: options.runGit,
+      publication,
+      outboxRoot,
+    }));
   // Production seeds from the attested release tree (opened inside runP2ScheduleStartupMigrations);
   // the development source exists for sandboxes whose repoRoot is a full main-layout checkout. A
   // coordination checkout (ops) does not carry every seed path, so a failed development read must
@@ -534,7 +624,7 @@ export async function runScheduleBootMigrations(
           read: (marker) => controlStore.readSchedulePauseMarkerReceipt(marker),
           write: (receipt) => controlStore.writeSchedulePauseMarkerReceipt(receipt),
         },
-        publishRemoval,
+        publishRemoval: publish,
       });
     },
   });
@@ -575,10 +665,41 @@ export async function start(
     } catch {
       ptyCapability = unavailablePtyCapability(process.platform, new Date().toISOString());
     }
+    // P6 W6.3 [P6-C15]: the ONE composition-time probe of the five advertisement-bound capabilities,
+    // beside the PTY probe and on the same terms — asked once, here, and overlaid onto the SAME composed
+    // capability object the daemon publishes on `/api/runtime/capabilities` and advertises. Without it
+    // every advertisement carried `runtimeHostCapabilities`' closed defaults (both CLIs `missing`), which
+    // `placement/requirements.ts` turns into a permanent `409 no-complete-placement` for every agent- and
+    // workflow-owned launch, because each assigned agent's declared `runtime` becomes a `clis` requirement.
+    //
+    // It runs AFTER the PTY probe and consumes it: `clis` and `filesystemRoots` are read off that
+    // capability's own `launchers`/`roots`, because on Linux only the broker (running as `kb-shell`) can
+    // see the CLI binaries at all — `/var/lib/kb-shell/home` is 0700 `kb-shell` by design, so a probe from
+    // this daemon would answer EACCES/`missing` forever. Boot cost is therefore one skills-directory walk,
+    // and every port is fail-closed (`probeAdvertisementCapabilities` swallows a throwing probe into the
+    // closed default), so this can slow boot only marginally and can never fail it.
+    //
+    // ONCE, not per beat: a CLI installed after boot is not advertised until the daemon restarts, exactly
+    // as a PTY stack installed after boot is not — and on Linux it is literally the same event, since the
+    // CLIs and the broker are provisioned together. Release activation restarts the service, so an install
+    // arriving through a deploy is picked up; a hand-install on the VM needs a restart to take effect.
+    const probedCapabilities = await (options.probeAdvertisementCapabilities ?? probeAdvertisementCapabilities)(
+      productionCapabilitySourcePorts({
+        repoRoot,
+        pty: ptyCapability,
+        // The skills scan is the only filesystem read left here, so it is the only place an
+        // "installed but invisible" catalog can hide. Say so once, loudly, at boot.
+        // eslint-disable-next-line no-console
+        onSkillsRefusal: (detail) => console.error(`[self-advertise] ${detail}`),
+      }),
+    ).catch(() => undefined);
+    const composedCapabilities = probedCapabilities === undefined
+      ? runtimeCapabilities(process.platform, ptyCapability)
+      : overlayAdvertisementCapabilities(runtimeCapabilities(process.platform, ptyCapability), probedCapabilities);
     const app = buildApplication({
       repoRoot,
       validateData: true,
-      runtimeCapabilities: runtimeCapabilities(process.platform, ptyCapability),
+      runtimeCapabilities: composedCapabilities,
       ...(controlStore
         ? { controlStore }
         : { fileControlAccess: { mode: 'already-locked' as const, lease } }),

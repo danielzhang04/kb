@@ -8,7 +8,7 @@ import { makeSurfaceContext as makeProductionSurfaceContext } from './http/surfa
 import { mintSession } from './auth/session.ts';
 import type { SessionConfig } from './auth/session.ts';
 import type { SessionHost } from './pty/contracts.ts';
-import { runtimeCapabilities } from './runtime/capabilities.ts';
+import { runtimeCapabilities, runtimeExecutionHost } from './runtime/capabilities.ts';
 // The browser's own decoder, run against the REAL route body: the cutover rests on this coupling.
 import { decodeRuntimeCapabilities } from '../src/lib/runtimeCapabilities.tsx';
 import { fileURLToPath } from 'node:url';
@@ -50,14 +50,20 @@ import {
   humanRequestSweepLogLine,
   registeredRoutesOf,
   resolveHumanRequestSweepIntervalMs,
+  resolveSelfAdvertiseIntervalMs,
   runScheduleBootMigrations,
   start,
 } from './index.ts';
 import type { DesktopClient } from './placement/desktopClient.ts';
+import { resolveDaemonVersion } from './placement/selfAdvertise.ts';
+import { ADVERTISEMENT_INTERVAL_MS } from './placement/contracts.ts';
+import { selectPlacementHost } from './placement/select.ts';
 import type { WriterLease } from './control/writerLease.ts';
 import { createExistingRootFileStoreHarnessForTest } from './control/test-fixtures/controlStore.ts';
 import { readDevelopmentScheduleSeedSource } from './schedules/seedImport.ts';
 import { publishVerifiedScheduleMarkerRemoval } from './write/branch.ts';
+import type { GitRunner } from './write/branch.ts';
+import { DEFAULT_OUTBOX_ROOT } from './write/outbox.ts';
 
 let app: FastifyInstance | undefined;
 let testStateRoot: string | undefined;
@@ -377,6 +383,76 @@ describe('server', () => {
     }
   });
 
+  /**
+   * The VM boot crash: `KB_COORDINATION_PUBLICATION=outbox` with an ops checkout whose origin is
+   * deliberately `disabled://desktop-promotion-only`. The boot migration's DEFAULT publisher must
+   * resolve that env mode the same way the rest of the server does, or its prepare phase runs
+   * `pull --rebase origin ops` against the disabled origin and crash-loops the daemon on every start.
+   */
+  it('resolves the env publication mode for the default boot marker publisher', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-repo-'));
+    const stateRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-state-'));
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-spool-'));
+    const harness = createExistingRootFileStoreHarnessForTest();
+    const originalPublication = process.env.KB_COORDINATION_PUBLICATION;
+    try {
+      const source = await readDevelopmentScheduleSeedSource(REPO_ROOT);
+      for (const file of [...source.heartbeatFiles, ...source.agentFiles]) {
+        const path = join(repoRoot, ...file.path.split('/'));
+        mkdirSync(join(path, '..'), { recursive: true });
+        writeFileSync(path, file.bytes, 'utf8');
+      }
+      const markerPath = join(repoRoot, ...PAUSE_MARKER.split('/'));
+      mkdirSync(join(markerPath, '..'), { recursive: true });
+      writeFileSync(markerPath, 'legacy pause marker', 'utf8');
+
+      const parent = 'a'.repeat(40);
+      const commit = 'b'.repeat(40);
+      const calls: string[][] = [];
+      let committed = false;
+      const runGit: GitRunner = async (_root, args) => {
+        calls.push(args);
+        const command = args.join(' ');
+        if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+        if (command === 'rev-parse --verify refs/kb-outbox/spooled') return `${parent}\n`;
+        if (command === `rev-list --reverse ${parent}..HEAD`) return committed ? `${commit}\n` : '';
+        if (command === 'diff --cached --name-only -z') return '';
+        if (args[0] === 'add') return '';
+        if (args[0] === 'commit') { committed = true; return ''; }
+        if (command === 'rev-parse HEAD') return `${commit}\n`;
+        if (command === `rev-list --parents -n 1 ${commit}`) return `${commit} ${parent}\n`;
+        if (args[0] === 'diff-tree') return `${PAUSE_MARKER}\0`;
+        if (args[0] === 'bundle') { writeFileSync(args[2], 'bundle'); return ''; }
+        if (args[0] === 'update-ref') return '';
+        throw new Error(`unexpected git invocation: ${command}`);
+      };
+
+      process.env.KB_COORDINATION_PUBLICATION = 'outbox';
+      const store = harness.open(stateRoot);
+      await runScheduleBootMigrations(repoRoot, store, undefined, { outboxRoot, runGit });
+
+      expect(() => readFileSync(markerPath)).toThrow();
+      expect(calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
+      expect(calls).toContainEqual(['update-ref', 'refs/kb-outbox/spooled', commit, parent]);
+      expect(await store.listIncompleteSchedulePauseMarkerReceipts?.()).toEqual([]);
+    } finally {
+      if (originalPublication === undefined) delete process.env.KB_COORDINATION_PUBLICATION;
+      else process.env.KB_COORDINATION_PUBLICATION = originalPublication;
+      harness.close();
+      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(stateRoot, { recursive: true, force: true });
+      rmSync(outboxRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('shares one default spool root between the boot migration and the request surface', () => {
+    // `runScheduleBootMigrations` defaults its publisher's `outboxRoot` to DEFAULT_OUTBOX_ROOT, and
+    // `makeSurfaceContext` defaults `ctx.outboxRoot` to the same constant — so a boot-time spool and a
+    // request-time spool can never land on two different roots. The literal value is pinned in
+    // `write/outbox.test.ts`; this equality is what keeps the two paths from drifting apart.
+    expect(makeSurfaceContext().outboxRoot).toBe(DEFAULT_OUTBOX_ROOT);
+  });
+
   it('derives operator schedule mirror paths from the server-owned Agent declaration', async () => {
     app = matrixApp();
     const create = async (id: string, expectedCollectionRevision: number) => app!.inject({
@@ -655,6 +731,168 @@ describe('Human Request orphan-sweep wiring — ON BY DEFAULT (data-only, no fil
       auditFailures: ['request-1'],
     });
     expect(line).toContain('AUDIT ROW FAILED for request-1');
+  });
+});
+
+// P6 W6.3: before this wiring existed the daemon booted with an EMPTY `hostAdvertisements` collection and
+// every launch refused `409 no-complete-placement` forever, because `advertise.ts` had a builder and no
+// sender. These assertions are on the boot composition, not on the beat (see placement/selfAdvertise.test.ts).
+describe('P6 W6.3 — daemon self-advertisement wiring [§3.1]', () => {
+  const emptyPlacementStore = () => createInMemoryControlPlaneStore({ initialHostAdvertisements: [] });
+  const EMPTY_REQUIREMENT = {
+    connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [] as Array<'claude' | 'codex'>,
+  };
+  /** A writer lease over this test's temp state root; `start()` releases it through the app's onClose. */
+  const selfAdvertiseLease = (): WriterLease => ({
+    mode: 'already-locked', stateRoot: testStateRoot!, bootId: 'self-advertise-test', pid: process.pid,
+    assertHeld: vi.fn(), release: vi.fn(),
+  });
+  /** A `buildApp` stand-in for the composition assertions: it must listen and close, and nothing else. */
+  const inertApp = () => ({
+    addHook: () => undefined, listen: async () => undefined, close: async () => undefined,
+  } as unknown as ReturnType<typeof buildProductionApp>);
+
+  it('beats ONCE at boot, so a launch in the first 30 s finds a complete placement instead of a 409', async () => {
+    const store = emptyPlacementStore();
+    expect(selectPlacementHost(EMPTY_REQUIREMENT, store.listHostAdvertisements(), Date.now()))
+      .toEqual({ outcome: 'no-complete-placement' });
+
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'),
+    });
+
+    const rows = store.listHostAdvertisements();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ hostId: 'vm', version: 1, pty: false });
+    expect(rows[0]!.daemonVersion).toBe(resolveDaemonVersion());
+    expect(selectPlacementHost(EMPTY_REQUIREMENT, rows, Date.now())).toEqual({ outcome: 'placed', hostId: 'vm' });
+  });
+
+  it('advertises the host the composed capability names — `desktop` on the Windows daemon, no platform branch here', async () => {
+    const store = emptyPlacementStore();
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('win32'),
+      ptySessionHost: refusingSessionHost(),
+    });
+    expect(store.listHostAdvertisements()).toMatchObject([{ hostId: 'desktop', pty: false, version: 1 }]);
+  });
+
+  it('refreshes on the shared interval and STOPS on shutdown, alongside the other intervals buildApp owns', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = emptyPlacementStore();
+      const built = buildApp({
+        controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+        runtimeCapabilities: runtimeCapabilities('linux'),
+      });
+      expect(store.listHostAdvertisements()[0]!.version).toBe(1);
+      vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 2);
+      expect(store.listHostAdvertisements()[0]!.version).toBe(3);
+      await built.close();
+      vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 10);
+      // No beat after close: the interval is cleared by the onClose hook, not left running on a dead app.
+      expect(store.listHostAdvertisements()[0]!.version).toBe(3);
+      expect(store.listHostAdvertisements()).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  // F2/F3: a 30-s liveness beat must not read as coordinated state changing. `documentRevision` is what
+  // reconciliation gates every card walk on and what the entity ETags hash, so an idle daemon must serve
+  // a STABLE revision no matter how many beats have landed.
+  it('idle beats do not move documentRevision, so the Agents collection revision is stable while idling', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = emptyPlacementStore();
+      const built = buildApp({
+        controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+        runtimeCapabilities: runtimeCapabilities('linux'),
+      });
+      try {
+        const read = async () => (await built.inject({
+          method: 'GET', url: '/api/agents', headers: sessionHeaders(),
+        })).json().revision as string;
+        const before = await read();
+        expect(typeof before).toBe('string');
+        expect(before.length).toBeGreaterThan(0);
+        const revisionBefore = store.getControlDocumentMetadata().documentRevision;
+
+        vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 6);
+        expect(store.listHostAdvertisements()[0]!.version).toBe(7); // the beats really did land
+
+        expect(store.getControlDocumentMetadata().documentRevision).toBe(revisionBefore);
+        expect(await read()).toBe(before);
+      } finally { await built.close(); }
+    } finally { vi.useRealTimers(); }
+  });
+
+  // F5: the escape hatch for a daemon deliberately taken out of the placement pool.
+  it('DASHBOARD_SELF_ADVERTISE=0 disables the beat entirely — no row at all, not a row left to go stale', async () => {
+    expect(resolveSelfAdvertiseIntervalMs({})).toBe(ADVERTISEMENT_INTERVAL_MS);
+    expect(resolveSelfAdvertiseIntervalMs({ DASHBOARD_SELF_ADVERTISE: '1' })).toBe(ADVERTISEMENT_INTERVAL_MS);
+    for (const raw of ['0', 'false', 'FALSE', 'no', ' off ']) {
+      expect(resolveSelfAdvertiseIntervalMs({ DASHBOARD_SELF_ADVERTISE: raw }), raw).toBe(0);
+    }
+    vi.stubEnv('DASHBOARD_SELF_ADVERTISE', '0');
+    const store = emptyPlacementStore();
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'),
+    });
+    expect(store.listHostAdvertisements()).toEqual([]);
+  });
+
+  // F1: the composition-time capability probe is what puts real `clis`/`skills` into the advertisement.
+  // Without it every advertisement carried `clis: missing`, and agent/workflow launches 409'd anyway.
+  it('start() probes the advertisement capabilities ONCE and hands buildApp the overlaid composition', async () => {
+    const probeAdvertisement = vi.fn(async () => ({
+      connectors: [], skills: ['code-review'], filesystemRoots: ['repo'], gpu: false,
+      clis: { claude: 'ready' as const, codex: 'missing' as const },
+    }));
+    let composed: Parameters<typeof buildProductionApp>[0] | undefined;
+    await start(0, '127.0.0.1', {
+      leaseFactory: () => selfAdvertiseLease(),
+      probePtyCapability: async () => ({
+        pty: false as const,
+        diagnostic: { reason: 'broker-unavailable' as const, detail: null, checkedAt: '2026-08-25T00:00:00.000Z' },
+      }),
+      probeAdvertisementCapabilities: probeAdvertisement,
+      buildApplication: (options) => { composed = options; return inertApp(); },
+    });
+    expect(probeAdvertisement).toHaveBeenCalledOnce();
+    // The probed slice replaced the fail-closed defaults, and the PTY discriminant survived the overlay.
+    expect(composed?.runtimeCapabilities).toMatchObject({
+      pty: false, skills: ['code-review'], filesystemRoots: ['repo'],
+      clis: { claude: 'ready', codex: 'missing' },
+    });
+
+    // And that composition is what the beat advertises: an agent needing the claude CLI is now placeable.
+    const store = emptyPlacementStore();
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: composed?.runtimeCapabilities,
+    });
+    // `start()` composes against the REAL `process.platform`, so the advertised host is whichever this
+    // machine is; the point under test is the CLI gate, not the host identity.
+    const selfHost = runtimeExecutionHost(composed!.runtimeCapabilities!);
+    expect(selectPlacementHost(
+      { ...EMPTY_REQUIREMENT, clis: ['claude'] }, store.listHostAdvertisements(), Date.now(),
+    )).toEqual({ outcome: 'placed', hostId: selfHost });
+    // ...while one needing codex is still honestly refused, because codex really is not installed.
+    expect(selectPlacementHost(
+      { ...EMPTY_REQUIREMENT, clis: ['codex'] }, store.listHostAdvertisements(), Date.now(),
+    )).toEqual({ outcome: 'no-complete-placement' });
+  });
+
+  it('a capability probe that rejects still boots, on the fail-closed defaults', async () => {
+    let composed: Parameters<typeof buildProductionApp>[0] | undefined;
+    await start(0, '127.0.0.1', {
+      leaseFactory: () => selfAdvertiseLease(),
+      probeAdvertisementCapabilities: async () => { throw new Error('probe exploded'); },
+      buildApplication: (options) => { composed = options; return inertApp(); },
+    });
+    expect(composed?.runtimeCapabilities).toMatchObject({ clis: { claude: 'missing', codex: 'missing' } });
   });
 });
 

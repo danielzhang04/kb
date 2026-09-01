@@ -31,6 +31,8 @@ import { executeApprovedLaunch } from './launch.ts';
 import { admit } from './admission.ts';
 import * as publication from './publication.ts';
 import { normalizedTextSha256 } from './textArtifactHash.ts';
+import { advertiseSelfOnce } from '../placement/selfAdvertise.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -4479,6 +4481,44 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       expect(store.listRuns('operator')).toEqual([]);
     } finally { await app.close(); opened.close(); }
   });
+
+  it('the daemon\'s OWN self-advertisement beat removes that 409: same fixture, one beat, launch placed [P6 W6.3]', async () => {
+    const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `sa-${++n}`; })() });
+    const store = opened.store;
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-self-advertised');
+    const { app, token } = surface(store);
+    const launch = () => app.inject({
+      method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+      payload: { expectedHash: revision.hash, idempotencyKey: `self-advertise:${revision.hash}` },
+    });
+    try {
+      // Exactly the state the VM booted into before W6.3: nothing had ever written an advertisement.
+      expect((await launch()).json()).toEqual({ error: 'no-complete-placement' });
+
+      // ONE beat of the production self-advertiser — the same call `index.ts`'s boot timer makes, against
+      // the same store method — and nothing else. No `seedHostAdvertisementForTest`, no route round trip.
+      const beat = advertiseSelfOnce({
+        store, capabilities: runtimeCapabilities('linux'), daemonVersion: '1.0.0',
+      });
+      expect(beat).toMatchObject({ outcome: 'advertised', hostId: 'vm', version: 1 });
+
+      const launched = await launch();
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+      // The matcher actually matched the self-advertised row: the run is placed on the advertised host.
+      const owned = store.getRun(ENGINE, runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.run.executionHost).toBe('vm');
+      const persisted = JSON.parse(readFileSync(opened.path, 'utf8')) as {
+        runs: Run[]; hostAdvertisements: Array<{ hostId: string; version: number }>;
+      };
+      expect(persisted.hostAdvertisements).toMatchObject([{ hostId: 'vm', version: 1 }]);
+      expect(persisted.runs.find((run) => run.runRef === runRef)).toMatchObject({ executionHost: 'vm' });
+    } finally { await app.close(); opened.close(); }
+    // Two full launch round trips through the real write surface (the refusal AND the placed run) can
+    // exceed the 5-s default on a cold run; the before/after pair in ONE test is the whole proof, so the
+    // budget is raised rather than the pair split.
+  }, 30_000);
 
   it('copies the Retry predecessor owner and host instead of the caller daemon identity', async () => {
     const opened = createLeasedFileStoreForTest({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });

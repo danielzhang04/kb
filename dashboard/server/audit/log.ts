@@ -23,7 +23,7 @@ import { createAsyncGitRunner, resolveCheckedOutBranch, withOpsTransaction } fro
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
 import { isCoordinationPath } from '../write/branch.ts';
-import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
+import { DEFAULT_OUTBOX_ROOT, recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
 
 /** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
  *  to allow a `Promise` so the async default coexists with synchronous test fakes. Shared, unified type. */
@@ -146,7 +146,7 @@ export async function commitAuditToOps(
   if ((options.publication ?? 'direct') === 'outbox') {
     await recoverUnspooledCoordinationCommits({
       repoRoot,
-      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      spoolRoot: options.outboxRoot ?? DEFAULT_OUTBOX_ROOT,
       runGit,
       isCoordinationPath,
     });
@@ -162,7 +162,7 @@ export async function commitAuditToOps(
   if ((options.publication ?? 'direct') === 'outbox') {
     await recoverUnspooledCoordinationCommits({
       repoRoot,
-      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      spoolRoot: options.outboxRoot ?? DEFAULT_OUTBOX_ROOT,
       runGit,
       isCoordinationPath,
     });

@@ -24,6 +24,7 @@ import type { SurfaceContext } from './context.ts';
 import { mintSession } from '../auth/session.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from '../write/branch.ts';
+import { DEFAULT_OUTBOX_ROOT } from '../write/outbox.ts';
 import { stagingGit } from '../testFixtures/stagingGit.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
@@ -258,7 +259,10 @@ describe('write surface — composition chain', () => {
     await app.ready();
 
     expect(ctx.coordinationPublication).toBe('outbox');
-    expect(ctx.outboxRoot).toBe('/var/lib/kb/state/outbox');
+    // The request path's default spool root is the SAME constant the boot path defaults to
+    // (`index.ts#runScheduleBootMigrations`); its literal value is pinned in `write/outbox.test.ts`.
+    expect(ctx.outboxRoot).toBe(DEFAULT_OUTBOX_ROOT);
+    expect(DEFAULT_OUTBOX_ROOT).toBe('/var/lib/kb/state/outbox');
     expect(calls).toContainEqual(['rev-parse', '--verify', 'refs/kb-outbox/spooled']);
     expect(calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
   });

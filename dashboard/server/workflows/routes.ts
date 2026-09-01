@@ -1023,10 +1023,25 @@ function workflowProjectionInput(ctx: SurfaceContext, scanned: ScannedDef, allRu
   };
 }
 
+/**
+ * P6 W6.3: the advertisement collection carries its OWN revision line — `upsertHostAdvertisement`
+ * deliberately does not bump `documentRevision`, so a self-advertisement beat is invisible to that
+ * counter (see the comment on that method in `control/store.ts`). The projection above reads
+ * `listHostAdvertisements()` for the never-run host chip and this route serves 304s off this hash, so
+ * without folding the advertisements in, a chip computed while NO host was fresh would keep being served
+ * after a host started advertising. The highest row `version` is the collection's revision: every write
+ * to any row bumps that row's version, and a row is only ever added or replaced, never rolled back.
+ */
+function hostAdvertisementRevision(ctx: SurfaceContext): number {
+  return ctx.controlStore.listHostAdvertisements()
+    .reduce((highest, row) => Math.max(highest, row.version), 0);
+}
+
 function workflowRevision(ctx: SurfaceContext, scanned: readonly ScannedDef[]): string {
   return sha256Hex(JSON.stringify({
     documentRevision: ctx.controlStore.getControlDocumentMetadata().documentRevision,
     scheduleCollectionRevision: ctx.controlStore.getScheduleSnapshot().collectionRevision,
+    hostAdvertisementRevision: hostAdvertisementRevision(ctx),
     definitions: scanned.map((item) => [item.entry.ref, item.entry.sourceHash]),
   }));
 }
