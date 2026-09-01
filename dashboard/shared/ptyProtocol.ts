@@ -144,9 +144,13 @@ export type BrokerClientFrame =
    *     dashboard not carrying this change rejects outright, killing a terminal that works today. That
    *     is a breaking change wearing an optional field's clothes, and it would force the version bump
    *     — and with it the coordinated broker+dashboard deploy that `deploy/install_pty_broker.py`'s
-   *     `--print-protocol-version` gate exists to make deliberate. A new frame type costs neither: an
-   *     old dashboard simply never sends it, and an old broker answers a request it does not know with
-   *     `invalid-request`, which the probe reads as "no launchers enumerated" and fails closed.
+   *     `--print-protocol-version` gate exists to make deliberate. A new frame type is free in the
+   *     direction that matters: an old dashboard never sends it, so a NEW broker serves an OLD dashboard
+   *     exactly as today. The other direction is safe but not free — an old broker cannot decode the
+   *     request at all, and `LinuxBrokerServer.accept` answers an undecodable frame by DESTROYING the
+   *     connection, so a new dashboard against an old broker gets no launcher answer AND no terminal:
+   *     `pty:false`. That is where the VM already sits today, so nothing regresses, but it does mean a
+   *     dashboard-only release changes nothing on the VM until the broker payload is reinstalled.
    *  2. Enumeration walks the real filesystem as `kb-shell`. On `ready` that walk would run on every
    *     connect, including the session host's; as its own request it runs once, when the probe asks.
    */

@@ -168,9 +168,21 @@ function internal<T>(): PortResult<T> {
   return { ok: false, refusal: 'internal', detail: 'session operation failed' };
 }
 
+/**
+ * The recipe a manual shell create launches under. `toolPolicyId` is `shell-default` because that is the
+ * ONLY value `brokerProtocol.ts`'s shell branch decodes — every wire vector, the broker's own tests and
+ * `fdPinnedPaths.ts`'s probe recipe already agree on it, and this function was the one place that did not.
+ *
+ * It said `interactive` and nothing caught it: Windows never reads the id for a shell (`launcherProfiles.ts`
+ * checks only its charset), and the Linux broker was unreachable because the capability probe was a stub, so
+ * the only path that would refuse it was dead. It is not dead any more. A mismatch here does not fail one
+ * session — `decodeBrokerClientFrame` throws inside `BrokerFrameDecoder.push`, which the broker answers by
+ * destroying the connection, and `LinuxBrokerClient.handleDisconnect` then latches `unavailable` for the life
+ * of the host object. The first shell an operator opened would have taken the daemon's PTY host with it.
+ */
 function manualRecipe(input: ApprovedManualCreate): LaunchRecipe | null {
   if (input.launcher !== 'shell') return null;
-  return { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'interactive', sandbox: 'interactive' };
+  return { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'shell-default', sandbox: 'interactive' };
 }
 
 function live(record: SessionRecord): boolean {

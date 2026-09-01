@@ -5,6 +5,7 @@ import type { PtyCapabilityProbe, SessionHost, SessionSink } from './contracts.t
 import { encodeBrokerFrame } from './brokerProtocol.ts';
 import { LinuxBrokerClient } from './linuxBrokerClient.ts';
 import { LinuxBrokerServer, type BrokerPty, type LinuxBrokerServerOptions } from './linuxBrokerServer.ts';
+import type { BrokerLaunchSpec } from './fdPinnedPaths.ts';
 import { createSessionRecordRegistry } from './sessionRecord.ts';
 import { createEmptyPtySessionsDocument, enforcePtySessionRetention } from './sessionPersistence.ts';
 import type { SessionPersistence } from './sessionPersistence.ts';
@@ -16,6 +17,19 @@ class MemoryDuplex extends Duplex {
     this.peer?.push(Buffer.from(chunk)); done();
   }
   _final(done: (error?: Error | null) => void): void { this.peer?.push(null); done(); }
+  /**
+   * A destroyed Unix socket closes on BOTH ends — the far side gets `close`, which is what
+   * `LinuxBrokerClient` listens for to fail its in-flight requests. Without this the pair models a
+   * connection the broker can hang up on without the client ever noticing, so an undecodable frame
+   * looked like a hang here and like a refusal in production. The peer link is cleared first so the
+   * two `_destroy` calls do not bounce off each other.
+   */
+  _destroy(error: Error | null, done: (error?: Error | null) => void): void {
+    const peer = this.peer;
+    this.peer = null;
+    if (peer !== null) { peer.peer = null; peer.destroy(); }
+    done(error);
+  }
 }
 function pair(): [MemoryDuplex, MemoryDuplex] {
   const a = new MemoryDuplex(); const b = new MemoryDuplex(); a.peer = b; b.peer = a; return [a, b];
@@ -33,6 +47,31 @@ const sessionId = 'pty-0123456789abcdef0123456789abcdef';
 const operationKey = 'op-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 // Every host create names its browser principal (contracts.ts:92); the broker never sees it.
 const principal = { operator: 'daniel', browserSessionRef: 'bs-0123456789abcdef' };
+
+function memoryPersistence(): SessionPersistence {
+  let document = createEmptyPtySessionsDocument();
+  let queue = Promise.resolve();
+  return {
+    read: () => structuredClone(document),
+    mutate: async (expectedRevision, callback) => {
+      let result!: { revision: number; value: unknown };
+      const action = queue.then(async () => {
+        if (expectedRevision !== null && expectedRevision !== document.revision) {
+          throw new Error('revision-conflict');
+        }
+        const draft = structuredClone(document);
+        const value = await callback(draft);
+        enforcePtySessionRetention(draft);
+        draft.revision += 1;
+        document = draft;
+        result = { revision: draft.revision, value };
+      });
+      queue = action.then(() => undefined, () => undefined);
+      await action;
+      return result as never;
+    },
+  };
+}
 
 describe('LinuxBrokerClient', () => {
   it('implements SessionHost over an in-memory duplex and drains the ready epoch', async () => {
@@ -153,28 +192,7 @@ describe('LinuxBrokerClient', () => {
     const client = new LinuxBrokerClient({ connect: async () => clientSocket, dashboardEpochId: epochId,
       makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}` });
 
-    let document = createEmptyPtySessionsDocument();
-    let queue = Promise.resolve();
-    const persistence: SessionPersistence = {
-      read: () => structuredClone(document),
-      mutate: async (expectedRevision, callback) => {
-        let result!: { revision: number; value: unknown };
-        const action = queue.then(async () => {
-          if (expectedRevision !== null && expectedRevision !== document.revision) {
-            throw new Error('revision-conflict');
-          }
-          const draft = structuredClone(document);
-          const value = await callback(draft);
-          enforcePtySessionRetention(draft);
-          draft.revision += 1;
-          document = draft;
-          result = { revision: draft.revision, value };
-        });
-        queue = action.then(() => undefined, () => undefined);
-        await action;
-        return result as never;
-      },
-    };
+    const persistence = memoryPersistence();
     let operation = 0;
     const registry = createSessionRecordRegistry({
       persistence,
@@ -196,5 +214,50 @@ describe('LinuxBrokerClient', () => {
     // A second browser session of the same operator is a different bucket and still admitted.
     expect(await registry.create({ operator: principal.operator, browserSessionRef: 'bs-fedcba9876543210' }, manual))
       .toMatchObject({ ok: true });
+  });
+
+  it('opens a shell with the PRODUCTION recipe — no injected resolver — and leaves the host usable', async () => {
+    // The test above injects `resolveManualRecipe`, and it injects the RIGHT answer. That is exactly why
+    // production shipped a manual recipe (`toolPolicyId: 'interactive'`) that the broker's own decoder
+    // refuses: every path that would have caught it was either stubbed out (the Linux capability probe) or
+    // handed the correct value by a fixture. This test injects nothing, so `sessionRecord.ts`'s own
+    // `manualRecipe` is what crosses the wire, through the real `decodeBrokerClientFrame` and the real
+    // `buildBrokerLaunch` on the far side.
+    //
+    // The failure it guards is not one refused session. An undecodable frame throws inside
+    // `BrokerFrameDecoder.push`, which `accept` answers by destroying the socket; the client's
+    // `handleDisconnect` then latches `unavailable` permanently, so the FIRST shell an operator opened
+    // would take the daemon's whole PTY host down until a service restart. Hence the assertions below
+    // check that the host still works afterwards, not merely that one create returned ok.
+    const [clientSocket, serverSocket] = pair();
+    const specs: BrokerLaunchSpec[] = [];
+    let minted = 0;
+    const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: { launch: async (spec) => { specs.push(spec); return new FakePty(); } },
+      enumerateLaunchers: async () => ['shell'],
+      makeSessionId: () => `pty-${(++minted).toString(16).padStart(32, '0')}`,
+      now: () => '2026-08-22T00:00:00.000Z' });
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+    let request = 0;
+    const client = new LinuxBrokerClient({ connect: async () => clientSocket, dashboardEpochId: epochId,
+      makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}` });
+    let operation = 0;
+    const registry = createSessionRecordRegistry({
+      persistence: memoryPersistence(),
+      host: client as unknown as SessionHost,
+      // NO `resolveManualRecipe`: production injects none, so the module's own builder is under test.
+      now: () => '2026-08-22T00:00:00.000Z',
+      makeOperationKey: () => `op-${(++operation).toString(16).padStart(64, '0')}`,
+    });
+    const manual = { launcher: 'shell' as const, rootId: 'repo' as const, relativeCwd: '', cols: 80, rows: 24 };
+
+    expect(await registry.create(principal, manual)).toMatchObject({ ok: true });
+    // The recipe reached the far side and `buildBrokerLaunch` resolved it, so it cleared BOTH gates.
+    expect(specs).toHaveLength(1);
+    expect(specs[0]?.executable).toBe('/bin/bash');
+    // The connection survived, and the client is not latched unavailable: a second create still works.
+    expect(serverSocket.destroyed).toBe(false);
+    expect(await registry.create(principal, manual)).toMatchObject({ ok: true });
+    expect(minted).toBe(2);
   });
 });

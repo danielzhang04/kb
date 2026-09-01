@@ -206,7 +206,7 @@ function vmTree(): Record<string, FakeNode> {
   };
 }
 
-function pinningFsOver(tree: Record<string, FakeNode>): PinningFileSystem {
+function pinningFsOver(tree: Record<string, FakeNode>): PinningFileSystem & { openFds(): number } {
   let nextFd = 10;
   let nextIno = 1n;
   const openPaths = new Map<number, string>();
@@ -240,6 +240,8 @@ function pinningFsOver(tree: Record<string, FakeNode>): PinningFileSystem {
     readlink() { throw new Error('not a symlink'); },
     read: (fd: number) => Buffer.from(tree[openPaths.get(fd)!]?.content ?? '', 'utf8'),
     close: (fd: number) => { openPaths.delete(fd); },
+    /** Every descriptor the walk opened and has not closed. A pin that returns must hold none. */
+    openFds: () => openPaths.size,
   };
 }
 
@@ -283,6 +285,24 @@ describe('enumerateBrokerLaunchers', () => {
     };
     expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(badInterpreter)))
       .toEqual(['shell', 'codex']);
+  });
+
+  it('closes every descriptor it opened, on the accepting path and the refusing one alike', async () => {
+    // The walk pins a descriptor per path component and holds them so the launch cannot be swapped out
+    // from under it. A probe throws them away instead of spawning, so a leak here is a descriptor leak in
+    // the BROKER — the long-lived process — once per capability probe, forever.
+    const accepting = pinningFsOver(vmTree());
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, accepting)).toEqual(['shell', 'claude', 'codex']);
+    expect(accepting.openFds()).toBe(0);
+
+    const refusing = vmTree();
+    delete refusing['/var/lib/kb-shell/home/.local/bin/codex'];
+    refusing['/var/lib/kb-shell/home/.local/bin/claude'] = {
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o755, content: '#!/usr/bin/env node\n',
+    };
+    const refused = pinningFsOver(refusing);
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, refused)).toEqual(['shell']);
+    expect(refused.openFds()).toBe(0);
   });
 
   it('reports NOTHING when the enumeration itself throws — never a launcher, never a partial guess', async () => {
