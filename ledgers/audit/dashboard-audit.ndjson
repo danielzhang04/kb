@@ -177,3 +177,4 @@
 {"ts":"2026-08-18T04:31:59.904Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-08-18T04:41:03.851Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-08-18T04:47:55.702Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-19T22:29:08.079Z","action":"control-execution-lock-authorize","owner":"operator","target":"execution","riskTier":"T2","result":"authorized:lock","detail":{"previous":"unlocked","tailnetIdentity":"Daniel Zhang <daniel.zhang.t1@gmail.com>"}}
