@@ -14,7 +14,39 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 
+# What a *VM-originated* commit may touch.  The VM daemon is the least-trusted writer in this loop,
+# so this stays exactly the narrow set its own write classifier routes to ops
+# (dashboard/server/write/branch.ts#COORDINATION_PREFIXES), mirrored verbatim by the outbound leg in
+# scripts/promote_vm_outbox.py.  Deliberately NOT widened below: the VM must never be able to
+# originate an agent-catalog or workflow-script edit and have this script accept it as its own.
 COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$")
+
+# What the *reconciled ops history* may touch.  A deliberate superset of COORDINATION, because the
+# desktop half of the loop has two more legitimate ops writers that the VM never originates.  It is
+# built by appending to COORDINATION.pattern so the superset relation holds by construction rather
+# than by two lists agreeing:
+#
+#   agents/**  and  orgs/*/workflows/**
+#       main-authored, PR-reviewed content that the daemon reads out of its ops worktree and that
+#       scripts/sync_daemon_dirs.py mirrors from main onto ops.  These two entries ARE that script's
+#       DAEMON_READ_DIRS, compiled by its own rule (trailing "/" = directory prefix, "*" = one
+#       segment), and tests/test_apply_ops_reconciliation.py pins them to it so that adding a
+#       daemon-read dir there can never silently wedge this leg again.  Refusing them is not
+#       hypothetical damage: the agent catalog is load-bearing for runnable-owner resolution
+#       (dashboard/server/agents/roster.ts -> dashboard/server/control/queueBridge.ts), and while
+#       this leg was stuck the VM sat on 4 agent files against ops' 10.
+#
+#   orgs/atlas/output/transcripts/*.jsonl
+#       the Atlas voice worker's per-session transcript, committed straight to ops from the desktop
+#       ops worktree (atlas/worker/ledgerwriter.py TRANSCRIPTS_DIR / _flush_session).  Pinned to
+#       that one directory, flat, and .jsonl only -- its sibling orgs/atlas/output/persona-samples/
+#       holds .wav/.mp3 blobs that have no business crossing this boundary.
+RECONCILED = re.compile(
+    COORDINATION.pattern
+    + r"|^agents/.+$"
+    + r"|^orgs/[^/]+/workflows/.+$"
+    + r"|^orgs/atlas/output/transcripts/[^/]+\.jsonl$"
+)
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 MANIFEST_KEYS = {"schema", "id", "parent", "commit", "paths", "createdAt", "bundleSha256"}
@@ -26,6 +58,14 @@ PROMOTED_RETENTION_COUNT = 100
 _RAW_HEADER = re.compile(
     rb"\A:([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) "
     rb"([0-9a-f]{40}|[0-9a-f]{64}) ([AMD])\Z"
+)
+# The same header shape, but with git's rename/copy status (`R098`, `C100`).  Such a record carries
+# THREE NUL fields -- header, source path, destination path -- not the two this parser accepts, so it
+# is refused with a message that names the cause.  Every caller must pass `--no-renames`, which turns
+# a move into an explicit D + A pair so both sides get mode- and allowlist-checked.
+_RAW_RENAME_HEADER = re.compile(
+    rb"\A:[0-7]{6} [0-7]{6} (?:[0-9a-f]{40}|[0-9a-f]{64}) "
+    rb"(?:[0-9a-f]{40}|[0-9a-f]{64}) [CR][0-9]{1,3}\Z"
 )
 
 
@@ -157,6 +197,11 @@ def parse_raw_diff(raw: str | bytes) -> tuple[list[tuple[str, str]], list[str]]:
     if not data:
         return [], []
     fields = data.split(b"\0")
+    # Checked before the parity rule below: an odd number of rename records breaks parity and an even
+    # number does not, so without this the same cause surfaces as two different opaque errors.  This
+    # parser stays strictly (header, path) pairs -- a rename record is refused, never consumed.
+    if any(_RAW_RENAME_HEADER.fullmatch(field) for field in fields):
+        raise RuntimeError("raw Git diff contains a rename or copy record; pass --no-renames")
     if fields[-1] != b"" or len(fields) % 2 != 1:
         raise RuntimeError("raw Git diff is malformed")
     modes = []
@@ -339,10 +384,14 @@ def _validate_source_claims(repo: Path, source_chain: list[dict], run=run_git) -
         ).strip().split()
         if row != [manifest["commit"], manifest["parent"]]:
             raise RuntimeError("source manifest lineage does not match the VM commit")
+        # `--no-renames` pins what diff-tree already does (plumbing ignores diff.renames), so a
+        # move is always a D + A pair here: both halves are compared against the manifest, both are
+        # mode-checked, and both are allowlist-checked.  Explicit because parse_raw_diff refuses a
+        # rename record outright -- this call must never be the one that produces it.
         modes, paths = parse_raw_diff(
             run(
                 repo,
-                ["diff-tree", "--no-commit-id", "--raw", "--no-abbrev", "-r", "-z", manifest["parent"], manifest["commit"]],
+                ["diff-tree", "--no-commit-id", "--raw", "--no-abbrev", "--no-renames", "-r", "-z", manifest["parent"], manifest["commit"]],
             ).stdout
         )
         if paths != manifest["paths"]:
@@ -520,15 +569,34 @@ def apply_reconciliation(
         history_positions[previous] = position
     if previous != target:
         raise RuntimeError("reconciled target is not descended from the trusted base")
-    changed = nul_paths(run(repo, ["diff", "--name-only", "-z", trusted_base, target]).stdout)
+    # `--no-renames` on BOTH calls, for two independent reasons.
+    #
+    # Correctness: unlike the plumbing above these are porcelain `git diff`, where rename detection
+    # is ON by default, and a detected rename is a three-field raw record that parse_raw_diff
+    # refuses.  Ordinary fleet traffic trips this -- a card moving queue/inbox -> queue/working ->
+    # queue/done keeps ~98% of its bytes, so git pairs it as a rename -- which is why this leg had
+    # never once completed since the outbox anchor was set.
+    #
+    # Security: with rename detection on, `--name-only` reports only the DESTINATION path.  A commit
+    # doing `git mv deploy/apply_ops_reconciliation.py queue/x.md` would therefore present a single
+    # allowlisted path while deleting a file outside the allowlist, and neither the mode check nor
+    # the RECONCILED check below would ever see the source.  With detection off git emits an explicit
+    # D + A pair, so both ends of every move are checked.  Off on both calls also keeps the two path
+    # lists directly comparable, which is what the equality below relies on.
+    changed = nul_paths(
+        run(repo, ["diff", "--name-only", "--no-renames", "-z", trusted_base, target]).stdout
+    )
     modes, raw_changed = parse_raw_diff(
-        run(repo, ["diff", "--raw", "--no-abbrev", "-z", trusted_base, target]).stdout
+        run(repo, ["diff", "--raw", "--no-abbrev", "--no-renames", "-z", trusted_base, target]).stdout
     )
     if raw_changed != changed or any(
         old not in SAFE_CHANGED_MODES or new not in SAFE_CHANGED_MODES for old, new in modes
     ):
         raise RuntimeError("reconciled ref contains an unsafe object mode")
-    if any(COORDINATION.fullmatch(path) is None for path in changed):
+    # RECONCILED, not COORDINATION: this range carries desktop-originated ops writes too (the
+    # main -> ops daemon-read mirror and the Atlas transcripts).  The VM-originated commits in the
+    # same range were already held to the narrower COORDINATION by _validate_source_claims.
+    if any(RECONCILED.fullmatch(path) is None for path in changed):
         raise RuntimeError("reconciled ref contains a non-coordination path")
     _validate_promoted_deltas(repo, source_chain, receipts, history_positions, run)
     run(repo, ["branch", f"kb-before-reconcile-{head[:12]}", head])
