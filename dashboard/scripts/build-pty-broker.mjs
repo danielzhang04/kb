@@ -188,7 +188,8 @@ if (compiled.status !== 0) fail('tsc -p tsconfig.pty-broker.json failed');
 writeFileSync(path.join(outputRoot, 'main.js'), ENTRY_SOURCE, 'utf8');
 writeFileSync(path.join(outputRoot, 'package.json'), PACKAGE_MARKER, 'utf8');
 for (const required of ['server/pty/linuxBrokerMain.js', 'server/pty/linuxBrokerServer.js',
-  'server/pty/brokerProtocol.js', 'server/pty/fdPinnedPaths.js', 'shared/ptyProtocol.js']) {
+  'server/pty/brokerProtocol.js', 'server/pty/fdPinnedPaths.js',
+  'server/pty/unixServiceIdentity.js', 'shared/ptyProtocol.js']) {
   if (!existsSync(path.join(outputRoot, required))) fail(`broker compiler did not emit ${required}`);
 }
 

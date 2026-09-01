@@ -14,6 +14,7 @@
     "server/pty/fdPinnedPaths.ts",
     "server/pty/linuxBrokerServer.ts",
     "server/pty/linuxBrokerMain.ts",
+    "server/pty/unixServiceIdentity.ts",
     "shared/ptyProtocol.ts"
   ]
 }
