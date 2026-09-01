@@ -2,9 +2,15 @@
 // VM launch refuse `409 no-complete-placement`: a booted daemon whose `hostAdvertisements` collection is
 // empty because nothing ever sent the advertisement `advertise.ts` knows how to build.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fileURLToPath } from 'node:url';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
-import { decodeHostAdvertisement, ADVERTISEMENT_INTERVAL_MS, isAdvertisementFresh } from './contracts.ts';
+import { probeRepoSkills } from '../runtime/capabilityProbes.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { computeCapabilityRequirement } from './requirements.ts';
+import {
+  decodeHostAdvertisement, ADVERTISEMENT_INTERVAL_MS, isAdvertisementFresh, type CliStatus,
+} from './contracts.ts';
 import { selectPlacementHost } from './select.ts';
 import {
   advertiseSelfOnce,
@@ -157,6 +163,43 @@ describe('startSelfAdvertiseTimer — immediate beat, then the shared 30-s inter
     } finally { stop(); }
   });
 
+  // F4: `onBeat` is a caller-supplied sink. If it throws, the throw escapes the SYNCHRONOUS first beat
+  // straight out of `buildApp` (boot failure) and, from inside `setInterval`, as an `uncaughtException`
+  // (process exit). A logging sink must never be able to kill the daemon.
+  it('a THROWING onBeat cannot escape — not from the immediate beat, not from an interval beat', () => {
+    const store = emptyStore();
+    let calls = 0;
+    const stop = startSelfAdvertiseTimer({
+      store, capabilities: LINUX_VM, daemonVersion: '1.2.3',
+      onBeat: () => { calls += 1; throw new Error('log sink exploded'); },
+    });
+    try {
+      // The immediate beat ran, its sink threw, and construction still returned normally.
+      expect(calls).toBe(1);
+      expect(store.listHostAdvertisements()).toHaveLength(1);
+      // The interval beat also survives, and the advertisement keeps refreshing through it.
+      expect(() => vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 2)).not.toThrow();
+      expect(calls).toBe(3);
+      expect(store.listHostAdvertisements()[0]!.version).toBe(3);
+    } finally { stop(); }
+  });
+
+  // F5: a disabled advertiser must write NOTHING. One row and no timer is the worst of both — it goes
+  // stale in 90 s and never refreshes, so launches 409 anyway while the table looks populated.
+  it('a non-positive interval disables the beat ENTIRELY: no timer AND no immediate row', () => {
+    for (const intervalMs of [0, -1, Number.NaN]) {
+      const store = emptyStore();
+      const stop = startSelfAdvertiseTimer({
+        store, capabilities: LINUX_VM, daemonVersion: '1.2.3', intervalMs,
+      });
+      try {
+        expect(store.listHostAdvertisements(), `interval ${intervalMs}`).toEqual([]);
+        vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 10);
+        expect(store.listHostAdvertisements(), `interval ${intervalMs}`).toEqual([]);
+      } finally { stop(); }
+    }
+  });
+
   it('the stop function clears the interval: no beat lands after shutdown, and stopping twice is safe', () => {
     const store = emptyStore();
     const stop = startSelfAdvertiseTimer({ store, capabilities: LINUX_VM, daemonVersion: '1.2.3' });
@@ -188,6 +231,77 @@ describe('the 409 this exists to remove', () => {
 
     expect(selectPlacementHost(EMPTY_REQUIREMENT, store.listHostAdvertisements(), Date.now()))
       .toEqual({ outcome: 'placed', hostId: 'vm' });
+  });
+});
+
+// F1: the launch sites do NOT all use the empty requirement. `workflows/routes.ts:537` computes a real
+// one from the assigned agents, and `placement/requirements.ts` turns each agent's declared `runtime`
+// into a `clis` requirement. So an advertisement carrying the fail-closed `clis: missing` default keeps
+// every agent- and workflow-owned launch at 409 even though a host IS advertising. This runs the REAL
+// repo catalog against the three CLI states so the gap cannot silently come back.
+describe('what the real agents/ catalog requires of an advertised host [P6 §3.2]', () => {
+  const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+  const declarations = [...readDeclaredAgentDetails(REPO_ROOT).values()];
+
+  const requirementFor = (declaration: (typeof declarations)[number]) => computeCapabilityRequirement({}, [{
+    skills: declaration.skills ?? [],
+    connectors: declaration.connectors ?? [],
+    filesystemRoots: declaration.filesystemRoots ?? [],
+    runtime: declaration.runtime,
+  }]);
+
+  const advertisementWith = (clis: { claude: CliStatus; codex: CliStatus }) => {
+    const store = emptyStore();
+    advertiseSelfOnce({
+      store,
+      capabilities: { ...LINUX_VM, clis, skills: probeRepoSkills(REPO_ROOT) },
+      daemonVersion: '1.2.3',
+    });
+    return store.listHostAdvertisements();
+  };
+
+  const placeable = (clis: { claude: CliStatus; codex: CliStatus }): string[] => {
+    const advertisements = advertisementWith(clis);
+    const now = Date.now();
+    return declarations
+      .filter((declaration) => selectPlacementHost(requirementFor(declaration), advertisements, now).outcome === 'placed')
+      .map((declaration) => declaration.id)
+      .sort();
+  };
+
+  const idsWithRuntime = (...runtimes: string[]) => declarations
+    .filter((declaration) => declaration.runtime !== null && runtimes.includes(declaration.runtime))
+    .map((declaration) => declaration.id).sort();
+
+  it('the fixture is not vacuous: the catalog declares both claude- and codex-runtime agents', () => {
+    expect(declarations.length).toBeGreaterThan(0);
+    expect(idsWithRuntime('claude').length).toBeGreaterThan(0);
+    expect(idsWithRuntime('codex').length).toBeGreaterThan(0);
+  });
+
+  it('with BOTH CLIs missing — the VM today — NO agent is placeable, however fresh the advertisement', () => {
+    expect(placeable({ claude: 'missing', codex: 'missing' })).toEqual([]);
+    // login-required fails exactly like missing (`match()` accepts only 'ready').
+    expect(placeable({ claude: 'login-required', codex: 'login-required' })).toEqual([]);
+  });
+
+  it('installing claude alone makes exactly the claude-runtime agents placeable', () => {
+    expect(placeable({ claude: 'ready', codex: 'missing' })).toEqual(idsWithRuntime('claude'));
+  });
+
+  it('installing codex alone makes exactly the codex-runtime agents placeable', () => {
+    expect(placeable({ claude: 'missing', codex: 'ready' })).toEqual(idsWithRuntime('codex'));
+  });
+
+  it('with both installed every declared agent is placeable on the probed linux advertisement', () => {
+    expect(placeable({ claude: 'ready', codex: 'ready' }))
+      .toEqual(declarations.map((declaration) => declaration.id).sort());
+  });
+
+  it('the probed skills list satisfies every skill the catalog declares', () => {
+    const advertised = new Set(probeRepoSkills(REPO_ROOT));
+    const declared = declarations.flatMap((declaration) => declaration.skills ?? []);
+    expect(declared.filter((skill) => !advertised.has(skill))).toEqual([]);
   });
 });
 

@@ -5549,7 +5549,7 @@ describe('P6 W1b — placement collections wired into the store-open invariant [
       const fixture = createLeasedFileStoreForTest({});
       try {
         expect(fixture.store.listHostAdvertisements()).toEqual([]);
-        expect(fixture.store.upsertHostAdvertisement(advertisement, undefined)).toEqual({ ok: true, version: 1 });
+        expect(fixture.store.upsertHostAdvertisement('vm', advertisement, undefined)).toEqual({ ok: true, version: 1 });
         expect(fixture.store.listHostAdvertisements()).toEqual([{ ...advertisement, version: 1 }]);
         const persisted = JSON.parse(readFileSync(fixture.path, 'utf8')) as { hostAdvertisements: unknown[] };
         expect(persisted.hostAdvertisements).toEqual([{ ...advertisement, version: 1 }]);
@@ -5559,9 +5559,9 @@ describe('P6 W1b — placement collections wired into the store-open invariant [
     it('bumps by exactly one and keeps ONE row per host — a re-advertise never appends a duplicate', () => {
       const fixture = createLeasedFileStoreForTest({});
       try {
-        fixture.store.upsertHostAdvertisement(advertisement, undefined);
+        fixture.store.upsertHostAdvertisement('vm', advertisement, undefined);
         const later = { ...advertisement, reportedAt: '2026-08-24T00:00:30.000Z' };
-        expect(fixture.store.upsertHostAdvertisement(later, 1)).toEqual({ ok: true, version: 2 });
+        expect(fixture.store.upsertHostAdvertisement('vm', later, 1)).toEqual({ ok: true, version: 2 });
         expect(fixture.store.listHostAdvertisements()).toEqual([{ ...later, version: 2 }]);
       } finally { fixture.close(); }
     });
@@ -5569,10 +5569,10 @@ describe('P6 W1b — placement collections wired into the store-open invariant [
     it('refuses a stale expectedVersion with the current version — never a silent overwrite', () => {
       const fixture = createLeasedFileStoreForTest({});
       try {
-        fixture.store.upsertHostAdvertisement(advertisement, undefined);
+        fixture.store.upsertHostAdvertisement('vm', advertisement, undefined);
         const clobber = { ...advertisement, daemonVersion: 'clobber' };
-        expect(fixture.store.upsertHostAdvertisement(clobber, undefined)).toEqual({ ok: false, current: 1 });
-        expect(fixture.store.upsertHostAdvertisement(clobber, 99)).toEqual({ ok: false, current: 1 });
+        expect(fixture.store.upsertHostAdvertisement('vm', clobber, undefined)).toEqual({ ok: false, current: 1 });
+        expect(fixture.store.upsertHostAdvertisement('vm', clobber, 99)).toEqual({ ok: false, current: 1 });
         expect(fixture.store.listHostAdvertisements()).toEqual([{ ...advertisement, version: 1 }]);
       } finally { fixture.close(); }
     });
@@ -5580,32 +5580,86 @@ describe('P6 W1b — placement collections wired into the store-open invariant [
     it('keeps the two hosts on independent version lines', () => {
       const fixture = createLeasedFileStoreForTest({});
       try {
-        fixture.store.upsertHostAdvertisement(advertisement, undefined);
-        fixture.store.upsertHostAdvertisement(advertisement, 1);
+        fixture.store.upsertHostAdvertisement('vm', advertisement, undefined);
+        fixture.store.upsertHostAdvertisement('vm', advertisement, 1);
         const desktop = { ...advertisement, hostId: 'desktop' as const, pty: false };
-        expect(fixture.store.upsertHostAdvertisement(desktop, undefined)).toEqual({ ok: true, version: 1 });
+        expect(fixture.store.upsertHostAdvertisement('desktop', desktop, undefined)).toEqual({ ok: true, version: 1 });
         expect(fixture.store.listHostAdvertisements().map((row) => [row.hostId, row.version]))
           .toEqual([['vm', 2], ['desktop', 1]]);
       } finally { fixture.close(); }
     });
 
-    it('decodes the body BEFORE committing: an invalid advertisement leaves the collection untouched', () => {
+    // F7 port-shape parity: the addressed host is the argument, never inferred from the body, so a route
+    // binding that forgot to pass its map-derived host cannot silently write the client's chosen host.
+    it('refuses a body whose hostId disagrees with the addressed host, and writes nothing', () => {
       const fixture = createLeasedFileStoreForTest({});
       try {
         expect(() => fixture.store.upsertHostAdvertisement(
-          { ...advertisement, daemonVersion: 'NOT A VERSION' }, undefined,
+          'desktop', advertisement, undefined,
+        )).toThrow(/not the addressed host desktop/);
+        expect(fixture.store.listHostAdvertisements()).toEqual([]);
+      } finally { fixture.close(); }
+    });
+
+    it('decodes the body BEFORE persisting: an invalid advertisement leaves the collection untouched', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        expect(() => fixture.store.upsertHostAdvertisement(
+          'vm', { ...advertisement, daemonVersion: 'NOT A VERSION' }, undefined,
         )).toThrow();
         expect(fixture.store.listHostAdvertisements()).toEqual([]);
+      } finally { fixture.close(); }
+    });
+
+    // F2/F3: `documentRevision` is the COORDINATED-state revision. Reconciliation refuses an intent whose
+    // `expectedStoreRevision` moved (reconciliation/publisher.ts) and Home/Agents/Workflows derive browser
+    // ETags from it, so a 30-s liveness beat must not touch it — while still persisting the new row.
+    it('does NOT bump documentRevision, but still persists — advertisements ride their own version line', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        const before = fixture.store.getControlDocumentMetadata().documentRevision;
+        for (let beat = 1; beat <= 4; beat += 1) {
+          const written = fixture.store.upsertHostAdvertisement(
+            'vm',
+            { ...advertisement, reportedAt: new Date(Date.parse(AT) + beat * 30_000).toISOString() },
+            beat === 1 ? undefined : beat - 1,
+          );
+          expect(written).toEqual({ ok: true, version: beat });
+        }
+        expect(fixture.store.getControlDocumentMetadata().documentRevision).toBe(before);
+        // Persisted anyway: the row survives a reopen, so the freshness beat is durable without a bump.
+        const persisted = JSON.parse(readFileSync(fixture.path, 'utf8')) as {
+          documentRevision: number; hostAdvertisements: Array<{ version: number; reportedAt: string }>;
+        };
+        expect(persisted.documentRevision).toBe(before);
+        expect(persisted.hostAdvertisements).toMatchObject([{ version: 4 }]);
+      } finally { fixture.close(); }
+    });
+
+    it('an idle beat does not invalidate an in-flight expectedStoreRevision gate', () => {
+      const fixture = createLeasedFileStoreForTest({});
+      try {
+        // What `index.ts` hands the reconciliation publisher as `readStoreRevision`.
+        const storeRevision = () => String(fixture.store.getControlDocumentMetadata().documentRevision);
+        const expectedStoreRevision = storeRevision();
+        fixture.store.upsertHostAdvertisement('vm', advertisement, undefined);
+        fixture.store.upsertHostAdvertisement(
+          'vm', { ...advertisement, reportedAt: '2026-08-24T00:00:30.000Z' }, 1,
+        );
+        expect(storeRevision()).toBe(expectedStoreRevision);
+        // A REAL coordinated write still moves it, so the gate has not been defeated wholesale.
+        fixture.store.seedHostAdvertisementForTest({ ...advertisement, version: 99 });
+        expect(storeRevision()).not.toBe(expectedStoreRevision);
       } finally { fixture.close(); }
     });
 
     it('is a MUTATION, so the read-only harness refuses it while still serving the read', () => {
       const fixture = createLeasedFileStoreForTest({});
       try {
-        fixture.store.upsertHostAdvertisement(advertisement, undefined);
+        fixture.store.upsertHostAdvertisement('vm', advertisement, undefined);
         const readOnly = openFileControlPlaneStore(fixture.root, { mode: 'read-only-harness' });
         expect(readOnly.listHostAdvertisements()).toHaveLength(1);
-        expect(() => readOnly.upsertHostAdvertisement(advertisement, 1)).toThrow(ControlStoreReadOnlyError);
+        expect(() => readOnly.upsertHostAdvertisement('vm', advertisement, 1)).toThrow(ControlStoreReadOnlyError);
       } finally { fixture.close(); }
     });
   });

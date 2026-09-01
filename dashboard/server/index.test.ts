@@ -8,7 +8,7 @@ import { makeSurfaceContext as makeProductionSurfaceContext } from './http/surfa
 import { mintSession } from './auth/session.ts';
 import type { SessionConfig } from './auth/session.ts';
 import type { SessionHost } from './pty/contracts.ts';
-import { runtimeCapabilities } from './runtime/capabilities.ts';
+import { runtimeCapabilities, runtimeExecutionHost } from './runtime/capabilities.ts';
 // The browser's own decoder, run against the REAL route body: the cutover rests on this coupling.
 import { decodeRuntimeCapabilities } from '../src/lib/runtimeCapabilities.tsx';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +50,7 @@ import {
   humanRequestSweepLogLine,
   registeredRoutesOf,
   resolveHumanRequestSweepIntervalMs,
+  resolveSelfAdvertiseIntervalMs,
   runScheduleBootMigrations,
   start,
 } from './index.ts';
@@ -741,6 +742,15 @@ describe('P6 W6.3 — daemon self-advertisement wiring [§3.1]', () => {
   const EMPTY_REQUIREMENT = {
     connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [] as Array<'claude' | 'codex'>,
   };
+  /** A writer lease over this test's temp state root; `start()` releases it through the app's onClose. */
+  const selfAdvertiseLease = (): WriterLease => ({
+    mode: 'already-locked', stateRoot: testStateRoot!, bootId: 'self-advertise-test', pid: process.pid,
+    assertHeld: vi.fn(), release: vi.fn(),
+  });
+  /** A `buildApp` stand-in for the composition assertions: it must listen and close, and nothing else. */
+  const inertApp = () => ({
+    addHook: () => undefined, listen: async () => undefined, close: async () => undefined,
+  } as unknown as ReturnType<typeof buildProductionApp>);
 
   it('beats ONCE at boot, so a launch in the first 30 s finds a complete placement instead of a 409', async () => {
     const store = emptyPlacementStore();
@@ -786,6 +796,103 @@ describe('P6 W6.3 — daemon self-advertisement wiring [§3.1]', () => {
       expect(store.listHostAdvertisements()[0]!.version).toBe(3);
       expect(store.listHostAdvertisements()).toHaveLength(1);
     } finally { vi.useRealTimers(); }
+  });
+
+  // F2/F3: a 30-s liveness beat must not read as coordinated state changing. `documentRevision` is what
+  // reconciliation gates every card walk on and what the entity ETags hash, so an idle daemon must serve
+  // a STABLE revision no matter how many beats have landed.
+  it('idle beats do not move documentRevision, so the Agents collection revision is stable while idling', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = emptyPlacementStore();
+      const built = buildApp({
+        controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+        runtimeCapabilities: runtimeCapabilities('linux'),
+      });
+      try {
+        const read = async () => (await built.inject({
+          method: 'GET', url: '/api/agents', headers: sessionHeaders(),
+        })).json().revision as string;
+        const before = await read();
+        expect(typeof before).toBe('string');
+        expect(before.length).toBeGreaterThan(0);
+        const revisionBefore = store.getControlDocumentMetadata().documentRevision;
+
+        vi.advanceTimersByTime(ADVERTISEMENT_INTERVAL_MS * 6);
+        expect(store.listHostAdvertisements()[0]!.version).toBe(7); // the beats really did land
+
+        expect(store.getControlDocumentMetadata().documentRevision).toBe(revisionBefore);
+        expect(await read()).toBe(before);
+      } finally { await built.close(); }
+    } finally { vi.useRealTimers(); }
+  });
+
+  // F5: the escape hatch for a daemon deliberately taken out of the placement pool.
+  it('DASHBOARD_SELF_ADVERTISE=0 disables the beat entirely — no row at all, not a row left to go stale', async () => {
+    expect(resolveSelfAdvertiseIntervalMs({})).toBe(ADVERTISEMENT_INTERVAL_MS);
+    expect(resolveSelfAdvertiseIntervalMs({ DASHBOARD_SELF_ADVERTISE: '1' })).toBe(ADVERTISEMENT_INTERVAL_MS);
+    for (const raw of ['0', 'false', 'FALSE', 'no', ' off ']) {
+      expect(resolveSelfAdvertiseIntervalMs({ DASHBOARD_SELF_ADVERTISE: raw }), raw).toBe(0);
+    }
+    vi.stubEnv('DASHBOARD_SELF_ADVERTISE', '0');
+    const store = emptyPlacementStore();
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'),
+    });
+    expect(store.listHostAdvertisements()).toEqual([]);
+  });
+
+  // F1: the composition-time capability probe is what puts real `clis`/`skills` into the advertisement.
+  // Without it every advertisement carried `clis: missing`, and agent/workflow launches 409'd anyway.
+  it('start() probes the advertisement capabilities ONCE and hands buildApp the overlaid composition', async () => {
+    const probeAdvertisement = vi.fn(async () => ({
+      connectors: [], skills: ['code-review'], filesystemRoots: ['repo'], gpu: false,
+      clis: { claude: 'ready' as const, codex: 'missing' as const },
+    }));
+    let composed: Parameters<typeof buildProductionApp>[0] | undefined;
+    await start(0, '127.0.0.1', {
+      leaseFactory: () => selfAdvertiseLease(),
+      probePtyCapability: async () => ({
+        pty: false as const,
+        diagnostic: { reason: 'broker-unavailable' as const, detail: null, checkedAt: '2026-08-25T00:00:00.000Z' },
+      }),
+      probeAdvertisementCapabilities: probeAdvertisement,
+      buildApplication: (options) => { composed = options; return inertApp(); },
+    });
+    expect(probeAdvertisement).toHaveBeenCalledOnce();
+    // The probed slice replaced the fail-closed defaults, and the PTY discriminant survived the overlay.
+    expect(composed?.runtimeCapabilities).toMatchObject({
+      pty: false, skills: ['code-review'], filesystemRoots: ['repo'],
+      clis: { claude: 'ready', codex: 'missing' },
+    });
+
+    // And that composition is what the beat advertises: an agent needing the claude CLI is now placeable.
+    const store = emptyPlacementStore();
+    app = buildApp({
+      controlStore: store, validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: composed?.runtimeCapabilities,
+    });
+    // `start()` composes against the REAL `process.platform`, so the advertised host is whichever this
+    // machine is; the point under test is the CLI gate, not the host identity.
+    const selfHost = runtimeExecutionHost(composed!.runtimeCapabilities!);
+    expect(selectPlacementHost(
+      { ...EMPTY_REQUIREMENT, clis: ['claude'] }, store.listHostAdvertisements(), Date.now(),
+    )).toEqual({ outcome: 'placed', hostId: selfHost });
+    // ...while one needing codex is still honestly refused, because codex really is not installed.
+    expect(selectPlacementHost(
+      { ...EMPTY_REQUIREMENT, clis: ['codex'] }, store.listHostAdvertisements(), Date.now(),
+    )).toEqual({ outcome: 'no-complete-placement' });
+  });
+
+  it('a capability probe that rejects still boots, on the fail-closed defaults', async () => {
+    let composed: Parameters<typeof buildProductionApp>[0] | undefined;
+    await start(0, '127.0.0.1', {
+      leaseFactory: () => selfAdvertiseLease(),
+      probeAdvertisementCapabilities: async () => { throw new Error('probe exploded'); },
+      buildApplication: (options) => { composed = options; return inertApp(); },
+    });
+    expect(composed?.runtimeCapabilities).toMatchObject({ clis: { claude: 'missing', codex: 'missing' } });
   });
 });
 

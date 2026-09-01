@@ -3069,22 +3069,38 @@ function makeStore(
       return [...load().hostAdvertisements];
     },
 
-    upsertHostAdvertisement(advertisement, expectedVersion) {
+    upsertHostAdvertisement(hostId, advertisement, expectedVersion) {
+      // Port-shape parity with the node route's `AdvertiseStorePort`: the addressed host is an EXPLICIT
+      // argument (the route derives it from the peer map, never from the body), and a body that disagrees
+      // is a caller bug — refused loudly rather than silently writing whichever host the body named.
+      if (advertisement.hostId !== hostId) {
+        throw new Error(`host advertisement is for ${advertisement.hostId}, not the addressed host ${hostId}`);
+      }
       // ONE row per host by construction (`hostId` is the primary key), so a second daemon beat can never
-      // append a duplicate. The load/compare/commit runs inside this single method, which under the
-      // writer lease is the store's unit of atomicity — the same shape `claimLease` relies on.
+      // append a duplicate. The load/compare/save runs inside this single method, which under the writer
+      // lease is the store's unit of atomicity — the same shape `claimLease` relies on.
       const document = load();
-      const current = document.hostAdvertisements.find((row) => row.hostId === advertisement.hostId)?.version;
+      const current = document.hostAdvertisements.find((row) => row.hostId === hostId)?.version;
       if (current !== expectedVersion) return { ok: false, current: current ?? 0 };
       const version = (current ?? 0) + 1;
-      // Decode HERE, before the row is committed: the store never persists an advertisement the W0
+      // Decode HERE, before the row is persisted: the store never persists an advertisement the W0
       // contract would reject on the way back out (`assertPlacementCollections` at open would fail closed).
       const stored: StoredHostAdvertisement = { ...decodeHostAdvertisement(advertisement), version };
       document.hostAdvertisements = [
-        ...document.hostAdvertisements.filter((existing) => existing.hostId !== advertisement.hostId),
+        ...document.hostAdvertisements.filter((existing) => existing.hostId !== hostId),
         stored,
       ];
-      commit(document);
+      // `save`, NOT `commit`: an advertisement must NOT bump `documentRevision`. That counter is the
+      // revision of the COORDINATED control-plane state — `reconciliation/publisher.ts` gates every card
+      // walk on it (a changed value refuses the intent as `stale store revision`), and Home/Agents/
+      // Workflows derive their browser ETags from it. A 30-s liveness beat that bumped it would abort
+      // in-flight reconciliation intents and invalidate every cached projection, forever. The
+      // advertisement has its OWN revision line: the plan-owned per-row `version` that sits beside the
+      // verbatim spec fields precisely because it is the advertisement ETag domain
+      // [placement/contracts.ts §3.1:142] — that is what this CAS advances. Persistence is untouched:
+      // `commit` is exactly `documentRevision += 1` followed by this same `save`, so durability, the
+      // document size limit, and the atomic rename all behave identically.
+      save(document);
       return { ok: true, version };
     },
 

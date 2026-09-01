@@ -23,6 +23,7 @@ export { ADVERTISEMENT_INTERVAL_MS };
 export interface SelfAdvertiseStorePort {
   listHostAdvertisements(): StoredHostAdvertisement[];
   upsertHostAdvertisement(
+    hostId: HostKind,
     advertisement: HostAdvertisement,
     expectedVersion: number | undefined,
   ): { readonly ok: true; readonly version: number } | { readonly ok: false; readonly current: number };
@@ -61,7 +62,7 @@ export function advertiseSelfOnce(options: SelfAdvertiseOptions): SelfAdvertiseO
     // is the correct expectation on the very first one.
     const expectedVersion = options.store.listHostAdvertisements()
       .find((row) => row.hostId === hostId)?.version;
-    const written = options.store.upsertHostAdvertisement(advertisement, expectedVersion);
+    const written = options.store.upsertHostAdvertisement(hostId, advertisement, expectedVersion);
     return written.ok
       ? { outcome: 'advertised', hostId, version: written.version }
       : { outcome: 'conflict', hostId, current: written.current };
@@ -78,22 +79,36 @@ export interface SelfAdvertiseTimerOptions extends SelfAdvertiseOptions {
 }
 
 /**
- * Register the repeating self-advertisement. Fires ONCE IMMEDIATELY and then every `intervalMs`: an empty
- * advertisements table until the first 30-s beat would 409 every launch in the boot window. The immediate
- * beat is synchronous but cannot throw (see `advertiseSelfOnce`), so it never blocks or fails boot. The
- * returned stop function clears the interval and is idempotent.
+ * Register the repeating self-advertisement. A non-finite or `<= 0` interval is a full DISABLE — it
+ * registers nothing AND beats nothing (checked before the immediate beat, mirroring
+ * `control/humanRequestSweep.ts:131`); a disabled advertiser that still wrote one row would leave a host
+ * that goes stale in 90 s and never refreshes, which is worse than no row at all.
+ *
+ * Otherwise it fires ONCE IMMEDIATELY and then every `intervalMs`: an empty advertisements table until
+ * the first 30-s beat would 409 every launch in the boot window. The returned stop function clears the
+ * interval and is idempotent.
  */
 export function startSelfAdvertiseTimer(options: SelfAdvertiseTimerOptions): () => void {
   const intervalMs = options.intervalMs ?? ADVERTISEMENT_INTERVAL_MS;
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return () => {};
   // The beat runs FIRST and unconditionally: `onBeat?.(advertiseSelfOnce(options))` would short-circuit
   // the whole call expression — argument included — whenever no `onBeat` was supplied, so a composition
   // that wants no logging would silently advertise nothing at all.
+  //
+  // The WHOLE body is guarded, `onBeat` included. `advertiseSelfOnce` already returns rather than throws,
+  // but a throwing sink would otherwise escape: synchronously out of the immediate beat and therefore out
+  // of `buildApp` (boot failure), and from inside `setInterval` as an `uncaughtException` (process exit).
+  // A logging sink must never be able to kill the daemon — same reasoning as
+  // `control/humanRequestSweep.ts:136-142`.
   const beat = (): void => {
-    const outcome = advertiseSelfOnce(options);
-    options.onBeat?.(outcome);
+    try {
+      const outcome = advertiseSelfOnce(options);
+      options.onBeat?.(outcome);
+    } catch {
+      // Swallowed: there is nowhere left to report to — the reporter itself is what threw.
+    }
   };
   beat();
-  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return () => {};
   const timer = setInterval(beat, intervalMs);
   // Never hold the process open for a beat: the daemon's lifetime is the listener's, not this timer's.
   if (typeof timer.unref === 'function') timer.unref();
@@ -113,7 +128,16 @@ export function selfAdvertiseLogLine(outcome: SelfAdvertiseOutcome): string | nu
   return `[self-advertise] beat failed: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`;
 }
 
-/** Fallback when `dashboard/package.json` cannot be read or carries no usable version. */
+/**
+ * Fallback when `dashboard/package.json` cannot be read or carries no usable version.
+ *
+ * AMBIGUITY, deliberately accepted: `dashboard/package.json` currently declares `"version": "0.0.0"`,
+ * so today a successful read and a failed read are indistinguishable in the advertised body. That is
+ * tolerable ONLY because `daemonVersion` is display/diagnostics and is explicitly not requirable
+ * [placement/contracts.ts §3.1] — nothing routes, authorizes, or matches on it, and the field domain
+ * forbids a marker like `unknown`-with-punctuation anyway. If the package ever carries a real version,
+ * the two cases separate on their own; until then do not read this value as "the manifest was readable".
+ */
 export const UNKNOWN_DAEMON_VERSION = '0.0.0';
 
 let cachedDaemonVersion: string | undefined;

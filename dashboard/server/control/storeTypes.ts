@@ -762,13 +762,19 @@ export interface ControlPlaneStore
   /**
    * P6 W6.3: the ONE production writer of a `hostAdvertisements` row — the store method behind the node
    * route's `AdvertiseStorePort` (`api/v1/routes.ts`) and the method the daemon's own self-advertisement
-   * timer (`placement/selfAdvertise.ts`) calls on its own store. Same CAS discipline the route's port
-   * declares: `expectedVersion` is the version the caller last read (`undefined` = "no row for this host
-   * yet"), a mismatch is a REFUSAL carrying the current version rather than a silent overwrite, and a
-   * success bumps the plan-owned `version` by exactly one. The body is decoded through the W0 contract
-   * before it is committed, so an invalid advertisement can never enter the document.
+   * timer (`placement/selfAdvertise.ts`) calls on its own store. The argument list is that port's
+   * verbatim: `hostId` is the ADDRESSED host (the route derives it from the peer map, never from the
+   * body) and a body naming a different host THROWS, so a future route binding cannot silently drop its
+   * argument. Same CAS discipline: `expectedVersion` is the version the caller last read (`undefined` =
+   * "no row for this host yet"), a mismatch is a REFUSAL carrying the current version rather than a
+   * silent overwrite, and a success bumps the plan-owned `version` by exactly one. The body is decoded
+   * through the W0 contract before it is persisted, so an invalid advertisement never enters the document.
+   *
+   * It deliberately does NOT bump `documentRevision` — advertisements are liveness telemetry on their own
+   * per-row revision line, not coordinated state. See the implementation comment in `store.ts`.
    */
   upsertHostAdvertisement(
+    hostId: HostKind,
     advertisement: HostAdvertisement,
     expectedVersion: number | undefined,
   ): HostAdvertisementUpsertResult;
