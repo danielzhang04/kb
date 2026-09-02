@@ -1,0 +1,243 @@
+# Attribute-calibration lever table
+
+API-driven single-variable grid study, per `orgs/figment/research/r10-prior-art.md` §2.
+Local ComfyUI HTTP API (`http://127.0.0.1:8188`), RealVisXL_V5.0_fp16, RTX 4070 8GB, no
+accounts, no spend. 3 fixed seeds (100001 / 200002 / 300003) per axis unless noted;
+one axis varied per grid, everything else held byte-identical. Driver script and raw
+prompts: `orgs/figment/pipeline/calibration-study/` (raw images per axis in `raw/`,
+labeled contact sheets in `sheets/`, `raw/phase1_manifest.json` / `raw/COMBO/phase2_manifest.json`
+record the exact prompt text and seed for every cell).
+
+**Methodology deviation, stated up front:** the grid used a fast base-generation-only
+graph (single KSampler pass + ControlNet for full-body, no second upscale/denoise pass,
+no FaceDetailer) rather than the full `portrait_refined.json` / `fullbody_refined.json`
+production chain, to keep the study bounded. Attribute presence and cascade effects are
+visible at base resolution; the two final proof images (Section 6) use the identical
+prompt cores but were still generated via this same base graph, matching the grid exactly
+for a fair before/after read — a further pass through the full refine chain is a follow-up,
+not part of this study's claim. No IP-Adapter identity lock is used anywhere in this study
+(no face reference exists yet for this round); this is an attribute study, not a casting
+round, so that is an intentional scope choice, not an oversight. **Skin Realism LoRA
+remains untested** — still CivitAI login-gated, never downloaded (confirmed again this
+session); the only locally-available skin-adjacent LoRA is Instagram Selfie SDXL.
+
+---
+
+## 1. Headline finding: the demographic-noun cascade effect — CONFIRMED
+
+**Axis C** (contact sheet: `calibration-study/sheets/axis_C_sheet.jpg`), fullbody, wardrobe
+clause held byte-identical across all 3 variants: `"...wearing a fitted olive-green sweater
+and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit
+bedroom..."`
+
+| variant | heritage wording | seeds | result |
+|---|---|---|---|
+| C1 (current recipe) | demographic noun in main clause: `"a 25 year old east asian american woman"` | 3/3 | Jeans rendered **olive/dark-green, color-matched to the sweater** — not the literally-specified dark denim — on **3 of 3** seeds. Scenes also skewed toward a brighter, more "catalog/editorial" bedroom (art prints, potted plants) consistently. |
+| C2 | phenotypic descriptors as main clause, heritage moved to a trailing `(...:0.8)` clause | 3/3 | Jeans rendered as **correct dark blue denim** on 3/3 seeds. Scene mood shifted moodier/richer (deep jewel-tone walls). |
+| C3 | phenotypic descriptors only, no demographic noun anywhere | 3/3 | Jeans rendered as **correct dark blue denim** on 3/3 seeds. Scene lighter/airier, neutral walls. |
+
+**Verdict: confirmed, not just plausible.** The single wardrobe-color variable moved in
+lockstep with heritage-noun placement across all 3 seeds in both directions — this is a
+clean single-variable result, not seed noise. Putting the demographic noun in the main
+clause measurably drags an unrelated wardrobe attribute (garment color) off its explicit
+instruction; moving it to a trailing low-weight clause or dropping it for phenotypic
+language removes that specific drag.
+
+**Caveat found in the combination pass (Section 5):** the fix reduces but does not
+*eliminate* the tendency — one of three COMBO-pass seeds (using the C2-style fix) still
+produced a monochrome, matchy top+bottom outfit. Report this as a strong mitigation, not a
+total cure — residual wardrobe-color drift should still be visually checked per generation.
+
+**Recommendation:** adopt C2's pattern for all future persona prompts — phenotypic
+descriptors (skin undertone, eye shape, hair texture) carry the main clause; the heritage/
+demographic term moves to a trailing clause at reduced weight (`:0.8`) only if register
+targeting still needs it explicitly.
+
+---
+
+## 2. Skin finish (Axis A)
+
+Contact sheet: `sheets/axis_A_sheet.jpg`, portrait, 5 variants x 3 seeds.
+
+| term | weight | result | side effects | verdict |
+|---|---|---|---|---|
+| baseline recipe wording (current) | — | Visible pores/natural texture already present by default on RealVisXL; not glossy. | none observed | **PASS — keep as-is** |
+| `"visible pores, subtle skin texture, matte-warm skin, natural unretouched skin texture"` (texture-plus, prompt-only) | — | Marginally more matte than baseline; hard to distinguish at a glance across 3/3 seeds. | none observed | Weak positive, optional insurance |
+| `"glossy dewy skin, radiant glass skin, luminous poreless skin"` (glossy pole, prompt-only) | — | **Did not reliably produce glass/poreless skin** — texture stayed close to baseline on most seeds. | none | Confirms r10's caution: prompt language alone is a **weak lever** for skin finish on this checkpoint, in both directions. |
+| Instagram Selfie SDXL LoRA | 0.3 | Visibly smoother/softer skin, slightly fuller/glossier lips, softer brows — a step toward the gloss pole. | pushes toward the exact "generic-soft"/gloss failure mode the project is fighting | **NEGATIVE RESULT** |
+| Instagram Selfie SDXL LoRA | 0.5 | Same direction, more pronounced — visibly less pore texture, more "retouched influencer" look. | same, stronger | **NEGATIVE RESULT, do not use for skin goals** |
+
+**Recommendation:** keep the current baseline skin wording (no LoRA). Instagram Selfie
+LoRA is not a skin-texture fix — it actively works against the register. Skin Realism LoRA
+(the one purpose-built tool for this, per r10 §2 and aesthetic-recipe.md §2) is still
+untested — this remains the single largest open gap in the recipe, blocked on Daniel's
+CivitAI login.
+
+---
+
+## 3. Makeup intensity (Axis B)
+
+Contact sheet: `sheets/axis_B_sheet.jpg`, portrait, 3 rungs x 3 seeds (soft-glam middle =
+same cells as Axis A's baseline, reused).
+
+| rung | seeds | result |
+|---|---|---|
+| bare-faced / no makeup | 3/3 | Clean, natural, no liner, natural lip — visibly and consistently distinct from the other two rungs. |
+| soft-glam (current recipe) | 3/3 | Subtle liner, soft-matte/glossy lip, groomed full brow — sits correctly in the middle, as targeted. |
+| full glam | 3/3 | Visible contour, winged liner (clearly winged on 1/3, present on 3/3), bolder lip, more polished brow. |
+
+**Verdict: confirmed as a genuinely categorical/discrete axis, not continuous** — the three
+rungs are visually distinct on every seed, no overlap. **Current recipe wording is correct;
+no change needed.**
+
+---
+
+## 4. Waist/curve (Axis D) and weight ceiling (Axis F)
+
+Contact sheets: `sheets/axis_D_sheet.jpg`, `sheets/axis_F_sheet.jpg`.
+
+**Axis D** — same weighted hourglass clauses (`"(slim build with a defined waist and gentle
+hip curve:1.2), (subtle hourglass silhouette:1.1)"`) tested against fitted vs. loose
+garments, 3 seeds each:
+
+| garment fit | seeds | result |
+|---|---|---|
+| fitted top + fitted jeans | 3/3 | Waist/hip curve clearly visible. |
+| oversized sweater + wide-leg trousers | 3/3 | Curve essentially invisible — silhouette reads straight/boxy despite the identical weighted clause. |
+
+**Verdict: confirmed — garment fit dominates over the prompt-weighted body-shape clause.**
+The identical hourglass language produced curve or didn't purely as a function of wardrobe
+fit. This matches the project's existing NOTES.md observation and extends it: the hourglass
+clause is not harmful, but it is not sufficient on its own either — **fitted garments are
+the primary lever, the weighted clause is optional reinforcement.**
+
+**Axis F** — stacked count of `:1.2`-weighted clauses (0 to 4), single seed (100001),
+structural test:
+
+| clauses stacked | anatomy/proportion | styling side effects |
+|---|---|---|
+| 0 | correct | — |
+| 1 | correct | top garment style shifted (crew-neck → zip top) |
+| 2 | correct | pose/hand position shifted |
+| 3 | correct | garment color shifted darker, pose shifted |
+| 4 | correct | hair volume/texture shifted, garment style changed again |
+
+**Verdict: no anatomical/proportion distortion up to 4 stacked `:1.2` clauses** at this
+seed, in this graph (no IP-Adapter present) — the proportion defect documented in
+`aesthetic-recipe.md` §3 was tied to IP-Adapter's compositional bleed, not to weighted-clause
+count in general. **But** each added clause visibly nudged wardrobe/hair/pose details beyond
+its literal semantic content — a second, milder cascade, distinct from the heritage-noun
+cascade in Section 1. Caveat: single-seed test per the axis's own design (F is explicitly a
+structural check, not an attribute-fidelity claim) — do not over-read into "4 clauses is
+always safe."
+
+---
+
+## 5. Combination pass
+
+Fullbody, 3 seeds, winning single-axis choices combined: heritage moved to trailing clause
+(C2), texture-plus skin (A2), soft-glam makeup with an added explicit lip-color fix (new,
+see below), fitted wardrobe + hourglass clauses (D1), one hair term folded in per seed
+(Axis E, folded per r10's own instruction rather than given a dedicated grid). Contact
+sheet: `sheets/axis_COMBO_sheet.jpg`.
+
+**New finding surfaced only here:** full-body scene prompts default to **bold red
+lipstick** regardless of makeup-intensity wording (visible across nearly every fullbody
+cell in axes C/D/F) — portrait bust shots did not show this. Added an explicit
+`"soft-matte nude-pink lip, no red lipstick"` clause for the combination pass; it worked on
+3/3 combo seeds (no red lipstick recurred).
+
+| seed | hair term | result |
+|---|---|---|
+| 100001 | balayage over dark brown | Correct dark denim jeans, visible waist curve, natural lip, good register match. |
+| 200002 | flat jet-black | **Cascade residual**: top and trousers both rendered sage/olive — a matchy, monochrome outfit despite the C2-style heritage fix. Curve still visible, lip fix held. |
+| 300003 | subtle balayage over black | Correct dark jeans, best overall register match, natural lip, curve visible. |
+
+**Honest verdict on composition:** single-axis findings mostly held together — no
+anatomical degradation, the lip fix generalized, the curve finding generalized — but the
+heritage-cascade fix is a **strong mitigation, not a total fix** (1/3 seeds still drifted).
+Single-axis findings do not automatically compose to 100%, confirming the study's own
+starting premise.
+
+---
+
+## 6. Winning prompt core (recommended)
+
+```
+[fullbody framing prefix,] a 25 year old woman with warm-toned skin, monolid-leaning eyes,
+straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural
+eyebrows, warm-toned skin, visible pores, subtle skin texture, matte-warm skin, natural
+unretouched skin texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte
+nude-pink lip, no red lipstick, balayage highlights over dark brown hair,
+(slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1),
+[fitted wardrobe clause + content-ceiling clauses,] candid phone photograph, amateur
+photography, unedited, film grain, adult woman in her mid-20s, [framing suffix,]
+(east asian american heritage:0.8)
+```
+
+Held constant, not tested here (unchanged from the recipe of record):
+RealVisXL_V5.0_fp16, xinsir ControlNet openpose 0.8 + `figment_pose_corrected_v1.png` for
+full-body, negative prompt (plus the nudity-guard terms added for this study's fullbody
+cells — recommend folding these into the committed negative prompt permanently, see
+Section 7).
+
+## 7. Proof images and honest assessment
+
+`personas/trial-02/calibration-proof/proof_portrait.png` and `proof_fullbody.png`, seed
+424242, generated from the winning prompt core above (exact prompts in
+`proof_prompts.json` / `proof_prompts_fullbody.json` in that folder).
+
+- **Portrait**: round/soft face, warm visible-texture skin, soft-glam makeup with a natural
+  nude-pink lip (the lip fix held on an unseen seed), hair reads dark/uniform — the balayage
+  term did not visibly manifest in this specific lighting. Reads candid and warm, not
+  editorial, not glossy-generic, not campaign-produced. **This lands in the target register.**
+- **Full body**: correct round/soft face and natural lip carried over; waist/hip curve
+  visible via the fitted sweater; no anatomical distortion; fully clothed, no exposure
+  failure (GUARDRAILS visual QA passed). **New residual miss**: "dark wide-leg jeans"
+  rendered as **cream/khaki tailored trousers** — a wardrobe-fidelity failure, though
+  notably *not* the same color-matches-the-sweater cascade from Section 1 (sweater is dark
+  green, trousers are cream — different colors, not matched). This suggests wardrobe-color
+  fidelity remains seed-dependent even after the heritage-cascade fix, and needs its own
+  follow-up (try weighting the color term itself, or an explicit negative-prompt ban on
+  cream/beige/khaki when denim is requested) — flagged honestly as unresolved, not
+  papered over.
+- **Which of the four failure poles, if any**: neither image reads as generic-soft-pale-
+  East-Asian, hard-editorial, generic-Western-natural, or beauty-campaign-glossy. The
+  portrait is a clean hit. The full-body is a hit on face/makeup/skin/curve with one
+  distinct, newly-surfaced wardrobe-fidelity defect (not a repeat of the four named poles).
+
+---
+
+## 8. Negative-results list (do not repeat)
+
+- Instagram Selfie SDXL LoRA at 0.3 or 0.5 for skin texture goals — pushes toward gloss/
+  over-smoothing, the opposite of the target. (New this session.)
+- Prompt-only "glossy dewy skin" language to deliberately test the failure pole — didn't even
+  reliably produce the pole; the checkpoint's texture bias is stickier than pure prompt
+  language can move in either direction. Confirms prompt terms are a weak lever for skin
+  finish specifically (LoRA-level intervention is needed either direction) — this project
+  still lacks a working LoRA for the "more texture" direction (Skin Realism remains
+  login-gated).
+- Loose/oversized garments plus a weighted hourglass clause, expecting the clause to carry
+  curve on its own — it doesn't; garment fit dominates.
+- Relying on makeup-intensity wording alone to control lip color in full-body prompts — it
+  doesn't; full-body context defaults to red lipstick regardless, needs its own explicit
+  clause.
+- Treating the heritage-cascade fix (Section 1) as a complete cure — it is a strong,
+  reproducible mitigation (2/3 → cleaner in the combination pass) but not 100%; still
+  requires the mandatory per-image visual check already required by GUARDRAILS.
+- Previously documented, reconfirmed no new evidence against: `bodyproportion.safetensors` /
+  `contourluxe.safetensors` (still not used in this study), gym/athletic body-language
+  prompting (not tested again, no reason found to revisit).
+
+## 9. Open gaps for a future round
+
+- Skin Realism LoRA still untested (CivitAI login-gated) — the single highest-value
+  remaining unknown for the skin-finish axis.
+- Wardrobe-color fidelity for specific fabric/color combinations (Section 7) needs its own
+  small follow-up grid — this session found it seed-dependent, not solved by the
+  heritage-cascade fix alone.
+- Hair axis (balayage marker) was folded into the combination pass per r10's instruction
+  rather than given a dedicated grid — it did not clearly manifest in the final proof
+  portrait's lighting; worth a small dedicated 3-seed check if the balayage marker matters
+  for a specific persona.
