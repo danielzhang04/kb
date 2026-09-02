@@ -34,6 +34,8 @@ custom_nodes:
     git_url: "https://github.com/OWNER/PUBLIC_CUSTOM_NODE.git"
 
 # This is ComfyUI API format, not the browser's UI/workflow format.
+# Every matching input receives the job seed. This is the default and may be omitted.
+seed_fields: ["seed", "noise_seed"]
 workflow:
   1:
     class_type: "KSampler"

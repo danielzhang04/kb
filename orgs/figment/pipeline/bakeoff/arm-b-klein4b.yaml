@@ -170,33 +170,6 @@
           0
         ]
       }
-    },
-    "99": {
-      "class_type": "KSampler",
-      "inputs": {
-        "seed": 1,
-        "steps": 1,
-        "cfg": 1,
-        "sampler_name": "euler",
-        "scheduler": "simple",
-        "denoise": 1,
-        "model": [
-          "1",
-          0
-        ],
-        "positive": [
-          "4",
-          0
-        ],
-        "negative": [
-          "5",
-          0
-        ],
-        "latent_image": [
-          "6",
-          0
-        ]
-      }
     }
   },
   "jobs": [
@@ -228,11 +201,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -264,11 +232,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -300,11 +263,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -336,11 +294,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -372,11 +325,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -408,11 +356,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -444,11 +387,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -480,11 +418,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -516,11 +449,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -552,11 +480,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -588,11 +511,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -624,11 +542,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -660,11 +573,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -696,11 +604,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -732,11 +635,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -768,11 +666,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -804,11 +697,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -840,11 +728,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -876,11 +759,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -912,11 +790,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -948,11 +821,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -984,11 +852,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1020,11 +883,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1056,11 +914,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1092,11 +945,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1128,11 +976,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1164,11 +1007,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1200,11 +1038,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1236,11 +1069,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1272,11 +1100,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1308,11 +1131,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1344,11 +1162,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1380,11 +1193,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1416,11 +1224,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1452,11 +1255,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1488,11 +1286,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1524,11 +1317,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1560,11 +1348,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1596,11 +1379,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1632,11 +1410,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1668,11 +1441,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1704,11 +1472,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1740,11 +1503,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1776,11 +1534,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1812,11 +1565,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1848,11 +1596,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1884,11 +1627,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -1920,11 +1658,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -1956,11 +1689,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -1992,11 +1720,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -2028,11 +1751,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1536
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     },
@@ -2064,11 +1782,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 100001
         }
       ]
     },
@@ -2100,11 +1813,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 200002
         }
       ]
     },
@@ -2136,11 +1844,6 @@
           "node_id": "9",
           "field": "height",
           "value": 1280
-        },
-        {
-          "node_id": "7",
-          "field": "noise_seed",
-          "value": 300003
         }
       ]
     }

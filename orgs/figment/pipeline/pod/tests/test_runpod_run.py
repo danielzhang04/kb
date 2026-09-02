@@ -307,6 +307,53 @@ def test_dry_run_executes_whole_flow_without_network(tmp_path, monkeypatch):
     assert json.loads((out / "run.json").read_text())["termination_verified"] is True
 
 
+def test_noise_seed_only_workflow_receives_job_seed():
+    workflow = {
+        "1": {"class_type": "RandomNoise", "inputs": {"noise_seed": 1}},
+        "2": {"class_type": "SaveImage", "inputs": {"filename_prefix": "old"}},
+    }
+
+    applied = rr.apply_job(workflow, {"seed": 42, "output_name": "noise-only"})
+
+    assert applied["1"]["inputs"] == {"noise_seed": 42}
+
+
+def test_workflow_without_configured_seed_field_fails_validation(tmp_path):
+    no_seed_manifest = manifest()
+    no_seed_manifest["workflow"]["1"]["inputs"].pop("seed")
+
+    with pytest.raises(rr.HarnessError, match="seed, noise_seed"):
+        rr.require_manifest(no_seed_manifest, tmp_path / "manifest.yaml")
+
+
+def test_explicit_seed_substitution_overrides_automatic_seed():
+    workflow = {
+        "1": {"class_type": "KSampler", "inputs": {"seed": 1}},
+        "2": {"class_type": "SaveImage", "inputs": {"filename_prefix": "old"}},
+    }
+    job = {
+        "seed": 42,
+        "output_name": "override-seed",
+        "substitutions": [{"node_id": "1", "field": "seed", "value": 99}],
+    }
+
+    applied = rr.apply_job(workflow, job)
+
+    assert applied["1"]["inputs"]["seed"] == 99
+
+
+def test_flux_manifests_dry_run_without_node_99(tmp_path):
+    bakeoff_dir = POD_DIR.parent / "bakeoff"
+
+    for manifest_name in ("arm-b-klein4b.yaml", "smoke.yaml"):
+        manifest_path = bakeoff_dir / manifest_name
+        assert "99" not in json.loads(manifest_path.read_text(encoding="utf-8"))["workflow"]
+        assert rr.main([
+            "run", "--manifest", str(manifest_path), "--dry-run",
+            "--out", str(tmp_path / manifest_path.stem),
+        ]) == 0
+
+
 def test_scp_uses_uppercase_port_flag(tmp_path, monkeypatch):
     captured = {}
 

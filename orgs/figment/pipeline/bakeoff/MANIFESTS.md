@@ -55,7 +55,6 @@ Official graph basis: the current [ComfyUI Klein guide](https://docs.comfy.org/t
 | 11 | SamplerCustomAdvanced | Run the official advanced sampling chain. |
 | 12 | VAEDecode | Decode the latent. |
 | 13 | SaveImage | Save under the job output name. |
-| 99 | KSampler | Disconnected seed-carrier compatibility node; see gap below. |
 
 | file | public repo path | published size |
 |---|---|---:|
@@ -68,7 +67,7 @@ Hugging Face currently redirects the requested `Comfy-Org/flux2-klein-4B` alias 
 
 ## Smoke manifest
 
-`smoke.yaml` contains only `trial-03-c01-s1-seed-100001`, uses the Arm B graph/models, caps runtime at 8 minutes, and has a fail-closed ceiling estimate of $0.0667. Its intended assertion is create → bootstrap → generate → download → terminate → verify. **ESTIMATE:** a fully cold 16.126 GB download may exceed eight minutes on a slow pod; this budget is realistic only with roughly 300 Mbps or better effective model-download throughput plus a short dependency install.
+`smoke.yaml` contains only `trial-03-c01-s1-seed-100001`, uses the Arm B graph/models, caps runtime at 15 minutes, and has a fail-closed ceiling estimate of $0.1250. Its intended assertion is create → bootstrap → generate → download → terminate → verify. **ESTIMATE:** a fully cold 16.126 GB download can take roughly 7–11 minutes at 300–200 Mbps before dependency installation, so the 15-minute ceiling allows a modest bootstrap margin.
 
 ## Node-name verification
 
@@ -80,8 +79,8 @@ Hugging Face currently redirects the requested `Comfy-Org/flux2-klein-4B` alias 
 
 ## Verification gaps and operator checks
 
-- No live pod, weights, or image generation was permitted, so runtime VRAM, per-image timing, visual quality, and the ComfyUI API's treatment of the disconnected node 99 remain unverified.
-- The harness auto-replaces only fields literally named `inputs.seed`, but the official FLUX.2 graph's RandomNoise node uses `inputs.noise_seed`. Each job explicitly substitutes `7.noise_seed`; disconnected node 99 supplies the required `inputs.seed` field so harness validation succeeds without changing the sampled path. Before spend, validate this compatibility shim against a local/current ComfyUI API or update the harness to support `noise_seed`.
+- No live pod, weights, or image generation was permitted, so runtime VRAM, per-image timing, and visual quality remain unverified.
+- The harness's default `seed_fields` is `["seed", "noise_seed"]`, so it substitutes each job seed directly into the official FLUX.2 `RandomNoise.inputs.noise_seed` field. No disconnected compatibility node is used.
 - The official ComfyUI Klein page now highlights separate FP8 Base weights, while its linked workflow metadata and this brief specify the full Comfy-Org Base file. This manifest follows the brief and BFL Base filename.
 - The requested A6000 fallback cannot be encoded alongside the 4090 because the harness schema accepts a single GPU type.
 - Re-check live RunPod COMMUNITY availability/rate, confirm the selected image exposes SSH, and keep the operator's `--max-usd` at or below the manifest estimate before any live run.

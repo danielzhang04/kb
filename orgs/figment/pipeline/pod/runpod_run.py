@@ -39,6 +39,7 @@ REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 COMFYUI_TAG = "v0.3.76"
+DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
 
 
 _active_redactor: ApiKeyRedactionFilter | None = None
@@ -622,7 +623,17 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
         if (not isinstance(job, dict) or isinstance(expected, bool)
                 or not isinstance(expected, int) or expected <= 0):
             raise HarnessError("each job expected_images must be a positive integer")
-    load_workflow(manifest, manifest_path)
+    workflow = load_workflow(manifest, manifest_path)
+    seed_fields = manifest_seed_fields(manifest)
+    if not any(
+        isinstance(node, dict)
+        and isinstance(node.get("inputs"), dict)
+        and any(field in node["inputs"] for field in seed_fields)
+        for node in workflow.values()
+    ):
+        raise HarnessError(
+            "workflow has no seed input fields; looked for: " + ", ".join(seed_fields)
+        )
     for model in manifest.get("models", []):
         if not isinstance(model, dict) or not all(model.get(k) for k in ("repo_id", "filename", "destination_dir")):
             raise HarnessError("each model needs repo_id, filename, and destination_dir")
@@ -651,6 +662,14 @@ def load_workflow(manifest: dict[str, Any], manifest_path: Path) -> dict[str, An
         if isinstance(data, dict):
             return data
     raise HarnessError("manifest workflow must be an API-format object or JSON file path")
+
+
+def manifest_seed_fields(manifest: dict[str, Any]) -> tuple[str, ...]:
+    fields = manifest.get("seed_fields", DEFAULT_SEED_FIELDS)
+    if (not isinstance(fields, (list, tuple)) or not fields
+            or any(not isinstance(field, str) or not field for field in fields)):
+        raise HarnessError("manifest seed_fields must be a non-empty list of field names")
+    return tuple(fields)
 
 
 def estimate_cost(manifest: dict[str, Any], max_minutes: float, max_usd: float | None) -> float:
@@ -1080,8 +1099,25 @@ class DryRunComfyClient:
         return [{"filename": f"{prompt_id}.png", "subfolder": "", "type": "output"}]
 
 
-def apply_job(workflow: dict[str, Any], job: dict[str, Any]) -> dict[str, Any]:
+def apply_job(
+    workflow: dict[str, Any], job: dict[str, Any],
+    seed_fields: tuple[str, ...] = DEFAULT_SEED_FIELDS,
+) -> dict[str, Any]:
     result = copy.deepcopy(workflow)
+    if "seed" not in job:
+        raise HarnessError("every job requires a seed")
+    matched_seed_fields = 0
+    for node in result.values():
+        inputs = node.get("inputs") if isinstance(node, dict) else None
+        if isinstance(inputs, dict):
+            for field in seed_fields:
+                if field in inputs:
+                    inputs[field] = int(job["seed"])
+                    matched_seed_fields += 1
+    if matched_seed_fields == 0:
+        raise HarnessError(
+            "workflow has no seed input fields; looked for: " + ", ".join(seed_fields)
+        )
     for substitution in job.get("substitutions", []):
         node_id = str(substitution.get("node_id", ""))
         field = str(substitution.get("field", ""))
@@ -1096,16 +1132,6 @@ def apply_job(workflow: dict[str, Any], job: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(target, dict) or parts[-1] not in target:
             raise HarnessError(f"substitution field not found: {node_id}.{field}")
         target[parts[-1]] = substitution.get("value")
-    if "seed" not in job:
-        raise HarnessError("every job requires a seed")
-    seed_fields = 0
-    for node in result.values():
-        inputs = node.get("inputs") if isinstance(node, dict) else None
-        if isinstance(inputs, dict) and "seed" in inputs:
-            inputs["seed"] = int(job["seed"])
-            seed_fields += 1
-    if seed_fields == 0:
-        raise HarnessError("workflow has no inputs.seed field for the job seed")
     output_name = safe_output_name(job.get("output_name"))
     for node in result.values():
         inputs = node.get("inputs") if isinstance(node, dict) else None
@@ -1329,7 +1355,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     watchdog.check()
                     job_started = time.monotonic()
                     output_name = safe_output_name(job.get("output_name"))
-                    workflow = apply_job(base_workflow, job)
+                    workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
                     prompt_id = comfy.submit(workflow)
                     remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog)
                     expected_images = job.get("expected_images", 1)

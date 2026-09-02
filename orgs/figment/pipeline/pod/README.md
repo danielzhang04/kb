@@ -34,7 +34,13 @@ that file. Required fields are:
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
 - optional public-HTTPS `custom_nodes`;
 - a ComfyUI API-format `workflow` object or JSON path;
+- optional `seed_fields`, a non-empty list of workflow input names to receive every job's
+  `seed` (defaults to `["seed", "noise_seed"]`);
 - `jobs` with `seed`, safe `output_name`, substitutions, and `expected_images` (default 1).
+
+At least one workflow node must contain one configured seed field. The harness writes the
+job seed to every matching node before applying that job's explicit substitutions, so an
+explicit substitution can deliberately override the automatic value.
 
 The example uses a PyTorch image that does not contain ComfyUI. Bootstrap first checks
 Python, Git, and curl and exits before downloads if a prerequisite is missing. It then clones
