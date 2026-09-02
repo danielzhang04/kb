@@ -1,0 +1,6 @@
+model	step	usd
+runpod:rtx-3090	pod-create boxfv5zbz5mp4i	0.125000
+runpod:rtx-4090	pod-create qfxkoopsm6iryf	0.032532
+runpod:rtx-4090	pod-create t5ocytsnzs9vsr	0.105300
+runpod:rtx-4090	pod-create edwtg6lvaf5wap	0.745232
+runpod:rtx-4090	pod-create of4ji9qcnswo5v	0.493706
