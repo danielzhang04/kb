@@ -84,6 +84,12 @@ The control unit is a candidate-shot cell: every S1 cell repeats S1 wording byte
 
 Do not repair a hard-cull with captioning or prompt interpretation. Quarantine the output and regenerate only that same candidate-shot-seed job under the approved workflow.
 
+### Operator decisions logged 2026-09-02 (after smoke3)
+
+- Target visual age: about 21, with wiggle room either side; the reference accounts sit in that range. Stated persona age stays 23-27 per README; the LOOK targets 21.
+- Cull rule above is unchanged and takes precedence over the target: a youthful target and a hard floor both hold at once.
+- Calibration consequences for P3: age becomes an explicit single-variable axis (the smoke render read early-thirties); colour and texture words are taken literally by the Qwen3-encoder models ("blue-black" rendered as blue hair), so look-spec wording gets a literalism pass; the klein base shows a fuller-body prior than the "slim" archetype asked for.
+
 ## Job manifest fragment
 
 ```yaml
