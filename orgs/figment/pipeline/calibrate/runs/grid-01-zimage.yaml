@@ -10,6 +10,7 @@
   "volume_gb": 60,
   "volume_mount_path": "/workspace",
   "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "avoid_machine_hosts": ["qvf79yutw3t2"],
   "comfyui": {
     "root": "/workspace/ComfyUI",
     "git_ref": "v0.20.1",

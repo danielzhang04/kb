@@ -36,6 +36,8 @@ except ModuleNotFoundError:  # --dry-run and the stubbed tests remain intentiona
 API_BASE = "https://rest.runpod.io/v1"
 DEFAULT_MAX_MINUTES = 60.0
 DEFAULT_READY_TIMEOUT = 15 * 60.0
+DEFAULT_MAX_PLACEMENT_ATTEMPTS = 4
+BAD_HOST_TTL_SECONDS = 24 * 60 * 60
 REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -47,6 +49,7 @@ BOOTSTRAP_LOG_EVERY_POLLS = 5
 BOOTSTRAP_LOG_TAIL_LINES = 20
 OPS_LEDGER_DIR = Path("C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost")
 LEDGER_LOCK_TIMEOUT = 5.0
+DEFAULT_COMFY_SOURCE_URL = "https://github.com/comfyanonymous/ComfyUI"
 
 
 _active_redactor: ApiKeyRedactionFilter | None = None
@@ -123,6 +126,10 @@ class BootstrapFailed(HarnessError):
     def __init__(self, reason: str, bootstrap_log_tail: list[str]):
         super().__init__(f"bootstrap failed: {reason}")
         self.bootstrap_log_tail = bootstrap_log_tail
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 @dataclass(frozen=True)
@@ -621,6 +628,127 @@ def parse_remote_timestamp(value: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def session_bad_hosts_path() -> Path:
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    if local_appdata:
+        return Path(local_appdata) / "kb-figment-pod" / "bad_hosts.json"
+    return Path.home() / "AppData" / "Local" / "kb-figment-pod" / "bad_hosts.json"
+
+
+def _recent_bad_host_entries(
+        path: Path, *, now: datetime | None = None,
+        logger: logging.Logger | None = None) -> list[dict[str, str]]:
+    now = now or utc_now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    now = now.astimezone(timezone.utc)
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        if logger:
+            logger.warning("ignoring unreadable bad-host file %s: %s", path, exc)
+        return []
+    raw_entries = data.get("hosts") if isinstance(data, dict) else None
+    if not isinstance(raw_entries, list):
+        if logger:
+            logger.warning("ignoring malformed bad-host file %s", path)
+        return []
+    recent: dict[str, dict[str, str]] = {}
+    for raw in raw_entries:
+        if not isinstance(raw, dict):
+            continue
+        host = raw.get("host")
+        reason = raw.get("reason")
+        timestamp = raw.get("timestamp")
+        if (not isinstance(host, str) or not host.strip()
+                or not isinstance(reason, str) or not isinstance(timestamp, str)):
+            continue
+        try:
+            recorded = parse_remote_timestamp(timestamp)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        age_seconds = (now - recorded).total_seconds()
+        if 0 <= age_seconds < BAD_HOST_TTL_SECONDS:
+            entry = {
+                "host": host.strip(),
+                "timestamp": recorded.isoformat(timespec="seconds"),
+                "reason": reason,
+            }
+            previous = recent.get(entry["host"])
+            if previous is None or entry["timestamp"] > previous["timestamp"]:
+                recent[entry["host"]] = entry
+    return sorted(recent.values(), key=lambda item: item["host"])
+
+
+def load_recent_bad_hosts(
+        path: Path, *, now: datetime | None = None,
+        logger: logging.Logger | None = None) -> set[str]:
+    return {
+        entry["host"]
+        for entry in _recent_bad_host_entries(path, now=now, logger=logger)
+    }
+
+
+def record_bad_machine_host(
+        path: Path, host: str, reason: str, *, now: datetime | None = None) -> None:
+    now = now or utc_now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    now = now.astimezone(timezone.utc)
+    clean_host = str(host).strip()
+    if not clean_host or any(char in clean_host for char in "\r\n\t"):
+        raise HarnessError("machine host is unsafe for the bad-host cache")
+    entries = {
+        entry["host"]: entry
+        for entry in _recent_bad_host_entries(path, now=now)
+    }
+    entries[clean_host] = {
+        "host": clean_host,
+        "timestamp": now.isoformat(timespec="seconds"),
+        "reason": " ".join(str(reason).split())[:500],
+    }
+    write_json(
+        path,
+        {"schema": "figment/bad-hosts@1", "hosts": sorted(
+            entries.values(), key=lambda item: item["host"],
+        )},
+        None,
+    )
+
+
+def pod_machine_identity(pod: dict[str, Any]) -> tuple[str | None, str | None]:
+    machine = pod.get("machine") if isinstance(pod.get("machine"), dict) else {}
+    raw_host = (
+        machine.get("podHostId") or machine.get("hostId")
+        or machine.get("id") or pod.get("machineId")
+    )
+    raw_id = machine.get("id") or pod.get("machineId")
+    host = str(raw_host) if raw_host not in (None, "") else None
+    machine_id = str(raw_id) if raw_id not in (None, "") else None
+    return host, machine_id
+
+
+def bootstrap_network_failure_reason(exc: BootstrapFailed) -> str | None:
+    text = "\n".join([str(exc), *exc.bootstrap_log_tail])
+    lowered = text.lower()
+    network_class = (
+        "could not read username" in lowered
+        or "could not resolve host" in lowered
+        or bool(re.search(r"(?:comfy|git|node)[^\n]*rc=128\b", lowered))
+        or bool(re.search(r"\brc=(?:6|7|28|35)\b", lowered))
+        or bool(re.search(
+            r"(?:huggingface|hf)[^\n]*(?:http[^\n]*)?(?:403|429)\b|"
+            r"(?:403|429)[^\n]*(?:huggingface|hf)",
+            lowered,
+        ))
+    )
+    if not network_class:
+        return None
+    return " ".join(str(exc).split())[:500]
+
+
 class Watchdog:
     """Wall-clock guard that directly tears down the lease from a daemon thread."""
 
@@ -1078,6 +1206,24 @@ def rendered_training_start_script(
     return remote_path.as_posix(), rendered
 
 
+def manifest_machine_avoidance(manifest: dict[str, Any]) -> tuple[set[str], set[str]]:
+    values: list[set[str]] = []
+    for key in ("avoid_machine_hosts", "avoid_machine_ids"):
+        raw = manifest.get(key, [])
+        if (not isinstance(raw, list)
+                or any(not isinstance(item, str) or not item.strip() for item in raw)):
+            raise HarnessError(f"manifest {key} must be a list of non-empty strings")
+        values.append({item.strip() for item in raw})
+    return values[0], values[1]
+
+
+def manifest_max_placement_attempts(manifest: dict[str, Any]) -> int:
+    value = manifest.get("max_placement_attempts", DEFAULT_MAX_PLACEMENT_ATTEMPTS)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise HarnessError("manifest max_placement_attempts must be a positive integer")
+    return value
+
+
 def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
     gpu = manifest.get("gpu")
     if not isinstance(gpu, dict) or not gpu.get("type"):
@@ -1128,6 +1274,13 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
         )
     if not isinstance(comfy.get("replace_non_git_root", False), bool):
         raise HarnessError("comfyui.replace_non_git_root must be true or false")
+    for key in ("source_url", "tarball_url"):
+        value = comfy.get(key)
+        if value is not None and (
+                not isinstance(value, str) or not value.startswith("https://")):
+            raise HarnessError(f"comfyui.{key} must be a public HTTPS URL")
+    manifest_machine_avoidance(manifest)
+    manifest_max_placement_attempts(manifest)
     volume_root = PurePosixPath(str(manifest.get("volume_mount_path", "/workspace")))
     comfy_root = PurePosixPath(str(comfy.get("root", "/workspace/ComfyUI")))
     if (not volume_root.is_absolute() or not comfy_root.is_absolute()
@@ -1470,7 +1623,9 @@ def _raise_if_bootstrap_failed(proxy: Any, logger: logging.Logger) -> None:
 def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
                logger: logging.Logger, proxy: Any,
                sleep: Callable[[float], None] = time.sleep,
-               bootstrap_log_every_polls: int = BOOTSTRAP_LOG_EVERY_POLLS) -> dict[str, Any]:
+               bootstrap_log_every_polls: int = BOOTSTRAP_LOG_EVERY_POLLS,
+               initial_pod: dict[str, Any] | None = None,
+               on_observed: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
     if bootstrap_log_every_polls <= 0:
         raise HarnessError("bootstrap_log_every_polls must be positive")
     started = time.monotonic()
@@ -1481,9 +1636,11 @@ def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
     while time.monotonic() < deadline:
         poll_number += 1
         watchdog.check()
-        pod = api.get_pod(pod_id)
+        pod = initial_pod if poll_number == 1 and initial_pod is not None else api.get_pod(pod_id)
         if pod is None:
             raise HarnessError(f"pod {pod_id} disappeared before becoming ready")
+        if on_observed is not None:
+            on_observed(pod)
         last_pod = pod
         last_proxy_status = proxy.health_status()
         watchdog.check()
@@ -1523,6 +1680,13 @@ def bootstrap_script(
     comfy = manifest.get("comfyui") or {}
     root = str(comfy.get("root", "/workspace/ComfyUI"))
     git_ref = str(comfy["git_ref"])
+    source_url = str(comfy.get("source_url", DEFAULT_COMFY_SOURCE_URL))
+    tarball_url = str(comfy.get(
+        "tarball_url",
+        f"https://codeload.github.com/Comfy-Org/ComfyUI/tar.gz/refs/tags/{git_ref}",
+    ))
+    marker_ref = re.sub(r"[^A-Za-z0-9._-]+", "_", git_ref).strip("_") or "source"
+    tarball_marker = f"{root}/.figment-tarball-{marker_ref}"
     replace_non_git_root = comfy.get("replace_non_git_root") is True
     port = int(comfy.get("port", 8188))
     start_base = str(comfy.get("start_command", "python main.py"))
@@ -1587,6 +1751,7 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "trap on_exit EXIT",
         "run_required() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc\"; if [ \"$rc\" -ne 0 ]; then fatal \"$label failed with rc=$rc\" \"$rc\"; fi; }",
         "retry_required() { label=\"$1\"; shift; attempt=1; while :; do \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label attempt=$attempt rc=$rc\"; if [ \"$rc\" -eq 0 ]; then return 0; fi; if [ \"$attempt\" -ge 3 ]; then fatal \"$label failed after $attempt attempts with rc=$rc\" \"$rc\"; return \"$rc\"; fi; if [ \"$attempt\" -eq 1 ]; then backoff=15; else backoff=30; fi; log_line \"STEP $label retrying in ${backoff}s\"; sleep \"$backoff\"; attempt=$((attempt + 1)); done; }",
+        "retry_optional() { label=\"$1\"; shift; attempt=1; while :; do \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label attempt=$attempt rc=$rc\"; if [ \"$rc\" -eq 0 ]; then return 0; fi; if [ \"$attempt\" -ge 3 ]; then return \"$rc\"; fi; if [ \"$attempt\" -eq 1 ]; then backoff=15; else backoff=30; fi; log_line \"STEP $label retrying in ${backoff}s\"; sleep \"$backoff\"; attempt=$((attempt + 1)); done; }",
         "wait_for_network() { elapsed=0; while :; do if getent hosts github.com >>\"$BOOTSTRAP_LOG\" 2>&1 && getent hosts huggingface.co >>\"$BOOTSTRAP_LOG\" 2>&1; then log_line \"NETWORK dns ready after ${elapsed}s\"; return 0; fi; rc=$?; log_line \"NETWORK dns wait elapsed=${elapsed}s rc=$rc\"; if [ \"$elapsed\" -ge 90 ]; then fatal \"network DNS was not ready after ${elapsed}s\" \"$rc\"; fi; sleep 5; elapsed=$((elapsed + 5)); done; }",
         "run_cosmetic() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc (cosmetic)\"; return 0; }",
         "run_required python-present python --version",
@@ -1596,24 +1761,39 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
     ]
     clone_comfy = (
         f"git clone --branch {shlex.quote(git_ref)} --depth 1 "
-        f"https://github.com/comfyanonymous/ComfyUI {shlex.quote(root)}"
+        f"{shlex.quote(source_url)} {shlex.quote(root)}"
     )
-    non_git_root = (
-        f"rm -rf {shlex.quote(root)} && {clone_comfy}"
-        if replace_non_git_root else
-        "echo 'ComfyUI root exists but is not a git checkout; set "
-        "comfyui.replace_non_git_root: true to replace it' >&2; exit 1"
-    )
-    install_comfy = (
+    git_source = (
         f"if [ -d {shlex.quote(root + '/.git')} ]; then "
         f"git -C {shlex.quote(root)} fetch --depth 1 origin {shlex.quote(git_ref)} && "
         f"git -C {shlex.quote(root)} checkout --detach FETCH_HEAD; "
-        f"elif [ -e {shlex.quote(root)} ]; then {non_git_root}; "
-        f"else {clone_comfy}; fi && "
-        f"python -m pip install -r {shlex.quote(root + '/requirements.txt')}"
+        f"else rm -rf \"$COMFY_ROOT\" && {clone_comfy}; fi"
     )
+    non_git_policy = (
+        f"rm -rf {shlex.quote(root)}"
+        if replace_non_git_root else
+        "echo 'ComfyUI root exists but is not a git checkout; set "
+        "comfyui.replace_non_git_root: true to replace it' >&2; return 64"
+    )
+    root_parent = str(PurePosixPath(root).parent)
     lines.extend([
-        f"retry_required comfy-install bash -lc {shlex.quote(install_comfy)}",
+        f"COMFY_ROOT={shlex.quote(root)}",
+        f"COMFY_TARBALL_MARKER={shlex.quote(tarball_marker)}",
+        "install_comfy() { if [ -f \"$COMFY_TARBALL_MARKER\" ]; then "
+        "log_line \"COMFY source=tarball-marker\"; else "
+        f"if [ -e {shlex.quote(root)} ] && [ ! -d {shlex.quote(root + '/.git')} ]; then "
+        f"{non_git_policy}; fi; if retry_optional comfy-git bash -lc {shlex.quote(git_source)}; then "
+        "log_line \"COMFY source=git\"; else log_line \"COMFY git retries exhausted; trying tarball\"; "
+        "install_comfy_tarball || return $?; log_line \"COMFY source=tarball\"; fi; fi; "
+        f"python -m pip install -r {shlex.quote(root + '/requirements.txt')}; }}",
+        "install_comfy_tarball() { tmp_dir=$(mktemp -d /tmp/figment-comfy.XXXXXX) || return 1; if ! (set -o pipefail; "
+        f"curl -fL --retry 3 {shlex.quote(tarball_url)} | tar -xz -C \"$tmp_dir\"); then "
+        "rm -rf \"$tmp_dir\"; return 1; fi; set -- \"$tmp_dir\"/*; "
+        "if [ \"$#\" -ne 1 ] || [ ! -d \"$1\" ]; then rm -rf \"$tmp_dir\"; return 1; fi; "
+        f"extracted=\"$1\"; mkdir -p {shlex.quote(root_parent)} && rm -rf \"$COMFY_ROOT\" && "
+        "mv \"$extracted\" \"$COMFY_ROOT\" && rm -rf \"$COMFY_ROOT/.git\" && "
+        "touch \"$COMFY_TARBALL_MARKER\"; rc=$?; rm -rf \"$tmp_dir\"; return \"$rc\"; }",
+        "retry_required comfy-install install_comfy",
     ])
     for index, model in enumerate(manifest.get("models", []), start=1):
         destination = str(PurePosixPath(str(model["destination_dir"])) / PurePosixPath(str(model["filename"])).name)
@@ -2231,10 +2411,13 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     if api is None:
         raise HarnessError("live run requires an authenticated API")
 
-    payload = create_payload(manifest, manifest_path)
     ledger_model = gpu_model_label(manifest["gpu"]["type"])
     started = time.monotonic()  # The budget clock begins immediately before create.
-    started_utc = datetime.now(timezone.utc).replace(microsecond=0)
+    started_utc = utc_now().replace(microsecond=0)
+    avoid_hosts, avoid_ids = manifest_machine_avoidance(manifest)
+    learned_hosts = load_recent_bad_hosts(session_bad_hosts_path(), logger=logger)
+    avoid_hosts.update(learned_hosts)
+    max_placement_attempts = manifest_max_placement_attempts(manifest)
     result: dict[str, Any] = {
         "schema": "figment/runpod-run@1",
         "dry_run": dry_run,
@@ -2246,6 +2429,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         "uploads": [],
         "jobs": [],
         "artifacts": [],
+        "placement_attempts": [],
         "termination_verified": False,
     }
     if daily_limit is not None and daily_spent is not None:
@@ -2253,25 +2437,21 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         result["daily_usd_before_create"] = round(daily_spent, 6)
     images_manifest: list[dict[str, Any]] = []
 
-    def record_acquired(pod_id: str, _pod: dict[str, Any] | None) -> None:
-        result["pod_id"] = pod_id
-        cost_path = upsert_cost_row(
-            ledger_target,
-            ledger_model,
-            f"pod-create {pod_id}",
-            0.0 if dry_run else estimate,
-        )
-        logger.info("provisional cost row: %s", cost_path)
-
-    lease = PodLease(
-        api, payload, logger, sleep=sleep, on_acquired=record_acquired,
-        started_utc=started_utc,
-    )
     cancel = threading.Event()
     watchdog: Watchdog | None = None
     proxy_client: Any | None = None
     caught: BaseException | None = None
     actual_hourly: float | None = None
+    lease: PodLease | None = None
+    initial_pod: dict[str, Any] | None = None
+    active_machine_host: str | None = None
+    current_placement_started: float | None = None
+    current_placement_settled = False
+    current_placement_record: dict[str, Any] | None = None
+    avoided_cost_total = 0.0
+    current_cost_for_ledger = 0.0
+    placement_needs_close = False
+    placement_error: BaseException | None = None
 
     def retain_finalization_failure(label: str, secondary: BaseException) -> None:
         nonlocal caught
@@ -2283,8 +2463,123 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             caught = secondary
             result["error"] = f"{type(secondary).__name__}: {secondary}"
 
+    def remember_machine(pod: dict[str, Any]) -> None:
+        nonlocal active_machine_host
+        machine_host, _machine_id = pod_machine_identity(pod)
+        if machine_host is not None:
+            active_machine_host = machine_host
+
     try:
+        for placement_attempt in range(1, max_placement_attempts + 1):
+            if placement_attempt > 1:
+                if max_usd is not None and avoided_cost_total + estimate > max_usd:
+                    raise HarnessError(
+                        "placement recreation refused: avoided-pod cost plus the next "
+                        "full-run estimate exceeds --max-usd"
+                    )
+                if (daily_limit is not None and daily_spent is not None
+                        and daily_spent + avoided_cost_total + estimate > daily_limit):
+                    raise HarnessError(
+                        "placement recreation refused: avoided-pod cost plus the next "
+                        "full-run estimate exceeds the governance daily budget"
+                    )
+            payload = create_payload(manifest, manifest_path)
+            current_placement_started = (
+                started if placement_attempt == 1 else time.monotonic()
+            )
+            current_placement_settled = False
+
+            def record_acquired(
+                    pod_id: str, _pod: dict[str, Any] | None,
+                    *, attempt: int = placement_attempt) -> None:
+                result["pod_id"] = pod_id
+                cost_path = upsert_cost_row(
+                    ledger_target,
+                    ledger_model,
+                    f"pod-create {pod_id}",
+                    0.0 if dry_run else estimate,
+                )
+                logger.info(
+                    "provisional cost row for placement %d/%d: %s",
+                    attempt, max_placement_attempts, cost_path,
+                )
+
+            lease = PodLease(
+                api, payload, logger, sleep=sleep, on_acquired=record_acquired,
+                started_utc=utc_now().replace(microsecond=0),
+            )
+            lease.__enter__()
+            placement_needs_close = True
+            observed = api.get_pod(str(lease.pod_id))
+            if observed is None:
+                raise HarnessError(
+                    f"pod {lease.pod_id} disappeared during placement inspection"
+                )
+            lease._remember_pod(observed)
+            machine_host, machine_id = pod_machine_identity(observed)
+            current_placement_record = {
+                "attempt": placement_attempt,
+                "pod_id": lease.pod_id,
+                "machine_host": machine_host,
+                "machine_id": machine_id,
+                "avoided": False,
+                "termination_verified": False,
+            }
+            result["placement_attempts"].append(current_placement_record)
+            is_avoided = (
+                machine_host is not None and machine_host in avoid_hosts
+            ) or (
+                machine_id is not None and machine_id in avoid_ids
+            )
+            if not is_avoided:
+                initial_pod = observed
+                active_machine_host = machine_host
+                break
+
+            current_placement_record["avoided"] = True
+            avoided_label = machine_host or machine_id or "UNKNOWN"
+            logger.warning(
+                "AVOIDED HOST %s — terminating and recreating (attempt %d/%d)",
+                avoided_label, placement_attempt, max_placement_attempts,
+            )
+            placement_needs_close = False
+            lease.close()
+            _pod_id, _pod_name, verified = lease.snapshot()
+            current_placement_record["termination_verified"] = verified
+            placement_elapsed = time.monotonic() - current_placement_started
+            placement_cost, placement_basis = settled_cost_estimate(
+                elapsed_seconds=placement_elapsed,
+                dry_run=dry_run,
+                ready_hourly_price_usd=None,
+                manifest_hourly_price_usd=float(manifest["price_usd_per_hour"]),
+                preflight_estimate_usd=estimate,
+                termination_verified=verified,
+            )
+            current_placement_record["elapsed_seconds"] = round(placement_elapsed, 3)
+            current_placement_record["estimated_actual_usd"] = round(placement_cost, 6)
+            current_placement_record["estimated_actual_usd_basis"] = placement_basis
+            avoided_cost_total += placement_cost
+            upsert_cost_row(
+                ledger_target, ledger_model,
+                f"pod-create {lease.pod_id}", placement_cost,
+            )
+            current_placement_settled = True
+            if placement_attempt == max_placement_attempts:
+                raise HarnessError(
+                    "PLACEMENT FAILED: all "
+                    f"{max_placement_attempts} placement attempts landed on avoided "
+                    "machine hosts/ids; every pod was terminated and verified absent"
+                )
+    except BaseException as exc:
+        placement_error = exc
+
+    try:
+        if placement_error is not None:
+            raise placement_error
+        if lease is None or initial_pod is None:
+            raise HarnessError("placement failed before a usable pod was acquired")
         with shutdown_signals(cancel), lease:
+            placement_needs_close = False
             result["pod_id"] = lease.pod_id
             watchdog = Watchdog(
                 max(1.0, max_minutes * 60.0 - (time.monotonic() - started)),
@@ -2305,14 +2600,15 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 )
             ready_pod = wait_ready(
                 api, str(lease.pod_id), ready_timeout, watchdog, logger,
-                proxy_client, sleep,
+                proxy_client, sleep, initial_pod=initial_pod,
+                on_observed=remember_machine,
             )
             actual_hourly = ready_hourly_price(ready_pod)
             actual_ceiling = actual_hourly * max_minutes / 60.0
-            if max_usd is not None and actual_ceiling > max_usd:
+            if max_usd is not None and avoided_cost_total + actual_ceiling > max_usd:
                 raise HarnessError("READY pod hourly price exceeds the approved --max-usd budget")
             if (daily_limit is not None and daily_spent is not None
-                    and daily_spent + actual_ceiling > daily_limit):
+                    and daily_spent + avoided_cost_total + actual_ceiling > daily_limit):
                 raise HarnessError("READY pod hourly price exceeds the governance daily budget")
             watchdog.check()
             comfy = proxy_client
@@ -2409,6 +2705,36 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             result["last_pod_state"] = exc.last_pod_state
         if isinstance(exc, BootstrapFailed):
             result["bootstrap_log_tail"] = exc.bootstrap_log_tail
+            network_reason = bootstrap_network_failure_reason(exc)
+            if network_reason and active_machine_host:
+                learned_at = utc_now()
+                learned_paths = [
+                    out_dir / "_harness" / "bad_hosts.json",
+                    session_bad_hosts_path(),
+                ]
+                learned_errors: list[str] = []
+                for bad_host_path in learned_paths:
+                    try:
+                        record_bad_machine_host(
+                            bad_host_path, active_machine_host,
+                            redact_for_stderr(network_reason), now=learned_at,
+                        )
+                        logger.warning(
+                            "recorded network-failing machine host %s in %s",
+                            active_machine_host, bad_host_path,
+                        )
+                    except BaseException as secondary:
+                        safe_error = redact_for_stderr(
+                            f"{type(secondary).__name__}: {secondary}"
+                        )
+                        learned_errors.append(f"{bad_host_path}: {safe_error}")
+                        logger.error(
+                            "could not record network-failing machine host in %s: %s",
+                            bad_host_path, safe_error,
+                        )
+                result["learned_bad_host"] = active_machine_host
+                if learned_errors:
+                    result["bad_host_record_errors"] = learned_errors
     finally:
         try:
             if proxy_client is not None:
@@ -2419,7 +2745,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             retain_finalization_failure("proxy client close", secondary)
         try:
             if watchdog:
-                watchdog.stop(teardown_budget_seconds(lease.attempts))
+                watchdog.stop(teardown_budget_seconds(
+                    lease.attempts if lease is not None else TERMINATE_ATTEMPTS
+                ))
                 if caught is None and watchdog.error:
                     caught = watchdog.error
                     result["error"] = f"{type(caught).__name__}: {caught}"
@@ -2429,25 +2757,49 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         except BaseException as secondary:
             retain_finalization_failure("watchdog stop", secondary)
         try:
-            pod_id, _pod_name, verified = lease.snapshot()
+            if (placement_needs_close and lease is not None
+                    and not lease.snapshot()[2]):
+                lease.close()
+        except BaseException as secondary:
+            retain_finalization_failure("pod termination", secondary)
+        try:
+            if lease is None:
+                pod_id, verified = None, True
+            else:
+                pod_id, _pod_name, verified = lease.snapshot()
             result["pod_id"] = pod_id or result["pod_id"]
-            if lease.create_error:
+            if lease is not None and lease.create_error:
                 result["create_error"] = lease.create_error
             result["termination_verified"] = verified
             elapsed = time.monotonic() - started
-            result["finished_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            result["finished_utc"] = utc_now().isoformat(timespec="seconds")
             result["elapsed_seconds"] = round(elapsed, 3)
             result["hourly_price_usd"] = actual_hourly
-            settled_cost, cost_basis = settled_cost_estimate(
-                elapsed_seconds=elapsed,
-                dry_run=dry_run,
-                ready_hourly_price_usd=actual_hourly,
-                manifest_hourly_price_usd=float(manifest["price_usd_per_hour"]),
-                preflight_estimate_usd=estimate,
-                termination_verified=verified,
+            if (pod_id is not None and not current_placement_settled
+                    and current_placement_started is not None):
+                current_elapsed = time.monotonic() - current_placement_started
+                current_cost_for_ledger, cost_basis = settled_cost_estimate(
+                    elapsed_seconds=current_elapsed,
+                    dry_run=dry_run,
+                    ready_hourly_price_usd=actual_hourly,
+                    manifest_hourly_price_usd=float(manifest["price_usd_per_hour"]),
+                    preflight_estimate_usd=estimate,
+                    termination_verified=verified,
+                )
+                if current_placement_record is not None:
+                    current_placement_record["termination_verified"] = verified
+                    current_placement_record["elapsed_seconds"] = round(current_elapsed, 3)
+                    current_placement_record["estimated_actual_usd"] = round(
+                        current_cost_for_ledger, 6,
+                    )
+                    current_placement_record["estimated_actual_usd_basis"] = cost_basis
+            else:
+                cost_basis = "dry-run" if dry_run else "ceiling-rate estimate"
+            total_cost = avoided_cost_total + current_cost_for_ledger
+            result["estimated_actual_usd"] = round(total_cost, 6)
+            result["estimated_actual_usd_basis"] = (
+                "sum of per-pod estimates" if avoided_cost_total else cost_basis
             )
-            result["estimated_actual_usd"] = round(settled_cost, 6)
-            result["estimated_actual_usd_basis"] = cost_basis
         except BaseException as secondary:
             retain_finalization_failure("result accounting", secondary)
         try:
@@ -2459,13 +2811,13 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 write_json(out_dir / "manifest.json", {"images": images_manifest}, redactor)
             except BaseException as secondary:
                 retain_finalization_failure("manifest.json write", secondary)
-        if result["pod_id"]:
+        if result["pod_id"] and not current_placement_settled:
             try:
                 cost_path = upsert_cost_row(
                     ledger_target,
                     ledger_model,
                     f"pod-create {result['pod_id']}",
-                    float(result["estimated_actual_usd"]),
+                    current_cost_for_ledger,
                 )
                 logger.info("cost row: %s", cost_path)
             except BaseException as secondary:
@@ -2473,7 +2825,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     if caught is None and not result["termination_verified"]:
         caught = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
     if caught:
-        raise attach_lease_status(caught, lease)
+        if lease is not None:
+            raise attach_lease_status(caught, lease)
+        raise caught
     return result
 
 

@@ -11,6 +11,12 @@ price_usd_per_hour: 0.75
 max_minutes: 20
 # Pod allocation/network readiness only; max_minutes must leave 5 more minutes for teardown.
 readiness_timeout_seconds: 900
+# Optional exact RunPod machine placement denylist. The harness also merges machine
+# hosts learned from network-class bootstrap failures during the previous 24 hours.
+avoid_machine_hosts: ["KNOWN_BAD_MACHINE_HOST"]
+avoid_machine_ids: ["KNOWN_BAD_MACHINE_ID"]
+# Each rejected placement is terminated and verified before another create (default 4).
+max_placement_attempts: 4
 container_disk_gb: 50
 volume_gb: 20
 volume_mount_path: "/workspace"
@@ -24,6 +30,9 @@ image: "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"
 comfyui:
   root: "/workspace/ComfyUI"
   git_ref: "v0.20.1"
+  # Optional public HTTPS overrides for the Git source and its tarball fallback.
+  source_url: "https://github.com/comfyanonymous/ComfyUI"
+  tarball_url: "https://codeload.github.com/Comfy-Org/ComfyUI/tar.gz/refs/tags/v0.20.1"
   # Set true only to replace an existing root that is not a Git checkout.
   replace_non_git_root: false
   port: 8188

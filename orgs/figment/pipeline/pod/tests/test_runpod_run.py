@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import base64
+import copy
 import itertools
 import json
 import logging
@@ -21,6 +22,7 @@ import sys
 
 POD_DIR = Path(__file__).resolve().parents[1]
 BAKEOFF_DIR = POD_DIR.parent / "bakeoff"
+CALIBRATE_RUNS_DIR = POD_DIR.parent / "calibrate" / "runs"
 # Restricted workers may not access the user-wide temp directory. Pytest reads this lazily
 # when tmp_path is first requested, so keep its scratch tree inside this test's own scope.
 os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(POD_DIR))
@@ -408,6 +410,9 @@ def test_P1k_bootstrap_retry_helper_retries_then_succeeds_and_fails():
     script = rr.bootstrap_script(manifest())
     retry = next(line for line in script.splitlines() if line.startswith("retry_required()"))
     bash = shutil.which("bash")
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    if os.name == "nt" and git_bash.is_file():
+        bash = str(git_bash)
     assert bash is not None
     prelude = "\n".join([
         "BOOTSTRAP_LOG=/dev/null",
@@ -1825,3 +1830,187 @@ def test_P1i_existing_image_job_path_is_preserved_without_new_blocks(tmp_path):
     assert result.get("artifacts", []) == []
     assert (tmp_path / "out" / "job-one.png").is_file()
     assert api.deletes == 1 and api.alive is False
+
+
+class PlacementAPI:
+    def __init__(self, hosts):
+        self.hosts = list(hosts)
+        self.pods = {}
+        self.creates = []
+        self.deletes = []
+        self.provisional_snapshots = []
+        self.ledger_dir = None
+
+    def create_pod(self, payload):
+        pod_id = f"pod-{len(self.creates) + 1}"
+        pod = ready_pod(payload["name"])
+        pod.update({
+            "id": pod_id,
+            "machine": {
+                "podHostId": self.hosts[len(self.creates)],
+                "id": f"machine-{len(self.creates) + 1}",
+            },
+        })
+        self.creates.append(pod_id)
+        self.pods[pod_id] = pod
+        return dict(pod)
+
+    def get_pod(self, pod_id):
+        pod = self.pods.get(pod_id)
+        return copy.deepcopy(pod) if pod else None
+
+    def list_pods(self):
+        return [copy.deepcopy(pod) for pod in self.pods.values()]
+
+    def delete_pod(self, pod_id):
+        if self.ledger_dir is not None:
+            ledger = next(self.ledger_dir.glob("*.tsv"))
+            self.provisional_snapshots.append(ledger.read_text(encoding="utf-8"))
+        self.deletes.append(pod_id)
+        self.pods.pop(pod_id, None)
+
+
+def test_P1l_avoided_host_is_verified_then_recreated_with_two_ledger_rows(tmp_path):
+    configured = manifest()
+    configured["avoid_machine_hosts"] = ["bad-host"]
+    ledger_dir = tmp_path / "ledger"
+    api = PlacementAPI(["bad-host", "good-host"])
+    api.ledger_dir = ledger_dir
+    logger, stream = logger_and_stream()
+
+    result = rr.run_harness(
+        configured, tmp_path / "m.yaml", tmp_path / "out",
+        max_usd=1, max_minutes=1, dry_run=False, api=api, logger=logger,
+        comfy_factory=FakeComfy, sleep=lambda _seconds: None, ledger_dir=ledger_dir,
+    )
+
+    assert api.creates == ["pod-1", "pod-2"]
+    assert api.deletes == ["pod-1", "pod-2"]
+    assert api.pods == {}
+    assert "AVOIDED HOST bad-host" in stream.getvalue()
+    assert "attempt 1/4" in stream.getvalue()
+    assert "pod-create pod-1" in api.provisional_snapshots[0]
+    assert "pod-create pod-2" in api.provisional_snapshots[1]
+    rows = next(ledger_dir.glob("*.tsv")).read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 3
+    assert any("pod-create pod-1" in row for row in rows)
+    assert any("pod-create pod-2" in row for row in rows)
+    assert result["placement_attempts"][0]["avoided"] is True
+    assert result["placement_attempts"][0]["termination_verified"] is True
+    assert result["termination_verified"] is True
+
+
+def test_P1l_all_placement_attempts_avoided_fails_closed(tmp_path):
+    configured = manifest()
+    configured["avoid_machine_hosts"] = ["bad-host"]
+    api = PlacementAPI(["bad-host"] * 4)
+
+    with pytest.raises(rr.HarnessError, match="all 4 placement attempts landed on avoided"):
+        rr.run_harness(
+            configured, tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=FakeComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+        )
+
+    assert api.creates == ["pod-1", "pod-2", "pod-3", "pod-4"]
+    assert api.deletes == api.creates
+    assert api.pods == {}
+    record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert record["termination_verified"] is True
+    assert all(item["termination_verified"] for item in record["placement_attempts"])
+
+
+def test_P1l_network_bootstrap_failure_learns_host_and_entries_expire(
+        tmp_path, monkeypatch):
+    class FailedBootstrapProxy(FakeComfy):
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, "comfy-install failed after 3 attempts with rc=128\n"
+            return 200, "fatal: could not read Username for 'https://github.com'\n"
+
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    api = PlacementAPI(["learn-me"])
+    started = datetime(2026, 9, 2, 20, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(rr, "utc_now", lambda: started)
+
+    with pytest.raises(rr.BootstrapFailed):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=FailedBootstrapProxy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+        )
+
+    run_file = tmp_path / "out" / "_harness" / "bad_hosts.json"
+    session_file = local_appdata / "kb-figment-pod" / "bad_hosts.json"
+    for path in (run_file, session_file):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data["hosts"][0]["host"] == "learn-me"
+        assert "rc=128" in data["hosts"][0]["reason"]
+        assert rr.load_recent_bad_hosts(path, now=started) == {"learn-me"}
+        assert rr.load_recent_bad_hosts(
+            path, now=datetime(2026, 9, 3, 20, 0, 1, tzinfo=timezone.utc),
+        ) == set()
+
+
+def test_P1l_recent_session_hosts_are_merged_into_manifest_avoidance(tmp_path, monkeypatch):
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    session_file = local_appdata / "kb-figment-pod" / "bad_hosts.json"
+    rr.record_bad_machine_host(
+        session_file, "learned-host", "comfy-install rc=128",
+        now=datetime.now(timezone.utc),
+    )
+    configured = manifest()
+    configured["max_placement_attempts"] = 2
+    api = PlacementAPI(["learned-host", "good-host"])
+
+    result = rr.run_harness(
+        configured, tmp_path / "m.yaml", tmp_path / "out",
+        max_usd=1, max_minutes=1, dry_run=False, api=api,
+        logger=logger_and_stream()[0], comfy_factory=FakeComfy,
+        sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+    )
+
+    assert api.creates == ["pod-1", "pod-2"]
+    assert result["placement_attempts"][0]["machine_host"] == "learned-host"
+    assert result["placement_attempts"][0]["avoided"] is True
+
+
+def test_P1l_bootstrap_tarball_follows_git_retries_and_honours_overrides():
+    configured = manifest()
+    configured["comfyui"].update({
+        "source_url": "https://example.test/ComfyUI.git",
+        "tarball_url": "https://example.test/ComfyUI-v0.20.1.tar.gz",
+    })
+
+    script = rr.bootstrap_script(configured)
+
+    assert "git clone --branch v0.20.1 --depth 1 https://example.test/ComfyUI.git" in script
+    assert "retry_optional comfy-git" in script
+    assert "curl -fL --retry 3 https://example.test/ComfyUI-v0.20.1.tar.gz" in script
+    assert "COMFY_TARBALL_MARKER=/workspace/ComfyUI/.figment-tarball-v0.20.1" in script
+    assert 'if [ -f "$COMFY_TARBALL_MARKER" ]' in script
+    assert 'rm -rf "$COMFY_ROOT/.git"' in script
+    assert 'touch "$COMFY_TARBALL_MARKER"' in script
+    assert 'log_line "COMFY source=git"' in script
+    assert 'log_line "COMFY source=tarball"' in script
+    assert script.index("retry_optional comfy-git") < script.index("curl -fL --retry 3")
+    assert script.index("curl -fL --retry 3") < script.index('touch "$COMFY_TARBALL_MARKER"')
+    assert script.index('if [ -f "$COMFY_TARBALL_MARKER" ]') < script.index("retry_optional comfy-git")
+
+
+def test_P1l_grid_01_dry_run_carries_failed_machine_host(tmp_path):
+    manifest_path = CALIBRATE_RUNS_DIR / "grid-01-zimage.yaml"
+    configured = rr.load_manifest(manifest_path)
+
+    assert configured["avoid_machine_hosts"] == ["qvf79yutw3t2"]
+    assert rr.main([
+        "run", "--manifest", str(manifest_path), "--dry-run",
+        "--out", str(tmp_path / "grid-01"),
+    ]) == 0

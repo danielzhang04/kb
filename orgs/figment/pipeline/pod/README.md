@@ -32,8 +32,11 @@ that file. Required fields are:
 - a conservative `price_usd_per_hour` for pre-create estimation;
 - optional `readiness_timeout_seconds` (default 900); when `max_minutes` is present it
   must be at least readiness time plus five teardown minutes;
+- optional `avoid_machine_hosts` and `avoid_machine_ids` string lists, plus
+  `max_placement_attempts` (default 4), for rejecting known-bad RunPod placements;
 - `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
-  `/workspace/ComfyUI` and may not equal the mount itself);
+  `/workspace/ComfyUI` and may not equal the mount itself), with optional public-HTTPS
+  `comfyui.source_url` and `comfyui.tarball_url` overrides;
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
 - optional public-HTTPS `custom_nodes`;
 - a ComfyUI API-format `workflow` object or JSON path;
@@ -55,14 +58,28 @@ network step it waits up to 90 seconds for DNS resolution of both GitHub and Hug
 logging every wait. Git clone/fetch, every `pip install`, and every model download each retry up
 to three times, with 15-second then 30-second backoff and an rc record for every attempt. The
 harness is the sole owner of the ComfyUI install: it fetches and checks out `comfyui.git_ref` in
-an existing Git checkout, or clones that ref when the root is absent, then installs
-`requirements.txt`. An existing non-Git root fails before model downloads unless the manifest
-explicitly sets `comfyui.replace_non_git_root: true`; only that opt-in permits removal and
-replacement of the nested root. Existing non-empty model files are reused. A failed ComfyUI
-install, dependency install, model download, or start is fatal and short-circuits later
-bootstrap steps. `comfyui.start_command` is the launch executable only; the harness supplies
+an existing Git checkout, or clones that ref when the root is absent. If all three Git attempts
+fail, it downloads the tag tarball from codeload (or `comfyui.tarball_url`), extracts it in a
+temporary directory, moves it into `comfyui.root` without `.git`, and writes a
+`.figment-tarball-<ref>` marker. A later run reuses a root carrying that marker. The winning
+Git, tarball, or marker path is logged before `requirements.txt` is installed. An existing
+non-Git root without the marker fails before model downloads unless the manifest explicitly
+sets `comfyui.replace_non_git_root: true`; only that opt-in permits removal and replacement of
+the nested root. Existing non-empty model files are reused. A failed ComfyUI install,
+dependency install, model download, or start is fatal and short-circuits later bootstrap
+steps. `comfyui.start_command` is the launch executable only; the harness supplies
 `--listen 0.0.0.0 --port 8188 --output-directory /workspace/output` and rejects manifests
 that try to override those transport/output arguments.
+
+Immediately after each create, the harness performs a machine-aware Pod GET. A matching
+machine host or machine id is terminated and verified absent before recreation. Every rejected
+Pod retains its own provisional ledger row, settled to elapsed time at the manifest ceiling
+rate. If every placement attempt is rejected, the run fails closed with no Pod left running.
+Network-class bootstrap failures learn the current machine host in both
+`<out>/_harness/bad_hosts.json` and `%LOCALAPPDATA%/kb-figment-pod/bad_hosts.json`; session
+entries are merged into the next run's host denylist and expire after 24 hours.
+Learning signatures include Git rc 128, Git username challenges, DNS-resolution failures,
+curl rc 6/7/28/35, and Hugging Face HTTP 403/429 responses.
 
 An `uploads` entry has `files`, `subfolder`, `type: input`, and boolean `overwrite` fields.
 `files` is a non-empty list of local files or globs relative to the manifest directory.
