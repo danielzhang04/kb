@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  WORKFLOW_EXECUTION_PROFILES,
+  WORKFLOW_PERMISSION_MODE,
+} from '../control/workflowProfiles.ts';
+
+import {
   BROKER_RUNTIME_POLICY,
   BROKER_SYSTEMD_POLICY,
   FdPinnedPathError,
@@ -50,32 +55,132 @@ describe('fdPinnedPaths', () => {
 
   it('owns the closed recipe-to-argv table and minimal child environment', () => {
     const claude = buildBrokerLaunch({
-      launcher: 'claude', mode: 'headless-json', model: 'claude-sonnet-4-5',
-      toolPolicyId: 'standard', sandbox: 'claude-policy', resumeRef: 'resume-1',
+      launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId: 'producer', sandbox: 'claude-policy', resumeRef: 'resume-1',
     }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
     expect(claude.executable).toBe('/var/lib/kb-shell/home/.local/bin/claude');
     expect(claude.args).toEqual([
       '-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose',
-      '--model', 'claude-sonnet-4-5', '--resume', 'resume-1', '--allowedTools',
-      'Read,Write,Edit,Bash', '--permission-mode', 'acceptEdits',
+      '--model', 'claude-opus-5', '--resume', 'resume-1', '--allowedTools',
+      'Bash,Read,Write,Edit,Glob,Grep', '--permission-mode', 'default',
     ]);
 
     const codex = buildBrokerLaunch({
-      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6',
-      toolPolicyId: 'standard', sandbox: 'codex-workspace-write',
+      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: 'producer', sandbox: 'codex-workspace-write',
     }, 'worktrees', 'run-1', { cols: 100, rows: 30 });
     expect(codex.args).toEqual([
-      'exec', '-', '--json', '--model', 'gpt-5.6', '-s', 'workspace-write',
+      'exec', '-', '--json', '--model', 'gpt-5.6-terra', '-s', 'workspace-write',
       '-c', 'approval_policy=never', '-c', 'forced_login_method="chatgpt"',
       '-c', 'mcp_servers={}', '-c', 'sandbox_workspace_write.network_access=false',
       '-c', 'web_search="disabled"', '--cd', '/var/lib/kb-shell/worktrees/run-1',
     ]);
     expect(Object.keys(codex.env).sort()).toEqual([...LINUX_CHILD_ENV_KEYS].sort());
     expect(codex.env).not.toHaveProperty('TOKEN');
+  });
+
+  /**
+   * The regression the profile table was extracted for: EVERY id the control plane can put on the wire
+   * (`control/workflowProfiles.ts`, the same literal `attemptSessionAdapter` resolves against) has to
+   * build on both agent launchers. The broker previously knew one id, `standard`, that nothing sends,
+   * so every real agent launch died on `unknown ... tool policy`. Driving the table itself means a
+   * profile added later is covered the day it is added.
+   */
+  it.each(WORKFLOW_EXECUTION_PROFILES)('launches workflow profile $id on both agent launchers', (profile) => {
+    const claude = buildBrokerLaunch({
+      launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId: profile.id, sandbox: 'claude-policy',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(claude.executable).toBe('/var/lib/kb-shell/home/.local/bin/claude');
+    // The cap the dashboard approved reaches the child verbatim, in table order.
+    expect(claude.args.slice(-4)).toEqual([
+      '--allowedTools', [...profile.allowedTools].join(','),
+      '--permission-mode', WORKFLOW_PERMISSION_MODE,
+    ]);
+
+    const codex = buildBrokerLaunch({
+      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: profile.id, sandbox: 'codex-workspace-write',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(codex.executable).toBe('/var/lib/kb-shell/home/.local/bin/codex');
+  });
+
+  it('gives each profile its own --allowedTools argument rather than one blanket cap', () => {
+    const allowedTools = (toolPolicyId: string): string => {
+      const { args } = buildBrokerLaunch({
+        launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+        toolPolicyId, sandbox: 'claude-policy',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      return args[args.indexOf('--allowedTools') + 1]!;
+    };
+    expect(allowedTools('checker-readonly')).toBe('Read,Glob,Grep');
+    expect(allowedTools('producer')).toBe('Bash,Read,Write,Edit,Glob,Grep');
+    expect(allowedTools('checker-readonly')).not.toBe(allowedTools('producer'));
+    // A read-only profile never reaches the child carrying a write capability.
+    expect(allowedTools('checker-readonly')).not.toContain('Bash');
+    expect(allowedTools('scanner')).not.toContain('Bash');
+    // An id nobody serves is still refused: dropping the enumeration did not open the policy name up.
+    for (const unknown of ['standard', 'shell-default', 'producer-x']) {
+      expect(() => buildBrokerLaunch({
+        launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+        toolPolicyId: unknown, sandbox: 'claude-policy',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('unknown Claude tool policy');
+      expect(() => buildBrokerLaunch({
+        launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+        toolPolicyId: unknown, sandbox: 'codex-workspace-write',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('unknown Codex tool policy');
+    }
+  });
+
+  /**
+   * The whole kb model registry (`governance/model-routing.yaml`), not a broker-local copy of it. The
+   * broker checks the launcher prefix and nothing more, so a model the fleet adopts tomorrow launches
+   * without a broker edit — the enumeration that used to live here overlapped the real registry in
+   * exactly one id and grounded every agent launch.
+   */
+  it('accepts every registry model on its own launcher and refuses a crossed recipe', () => {
+    for (const model of ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']) {
+      const launch = buildBrokerLaunch({
+        launcher: 'claude', mode: 'headless-json', model,
+        toolPolicyId: 'checker-readonly', sandbox: 'claude-policy',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      expect(launch.args).toContain(model);
+    }
+    for (const model of ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol']) {
+      const launch = buildBrokerLaunch({
+        launcher: 'codex', mode: 'headless-json', model,
+        toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      expect(launch.args).toContain(model);
+    }
     expect(() => buildBrokerLaunch({
-      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-evil',
-      toolPolicyId: 'standard', sandbox: 'codex-workspace-write',
-    }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('approved model');
+      launcher: 'claude', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: 'checker-readonly', sandbox: 'claude-policy',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('does not belong to this launcher');
+    expect(() => buildBrokerLaunch({
+      launcher: 'codex', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('does not belong to this launcher');
+  });
+
+  /**
+   * `shell-default` is not a workflow profile and must never need to be one: the shell recipe is pinned
+   * to that exact id by `decodeLaunchRecipe`, and `buildBrokerLaunch` returns before any policy lookup.
+   */
+  it('launches the shell on shell-default without consulting the profile table', () => {
+    expect(WORKFLOW_EXECUTION_PROFILES.map((profile) => profile.id)).not.toContain('shell-default');
+    const shell = buildBrokerLaunch({
+      launcher: 'shell', mode: 'interactive', model: null,
+      toolPolicyId: 'shell-default', sandbox: 'interactive',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(shell.executable).toBe('/bin/bash');
+    expect(shell.args).toEqual([]);
+    // ...and no other policy id can be smuggled onto the shell launcher in its place.
+    for (const toolPolicyId of ['producer', 'standard']) {
+      expect(() => buildBrokerLaunch({
+        launcher: 'shell', mode: 'interactive', model: null, toolPolicyId, sandbox: 'interactive',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('shell recipe is invalid');
+    }
   });
 
   it('opens every component relative to pinned dirfds, accepts 02770 worktrees, and launches only proc fds', async () => {

@@ -10,6 +10,10 @@ import {
 import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 
+import {
+  WORKFLOW_EXECUTION_PROFILES,
+  WORKFLOW_PERMISSION_MODE,
+} from '../control/workflowProfiles.ts';
 import type { LaunchRecipe, SafeRootId, SessionLauncher, SessionSize } from '../../shared/ptyProtocol.ts';
 import { decodeLaunchRecipe } from './brokerProtocol.ts';
 
@@ -87,14 +91,43 @@ export const BROKER_SYSTEMD_POLICY = {
 } as const;
 
 const deniedRoots = BROKER_RUNTIME_POLICY.inaccessiblePaths;
-const claudePolicies = {
-  standard: { allowedTools: ['Read', 'Write', 'Edit', 'Bash'], permissionMode: 'acceptEdits', settings: undefined },
-} as const;
-const codexPolicies = new Set(['standard']);
-export const APPROVED_MODELS = {
-  claude: ['claude-haiku-4-5', 'claude-sonnet-4-5', 'claude-sonnet-4-6', 'claude-opus-4-6'],
-  codex: ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6'],
-} as const;
+
+/**
+ * The broker's tool-policy table, DERIVED from the one server-owned profile table
+ * (`control/workflowProfiles.ts`) rather than hand-written beside it. `toolPolicyId` on the wire is a
+ * NAME; the broker re-resolves the cap from that name on its own side and has to land on exactly the
+ * policy the dashboard approved, or `createAttemptToolPolicyIdResolver` refuses the launch. Two
+ * hand-maintained tables is how this broker shipped knowing only `standard` — an id nothing has ever
+ * sent — while every real launch named a workflow profile and died on `unknown ... tool policy`.
+ *
+ * `shell-default` is deliberately absent: `decodeLaunchRecipe` pins the shell recipe's policy id to
+ * that exact value and `buildBrokerLaunch` returns before any lookup, so the shell launcher never
+ * consults this table.
+ */
+const workflowPolicies = new Map(WORKFLOW_EXECUTION_PROFILES.map((profile) => [profile.id, {
+  allowedTools: profile.allowedTools,
+  permissionMode: WORKFLOW_PERMISSION_MODE,
+}]));
+
+/**
+ * The launcher/model cross-check, and deliberately NOTHING MORE — there is no model enumeration here
+ * on purpose. Do not reintroduce one.
+ *
+ * 1. `decodeLaunchRecipe` has already run `modelPattern` (/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$/) over
+ *    this value: it cannot be empty, cannot begin with `-`, and cannot contain whitespace, quotes, or
+ *    shell metacharacters.
+ * 2. The value reaches the child as a single `--model <value>` argv element of an execve'd process.
+ *    There is no shell, so there is no injection an allowlist would be blocking.
+ * 3. WHICH model a run may use is a governance decision, and it is already enforced upstream at the
+ *    control plane by `governance/model-routing.yaml` + `scripts/routing.py`. A second copy in the
+ *    broker buys no security — it only guarantees that every model the fleet adopts breaks every
+ *    agent launch until someone edits this file, which is exactly what happened: the enumeration
+ *    listed six ids, the registry named seven others, and the two sets overlapped in one entry.
+ *
+ * What remains is the one check that IS about this frame: a recipe whose launcher and model disagree
+ * is crossed up, and a crossed recipe is a bug we refuse rather than execute.
+ */
+const MODEL_PREFIXES = { claude: /^claude-/, codex: /^gpt-/ } as const;
 const pinnedCodexConfig = [
   '-c', 'approval_policy=never',
   '-c', 'forced_login_method="chatgpt"',
@@ -178,24 +211,26 @@ export function buildBrokerLaunch(
   const cwd = absoluteCwd(rootId, relative);
   const common = { cwd, env: childEnvironment(size), cols: size.cols, rows: size.rows };
   if (recipe.launcher === 'shell') return { executable: '/bin/bash', args: [], ...common };
-  if (!APPROVED_MODELS[recipe.launcher].includes(recipe.model as never)) {
-    throw new FdPinnedPathError('recipe model is not in the approved model table');
+  if (!MODEL_PREFIXES[recipe.launcher].test(recipe.model!)) {
+    throw new FdPinnedPathError('recipe model does not belong to this launcher');
   }
 
   if (recipe.launcher === 'claude') {
-    const policy = claudePolicies[recipe.toolPolicyId as keyof typeof claudePolicies];
+    const policy = workflowPolicies.get(recipe.toolPolicyId);
     if (policy === undefined) throw new FdPinnedPathError('unknown Claude tool policy');
     const args = recipe.mode === 'headless-json'
       ? ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose']
       : [];
-    if (policy.settings !== undefined) args.push('--settings', policy.settings);
+    // No `--settings` on Linux, and none is constructed here: the read-scope blob is not part of the
+    // v1 recipe frame, and the child is confined by the unit's own ReadOnlyPaths/ReadWritePaths
+    // instead. Adding one is a protocol change, not a line in this function.
     args.push('--model', recipe.model!);
     if (recipe.resumeRef !== undefined) args.push('--resume', recipe.resumeRef);
     args.push('--allowedTools', policy.allowedTools.join(','), '--permission-mode', policy.permissionMode);
     return { executable: '/var/lib/kb-shell/home/.local/bin/claude', args, ...common };
   }
 
-  if (!codexPolicies.has(recipe.toolPolicyId)) throw new FdPinnedPathError('unknown Codex tool policy');
+  if (!workflowPolicies.has(recipe.toolPolicyId)) throw new FdPinnedPathError('unknown Codex tool policy');
   const args = recipe.mode === 'headless-json'
     ? recipe.resumeRef === undefined
       ? ['exec', '-', '--json', '--model', recipe.model!, '-s', 'workspace-write', ...pinnedCodexConfig, '--cd', cwd]
@@ -455,17 +490,21 @@ export async function pinBrokerLaunch(
 /**
  * The recipe a launcher is PROBED with. It exists so the executable path comes out of
  * `buildBrokerLaunch` — the same table launch reads — instead of a second copy of
- * `/var/lib/kb-shell/home/.local/bin/<name>`. The model is the first approved one purely because
- * `buildBrokerLaunch` refuses an unapproved model; nothing is spawned, so the choice has no other
- * effect, and the args it produces are discarded.
+ * `/var/lib/kb-shell/home/.local/bin/<name>`. The model and the policy id are placeholders that exist
+ * only to get past validation: nothing is spawned and the argv is discarded, so the model is the
+ * shortest string satisfying the launcher's prefix check, and the policy id is read out of the
+ * profile table rather than written out again, so a renamed profile cannot silently un-probe a
+ * launcher.
  */
+const PROBE_POLICY_ID = WORKFLOW_EXECUTION_PROFILES[0]!.id;
+
 function probeRecipe(launcher: SessionLauncher): LaunchRecipe {
   if (launcher === 'shell') {
     return { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'shell-default', sandbox: 'interactive' };
   }
   return launcher === 'claude'
-    ? { launcher: 'claude', mode: 'interactive', model: APPROVED_MODELS.claude[0], toolPolicyId: 'standard', sandbox: 'claude-policy' }
-    : { launcher: 'codex', mode: 'interactive', model: APPROVED_MODELS.codex[0], toolPolicyId: 'standard', sandbox: 'codex-workspace-write' };
+    ? { launcher: 'claude', mode: 'interactive', model: 'claude-probe', toolPolicyId: PROBE_POLICY_ID, sandbox: 'claude-policy' }
+    : { launcher: 'codex', mode: 'interactive', model: 'gpt-probe', toolPolicyId: PROBE_POLICY_ID, sandbox: 'codex-workspace-write' };
 }
 
 /** The executable a launcher resolves to, straight out of the launch table. */

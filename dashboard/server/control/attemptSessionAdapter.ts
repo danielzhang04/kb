@@ -301,6 +301,14 @@ function attemptAgentId(input: ApprovedAttemptDeclaration): string {
   return input.assignment?.agentId ?? input.profile.id;
 }
 
+/**
+ * `policyPattern` from `pty/brokerProtocol.ts`, restated on the sending side. Both runtimes validate
+ * against this ONE constant: a `toolPolicyId` that fails it is refused here, with a message naming the
+ * attempt, instead of being sent and refused inside `decodeLaunchRecipe`, where an invalid frame tears
+ * down the broker connection rather than failing one launch.
+ */
+const TOOL_POLICY_ID_RE = /^[a-z][a-z0-9-]{0,63}$/;
+
 function prepareAttempt(
   input: ApprovedAttemptDeclaration,
   options: AttemptSessionAdapterOptions,
@@ -373,7 +381,7 @@ function prepareAttempt(
       policy,
       settings,
     }) ?? input.workflowProfile;
-    if (!/^[a-z][a-z0-9-]{0,63}$/.test(toolPolicyId)) {
+    if (!TOOL_POLICY_ID_RE.test(toolPolicyId)) {
       throw new Error('claude attempt resolved an invalid server-owned tool policy id');
     }
     const recipe: LaunchRecipe = {
@@ -388,9 +396,20 @@ function prepareAttempt(
     return { recipe, prompts, agentId };
   }
 
+  // Codex carries the SAME rule as the Claude branch above, and for the same reason. The fallback
+  // this replaces was `input.workflowProfile ?? input.profile.id`, and `input.profile.id` has the
+  // shape `worker:codex:gpt-5.6-terra` — colons, which `policyPattern` in `brokerProtocol.ts` refuses.
+  // So the fallback could not produce a launchable recipe under any circumstance; it could only turn
+  // "this attempt declares no tool cap" into a decode failure that killed the broker socket instead of
+  // naming the missing profile. An attempt with no workflow profile has no cap to resolve, so it is
+  // refused here, where the reason is still legible.
+  if (input.workflowProfile === null) throw new Error('codex attempt has no workflow profile');
+  if (!TOOL_POLICY_ID_RE.test(input.workflowProfile)) {
+    throw new Error('codex attempt resolved an invalid server-owned tool policy id');
+  }
   const recipe: LaunchRecipe = {
     launcher: 'codex', mode: 'headless-json', model: input.profile.model,
-    toolPolicyId: input.workflowProfile ?? input.profile.id,
+    toolPolicyId: input.workflowProfile,
     sandbox: 'codex-workspace-write', ...(resumeRef ? { resumeRef } : {}),
   };
   // In a PTY, EOT is the closed-contract equivalent of the old adapter's endStdin().

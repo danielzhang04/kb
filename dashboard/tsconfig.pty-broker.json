@@ -10,6 +10,7 @@
     "sourceMap": false
   },
   "include": [
+    "server/control/workflowProfiles.ts",
     "server/pty/brokerProtocol.ts",
     "server/pty/fdPinnedPaths.ts",
     "server/pty/linuxBrokerServer.ts",

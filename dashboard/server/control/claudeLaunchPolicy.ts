@@ -1,4 +1,5 @@
-import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles } from './environment.ts';
+import { loadWorkflowProfiles } from './environment.ts';
+import { FORBIDDEN_WORKFLOW_TOOLS, WORKFLOW_PERMISSION_MODE } from './workflowProfiles.ts';
 
 export interface ClaudeToolPolicy {
   /** The `--allowedTools` allowlist for this profile (publish tools never appear in a default profile). */
@@ -22,7 +23,9 @@ export function isWellFormedToolName(name: unknown): name is string {
 export function createWorkflowToolPolicyResolver(
   options: { permissionMode?: string; profiles?: readonly { id: string; allowedTools: readonly string[] }[] } = {},
 ): (workflowProfileId: string | null) => ClaudeToolPolicy {
-  const permissionMode = options.permissionMode ?? 'default';
+  // The default lives in the importless profile leaf so the Linux broker's own recipe table reads
+  // the SAME value; a second literal here would let the two sides launch one profile under two modes.
+  const permissionMode = options.permissionMode ?? WORKFLOW_PERMISSION_MODE;
   return (workflowProfileId) => {
     if (typeof workflowProfileId !== 'string' || workflowProfileId.trim() === '') {
       throw new ToolPolicyRefusal(
