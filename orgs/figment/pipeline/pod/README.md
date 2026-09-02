@@ -31,6 +31,8 @@ that file. Required fields are:
 - `gpu.type`, with optional `gpu.count` and `gpu.cloud`;
 - `image` or `template_id`, plus optional `network_volume_id`;
 - a conservative `price_usd_per_hour` for pre-create estimation;
+- optional `readiness_timeout_seconds` (default 900); when `max_minutes` is present it
+  must be at least readiness time plus five teardown minutes;
 - `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
   `/workspace/ComfyUI` and may not equal the mount itself);
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
@@ -73,6 +75,11 @@ repo's `ledgers/cost`. The selected path is logged. `governance/budget.yaml` alw
 the harness repo root. `max_minutes` is the minimum of the CLI value, manifest value, and the hard
 `DEFAULT_MAX_MINUTES` of 60; a manifest can only lower the ceiling.
 
+Pod readiness is separately bounded by `readiness_timeout_seconds` (default 900 seconds).
+Manifest preflight rejects a `max_minutes` value shorter than the readiness budget plus a
+five-minute teardown margin. This keeps the readiness wait from consuming the time reserved
+for the mandatory terminate-and-verify path.
+
 The manifest rate is never trusted after create. Once the Pod is READY, its
 `adjustedCostPerHr` or `costPerHr` must be present and positive. That real rate is checked
 against both `--max-usd` and the daily limit. A missing, zero, invalid, or over-budget rate
@@ -109,8 +116,36 @@ List Pods or force verified termination:
 
 ```powershell
 py -3 runpod_run.py status
+py -3 runpod_run.py probe
 py -3 runpod_run.py terminate --pod-id POD_ID
 ```
+
+`probe` is read-only: it makes only `GET /pods?includeMachine=true` and prints response keys,
+type placeholders, and status values. It suppresses IDs, IPs, ports, prices, names, and other
+values so an operator can compare a live account's response shape without creating a Pod.
+
+## Readiness schema and diagnostics
+
+The current REST [get-Pod](https://docs.runpod.io/api-reference/pods/GET/pods/podId) and
+[list-Pods](https://docs.runpod.io/api-reference/pods/GET/pods) schemas expose
+`desiredStatus`, `lastStatusChange`, top-level `publicIp`, top-level `portMappings` (for
+example `{"22": 10341}`), `machineId`, and optional `machine`. They do not document a
+separate current status or a `runtime` object. Both endpoints accept `includeMachine=true`;
+`includeNetworkVolume=true` is only needed for attached-volume details, so the harness does
+not request it. The harness requests machine data on both GET paths.
+
+For compatibility with the separately documented RunPod
+[GraphQL Pod schema](https://docs.runpod.io/sdks/graphql/manage-pods), readiness also accepts
+`runtime.ports[]` entries containing `ip`, `privatePort`, `publicPort`, and `type`; the SSH
+entry must be TCP private port 22. A Pod is ready only when `desiredStatus == "RUNNING"` and
+one complete SSH mapping exists. The ready log line says `schema=rest` or `schema=runtime`.
+
+Every readiness poll logs one line with elapsed time, desired/current/runtime status when
+present, `lastStatusChange`, public-IP and SSH-mapping presence, machine GPU/host fields when
+present, and the detected response shape. On timeout it logs the last full Pod object through
+the credential redactor, stores the same redacted object in `run.json` as `last_pod_state`,
+and raises a classified message such as image pull in progress, never left CREATED/PENDING,
+or RUNNING without a public IP/port mapping.
 
 ## Network and output layout
 

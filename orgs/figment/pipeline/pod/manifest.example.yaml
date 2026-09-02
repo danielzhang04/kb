@@ -9,6 +9,8 @@ gpu:
 price_usd_per_hour: 0.75
 # This can lower, but never raise, the CLI/default 60-minute ceiling.
 max_minutes: 20
+# Pod allocation/network readiness only; max_minutes must leave 5 more minutes for teardown.
+readiness_timeout_seconds: 900
 container_disk_gb: 50
 volume_gb: 20
 volume_mount_path: "/workspace"

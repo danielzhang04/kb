@@ -35,7 +35,7 @@ except ModuleNotFoundError:  # --dry-run and the stubbed tests remain intentiona
 
 API_BASE = "https://rest.runpod.io/v1"
 DEFAULT_MAX_MINUTES = 60.0
-DEFAULT_READY_TIMEOUT = 20 * 60.0
+DEFAULT_READY_TIMEOUT = 15 * 60.0
 REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -47,8 +47,45 @@ LEDGER_LOCK_TIMEOUT = 5.0
 _active_redactor: ApiKeyRedactionFilter | None = None
 
 
+def redact_pod_state(pod: dict[str, Any]) -> dict[str, Any]:
+    """Preserve diagnostic structure without persisting credential-like values."""
+    sensitive_names = {
+        "apikey", "authorization", "containerregistryauthid", "credential",
+        "credentials", "password", "secret", "token",
+    }
+
+    def visit(value: Any, parent_key: str = "") -> Any:
+        normalized_parent = re.sub(r"[^a-z0-9]", "", parent_key.lower())
+        if normalized_parent == "env" and isinstance(value, dict):
+            return {str(key): "[REDACTED]" for key in value}
+        if isinstance(value, dict):
+            safe: dict[str, Any] = {}
+            for key, child in value.items():
+                normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
+                if (normalized in sensitive_names
+                        or normalized.endswith(("apikey", "accesstoken", "refreshtoken",
+                                                "password", "secret"))):
+                    safe[str(key)] = "[REDACTED]"
+                else:
+                    safe[str(key)] = visit(child, str(key))
+            return safe
+        if isinstance(value, list):
+            return [visit(child, parent_key) for child in value]
+        return copy.deepcopy(value)
+
+    return visit(pod)
+
+
 class HarnessError(RuntimeError):
     """A safe, user-facing harness failure."""
+
+
+class ReadinessTimeout(HarnessError):
+    """Pod readiness expired; retain the last response for postmortem output."""
+
+    def __init__(self, message: str, last_pod_state: dict[str, Any]):
+        super().__init__(message)
+        self.last_pod_state = redact_pod_state(last_pod_state)
 
 
 class PodStillRunning(HarnessError):
@@ -149,13 +186,15 @@ class RunPodAPI:
         return data
 
     def get_pod(self, pod_id: str) -> dict[str, Any] | None:
-        data = self._request("GET", f"/pods/{pod_id}", allow_404=True)
+        data = self._request(
+            "GET", f"/pods/{pod_id}?includeMachine=true", allow_404=True,
+        )
         if data is not None and not isinstance(data, dict):
             raise HarnessError("RunPod pod response was not an object")
         return data
 
     def list_pods(self) -> list[dict[str, Any]]:
-        data = self._request("GET", "/pods")
+        data = self._request("GET", "/pods?includeMachine=true")
         if not isinstance(data, list):
             raise HarnessError("RunPod list response was not an array")
         return data
@@ -654,6 +693,20 @@ def resolve_manifest_path(path: Path) -> Path:
     raise HarnessError(f"manifest not found: {path}")
 
 
+def manifest_readiness_timeout_seconds(manifest: dict[str, Any]) -> float:
+    if "ready_timeout_seconds" in manifest:
+        raise HarnessError(
+            "ready_timeout_seconds was renamed to readiness_timeout_seconds"
+        )
+    value = manifest.get("readiness_timeout_seconds", DEFAULT_READY_TIMEOUT)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise HarnessError("readiness_timeout_seconds must be numeric")
+    timeout = float(value)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise HarnessError("readiness_timeout_seconds must be finite and positive")
+    return timeout
+
+
 def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
     gpu = manifest.get("gpu")
     if not isinstance(gpu, dict) or not gpu.get("type"):
@@ -665,6 +718,19 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
     manifest_price = float(manifest["price_usd_per_hour"])
     if not math.isfinite(manifest_price) or manifest_price <= 0:
         raise HarnessError("price_usd_per_hour must be finite and positive")
+    readiness_timeout = manifest_readiness_timeout_seconds(manifest)
+    if manifest.get("max_minutes") is not None:
+        try:
+            manifest_max_minutes = float(manifest["max_minutes"])
+        except (TypeError, ValueError) as exc:
+            raise HarnessError("manifest max_minutes must be numeric") from exc
+        minimum_minutes = readiness_timeout / 60.0 + 5.0
+        if (not math.isfinite(manifest_max_minutes) or manifest_max_minutes <= 0
+                or manifest_max_minutes < minimum_minutes):
+            raise HarnessError(
+                "manifest max_minutes must cover readiness_timeout_seconds plus "
+                f"a 5 minute teardown margin (minimum {minimum_minutes:g})"
+            )
     if not isinstance(manifest.get("jobs"), list) or not manifest["jobs"]:
         raise HarnessError("manifest jobs must be a non-empty list")
     comfy = manifest.get("comfyui")
@@ -761,6 +827,20 @@ def effective_max_minutes(cli_value: float | None, manifest: dict[str, Any]) -> 
         raise HarnessError("--max-minutes and manifest max_minutes must be finite and positive")
     maximum = min(values)
     return maximum
+
+
+def enforce_effective_readiness_budget(
+        manifest: dict[str, Any], max_minutes: float) -> None:
+    # Legacy/test manifests without either budget key retain their prior CLI behavior.
+    if ("readiness_timeout_seconds" not in manifest
+            and manifest.get("max_minutes") is None):
+        return
+    minimum_minutes = manifest_readiness_timeout_seconds(manifest) / 60.0 + 5.0
+    if max_minutes < minimum_minutes:
+        raise HarnessError(
+            "effective max_minutes must cover readiness_timeout_seconds plus "
+            f"a 5 minute teardown margin (minimum {minimum_minutes:g})"
+        )
 
 
 def repo_root() -> Path:
@@ -865,31 +945,133 @@ def create_payload(manifest: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def pod_connection(pod: dict[str, Any]) -> tuple[str, int] | None:
+def pod_connection(pod: dict[str, Any]) -> tuple[str, int, str] | None:
     host = pod.get("publicIp")
     mappings = pod.get("portMappings") or {}
     port = mappings.get("22") if isinstance(mappings, dict) else None
     if port is None and isinstance(mappings, dict):
         port = mappings.get(22)
     if host and port:
-        return str(host), int(port)
+        try:
+            public_port = int(port)
+        except (TypeError, ValueError):
+            public_port = 0
+        if public_port > 0:
+            return str(host), public_port, "rest"
+    runtime = pod.get("runtime")
+    runtime_ports = runtime.get("ports") if isinstance(runtime, dict) else None
+    if isinstance(runtime_ports, list):
+        for candidate in runtime_ports:
+            if not isinstance(candidate, dict):
+                continue
+            try:
+                private_port = int(candidate.get("privatePort"))
+                public_port = int(candidate.get("publicPort"))
+            except (TypeError, ValueError):
+                continue
+            candidate_host = candidate.get("ip")
+            port_type = str(candidate.get("type", "")).lower()
+            if private_port == 22 and public_port > 0 and candidate_host and port_type == "tcp":
+                return str(candidate_host), public_port, "runtime"
     return None
+
+
+def _poll_value(value: Any) -> str:
+    if value is None or value == "":
+        return "-"
+    return " ".join(str(value).split())
+
+
+def readiness_poll_summary(pod: dict[str, Any], elapsed: float) -> str:
+    runtime = pod.get("runtime") if isinstance(pod.get("runtime"), dict) else {}
+    connection = pod_connection(pod)
+    runtime_ports = runtime.get("ports") if isinstance(runtime.get("ports"), list) else []
+    public_ip_present = bool(pod.get("publicIp")) or any(
+        isinstance(port, dict) and bool(port.get("ip")) for port in runtime_ports
+    )
+    ssh_port_present = connection is not None
+    machine = pod.get("machine") if isinstance(pod.get("machine"), dict) else {}
+    gpu = pod.get("gpu") if isinstance(pod.get("gpu"), dict) else {}
+    runtime_gpus = runtime.get("gpus") if isinstance(runtime.get("gpus"), list) else []
+    runtime_gpu = runtime_gpus[0] if runtime_gpus and isinstance(runtime_gpus[0], dict) else {}
+    machine_gpu = (
+        machine.get("gpuDisplayName") or machine.get("gpuTypeId")
+        or gpu.get("displayName") or gpu.get("id") or runtime_gpu.get("id")
+    )
+    machine_host = machine.get("podHostId") or machine.get("id") or pod.get("machineId")
+    return (
+        f"readiness poll elapsed={elapsed:.1f}s "
+        f"desiredStatus={_poll_value(pod.get('desiredStatus'))} "
+        f"currentStatus={_poll_value(pod.get('currentStatus'))} "
+        f"runtimeStatus={_poll_value(runtime.get('status') or runtime.get('currentStatus'))} "
+        f"lastStatusChange={_poll_value(pod.get('lastStatusChange'))} "
+        f"publicIp={'yes' if public_ip_present else 'no'} "
+        f"sshPort={'yes' if ssh_port_present else 'no'} "
+        f"machineGpu={_poll_value(machine_gpu)} "
+        f"machineHost={_poll_value(machine_host)} "
+        f"schema={connection[2] if connection else 'none'}"
+    )
+
+
+def readiness_timeout_reason(pod: dict[str, Any]) -> str:
+    desired = _poll_value(pod.get("desiredStatus"))
+    current = _poll_value(pod.get("currentStatus"))
+    runtime = pod.get("runtime") if isinstance(pod.get("runtime"), dict) else {}
+    runtime_status = _poll_value(runtime.get("status") or runtime.get("currentStatus"))
+    last_change = _poll_value(pod.get("lastStatusChange"))
+    state_text = " ".join((desired, current, runtime_status, last_change)).lower()
+    if "image" in state_text and any(word in state_text for word in ("pull", "download")):
+        return (
+            "image pull in progress "
+            f"(desiredStatus={desired}, currentStatus={current}, runtimeStatus={runtime_status})"
+        )
+    if desired in {"CREATED", "PENDING", "-"}:
+        return f"never left CREATED/PENDING (desiredStatus={desired})"
+    if desired == "RUNNING":
+        mappings = pod.get("portMappings")
+        runtime_ports = runtime.get("ports")
+        has_public_ip = bool(pod.get("publicIp")) or (
+            isinstance(runtime_ports, list)
+            and any(isinstance(port, dict) and port.get("ip") for port in runtime_ports)
+        )
+        if has_public_ip and not pod_connection(pod):
+            return "stuck in desiredStatus=RUNNING with no port mapping"
+        if not has_public_ip:
+            return "stuck in desiredStatus=RUNNING with no public IP or port mapping"
+        if not mappings and not runtime_ports:
+            return "stuck in desiredStatus=RUNNING with no port mapping"
+    return (
+        f"stuck in desiredStatus={desired}, currentStatus={current}, "
+        f"runtimeStatus={runtime_status}"
+    )
 
 
 def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
                logger: logging.Logger, sleep: Callable[[float], None] = time.sleep) -> tuple[dict[str, Any], str, int]:
-    deadline = time.monotonic() + timeout
+    started = time.monotonic()
+    deadline = started + timeout
+    last_pod: dict[str, Any] = {}
     while time.monotonic() < deadline:
         watchdog.check()
         pod = api.get_pod(pod_id)
         if pod is None:
             raise HarnessError(f"pod {pod_id} disappeared before becoming ready")
+        last_pod = pod
         connection = pod_connection(pod)
+        logger.info(readiness_poll_summary(pod, time.monotonic() - started))
         if pod.get("desiredStatus") == "RUNNING" and connection:
-            logger.info("pod ready with mapped SSH port")
+            logger.info("readiness matched schema=%s with mapped SSH port", connection[2])
             return pod, connection[0], connection[1]
         sleep(2)
-    raise HarnessError(f"pod readiness timed out after {timeout:.0f}s")
+    reason = readiness_timeout_reason(last_pod)
+    safe_last_pod = redact_pod_state(last_pod)
+    logger.error(
+        "readiness timeout last pod state: %s",
+        json.dumps(safe_last_pod, ensure_ascii=False, sort_keys=True, default=str),
+    )
+    raise ReadinessTimeout(
+        f"pod readiness timed out after {timeout:.0f}s: {reason}", safe_last_pod,
+    )
 
 
 def _safe_node_name(url: str, explicit: str | None) -> str:
@@ -1378,6 +1560,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 budget_path: Path | None = None) -> dict[str, Any]:
     require_manifest(manifest, manifest_path)
     max_minutes = effective_max_minutes(max_minutes, manifest)
+    enforce_effective_readiness_budget(manifest, max_minutes)
     if not dry_run and max_usd is None:
         raise HarnessError("--max-usd is required for a live run")
     estimate = estimate_cost(manifest, max_minutes, max_usd)
@@ -1464,7 +1647,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 logger,
             )
             watchdog.start()
-            ready_timeout = min(float(manifest.get("ready_timeout_seconds", DEFAULT_READY_TIMEOUT)), max_minutes * 60.0)
+            ready_timeout = min(
+                manifest_readiness_timeout_seconds(manifest), max_minutes * 60.0,
+            )
             ready_pod, host, ssh_port = wait_ready(
                 api, str(lease.pod_id), ready_timeout, watchdog, logger, sleep
             )
@@ -1530,6 +1715,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     except BaseException as exc:
         caught = exc
         result["error"] = f"{type(exc).__name__}: {exc}"
+        if isinstance(exc, ReadinessTimeout):
+            result["last_pod_state"] = exc.last_pod_state
     finally:
         try:
             if watchdog:
@@ -1667,6 +1854,40 @@ def command_status(_args: argparse.Namespace) -> int:
         session.close()
 
 
+def response_shape(value: Any, key: str | None = None) -> Any:
+    """Retain response keys and status values while suppressing account data."""
+    if isinstance(value, dict):
+        return {str(child_key): response_shape(child, str(child_key))
+                for child_key, child in value.items()}
+    if isinstance(value, list):
+        return [response_shape(child, key) for child in value]
+    if key in {"desiredStatus", "currentStatus", "status", "runtimeStatus"}:
+        return value
+    if value is None:
+        return "<null>"
+    if isinstance(value, bool):
+        return "<boolean>"
+    if isinstance(value, (int, float)):
+        return "<number>"
+    return "<string>"
+
+
+def command_probe(_args: argparse.Namespace) -> int:
+    """Read only: list Pods and print their redacted structural shape."""
+    try:
+        session, redactor = build_authenticated_session()
+    except KeyError as exc:
+        raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
+    set_active_redactor(redactor)
+    try:
+        pods = RunPodAPI(session).list_pods()
+        safe_shape = response_shape(pods)
+        print(redactor.redact(json.dumps(safe_shape, indent=2, default=str)))
+        return 0
+    finally:
+        session.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1686,6 +1907,10 @@ def build_parser() -> argparse.ArgumentParser:
     terminate.set_defaults(func=command_terminate)
     status = sub.add_parser("status", help="list pods and their billing status")
     status.set_defaults(func=command_status)
+    probe = sub.add_parser(
+        "probe", help="read-only GET /pods response-shape probe",
+    )
+    probe.set_defaults(func=command_probe)
     return parser
 
 

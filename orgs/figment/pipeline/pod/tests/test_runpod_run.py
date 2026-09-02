@@ -127,6 +127,29 @@ def ready_pod(name="figment-test"):
     }
 
 
+def runtime_ready_pod(name="figment-test"):
+    return {
+        "id": "pod-123",
+        "name": name,
+        "desiredStatus": "RUNNING",
+        "currentStatus": "RUNNING",
+        "lastStatusChange": "Container started",
+        "runtime": {
+            "status": "RUNNING",
+            "ports": [{
+                "ip": "127.0.0.2",
+                "isIpPublic": True,
+                "privatePort": 22,
+                "publicPort": 2223,
+                "type": "tcp",
+            }],
+        },
+        "machineId": "machine-123",
+        "machine": {"gpuDisplayName": "RTX 4090", "podHostId": "host-123"},
+        "adjustedCostPerHr": 0.50,
+    }
+
+
 def manifest():
     return {
         "gpu": {"type": "NVIDIA GeForce RTX 4090", "count": 1, "cloud": "SECURE"},
@@ -200,6 +223,105 @@ def test_happy_path_uses_mocked_http_and_verifies_download(tmp_path):
     assert [call[0] for call in session.calls] == ["POST", "GET", "DELETE", "GET"]
 
 
+@pytest.mark.parametrize(
+    ("pod", "expected_host", "expected_port", "schema"),
+    [
+        (ready_pod(), "127.0.0.1", 2222, "rest"),
+        (runtime_ready_pod(), "127.0.0.2", 2223, "runtime"),
+    ],
+)
+def test_wait_ready_accepts_both_network_shapes_and_logs_each_poll(
+        pod, expected_host, expected_port, schema):
+    class OnePodAPI:
+        def get_pod(self, _pod_id):
+            return pod
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    logger, stream = logger_and_stream()
+    ready, host, port = rr.wait_ready(
+        OnePodAPI(), "pod-123", 1, QuietWatchdog(), logger,
+        sleep=lambda _seconds: None,
+    )
+
+    assert ready == pod
+    assert (host, port) == (expected_host, expected_port)
+    logs = stream.getvalue()
+    assert "readiness poll elapsed=" in logs
+    assert "desiredStatus=RUNNING" in logs
+    assert "lastStatusChange=" in logs
+    assert "publicIp=" in logs
+    assert "sshPort=" in logs
+    assert f"schema={schema}" in logs
+    assert f"readiness matched schema={schema}" in logs
+
+
+def test_wait_ready_timeout_logs_last_full_state_and_names_stuck_state(monkeypatch):
+    stuck = {
+        "id": "pod-123",
+        "desiredStatus": "RUNNING",
+        "currentStatus": "PULLING_IMAGE",
+        "publicIp": "127.0.0.1",
+        "portMappings": {},
+        "lastStatusChange": "Pulling container image",
+        "env": {"HF_TOKEN": "do-not-persist"},
+    }
+
+    class StuckAPI:
+        def get_pod(self, _pod_id):
+            return stuck
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    ticks = iter([0.0, 0.0, 0.5, 2.0])
+    monkeypatch.setattr(rr.time, "monotonic", lambda: next(ticks))
+    logger, stream = logger_and_stream()
+    with pytest.raises(rr.ReadinessTimeout, match="image pull in progress") as caught:
+        rr.wait_ready(
+            StuckAPI(), "pod-123", 1, QuietWatchdog(), logger,
+            sleep=lambda _seconds: None,
+        )
+
+    assert caught.value.last_pod_state["desiredStatus"] == "RUNNING"
+    assert caught.value.last_pod_state["env"] == {"HF_TOKEN": "[REDACTED]"}
+    logs = stream.getvalue()
+    assert "readiness poll elapsed=0.5s" in logs
+    assert '"currentStatus": "PULLING_IMAGE"' in logs
+    assert "do-not-persist" not in logs
+
+
+def test_readiness_timeout_persists_last_pod_state_in_run_json(tmp_path, monkeypatch):
+    stuck = {
+        "id": "pod-123",
+        "desiredStatus": "RUNNING",
+        "publicIp": "127.0.0.1",
+        "portMappings": {},
+        "lastStatusChange": "Rented by User",
+        "env": {"PRIVATE_TOKEN": "do-not-persist"},
+    }
+
+    def timeout(*_args, **_kwargs):
+        raise rr.ReadinessTimeout(
+            "pod readiness timed out: stuck in desiredStatus=RUNNING with no port mapping",
+            stuck,
+        )
+
+    monkeypatch.setattr(rr, "wait_ready", timeout)
+    api = FakeAPI()
+    with pytest.raises(rr.ReadinessTimeout, match="no port mapping"):
+        run_with(api, tmp_path)
+
+    record = json.loads((tmp_path / "out" / "run.json").read_text())
+    assert record["last_pod_state"]["desiredStatus"] == "RUNNING"
+    assert record["last_pod_state"]["env"] == {"PRIVATE_TOKEN": "[REDACTED]"}
+    assert "do-not-persist" not in (tmp_path / "out" / "run.json").read_text()
+    assert record["termination_verified"] is True
+
+
 def test_exception_mid_job_terminates_and_verifies(tmp_path):
     api = FakeAPI()
     with pytest.raises(RuntimeError, match="mid-job failure"):
@@ -238,6 +360,25 @@ def test_terminate_verify_retries_then_loud_failure():
 def test_preflight_refuses_over_max_usd():
     with pytest.raises(rr.HarnessError, match="preflight refused"):
         rr.estimate_cost(manifest(), max_minutes=60, max_usd=0.49)
+
+
+def test_manifest_readiness_budget_requires_five_minute_teardown_margin(tmp_path):
+    too_short = manifest()
+    too_short["readiness_timeout_seconds"] = 1200
+    too_short["max_minutes"] = 24.99
+    with pytest.raises(rr.HarnessError, match="readiness.*5 minute"):
+        rr.require_manifest(too_short, tmp_path / "manifest.yaml")
+
+    valid = manifest()
+    valid["readiness_timeout_seconds"] = 1200
+    valid["max_minutes"] = 25
+    rr.require_manifest(valid, tmp_path / "manifest.yaml")
+    with pytest.raises(rr.HarnessError, match="effective max_minutes.*5 minute"):
+        rr.enforce_effective_readiness_budget(valid, 24.99)
+
+
+def test_manifest_readiness_timeout_defaults_to_900_seconds():
+    assert rr.manifest_readiness_timeout_seconds(manifest()) == 900
 
 
 def test_manifest_basename_resolves_beside_script(monkeypatch, tmp_path):
@@ -314,6 +455,31 @@ def test_dry_run_executes_whole_flow_without_network(tmp_path, monkeypatch):
     assert (out / "run.json").is_file()
     assert (out / "job-one.png").stat().st_size > 0
     assert json.loads((out / "run.json").read_text())["termination_verified"] is True
+
+
+def test_probe_is_read_only_and_prints_shape_not_values(monkeypatch, capsys):
+    secret_value = "must-not-be-printed"
+    session = StubSession([StubResponse(200, [{
+        "id": secret_value,
+        "desiredStatus": "RUNNING",
+        "currentStatus": "PENDING",
+        "publicIp": "203.0.113.8",
+        "portMappings": {"22": 12345},
+        "runtime": {"status": "STARTING", "ports": []},
+    }])])
+    redactor = rr.ApiKeyRedactionFilter(session)
+    monkeypatch.setattr(rr, "build_authenticated_session", lambda: (session, redactor))
+
+    assert rr.main(["probe"]) == 0
+
+    output = capsys.readouterr().out
+    assert secret_value not in output
+    assert "203.0.113.8" not in output
+    assert '"desiredStatus": "RUNNING"' in output
+    assert '"currentStatus": "PENDING"' in output
+    assert '"status": "STARTING"' in output
+    assert [call[0] for call in session.calls] == ["GET"]
+    assert session.calls[0][1].endswith("/pods?includeMachine=true")
 
 
 def test_noise_seed_only_workflow_receives_job_seed():

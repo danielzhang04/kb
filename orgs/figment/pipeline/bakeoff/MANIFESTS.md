@@ -4,9 +4,38 @@ These files are JSON-form YAML: JSON is valid YAML 1.2, and it avoids block-scal
 
 ## Pod and bootstrap behavior
 
-The full arms request one NVIDIA GeForce RTX 4090 in COMMUNITY cloud at an operator-checked ceiling of $0.50/hour. The documented fallback is an NVIDIA RTX A6000 (48 GB), but the harness accepts only one `gpu.type`; fallback therefore requires an operator to change that field before a retry. Both manifests request 60 GB container disk and a 60 GB ordinary ephemeral volume, with no network volume. The smoke manifest uses an RTX 3090 as the cheaper 24 GB proof target for Arm B.
+All three manifests request one NVIDIA GeForce RTX 4090 in SECURE cloud at an operator-checked ceiling of $0.80/hour. The documented fallback is an NVIDIA RTX A6000 (48 GB), but the harness accepts only one `gpu.type`; fallback therefore requires an operator to change that field before a retry. Both full manifests request 60 GB container disk and a 60 GB ordinary ephemeral volume, with no network volume. Readiness is bounded at 1,200 seconds; the smoke manifest's 25-minute wall clock leaves the required five-minute teardown margin, while each full arm retains its 60-minute wall clock.
 
 The stock RunPod PyTorch image does not provide a guaranteed `/workspace/ComfyUI` checkout. The harness is therefore the sole owner of installation: all three manifests set `comfyui.root` to `/workspace/ComfyUI` and `comfyui.git_ref` to [v0.20.1](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.20.1). Bootstrap clones that ref when the root is absent or fetches and checks it out when it is already a Git repository, then installs its requirements before downloading models. The launch-only `start_command` runs `python main.py --listen 127.0.0.1 --port 8188`; ComfyUI's default output directory is therefore `/workspace/ComfyUI/output`, matching the harness downloader's `<comfyui.root>/output` rule. None of these manifests opts into replacement of a non-Git root. No custom nodes are needed by either graph.
+
+The selected image remains
+[`runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04`](https://hub.docker.com/layers/runpod/pytorch/2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04/images/sha256-cb154fcca15d1d6ce858cfa672b76505e30861ef981d28ec94bd44168767d853).
+Docker Hub confirms that tag, but its [tag catalog](https://hub.docker.com/r/runpod/pytorch/tags)
+did not publish an exact `2.8.0-py3.11-cuda12.8.1-cudnn-runtime-ubuntu22.04` sibling when
+checked on 2026-09-02, so there is no verified same-tag runtime image to switch to. RunPod's
+official [base Dockerfile](https://github.com/runpod/containers/blob/main/official-templates/base/Dockerfile)
+installs Git and `openssh-server`, and its
+[PyTorch Dockerfile](https://github.com/runpod/containers/blob/main/official-templates/pytorch/Dockerfile)
+uses `python -m pip`; the inherited `/start.sh` supplies the SSH service behavior. These are
+the three bootstrap prerequisites the harness checks before downloads.
+
+### Official ComfyUI template option (not selected)
+
+RunPod's REST create schema accepts `templateId`, and its
+[Pod-management guide](https://docs.runpod.io/pods/manage-pods) shows deploying a Pod from a
+template through `POST /v1/pods`. RunPod's maintained ComfyUI CUDA 12.8 template is
+`cw3nka7d08`, backed by `runpod/comfyui:cuda12.8`; the official
+[template record](https://github.com/runpod/runpod-plugins-official/blob/main/plugins/runpod/skills/runpod/golden-paths/02-comfyui-pod/variant-b-prebuilt.md)
+documents ports 8188/8080/8888/22, automatic launch, and the install root
+`/workspace/runpod-slim/ComfyUI`. The image's
+[source README](https://github.com/runpod-workers/comfyui-base) confirms that root,
+preinstalled dependencies and manager nodes, and SSH support.
+
+This is a valid REST/template option, but it is not a drop-in change for these manifests:
+the harness currently owns a pinned `/workspace/ComfyUI` checkout and starts that process
+itself, whereas the template owns and auto-starts a different root. A future template mode
+would need to skip clone/start, use the template root, and health-check its existing service.
+For that reason the bake-off manifests are deliberately not switched in this change.
 
 The harness downloads public Hugging Face files with `curl`, reuses non-empty files, installs no custom-node requirements, starts ComfyUI on loopback, submits each API graph, downloads results through SCP, and verifies pod deletion. It does not verify a downloaded model checksum.
 
@@ -34,7 +63,7 @@ Official graph basis: [ComfyUI Z-Image guide](https://docs.comfy.org/tutorials/i
 | VAE | [Comfy-Org/z_image: ae.safetensors](https://huggingface.co/Comfy-Org/z_image/blob/main/split_files/vae/ae.safetensors) | 0.335 GB |
 | **Total download** | [HF tree API](https://huggingface.co/api/models/Comfy-Org/z_image/tree/main?recursive=true&expand=true) | **20.675 GB** |
 
-Bootstrap time: **ESTIMATE 12–25 minutes** on a 200–400 Mbps pod connection, including ComfyUI dependency installation. Per image on RTX 4090: **ESTIMATE 35–60 seconds** at these resolutions. Total 54-job compute: **ESTIMATE $0.25–$0.50** at $0.34/hour, depending on download throughput and offloading; the manifest's fail-closed 60-minute ceiling estimate is $0.50.
+Bootstrap time: **ESTIMATE 12–25 minutes** on a 200–400 Mbps pod connection, including ComfyUI dependency installation. Per image on RTX 4090: **ESTIMATE 35–60 seconds** at these resolutions. Total duration still depends on download throughput and offloading; the configured fail-closed ceiling is **ESTIMATE $0.80** (60 minutes × $0.80/hour).
 
 ## Arm B — FLUX.2 klein 4B Base
 
@@ -63,11 +92,11 @@ Official graph basis: the current [ComfyUI Klein guide](https://docs.comfy.org/t
 | VAE | [Comfy-Org alias: flux2-vae.safetensors](https://huggingface.co/Comfy-Org/flux2-klein-4B/blob/main/split_files/vae/flux2-vae.safetensors) | 0.336 GB |
 | **Total download** | [HF tree API](https://huggingface.co/api/models/Comfy-Org/flux2-klein-4B/tree/main?recursive=true&expand=true) | **16.126 GB** |
 
-Hugging Face currently redirects the requested `Comfy-Org/flux2-klein-4B` alias to the canonical repository `Comfy-Org/vae-text-encorder-for-flux-klein-4b`; the alias's resolve URLs remain the manifest source. Bootstrap time: **ESTIMATE 10–20 minutes** on a 200–400 Mbps connection. Per image on RTX 4090: **ESTIMATE 25–40 seconds**; ComfyUI documents about 17 seconds for Base on an RTX 5090. Total 54-job compute: **ESTIMATE $0.18–$0.35** at $0.34/hour; the fail-closed 60-minute ceiling estimate is $0.50.
+Hugging Face currently redirects the requested `Comfy-Org/flux2-klein-4B` alias to the canonical repository `Comfy-Org/vae-text-encorder-for-flux-klein-4b`; the alias's resolve URLs remain the manifest source. Bootstrap time: **ESTIMATE 10–20 minutes** on a 200–400 Mbps connection. Per image on RTX 4090: **ESTIMATE 25–40 seconds**; ComfyUI documents about 17 seconds for Base on an RTX 5090. Total duration still depends on download throughput and offloading; the configured fail-closed ceiling is **ESTIMATE $0.80** (60 minutes × $0.80/hour).
 
 ## Smoke manifest
 
-`smoke.yaml` contains only `trial-03-c01-s1-seed-100001`, uses the Arm B graph/models, caps runtime at 15 minutes, and has a fail-closed ceiling estimate of $0.1250. Its intended assertion is create → bootstrap → generate → download → terminate → verify. **ESTIMATE:** a fully cold 16.126 GB download can take roughly 7–11 minutes at 300–200 Mbps before dependency installation, so the 15-minute ceiling allows a modest bootstrap margin.
+`smoke.yaml` contains only `trial-03-c01-s1-seed-100001`, uses the Arm B graph/models, requests a Secure-cloud RTX 4090, caps readiness at 20 minutes and total runtime at 25 minutes, and has a fail-closed ceiling of **ESTIMATE $0.333** (25 minutes × $0.80/hour). Its intended assertion is create → bootstrap → generate → download → terminate → verify. **ESTIMATE:** a fully cold 16.126 GB download can take roughly 7–11 minutes at 300–200 Mbps before dependency installation, so the larger readiness budget covers a slow allocation/pull while preserving five teardown minutes.
 
 ## Node-name verification
 
@@ -83,4 +112,4 @@ Hugging Face currently redirects the requested `Comfy-Org/flux2-klein-4B` alias 
 - The harness's default `seed_fields` is `["seed", "noise_seed"]`, so it substitutes each job seed directly into the official FLUX.2 `RandomNoise.inputs.noise_seed` field. No disconnected compatibility node is used.
 - The official ComfyUI Klein page now highlights separate FP8 Base weights, while its linked workflow metadata and this brief specify the full Comfy-Org Base file. This manifest follows the brief and BFL Base filename.
 - The requested A6000 fallback cannot be encoded alongside the 4090 because the harness schema accepts a single GPU type.
-- Re-check live RunPod COMMUNITY availability/rate, confirm the selected image exposes SSH, and keep the operator's `--max-usd` at or below the manifest estimate before any live run.
+- Re-check live RunPod SECURE availability/rate, confirm the selected image exposes SSH, and keep the operator's `--max-usd` at or below the manifest estimate before any live run.
