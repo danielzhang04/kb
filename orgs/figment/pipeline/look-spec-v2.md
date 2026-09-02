@@ -33,6 +33,17 @@ Two accounts in the pool state **18** in their own bios: `murayunaki` (primary) 
 an unambiguously adult woman of about twenty-one, per GUARDRAILS hard line 2, and a face
 that reads younger than that is culled — not relabelled.
 
+### Operator corrections (2026-09-02, after reading this file)
+
+- `murayunaki` is an AI-generated account; its stated age is fiction, so the flag above does
+  not apply to it as an account. It stays a primary for styling, light, and register. The
+  cull floor for OUR generated faces is unchanged.
+- Hair colour (dark vs blonde vs balayage), lighting type, and wardrobe are per-post,
+  per-account, per-persona VARIABLES, not register conclusions. Do not read §2's hair and
+  light observations as constraints. What this file locks is: face shape and fullness, the
+  age read, makeup weight and finish, skin finish, lip naturalness, and the candid
+  un-performed posture. Everything else is a knob the chosen persona sets later.
+
 ## 1. Per-account rows
 
 Short, factual, from the visible grid only.
