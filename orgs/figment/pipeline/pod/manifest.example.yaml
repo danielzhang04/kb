@@ -1,0 +1,64 @@
+# JSON-style inline values are valid in this dependency-free YAML subset.
+gpu:
+  type: "NVIDIA GeForce RTX 4090"
+  count: 1
+  cloud: "SECURE"
+
+# A conservative operator-supplied ceiling used before the first billable API call.
+# Re-check it against RunPod immediately before a live run.
+price_usd_per_hour: 0.75
+max_minutes: 20
+container_disk_gb: 50
+volume_gb: 20
+volume_mount_path: "/workspace"
+
+# Use either image or template_id. Official templates must already run sshd.
+image: "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"
+# template_id: "REPLACE_WITH_TEMPLATE_ID"
+# network_volume_id: "REPLACE_WITH_NETWORK_VOLUME_ID"
+
+comfyui:
+  root: "/workspace/ComfyUI"
+  port: 8188
+  start_command: "python main.py --listen 127.0.0.1 --port 8188"
+
+models:
+  - repo_id: "OWNER/PUBLIC_MODEL_REPO"
+    filename: "model.safetensors"
+    destination_dir: "/workspace/ComfyUI/models/checkpoints"
+
+custom_nodes:
+  - name: "example-node"
+    git_url: "https://github.com/OWNER/PUBLIC_CUSTOM_NODE.git"
+
+# This is ComfyUI API format, not the browser's UI/workflow format.
+workflow:
+  1:
+    class_type: "KSampler"
+    inputs:
+      seed: 1
+      positive: ["2", 0]
+  2:
+    class_type: "CLIPTextEncode"
+    inputs:
+      text: "placeholder prompt"
+  3:
+    class_type: "SaveImage"
+    inputs:
+      filename_prefix: "placeholder"
+      images: ["1", 0]
+
+jobs:
+  - seed: 100001
+    output_name: "arm-a-seed-100001"
+    substitutions:
+      - node_id: "2"
+        field: "text"
+        value: "an unambiguously adult woman, fully clothed, natural window-light portrait"
+  - seed: 200002
+    output_name: "arm-a-seed-200002"
+    substitutions:
+      - node_id: "2"
+        field: "text"
+        value: "an unambiguously adult woman, fully clothed, casual phone photo"
+
