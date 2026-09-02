@@ -206,3 +206,20 @@
   to the frontend in minutes. Keep a cookie jar + a tiny `ws` script in the kit.
 - Windows `scp` reads `C:\...` as a host named `C`; Git Bash's does not, and Python launched from Git
   Bash resolves Git's. Deploy scripts that shell out to `scp` must run from Git Bash on this machine.
+## 2026-09-02 (pm) — figment modern-base arc, orchestration lessons
+
+- **Background bash dispatches can be reaped mid-run even after prior ones survived 20+ min.**
+  Two codex workers died with their shells at ~4 min. Detached `Start-Process` + a Monitor on
+  the pending marker / `.out` footer is the only reliable shape for >5-min codex work.
+- **`--follow-up` loses `--cwd`** (already in memory; hit it again): a follow-up into a
+  worktree-rooted session is sandboxed to the main checkout and refuses to write. Fresh
+  dispatch with `--cwd` and a self-contained brief instead.
+- **Two opus passes on spend-controlling code paid for themselves.** Wave 1 found 8 money-leak
+  paths; wave 2 on the "fixed" commit found a deterministic bootstrap failure that would have
+  billed every pod for nothing, plus an empty-list-scan minting "verified". Never smoke-test
+  spend code on one review.
+- **Pytest basetemp under an ACL-locked worktree dir errors every test as setup ERROR**, not
+  failure — pass `--basetemp` into the scratchpad. Also add `pytest-of-*/` to .gitignore before
+  the first commit; I shipped temp dirs once.
+- **Verify worker test claims by rerunning myself**: the first fix wave's "30 passed" was true,
+  but only reproducible with the basetemp flag; the discrepancy would have looked like a lie.
