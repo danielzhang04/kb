@@ -46,6 +46,7 @@ import type {
   SessionRegistryPort,
   SessionSink,
 } from './contracts.ts';
+import { isSafeRelativeCwd } from './brokerProtocol.ts';
 import type { SessionPersistence } from './sessionPersistence.ts';
 import { PTY_OUTBOUND_HIGH_WATER_BYTES } from '../../shared/ptyProtocol.ts';
 import type {
@@ -200,7 +201,7 @@ export function decodeBrowserClientFrame(raw: string): BrowserClientFrame | null
       const { launcher, rootId, relativeCwd, cols, rows } = frame;
       if (!str(launcher) || !LAUNCHERS.includes(launcher as SessionLauncher)) return null;
       if (!str(rootId) || !ROOTS.includes(rootId as SafeRootId)) return null;
-      if (!str(relativeCwd) || Buffer.byteLength(relativeCwd, 'utf8') > 240) return null;
+      if (typeof relativeCwd !== 'string' || Buffer.byteLength(relativeCwd, 'utf8') > 240) return null;
       if (!geometry(cols, rows)) return null;
       return {
         type: 'create',
@@ -376,10 +377,16 @@ export async function handlePtyConnection(
   };
 
   const onCreate = async (frame: Extract<BrowserClientFrame, { type: 'create' }>): Promise<void> => {
+    // Normalize the legacy root spelling before applying the broker's canonical safety rule.
+    const relativeCwd = frame.relativeCwd === '.' ? '' : frame.relativeCwd;
+    if (!isSafeRelativeCwd(relativeCwd)) {
+      fail(frame.requestId, null, 'unsafe-cwd', 'relativeCwd is unsafe');
+      return;
+    }
     const created = await ctx.registry.create(principal, {
       launcher: frame.launcher,
       rootId: frame.rootId,
-      relativeCwd: frame.relativeCwd,
+      relativeCwd,
       cols: frame.cols,
       rows: frame.rows,
     });

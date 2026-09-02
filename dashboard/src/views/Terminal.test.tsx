@@ -186,7 +186,7 @@ describe('the empty state', () => {
     await waitFor(() => expect(sockets.length).toBe(1));
     await act(async () => { sockets[0].onopen?.(); });
     expect(sockets[0].frames()[0]).toMatchObject({
-      type: 'create', launcher: 'codex', rootId: 'repo', relativeCwd: '.',
+      type: 'create', launcher: 'codex', rootId: 'worktrees', relativeCwd: '',
     });
   });
 

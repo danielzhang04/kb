@@ -477,6 +477,53 @@ describe('LinuxBrokerServer', () => {
     expect(cycles.children).toHaveLength(71);
   });
 
+  it('refuses an unsafe cwd by request id and keeps serving the socket', async () => {
+    const logs: string[] = [];
+    const server = new LinuxBrokerServer({
+      epochId,
+      expectedClientUid: 1000,
+      expectedClientGid: 1000,
+      launcher: { launch: async () => new FakePty() },
+      enumerateLaunchers: async () => ['shell'],
+      makeSessionId: () => 'pty-0123456789abcdef0123456789abcdef',
+      now: () => '2026-09-02T00:00:00.000Z',
+      log: (message) => logs.push(message),
+    });
+    const [clientSocket, serverSocket] = pair();
+    const frames: BrokerServerFrame[] = [];
+    const decoder = new BrokerFrameDecoder(decodeBrokerServerFrame);
+    clientSocket.on('data', (chunk: Buffer) => frames.push(...decoder.push(chunk)));
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 99 });
+    clientSocket.write(encodeBrokerFrame({
+      type: 'hello', requestId: 'req-11111111111111111111111111111111', sessionId: null,
+      protocol: 'kb-shell-broker/v1', dashboardEpochId: epochId,
+    }));
+    await tick();
+    clientSocket.write(Buffer.concat([
+      encodeBrokerFrame({
+        type: 'create', requestId: 'req-22222222222222222222222222222222', sessionId: null,
+        epochId, operationKey,
+        recipe: { launcher: 'shell', mode: 'interactive', model: null,
+          toolPolicyId: 'shell-default', sandbox: 'interactive' },
+        rootId: 'repo', relativeCwd: '..', cols: 80, rows: 24,
+      }),
+      encodeBrokerFrame({
+        type: 'launchers', requestId: 'req-33333333333333333333333333333333',
+        sessionId: null, epochId,
+      }),
+    ]));
+    await tick();
+
+    expect(frames.at(-2)).toMatchObject({
+      type: 'error', requestId: 'req-22222222222222222222222222222222', code: 'unsafe-cwd',
+    });
+    expect(serverSocket.destroyed).toBe(false);
+    expect(logs).toEqual(['broker: refused request unsafe-cwd']);
+    expect(frames.at(-1)).toMatchObject({
+      type: 'launchers', requestId: 'req-33333333333333333333333333333333', launchers: ['shell'],
+    });
+  });
+
   it('bounds all outbound frames and detaches a client that never drains', async () => {
     const child = new FakePty();
     const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,

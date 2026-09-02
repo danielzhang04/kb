@@ -107,7 +107,8 @@ export function Terminal({
 
   const [model, setModel] = useState<SessionWorkspaceModel>(() => createSessionWorkspaceModel(capability));
   const [panes, setPanes] = useState<PaneEntry[]>([]);
-  const [rootId, setRootId] = useState<SafeRootId>('repo');
+  // The VM rejects repo: /var/lib/kb/ops is kb-dashboard-owned but the validator wants root; tracked separately.
+  const [rootId, setRootId] = useState<SafeRootId>('worktrees');
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
@@ -216,7 +217,7 @@ export function Terminal({
     setNotice(null);
     setPanes((current) => [...current, {
       paneId,
-      target: { mode: 'create', launcher, rootId, relativeCwd: '.' },
+      target: { mode: 'create', launcher, rootId, relativeCwd: '' },
       sessionId: null,
     }]);
   }, [rootId]);

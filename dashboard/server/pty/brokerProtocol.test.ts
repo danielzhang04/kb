@@ -14,6 +14,7 @@ import {
   decodeBrokerClientFrame,
   decodeBrokerServerFrame,
   encodeBrokerFrame,
+  isSafeRelativeCwd,
 } from './brokerProtocol.ts';
 
 const epochId = 'epoch-0123456789abcdef0123456789abcdef';
@@ -77,6 +78,19 @@ function refusalOf(call: () => unknown): BrokerProtocolError {
 }
 
 describe('brokerProtocol', () => {
+  it('applies one canonical relative cwd safety rule', () => {
+    const cases: Array<[string, boolean]> = [
+      ['', true],
+      ['a/b', true],
+      ['.', false],
+      ['..', false],
+      ['a//b', false],
+      ['/x', false],
+      ['C:x', false],
+    ];
+    for (const [value, safe] of cases) expect(isSafeRelativeCwd(value), value).toBe(safe);
+  });
+
   it('round-trips every shared broker frame through the strict length-prefixed wire', () => {
     for (const frame of validBrokerClientFrames) {
       expect(decodeBrokerClientFrame(frame)).toEqual(frame);

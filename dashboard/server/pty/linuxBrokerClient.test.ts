@@ -2,8 +2,8 @@ import { Duplex } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
 import type { PtyCapabilityProbe, SessionHost, SessionSink } from './contracts.ts';
-import { encodeBrokerFrame } from './brokerProtocol.ts';
-import { LinuxBrokerClient } from './linuxBrokerClient.ts';
+import { BrokerFrameDecoder, decodeBrokerClientFrame, encodeBrokerFrame } from './brokerProtocol.ts';
+import { LinuxBrokerClient, type LinuxBrokerClientOptions } from './linuxBrokerClient.ts';
 import { LinuxBrokerServer, type BrokerPty, type LinuxBrokerServerOptions } from './linuxBrokerServer.ts';
 import type { BrokerLaunchSpec } from './fdPinnedPaths.ts';
 import { createSessionRecordRegistry } from './sessionRecord.ts';
@@ -12,9 +12,12 @@ import type { SessionPersistence } from './sessionPersistence.ts';
 
 class MemoryDuplex extends Duplex {
   peer: MemoryDuplex | null = null;
+  readonly writes: Buffer[] = [];
   _read(): void {}
   _write(chunk: Buffer, _encoding: BufferEncoding, done: (error?: Error | null) => void): void {
-    this.peer?.push(Buffer.from(chunk)); done();
+    const copied = Buffer.from(chunk);
+    this.writes.push(copied);
+    this.peer?.push(copied); done();
   }
   _final(done: (error?: Error | null) => void): void { this.peer?.push(null); done(); }
   /**
@@ -42,11 +45,116 @@ class FakePty implements BrokerPty {
   onExit(cb: (c: number | null, s: number | null) => void): void { this.onExitListener = cb; }
 }
 
+class ExitsOnKillPty extends FakePty {
+  override kill(): void { this.onExitListener(null, null); }
+}
+
 const epochId = 'epoch-0123456789abcdef0123456789abcdef';
 const sessionId = 'pty-0123456789abcdef0123456789abcdef';
 const operationKey = 'op-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 // Every host create names its browser principal (contracts.ts:92); the broker never sees it.
 const principal = { operator: 'daniel', browserSessionRef: 'bs-0123456789abcdef' };
+
+type DisconnectInfo = Parameters<NonNullable<LinuxBrokerClientOptions['onDisconnect']>>[0];
+
+function requestFor(index: number) {
+  return {
+    operationKey: `op-${index.toString(16).padStart(64, '0')}`,
+    principal,
+    recipe: { launcher: 'shell' as const, mode: 'interactive' as const, model: null,
+      toolPolicyId: 'shell-default' as const, sandbox: 'interactive' as const },
+    rootId: 'repo' as const,
+    relativeCwd: '',
+    cols: 80,
+    rows: 24,
+  };
+}
+
+function openSink(exits: string[] = []): SessionSink {
+  return { data: () => {}, exit: (exit) => exits.push(exit.reason), closed: () => false };
+}
+
+function reconnectingHarness(onDisconnect?: (info: DisconnectInfo) => void) {
+  const clientSockets: MemoryDuplex[] = [];
+  const serverSockets: MemoryDuplex[] = [];
+  let request = 0;
+  let session = 0;
+  let connectCalls = 0;
+  const client = new LinuxBrokerClient({
+    connect: async () => {
+      connectCalls += 1;
+      const [clientSocket, serverSocket] = pair();
+      clientSockets.push(clientSocket);
+      serverSockets.push(serverSocket);
+      const server = new LinuxBrokerServer({
+        epochId,
+        expectedClientUid: 1000,
+        expectedClientGid: 1000,
+        launcher: { launch: async () => new FakePty() },
+        enumerateLaunchers: async () => ['shell'],
+        makeSessionId: () => `pty-${(++session).toString(16).padStart(32, '0')}`,
+        now: () => '2026-09-02T00:00:00.000Z',
+      });
+      server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+      return clientSocket;
+    },
+    dashboardEpochId: epochId,
+    makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}`,
+    ...(onDisconnect === undefined ? {} : { onDisconnect }),
+  });
+  return { client, clientSockets, serverSockets, connectCalls: () => connectCalls };
+}
+
+function persistentBrokerHarness() {
+  const clientSockets: MemoryDuplex[] = [];
+  const serverSockets: MemoryDuplex[] = [];
+  const closeAcks: string[] = [];
+  let request = 0;
+  let session = 0;
+  const server = new LinuxBrokerServer({
+    epochId,
+    expectedClientUid: 1000,
+    expectedClientGid: 1000,
+    launcher: { launch: async () => new ExitsOnKillPty() },
+    enumerateLaunchers: async () => ['shell'],
+    makeSessionId: () => `pty-${(++session).toString(16).padStart(32, '0')}`,
+    now: () => '2026-09-02T00:00:00.000Z',
+    log: () => {},
+  });
+  server.onFrame((frame) => {
+    if (frame.type === 'ack' && frame.action === 'close') closeAcks.push(frame.sessionId);
+  });
+  const connect = async (): Promise<MemoryDuplex> => {
+    const [clientSocket, serverSocket] = pair();
+    clientSockets.push(clientSocket);
+    serverSockets.push(serverSocket);
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+    return clientSocket;
+  };
+  const client = new LinuxBrokerClient({
+    connect,
+    dashboardEpochId: epochId,
+    makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}`,
+  });
+  const inspectSessionIds = async (): Promise<string[]> => {
+    const inspector = new LinuxBrokerClient({
+      connect,
+      dashboardEpochId: epochId,
+      makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}`,
+    });
+    const listed = await inspector.listEpoch();
+    inspector.disconnect();
+    if (!listed.ok) throw new Error('broker inspection failed');
+    return listed.value.sessionIds;
+  };
+  return { client, clientSockets, serverSockets, closeAcks, inspectSessionIds };
+}
+
+function helloEpochs(socket: MemoryDuplex): string[] {
+  const decoder = new BrokerFrameDecoder(decodeBrokerClientFrame);
+  return socket.writes.flatMap((chunk) => decoder.push(chunk))
+    .flatMap((frame) => frame.type === 'hello' ? [frame.dashboardEpochId] : []);
+}
 
 function memoryPersistence(): SessionPersistence {
   let document = createEmptyPtySessionsDocument();
@@ -74,6 +182,156 @@ function memoryPersistence(): SessionPersistence {
 }
 
 describe('LinuxBrokerClient', () => {
+  it('reconnects lazily after a socket close and repeats hello before create', async () => {
+    const disconnected: DisconnectInfo[] = [];
+    const harness = reconnectingHarness((info) => disconnected.push(info));
+    expect((await harness.client.probe()).available).toBe(true);
+    harness.serverSockets[0]!.destroy();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const launch = harness.client.create(requestFor(1), openSink());
+    expect(await launch.receipt).toMatchObject({ ok: true });
+    expect(harness.connectCalls()).toBe(2);
+    expect(harness.clientSockets.map(helloEpochs)).toEqual([[epochId], [epochId]]);
+    expect(disconnected).toEqual([{ cause: 'socket-close', error: null, lastErrorFrame: null }]);
+  });
+
+  it('reconnects lazily after a socket error', async () => {
+    const disconnected: DisconnectInfo[] = [];
+    const harness = reconnectingHarness((info) => disconnected.push(info));
+    expect((await harness.client.probe()).available).toBe(true);
+    harness.clientSockets[0]!.destroy(new Error('simulated socket reset'));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const launch = harness.client.create(requestFor(2), openSink());
+    expect(await launch.receipt).toMatchObject({ ok: true });
+    expect(harness.connectCalls()).toBe(2);
+    expect(harness.clientSockets.map(helloEpochs)).toEqual([[epochId], [epochId]]);
+    expect(disconnected).toEqual([{
+      cause: 'socket-error', error: 'simulated socket reset', lastErrorFrame: null,
+    }]);
+  });
+
+  it('keeps explicit disconnect terminal', async () => {
+    const disconnected: DisconnectInfo[] = [];
+    const harness = reconnectingHarness((info) => disconnected.push(info));
+    expect((await harness.client.probe()).available).toBe(true);
+    harness.client.disconnect();
+    const launch = harness.client.create(requestFor(3), openSink());
+    expect(await launch.receipt).toEqual({ ok: false, refusal: 'unavailable', detail: null });
+    expect(harness.connectCalls()).toBe(1);
+    expect(disconnected).toEqual([{ cause: 'explicit', error: null, lastErrorFrame: null }]);
+  });
+
+  it('rejects an in-flight request and abandons a known session once before reconnecting', async () => {
+    const harness = reconnectingHarness();
+    const exits: string[] = [];
+    const first = harness.client.create(requestFor(4), openSink(exits));
+    const receipt = await first.receipt;
+    expect(receipt).toMatchObject({ ok: true });
+    if (!receipt.ok) throw new Error('expected the first create to succeed');
+    harness.serverSockets[0]!.pause();
+    const inFlight = harness.client.attach(receipt.value.sessionId, openSink());
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    harness.serverSockets[0]!.destroy();
+    expect(await inFlight).toEqual({ ok: false, refusal: 'unavailable', detail: null });
+    expect((await first.exit).reason).toBe('abandoned');
+    expect(exits).toEqual(['abandoned']);
+    const second = harness.client.create(requestFor(5), openSink());
+    expect(await second.receipt).toMatchObject({ ok: true });
+    expect(harness.connectCalls()).toBe(2);
+    expect(exits).toEqual(['abandoned']);
+  });
+
+  it('reconciles a locally abandoned session against a broker that survives the drop', async () => {
+    const harness = persistentBrokerHarness();
+    const first = harness.client.create(requestFor(6), openSink());
+    const firstReceipt = await first.receipt;
+    expect(firstReceipt).toMatchObject({ ok: true });
+    if (!firstReceipt.ok) throw new Error('expected the first create to succeed');
+
+    harness.serverSockets[0]!.destroy();
+    expect((await first.exit).reason).toBe('abandoned');
+    expect((await harness.client.probe()).available).toBe(true);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(harness.closeAcks).toEqual([firstReceipt.value.sessionId]);
+    expect(await harness.inspectSessionIds()).toEqual([]);
+    expect((await harness.client.create(requestFor(7), openSink()).receipt).ok).toBe(true);
+  });
+
+  it('destroys every socket when hello is refused per request', async () => {
+    const sockets: MemoryDuplex[] = [];
+    let request = 0;
+    const client = new LinuxBrokerClient({
+      connect: async () => {
+        const [clientSocket, serverSocket] = pair();
+        sockets.push(clientSocket);
+        const decoder = new BrokerFrameDecoder(decodeBrokerClientFrame);
+        serverSocket.on('data', (chunk: Buffer) => {
+          for (const frame of decoder.push(chunk)) {
+            serverSocket.write(encodeBrokerFrame({
+              type: 'error', requestId: frame.requestId, sessionId: null, epochId,
+              code: 'invalid-request', detail: 'protocol is invalid',
+            }));
+          }
+        });
+        return clientSocket;
+      },
+      dashboardEpochId: epochId,
+      makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}`,
+      requestTimeoutMs: 200,
+    });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await client.probe()).available).toBe(false);
+    }
+    expect(sockets).toHaveLength(5);
+    expect(sockets.filter((socket) => !socket.destroyed)).toHaveLength(0);
+  });
+
+  it('closes on an invalid hello protocol but recovers an identified malformed create', async () => {
+    const helloPair = pair();
+    const helloLogs: string[] = [];
+    const helloServer = new LinuxBrokerServer({
+      epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: { launch: async () => new FakePty() },
+      makeSessionId: () => sessionId, now: () => '2026-09-02T00:00:00.000Z',
+      log: (message) => helloLogs.push(message),
+    });
+    helloServer.accept(helloPair[1], { uid: 1000, gid: 1000, pid: 4 });
+    helloPair[0].write(encodeBrokerFrame({
+      type: 'hello', requestId: 'req-0123456789abcdef0123456789abcdef', sessionId: null,
+      protocol: 'nope', dashboardEpochId: epochId,
+    } as never));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(helloPair[0].destroyed).toBe(true);
+    expect(helloPair[1].destroyed).toBe(true);
+    expect(helloLogs).toContain('broker: closed peer connection: protocol-error:invalid-request');
+
+    const harness = reconnectingHarness();
+    const malformed = harness.client.create({ ...requestFor(8), operationKey: 'nope' }, openSink());
+    expect(await malformed.receipt).toMatchObject({ ok: false, refusal: 'invalid-request' });
+    expect(harness.clientSockets[0]!.destroyed).toBe(false);
+    expect((await harness.client.probe()).available).toBe(true);
+    expect(harness.connectCalls()).toBe(1);
+  });
+
+  it('reports the last broker error frame when the socket then closes', async () => {
+    const disconnected: DisconnectInfo[] = [];
+    const harness = reconnectingHarness((info) => disconnected.push(info));
+    expect((await harness.client.probe()).available).toBe(true);
+    harness.serverSockets[0]!.write(encodeBrokerFrame({
+      type: 'error', requestId: null, sessionId: null, epochId: null,
+      code: 'invalid-request', detail: 'fixture refusal',
+    }));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    harness.serverSockets[0]!.destroy();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(disconnected).toEqual([{
+      cause: 'socket-close', error: null,
+      lastErrorFrame: { code: 'invalid-request', detail: 'fixture refusal' },
+    }]);
+  });
+
   it('implements SessionHost over an in-memory duplex and drains the ready epoch', async () => {
     const child = new FakePty();
     const [clientSocket, serverSocket] = pair();

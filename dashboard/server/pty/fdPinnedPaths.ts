@@ -17,7 +17,7 @@ import {
   WORKFLOW_PERMISSION_MODE,
 } from '../control/workflowProfiles.ts';
 import type { LaunchRecipe, SafeRootId, SessionLauncher, SessionSize } from '../../shared/ptyProtocol.ts';
-import { decodeLaunchRecipe } from './brokerProtocol.ts';
+import { decodeLaunchRecipe, isSafeRelativeCwd } from './brokerProtocol.ts';
 
 export const LINUX_ROOTS = {
   repo: '/var/lib/kb/ops',
@@ -239,17 +239,7 @@ export function resolveLinuxRoot(rootId: SafeRootId): string {
 }
 
 export function validateRelativeCwd(value: string): string {
-  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > 240
-      || value.includes('\\') || value.startsWith('/') || /^[A-Za-z]:/.test(value) || value.startsWith('//')
-      || /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/u.test(value)) {
-    throw new FdPinnedPathError('unsafe relative cwd');
-  }
-  if (value === '') return value;
-  const parts = value.split('/');
-  if (parts.some((part) => part === '' || part === '.' || part === '..' || /[. ]$/.test(part)
-      || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(part))) {
-    throw new FdPinnedPathError('unsafe relative cwd');
-  }
+  if (!isSafeRelativeCwd(value)) throw new FdPinnedPathError('unsafe relative cwd');
   return value;
 }
 
