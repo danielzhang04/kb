@@ -7,6 +7,7 @@ model: claude-opus-5
 default-profile: manager:claude:claude-opus-5
 allowed-profiles: [manager:claude:claude-opus-5]
 projects: []
+group: system
 runner-bound: false
 description: Bounded, draft-only maintainer that turns operational evidence into human-reviewable agent improvements.
 tools: []
