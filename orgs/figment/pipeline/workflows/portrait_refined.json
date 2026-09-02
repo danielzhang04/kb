@@ -8,7 +8,7 @@
   "2": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "photo of a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+      "text": "a 22 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm-toned skin, visible fine pores, smooth fresh clean skin, subtle skin texture, matte-warm skin, full face of makeup, smooth even foundation with visible skin pores underneath, defined filled eyebrows, winged eyeliner, mascara, warm blush and soft contour, glossy soft-matte nude-pink lip, no red lipstick, balayage highlights over dark brown hair, candid phone photograph, amateur photography, unedited, film grain, adult woman in her early twenties, (close-up portrait, bust shot, shoulders up, shot from a normal comfortable distance not extreme macro:1.3), (east asian american heritage:0.8), (symmetrical balanced facial features, smooth soft jawline, high smooth cheekbones:1.15)",
       "clip": [
         "1",
         1
@@ -18,7 +18,7 @@
   "3": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "airbrushed, plastic skin, glossy skin, waxy skin, doll-like, mannequin, 3d render, cgi, illustration, painting, anime, text, watermark, logo, signature, low quality, blurry, deformed, extra fingers, fused fingers, mutated hands, bad anatomy, missing limbs, extra limbs, twisted spine, warped arm, child, childlike, teenager, young, cropped body, close up, out of frame feet, headshot",
+      "text": "airbrushed, plastic skin, glossy skin, waxy skin, doll-like, mannequin, 3d render, cgi, illustration, painting, anime, text, watermark, logo, signature, low quality, blurry, deformed, extra fingers, fused fingers, mutated hands, bad anatomy, missing limbs, extra limbs, twisted spine, warped arm, child, childlike, teenager, young, cropped body, close up, out of frame feet, headshot, editorial, sharp cheekbones, angular jaw, gaunt face, asymmetrical face, lazy eye, cross-eyed, uneven eyes",
       "clip": [
         "1",
         1

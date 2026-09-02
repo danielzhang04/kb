@@ -241,3 +241,49 @@ Section 7).
   rather than given a dedicated grid — it did not clearly manifest in the final proof
   portrait's lighting; worth a small dedicated 3-seed check if the balayage marker matters
   for a specific persona.
+
+---
+
+## Defect-fix round (2026-09-02) — recovered from disk after agent crash
+
+The agent fixing these crashed on a network error while writing up findings, so this
+section was reconstructed by the boss session from the workflow files and proof JSONs.
+Settings below are verified from disk; the agent's own reasoning is lost.
+
+### FIXED: full-body face rendering (was the blocking defect)
+
+`proof_fullbody.png` in `calibration-proof/` had a mangled face; `calibration-proof-v2/`
+renders it cleanly at the same framing. Verified working FaceDetailer config now in
+`workflows/fullbody_refined.json`:
+
+- detector `bbox/face_yolov8m.pt`
+- `guide_size` 768, `guide_size_for` true, `max_size` 1024
+- `denoise` 0.35 — low enough to refine without drifting facial geometry
+- `bbox_crop_factor` 3.0, `bbox_dilation` 10, `feather` 8
+- `force_inpaint` true, `noise_mask` true, `bbox_threshold` 0.5
+- 20 steps, cfg 6.0, dpmpp_2m/karras
+
+The likely operative change is the crop factor plus `force_inpaint` — a small face at
+full-body framing needs enough surrounding context to re-render coherently, and must be
+forced rather than skipped when detection confidence is marginal.
+
+### FIXED: apparent age and squashed proportions (full-body)
+
+Styling and wardrobe did the work, as predicted — fitted black tank, blue jeans, white
+sneakers, apartment hallway reads early-twenties casual, where the prior cream wide-leg
+trousers + dark sweater in a hotel-style bedroom read 30-something corporate. Proportions
+in v2 are natural (leg length correct, no vertical compression).
+
+### STILL OPEN
+
+1. **Body shape.** v2 full-body is straight-slim with no waist-hip contrast. The
+   slim-thick target remains unmet despite fitted garments, which the earlier study said
+   were the primary curve lever. Needs its own investigation — garment fit alone is not
+   sufficient.
+2. **Portrait regressed on age.** `calibration-proof-v2/proof_portrait.png` reads late
+   twenties and editorial/sophisticated (pearl earrings, styled bob), older than the
+   v1 proof and well off the early-twenties target. Portrait and full-body prompts have
+   diverged — they are no longer producing the same register, or the same woman.
+3. **Wardrobe colour fidelity** — a specified garment colour still renders wrong on some
+   seeds (`proof_fullbody_seedA_colorfidelity_miss.png` retained as the example).
+4. Skin Realism LoRA still untested — CivitAI login-gated, needs Daniel.
