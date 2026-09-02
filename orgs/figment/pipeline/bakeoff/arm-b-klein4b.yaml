@@ -14,7 +14,7 @@
     "root": "/workspace/ComfyUI",
     "git_ref": "v0.20.1",
     "port": 8188,
-    "start_command": "python main.py --listen 127.0.0.1 --port 8188"
+    "start_command": "python main.py"
   },
   "readiness_timeout_seconds": 1200,
   "job_timeout_seconds": 900,

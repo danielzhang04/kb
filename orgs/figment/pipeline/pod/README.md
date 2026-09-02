@@ -8,14 +8,13 @@ billable compute.
 ## Requirements and credential boundary
 
 - Python 3.12, `requests` for live commands, and `pytest` for tests.
-- OpenSSH `ssh` and `scp` on `PATH` for a live run.
-- A public SSH key already configured in RunPod. The harness never reads a private key.
 - `RUNPOD_API_KEY` in the harness process environment for live commands.
 
-The API key is read once into a `requests.Session` authorization header. Log records, command
-errors, the last-resort `sys.excepthook`, `run.json`, and SSH/SCP diagnostics are redacted.
-Every SSH, SCP, and tunnel child receives an explicit environment with `RUNPOD_API_KEY`
-removed, so SSH client configuration cannot forward it.
+The API key is read once into the RunPod REST `requests.Session` authorization header. It is
+never copied into the Pod payload, bootstrap environment, bootstrap script, output files, or
+the separate ComfyUI proxy session. Log records, REST errors, the last-resort
+`sys.excepthook`, and `run.json` are redacted. The public proxy client rejects any session
+that carries an `Authorization` header.
 
 Install the two Python packages if needed:
 
@@ -54,13 +53,31 @@ existing Git checkout, or clones that ref when the root is absent, then installs
 explicitly sets `comfyui.replace_non_git_root: true`; only that opt-in permits removal and
 replacement of the nested root. Existing non-empty model files are reused. A failed ComfyUI
 install, dependency install, model download, or start is fatal and short-circuits later
-bootstrap steps, so the enclosing lease immediately terminates and verifies the Pod.
+bootstrap steps. `comfyui.start_command` is the launch executable only; the harness supplies
+`--listen 0.0.0.0 --port 8188 --output-directory /workspace/output` and rejects manifests
+that try to override those transport/output arguments.
+
+The create payload carries the base64-encoded script in the string-valued
+`env.FIGMENT_BOOTSTRAP_B64` field. `dockerEntrypoint: ["bash", "-lc"]` and
+`dockerStartCmd` decode it to `/workspace/bootstrap.sh` and execute it as the container start
+command. RunPod's official [create-Pod reference](https://docs.runpod.io/api-reference/pods/POST/pods)
+and live [OpenAPI schema](https://rest.runpod.io/v1/openapi.json) define
+`dockerEntrypoint` and `dockerStartCmd` as string arrays, `env` as an object, and `ports` as
+`[port]/[protocol]` strings.
+
+Every bootstrap command appends a `STEP <label> rc=<code>` line to
+`/workspace/output/_bootstrap.log`. A fatal step writes its reason to
+`/workspace/output/_bootstrap.failed`, starts a temporary diagnostics endpoint when Python
+is available, keeps the container alive for 60 seconds so the harness can fetch both files,
+then exits nonzero. After successful health, the bootstrap process waits on ComfyUI so the
+container remains alive. The enclosing lease terminates and verifies the Pod on any detected
+failure.
 
 ComfyUI history entries with `completed: false` are treated as work in progress. Only
 `status_str: error`, timeout, or a completed job with zero output images is a job failure.
-Preview and temporary images are ignored. Before any SCP, the returned output-image count
-must equal the job's `expected_images`; after SCP, every file must exist and have non-zero
-size. Failed SCP stderr is logged through the redactor.
+Preview and temporary images are ignored. Before any download, the returned output-image
+count must equal the job's `expected_images`. Each image is streamed from `/view` to a local
+temporary file, atomically moved into place, and verified to exist with non-zero size.
 
 ## Spend ceilings
 
@@ -124,38 +141,40 @@ py -3 runpod_run.py terminate --pod-id POD_ID
 type placeholders, and status values. It suppresses IDs, IPs, ports, prices, names, and other
 values so an operator can compare a live account's response shape without creating a Pod.
 
-## Readiness schema and diagnostics
+## Readiness and bootstrap diagnostics
 
-The current REST [get-Pod](https://docs.runpod.io/api-reference/pods/GET/pods/podId) and
-[list-Pods](https://docs.runpod.io/api-reference/pods/GET/pods) schemas expose
-`desiredStatus`, `lastStatusChange`, top-level `publicIp`, top-level `portMappings` (for
-example `{"22": 10341}`), `machineId`, and optional `machine`. They do not document a
-separate current status or a `runtime` object. Both endpoints accept `includeMachine=true`;
-`includeNetworkVolume=true` is only needed for attached-volume details, so the harness does
-not request it. The harness requests machine data on both GET paths.
+The current REST [get-Pod](https://docs.runpod.io/api-reference/pods/GET/pods/podId) schema
+exposes `desiredStatus`, `lastStatusChange`, `machineId`, and optional `machine`. Readiness
+requires both `desiredStatus == "RUNNING"` and an HTTP 200 from proxy
+`GET /system_stats`; a RUNNING control-plane state alone is not sufficient. The official
+[port-exposure guide](https://docs.runpod.io/pods/configuration/expose-ports) documents the
+`https://[POD_ID]-[INTERNAL_PORT].proxy.runpod.net` URL, warns that a RUNNING Pod's service
+may still be starting, and requires the service to bind `0.0.0.0`.
 
-For compatibility with the separately documented RunPod
-[GraphQL Pod schema](https://docs.runpod.io/sdks/graphql/manage-pods), readiness also accepts
-`runtime.ports[]` entries containing `ip`, `privatePort`, `publicPort`, and `type`; the SSH
-entry must be TCP private port 22. A Pod is ready only when `desiredStatus == "RUNNING"` and
-one complete SSH mapping exists. The ready log line says `schema=rest` or `schema=runtime`.
-
-Every readiness poll logs one line with elapsed time, desired/current/runtime status when
-present, `lastStatusChange`, public-IP and SSH-mapping presence, machine GPU/host fields when
-present, and the detected response shape. On timeout it logs the last full Pod object through
-the credential redactor, stores the same redacted object in `run.json` as `last_pod_state`,
-and raises a classified message such as image pull in progress, never left CREATED/PENDING,
-or RUNNING without a public IP/port mapping.
+Every readiness poll logs elapsed time, desired/current/runtime status when present,
+`lastStatusChange`, the proxy status code (or sanitized exception type), and machine GPU/host
+fields when present. Every fifth poll also requests
+`/view?filename=_bootstrap.log&type=output` and logs the last 20 lines. Each RUNNING poll
+checks `_bootstrap.failed`; when present, its reason becomes the `HarnessError`, after which
+the lease terminates the Pod and verifies absence. On timeout the harness logs the last full
+Pod object through the credential redactor, stores the same redacted object in `run.json` as
+`last_pod_state`, and classifies image-pull, pending, or proxy-not-ready state.
 
 ## Network and output layout
 
-Only `22/tcp` is exposed. Bootstrap uses `ssh -p`, downloads use `scp -P`, and ComfyUI stays
-on the Pod loopback interface behind `ssh -L`. Tunnel stderr is continuously drained at
-OpenSSH `LogLevel=ERROR`, and both tunnel startup failure paths kill or reap the child.
+Only `8188/http` is exposed. Jobs use the same proxy origin for `POST /prompt`,
+`GET /history/{prompt_id}`, and streaming `GET /view` downloads. The RunPod
+[port-exposure guide](https://docs.runpod.io/pods/configuration/expose-ports) says HTTP proxy
+services are publicly accessible and advises applications to implement their own
+authentication. Neither that guide nor the create-Pod/OpenAPI schema documents a way to
+require the account API key on proxy requests, so this ComfyUI endpoint is unauthenticated:
+anyone who knows the Pod ID can reach it for the Pod's lifetime. The harness mitigates that
+exposure with short wall-clock limits and terminate-plus-absence-verification on every exit.
+It deliberately sends no `RUNPOD_API_KEY` header to the proxy.
 
 The output directory contains `run.json`, verified images, and `manifest.json` for the figment
-QA tools. SSH host-key state is isolated under `<out>/_harness/.runpod_known_hosts`, outside
-the flat deliverable image set.
+QA tools. Bootstrap diagnostics remain in the Pod's `/workspace/output` directory and are
+available through ComfyUI `/view` while the Pod is alive.
 
 ## Exit-path guarantee
 
@@ -193,4 +212,5 @@ py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeli
 ```
 
 The test suite covers all reviewed lifecycle, spend, watchdog, signal, credential, bootstrap,
-ComfyUI history, image-count, subprocess, ledger, YAML, and SSH flag regressions.
+proxy readiness/diagnostics, ComfyUI history, streamed download, image-count, ledger, and YAML
+regressions.

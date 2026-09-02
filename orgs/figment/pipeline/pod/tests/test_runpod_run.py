@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import io
+import base64
 import json
 import logging
 import os
 import signal
-import subprocess
 import threading
 import time
 import traceback
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,14 +26,77 @@ sys.path.insert(0, str(POD_DIR))
 import runpod_run as rr  # noqa: E402
 
 
+def test_P1h_create_payload_embeds_bootstrap_in_start_command_without_api_key(monkeypatch):
+    secret = "ambient-runpod-key-must-not-enter-payload"
+    monkeypatch.setenv("RUNPOD_API_KEY", secret)
+
+    payload = rr.create_payload(manifest())
+    serialized = json.dumps(payload)
+
+    assert payload["ports"] == ["8188/http"]
+    assert payload["dockerEntrypoint"] == ["bash", "-lc"]
+    assert "FIGMENT_BOOTSTRAP_B64" in payload["env"]
+    script = base64.b64decode(payload["env"]["FIGMENT_BOOTSTRAP_B64"]).decode()
+    assert "--listen 0.0.0.0 --port 8188" in script
+    assert "--output-directory /workspace/output" in script
+    assert "/workspace/output/_bootstrap.log" in script
+    assert "/workspace/output/_bootstrap.failed" in script
+    assert secret not in serialized
+
+
+def test_P1h_wait_ready_requires_proxy_system_stats_200_and_logs_bootstrap_tail():
+    class OnePodAPI:
+        def get_pod(self, _pod_id):
+            return ready_pod()
+
+    class Proxy:
+        def __init__(self):
+            self.statuses = iter([502, 200])
+
+        def health_status(self):
+            return next(self.statuses)
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 404, ""
+            return 200, "STEP model-1 rc=0\nSTEP comfy-start rc=0\n"
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    logger, stream = logger_and_stream()
+    ready = rr.wait_ready(
+        OnePodAPI(), "pod-123", 1, QuietWatchdog(), logger, Proxy(),
+        sleep=lambda _seconds: None, bootstrap_log_every_polls=1,
+    )
+
+    assert ready == ready_pod()
+    logs = stream.getvalue()
+    assert "proxyStatus=502" in logs
+    assert "proxyStatus=200" in logs
+    assert "bootstrap log tail: STEP model-1 rc=0" in logs
+
+
 class StubResponse:
     def __init__(self, status_code, data=None):
         self.status_code = status_code
         self._data = data
-        self.content = b"" if data is None else json.dumps(data).encode()
+        if data is None:
+            self.content = b""
+        elif isinstance(data, bytes):
+            self.content = data
+        elif isinstance(data, str):
+            self.content = data.encode()
+        else:
+            self.content = json.dumps(data).encode()
 
     def json(self):
         return self._data
+
+    def iter_content(self, chunk_size=8192):
+        for offset in range(0, len(self.content), chunk_size):
+            yield self.content[offset:offset + chunk_size]
 
 
 class StubSession:
@@ -54,24 +116,6 @@ class StubSession:
         pass
 
 
-class FakeRemote:
-    def __init__(self, *_args):
-        self.bootstrapped = False
-
-    def bootstrap(self, script, _timeout):
-        assert "set -e" not in script
-        assert "STEP %s rc=%s" in script
-        assert "https://github.com/comfyanonymous/ComfyUI" in script
-        assert "v0.20.1" in script
-        assert script.index("python-present") < script.index("comfy-install")
-        assert script.index("comfy-install") < script.index("model-1") if "model-1" in script else True
-        self.bootstrapped = True
-
-    def copy(self, _remote_path, local_path, _timeout):
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        local_path.write_bytes(b"not-empty")
-
-
 class FakeComfy:
     def __init__(self, _url=""):
         self.workflow = None
@@ -84,6 +128,20 @@ class FakeComfy:
         assert prompt_id == "prompt-1"
         watchdog.check()
         return [{"filename": "remote.png", "subfolder": "", "type": "output"}]
+
+    def health_status(self):
+        return 200
+
+    def fetch_artifact(self, _filename):
+        return 404, ""
+
+    def download_output(self, image, local_path, _timeout):
+        assert rr.view_params(image)["type"] == "output"
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(b"not-empty")
+
+    def close(self):
+        pass
 
 
 class BoomComfy(FakeComfy):
@@ -121,31 +179,7 @@ def ready_pod(name="figment-test"):
         "id": "pod-123",
         "name": name,
         "desiredStatus": "RUNNING",
-        "publicIp": "127.0.0.1",
-        "portMappings": {"22": 2222},
-        "adjustedCostPerHr": 0.50,
-    }
-
-
-def runtime_ready_pod(name="figment-test"):
-    return {
-        "id": "pod-123",
-        "name": name,
-        "desiredStatus": "RUNNING",
-        "currentStatus": "RUNNING",
-        "lastStatusChange": "Container started",
-        "runtime": {
-            "status": "RUNNING",
-            "ports": [{
-                "ip": "127.0.0.2",
-                "isIpPublic": True,
-                "privatePort": 22,
-                "publicPort": 2223,
-                "type": "tcp",
-            }],
-        },
-        "machineId": "machine-123",
-        "machine": {"gpuDisplayName": "RTX 4090", "podHostId": "host-123"},
+        "ports": ["8188/http"],
         "adjustedCostPerHr": 0.50,
     }
 
@@ -160,7 +194,7 @@ def manifest():
             "root": "/workspace/ComfyUI",
             "git_ref": "v0.20.1",
             "port": 8188,
-            "start_command": "python main.py --listen 127.0.0.1 --port 8188",
+            "start_command": "python main.py",
         },
         "workflow": {
             "1": {"class_type": "KSampler", "inputs": {"seed": 1, "positive": ["2", 0]}},
@@ -197,9 +231,7 @@ def run_with(api, tmp_path, comfy=FakeComfy, **kwargs):
         dry_run=False,
         api=api,
         logger=logger,
-        remote_factory=FakeRemote,
         comfy_factory=comfy,
-        tunnel_factory=lambda *_args: rr.no_tunnel(),
         sleep=lambda _seconds: None,
         ledger_dir=ledger_dir,
         **kwargs,
@@ -223,39 +255,28 @@ def test_happy_path_uses_mocked_http_and_verifies_download(tmp_path):
     assert [call[0] for call in session.calls] == ["POST", "GET", "DELETE", "GET"]
 
 
-@pytest.mark.parametrize(
-    ("pod", "expected_host", "expected_port", "schema"),
-    [
-        (ready_pod(), "127.0.0.1", 2222, "rest"),
-        (runtime_ready_pod(), "127.0.0.2", 2223, "runtime"),
-    ],
-)
-def test_wait_ready_accepts_both_network_shapes_and_logs_each_poll(
-        pod, expected_host, expected_port, schema):
+def test_wait_ready_logs_pod_state_and_proxy_status_each_poll():
     class OnePodAPI:
         def get_pod(self, _pod_id):
-            return pod
+            return ready_pod()
 
     class QuietWatchdog:
         def check(self):
             pass
 
     logger, stream = logger_and_stream()
-    ready, host, port = rr.wait_ready(
-        OnePodAPI(), "pod-123", 1, QuietWatchdog(), logger,
+    ready = rr.wait_ready(
+        OnePodAPI(), "pod-123", 1, QuietWatchdog(), logger, FakeComfy(),
         sleep=lambda _seconds: None,
     )
 
-    assert ready == pod
-    assert (host, port) == (expected_host, expected_port)
+    assert ready == ready_pod()
     logs = stream.getvalue()
     assert "readiness poll elapsed=" in logs
     assert "desiredStatus=RUNNING" in logs
     assert "lastStatusChange=" in logs
-    assert "publicIp=" in logs
-    assert "sshPort=" in logs
-    assert f"schema={schema}" in logs
-    assert f"readiness matched schema={schema}" in logs
+    assert "proxyStatus=200" in logs
+    assert "readiness matched desiredStatus=RUNNING" in logs
 
 
 def test_wait_ready_timeout_logs_last_full_state_and_names_stuck_state(monkeypatch):
@@ -283,6 +304,10 @@ def test_wait_ready_timeout_logs_last_full_state_and_names_stuck_state(monkeypat
     with pytest.raises(rr.ReadinessTimeout, match="image pull in progress") as caught:
         rr.wait_ready(
             StuckAPI(), "pod-123", 1, QuietWatchdog(), logger,
+            type("NotReadyProxy", (), {
+                "health_status": lambda self: 502,
+                "fetch_artifact": lambda self, _name: (404, ""),
+            })(),
             sleep=lambda _seconds: None,
         )
 
@@ -319,6 +344,25 @@ def test_readiness_timeout_persists_last_pod_state_in_run_json(tmp_path, monkeyp
     assert record["last_pod_state"]["desiredStatus"] == "RUNNING"
     assert record["last_pod_state"]["env"] == {"PRIVATE_TOKEN": "[REDACTED]"}
     assert "do-not-persist" not in (tmp_path / "out" / "run.json").read_text()
+    assert record["termination_verified"] is True
+
+
+def test_bootstrap_failed_marker_names_reason_and_terminates(tmp_path):
+    class FailedBootstrapProxy(FakeComfy):
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, "model-2 failed with rc=22\n"
+            return 200, "STEP model-2 rc=22\n"
+
+    api = FakeAPI()
+    with pytest.raises(rr.HarnessError, match="model-2 failed with rc=22"):
+        run_with(api, tmp_path, comfy=FailedBootstrapProxy)
+
+    assert api.deletes == 1
+    record = json.loads((tmp_path / "out" / "run.json").read_text())
     assert record["termination_verified"] is True
 
 
@@ -388,9 +432,10 @@ def test_manifest_basename_resolves_beside_script(monkeypatch, tmp_path):
 
 
 def test_watchdog_fires_at_max_minutes_and_terminates(tmp_path):
-    class SlowRemote(FakeRemote):
-        def bootstrap(self, _script, _timeout):
+    class SlowComfy(FakeComfy):
+        def health_status(self):
             time.sleep(1.05)
+            return 502
 
     api = FakeAPI()
     logger, _stream = logger_and_stream()
@@ -398,8 +443,7 @@ def test_watchdog_fires_at_max_minutes_and_terminates(tmp_path):
         rr.run_harness(
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1.0, max_minutes=0.0002, dry_run=False, api=api, logger=logger,
-            remote_factory=SlowRemote, comfy_factory=FakeComfy,
-            tunnel_factory=lambda *_args: rr.no_tunnel(),
+            comfy_factory=SlowComfy,
             ledger_dir=tmp_path / "ledger",
         )
     assert api.deletes >= 1
@@ -426,8 +470,7 @@ def test_api_key_never_appears_in_logs_or_written_files(tmp_path):
         rr.run_harness(
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1.0, max_minutes=1.0, dry_run=False, api=FakeAPI(), logger=logger,
-            redactor=redactor, remote_factory=FakeRemote, comfy_factory=SecretComfy,
-            tunnel_factory=lambda *_args: rr.no_tunnel(),
+            redactor=redactor, comfy_factory=SecretComfy,
             sleep=lambda _n: None, ledger_dir=tmp_path / "ledger",
         )
     all_written = "".join(
@@ -527,18 +570,9 @@ def test_flux_manifests_dry_run_without_node_99(tmp_path):
         ]) == 0
 
 
-def test_scp_uses_uppercase_port_flag(tmp_path, monkeypatch):
-    captured = {}
-
-    def fake_run(command, **_kwargs):
-        captured["command"] = command
-        return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
-
-    monkeypatch.setattr(rr.subprocess, "run", fake_run)
-    remote = rr.RemoteExecutor("example", 12345, tmp_path / "known", logging.getLogger("scp"))
-    remote.copy("/workspace/ComfyUI/output/a.png", tmp_path / "a.png", 10)
-    assert "-P" in captured["command"]
-    assert "-p" not in captured["command"]
+def test_proxy_url_and_payload_expose_only_comfy_http():
+    assert rr.pod_proxy_url("pod-123") == "https://pod-123-8188.proxy.runpod.net"
+    assert rr.create_payload(manifest())["ports"] == ["8188/http"]
 
 
 def test_A1_create_timeout_after_create_still_terminates(tmp_path):
@@ -659,8 +693,7 @@ def test_A4_ready_price_is_required_and_never_falls_back(
         rr.run_harness(
             low_manifest, tmp_path / "m.yaml", tmp_path / "out",
             max_usd=max_usd, max_minutes=60, dry_run=False, api=api, logger=logger,
-            remote_factory=FakeRemote, comfy_factory=FakeComfy,
-            tunnel_factory=lambda *_args: rr.no_tunnel(), sleep=lambda _seconds: None,
+            comfy_factory=FakeComfy, sleep=lambda _seconds: None,
             ledger_dir=tmp_path / "ledger",
         )
     assert api.deletes == 1
@@ -748,8 +781,7 @@ def test_A6_create_elapsed_time_is_subtracted_from_watchdog(tmp_path, monkeypatc
     rr.run_harness(
         manifest(), tmp_path / "m.yaml", tmp_path / "out",
         max_usd=1, max_minutes=0.05, dry_run=False, api=SlowCreateAPI(), logger=logger,
-        remote_factory=FakeRemote, comfy_factory=FakeComfy,
-        tunnel_factory=lambda *_args: rr.no_tunnel(), sleep=lambda _seconds: None,
+        comfy_factory=FakeComfy, sleep=lambda _seconds: None,
         ledger_dir=tmp_path / "ledger",
     )
     assert len(configured) == 1
@@ -762,9 +794,10 @@ def test_A7_finally_waits_for_watchdog_slow_teardown_before_run_json(tmp_path):
             time.sleep(0.15)
             super().delete_pod(pod_id)
 
-    class BudgetOverrunRemote(FakeRemote):
-        def bootstrap(self, _script, _timeout):
+    class BudgetOverrunComfy(FakeComfy):
+        def health_status(self):
             time.sleep(1.02)
+            return 502
 
     api = SlowDeleteAPI()
     logger, _stream = logger_and_stream()
@@ -772,8 +805,7 @@ def test_A7_finally_waits_for_watchdog_slow_teardown_before_run_json(tmp_path):
         rr.run_harness(
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=0.0002, dry_run=False, api=api, logger=logger,
-            remote_factory=BudgetOverrunRemote, comfy_factory=FakeComfy,
-            tunnel_factory=lambda *_args: rr.no_tunnel(), ledger_dir=tmp_path / "ledger",
+            comfy_factory=BudgetOverrunComfy, ledger_dir=tmp_path / "ledger",
         )
     record = json.loads((tmp_path / "out" / "run.json").read_text())
     assert record["termination_verified"] is True
@@ -832,33 +864,9 @@ def test_B1_main_and_excepthook_redact_requests_style_exception(
     rr.set_active_redactor(None)
 
 
-def test_B2_all_ssh_scp_and_tunnel_children_drop_api_key(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUNPOD_API_KEY", "never-in-child")
-    child_kwargs = []
-
-    def fake_run(_command, **kwargs):
-        child_kwargs.append(kwargs)
-        return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
-
-    class ExitedProcess:
-        stderr = io.StringIO("")
-
-        def poll(self):
-            return 1
-
-    def fake_popen(_command, **kwargs):
-        child_kwargs.append(kwargs)
-        return ExitedProcess()
-
-    monkeypatch.setattr(rr.subprocess, "run", fake_run)
-    monkeypatch.setattr(rr.subprocess, "Popen", fake_popen)
-    remote = rr.RemoteExecutor("example", 2222, tmp_path / "known", logging.getLogger("B2"))
-    remote.bootstrap("true", 1)
-    remote.copy("/workspace/a.png", tmp_path / "a.png", 1)
-    with pytest.raises(rr.HarnessError, match="exited before"):
-        rr.SSHTunnel(remote, 8188, logging.getLogger("B2-tunnel")).__enter__()
-    assert len(child_kwargs) == 3
-    assert all("RUNPOD_API_KEY" not in kwargs["env"] for kwargs in child_kwargs)
+def test_B2_public_proxy_client_refuses_an_authorization_header():
+    with pytest.raises(rr.HarnessError, match="must not carry Authorization"):
+        rr.ComfyClient("https://pod-8188.proxy.runpod.net", session=StubSession([]))
 
 
 def test_C2_incomplete_comfy_history_keeps_polling(monkeypatch):
@@ -894,46 +902,52 @@ def test_C2_incomplete_comfy_history_keeps_polling(monkeypatch):
     assert outputs[0]["filename"] == "done.png"
 
 
-@pytest.mark.parametrize("failure_path", ["early-exit", "timeout"])
-def test_C3_tunnel_enter_failure_always_kills_child(
-        tmp_path, monkeypatch, failure_path):
-    class FakeProcess:
+def test_C3_job_submit_poll_and_streaming_download_use_proxy_http(tmp_path):
+    class ProxySession:
+        headers = {}
+
         def __init__(self):
-            self.alive = failure_path == "timeout"
-            self.terminated = False
-            self.killed = False
-            self.stderr = io.StringIO("")
+            self.calls = []
 
-        def poll(self):
-            return None if self.alive else 23
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs))
+            return StubResponse(200, {"prompt_id": "prompt-7"})
 
-        def terminate(self):
-            self.terminated = True
-            self.alive = False
+        def get(self, url, **kwargs):
+            self.calls.append(("GET", url, kwargs))
+            if "/history/" in url:
+                return StubResponse(200, {
+                    "prompt-7": {
+                        "status": {"completed": True, "status_str": "success"},
+                        "outputs": {"9": {"images": [{
+                            "filename": "final.png", "subfolder": "batch", "type": "output",
+                        }]}},
+                    }
+                })
+            assert url.endswith("/view")
+            assert kwargs["params"] == {
+                "filename": "final.png", "subfolder": "batch", "type": "output",
+            }
+            assert kwargs["stream"] is True
+            return StubResponse(200, b"streamed-image")
 
-        def wait(self, timeout=None):
-            return self.poll()
+        def close(self):
+            pass
 
-        def kill(self):
-            self.killed = True
-            self.alive = False
+    class QuietWatchdog:
+        def check(self):
+            pass
 
-    process = FakeProcess()
-    monkeypatch.setattr(rr.subprocess, "Popen", lambda *_args, **_kwargs: process)
-    if failure_path == "timeout":
-        ticks = iter([0.0, 0.0, 31.0])
-        monkeypatch.setattr(rr.time, "monotonic", lambda: next(ticks))
-        monkeypatch.setattr(rr.time, "sleep", lambda _seconds: None)
-        monkeypatch.setattr(
-            rr.socket, "create_connection",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("not ready")),
-        )
-    remote = rr.RemoteExecutor("example", 2222, tmp_path / "known", logging.getLogger("C3"))
-    with pytest.raises(rr.HarnessError):
-        rr.SSHTunnel(remote, 8188, logging.getLogger("C3-tunnel")).__enter__()
-    assert process.poll() is not None
-    if failure_path == "timeout":
-        assert process.terminated
+    session = ProxySession()
+    comfy = rr.ComfyClient("https://pod-123-8188.proxy.runpod.net", session=session)
+    prompt_id = comfy.submit({"1": {"class_type": "Test", "inputs": {}}})
+    images = comfy.wait_outputs(prompt_id, 10, QuietWatchdog())
+    paths = rr.download_job_outputs(
+        comfy, images, tmp_path, "job", timeout=10, expected_images=1,
+    )
+
+    assert paths[0].read_bytes() == b"streamed-image"
+    assert [call[0] for call in session.calls] == ["POST", "GET", "GET"]
 
 
 def test_C4_job_expected_four_images_rejects_two(tmp_path):
@@ -953,8 +967,7 @@ def test_C4_job_expected_four_images_rejects_two(tmp_path):
         rr.run_harness(
             four_image_manifest, tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=1, dry_run=False, api=api, logger=logger,
-            remote_factory=FakeRemote, comfy_factory=TwoImageComfy,
-            tunnel_factory=lambda *_args: rr.no_tunnel(), sleep=lambda _seconds: None,
+            comfy_factory=TwoImageComfy, sleep=lambda _seconds: None,
             ledger_dir=tmp_path / "ledger",
         )
     assert api.deletes == 1
@@ -985,22 +998,9 @@ def test_C7_trailing_bare_dash_is_harness_error():
         rr.parse_simple_yaml("jobs:\n  -\n")
 
 
-def test_SSH_flag_symmetry_ssh_lowercase_scp_uppercase(tmp_path, monkeypatch):
-    commands = []
-
-    def fake_run(command, **_kwargs):
-        commands.append(command)
-        return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
-
-    monkeypatch.setattr(rr.subprocess, "run", fake_run)
-    remote = rr.RemoteExecutor("example", 12345, tmp_path / "known", logging.getLogger("flags"))
-    remote.bootstrap("true", 1)
-    remote.copy("/workspace/a.png", tmp_path / "a.png", 1)
-    ssh_command, scp_command = commands
-    assert ssh_command[0] == "ssh"
-    assert "-p" in ssh_command and "-P" not in ssh_command
-    assert scp_command[0] == "scp"
-    assert "-P" in scp_command and "-p" not in scp_command
+def test_proxy_url_rejects_unsafe_pod_ids():
+    with pytest.raises(rr.HarnessError, match="unsafe pod id"):
+        rr.pod_proxy_url("pod.example/escape")
 
 
 @pytest.mark.parametrize(
@@ -1022,8 +1022,10 @@ def test_N0_real_bakeoff_bootstrap_owns_comfyui_and_fails_fast(manifest_name):
 
     model_steps = [index for index, line in enumerate(lines) if line.startswith("run_required model-")]
     assert len(model_steps) == len(real_manifest["models"])
-    for index in model_steps:
-        assert lines[index + 1] == 'if [ "$fail" -ne 0 ]; then exit "$fail"; fi'
+    assert 'fatal "$label failed with rc=$rc" "$rc"' in script
+    assert "--listen 0.0.0.0 --port 8188" in script
+    assert "--output-directory /workspace/output" in script
+    assert 'sleep 60' in script
 
 
 def test_N0_manifest_requires_git_ref_and_nested_comfy_root(tmp_path):
@@ -1261,26 +1263,23 @@ def test_C5_comfy_start_failure_short_circuits_before_health():
     lines = rr.bootstrap_script(manifest()).splitlines()
     start_index = next(index for index, line in enumerate(lines) if line.startswith("run_required comfy-start"))
     health_index = next(index for index, line in enumerate(lines) if line.startswith("run_required comfy-health"))
-    assert lines[start_index + 1] == 'if [ "$fail" -ne 0 ]; then exit "$fail"; fi'
-    assert start_index + 1 < health_index
+    assert start_index < health_index
+    assert 'fatal "$label failed with rc=$rc" "$rc"' in "\n".join(lines[:start_index])
 
 
-def test_B3_scp_failure_stderr_is_redacted(tmp_path, monkeypatch):
-    secret = "scp-secret-key"
-    session = StubSession([], key=secret)
-    redactor = rr.ApiKeyRedactionFilter(session)
-    logger, stream = logger_and_stream(redactor)
+def test_B3_proxy_download_failure_does_not_reflect_response_body(tmp_path):
+    secret = "reflected-secret-value"
 
-    def fake_run(_command, **_kwargs):
-        return type("Completed", (), {
-            "returncode": 23,
-            "stdout": "",
-            "stderr": f"server reflected Authorization=Bearer {secret}\n",
-        })()
+    class FailedProxySession:
+        headers = {}
 
-    monkeypatch.setattr(rr.subprocess, "run", fake_run)
-    remote = rr.RemoteExecutor("example", 2222, tmp_path / "known", logger)
-    with pytest.raises(rr.HarnessError, match="scp download failed"):
-        remote.copy("/workspace/ComfyUI/output/a.png", tmp_path / "a.png", 1)
-    assert secret not in stream.getvalue()
-    assert "[REDACTED]" in stream.getvalue()
+        def get(self, _url, **_kwargs):
+            return StubResponse(502, f"server reflected {secret}")
+
+    comfy = rr.ComfyClient("https://pod-8188.proxy.runpod.net", FailedProxySession())
+    with pytest.raises(rr.HarnessError, match="GET /view returned HTTP 502") as caught:
+        comfy.download_output(
+            {"filename": "a.png", "subfolder": "", "type": "output"},
+            tmp_path / "a.png", 1,
+        )
+    assert secret not in str(caught.value)

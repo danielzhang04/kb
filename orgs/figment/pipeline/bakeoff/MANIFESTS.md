@@ -6,7 +6,7 @@ These files are JSON-form YAML: JSON is valid YAML 1.2, and it avoids block-scal
 
 All three manifests request one NVIDIA GeForce RTX 4090 in SECURE cloud at an operator-checked ceiling of $0.80/hour. The documented fallback is an NVIDIA RTX A6000 (48 GB), but the harness accepts only one `gpu.type`; fallback therefore requires an operator to change that field before a retry. Both full manifests request 60 GB container disk and a 60 GB ordinary ephemeral volume, with no network volume. Readiness is bounded at 1,200 seconds; the smoke manifest's 25-minute wall clock leaves the required five-minute teardown margin, while each full arm retains its 60-minute wall clock.
 
-The stock RunPod PyTorch image does not provide a guaranteed `/workspace/ComfyUI` checkout. The harness is therefore the sole owner of installation: all three manifests set `comfyui.root` to `/workspace/ComfyUI` and `comfyui.git_ref` to [v0.20.1](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.20.1). Bootstrap clones that ref when the root is absent or fetches and checks it out when it is already a Git repository, then installs its requirements before downloading models. The launch-only `start_command` runs `python main.py --listen 127.0.0.1 --port 8188`; ComfyUI's default output directory is therefore `/workspace/ComfyUI/output`, matching the harness downloader's `<comfyui.root>/output` rule. None of these manifests opts into replacement of a non-Git root. No custom nodes are needed by either graph.
+The stock RunPod PyTorch image does not provide a guaranteed `/workspace/ComfyUI` checkout. The harness is therefore the sole owner of installation: all three manifests set `comfyui.root` to `/workspace/ComfyUI` and `comfyui.git_ref` to [v0.20.1](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.20.1). Bootstrap clones that ref when the root is absent or fetches and checks it out when it is already a Git repository, then installs its requirements before downloading models. The launch-only `start_command` is `python main.py`; the harness adds `--listen 0.0.0.0 --port 8188 --output-directory /workspace/output` so the RunPod HTTP proxy can reach ComfyUI and `/view` can serve both images and bootstrap diagnostics. The create payload exposes only `8188/http` and carries the base64 bootstrap in `env` for the container start command. None of these manifests opts into replacement of a non-Git root. No custom nodes are needed by either graph.
 
 The selected image remains
 [`runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04`](https://hub.docker.com/layers/runpod/pytorch/2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04/images/sha256-cb154fcca15d1d6ce858cfa672b76505e30861ef981d28ec94bd44168767d853).
@@ -14,10 +14,10 @@ Docker Hub confirms that tag, but its [tag catalog](https://hub.docker.com/r/run
 did not publish an exact `2.8.0-py3.11-cuda12.8.1-cudnn-runtime-ubuntu22.04` sibling when
 checked on 2026-09-02, so there is no verified same-tag runtime image to switch to. RunPod's
 official [base Dockerfile](https://github.com/runpod/containers/blob/main/official-templates/base/Dockerfile)
-installs Git and `openssh-server`, and its
+installs Git, and its
 [PyTorch Dockerfile](https://github.com/runpod/containers/blob/main/official-templates/pytorch/Dockerfile)
-uses `python -m pip`; the inherited `/start.sh` supplies the SSH service behavior. These are
-the three bootstrap prerequisites the harness checks before downloads.
+uses `python -m pip`. The bootstrap's explicit Python, Git, and curl checks remain the
+runtime authority before downloads.
 
 ### Official ComfyUI template option (not selected)
 
@@ -37,7 +37,7 @@ itself, whereas the template owns and auto-starts a different root. A future tem
 would need to skip clone/start, use the template root, and health-check its existing service.
 For that reason the bake-off manifests are deliberately not switched in this change.
 
-The harness downloads public Hugging Face files with `curl`, reuses non-empty files, installs no custom-node requirements, starts ComfyUI on loopback, submits each API graph, downloads results through SCP, and verifies pod deletion. It does not verify a downloaded model checksum.
+The harness downloads public Hugging Face files with `curl`, reuses non-empty files, installs no custom-node requirements, starts ComfyUI on all interfaces, submits each API graph through `https://<pod-id>-8188.proxy.runpod.net`, streams results from `/view`, and verifies pod deletion. It does not verify a downloaded model checksum.
 
 ## Arm A — Z-Image Base
 
@@ -112,4 +112,4 @@ Hugging Face currently redirects the requested `Comfy-Org/flux2-klein-4B` alias 
 - The harness's default `seed_fields` is `["seed", "noise_seed"]`, so it substitutes each job seed directly into the official FLUX.2 `RandomNoise.inputs.noise_seed` field. No disconnected compatibility node is used.
 - The official ComfyUI Klein page now highlights separate FP8 Base weights, while its linked workflow metadata and this brief specify the full Comfy-Org Base file. This manifest follows the brief and BFL Base filename.
 - The requested A6000 fallback cannot be encoded alongside the 4090 because the harness schema accepts a single GPU type.
-- Re-check live RunPod SECURE availability/rate, confirm the selected image exposes SSH, and keep the operator's `--max-usd` at or below the manifest estimate before any live run.
+- Re-check live RunPod SECURE availability/rate and keep the operator's `--max-usd` at or below the manifest estimate before any live run.

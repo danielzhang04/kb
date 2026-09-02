@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import base64
 import copy
 import csv
 import json
@@ -14,8 +15,6 @@ import os
 import re
 import shlex
 import signal
-import socket
-import subprocess
 import sys
 import threading
 import time
@@ -40,6 +39,10 @@ REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
+COMFY_PORT = 8188
+COMFY_OUTPUT_DIR = "/workspace/output"
+BOOTSTRAP_LOG_EVERY_POLLS = 5
+BOOTSTRAP_LOG_TAIL_LINES = 20
 OPS_LEDGER_DIR = Path("C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost")
 LEDGER_LOCK_TIMEOUT = 5.0
 
@@ -146,7 +149,9 @@ def build_authenticated_session() -> tuple[Any, ApiKeyRedactionFilter]:
     if requests is None:
         raise HarnessError("the requests package is required for live commands")
     session = requests.Session()
-    # This is the one and only environment read. The value is retained in this header only.
+    # Do not consult netrc or credential-bearing proxy environment variables.
+    session.trust_env = False
+    # This is the one and only credential read. The value is retained in this header only.
     session.headers["Authorization"] = "Bearer " + os.environ["RUNPOD_API_KEY"]
     session.headers["Content-Type"] = "application/json"
     redactor = ApiKeyRedactionFilter(session)
@@ -215,8 +220,7 @@ class DryRunAPI:
             "id": "dry-run-pod",
             "name": payload["name"],
             "desiredStatus": "RUNNING",
-            "publicIp": "127.0.0.1",
-            "portMappings": {"22": 22022},
+            "ports": ["8188/http"],
             "adjustedCostPerHr": self.hourly_price,
             "gpu": {"id": payload["gpuTypeIds"][0], "count": payload["gpuCount"]},
         }
@@ -739,6 +743,22 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
     git_ref = comfy.get("git_ref")
     if not isinstance(git_ref, str) or not git_ref.strip():
         raise HarnessError("comfyui.git_ref is required")
+    port = comfy.get("port", COMFY_PORT)
+    if isinstance(port, bool) or not isinstance(port, int) or port != COMFY_PORT:
+        raise HarnessError(f"comfyui.port must be {COMFY_PORT} for the HTTP proxy")
+    start_command = comfy.get("start_command", "python main.py")
+    if not isinstance(start_command, str) or not start_command.strip():
+        raise HarnessError("comfyui.start_command must be a non-empty command")
+    try:
+        start_parts = shlex.split(start_command)
+    except ValueError as exc:
+        raise HarnessError(f"invalid comfyui.start_command: {exc}") from exc
+    controlled_flags = {"--listen", "--port", "--output-directory"}
+    if any(part in controlled_flags for part in start_parts):
+        raise HarnessError(
+            "comfyui.start_command must omit --listen, --port, and --output-directory; "
+            "the harness supplies proxy-safe values"
+        )
     if not isinstance(comfy.get("replace_non_git_root", False), bool):
         raise HarnessError("comfyui.replace_non_git_root must be true or false")
     volume_root = PurePosixPath(str(manifest.get("volume_mount_path", "/workspace")))
@@ -922,6 +942,13 @@ def ready_hourly_price(pod: dict[str, Any]) -> float:
 
 def create_payload(manifest: dict[str, Any]) -> dict[str, Any]:
     gpu = manifest["gpu"]
+    encoded_bootstrap = base64.b64encode(
+        bootstrap_script(manifest).encode("utf-8")
+    ).decode("ascii")
+    bootstrap_command = (
+        'echo "$FIGMENT_BOOTSTRAP_B64" | base64 -d > /workspace/bootstrap.sh '
+        '&& bash /workspace/bootstrap.sh'
+    )
     payload: dict[str, Any] = {
         "name": f"figment-bakeoff-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}",
         "cloudType": str(gpu.get("cloud", "SECURE")).upper(),
@@ -930,8 +957,10 @@ def create_payload(manifest: dict[str, Any]) -> dict[str, Any]:
         "gpuTypePriority": "availability",
         "gpuCount": int(gpu.get("count", 1)),
         "containerDiskInGb": int(manifest.get("container_disk_gb", 50)),
-        "ports": ["22/tcp"],
-        "supportPublicIp": True,
+        "ports": [f"{COMFY_PORT}/http"],
+        "dockerEntrypoint": ["bash", "-lc"],
+        "dockerStartCmd": [bootstrap_command],
+        "env": {"FIGMENT_BOOTSTRAP_B64": encoded_bootstrap},
         "volumeMountPath": str(manifest.get("volume_mount_path", "/workspace")),
     }
     if manifest.get("template_id"):
@@ -945,35 +974,12 @@ def create_payload(manifest: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def pod_connection(pod: dict[str, Any]) -> tuple[str, int, str] | None:
-    host = pod.get("publicIp")
-    mappings = pod.get("portMappings") or {}
-    port = mappings.get("22") if isinstance(mappings, dict) else None
-    if port is None and isinstance(mappings, dict):
-        port = mappings.get(22)
-    if host and port:
-        try:
-            public_port = int(port)
-        except (TypeError, ValueError):
-            public_port = 0
-        if public_port > 0:
-            return str(host), public_port, "rest"
-    runtime = pod.get("runtime")
-    runtime_ports = runtime.get("ports") if isinstance(runtime, dict) else None
-    if isinstance(runtime_ports, list):
-        for candidate in runtime_ports:
-            if not isinstance(candidate, dict):
-                continue
-            try:
-                private_port = int(candidate.get("privatePort"))
-                public_port = int(candidate.get("publicPort"))
-            except (TypeError, ValueError):
-                continue
-            candidate_host = candidate.get("ip")
-            port_type = str(candidate.get("type", "")).lower()
-            if private_port == 22 and public_port > 0 and candidate_host and port_type == "tcp":
-                return str(candidate_host), public_port, "runtime"
-    return None
+def pod_proxy_url(pod_id: str, port: int = COMFY_PORT) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9-]+", pod_id):
+        raise HarnessError(f"unsafe pod id for proxy URL: {pod_id!r}")
+    if port != COMFY_PORT:
+        raise HarnessError(f"ComfyUI proxy port must be {COMFY_PORT}")
+    return f"https://{pod_id}-{port}.proxy.runpod.net"
 
 
 def _poll_value(value: Any) -> str:
@@ -982,14 +988,9 @@ def _poll_value(value: Any) -> str:
     return " ".join(str(value).split())
 
 
-def readiness_poll_summary(pod: dict[str, Any], elapsed: float) -> str:
+def readiness_poll_summary(pod: dict[str, Any], elapsed: float,
+                           proxy_status: int | str | None) -> str:
     runtime = pod.get("runtime") if isinstance(pod.get("runtime"), dict) else {}
-    connection = pod_connection(pod)
-    runtime_ports = runtime.get("ports") if isinstance(runtime.get("ports"), list) else []
-    public_ip_present = bool(pod.get("publicIp")) or any(
-        isinstance(port, dict) and bool(port.get("ip")) for port in runtime_ports
-    )
-    ssh_port_present = connection is not None
     machine = pod.get("machine") if isinstance(pod.get("machine"), dict) else {}
     gpu = pod.get("gpu") if isinstance(pod.get("gpu"), dict) else {}
     runtime_gpus = runtime.get("gpus") if isinstance(runtime.get("gpus"), list) else []
@@ -1005,15 +1006,13 @@ def readiness_poll_summary(pod: dict[str, Any], elapsed: float) -> str:
         f"currentStatus={_poll_value(pod.get('currentStatus'))} "
         f"runtimeStatus={_poll_value(runtime.get('status') or runtime.get('currentStatus'))} "
         f"lastStatusChange={_poll_value(pod.get('lastStatusChange'))} "
-        f"publicIp={'yes' if public_ip_present else 'no'} "
-        f"sshPort={'yes' if ssh_port_present else 'no'} "
+        f"proxyStatus={_poll_value(proxy_status)} "
         f"machineGpu={_poll_value(machine_gpu)} "
-        f"machineHost={_poll_value(machine_host)} "
-        f"schema={connection[2] if connection else 'none'}"
+        f"machineHost={_poll_value(machine_host)}"
     )
 
 
-def readiness_timeout_reason(pod: dict[str, Any]) -> str:
+def readiness_timeout_reason(pod: dict[str, Any], proxy_status: int | str | None) -> str:
     desired = _poll_value(pod.get("desiredStatus"))
     current = _poll_value(pod.get("currentStatus"))
     runtime = pod.get("runtime") if isinstance(pod.get("runtime"), dict) else {}
@@ -1028,42 +1027,65 @@ def readiness_timeout_reason(pod: dict[str, Any]) -> str:
     if desired in {"CREATED", "PENDING", "-"}:
         return f"never left CREATED/PENDING (desiredStatus={desired})"
     if desired == "RUNNING":
-        mappings = pod.get("portMappings")
-        runtime_ports = runtime.get("ports")
-        has_public_ip = bool(pod.get("publicIp")) or (
-            isinstance(runtime_ports, list)
-            and any(isinstance(port, dict) and port.get("ip") for port in runtime_ports)
+        return (
+            "stuck in desiredStatus=RUNNING while proxy /system_stats "
+            f"returned {_poll_value(proxy_status)}"
         )
-        if has_public_ip and not pod_connection(pod):
-            return "stuck in desiredStatus=RUNNING with no port mapping"
-        if not has_public_ip:
-            return "stuck in desiredStatus=RUNNING with no public IP or port mapping"
-        if not mappings and not runtime_ports:
-            return "stuck in desiredStatus=RUNNING with no port mapping"
     return (
         f"stuck in desiredStatus={desired}, currentStatus={current}, "
         f"runtimeStatus={runtime_status}"
     )
 
 
+def _log_bootstrap_tail(proxy: Any, logger: logging.Logger) -> None:
+    status, text = proxy.fetch_artifact("_bootstrap.log")
+    if status != 200 or not text:
+        return
+    tail = "\n".join(text.splitlines()[-BOOTSTRAP_LOG_TAIL_LINES:])
+    for line in tail.splitlines():
+        logger.info("bootstrap log tail: %s", line)
+
+
+def _raise_if_bootstrap_failed(proxy: Any) -> None:
+    status, text = proxy.fetch_artifact("_bootstrap.failed")
+    if status == 200:
+        reason = " ".join(text.strip().split()) or "unknown bootstrap failure"
+        raise HarnessError(f"bootstrap failed: {reason}")
+
+
 def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
-               logger: logging.Logger, sleep: Callable[[float], None] = time.sleep) -> tuple[dict[str, Any], str, int]:
+               logger: logging.Logger, proxy: Any,
+               sleep: Callable[[float], None] = time.sleep,
+               bootstrap_log_every_polls: int = BOOTSTRAP_LOG_EVERY_POLLS) -> dict[str, Any]:
+    if bootstrap_log_every_polls <= 0:
+        raise HarnessError("bootstrap_log_every_polls must be positive")
     started = time.monotonic()
     deadline = started + timeout
     last_pod: dict[str, Any] = {}
+    last_proxy_status: int | str | None = None
+    poll_number = 0
     while time.monotonic() < deadline:
+        poll_number += 1
         watchdog.check()
         pod = api.get_pod(pod_id)
         if pod is None:
             raise HarnessError(f"pod {pod_id} disappeared before becoming ready")
         last_pod = pod
-        connection = pod_connection(pod)
-        logger.info(readiness_poll_summary(pod, time.monotonic() - started))
-        if pod.get("desiredStatus") == "RUNNING" and connection:
-            logger.info("readiness matched schema=%s with mapped SSH port", connection[2])
-            return pod, connection[0], connection[1]
+        last_proxy_status = proxy.health_status()
+        watchdog.check()
+        if pod.get("desiredStatus") == "RUNNING":
+            _raise_if_bootstrap_failed(proxy)
+            watchdog.check()
+            if poll_number % bootstrap_log_every_polls == 0:
+                _log_bootstrap_tail(proxy, logger)
+        logger.info(readiness_poll_summary(
+            pod, time.monotonic() - started, last_proxy_status,
+        ))
+        if pod.get("desiredStatus") == "RUNNING" and last_proxy_status == 200:
+            logger.info("readiness matched desiredStatus=RUNNING and proxy /system_stats=200")
+            return pod
         sleep(2)
-    reason = readiness_timeout_reason(last_pod)
+    reason = readiness_timeout_reason(last_pod, last_proxy_status)
     safe_last_pod = redact_pod_state(last_pod)
     logger.error(
         "readiness timeout last pod state: %s",
@@ -1087,15 +1109,71 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
     git_ref = str(comfy["git_ref"])
     replace_non_git_root = comfy.get("replace_non_git_root") is True
     port = int(comfy.get("port", 8188))
+    start_base = str(comfy.get("start_command", "python main.py"))
+    start = (
+        f"{start_base} --listen 0.0.0.0 --port {port} "
+        f"--output-directory {COMFY_OUTPUT_DIR}"
+    )
+    diagnostic_server = """\
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+OUTPUT = Path("/workspace/output")
+ALLOWED = {"_bootstrap.log", "_bootstrap.failed"}
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/system_stats":
+            self.send_response(503)
+            self.end_headers()
+            return
+        query = parse_qs(parsed.query)
+        filename = query.get("filename", [""])[0]
+        if parsed.path != "/view" or filename not in ALLOWED:
+            self.send_response(404)
+            self.end_headers()
+            return
+        path = OUTPUT / filename
+        if not path.is_file():
+            self.send_response(404)
+            self.end_headers()
+            return
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, _format, *_args):
+        return
+
+ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
+"""
+    diagnostic_b64 = base64.b64encode(diagnostic_server.encode("utf-8")).decode("ascii")
     lines = [
         "#!/usr/bin/env bash",
-        "fail=0",
-        "run_required() { label=\"$1\"; shift; \"$@\"; rc=$?; printf 'STEP %s rc=%s\\n' \"$label\" \"$rc\"; if [ \"$rc\" -ne 0 ]; then fail=1; fi; return 0; }",
-        "run_cosmetic() { label=\"$1\"; shift; \"$@\"; rc=$?; printf 'STEP %s rc=%s (cosmetic)\\n' \"$label\" \"$rc\"; return 0; }",
+        f"BOOTSTRAP_OUTPUT={shlex.quote(COMFY_OUTPUT_DIR)}",
+        f"BOOTSTRAP_LOG={shlex.quote(COMFY_OUTPUT_DIR + '/_bootstrap.log')}",
+        f"BOOTSTRAP_FAILED={shlex.quote(COMFY_OUTPUT_DIR + '/_bootstrap.failed')}",
+        f"COMFY_RUNTIME_LOG={shlex.quote(COMFY_OUTPUT_DIR + '/_comfy.log')}",
+        'mkdir -p "$BOOTSTRAP_OUTPUT"',
+        ': > "$BOOTSTRAP_LOG"',
+        'rm -f "$BOOTSTRAP_FAILED"',
+        "fatal_active=0",
+        f"DIAGNOSTIC_SERVER_B64={shlex.quote(diagnostic_b64)}",
+        "log_line() { printf '%s\\n' \"$1\" | tee -a \"$BOOTSTRAP_LOG\"; }",
+        "start_diagnostics() { echo \"$DIAGNOSTIC_SERVER_B64\" | base64 -d > /tmp/figment-bootstrap-server.py; python /tmp/figment-bootstrap-server.py >>\"$BOOTSTRAP_LOG\" 2>&1 & }",
+        "fatal() { reason=\"$1\"; rc=\"${2:-1}\"; if [ \"$rc\" -eq 0 ]; then rc=1; fi; fatal_active=1; trap - EXIT; printf '%s\\n' \"$reason\" > \"$BOOTSTRAP_FAILED\"; log_line \"FATAL $reason\"; start_diagnostics || true; sleep 60; exit \"$rc\"; }",
+        "on_exit() { rc=$?; if [ \"$rc\" -ne 0 ] && [ \"$fatal_active\" -eq 0 ]; then fatal \"unexpected bootstrap failure at line ${BASH_LINENO[0]} rc=$rc\" \"$rc\"; fi; }",
+        "trap on_exit EXIT",
+        "run_required() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc\"; if [ \"$rc\" -ne 0 ]; then fatal \"$label failed with rc=$rc\" \"$rc\"; fi; }",
+        "run_cosmetic() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc (cosmetic)\"; return 0; }",
         "run_required python-present python --version",
         "run_required git-present git --version",
         "run_required curl-present curl --version",
-        "if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi",
     ]
     clone_comfy = (
         f"git clone --branch {shlex.quote(git_ref)} --depth 1 "
@@ -1117,7 +1195,6 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
     )
     lines.extend([
         f"run_required comfy-install bash -lc {shlex.quote(install_comfy)}",
-        "if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi",
     ])
     for index, model in enumerate(manifest.get("models", []), start=1):
         destination = str(PurePosixPath(str(model["destination_dir"])) / PurePosixPath(str(model["filename"])).name)
@@ -1131,7 +1208,6 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
             f"test -s \"$tmp\" && mv \"$tmp\" {shlex.quote(destination)}; fi"
         )
         lines.append(f"run_required model-{index} bash -lc {shlex.quote(command)}")
-        lines.append("if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi")
     nodes_root = f"{root}/custom_nodes"
     for index, node in enumerate(manifest.get("custom_nodes", []), start=1):
         name = _safe_node_name(str(node["git_url"]), node.get("name"))
@@ -1146,163 +1222,24 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
         requirements = f"{target}/requirements.txt"
         install = f"if [ -f {shlex.quote(requirements)} ]; then python -m pip install -r {shlex.quote(requirements)}; else true; fi"
         lines.append(f"run_required node-deps-{index} bash -lc {shlex.quote(install)}")
-        lines.append("if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi")
-    start = str(comfy.get("start_command", f"python main.py --listen 127.0.0.1 --port {port}"))
-    start_cmd = (
-        f"if curl --silent --fail http://127.0.0.1:{port}/system_stats >/dev/null; then true; else "
-        f"cd {shlex.quote(root)} && nohup bash -lc {shlex.quote(start)} > /tmp/figment-comfy.log 2>&1 & fi"
-    )
-    lines.append(f"run_required comfy-start bash -lc {shlex.quote(start_cmd)}")
-    lines.append('if [ "$fail" -ne 0 ]; then exit "$fail"; fi')
+    lines.extend([
+        "COMFY_PID=",
+        f"start_comfy() {{ cd {shlex.quote(root)} || return 1; bash -lc {shlex.quote('exec ' + start)} >>\"$COMFY_RUNTIME_LOG\" 2>&1 & COMFY_PID=$!; sleep 1; kill -0 \"$COMFY_PID\"; }}",
+        "run_required comfy-start start_comfy",
+    ])
     health_cmd = (
         f"for n in $(seq 1 120); do curl --silent --fail http://127.0.0.1:{port}/system_stats >/dev/null && exit 0; sleep 2; done; "
-        "tail -n 100 /tmp/figment-comfy.log 2>/dev/null; exit 1"
+        f"tail -n 100 {shlex.quote(COMFY_OUTPUT_DIR + '/_comfy.log')} 2>/dev/null; exit 1"
     )
     lines.append(f"run_required comfy-health bash -lc {shlex.quote(health_cmd)}")
-    lines.extend(["run_cosmetic disk-summary df -h", "exit \"$fail\""])
+    lines.extend([
+        "run_cosmetic disk-summary df -h",
+        'log_line "STEP bootstrap-complete rc=0"',
+        'wait "$COMFY_PID"',
+        "comfy_rc=$?",
+        'fatal "ComfyUI exited with rc=$comfy_rc" "$comfy_rc"',
+    ])
     return "\n".join(lines) + "\n"
-
-
-def child_process_env() -> dict[str, str]:
-    # The filter condition is evaluated before the value expression, so the key's value
-    # is neither copied nor read here.
-    return {name: value for name, value in os.environ.items() if name != "RUNPOD_API_KEY"}
-
-
-class RemoteExecutor:
-    def __init__(self, host: str, port: int, known_hosts: Path, logger: logging.Logger):
-        self.host = host
-        self.port = port
-        self.known_hosts = known_hosts
-        self.logger = logger
-        self.known_hosts.parent.mkdir(parents=True, exist_ok=True)
-
-    def _base(self, program: str) -> list[str]:
-        return [
-            program,
-            "-o", "BatchMode=yes",
-            "-o", "LogLevel=ERROR",
-            "-o", "StrictHostKeyChecking=accept-new",
-            "-o", f"UserKnownHostsFile={self.known_hosts}",
-        ]
-
-    def bootstrap(self, script: str, timeout: float) -> None:
-        command = self._base("ssh") + ["-p", str(self.port), f"root@{self.host}", "bash -s"]
-        completed = subprocess.run(
-            command, input=script, text=True, capture_output=True, timeout=timeout,
-            env=child_process_env(),
-        )
-        for line in (completed.stdout + completed.stderr).splitlines():
-            self.logger.info("bootstrap: %s", line)
-        if completed.returncode:
-            raise HarnessError(f"bootstrap failed with exit code {completed.returncode}")
-
-    def copy(self, remote_path: str, local_path: Path, timeout: float) -> None:
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        remote = f"root@{self.host}:{shlex.quote(remote_path)}"
-        # Uppercase -P is intentional: lowercase -p only preserves timestamps/modes.
-        command = self._base("scp") + ["-P", str(self.port), remote, str(local_path)]
-        completed = subprocess.run(
-            command, text=True, capture_output=True, timeout=timeout,
-            env=child_process_env(),
-        )
-        if completed.returncode:
-            for line in completed.stderr.splitlines():
-                self.logger.error("scp: %s", line)
-            raise HarnessError(f"scp download failed with exit code {completed.returncode}")
-
-
-class DryRunRemote:
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-
-    def bootstrap(self, _script: str, _timeout: float) -> None:
-        self.logger.info("bootstrap: STEP dry-run rc=0")
-
-    def copy(self, remote_path: str, local_path: Path, _timeout: float) -> None:
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        local_path.write_bytes(("dry-run image from " + remote_path + "\n").encode())
-
-
-class SSHTunnel:
-    def __init__(self, remote: RemoteExecutor, remote_port: int, logger: logging.Logger):
-        self.remote = remote
-        self.remote_port = remote_port
-        self.logger = logger
-        self.local_port = _free_tcp_port()
-        self.process: subprocess.Popen[str] | None = None
-        self._stderr_thread: threading.Thread | None = None
-
-    def _drain_stderr(self) -> None:
-        if not self.process or not self.process.stderr:
-            return
-        try:
-            for line in self.process.stderr:
-                if line.strip():
-                    self.logger.error("SSH port-forward: %s", line.rstrip())
-        except BaseException as exc:
-            self.logger.error("SSH port-forward stderr reader failed: %s", exc)
-
-    def _kill(self) -> None:
-        process = self.process
-        if not process:
-            return
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-        if self._stderr_thread and self._stderr_thread is not threading.current_thread():
-            self._stderr_thread.join(timeout=1)
-        self.logger.info("SSH port-forward exited with status %s", process.poll())
-
-    def __enter__(self) -> int:
-        command = self.remote._base("ssh") + [
-            "-o", "ExitOnForwardFailure=yes",
-            "-p", str(self.remote.port),
-            "-N", "-L", f"127.0.0.1:{self.local_port}:127.0.0.1:{self.remote_port}",
-            f"root@{self.remote.host}",
-        ]
-        try:
-            self.process = subprocess.Popen(
-                command, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                env=child_process_env(),
-            )
-            self._stderr_thread = threading.Thread(
-                target=self._drain_stderr, name="ssh-tunnel-stderr", daemon=True
-            )
-            self._stderr_thread.start()
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline:
-                if self.process.poll() is not None:
-                    raise HarnessError("SSH port-forward exited before becoming ready")
-                try:
-                    with socket.create_connection(("127.0.0.1", self.local_port), timeout=0.25):
-                        self.logger.info("SSH port-forward ready on local port %s", self.local_port)
-                        return self.local_port
-                except OSError:
-                    time.sleep(0.1)
-            raise HarnessError("SSH port-forward did not become ready within 30s")
-        except BaseException:
-            self._kill()
-            raise
-
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
-        self._kill()
-        return False
-
-
-@contextmanager
-def no_tunnel():
-    yield 0
-
-
-def _free_tcp_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
 
 
 class ComfyClient:
@@ -1311,7 +1248,56 @@ class ComfyClient:
             raise HarnessError("the requests package is required for live commands")
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
+        if session is None:
+            # The Pod proxy is public; never discover credentials from netrc or proxy env.
+            self.session.trust_env = False
+        if "Authorization" in getattr(self.session, "headers", {}):
+            raise HarnessError("the public proxy client must not carry Authorization")
         self.client_id = uuid.uuid4().hex
+
+    def close(self) -> None:
+        close = getattr(self.session, "close", None)
+        if callable(close):
+            close()
+
+    def health_status(self) -> int | str:
+        try:
+            response = self.session.get(
+                self.base_url + "/system_stats", timeout=REQUEST_TIMEOUT,
+            )
+            return int(response.status_code)
+        except Exception as exc:
+            return f"error:{type(exc).__name__}"
+
+    def fetch_artifact(self, filename: str) -> tuple[int | str, str]:
+        if filename not in {"_bootstrap.log", "_bootstrap.failed"}:
+            raise HarnessError(f"unsupported bootstrap artifact: {filename!r}")
+        try:
+            response = self.session.get(
+                self.base_url + "/view",
+                params={"filename": filename, "type": "output"},
+                timeout=REQUEST_TIMEOUT,
+                stream=True,
+            )
+        except Exception as exc:
+            return f"error:{type(exc).__name__}", ""
+        status = int(response.status_code)
+        if status != 200:
+            return status, ""
+        limit = 64 * 1024 if filename == "_bootstrap.log" else 4 * 1024
+        chunks = getattr(response, "iter_content", None)
+        if callable(chunks):
+            retained = bytearray()
+            for chunk in chunks(chunk_size=8192):
+                if not chunk:
+                    continue
+                retained.extend(chunk)
+                if len(retained) > limit:
+                    del retained[:-limit]
+            body = bytes(retained)
+        else:
+            body = bytes(getattr(response, "content", b""))[-limit:]
+        return status, body.decode("utf-8", errors="replace")
 
     def submit(self, workflow: dict[str, Any]) -> str:
         response = self.session.post(
@@ -1358,6 +1344,31 @@ class ComfyClient:
             time.sleep(1)
         raise HarnessError(f"ComfyUI job {prompt_id} timed out")
 
+    def download_output(self, image: dict[str, str], local_path: Path,
+                        timeout: float) -> None:
+        params = view_params(image)
+        response = self.session.get(
+            self.base_url + "/view", params=params, timeout=timeout, stream=True,
+        )
+        if not 200 <= response.status_code < 300:
+            raise HarnessError(
+                f"ComfyUI GET /view returned HTTP {response.status_code}"
+            )
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = local_path.with_suffix(local_path.suffix + ".partial")
+        try:
+            with temporary.open("wb") as handle:
+                chunks = getattr(response, "iter_content", None)
+                if callable(chunks):
+                    for chunk in chunks(chunk_size=1024 * 1024):
+                        if chunk:
+                            handle.write(chunk)
+                else:
+                    handle.write(bytes(getattr(response, "content", b"")))
+            temporary.replace(local_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
 
 class DryRunComfyClient:
     def __init__(self):
@@ -1370,6 +1381,23 @@ class DryRunComfyClient:
     def wait_outputs(self, prompt_id: str, _timeout: float, watchdog: Watchdog) -> list[dict[str, str]]:
         watchdog.check()
         return [{"filename": f"{prompt_id}.png", "subfolder": "", "type": "output"}]
+
+    def health_status(self) -> int:
+        return 200
+
+    def fetch_artifact(self, filename: str) -> tuple[int, str]:
+        if filename == "_bootstrap.log":
+            return 200, "STEP dry-run rc=0\n"
+        return 404, ""
+
+    def download_output(self, image: dict[str, str], local_path: Path,
+                        _timeout: float) -> None:
+        view_params(image)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(("dry-run image from " + image["filename"] + "\n").encode())
+
+    def close(self) -> None:
+        pass
 
 
 def apply_job(
@@ -1420,18 +1448,24 @@ def safe_output_name(value: Any) -> str:
     return name
 
 
-def remote_output_path(comfy_root: str, image: dict[str, str]) -> str:
+def view_params(image: dict[str, str]) -> dict[str, str]:
+    if image.get("type") != "output":
+        raise HarnessError("ComfyUI returned a non-output image")
     filename = PurePosixPath(image["filename"])
     subfolder = PurePosixPath(image.get("subfolder", ""))
     if filename.is_absolute() or ".." in filename.parts or subfolder.is_absolute() or ".." in subfolder.parts:
         raise HarnessError("ComfyUI returned an unsafe output path")
     if filename.suffix.lower() not in IMAGE_EXTENSIONS:
         raise HarnessError(f"ComfyUI returned unsupported output type: {filename.suffix}")
-    return str(PurePosixPath(comfy_root) / "output" / subfolder / filename)
+    return {
+        "filename": str(filename),
+        "subfolder": "" if str(subfolder) == "." else str(subfolder),
+        "type": "output",
+    }
 
 
-def download_job_outputs(remote: Any, remote_images: list[dict[str, str]], out_dir: Path,
-                         output_name: str, comfy_root: str, timeout: float,
+def download_job_outputs(comfy: Any, remote_images: list[dict[str, str]], out_dir: Path,
+                         output_name: str, timeout: float,
                          expected_images: int = 1) -> list[Path]:
     if expected_images <= 0:
         raise HarnessError("expected_images must be greater than zero")
@@ -1445,7 +1479,7 @@ def download_job_outputs(remote: Any, remote_images: list[dict[str, str]], out_d
         suffix = PurePosixPath(image["filename"]).suffix.lower()
         local_name = f"{output_name}{suffix}" if len(remote_images) == 1 else f"{output_name}_{index:02d}{suffix}"
         local_path = out_dir / local_name
-        remote.copy(remote_output_path(comfy_root, image), local_path, timeout)
+        comfy.download_output(image, local_path, timeout)
         if not local_path.is_file() or local_path.stat().st_size <= 0:
             raise HarnessError(f"download verification failed for {local_path}")
         downloaded.append(local_path)
@@ -1552,9 +1586,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 max_usd: float | None, max_minutes: float, dry_run: bool,
                 api: Any | None = None, logger: logging.Logger | None = None,
                 redactor: ApiKeyRedactionFilter | None = None,
-                remote_factory: Callable[[str, int, Path, logging.Logger], Any] | None = None,
                 comfy_factory: Callable[[str], Any] | None = None,
-                tunnel_factory: Callable[[Any, int, logging.Logger], Any] | None = None,
                 sleep: Callable[[float], None] = time.sleep,
                 ledger_dir: Path | None = None,
                 budget_path: Path | None = None) -> dict[str, Any]:
@@ -1624,6 +1656,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     )
     cancel = threading.Event()
     watchdog: Watchdog | None = None
+    proxy_client: Any | None = None
     caught: BaseException | None = None
     actual_hourly: float | None = None
 
@@ -1650,8 +1683,16 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             ready_timeout = min(
                 manifest_readiness_timeout_seconds(manifest), max_minutes * 60.0,
             )
-            ready_pod, host, ssh_port = wait_ready(
-                api, str(lease.pod_id), ready_timeout, watchdog, logger, sleep
+            proxy_url = pod_proxy_url(str(lease.pod_id), COMFY_PORT)
+            if dry_run:
+                proxy_client = DryRunComfyClient()
+            else:
+                proxy_client = (
+                    comfy_factory(proxy_url) if comfy_factory else ComfyClient(proxy_url)
+                )
+            ready_pod = wait_ready(
+                api, str(lease.pod_id), ready_timeout, watchdog, logger,
+                proxy_client, sleep,
             )
             actual_hourly = ready_hourly_price(ready_pod)
             actual_ceiling = actual_hourly * max_minutes / 60.0
@@ -1660,56 +1701,42 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             if (daily_limit is not None and daily_spent is not None
                     and daily_spent + actual_ceiling > daily_limit):
                 raise HarnessError("READY pod hourly price exceeds the governance daily budget")
-            known_hosts = out_dir / "_harness" / ".runpod_known_hosts"
-            if dry_run:
-                remote = DryRunRemote(logger)
-                tunnel_context = no_tunnel()
-            else:
-                remote_builder = remote_factory or RemoteExecutor
-                remote = remote_builder(host, ssh_port, known_hosts, logger)
-                comfy_port = int((manifest.get("comfyui") or {}).get("port", 8188))
-                tunnel_builder = tunnel_factory or SSHTunnel
-                tunnel_context = tunnel_builder(remote, comfy_port, logger)
-            remote.bootstrap(bootstrap_script(manifest), min(ready_timeout, 30 * 60))
             watchdog.check()
-            with tunnel_context as local_port:
-                if dry_run:
-                    comfy = DryRunComfyClient()
-                else:
-                    comfy = comfy_factory(f"http://127.0.0.1:{local_port}") if comfy_factory else ComfyClient(f"http://127.0.0.1:{local_port}")
-                base_workflow = load_workflow(manifest, manifest_path)
-                comfy_root = str((manifest.get("comfyui") or {}).get("root", "/workspace/ComfyUI"))
-                per_job_timeout = float(manifest.get("job_timeout_seconds", 15 * 60))
-                for job_number, job in enumerate(manifest["jobs"], start=1):
-                    watchdog.check()
-                    job_started = time.monotonic()
-                    output_name = safe_output_name(job.get("output_name"))
-                    workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
-                    prompt_id = comfy.submit(workflow)
-                    remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog)
-                    expected_images = job.get("expected_images", 1)
-                    if isinstance(expected_images, bool) or not isinstance(expected_images, int):
-                        raise HarnessError("job expected_images must be a positive integer")
-                    paths = download_job_outputs(remote, remote_images, out_dir, output_name,
-                                                 comfy_root, per_job_timeout, expected_images)
-                    job_result = {
-                        "job": job_number,
-                        "output_name": output_name,
-                        "seed": int(job["seed"]),
-                        "prompt_id": prompt_id,
-                        "seconds": round(time.monotonic() - job_started, 3),
-                        "files": [{"path": path.name, "bytes": path.stat().st_size} for path in paths],
-                    }
-                    result["jobs"].append(job_result)
-                    for index, path in enumerate(paths, start=1):
-                        image_id = output_name if len(paths) == 1 else f"{output_name}_{index:02d}"
-                        images_manifest.append({
-                            "image_id": image_id,
-                            "path": path.name,
-                            "review_status": "unreviewed",
-                            "parked_reasons": [],
-                        })
-                    logger.info("job %s complete: %d verified file(s)", output_name, len(paths))
+            comfy = proxy_client
+            base_workflow = load_workflow(manifest, manifest_path)
+            per_job_timeout = float(manifest.get("job_timeout_seconds", 15 * 60))
+            for job_number, job in enumerate(manifest["jobs"], start=1):
+                watchdog.check()
+                job_started = time.monotonic()
+                output_name = safe_output_name(job.get("output_name"))
+                workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
+                prompt_id = comfy.submit(workflow)
+                remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog)
+                expected_images = job.get("expected_images", 1)
+                if isinstance(expected_images, bool) or not isinstance(expected_images, int):
+                    raise HarnessError("job expected_images must be a positive integer")
+                paths = download_job_outputs(
+                    comfy, remote_images, out_dir, output_name,
+                    per_job_timeout, expected_images,
+                )
+                job_result = {
+                    "job": job_number,
+                    "output_name": output_name,
+                    "seed": int(job["seed"]),
+                    "prompt_id": prompt_id,
+                    "seconds": round(time.monotonic() - job_started, 3),
+                    "files": [{"path": path.name, "bytes": path.stat().st_size} for path in paths],
+                }
+                result["jobs"].append(job_result)
+                for index, path in enumerate(paths, start=1):
+                    image_id = output_name if len(paths) == 1 else f"{output_name}_{index:02d}"
+                    images_manifest.append({
+                        "image_id": image_id,
+                        "path": path.name,
+                        "review_status": "unreviewed",
+                        "parked_reasons": [],
+                    })
+                logger.info("job %s complete: %d verified file(s)", output_name, len(paths))
             if watchdog:
                 watchdog.check()
     except BaseException as exc:
@@ -1718,6 +1745,13 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         if isinstance(exc, ReadinessTimeout):
             result["last_pod_state"] = exc.last_pod_state
     finally:
+        try:
+            if proxy_client is not None:
+                close_proxy = getattr(proxy_client, "close", None)
+                if callable(close_proxy):
+                    close_proxy()
+        except BaseException as secondary:
+            retain_finalization_failure("proxy client close", secondary)
         try:
             if watchdog:
                 watchdog.stop(teardown_budget_seconds(lease.attempts))

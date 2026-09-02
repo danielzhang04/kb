@@ -15,8 +15,8 @@ container_disk_gb: 50
 volume_gb: 20
 volume_mount_path: "/workspace"
 
-# Use either image or template_id. Official templates must already run sshd. The harness
-# installs ComfyUI at the manifest's required git_ref under the volume mount.
+# Use either image or template_id. The harness installs ComfyUI at the manifest's
+# required git_ref under the volume mount.
 image: "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"
 # template_id: "REPLACE_WITH_TEMPLATE_ID"
 # network_volume_id: "REPLACE_WITH_NETWORK_VOLUME_ID"
@@ -27,7 +27,7 @@ comfyui:
   # Set true only to replace an existing root that is not a Git checkout.
   replace_non_git_root: false
   port: 8188
-  start_command: "python main.py --listen 127.0.0.1 --port 8188"
+  start_command: "python main.py"
 
 models:
   - repo_id: "OWNER/PUBLIC_MODEL_REPO"
