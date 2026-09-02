@@ -4,15 +4,17 @@ gpu:
   count: 1
   cloud: "SECURE"
 
-# A conservative operator-supplied ceiling used before the first billable API call.
-# Re-check it against RunPod immediately before a live run.
+# A conservative pre-create estimate. The harness still requires --max-usd and fails
+# closed unless the READY pod reports a positive adjustedCostPerHr/costPerHr.
 price_usd_per_hour: 0.75
+# This can lower, but never raise, the CLI/default 60-minute ceiling.
 max_minutes: 20
 container_disk_gb: 50
 volume_gb: 20
 volume_mount_path: "/workspace"
 
-# Use either image or template_id. Official templates must already run sshd.
+# Use either image or template_id. Official templates must already run sshd. This base
+# image does not include ComfyUI; bootstrap installs pinned ComfyUI v0.3.76 itself.
 image: "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"
 # template_id: "REPLACE_WITH_TEMPLATE_ID"
 # network_volume_id: "REPLACE_WITH_NETWORK_VOLUME_ID"
@@ -51,14 +53,15 @@ workflow:
 jobs:
   - seed: 100001
     output_name: "arm-a-seed-100001"
+    expected_images: 1
     substitutions:
       - node_id: "2"
         field: "text"
         value: "an unambiguously adult woman, fully clothed, natural window-light portrait"
   - seed: 200002
     output_name: "arm-a-seed-200002"
+    expected_images: 1
     substitutions:
       - node_id: "2"
         field: "text"
         value: "an unambiguously adult woman, fully clothed, casual phone photo"
-

@@ -1,71 +1,90 @@
 # RunPod bake-off harness
 
-`runpod_run.py` provisions one bounded RunPod Pod, bootstraps a ComfyUI arm, runs an
-API-format workflow for each manifest job, downloads and verifies every image, then
-terminates the Pod and verifies that `GET /pods/{id}` returns 404. It never creates a Pod
-in `--dry-run` mode.
+`runpod_run.py` creates one bounded RunPod Pod, installs and starts ComfyUI, runs an
+API-format workflow for each job, verifies every downloaded image, then terminates the Pod
+and verifies its absence. `--dry-run` exercises the same local flow without network access or
+billable compute.
 
-## Requirements
+## Requirements and credential boundary
 
-- Python 3.12.
-- `requests` for live commands and `pytest` for tests. The tests use an in-tree stub
-  session, so `requests-mock` is not required.
+- Python 3.12, `requests` for live commands, and `pytest` for tests.
 - OpenSSH `ssh` and `scp` on `PATH` for a live run.
-- A public SSH key already configured in the RunPod account. The harness does not read or
-  copy private keys and invokes OpenSSH in batch mode.
-- `RUNPOD_API_KEY` provisioned in the process environment for live commands. The key is
-  read once into a `requests.Session` authorization header, filtered from logs, and never
-  written to the manifest, `run.json`, or output files. `--dry-run` does not read it.
+- A public SSH key already configured in RunPod. The harness never reads a private key.
+- `RUNPOD_API_KEY` in the harness process environment for live commands.
 
-Install the two Python packages if the selected Python does not already have them:
+The API key is read once into a `requests.Session` authorization header. Log records, command
+errors, the last-resort `sys.excepthook`, `run.json`, and SSH/SCP diagnostics are redacted.
+Every SSH, SCP, and tunnel child receives an explicit environment with `RUNPOD_API_KEY`
+removed, so SSH client configuration cannot forward it.
+
+Install the two Python packages if needed:
 
 ```powershell
 py -3 -m pip install requests pytest
 ```
 
-## Manifest
+## Manifest and bootstrap
 
-Start from `manifest.example.yaml`. The parser accepts JSON or the deliberately small YAML
-subset used by that file, keeping the harness within the dependency limit. The load-bearing
-fields are:
+Start from `manifest.example.yaml`. The parser accepts JSON or the small YAML subset used by
+that file. Required fields are:
 
-- `gpu.type`, optional `gpu.count` and `gpu.cloud`;
-- exactly one practical source, `image` or `template_id`;
-- optional `network_volume_id`; without it, `volume_gb` creates ordinary Pod volume space;
-- `price_usd_per_hour`, an operator-checked conservative rate used for preflight;
-- public Hugging Face `models` (`repo_id`, `filename`, absolute `destination_dir`);
-- public HTTPS `custom_nodes` Git URLs;
-- a ComfyUI API-format `workflow` object or a path to a workflow JSON file;
-- `jobs`, each with `seed`, safe `output_name`, and node `substitutions` (`node_id`,
-  `field`, `value`). A bare field means `inputs.<field>`; a dotted field is traversed as
-  written. The seed replaces every `inputs.seed` and the output name replaces every
-  `inputs.filename_prefix`.
+- `gpu.type`, with optional `gpu.count` and `gpu.cloud`;
+- `image` or `template_id`, plus optional `network_volume_id`;
+- a conservative `price_usd_per_hour` for pre-create estimation;
+- public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
+- optional public-HTTPS `custom_nodes`;
+- a ComfyUI API-format `workflow` object or JSON path;
+- `jobs` with `seed`, safe `output_name`, substitutions, and `expected_images` (default 1).
 
-The hourly price is intentionally explicit rather than fetched with RunPod's GraphQL API:
-the documented GraphQL examples put the key in the URL query string, while this harness's
-credential boundary requires header-only authentication. Before a live run, compare the
-manifest ceiling with RunPod's current console or GPU pricing query. The create response's
-`adjustedCostPerHr`/`costPerHr` is checked again immediately; an over-budget Pod is
-terminated before bootstrap.
+The example uses a PyTorch image that does not contain ComfyUI. Bootstrap first checks
+Python, Git, and curl and exits before downloads if a prerequisite is missing. It then clones
+`https://github.com/comfyanonymous/ComfyUI` at pinned tag `v0.3.76` and installs its
+`requirements.txt`. Existing tagged checkouts and non-empty model files are reused. A failed
+ComfyUI install, dependency install, or model download is fatal, so the enclosing lease
+immediately terminates and verifies the Pod.
+
+ComfyUI history entries with `completed: false` are treated as work in progress. Only
+`status_str: error`, timeout, or a completed job with zero images is a job failure. Before any
+SCP, the returned image count must equal the job's `expected_images`; after SCP, every file
+must exist and have non-zero size. Failed SCP stderr is logged through the redactor.
+
+## Spend ceilings
+
+A live `run` requires `--max-usd`. Before create, the harness computes the manifest estimate,
+reads `governance/budget.yaml` `daily_usd_limit`, sums the `usd` column in today's
+`ledgers/cost/*.tsv`, and refuses when existing spend plus the estimate exceeds the daily
+limit. `max_minutes` is the minimum of the CLI value, manifest value, and the hard
+`DEFAULT_MAX_MINUTES` of 60; a manifest can only lower the ceiling.
+
+The manifest rate is never trusted after create. Once the Pod is READY, its
+`adjustedCostPerHr` or `costPerHr` must be present and positive. That real rate is checked
+against both `--max-usd` and the daily limit. A missing, zero, invalid, or over-budget rate
+causes immediate terminate-and-verify.
+
+At Pod acquisition, the cost ledger receives a provisional row with model
+`runpod:<gpu-short-name>`, step `pod-create <id>`, and the preflight estimate. Verified
+teardown replaces that same row with elapsed cost at the READY rate. An unverified teardown
+keeps at least the provisional estimate. Dry-run rows remain under
+`<out>/dry-run-ledger/` at zero USD.
 
 ## Commands
 
-Offline smoke test, from this directory:
+Offline smoke test:
 
 ```powershell
-py -3 runpod_run.py run --manifest manifest.example.yaml --dry-run --out .\smoke-out --max-usd 1 --max-minutes 1
+py -3 runpod_run.py run --manifest manifest.example.yaml --dry-run --out .\smoke-out --max-minutes 1
 ```
 
-The dry run exercises create/readiness/bootstrap/job/history/download/count-and-size
-verification/terminate/verify using in-memory fakes and makes no network call. Its zero-cost
-TSV goes under `<out>/dry-run-ledger/`, so it does not alter the live cost ledger.
-
-Live run (creates billable compute; operator only, after approval and after replacing every
-placeholder):
+For a live run, keep the key in a one-line file outside the repository and read it without
+typing the secret into PowerShell history:
 
 ```powershell
-$env:RUNPOD_API_KEY = '<provisioned outside the repo>'
-py -3 runpod_run.py run --manifest manifest.yaml --out .\run-001 --max-usd 0.30 --max-minutes 20
+$env:RUNPOD_API_KEY = (Get-Content -Raw 'C:\secure\runpod-api-key.txt').Trim()
+try {
+  py -3 runpod_run.py run --manifest manifest.yaml --out .\run-001 --max-usd 0.30 --max-minutes 20
+} finally {
+  Remove-Item Env:RUNPOD_API_KEY -ErrorAction SilentlyContinue
+}
 ```
 
 List Pods or force verified termination:
@@ -75,57 +94,45 @@ py -3 runpod_run.py status
 py -3 runpod_run.py terminate --pod-id POD_ID
 ```
 
-Live runs append exactly one `model<TAB>step<TAB>usd` row to
-`ledgers/cost/figment-YYYY-MM-DD.tsv`. The output directory contains `run.json`, the images,
-and `manifest.json` in the schema consumed by `qa_stamp.py`, `build_grading_board.py`, and
-`blind_pool.py`.
+## Network and output layout
 
-## Network design
+Only `22/tcp` is exposed. Bootstrap uses `ssh -p`, downloads use `scp -P`, and ComfyUI stays
+on the Pod loopback interface behind `ssh -L`. Tunnel stderr is continuously drained at
+OpenSSH `LogLevel=ERROR`, and both tunnel startup failure paths kill or reap the child.
 
-Only `22/tcp` is exposed. RunPod maps it to `publicIp:portMappings["22"]`. The harness uses
-that mapping for bootstrap and `scp -P`; ComfyUI remains bound to the Pod's loopback
-interface and is reached through `ssh -L`. This avoids placing ComfyUI's unauthenticated API
-on RunPod's public HTTP proxy. It also avoids the proxy's documented 100-second request
-limit; generation is asynchronous (`POST /prompt`, poll `GET /history/{prompt_id}`).
-
-Models download directly on the Pod from public Hugging Face resolve URLs, with no token or
-login. Bootstrap is idempotent: non-empty model files are reused, existing Git nodes receive
-`pull --ff-only`, and ComfyUI is started only when its health endpoint is down. It never uses
-`set -e`; every required and cosmetic step prints its own exit code, and cosmetic diagnostics
-cannot abort a billable run.
+The output directory contains `run.json`, verified images, and `manifest.json` for the figment
+QA tools. SSH host-key state is isolated under `<out>/_harness/.runpod_known_hosts`, outside
+the flat deliverable image set.
 
 ## Exit-path guarantee
 
-`PodLease` is the sole lifecycle owner. Once creation returns a Pod ID, it registers an
-`atexit` callback. Its context-manager `finally` path covers success, bootstrap failure,
-ComfyUI/job/download exceptions, and `KeyboardInterrupt`. Temporary SIGINT/SIGTERM handlers
-raise into that same path. A daemon watchdog independently calls the same idempotent close
-method when `--max-minutes` expires, so it does not depend on the main loop noticing a flag.
+`PodLease` registers its atexit cleanup before the create request. If create times out,
+returns a proxy error or bad JSON, or omits the ID after RunPod created the Pod, teardown
+recovers every matching Pod by the request's unique name, terminates it, and verifies absence.
+Failed list calls are retried by the same five-attempt close path.
 
-Close issues `DELETE /pods/{id}` and then `GET /pods/{id}`. A 200 response is still treated
-as alive, even if its status says terminated. Delete-and-verify retries five times with
-backoff. If absence cannot be proven, the process exits non-zero and emits exactly
-`POD STILL RUNNING <id>` at critical severity. Ambiguous API errors also enter this teardown
-loop; teardown success is never inferred from a successful DELETE alone.
+The watchdog's wall-clock budget begins at the create call. It independently invokes the
+same idempotent close path, and finalization waits for its full delete/verify/backoff budget
+before reading the lease verdict under the lease lock. SIGINT and SIGTERM become flag-only
+for the duration of `close()`, so all five teardown attempts remain available.
+
+Close treats only `GET /pods/{id}` returning 404 (or a completed name-recovery sweep with no
+match) as verified absence; a successful DELETE alone is not proof. On every unverified exit,
+the CLI prints:
+
+```text
+POD STILL RUNNING <id> — run: terminate --pod-id <id>
+```
+
+The atexit path also writes `POD STILL RUNNING <id>` directly to stderr in addition to a
+critical log record, because logging may already be shutting down.
 
 ## Verification
 
 ```powershell
 py -3 -m pytest orgs/figment/pipeline/pod/tests -q
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/pod/manifest.example.yaml --dry-run --out <tmp>
 ```
 
-Coverage includes the mocked-HTTP happy path, mid-job exception, `KeyboardInterrupt`, the
-watchdog, five failed terminate/verify attempts and loud error, over-budget preflight,
-ledger format, credential redaction across logs/files, offline dry run, and an assertion that
-downloads use uppercase `scp -P` rather than lowercase `-p`.
-
-Current RunPod references checked during implementation:
-
-- REST overview/OpenAPI: <https://docs.runpod.io/api-reference/overview>
-- create/list/get/delete Pods: <https://docs.runpod.io/api-reference/pods/POST/pods>,
-  <https://docs.runpod.io/api-reference/pods/GET/pods>,
-  <https://docs.runpod.io/api-reference/pods/GET/pods/podId>, and
-  <https://docs.runpod.io/api-reference/pods/DELETE/pods/podId>
-- port mapping: <https://docs.runpod.io/pods/configuration/expose-ports>
-- SSH/SCP requirements: <https://docs.runpod.io/pods/configuration/use-ssh>
-
+The test suite covers all reviewed lifecycle, spend, watchdog, signal, credential, bootstrap,
+ComfyUI history, image-count, subprocess, ledger, YAML, and SSH flag regressions.

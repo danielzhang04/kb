@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import atexit
 import copy
+import csv
 import json
 import logging
+import math
 import os
 import re
 import shlex
@@ -36,6 +38,10 @@ DEFAULT_READY_TIMEOUT = 20 * 60.0
 REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+COMFYUI_TAG = "v0.3.76"
+
+
+_active_redactor: ApiKeyRedactionFilter | None = None
 
 
 class HarnessError(RuntimeError):
@@ -69,6 +75,27 @@ class ApiKeyRedactionFilter(logging.Filter):
         return True
 
 
+def set_active_redactor(redactor: ApiKeyRedactionFilter | None) -> None:
+    global _active_redactor
+    _active_redactor = redactor
+
+
+def redact_for_stderr(value: Any) -> str:
+    if _active_redactor:
+        return _active_redactor.redact(value)
+    return str(value)
+
+
+def redacting_excepthook(exc_type: type[BaseException], exc: BaseException, _tb: Any) -> None:
+    """Last-resort one-line exception reporting; never emit a raw traceback."""
+    print(redact_for_stderr(f"{exc_type.__name__}: {exc}"), file=sys.stderr)
+
+
+# main() catches command failures, but this also protects importers that invoke a command
+# outside main() and allow it to reach the interpreter.
+sys.excepthook = redacting_excepthook
+
+
 def build_logger(redactor: ApiKeyRedactionFilter | None = None) -> logging.Logger:
     logger = logging.Logger("figment.runpod", level=logging.INFO)
     handler = logging.StreamHandler()
@@ -86,7 +113,9 @@ def build_authenticated_session() -> tuple[Any, ApiKeyRedactionFilter]:
     # This is the one and only environment read. The value is retained in this header only.
     session.headers["Authorization"] = "Bearer " + os.environ["RUNPOD_API_KEY"]
     session.headers["Content-Type"] = "application/json"
-    return session, ApiKeyRedactionFilter(session)
+    redactor = ApiKeyRedactionFilter(session)
+    set_active_redactor(redactor)
+    return session, redactor
 
 
 class RunPodAPI:
@@ -166,46 +195,132 @@ class DryRunAPI:
             self.pod = None
 
 
+@contextmanager
+def teardown_signal_mask(logger: logging.Logger):
+    """Make teardown signals flag-only so a second signal cannot abort retries."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous: dict[int, Any] = {}
+    received = threading.Event()
+
+    def handler(signum: int, _frame: Any) -> None:
+        received.set()
+        logger.warning("signal %s received during teardown; finishing all attempts", signum)
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        previous[signum] = signal.getsignal(signum)
+        signal.signal(signum, handler)
+    try:
+        yield
+    finally:
+        for signum, old in previous.items():
+            signal.signal(signum, old)
+
+
 class PodLease:
-    """The sole owner of a pod, including idempotent terminate-and-verify."""
+    """The sole owner of a pod, including name recovery and verified teardown."""
 
     def __init__(self, api: Any, payload: dict[str, Any] | None, logger: logging.Logger,
                  *, pod_id: str | None = None, sleep: Callable[[float], None] = time.sleep,
-                 attempts: int = TERMINATE_ATTEMPTS):
+                 attempts: int = TERMINATE_ATTEMPTS,
+                 on_acquired: Callable[[str, dict[str, Any] | None], None] | None = None):
         self.api = api
         self.payload = payload
         self.logger = logger
-        self.pod_id = pod_id
+        self.pod_id = str(pod_id) if pod_id else None
         self.pod: dict[str, Any] | None = None
         self.sleep = sleep
         self.attempts = attempts
+        self.on_acquired = on_acquired
         self._lock = threading.RLock()
         self._verified_absent = False
         self._registered = False
         self._atexit_callback = self._close_at_exit
+        self._known_ids: set[str] = {self.pod_id} if self.pod_id else set()
+        self._acquired_notified = bool(self.pod_id)
+        self._create_uncertain = False
+
+    @property
+    def pod_name(self) -> str | None:
+        if self.payload and self.payload.get("name"):
+            return str(self.payload["name"])
+        return None
+
+    def _register_atexit(self) -> None:
+        if not self._registered:
+            atexit.register(self._atexit_callback)
+            self._registered = True
+
+    def _remember_pod(self, pod: dict[str, Any]) -> None:
+        pod_id = pod.get("id")
+        if not pod_id:
+            return
+        self.pod = pod
+        self.pod_id = str(pod_id)
+        self._known_ids.add(self.pod_id)
+        if not self._acquired_notified:
+            self._acquired_notified = True
+            if self.on_acquired:
+                self.on_acquired(self.pod_id, pod)
+
+    def _named_matches(self) -> list[dict[str, Any]]:
+        name = self.pod_name
+        if not name:
+            return []
+        return [
+            pod for pod in self.api.list_pods()
+            if isinstance(pod, dict) and pod.get("name") == name and pod.get("id")
+        ]
+
+    def _mark_verified(self, label: str) -> None:
+        self._verified_absent = True
+        self.logger.warning("termination verified: pod %s is absent", label)
+        if self._registered:
+            atexit.unregister(self._atexit_callback)
+            self._registered = False
+
+    def snapshot(self) -> tuple[str | None, str | None, bool]:
+        with self._lock:
+            return self.pod_id, self.pod_name, self._verified_absent
 
     def __enter__(self) -> "PodLease":
-        if self.pod_id is None:
-            if self.payload is None:
-                raise HarnessError("a create payload is required")
-            self.logger.info("creating pod")
+        # Register before POST: a timeout, proxy 5xx, or invalid response may still have
+        # created a billable pod, in which case the unique name is our recovery handle.
+        self._register_atexit()
+        if self.pod_id is not None:
+            self.logger.info("pod acquired %s", self.pod_id)
+            return self
+        if self.payload is None:
+            raise HarnessError("a create payload is required")
+        self.logger.info("creating pod")
+        try:
             created = self.api.create_pod(self.payload)
-            self.pod_id = created.get("id")
-            self.pod = created
+            if not isinstance(created, dict):
+                raise HarnessError("RunPod create response was not an object")
+            self._remember_pod(created)
             if not self.pod_id:
-                # Recover a billed pod by the unique name if the create response is incomplete.
-                matches = [p for p in self.api.list_pods()
-                           if p.get("name") == self.payload.get("name") and p.get("id")]
-                if len(matches) == 1:
-                    self.pod = matches[0]
-                    self.pod_id = matches[0]["id"]
-                else:
+                self._create_uncertain = True
+                matches = self._named_matches()
+                if len(matches) != 1:
                     raise HarnessError(
-                        "pod creation may have succeeded but its id is ambiguous; run `status` "
-                        "and terminate the uniquely named figment-bakeoff pod manually"
+                        "pod creation may have succeeded but its id was not returned"
                     )
-        atexit.register(self._atexit_callback)
-        self._registered = True
+                self._remember_pod(matches[0])
+        except BaseException as exc:
+            self._create_uncertain = True
+            try:
+                self.close()
+            except BaseException as teardown_exc:
+                wrapped = HarnessError(
+                    f"pod creation failed and teardown was not verified: "
+                    f"{type(exc).__name__}: {exc}; {type(teardown_exc).__name__}: {teardown_exc}"
+                )
+                attach_lease_status(wrapped, self)
+                raise wrapped from exc
+            wrapped = HarnessError(f"pod creation failed: {type(exc).__name__}: {exc}")
+            attach_lease_status(wrapped, self)
+            raise wrapped from exc
         self.logger.info("pod acquired %s", self.pod_id)
         return self
 
@@ -213,40 +328,94 @@ class PodLease:
         try:
             self.close()
         except BaseException:
-            # close() already emitted the mandatory loud line.
             pass
+        pod_id, name, verified = self.snapshot()
+        if not verified:
+            label = pod_id or name or "UNKNOWN"
+            message = f"POD STILL RUNNING {label}"
+            self.logger.critical(message)
+            # Logging handlers may already be torn down during interpreter exit.
+            print(message, file=sys.stderr)
 
     def close(self) -> None:
-        with self._lock:
-            if not self.pod_id or self._verified_absent:
+        with teardown_signal_mask(self.logger), self._lock:
+            if self._verified_absent:
                 return
-            pod_id = self.pod_id
+            if not self._known_ids and not self.pod_name:
+                self._mark_verified("(no pod acquired)")
+                return
+            ever_discovered = bool(self._known_ids)
             for attempt in range(1, self.attempts + 1):
-                self.logger.warning("terminate attempt %d/%d for pod %s",
-                                    attempt, self.attempts, pod_id)
-                try:
-                    self.api.delete_pod(pod_id)
-                except BaseException as exc:
-                    self.logger.error("terminate request failed for pod %s: %s", pod_id, exc)
-                try:
-                    if self.api.get_pod(pod_id) is None:
-                        self._verified_absent = True
-                        self.logger.warning("termination verified: pod %s is absent", pod_id)
-                        if self._registered:
-                            atexit.unregister(self._atexit_callback)
-                            self._registered = False
-                        return
-                except BaseException as exc:
-                    self.logger.error("termination verification failed for pod %s: %s", pod_id, exc)
+                name_scan_ok = not self._create_uncertain
+                if self._create_uncertain:
+                    try:
+                        matches = self._named_matches()
+                        name_scan_ok = True
+                        for pod in matches:
+                            self._remember_pod(pod)
+                        ever_discovered = ever_discovered or bool(matches)
+                    except BaseException as exc:
+                        self.logger.error("pod-name recovery failed: %s", exc)
+
+                for pod_id in sorted(self._known_ids):
+                    self.logger.warning("terminate attempt %d/%d for pod %s",
+                                        attempt, self.attempts, pod_id)
+                    try:
+                        self.api.delete_pod(pod_id)
+                    except BaseException as exc:
+                        self.logger.error("terminate request failed for pod %s: %s", pod_id, exc)
+
+                all_ids_absent = bool(self._known_ids)
+                for pod_id in sorted(self._known_ids):
+                    try:
+                        if self.api.get_pod(pod_id) is not None:
+                            all_ids_absent = False
+                    except BaseException as exc:
+                        all_ids_absent = False
+                        self.logger.error(
+                            "termination verification failed for pod %s: %s", pod_id, exc
+                        )
+
+                if self._create_uncertain and name_scan_ok:
+                    try:
+                        remaining = self._named_matches()
+                        for pod in remaining:
+                            self._remember_pod(pod)
+                        name_scan_ok = not remaining
+                    except BaseException as exc:
+                        name_scan_ok = False
+                        self.logger.error("pod-name verification failed: %s", exc)
+
+                if ever_discovered and all_ids_absent and name_scan_ok:
+                    self._mark_verified(self.pod_id or self.pod_name or "UNKNOWN")
+                    return
+                # With an ambiguous create and no discovered id, require the final name
+                # scan to be empty; early empty lists may only reflect eventual consistency.
+                if (not ever_discovered and self._create_uncertain and name_scan_ok
+                        and attempt == self.attempts):
+                    self._mark_verified(self.pod_name or "UNKNOWN")
+                    return
                 if attempt < self.attempts:
                     self.sleep(min(2 ** (attempt - 1), 8))
-            message = f"POD STILL RUNNING {pod_id}"
+            label = self.pod_id or self.pod_name or "UNKNOWN"
+            message = f"POD STILL RUNNING {label}"
             self.logger.critical(message)
             raise PodStillRunning(message)
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         self.close()
         return False
+
+
+def attach_lease_status(exc: BaseException, lease: PodLease) -> BaseException:
+    pod_id, pod_name, verified = lease.snapshot()
+    try:
+        setattr(exc, "pod_id", pod_id)
+        setattr(exc, "pod_name", pod_name)
+        setattr(exc, "termination_verified", verified)
+    except BaseException:
+        pass
+    return exc
 
 
 class Watchdog:
@@ -283,10 +452,16 @@ class Watchdog:
         if self.fired.is_set():
             raise RunCancelled("maximum runtime reached")
 
-    def stop(self) -> None:
+    def stop(self, timeout: float | None = None) -> None:
         self._stop.set()
         if self.thread.is_alive() and self.thread is not threading.current_thread():
-            self.thread.join(timeout=2)
+            self.thread.join(timeout=timeout)
+
+
+def teardown_budget_seconds(attempts: int = TERMINATE_ATTEMPTS) -> float:
+    request_budget = attempts * 2 * REQUEST_TIMEOUT
+    backoff_budget = sum(min(2 ** (attempt - 1), 8) for attempt in range(1, attempts))
+    return request_budget + backoff_budget + 1.0
 
 
 @contextmanager
@@ -367,6 +542,8 @@ def parse_simple_yaml(text: str) -> Any:
                     break
                 rest = content[1:].strip()
                 if not rest:
+                    if index + 1 >= len(tokens) or tokens[index + 1][0] <= indent:
+                        raise HarnessError("trailing bare '-' requires an indented value")
                     child, index = parse_block(index + 1, tokens[index + 1][0])
                     result.append(child)
                     continue
@@ -435,10 +612,16 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
         raise HarnessError("manifest requires image or template_id")
     if not isinstance(manifest.get("price_usd_per_hour"), (int, float)):
         raise HarnessError("manifest price_usd_per_hour is required for fail-closed preflight")
-    if float(manifest["price_usd_per_hour"]) < 0:
-        raise HarnessError("price_usd_per_hour cannot be negative")
+    manifest_price = float(manifest["price_usd_per_hour"])
+    if not math.isfinite(manifest_price) or manifest_price <= 0:
+        raise HarnessError("price_usd_per_hour must be finite and positive")
     if not isinstance(manifest.get("jobs"), list) or not manifest["jobs"]:
         raise HarnessError("manifest jobs must be a non-empty list")
+    for job in manifest["jobs"]:
+        expected = job.get("expected_images", 1) if isinstance(job, dict) else None
+        if (not isinstance(job, dict) or isinstance(expected, bool)
+                or not isinstance(expected, int) or expected <= 0):
+            raise HarnessError("each job expected_images must be a positive integer")
     load_workflow(manifest, manifest_path)
     for model in manifest.get("models", []):
         if not isinstance(model, dict) or not all(model.get(k) for k in ("repo_id", "filename", "destination_dir")):
@@ -471,14 +654,91 @@ def load_workflow(manifest: dict[str, Any], manifest_path: Path) -> dict[str, An
 
 
 def estimate_cost(manifest: dict[str, Any], max_minutes: float, max_usd: float | None) -> float:
-    if max_minutes <= 0:
+    if not math.isfinite(max_minutes) or max_minutes <= 0:
         raise HarnessError("--max-minutes must be greater than zero")
+    if max_usd is not None and (not math.isfinite(max_usd) or max_usd <= 0):
+        raise HarnessError("--max-usd must be finite and greater than zero")
     estimate = float(manifest["price_usd_per_hour"]) * max_minutes / 60.0
     if max_usd is not None and estimate > max_usd:
         raise HarnessError(
             f"preflight refused: estimated ${estimate:.4f} exceeds --max-usd ${max_usd:.4f}"
         )
     return estimate
+
+
+def effective_max_minutes(cli_value: float | None, manifest: dict[str, Any]) -> float:
+    try:
+        values = [DEFAULT_MAX_MINUTES]
+        if cli_value is not None:
+            values.append(float(cli_value))
+        if manifest.get("max_minutes") is not None:
+            values.append(float(manifest["max_minutes"]))
+    except (TypeError, ValueError) as exc:
+        raise HarnessError("max_minutes values must be numeric") from exc
+    if any(not math.isfinite(value) or value <= 0 for value in values):
+        raise HarnessError("--max-minutes and manifest max_minutes must be finite and positive")
+    maximum = min(values)
+    return maximum
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def repo_ledger_dir() -> Path:
+    return repo_root() / "ledgers" / "cost"
+
+
+def daily_budget_state(*, budget_path: Path | None = None,
+                       ledger_dir: Path | None = None) -> tuple[float, float]:
+    budget_path = budget_path or repo_root() / "governance" / "budget.yaml"
+    ledger_dir = ledger_dir or repo_ledger_dir()
+    budget = parse_simple_yaml(budget_path.read_text(encoding="utf-8"))
+    if not isinstance(budget, dict) or not isinstance(budget.get("daily_usd_limit"), (int, float)):
+        raise HarnessError("governance budget is missing numeric daily_usd_limit")
+    daily_limit = float(budget["daily_usd_limit"])
+    if not math.isfinite(daily_limit) or daily_limit <= 0:
+        raise HarnessError("governance daily_usd_limit must be positive")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    spent = 0.0
+    for path in sorted(ledger_dir.glob(f"*-{today}.tsv")):
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                if not reader.fieldnames or "usd" not in reader.fieldnames:
+                    raise HarnessError(f"cost ledger has no usd column: {path}")
+                for row in reader:
+                    value = float(row["usd"])
+                    if not math.isfinite(value) or value < 0:
+                        raise HarnessError(f"cost ledger has invalid usd value: {path}")
+                    spent += value
+        except (OSError, TypeError, ValueError) as exc:
+            raise HarnessError(f"could not read cost ledger {path}: {exc}") from exc
+    return daily_limit, spent
+
+
+def enforce_daily_budget(estimate: float, *, budget_path: Path | None = None,
+                         ledger_dir: Path | None = None) -> tuple[float, float]:
+    daily_limit, spent = daily_budget_state(budget_path=budget_path, ledger_dir=ledger_dir)
+    if estimate < 0 or spent + estimate > daily_limit:
+        raise HarnessError(
+            f"daily budget refused: ${spent:.4f} spent + ${estimate:.4f} estimate "
+            f"exceeds ${daily_limit:.4f}"
+        )
+    return daily_limit, spent
+
+
+def ready_hourly_price(pod: dict[str, Any]) -> float:
+    value = pod.get("adjustedCostPerHr")
+    if value is None:
+        value = pod.get("costPerHr")
+    try:
+        hourly = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HarnessError("READY pod did not report a valid hourly price") from exc
+    if not math.isfinite(hourly) or hourly <= 0:
+        raise HarnessError("READY pod reported a missing or non-positive hourly price")
+    return hourly
 
 
 def create_payload(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -549,11 +809,25 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
         "fail=0",
         "run_required() { label=\"$1\"; shift; \"$@\"; rc=$?; printf 'STEP %s rc=%s\\n' \"$label\" \"$rc\"; if [ \"$rc\" -ne 0 ]; then fail=1; fi; return 0; }",
         "run_cosmetic() { label=\"$1\"; shift; \"$@\"; rc=$?; printf 'STEP %s rc=%s (cosmetic)\\n' \"$label\" \"$rc\"; return 0; }",
-        f"run_required comfy-root test -d {shlex.quote(root)}",
         "run_required python-present python --version",
         "run_required git-present git --version",
         "run_required curl-present curl --version",
+        "if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi",
     ]
+    install_comfy = (
+        f"if [ -d {shlex.quote(root + '/.git')} ]; then "
+        f"git -C {shlex.quote(root)} fetch --depth 1 origin tag {shlex.quote(COMFYUI_TAG)} && "
+        f"git -C {shlex.quote(root)} checkout --detach {shlex.quote(COMFYUI_TAG)}; "
+        f"elif [ -e {shlex.quote(root)} ]; then "
+        f"echo 'ComfyUI root exists but is not a git checkout' >&2; exit 1; "
+        f"else git clone --branch {shlex.quote(COMFYUI_TAG)} --depth 1 "
+        f"https://github.com/comfyanonymous/ComfyUI {shlex.quote(root)}; fi && "
+        f"python -m pip install -r {shlex.quote(root + '/requirements.txt')}"
+    )
+    lines.extend([
+        f"run_required comfy-install bash -lc {shlex.quote(install_comfy)}",
+        "if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi",
+    ])
     for index, model in enumerate(manifest.get("models", []), start=1):
         destination = str(PurePosixPath(str(model["destination_dir"])) / PurePosixPath(str(model["filename"])).name)
         encoded_filename = quote(str(model["filename"]), safe="/")
@@ -566,6 +840,7 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
             f"test -s \"$tmp\" && mv \"$tmp\" {shlex.quote(destination)}; fi"
         )
         lines.append(f"run_required model-{index} bash -lc {shlex.quote(command)}")
+        lines.append("if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi")
     nodes_root = f"{root}/custom_nodes"
     for index, node in enumerate(manifest.get("custom_nodes", []), start=1):
         name = _safe_node_name(str(node["git_url"]), node.get("name"))
@@ -580,6 +855,7 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
         requirements = f"{target}/requirements.txt"
         install = f"if [ -f {shlex.quote(requirements)} ]; then python -m pip install -r {shlex.quote(requirements)}; else true; fi"
         lines.append(f"run_required node-deps-{index} bash -lc {shlex.quote(install)}")
+        lines.append("if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi")
     start = str(comfy.get("start_command", f"python main.py --listen 127.0.0.1 --port {port}"))
     start_cmd = (
         f"if curl --silent --fail http://127.0.0.1:{port}/system_stats >/dev/null; then true; else "
@@ -595,24 +871,35 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def child_process_env() -> dict[str, str]:
+    # The filter condition is evaluated before the value expression, so the key's value
+    # is neither copied nor read here.
+    return {name: value for name, value in os.environ.items() if name != "RUNPOD_API_KEY"}
+
+
 class RemoteExecutor:
     def __init__(self, host: str, port: int, known_hosts: Path, logger: logging.Logger):
         self.host = host
         self.port = port
         self.known_hosts = known_hosts
         self.logger = logger
+        self.known_hosts.parent.mkdir(parents=True, exist_ok=True)
 
     def _base(self, program: str) -> list[str]:
         return [
             program,
             "-o", "BatchMode=yes",
+            "-o", "LogLevel=ERROR",
             "-o", "StrictHostKeyChecking=accept-new",
             "-o", f"UserKnownHostsFile={self.known_hosts}",
         ]
 
     def bootstrap(self, script: str, timeout: float) -> None:
         command = self._base("ssh") + ["-p", str(self.port), f"root@{self.host}", "bash -s"]
-        completed = subprocess.run(command, input=script, text=True, capture_output=True, timeout=timeout)
+        completed = subprocess.run(
+            command, input=script, text=True, capture_output=True, timeout=timeout,
+            env=child_process_env(),
+        )
         for line in (completed.stdout + completed.stderr).splitlines():
             self.logger.info("bootstrap: %s", line)
         if completed.returncode:
@@ -623,8 +910,13 @@ class RemoteExecutor:
         remote = f"root@{self.host}:{shlex.quote(remote_path)}"
         # Uppercase -P is intentional: lowercase -p only preserves timestamps/modes.
         command = self._base("scp") + ["-P", str(self.port), remote, str(local_path)]
-        completed = subprocess.run(command, text=True, capture_output=True, timeout=timeout)
+        completed = subprocess.run(
+            command, text=True, capture_output=True, timeout=timeout,
+            env=child_process_env(),
+        )
         if completed.returncode:
+            for line in completed.stderr.splitlines():
+                self.logger.error("scp: %s", line)
             raise HarnessError(f"scp download failed with exit code {completed.returncode}")
 
 
@@ -647,6 +939,32 @@ class SSHTunnel:
         self.logger = logger
         self.local_port = _free_tcp_port()
         self.process: subprocess.Popen[str] | None = None
+        self._stderr_thread: threading.Thread | None = None
+
+    def _drain_stderr(self) -> None:
+        if not self.process or not self.process.stderr:
+            return
+        try:
+            for line in self.process.stderr:
+                if line.strip():
+                    self.logger.error("SSH port-forward: %s", line.rstrip())
+        except BaseException as exc:
+            self.logger.error("SSH port-forward stderr reader failed: %s", exc)
+
+    def _kill(self) -> None:
+        process = self.process
+        if not process:
+            return
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        if self._stderr_thread and self._stderr_thread is not threading.current_thread():
+            self._stderr_thread.join(timeout=1)
+        self.logger.info("SSH port-forward exited with status %s", process.poll())
 
     def __enter__(self) -> int:
         command = self.remote._base("ssh") + [
@@ -655,26 +973,32 @@ class SSHTunnel:
             "-N", "-L", f"127.0.0.1:{self.local_port}:127.0.0.1:{self.remote_port}",
             f"root@{self.remote.host}",
         ]
-        self.process = subprocess.Popen(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
-            if self.process.poll() is not None:
-                raise HarnessError("SSH port-forward exited before becoming ready")
-            try:
-                with socket.create_connection(("127.0.0.1", self.local_port), timeout=0.25):
-                    self.logger.info("SSH port-forward ready on local port %s", self.local_port)
-                    return self.local_port
-            except OSError:
-                time.sleep(0.1)
-        raise HarnessError("SSH port-forward did not become ready within 30s")
+        try:
+            self.process = subprocess.Popen(
+                command, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                env=child_process_env(),
+            )
+            self._stderr_thread = threading.Thread(
+                target=self._drain_stderr, name="ssh-tunnel-stderr", daemon=True
+            )
+            self._stderr_thread.start()
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if self.process.poll() is not None:
+                    raise HarnessError("SSH port-forward exited before becoming ready")
+                try:
+                    with socket.create_connection(("127.0.0.1", self.local_port), timeout=0.25):
+                        self.logger.info("SSH port-forward ready on local port %s", self.local_port)
+                        return self.local_port
+                except OSError:
+                    time.sleep(0.1)
+            raise HarnessError("SSH port-forward did not become ready within 30s")
+        except BaseException:
+            self._kill()
+            raise
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
+        self._kill()
         return False
 
 
@@ -721,8 +1045,11 @@ class ComfyClient:
             entry = history.get(prompt_id) if isinstance(history, dict) else None
             if entry:
                 status = entry.get("status") or {}
-                if status.get("status_str") == "error" or status.get("completed") is False:
+                if status.get("status_str") == "error":
                     raise HarnessError(f"ComfyUI job {prompt_id} failed")
+                if status.get("completed") is False:
+                    time.sleep(1)
+                    continue
                 outputs: list[dict[str, str]] = []
                 for node in (entry.get("outputs") or {}).values():
                     for image in node.get("images", []):
@@ -734,6 +1061,8 @@ class ComfyClient:
                             })
                 if outputs:
                     return outputs
+                if status.get("completed") is True:
+                    raise HarnessError(f"ComfyUI job {prompt_id} completed with zero images")
             time.sleep(1)
         raise HarnessError(f"ComfyUI job {prompt_id} timed out")
 
@@ -803,7 +1132,15 @@ def remote_output_path(comfy_root: str, image: dict[str, str]) -> str:
 
 
 def download_job_outputs(remote: Any, remote_images: list[dict[str, str]], out_dir: Path,
-                         output_name: str, comfy_root: str, timeout: float) -> list[Path]:
+                         output_name: str, comfy_root: str, timeout: float,
+                         expected_images: int = 1) -> list[Path]:
+    if expected_images <= 0:
+        raise HarnessError("expected_images must be greater than zero")
+    if len(remote_images) != expected_images:
+        raise HarnessError(
+            f"download count verification failed: expected {expected_images}, "
+            f"received {len(remote_images)}"
+        )
     downloaded: list[Path] = []
     for index, image in enumerate(remote_images, start=1):
         suffix = PurePosixPath(image["filename"]).suffix.lower()
@@ -813,7 +1150,7 @@ def download_job_outputs(remote: Any, remote_images: list[dict[str, str]], out_d
         if not local_path.is_file() or local_path.stat().st_size <= 0:
             raise HarnessError(f"download verification failed for {local_path}")
         downloaded.append(local_path)
-    if len(downloaded) != len(remote_images):
+    if len(downloaded) != expected_images:
         raise HarnessError("download count verification failed")
     return downloaded
 
@@ -837,8 +1174,43 @@ def append_cost_row(ledger_dir: Path, gpu: str, step: str, usd: float) -> Path:
     return path
 
 
-def repo_ledger_dir() -> Path:
-    return Path(__file__).resolve().parents[4] / "ledgers" / "cost"
+def upsert_cost_row(ledger_dir: Path, model: str, step: str, usd: float) -> Path:
+    if any(char in model + step for char in "\t\r\n"):
+        raise HarnessError("ledger model and step must be single TSV fields")
+    ledger_dir.mkdir(parents=True, exist_ok=True)
+    path = ledger_dir / f"figment-{datetime.now(timezone.utc):%Y-%m-%d}.tsv"
+    rows: list[dict[str, str]] = []
+    if path.exists() and path.stat().st_size:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            if reader.fieldnames != ["model", "step", "usd"]:
+                raise HarnessError(f"unexpected cost ledger schema: {path}")
+            rows = list(reader)
+    replacement = {"model": model, "step": step, "usd": f"{usd:.6f}"}
+    replaced = False
+    for index, row in enumerate(rows):
+        if row.get("model") == model and row.get("step") == step:
+            rows[index] = replacement
+            replaced = True
+            break
+    if not replaced:
+        rows.append(replacement)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["model", "step", "usd"], delimiter="\t",
+                                lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    temporary.replace(path)
+    return path
+
+
+def gpu_model_label(gpu_type: Any) -> str:
+    short = re.sub(r"^(?:NVIDIA\s+)?(?:GeForce\s+)?", "", str(gpu_type), flags=re.IGNORECASE)
+    short = re.sub(r"[^A-Za-z0-9]+", "-", short).strip("-").lower()
+    if not short:
+        raise HarnessError("gpu.type cannot be converted to a ledger model name")
+    return f"runpod:{short}"
 
 
 def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
@@ -849,10 +1221,24 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 comfy_factory: Callable[[str], Any] | None = None,
                 tunnel_factory: Callable[[Any, int, logging.Logger], Any] | None = None,
                 sleep: Callable[[float], None] = time.sleep,
-                ledger_dir: Path | None = None) -> dict[str, Any]:
+                ledger_dir: Path | None = None, budget_path: Path | None = None,
+                daily_ledger_dir: Path | None = None) -> dict[str, Any]:
     require_manifest(manifest, manifest_path)
+    max_minutes = effective_max_minutes(max_minutes, manifest)
+    if not dry_run and max_usd is None:
+        raise HarnessError("--max-usd is required for a live run")
     estimate = estimate_cost(manifest, max_minutes, max_usd)
     logger = logger or build_logger(redactor)
+    if redactor:
+        set_active_redactor(redactor)
+    daily_limit: float | None = None
+    daily_spent: float | None = None
+    if not dry_run:
+        daily_limit, daily_spent = enforce_daily_budget(
+            estimate,
+            budget_path=budget_path,
+            ledger_dir=daily_ledger_dir or ledger_dir or repo_ledger_dir(),
+        )
     logger.info("preflight cost estimate: $%.4f for %.2f minute(s)", estimate, max_minutes)
     out_dir.mkdir(parents=True, exist_ok=True)
     if api is None:
@@ -861,7 +1247,11 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         raise HarnessError("live run requires an authenticated API")
 
     payload = create_payload(manifest)
-    started = time.monotonic()
+    ledger_target = ledger_dir or repo_ledger_dir()
+    if dry_run and ledger_dir is None:
+        ledger_target = out_dir / "dry-run-ledger"
+    ledger_model = gpu_model_label(manifest["gpu"]["type"])
+    started = time.monotonic()  # The budget clock begins immediately before create.
     started_utc = datetime.now(timezone.utc)
     result: dict[str, Any] = {
         "schema": "figment/runpod-run@1",
@@ -874,25 +1264,48 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         "jobs": [],
         "termination_verified": False,
     }
+    if daily_limit is not None and daily_spent is not None:
+        result["daily_usd_limit"] = daily_limit
+        result["daily_usd_before_create"] = round(daily_spent, 6)
     images_manifest: list[dict[str, Any]] = []
-    lease = PodLease(api, payload, logger, sleep=sleep)
+
+    def record_acquired(pod_id: str, _pod: dict[str, Any] | None) -> None:
+        result["pod_id"] = pod_id
+        cost_path = upsert_cost_row(
+            ledger_target,
+            ledger_model,
+            f"pod-create {pod_id}",
+            0.0 if dry_run else estimate,
+        )
+        logger.info("provisional cost row: %s", cost_path)
+
+    lease = PodLease(api, payload, logger, sleep=sleep, on_acquired=record_acquired)
     cancel = threading.Event()
     watchdog: Watchdog | None = None
     caught: BaseException | None = None
-    actual_hourly = float(manifest["price_usd_per_hour"])
+    actual_hourly: float | None = None
     try:
         with shutdown_signals(cancel), lease:
             result["pod_id"] = lease.pod_id
-            created = lease.pod or {}
-            actual_hourly = float(created.get("adjustedCostPerHr") or created.get("costPerHr") or actual_hourly)
-            max_actual = max_usd if max_usd is not None else float("inf")
-            if actual_hourly * max_minutes / 60.0 > max_actual:
-                raise HarnessError("created pod hourly price exceeds the approved --max-usd budget")
-            watchdog = Watchdog(max_minutes * 60.0, lease, cancel, logger)
+            watchdog = Watchdog(
+                max(1.0, max_minutes * 60.0 - (time.monotonic() - started)),
+                lease,
+                cancel,
+                logger,
+            )
             watchdog.start()
             ready_timeout = min(float(manifest.get("ready_timeout_seconds", DEFAULT_READY_TIMEOUT)), max_minutes * 60.0)
-            _pod, host, ssh_port = wait_ready(api, str(lease.pod_id), ready_timeout, watchdog, logger, sleep)
-            known_hosts = out_dir / ".runpod_known_hosts"
+            ready_pod, host, ssh_port = wait_ready(
+                api, str(lease.pod_id), ready_timeout, watchdog, logger, sleep
+            )
+            actual_hourly = ready_hourly_price(ready_pod)
+            actual_ceiling = actual_hourly * max_minutes / 60.0
+            if max_usd is not None and actual_ceiling > max_usd:
+                raise HarnessError("READY pod hourly price exceeds the approved --max-usd budget")
+            if (daily_limit is not None and daily_spent is not None
+                    and daily_spent + actual_ceiling > daily_limit):
+                raise HarnessError("READY pod hourly price exceeds the governance daily budget")
+            known_hosts = out_dir / "_harness" / ".runpod_known_hosts"
             if dry_run:
                 remote = DryRunRemote(logger)
                 tunnel_context = no_tunnel()
@@ -919,8 +1332,11 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     workflow = apply_job(base_workflow, job)
                     prompt_id = comfy.submit(workflow)
                     remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog)
+                    expected_images = job.get("expected_images", 1)
+                    if isinstance(expected_images, bool) or not isinstance(expected_images, int):
+                        raise HarnessError("job expected_images must be a positive integer")
                     paths = download_job_outputs(remote, remote_images, out_dir, output_name,
-                                                 comfy_root, per_job_timeout)
+                                                 comfy_root, per_job_timeout, expected_images)
                     job_result = {
                         "job": job_number,
                         "output_name": output_name,
@@ -946,34 +1362,49 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         result["error"] = f"{type(exc).__name__}: {exc}"
     finally:
         if watchdog:
-            watchdog.stop()
-        result["termination_verified"] = lease._verified_absent
+            watchdog.stop(teardown_budget_seconds(lease.attempts))
+            if caught is None and watchdog.error:
+                caught = watchdog.error
+                result["error"] = f"{type(caught).__name__}: {caught}"
+            elif caught is None and watchdog.fired.is_set():
+                caught = RunCancelled("maximum runtime reached")
+                result["error"] = f"{type(caught).__name__}: {caught}"
+        pod_id, _pod_name, verified = lease.snapshot()
+        result["pod_id"] = pod_id or result["pod_id"]
+        result["termination_verified"] = verified
         elapsed = time.monotonic() - started
         result["finished_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         result["elapsed_seconds"] = round(elapsed, 3)
         result["hourly_price_usd"] = actual_hourly
-        result["estimated_actual_usd"] = round(actual_hourly * elapsed / 3600.0, 6)
+        settled_cost = 0.0 if dry_run else estimate
+        if not dry_run and actual_hourly is not None:
+            measured = actual_hourly * elapsed / 3600.0
+            settled_cost = measured if verified else max(estimate, measured)
+        result["estimated_actual_usd"] = round(settled_cost, 6)
         write_json(out_dir / "run.json", result, redactor)
         if images_manifest:
             write_json(out_dir / "manifest.json", {"images": images_manifest}, redactor)
         if result["pod_id"]:
-            if dry_run and ledger_dir is None:
-                ledger_dir = out_dir / "dry-run-ledger"
-            cost_path = append_cost_row(
-                ledger_dir or repo_ledger_dir(),
-                str(manifest["gpu"]["type"]),
-                f"runpod-bakeoff:{result['pod_id']}",
+            cost_path = upsert_cost_row(
+                ledger_target,
+                ledger_model,
+                f"pod-create {result['pod_id']}",
                 float(result["estimated_actual_usd"]),
             )
             logger.info("cost row: %s", cost_path)
+    if caught is None and not result["termination_verified"]:
+        caught = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
     if caught:
-        raise caught
+        raise attach_lease_status(caught, lease)
     return result
 
 
 def command_run(args: argparse.Namespace) -> int:
     manifest_path = resolve_manifest_path(args.manifest)
     manifest = load_manifest(manifest_path)
+    if not args.dry_run and args.max_usd is None:
+        raise HarnessError("--max-usd is required for a live run")
+    max_minutes = effective_max_minutes(args.max_minutes, manifest)
     session: Any = None
     redactor: ApiKeyRedactionFilter | None = None
     api: Any | None = None
@@ -982,20 +1413,26 @@ def command_run(args: argparse.Namespace) -> int:
             session, redactor = build_authenticated_session()
         except KeyError as exc:
             raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
+        set_active_redactor(redactor)
         api = RunPodAPI(session)
     logger = build_logger(redactor)
     try:
-        run_harness(
+        result = run_harness(
             manifest,
             manifest_path,
             args.out.resolve(),
             max_usd=args.max_usd,
-            max_minutes=args.max_minutes or float(manifest.get("max_minutes", DEFAULT_MAX_MINUTES)),
+            max_minutes=max_minutes,
             dry_run=args.dry_run,
             api=api,
             logger=logger,
             redactor=redactor,
         )
+        if not result["termination_verified"]:
+            error = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
+            setattr(error, "pod_id", result["pod_id"])
+            setattr(error, "termination_verified", False)
+            raise error
         logger.info("exit path complete: terminate + absence verification succeeded")
         return 0
     finally:
@@ -1008,12 +1445,15 @@ def command_terminate(args: argparse.Namespace) -> int:
         session, redactor = build_authenticated_session()
     except KeyError as exc:
         raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
+    set_active_redactor(redactor)
     logger = build_logger(redactor)
+    lease = PodLease(RunPodAPI(session), None, logger, pod_id=args.pod_id)
     try:
-        lease = PodLease(RunPodAPI(session), None, logger, pod_id=args.pod_id)
         with lease:
             pass
         return 0
+    except BaseException as exc:
+        raise attach_lease_status(exc, lease)
     finally:
         session.close()
 
@@ -1023,6 +1463,7 @@ def command_status(_args: argparse.Namespace) -> int:
         session, redactor = build_authenticated_session()
     except KeyError as exc:
         raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
+    set_active_redactor(redactor)
     try:
         pods = RunPodAPI(session).list_pods()
         safe = [{
@@ -1060,16 +1501,33 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    def report(exc: BaseException, summary: str) -> None:
+        print(redact_for_stderr(summary), file=sys.stderr)
+        if getattr(exc, "termination_verified", True) is False:
+            pod_id = getattr(exc, "pod_id", None)
+            if pod_id:
+                print(
+                    f"POD STILL RUNNING {pod_id} — run: terminate --pod-id {pod_id}",
+                    file=sys.stderr,
+                )
+            else:
+                name = getattr(exc, "pod_name", None) or "UNKNOWN"
+                print(f"POD STILL RUNNING {name} — run: status", file=sys.stderr)
+
     try:
         return int(args.func(args))
-    except KeyboardInterrupt:
-        print("interrupted; pod termination was attempted and verified", file=sys.stderr)
+    except KeyboardInterrupt as exc:
+        report(exc, "interrupted")
         return 130
     except RunCancelled as exc:
-        print(str(exc), file=sys.stderr)
+        report(exc, str(exc))
         return 128
     except HarnessError as exc:
-        print(str(exc), file=sys.stderr)
+        report(exc, str(exc))
+        return 1
+    except BaseException as exc:
+        report(exc, f"{type(exc).__name__}: {exc}")
         return 1
 
 
