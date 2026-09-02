@@ -29,6 +29,11 @@ import type { SessionWorkspaceModel } from '../console/sessionWorkspaceModel';
 import { TerminalSessionEmpty } from './TerminalSessionEmpty';
 import { TerminalSessionHeader } from './TerminalSessionHeader';
 import { defaultPtySocketFactory, defaultTerminalSessionsClient } from '../lib/terminalClient';
+import {
+  browserSessionMessage,
+  ensureBrowserSession as defaultEnsureBrowserSession,
+} from '../lib/browserSessionClient';
+import type { BrowserSessionOutcome } from '../lib/browserSessionClient';
 import type { PtySocketFactory, TerminalSessionsClient } from '../lib/terminalClient';
 import type {
   BrowserServerFrame,
@@ -67,6 +72,11 @@ export interface TerminalProps {
   visible?: boolean;
   socketFactory?: PtySocketFactory;
   sessionsClient?: TerminalSessionsClient;
+  /**
+   * How this workspace obtains the browser-session cookie. `GET /api/pty/sessions` resolves the SAME
+   * browser principal the socket does, so the listing needs it too; it is passed down to every console.
+   */
+  ensureBrowserSession?: () => Promise<BrowserSessionOutcome>;
   /** Where the unavailable state's action goes (Health). */
   onOpenHealth?: () => void;
 }
@@ -76,6 +86,7 @@ export function Terminal({
   visible = true,
   socketFactory = defaultPtySocketFactory,
   sessionsClient = defaultTerminalSessionsClient,
+  ensureBrowserSession = defaultEnsureBrowserSession,
   onOpenHealth,
 }: TerminalProps): React.JSX.Element {
   const { session, requireSession } = useSession();
@@ -143,6 +154,16 @@ export function Terminal({
     listedRef.current = true;
     let cancelled = false;
     void (async () => {
+      // The listing is browser-principal'd exactly like the socket (428 without the ref cookie), so the
+      // workspace obtains a browser session before it asks. A definitive refusal is named here rather
+      // than left to surface as the generic "could not read your sessions"; a transport failure falls
+      // through to the listing, whose own `null` path already reports it.
+      const browserSession = await ensureBrowserSession();
+      if (cancelled) return;
+      if (!browserSession.ok && browserSession.reason !== 'unreachable') {
+        setNotice(browserSessionMessage(browserSession.reason));
+        return;
+      }
       const listing = await sessionsClient.list(sessionToken);
       if (cancelled) return;
       if (listing === null) {
@@ -165,7 +186,7 @@ export function Terminal({
     return () => {
       cancelled = true;
     };
-  }, [sessionToken, visible, ptyEnabled, sessionsClient, listNonce]);
+  }, [sessionToken, visible, ptyEnabled, sessionsClient, ensureBrowserSession, listNonce]);
 
   /** A frame carrying a newer revision retires the current listing and asks the host again. */
   const noteRevision = useCallback((revision: number) => {
@@ -335,6 +356,7 @@ export function Terminal({
                 visible={visible && pane.paneId === selectedPane?.paneId}
                 socketFactory={socketFactory}
                 sessionsClient={sessionsClient}
+                ensureBrowserSession={ensureBrowserSession}
                 onServerFrame={(frame) => foldFrame(pane.paneId, frame)}
                 onSession={noteSession}
                 registerControl={(control) => registerControl(pane.paneId, control)}

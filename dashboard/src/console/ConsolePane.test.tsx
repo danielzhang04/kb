@@ -161,6 +161,52 @@ describe('opening', () => {
     expect(socket.frames()[0]).toMatchObject({ type: 'attach', sessionId: SESSION_ID, fromSequence: 0 });
   });
 
+  it('opens NO socket until the browser session resolves, then opens one', async () => {
+    // The production bug: `/api/pty` resolves a browser principal and 428s without the
+    // `kb_browser_session` cookie, and nothing in the client ever asked for it — so on the tailnet
+    // deployment every terminal died as "Disconnected — the connection failed." The order is the fix.
+    const { sockets, factory } = makeFactory();
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const ensureBrowserSession = vi.fn(async () => {
+      await gate;
+      return { ok: true as const };
+    });
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
+        visible
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+        ensureBrowserSession={ensureBrowserSession}
+      />,
+    ));
+
+    await act(async () => {});
+    expect(ensureBrowserSession).toHaveBeenCalledTimes(1);
+    expect(sockets).toHaveLength(0);
+
+    await act(async () => { release?.(); await gate; });
+    await waitFor(() => expect(sockets).toHaveLength(1));
+  });
+
+  it('shows a refused browser session instead of opening a socket that can only 428', async () => {
+    const { sockets, factory } = makeFactory();
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'attach', sessionId: SESSION_ID }}
+        visible
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+        ensureBrowserSession={async () => ({ ok: false as const, reason: 'refused' as const })}
+      />,
+    ));
+
+    const diagnostic = await screen.findByTestId('console-panel-diagnostic');
+    expect(diagnostic.textContent).toContain('could not start a terminal session');
+    expect(sockets).toHaveLength(0);
+  });
+
   it('opens nothing without a session bearer', async () => {
     const { sockets, factory } = makeFactory();
     render(<SessionProvider><ConsolePane target={{ mode: 'attach', sessionId: SESSION_ID }} visible socketFactory={factory} sessionsClient={stubSessionsClient()} /></SessionProvider>);
