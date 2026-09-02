@@ -998,6 +998,29 @@ def test_C7_trailing_bare_dash_is_harness_error():
         rr.parse_simple_yaml("jobs:\n  -\n")
 
 
+def test_P1i_training_template_bare_seed_fields_parse_as_yaml_strings():
+    parsed = rr.parse_simple_yaml("seed_fields: [seed, noise_seed]\n")
+    assert parsed == {"seed_fields": ["seed", "noise_seed"]}
+
+
+def test_P1i_upload_files_block_accepts_mapping_fields_after_nested_list():
+    parsed = rr.parse_simple_yaml(
+        "uploads:\n"
+        "  - files:\n"
+        "      - dataset/*.png\n"
+        "      - dataset/*.txt\n"
+        "    subfolder: persona-a\n"
+        "    type: input\n"
+        "    overwrite: false\n"
+    )
+    assert parsed["uploads"] == [{
+        "files": ["dataset/*.png", "dataset/*.txt"],
+        "subfolder": "persona-a",
+        "type": "input",
+        "overwrite": False,
+    }]
+
+
 def test_proxy_url_rejects_unsafe_pod_ids():
     with pytest.raises(rr.HarnessError, match="unsafe pod id"):
         rr.pod_proxy_url("pod.example/escape")
@@ -1283,3 +1306,355 @@ def test_B3_proxy_download_failure_does_not_reflect_response_body(tmp_path):
             tmp_path / "a.png", 1,
         )
     assert secret not in str(caught.value)
+
+
+def p1i_training_manifest(tmp_path):
+    configured = manifest()
+    data = tmp_path / "dataset"
+    rendered = tmp_path / "rendered"
+    data.mkdir()
+    rendered.mkdir()
+    (data / "002.png").write_bytes(b"png-2")
+    (data / "001.png").write_bytes(b"png-1")
+    (data / "002.txt").write_text("caption two", encoding="utf-8")
+    (data / "001.txt").write_text("caption one", encoding="utf-8")
+    (rendered / "dataset.toml").write_text("dataset", encoding="utf-8")
+    (rendered / "training.toml").write_text("training", encoding="utf-8")
+    (data / "_dataset.ready").write_bytes(b"ready")
+    (tmp_path / "start-training.sh.template").write_text(
+        "#!/bin/sh\nprintf '%s %s\\n' '{{trigger}}' '{{diffusion_pipe_git_ref}}'\n",
+        encoding="utf-8",
+    )
+    configured["uploads"] = [
+        {
+            "files": ["dataset/*.png", "dataset/*.txt", "rendered/*.toml"],
+            "subfolder": "persona-a",
+            "type": "input",
+            "overwrite": False,
+        },
+        {
+            "files": ["dataset/_dataset.ready"],
+            "subfolder": "persona-a",
+            "type": "input",
+            "overwrite": False,
+        },
+    ]
+    configured["training"] = {
+        "trigger": "persona-a",
+        "git_ref": "v1.2.3",
+        "failed_marker": "/workspace/output/_training.failed",
+        "complete_marker": "/workspace/output/_training.complete",
+        "start_script_path": "/workspace/start-training.sh",
+        "start_script_file": "start-training.sh.template",
+    }
+    configured["comfyui"]["start_command"] = "bash /workspace/start-training.sh"
+    configured["artifacts"] = [{
+        "remote": "persona-a.safetensors",
+        "type": "output",
+        "local": "persona-a.safetensors",
+        "wait_for": "_training.complete",
+    }]
+    return configured, tmp_path / "manifest.yaml"
+
+
+def test_P1i_upload_expansion_is_stable_marker_last_and_script_precedes_start(tmp_path):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+
+    rr.require_manifest(configured, manifest_path)
+    uploads = rr.expand_manifest_uploads(configured, manifest_path)
+    _script_path, rendered = rr.rendered_training_start_script(configured, manifest_path)
+    script = rr.bootstrap_script(configured, manifest_path)
+
+    assert [item.local_path.name for item in uploads] == [
+        "001.png", "002.png", "001.txt", "002.txt",
+        "dataset.toml", "training.toml", "_dataset.ready",
+    ]
+    assert uploads[-1].remote_name == "_dataset.ready"
+    assert "persona-a" in rendered and "v1.2.3" in rendered
+    assert "chmod 0700 /workspace/start-training.sh" in script
+    assert script.index("training-start-script") < script.index("comfy-start")
+
+
+@pytest.mark.parametrize("uploads", [None, {}, [], ["not-an-object"]])
+def test_P1i_manifest_rejects_malformed_upload_lists(tmp_path, uploads):
+    configured = manifest()
+    configured["uploads"] = uploads
+    with pytest.raises(rr.HarnessError, match="uploads"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda m: m["uploads"][0].update(subfolder="../escape"), "subfolder"),
+        (lambda m: m["uploads"][0].update(type="output"), "type=input"),
+        (lambda m: m["uploads"][0].update(files=["missing/*.png"]), "matched no files"),
+        (lambda m: m["uploads"][0].update(files=["dataset"]), "directories"),
+        (lambda m: m["uploads"][0].update(files=["dataset/001.png", "dataset/001.png"]), "duplicate"),
+        (lambda m: m["uploads"].reverse(), "_dataset.ready.*last"),
+    ],
+)
+def test_P1i_manifest_rejects_unsafe_or_ambiguous_uploads(tmp_path, mutation, message):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    mutation(configured)
+    with pytest.raises(rr.HarnessError, match=message):
+        rr.require_manifest(configured, manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("start_script_file", "../start.sh"),
+        ("start_script_file", "bad\x00name"),
+        ("start_script_path", "/workspace/../start.sh"),
+        ("start_script_path", "relative/start.sh"),
+    ],
+)
+def test_P1i_manifest_rejects_unsafe_training_script_paths(tmp_path, field, value):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    configured["training"][field] = value
+    with pytest.raises(rr.HarnessError, match="start_script"):
+        rr.require_manifest(configured, manifest_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("remote", "persona-a.exe", "unsupported artifact suffix"),
+        ("local", "../persona-a.safetensors", "artifact local"),
+        ("remote", "../persona-a.safetensors", "artifact remote"),
+        ("type", "input", "type=output"),
+        ("wait_for", "../_training.complete", "wait_for"),
+    ],
+)
+def test_P1i_manifest_rejects_unsafe_artifacts(tmp_path, field, value, message):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    configured["artifacts"][0][field] = value
+    with pytest.raises(rr.HarnessError, match=message):
+        rr.require_manifest(configured, manifest_path)
+
+
+def test_P1i_proxy_upload_sends_exact_multipart_without_authorization(tmp_path):
+    payload = b"exact png bytes\x00\xff"
+    local = tmp_path / "frame.png"
+    local.write_bytes(payload)
+
+    class UploadSession:
+        headers = {}
+
+        def post(self, url, **kwargs):
+            assert url == "https://pod-8188.proxy.runpod.net/upload/image"
+            assert "Authorization" not in self.headers
+            assert kwargs["data"] == {
+                "subfolder": "persona-a", "type": "input", "overwrite": "false",
+            }
+            filename, handle = kwargs["files"]["image"][:2]
+            assert filename == "frame.png"
+            assert handle.read() == payload
+            return StubResponse(200, {
+                "name": "frame.png", "subfolder": "persona-a", "type": "input",
+            })
+
+    result = rr.ComfyClient(
+        "https://pod-8188.proxy.runpod.net", UploadSession(),
+    ).upload_file(local, "persona-a", overwrite=False)
+    assert result == {"name": "frame.png", "subfolder": "persona-a", "type": "input"}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        StubResponse(502, "reflected local path C:/private/data.png"),
+        StubResponse(200, {"name": "wrong.png", "subfolder": "persona-a", "type": "input"}),
+        StubResponse(200, "not-json"),
+    ],
+)
+def test_P1i_proxy_upload_http_json_and_response_mismatches_fail_closed(tmp_path, response):
+    local = tmp_path / "frame.png"
+    local.write_bytes(b"pixels")
+
+    class UploadSession:
+        headers = {}
+
+        def post(self, _url, **_kwargs):
+            return response
+
+    with pytest.raises(rr.HarnessError, match="upload/image") as caught:
+        rr.ComfyClient("https://proxy", UploadSession()).upload_file(
+            local, "persona-a", overwrite=True,
+        )
+    assert "C:/private" not in str(caught.value)
+
+
+def test_P1i_training_flow_orders_readiness_uploads_marker_wait_and_artifact(tmp_path):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    events = []
+
+    class TrainingComfy(FakeComfy):
+        def health_status(self):
+            events.append("ready")
+            return 200
+
+        def upload_file(self, local_path, subfolder, overwrite):
+            events.append(f"upload:{local_path.name}")
+            return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+        def wait_for_marker(self, marker, failed_marker, _timeout, watchdog):
+            watchdog.check()
+            events.append(f"wait:{marker}:{failed_marker}")
+
+        def download_artifact(self, remote, local_path, _timeout):
+            events.append(f"artifact:{remote}")
+            local_path.write_bytes(b"lora weights")
+
+        def submit(self, _workflow):
+            raise AssertionError("compatibility jobs must not be submitted")
+
+    api = FakeAPI()
+    logger, _stream = logger_and_stream()
+    result = rr.run_harness(
+        configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
+        dry_run=False, api=api, logger=logger, comfy_factory=TrainingComfy,
+        sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+    )
+
+    upload_events = [event for event in events if event.startswith("upload:")]
+    assert upload_events[-1] == "upload:_dataset.ready"
+    assert events.index("ready") < events.index("upload:001.png")
+    assert events.index("upload:_dataset.ready") < next(
+        index for index, event in enumerate(events) if event.startswith("wait:")
+    )
+    assert next(index for index, event in enumerate(events) if event.startswith("wait:")) < events.index(
+        "artifact:persona-a.safetensors"
+    )
+    assert result["jobs"] == []
+    assert result["uploads"][-1]["name"] == "_dataset.ready"
+    assert result["artifacts"][0]["bytes"] == len(b"lora weights")
+    assert api.deletes == 1 and api.alive is False
+
+
+@pytest.mark.parametrize(
+    ("stage", "message"),
+    [
+        ("upload", "upload failed"),
+        ("failed-marker", "training failed"),
+        ("marker-timeout", "timed out"),
+        ("download", "artifact missing"),
+    ],
+)
+def test_P1i_new_stage_failures_still_terminate_and_verify(tmp_path, stage, message):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+
+    class FailingTrainingComfy(FakeComfy):
+        def upload_file(self, local_path, subfolder, overwrite):
+            if stage == "upload":
+                raise rr.HarnessError("upload failed")
+            return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+        def wait_for_marker(self, _marker, _failed_marker, _timeout, _watchdog):
+            if stage == "failed-marker":
+                raise rr.HarnessError("training failed marker appeared")
+            if stage == "marker-timeout":
+                raise rr.HarnessError("artifact marker timed out")
+
+        def download_artifact(self, _remote, local_path, _timeout):
+            if stage == "download":
+                raise rr.HarnessError("artifact missing")
+            local_path.write_bytes(b"weights")
+
+    api = FakeAPI()
+    logger, _stream = logger_and_stream()
+    with pytest.raises(rr.HarnessError, match=message) as caught:
+        rr.run_harness(
+            configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
+            dry_run=False, api=api, logger=logger, comfy_factory=FailingTrainingComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+        )
+    assert api.deletes == 1 and api.alive is False
+    assert getattr(caught.value, "termination_verified") is True
+
+
+def test_P1i_marker_polling_is_delayed_and_failed_marker_wins(monkeypatch):
+    class MarkerSession:
+        headers = {}
+
+        def __init__(self, statuses):
+            self.statuses = iter(statuses)
+            self.calls = []
+
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return StubResponse(next(self.statuses))
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    session = MarkerSession([404, 404, 404, 200])
+    monkeypatch.setattr(rr.time, "sleep", lambda _seconds: None)
+    rr.ComfyClient("https://proxy", session).wait_for_marker(
+        "_training.complete", "_training.failed", 10, QuietWatchdog(),
+    )
+    assert [call[1]["params"]["filename"] for call in session.calls] == [
+        "_training.failed", "_training.complete",
+        "_training.failed", "_training.complete",
+    ]
+
+    failed = MarkerSession([200, 200])
+    with pytest.raises(rr.HarnessError, match="training failed"):
+        rr.ComfyClient("https://proxy", failed).wait_for_marker(
+            "_training.complete", "_training.failed", 10, QuietWatchdog(),
+        )
+    assert len(failed.calls) == 1
+
+    timeout = MarkerSession([404, 404])
+    clock = iter([0.0, 0.0, 2.0])
+    monkeypatch.setattr(rr.time, "monotonic", lambda: next(clock))
+    with pytest.raises(rr.HarnessError, match="timed out"):
+        rr.ComfyClient("https://proxy", timeout).wait_for_marker(
+            "_training.complete", "_training.failed", 1, QuietWatchdog(),
+        )
+
+
+def test_P1i_artifact_download_is_atomic_positive_and_rejects_zero(tmp_path):
+    class DownloadSession:
+        headers = {}
+
+        def __init__(self, body, status=200):
+            self.body = body
+            self.status = status
+
+        def get(self, _url, **kwargs):
+            assert kwargs["params"] == {"filename": "persona-a.safetensors", "type": "output"}
+            assert kwargs["stream"] is True
+            return StubResponse(self.status, self.body)
+
+    local = tmp_path / "persona-a.safetensors"
+    rr.ComfyClient("https://proxy", DownloadSession(b"weights")).download_artifact(
+        "persona-a.safetensors", local, 10,
+    )
+    assert local.read_bytes() == b"weights"
+    assert not local.with_suffix(".safetensors.partial").exists()
+
+    local.unlink()
+    with pytest.raises(rr.HarnessError, match="positive byte count"):
+        rr.ComfyClient("https://proxy", DownloadSession(b"")).download_artifact(
+            "persona-a.safetensors", local, 10,
+        )
+    assert not local.exists()
+    assert not local.with_suffix(".safetensors.partial").exists()
+
+    with pytest.raises(rr.HarnessError, match="GET /view returned HTTP 404"):
+        rr.ComfyClient("https://proxy", DownloadSession(b"missing", 404)).download_artifact(
+            "persona-a.safetensors", local, 10,
+        )
+
+
+def test_P1i_existing_image_job_path_is_preserved_without_new_blocks(tmp_path):
+    api = FakeAPI()
+    result, _logs = run_with(api, tmp_path)
+    assert len(result["jobs"]) == 1
+    assert result.get("uploads", []) == []
+    assert result.get("artifacts", []) == []
+    assert (tmp_path / "out" / "job-one.png").is_file()
+    assert api.deletes == 1 and api.alive is False

@@ -29,6 +29,28 @@ comfyui:
   port: 8188
   start_command: "python main.py"
 
+# Optional training transport (kept commented so this example remains standalone):
+# uploads:
+#   - files: ["dataset/*.png", "dataset/*.txt", "rendered/*.toml"]
+#     subfolder: "persona-a"
+#     type: input
+#     overwrite: false
+#   - files: ["dataset/_dataset.ready"]
+#     subfolder: "persona-a"
+#     type: input
+#     overwrite: false
+# training:
+#   trigger: "persona-a"
+#   failed_marker: "/workspace/output/_training.failed"
+#   complete_marker: "/workspace/output/_training.complete"
+#   start_script_path: "/workspace/start-training.sh"
+#   start_script_file: "start-training.sh.template"
+# artifacts:
+#   - remote: "persona-a.safetensors"
+#     type: output
+#     local: "persona-a.safetensors"
+#     wait_for: "_training.complete"
+
 models:
   - repo_id: "OWNER/PUBLIC_MODEL_REPO"
     filename: "model.safetensors"

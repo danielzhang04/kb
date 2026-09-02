@@ -21,6 +21,7 @@ import time
 import traceback
 import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
@@ -38,6 +39,7 @@ DEFAULT_READY_TIMEOUT = 15 * 60.0
 REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+ARTIFACT_EXTENSIONS = {".safetensors", ".json", ".txt", ".log"}
 DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
 COMFY_PORT = 8188
 COMFY_OUTPUT_DIR = "/workspace/output"
@@ -97,6 +99,16 @@ class PodStillRunning(HarnessError):
 
 class RunCancelled(HarnessError):
     """SIGINT, SIGTERM, or the wall-clock watchdog requested shutdown."""
+
+
+@dataclass(frozen=True)
+class UploadItem:
+    """One validated local file and its ComfyUI input destination."""
+
+    local_path: Path
+    remote_name: str
+    subfolder: str
+    overwrite: bool
 
 
 class ApiKeyRedactionFilter(logging.Filter):
@@ -586,7 +598,15 @@ def _parse_scalar(text: str) -> Any:
             return json.loads(text)
         return text[1:-1].replace("''", "'")
     if text.startswith(("[", "{")):
-        return json.loads(text)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            if (text.startswith("[") and re.fullmatch(
+                    r"\[\s*(?:[A-Za-z0-9_.-]+\s*(?:,\s*[A-Za-z0-9_.-]+\s*)*)?\]",
+                    text)):
+                inner = text[1:-1].strip()
+                return [] if not inner else [item.strip() for item in inner.split(",")]
+            raise HarnessError("invalid inline manifest value") from exc
     try:
         return float(text) if any(c in text for c in ".eE") else int(text)
     except ValueError:
@@ -652,6 +672,11 @@ def parse_simple_yaml(text: str) -> Any:
                             item.update(child)
                         else:
                             raise HarnessError("invalid list item continuation")
+                    if index < len(tokens) and tokens[index][0] > indent:
+                        continuation, index = parse_block(index, tokens[index][0])
+                        if not isinstance(continuation, dict):
+                            raise HarnessError("invalid list item mapping continuation")
+                        item.update(continuation)
                     result.append(item)
                     continue
                 result.append(_parse_scalar(rest))
@@ -709,6 +734,250 @@ def manifest_readiness_timeout_seconds(manifest: dict[str, Any]) -> float:
     if not math.isfinite(timeout) or timeout <= 0:
         raise HarnessError("readiness_timeout_seconds must be finite and positive")
     return timeout
+
+
+def _portable_relative_path(value: Any, label: str) -> PurePosixPath:
+    if not isinstance(value, str) or not value or "\x00" in value:
+        raise HarnessError(f"{label} must be a non-empty relative path without NULs")
+    path = PurePosixPath(value.replace("\\", "/"))
+    has_windows_drive = bool(path.parts and re.fullmatch(r"[A-Za-z]:", path.parts[0]))
+    if (path.is_absolute() or has_windows_drive
+            or path == PurePosixPath(".") or ".." in path.parts):
+        raise HarnessError(f"unsafe {label}: paths must stay below their declared root")
+    return path
+
+
+def _manifest_local_path(value: Any, manifest_path: Path, label: str) -> Path:
+    relative = _portable_relative_path(value, label)
+    root = manifest_path.parent.resolve()
+    try:
+        resolved = root.joinpath(*relative.parts).resolve()
+    except (OSError, ValueError) as exc:
+        raise HarnessError(f"{label} could not be resolved: {type(exc).__name__}") from exc
+    if not resolved.is_relative_to(root):
+        raise HarnessError(f"unsafe {label}: path escapes the manifest directory")
+    return resolved
+
+
+def _safe_remote_subfolder(value: Any) -> str:
+    if not isinstance(value, str) or "\x00" in value:
+        raise HarnessError("upload subfolder must be a relative path without NULs")
+    if value == "":
+        return ""
+    path = _portable_relative_path(value, "upload subfolder")
+    return path.as_posix()
+
+
+def expand_manifest_uploads(
+    manifest: dict[str, Any], manifest_path: Path,
+) -> list[UploadItem]:
+    """Validate and deterministically expand the optional uploads block."""
+    if "uploads" not in manifest:
+        return []
+    groups = manifest["uploads"]
+    if not isinstance(groups, list) or not groups:
+        raise HarnessError("manifest uploads must be a non-empty list when present")
+
+    root = manifest_path.parent.resolve()
+    expanded: list[UploadItem] = []
+    remote_names: set[str] = set()
+    for group_number, group in enumerate(groups, start=1):
+        if not isinstance(group, dict):
+            raise HarnessError("each uploads entry must be an object")
+        files = group.get("files")
+        if (not isinstance(files, list) or not files
+                or any(not isinstance(pattern, str) or not pattern for pattern in files)):
+            raise HarnessError("each uploads.files value must be a non-empty list of paths or globs")
+        if group.get("type") != "input":
+            raise HarnessError("each upload must declare type=input")
+        overwrite = group.get("overwrite")
+        if not isinstance(overwrite, bool):
+            raise HarnessError("each upload overwrite value must be true or false")
+        subfolder = _safe_remote_subfolder(group.get("subfolder"))
+
+        for pattern_number, pattern_text in enumerate(files, start=1):
+            pattern = _portable_relative_path(
+                pattern_text, f"uploads entry {group_number} files item {pattern_number}",
+            )
+            try:
+                matches = sorted(
+                    root.glob(pattern.as_posix()),
+                    key=lambda candidate: candidate.as_posix(),
+                )
+            except (OSError, ValueError) as exc:
+                raise HarnessError(
+                    f"upload files item {pattern_number} could not be expanded: "
+                    f"{type(exc).__name__}"
+                ) from exc
+            if not matches:
+                raise HarnessError(
+                    f"upload files item {pattern_number} matched no files"
+                )
+            for match in matches:
+                try:
+                    local_path = match.resolve()
+                except (OSError, ValueError) as exc:
+                    raise HarnessError(
+                        f"upload file could not be resolved: {type(exc).__name__}"
+                    ) from exc
+                if not local_path.is_relative_to(root):
+                    raise HarnessError("upload file traversal outside the manifest directory is forbidden")
+                if not local_path.is_file():
+                    raise HarnessError("upload files may not match directories")
+                remote_name = local_path.name
+                if remote_name in remote_names:
+                    raise HarnessError(
+                        f"duplicate upload remote name: {remote_name!r}"
+                    )
+                remote_names.add(remote_name)
+                expanded.append(UploadItem(
+                    local_path=local_path,
+                    remote_name=remote_name,
+                    subfolder=subfolder,
+                    overwrite=overwrite,
+                ))
+
+    marker_positions = [
+        index for index, item in enumerate(expanded)
+        if item.remote_name == "_dataset.ready"
+    ]
+    if marker_positions and (len(marker_positions) != 1 or marker_positions[0] != len(expanded) - 1):
+        raise HarnessError("the _dataset.ready upload must be strictly last")
+    return expanded
+
+
+def _output_marker_name(value: Any, label: str, *, absolute: bool) -> str:
+    if not isinstance(value, str) or not value or "\x00" in value:
+        raise HarnessError(f"{label} must be a non-empty safe output marker path")
+    path = PurePosixPath(value.replace("\\", "/"))
+    if ".." in path.parts:
+        raise HarnessError(f"unsafe {label}: traversal is forbidden")
+    output_root = PurePosixPath(COMFY_OUTPUT_DIR)
+    if absolute:
+        if (not path.is_absolute() or path == output_root
+                or not path.is_relative_to(output_root)):
+            raise HarnessError(f"{label} must be below {COMFY_OUTPUT_DIR}")
+        path = path.relative_to(output_root)
+    else:
+        path = _portable_relative_path(value, label)
+    return path.as_posix()
+
+
+def training_failed_marker_name(manifest: dict[str, Any]) -> str:
+    training = manifest.get("training")
+    if not isinstance(training, dict):
+        raise HarnessError("artifacts require a training object")
+    return _output_marker_name(
+        training.get("failed_marker"), "training.failed_marker", absolute=True,
+    )
+
+
+def manifest_artifacts(manifest: dict[str, Any]) -> list[dict[str, str]]:
+    if "artifacts" not in manifest:
+        return []
+    artifacts = manifest["artifacts"]
+    if not isinstance(artifacts, list) or not artifacts:
+        raise HarnessError("manifest artifacts must be a non-empty list when present")
+    training_failed_marker_name(manifest)
+    training = manifest["training"]
+    if "complete_marker" in training:
+        _output_marker_name(
+            training["complete_marker"], "training.complete_marker", absolute=True,
+        )
+
+    validated: list[dict[str, str]] = []
+    local_names: set[str] = set()
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            raise HarnessError("each artifacts entry must be an object")
+        if artifact.get("type") != "output":
+            raise HarnessError("each artifact must declare type=output")
+        remote = _portable_relative_path(
+            artifact.get("remote"), "artifact remote",
+        ).as_posix()
+        local = _portable_relative_path(
+            artifact.get("local"), "artifact local",
+        ).as_posix()
+        wait_for = _output_marker_name(
+            artifact.get("wait_for"), "artifact wait_for", absolute=False,
+        )
+        remote_suffix = PurePosixPath(remote).suffix.lower()
+        local_suffix = PurePosixPath(local).suffix.lower()
+        if (remote_suffix not in ARTIFACT_EXTENSIONS
+                or local_suffix not in ARTIFACT_EXTENSIONS
+                or remote_suffix != local_suffix):
+            raise HarnessError(
+                "unsupported artifact suffix; remote and local must match one of: "
+                + ", ".join(sorted(ARTIFACT_EXTENSIONS))
+            )
+        if local in local_names:
+            raise HarnessError(f"duplicate artifact local name: {local!r}")
+        local_names.add(local)
+        validated.append({
+            "remote": remote,
+            "local": local,
+            "type": "output",
+            "wait_for": wait_for,
+        })
+    return validated
+
+
+def rendered_training_start_script(
+    manifest: dict[str, Any], manifest_path: Path,
+) -> tuple[str, str] | None:
+    if "training" not in manifest:
+        return None
+    training = manifest["training"]
+    if not isinstance(training, dict):
+        raise HarnessError("manifest training must be an object")
+    local_path = _manifest_local_path(
+        training.get("start_script_file"), manifest_path,
+        "training.start_script_file",
+    )
+    if not local_path.is_file():
+        raise HarnessError("training.start_script_file must name an existing file")
+
+    remote_value = training.get("start_script_path")
+    if not isinstance(remote_value, str) or not remote_value or "\x00" in remote_value:
+        raise HarnessError("training.start_script_path must be an absolute path without NULs")
+    remote_path = PurePosixPath(remote_value.replace("\\", "/"))
+    volume_root = PurePosixPath(str(manifest.get("volume_mount_path", "/workspace")))
+    if (not remote_path.is_absolute() or ".." in remote_path.parts
+            or remote_path == volume_root or not remote_path.is_relative_to(volume_root)):
+        raise HarnessError(
+            "training.start_script_path must be below volume_mount_path without traversal"
+        )
+    try:
+        template = local_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise HarnessError(
+            f"training.start_script_file could not be read: {type(exc).__name__}"
+        ) from exc
+    if "\x00" in template:
+        raise HarnessError("training.start_script_file may not contain NULs")
+
+    context = {
+        str(key): value
+        for source in (manifest, training)
+        for key, value in source.items()
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool)
+    }
+    if "git_ref" in training:
+        context.setdefault("diffusion_pipe_git_ref", training["git_ref"])
+
+    def replace_placeholder(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in context:
+            raise HarnessError(f"unresolved training start script placeholder: {key}")
+        value = str(context[key])
+        if "\x00" in value:
+            raise HarnessError(f"training start script value {key!r} contains a NUL")
+        return value
+
+    rendered = re.sub(r"{{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*}}", replace_placeholder, template)
+    if "{{" in rendered or "}}" in rendered:
+        raise HarnessError("training start script contains an invalid or unresolved placeholder")
+    return remote_path.as_posix(), rendered
 
 
 def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
@@ -797,6 +1066,9 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
         url = node.get("git_url") if isinstance(node, dict) else None
         if not isinstance(url, str) or not url.startswith("https://"):
             raise HarnessError("custom node git_url must be a public https URL")
+    expand_manifest_uploads(manifest, manifest_path)
+    rendered_training_start_script(manifest, manifest_path)
+    manifest_artifacts(manifest)
 
 
 def load_workflow(manifest: dict[str, Any], manifest_path: Path) -> dict[str, Any]:
@@ -940,10 +1212,12 @@ def ready_hourly_price(pod: dict[str, Any]) -> float:
     return hourly
 
 
-def create_payload(manifest: dict[str, Any]) -> dict[str, Any]:
+def create_payload(
+    manifest: dict[str, Any], manifest_path: Path | None = None,
+) -> dict[str, Any]:
     gpu = manifest["gpu"]
     encoded_bootstrap = base64.b64encode(
-        bootstrap_script(manifest).encode("utf-8")
+        bootstrap_script(manifest, manifest_path).encode("utf-8")
     ).decode("ascii")
     bootstrap_command = (
         'echo "$FIGMENT_BOOTSTRAP_B64" | base64 -d > /workspace/bootstrap.sh '
@@ -1103,7 +1377,9 @@ def _safe_node_name(url: str, explicit: str | None) -> str:
     return name
 
 
-def bootstrap_script(manifest: dict[str, Any]) -> str:
+def bootstrap_script(
+    manifest: dict[str, Any], manifest_path: Path | None = None,
+) -> str:
     comfy = manifest.get("comfyui") or {}
     root = str(comfy.get("root", "/workspace/ComfyUI"))
     git_ref = str(comfy["git_ref"])
@@ -1222,6 +1498,23 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         requirements = f"{target}/requirements.txt"
         install = f"if [ -f {shlex.quote(requirements)} ]; then python -m pip install -r {shlex.quote(requirements)}; else true; fi"
         lines.append(f"run_required node-deps-{index} bash -lc {shlex.quote(install)}")
+    training_script: tuple[str, str] | None = None
+    if "training" in manifest:
+        if manifest_path is None:
+            raise HarnessError("manifest_path is required for a training start script")
+        training_script = rendered_training_start_script(manifest, manifest_path)
+    if training_script is not None:
+        script_path, script_text = training_script
+        script_b64 = base64.b64encode(script_text.encode("utf-8")).decode("ascii")
+        script_parent = str(PurePosixPath(script_path).parent)
+        command = (
+            f"mkdir -p {shlex.quote(script_parent)} && "
+            f"printf '%s' {shlex.quote(script_b64)} | base64 -d > {shlex.quote(script_path)} && "
+            f"chmod 0700 {shlex.quote(script_path)}"
+        )
+        lines.append(
+            f"run_required training-start-script bash -lc {shlex.quote(command)}"
+        )
     lines.extend([
         "COMFY_PID=",
         f"start_comfy() {{ cd {shlex.quote(root)} || return 1; bash -lc {shlex.quote('exec ' + start)} >>\"$COMFY_RUNTIME_LOG\" 2>&1 & COMFY_PID=$!; sleep 1; kill -0 \"$COMFY_PID\"; }}",
@@ -1251,7 +1544,10 @@ class ComfyClient:
         if session is None:
             # The Pod proxy is public; never discover credentials from netrc or proxy env.
             self.session.trust_env = False
-        if "Authorization" in getattr(self.session, "headers", {}):
+        if any(
+            str(name).lower() == "authorization"
+            for name in getattr(self.session, "headers", {})
+        ):
             raise HarnessError("the public proxy client must not carry Authorization")
         self.client_id = uuid.uuid4().hex
 
@@ -1298,6 +1594,127 @@ class ComfyClient:
         else:
             body = bytes(getattr(response, "content", b""))[-limit:]
         return status, body.decode("utf-8", errors="replace")
+
+    def upload_file(
+        self, local_path: Path, subfolder: str, overwrite: bool,
+    ) -> dict[str, str]:
+        expected = {
+            "name": local_path.name,
+            "subfolder": subfolder,
+            "type": "input",
+        }
+        try:
+            with local_path.open("rb") as handle:
+                response = self.session.post(
+                    self.base_url + "/upload/image",
+                    files={"image": (local_path.name, handle)},
+                    data={
+                        "subfolder": subfolder,
+                        "type": "input",
+                        "overwrite": "true" if overwrite else "false",
+                    },
+                    timeout=REQUEST_TIMEOUT,
+                )
+        except OSError as exc:
+            raise HarnessError(
+                f"ComfyUI upload file could not be read: {type(exc).__name__}"
+            ) from exc
+        if not 200 <= response.status_code < 300:
+            raise HarnessError(
+                f"ComfyUI POST /upload/image returned HTTP {response.status_code}"
+            )
+        try:
+            body = response.json()
+        except (ValueError, TypeError) as exc:
+            raise HarnessError("ComfyUI POST /upload/image returned invalid JSON") from exc
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+        if not isinstance(body, dict) or any(body.get(key) != value for key, value in expected.items()):
+            raise HarnessError("ComfyUI POST /upload/image returned mismatched JSON")
+        return expected
+
+    def marker_status(self, filename: str) -> int | str:
+        marker = _output_marker_name(filename, "artifact marker", absolute=False)
+        try:
+            response = self.session.get(
+                self.base_url + "/view",
+                params={"filename": marker, "type": "output"},
+                timeout=REQUEST_TIMEOUT,
+                stream=True,
+            )
+            status = int(response.status_code)
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+            return status
+        except Exception as exc:
+            return f"error:{type(exc).__name__}"
+
+    def wait_for_marker(
+        self, marker: str, failed_marker: str, timeout: float, watchdog: Watchdog,
+    ) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            watchdog.check()
+            failed_status = self.marker_status(failed_marker)
+            if failed_status == 200:
+                raise HarnessError("training failed marker appeared")
+            if failed_status != 404:
+                raise HarnessError(
+                    f"training failed-marker poll returned {failed_status}"
+                )
+            watchdog.check()
+            marker_status = self.marker_status(marker)
+            if marker_status == 200:
+                return
+            if marker_status != 404:
+                raise HarnessError(
+                    f"artifact marker poll returned {marker_status}"
+                )
+            time.sleep(1)
+        raise HarnessError(f"artifact marker {marker!r} timed out")
+
+    def download_artifact(
+        self, remote: str, local_path: Path, timeout: float,
+    ) -> None:
+        remote_name = _portable_relative_path(remote, "artifact remote").as_posix()
+        if PurePosixPath(remote_name).suffix.lower() not in ARTIFACT_EXTENSIONS:
+            raise HarnessError("unsupported artifact suffix")
+        response = self.session.get(
+            self.base_url + "/view",
+            params={"filename": remote_name, "type": "output"},
+            timeout=timeout,
+            stream=True,
+        )
+        if not 200 <= response.status_code < 300:
+            raise HarnessError(
+                f"ComfyUI GET /view returned HTTP {response.status_code}"
+            )
+        temporary = local_path.with_suffix(local_path.suffix + ".partial")
+        try:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            with temporary.open("wb") as handle:
+                chunks = getattr(response, "iter_content", None)
+                if callable(chunks):
+                    for chunk in chunks(chunk_size=1024 * 1024):
+                        if chunk:
+                            handle.write(chunk)
+                else:
+                    handle.write(bytes(getattr(response, "content", b"")))
+            if temporary.stat().st_size <= 0:
+                raise HarnessError("artifact download did not have a positive byte count")
+            temporary.replace(local_path)
+        except OSError as exc:
+            raise HarnessError(
+                f"artifact download could not be written: {type(exc).__name__}"
+            ) from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
 
     def submit(self, workflow: dict[str, Any]) -> str:
         response = self.session.post(
@@ -1389,6 +1806,37 @@ class DryRunComfyClient:
         if filename == "_bootstrap.log":
             return 200, "STEP dry-run rc=0\n"
         return 404, ""
+
+    def upload_file(
+        self, local_path: Path, subfolder: str, overwrite: bool,
+    ) -> dict[str, str]:
+        del overwrite
+        try:
+            if not local_path.is_file() or local_path.stat().st_size < 0:
+                raise OSError("not a readable file")
+        except OSError as exc:
+            raise HarnessError(
+                f"ComfyUI upload file could not be read: {type(exc).__name__}"
+            ) from exc
+        return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+    def wait_for_marker(
+        self, _marker: str, _failed_marker: str, _timeout: float, watchdog: Watchdog,
+    ) -> None:
+        watchdog.check()
+
+    def download_artifact(
+        self, remote: str, local_path: Path, _timeout: float,
+    ) -> None:
+        if PurePosixPath(remote).suffix.lower() not in ARTIFACT_EXTENSIONS:
+            raise HarnessError("unsupported artifact suffix")
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = local_path.with_suffix(local_path.suffix + ".partial")
+        try:
+            temporary.write_bytes(("dry-run artifact from " + remote + "\n").encode())
+            temporary.replace(local_path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def download_output(self, image: dict[str, str], local_path: Path,
                         _timeout: float) -> None:
@@ -1486,6 +1934,23 @@ def download_job_outputs(comfy: Any, remote_images: list[dict[str, str]], out_di
     if len(downloaded) != expected_images:
         raise HarnessError("download count verification failed")
     return downloaded
+
+
+def local_file_size(path: Path, label: str, *, positive: bool) -> int:
+    """Verify a new local file without reflecting its local path on failure."""
+    try:
+        if not path.is_file():
+            raise HarnessError(f"{label} verification failed: file is missing")
+        size = path.stat().st_size
+    except HarnessError:
+        raise
+    except OSError as exc:
+        raise HarnessError(
+            f"{label} size could not be verified: {type(exc).__name__}"
+        ) from exc
+    if positive and size <= 0:
+        raise HarnessError(f"{label} verification failed: expected a positive byte count")
+    return size
 
 
 def write_json(path: Path, value: Any, redactor: ApiKeyRedactionFilter | None) -> None:
@@ -1589,8 +2054,11 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 comfy_factory: Callable[[str], Any] | None = None,
                 sleep: Callable[[float], None] = time.sleep,
                 ledger_dir: Path | None = None,
-                budget_path: Path | None = None) -> dict[str, Any]:
+                 budget_path: Path | None = None) -> dict[str, Any]:
     require_manifest(manifest, manifest_path)
+    upload_items = expand_manifest_uploads(manifest, manifest_path)
+    artifacts = manifest_artifacts(manifest)
+    failed_marker = training_failed_marker_name(manifest) if artifacts else None
     max_minutes = effective_max_minutes(max_minutes, manifest)
     enforce_effective_readiness_budget(manifest, max_minutes)
     if not dry_run and max_usd is None:
@@ -1620,7 +2088,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     if api is None:
         raise HarnessError("live run requires an authenticated API")
 
-    payload = create_payload(manifest)
+    payload = create_payload(manifest, manifest_path)
     ledger_model = gpu_model_label(manifest["gpu"]["type"])
     started = time.monotonic()  # The budget clock begins immediately before create.
     started_utc = datetime.now(timezone.utc).replace(microsecond=0)
@@ -1632,7 +2100,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         "started_utc": started_utc.isoformat(timespec="seconds"),
         "max_minutes": max_minutes,
         "preflight_estimate_usd": round(estimate, 6),
+        "uploads": [],
         "jobs": [],
+        "artifacts": [],
         "termination_verified": False,
     }
     if daily_limit is not None and daily_spent is not None:
@@ -1703,40 +2173,90 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 raise HarnessError("READY pod hourly price exceeds the governance daily budget")
             watchdog.check()
             comfy = proxy_client
-            base_workflow = load_workflow(manifest, manifest_path)
             per_job_timeout = float(manifest.get("job_timeout_seconds", 15 * 60))
-            for job_number, job in enumerate(manifest["jobs"], start=1):
+            for item in upload_items:
                 watchdog.check()
-                job_started = time.monotonic()
-                output_name = safe_output_name(job.get("output_name"))
-                workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
-                prompt_id = comfy.submit(workflow)
-                remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog)
-                expected_images = job.get("expected_images", 1)
-                if isinstance(expected_images, bool) or not isinstance(expected_images, int):
-                    raise HarnessError("job expected_images must be a positive integer")
-                paths = download_job_outputs(
-                    comfy, remote_images, out_dir, output_name,
-                    per_job_timeout, expected_images,
+                response = comfy.upload_file(
+                    item.local_path, item.subfolder, item.overwrite,
                 )
-                job_result = {
-                    "job": job_number,
-                    "output_name": output_name,
-                    "seed": int(job["seed"]),
-                    "prompt_id": prompt_id,
-                    "seconds": round(time.monotonic() - job_started, 3),
-                    "files": [{"path": path.name, "bytes": path.stat().st_size} for path in paths],
-                }
-                result["jobs"].append(job_result)
-                for index, path in enumerate(paths, start=1):
-                    image_id = output_name if len(paths) == 1 else f"{output_name}_{index:02d}"
-                    images_manifest.append({
-                        "image_id": image_id,
-                        "path": path.name,
-                        "review_status": "unreviewed",
-                        "parked_reasons": [],
-                    })
-                logger.info("job %s complete: %d verified file(s)", output_name, len(paths))
+                byte_count = local_file_size(
+                    item.local_path, "uploaded file", positive=False,
+                )
+                result["uploads"].append({
+                    "name": response["name"],
+                    "subfolder": response["subfolder"],
+                    "type": response["type"],
+                    "overwrite": item.overwrite,
+                    "bytes": byte_count,
+                })
+                logger.info(
+                    "upload complete: %s/%s bytes=%d",
+                    item.subfolder, item.remote_name, byte_count,
+                )
+
+            if artifacts:
+                for artifact in artifacts:
+                    watchdog.check()
+                    marker = artifact["wait_for"]
+                    assert failed_marker is not None
+                    comfy.wait_for_marker(
+                        marker, failed_marker, per_job_timeout, watchdog,
+                    )
+                    logger.info("artifact marker ready: %s", marker)
+                    local_relative = PurePosixPath(artifact["local"])
+                    local_path = out_dir.joinpath(*local_relative.parts)
+                    comfy.download_artifact(
+                        artifact["remote"], local_path, per_job_timeout,
+                    )
+                    byte_count = local_file_size(
+                        local_path, "artifact download", positive=True,
+                    )
+                    artifact_result = {
+                        "remote": artifact["remote"],
+                        "path": local_relative.as_posix(),
+                        "type": "output",
+                        "wait_for": marker,
+                        "bytes": byte_count,
+                    }
+                    result["artifacts"].append(artifact_result)
+                    logger.info(
+                        "artifact complete: %s bytes=%d",
+                        artifact["remote"], artifact_result["bytes"],
+                    )
+            else:
+                base_workflow = load_workflow(manifest, manifest_path)
+                for job_number, job in enumerate(manifest["jobs"], start=1):
+                    watchdog.check()
+                    job_started = time.monotonic()
+                    output_name = safe_output_name(job.get("output_name"))
+                    workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
+                    prompt_id = comfy.submit(workflow)
+                    remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog)
+                    expected_images = job.get("expected_images", 1)
+                    if isinstance(expected_images, bool) or not isinstance(expected_images, int):
+                        raise HarnessError("job expected_images must be a positive integer")
+                    paths = download_job_outputs(
+                        comfy, remote_images, out_dir, output_name,
+                        per_job_timeout, expected_images,
+                    )
+                    job_result = {
+                        "job": job_number,
+                        "output_name": output_name,
+                        "seed": int(job["seed"]),
+                        "prompt_id": prompt_id,
+                        "seconds": round(time.monotonic() - job_started, 3),
+                        "files": [{"path": path.name, "bytes": path.stat().st_size} for path in paths],
+                    }
+                    result["jobs"].append(job_result)
+                    for index, path in enumerate(paths, start=1):
+                        image_id = output_name if len(paths) == 1 else f"{output_name}_{index:02d}"
+                        images_manifest.append({
+                            "image_id": image_id,
+                            "path": path.name,
+                            "review_status": "unreviewed",
+                            "parked_reasons": [],
+                        })
+                    logger.info("job %s complete: %d verified file(s)", output_name, len(paths))
             if watchdog:
                 watchdog.check()
     except BaseException as exc:

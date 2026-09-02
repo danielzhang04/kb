@@ -39,7 +39,11 @@ that file. Required fields are:
 - a ComfyUI API-format `workflow` object or JSON path;
 - optional `seed_fields`, a non-empty list of workflow input names to receive every job's
   `seed` (defaults to `["seed", "noise_seed"]`);
-- `jobs` with `seed`, safe `output_name`, substitutions, and `expected_images` (default 1).
+- `jobs` with `seed`, safe `output_name`, substitutions, and `expected_images` (default 1);
+- optional `uploads`, a non-empty list of input-file groups described below;
+- optional `training`, which materializes a local wrapper script below the volume root; and
+- optional `artifacts`, which replaces compatibility-job submission with completion-marker
+  polling and non-image output downloads.
 
 At least one workflow node must contain one configured seed field. The harness writes the
 job seed to every matching node before applying that job's explicit substitutions, so an
@@ -56,6 +60,33 @@ install, dependency install, model download, or start is fatal and short-circuit
 bootstrap steps. `comfyui.start_command` is the launch executable only; the harness supplies
 `--listen 0.0.0.0 --port 8188 --output-directory /workspace/output` and rejects manifests
 that try to override those transport/output arguments.
+
+An `uploads` entry has `files`, `subfolder`, `type: input`, and boolean `overwrite` fields.
+`files` is a non-empty list of local files or globs relative to the manifest directory.
+Matches are sorted within each list item and uploaded in manifest order. Empty matches,
+directories, paths outside the manifest directory, unsafe or absolute input subfolders, and
+duplicate destination names are rejected during preflight. If `_dataset.ready` is present,
+it must be the final expanded upload. After readiness and the READY-price checks, each file
+is sent as multipart field `image` to `POST /upload/image` with form fields `subfolder`,
+`type=input`, and lowercase `overwrite=true|false`. The response must be HTTP 2xx JSON whose
+`name`, `subfolder`, and `type` exactly match the request. The proxy client carries no RunPod
+authorization header and local upload files are only opened for reading.
+
+When `training` is present, `start_script_file` must be a file below the manifest directory
+and `start_script_path` must be an absolute child of `volume_mount_path`. The harness renders
+`{{name}}` placeholders from scalar manifest and training values, embeds the result in
+bootstrap, writes it at the requested volume path with mode `0700`, and only then runs
+`comfyui.start_command`. NULs, traversal, missing files, and unresolved placeholders fail
+preflight.
+
+When `artifacts` is present, the normal `jobs` remain compatibility and preflight data but
+are not submitted. Each artifact declares `remote`, `type: output`, `local`, and `wait_for`.
+The harness checks `training.failed_marker` before every completion-marker poll through
+`GET /view`; a failure marker, non-404 polling error, timeout, or watchdog expiry is fatal.
+Once the marker is visible, the artifact is streamed from `/view` to a sibling `.partial`
+file, required to have a positive size, and atomically moved into place. Remote and local
+names must use the same `.safetensors`, `.json`, `.txt`, or `.log` suffix and may not be
+absolute or traverse directories.
 
 The create payload carries the base64-encoded script in the string-valued
 `env.FIGMENT_BOOTSTRAP_B64` field. `dockerEntrypoint: ["bash", "-lc"]` and
@@ -172,9 +203,11 @@ anyone who knows the Pod ID can reach it for the Pod's lifetime. The harness mit
 exposure with short wall-clock limits and terminate-plus-absence-verification on every exit.
 It deliberately sends no `RUNPOD_API_KEY` header to the proxy.
 
-The output directory contains `run.json`, verified images, and `manifest.json` for the figment
-QA tools. Bootstrap diagnostics remain in the Pod's `/workspace/output` directory and are
-available through ComfyUI `/view` while the Pod is alive.
+The output directory contains `run.json`, verified images and `manifest.json` for the figment
+QA tools, or verified training artifacts. `run.json` records upload and artifact names,
+destinations, byte counts, and marker outcomes, never file contents. Bootstrap diagnostics
+remain in the Pod's `/workspace/output` directory and are available through ComfyUI `/view`
+while the Pod is alive.
 
 ## Exit-path guarantee
 
