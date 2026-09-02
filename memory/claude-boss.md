@@ -170,3 +170,39 @@
   written during a quiescent window — so every drain needs a lock window. A short-interval drain
   cadence would pause the fleet constantly. Raising `outboxStatus.ts:142`'s 15-minute `maxAgeMs`
   (keeping the 100-bundle count guard) is probably the better half of the fix. Open question D-1.
+
+## 2026-09-02 — the PTY vertical, and what only running it could find
+- **Read-only probing beat reading code, repeatedly.** Five of the seven defects fixed tonight were
+  invisible in the source and obvious the moment I ran something: the broker dying at `226/NAMESPACE`,
+  `/run/kb-shell` root-owned so `kb-dashboard` could not traverse to its own socket, npm writing modes
+  the validator refuses, `-s workspace-write` on a read-only profile, and a frontend that never called
+  the only route minting the cookie its terminal needs. Run the read-only checker EARLY, not as a
+  final gate.
+- **Test the mechanism, never the summary.** I threw an `npm install -g` into a throwaway `/tmp`
+  prefix before handing Daniel the real command: it revealed the launchers are SYMLINKS (so a
+  root-run install would have failed `allowedSymlinkOwner`), that `claude.exe` is ELF despite the
+  name, and that 47 paths land at modes the validator rejects. All three would have burned him.
+- **My own checker had three bugs, found only by running it.** HTML entities baked into it (`&amp;&amp;`),
+  a shell function named `head` shadowing the command it needed, and two false failures where it
+  applied file-mode rules to symlinks and asked `id kb-dashboard` for a group that
+  `SupplementaryGroups=` grants to the PROCESS. A verification script is code; `bash -n` it and run it.
+- **Unit-file comments can be confidently wrong.** `kb-shell-broker.socket` explained in detail why
+  ownership lived on the socket unit — and the premise was false: systemd does not apply a socket
+  unit's `User=`/`Group=` to its `RuntimeDirectory`. Deleting and recreating the directory did NOT fix
+  it, which is what proved it was not a stale-preserve artifact. Trust `stat`, not the comment.
+- **A stale copy outside the release tree took prod down.** `/usr/local/lib/kb/validate_vm_runtime.py`
+  is bootstrap-installed and never refreshed by activation, so it rejected this branch's own unit
+  change as drift and blocked every dashboard start. Anything installed outside `/opt/kb-releases`
+  drifts silently; check for a second copy before changing a validated file.
+- **Deploy order was forced by the tooling, not by my plan.** I asserted "broker first"; reading
+  `install_pty_broker.py` showed it takes only `--digest` and reads from `/opt/kb-releases/current`,
+  so the release MUST activate first. Verify a constraint against source before building a plan on it.
+- **PTY capability is probed once per process.** A broker installed after activation stays invisible
+  until the daemon restarts — so a dashboard restart is a required final step of this deploy, and a
+  cached failure looks exactly like a real one (`broker peer identity mismatch` while the live peer
+  creds were correct).
+- **When the browser failed and curl could not, curl WAS the debugger.** Minting the session cookie by
+  hand and driving `/api/pty` over `ws` proved the whole server vertical green and isolated the fault
+  to the frontend in minutes. Keep a cookie jar + a tiny `ws` script in the kit.
+- Windows `scp` reads `C:\...` as a host named `C`; Git Bash's does not, and Python launched from Git
+  Bash resolves Git's. Deploy scripts that shell out to `scp` must run from Git Bash on this machine.
