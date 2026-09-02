@@ -51,7 +51,9 @@ export const BROKER_RUNTIME_POLICY = {
  *
  * The runtime directory lives on the SOCKET unit: a service-side RuntimeDirectory= is chowned to the
  * service's own User:Group on every start, which would make /run/kb-shell kb-shell:kb-shell and lock
- * the dashboard out of broker.sock.
+ * the dashboard out of broker.sock. On the socket unit itself, RuntimeDirectory=/User=/Group= do NOT
+ * chown the directory either (verified on the VM: they left it root:root) - the socket's privileged
+ * ExecStartPre `+chown`/`+chmod` pair below is what actually makes it kb-shell:kb-dashboard 0750.
  */
 export const BROKER_SYSTEMD_POLICY = {
   socket: {
@@ -67,6 +69,12 @@ export const BROKER_SYSTEMD_POLICY = {
     RuntimeDirectory: 'kb-shell',
     RuntimeDirectoryMode: '0750',
     RuntimeDirectoryPreserve: 'restart',
+    // The one repeatable systemd directive in this frozen table: two ExecStartPre execs, in this
+    // order. `+` runs each as root regardless of this unit's own User=kb-shell.
+    ExecStartPre: [
+      '+/usr/bin/chown kb-shell:kb-dashboard /run/kb-shell',
+      '+/usr/bin/chmod 0750 /run/kb-shell',
+    ],
   },
   service: {
     Type: 'simple',
@@ -83,7 +91,10 @@ export const BROKER_SYSTEMD_POLICY = {
     ProtectSystem: 'strict',
     ReadOnlyPaths: '/var/lib/kb/ops /var/lib/kb-shell/home',
     ReadWritePaths: '/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex',
-    InaccessiblePaths: '/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation',
+    // `-` prefix: ignore-if-missing on this one path. Nothing in the repo ever creates
+    // /var/lib/kb-activation, and systemd refuses to build the mount namespace when a listed
+    // InaccessiblePaths entry does not exist (confirmed on the VM: every spawn died at NAMESPACE).
+    InaccessiblePaths: '/var/lib/kb/state /opt/kb-releases -/var/lib/kb-activation',
     CapabilityBoundingSet: '',
     AmbientCapabilities: '',
     RestrictSUIDSGID: 'yes',

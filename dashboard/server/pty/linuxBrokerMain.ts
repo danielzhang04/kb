@@ -137,11 +137,13 @@ export function assertBrokerRuntimeNode(stats: { mode: number; uid: number; gid:
  * the runtime directory the socket unit's 0750 with the kb-dashboard group, which is what lets the
  * dashboard reach broker.sock.
  *
- * The units are reconciled (the socket unit owns /run/kb-shell; the service declares no
- * RuntimeDirectory at all), so this FAILS CLOSED on the old shape: gid kb-shell and mode 0700 are
- * REFUSED. A 0700 kb-shell:kb-shell runtime directory is unreachable by kb-dashboard, so accepting
- * it bought a broker that boots happily while the dashboard can never traverse to broker.sock -
- * silent unavailability. The one accepted shape is the socket unit's: kb-shell:kb-dashboard 0750.
+ * The units are reconciled (the socket unit owns /run/kb-shell via its privileged ExecStartPre
+ * `+chown`/`+chmod` pair - RuntimeDirectory=/User=/Group= on the socket unit do NOT chown it, a false
+ * premise that was hand-verified and corrected on the VM; the service declares no RuntimeDirectory at
+ * all), so this FAILS CLOSED on the old shape: gid kb-shell and mode 0700 are REFUSED. A 0700
+ * kb-shell:kb-shell runtime directory is unreachable by kb-dashboard, so accepting it bought a broker
+ * that boots happily while the dashboard can never traverse to broker.sock - silent unavailability.
+ * The one accepted shape is the socket unit's: kb-shell:kb-dashboard 0750.
  */
 export function brokerRuntimePolicy(identities: ServiceIdentities): BrokerRuntimePolicy {
   const [owner, group] = BROKER_RUNTIME_POLICY.stateOwner.split(':');
