@@ -1,0 +1,240 @@
+{
+  "gpu": {
+    "type": "NVIDIA GeForce RTX 3090",
+    "count": 1,
+    "cloud": "COMMUNITY"
+  },
+  "price_usd_per_hour": 0.5,
+  "max_minutes": 8,
+  "container_disk_gb": 60,
+  "volume_gb": 60,
+  "volume_mount_path": "/workspace",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "comfyui": {
+    "root": "/workspace",
+    "port": 8188,
+    "start_command": "if [ ! -d /workspace/ComfyUI/.git ]; then git -C /workspace/ComfyUI init && git -C /workspace/ComfyUI remote add origin https://github.com/comfyanonymous/ComfyUI.git; fi && git -C /workspace/ComfyUI fetch --depth 1 origin refs/tags/v0.20.1 && git -C /workspace/ComfyUI checkout --detach FETCH_HEAD && python -m pip install -r /workspace/ComfyUI/requirements.txt && cd /workspace/ComfyUI && python main.py --listen 127.0.0.1 --port 8188 --output-directory /workspace/output"
+  },
+  "ready_timeout_seconds": 900,
+  "job_timeout_seconds": 900,
+  "models": [
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/vae/flux2-vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    }
+  ],
+  "custom_nodes": [],
+  "workflow": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "flux-2-klein-base-4b.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen_3_4b.safetensors",
+        "type": "flux2",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "flux2-vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "placeholder positive prompt",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "child or teen, nudity, lingerie, studio, flash, glass skin",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "6": {
+      "class_type": "EmptyFlux2LatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1280,
+        "batch_size": 1
+      }
+    },
+    "7": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": 1
+      }
+    },
+    "8": {
+      "class_type": "CFGGuider",
+      "inputs": {
+        "cfg": 4,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "4",
+          0
+        ],
+        "negative": [
+          "5",
+          0
+        ]
+      }
+    },
+    "9": {
+      "class_type": "Flux2Scheduler",
+      "inputs": {
+        "steps": 50,
+        "width": 1024,
+        "height": 1280
+      }
+    },
+    "10": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "euler"
+      }
+    },
+    "11": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "7",
+          0
+        ],
+        "guider": [
+          "8",
+          0
+        ],
+        "sampler": [
+          "10",
+          0
+        ],
+        "sigmas": [
+          "9",
+          0
+        ],
+        "latent_image": [
+          "6",
+          0
+        ]
+      }
+    },
+    "12": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "11",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "13": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "placeholder",
+        "images": [
+          "12",
+          0
+        ]
+      }
+    },
+    "99": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 1,
+        "steps": 1,
+        "cfg": 1,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "4",
+          0
+        ],
+        "negative": [
+          "5",
+          0
+        ],
+        "latent_image": [
+          "6",
+          0
+        ]
+      }
+    }
+  },
+  "jobs": [
+    {
+      "seed": 100001,
+      "output_name": "trial-03-c01-s1-seed-100001",
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid half-body phone-camera portrait of an unambiguously adult woman in her mid-twenties with a slim, softly waist-defined build, a round-oval face with softly rounded cheeks, hooded almond eyes, warm fair peach skin with visible pores and a satin-natural finish, full softly arched natural brows, waist-length blue-black center-parted loose near-straight waves, a tiny beauty mark high on her left cheek, a fine gold oval-pendant necklace and small gold huggies, warm taupe shadow, subtle brown liner, bronzed cheeks, and a glossy nude-rose lip, seated on the edge of a neatly made bed beside a window in a fully opaque fitted black slip dress with a modest neckline and delicate gold jewelry. Soft window daylight falls across a real bedroom, with her phone held at arm's length and both hands naturally rendered. It is a warm, textured-skin, soft-glam phone snapshot with visible pores and slight film grain, never studio or flash. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        },
+        {
+          "node_id": "9",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "9",
+          "field": "height",
+          "value": 1280
+        },
+        {
+          "node_id": "7",
+          "field": "noise_seed",
+          "value": 100001
+        }
+      ]
+    }
+  ]
+}
