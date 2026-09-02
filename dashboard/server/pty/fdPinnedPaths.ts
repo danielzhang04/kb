@@ -11,6 +11,7 @@ import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 
 import {
+  codexSandboxMode,
   FORBIDDEN_WORKFLOW_TOOLS,
   WORKFLOW_EXECUTION_PROFILES,
   WORKFLOW_PERMISSION_MODE,
@@ -208,25 +209,12 @@ export function buildWorkflowPolicyTable(
 const workflowPolicies = buildWorkflowPolicyTable(WORKFLOW_EXECUTION_PROFILES);
 
 /**
- * The codex sandbox, DERIVED from the profile rather than hardcoded. `recipe.sandbox` is the frame's
- * launcher discriminator (`codex-workspace-write`) and has never been read as a mode, so the
- * `-s workspace-write` literal that used to sit in the argv made `checker-readonly` and `producer`
- * produce byte-identical argv: a review stage whose work order says "Read only. Never edit the
- * artifact" launched with unattended write and command execution across the worktree, held read-only
- * by prose alone. Codex takes no `--allowedTools`, so the sandbox is the ONLY place a codex worker's
- * cap can be expressed — this is the codex half of what `--allowedTools` does for claude.
- *
- * A profile granting none of Bash/Write/Edit cannot write or execute, so it launches `read-only`;
- * anything else launches `workspace-write`. `danger-full-access` is never emitted under any
- * circumstance: it is unreachable from this function by construction, and it must stay that way.
+ * Re-exported, not redefined. The derivation itself lives in `control/workflowProfiles.ts` because the
+ * Windows launcher (`pty/launcherProfiles.ts`) needs the SAME rule and does not share this module: two
+ * copies of "which profile may write" is precisely the class of drift the importless profile leaf was
+ * extracted to end, and it shipped here first, so this file kept the name it exported.
  */
-const WRITE_CAPABLE_TOOLS: readonly string[] = ['Bash', 'Write', 'Edit'];
-
-export function codexSandboxMode(allowedTools: readonly string[]): 'read-only' | 'workspace-write' {
-  return allowedTools.some((tool) => WRITE_CAPABLE_TOOLS.includes(tool))
-    ? 'workspace-write'
-    : 'read-only';
-}
+export { codexSandboxMode };
 
 export type PinnedIdentity = {
   dev: bigint;

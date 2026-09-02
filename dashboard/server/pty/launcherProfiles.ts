@@ -8,6 +8,7 @@ import {
   createWorkflowToolPolicyResolver,
   type ClaudeToolPolicy,
 } from '../control/claudeLaunchPolicy.ts';
+import { codexSandboxMode } from '../control/workflowProfiles.ts';
 import type {
   LaunchRecipe,
   PortResult,
@@ -61,6 +62,12 @@ export type WindowsPinnedLaunch = {
 export type WindowsLaunchRecipeOptions = {
   environment: WindowsEnvironment;
   rootPath: string;
+  /**
+   * The server-owned workflow profile table, for tests and for a caller that wants to inject one;
+   * production leaves it undefined and `createWorkflowToolPolicyResolver` loads the real table. It is
+   * named for claude for historical reasons but BOTH launchers resolve through it — codex has no
+   * `--allowedTools`, so its profile decides the sandbox mode instead (`codexSandboxMode`).
+   */
   claudeProfiles?: readonly { id: string; allowedTools: readonly string[] }[];
   claudeScopes?: Readonly<Record<string, { readScope: readonly string[]; writeScope: readonly string[] }>>;
   claudePermissionMode?: string;
@@ -187,15 +194,30 @@ function refusal(): PortResult<never> {
   return { ok: false, refusal: 'invalid-request', detail: null };
 }
 
-function resolveClaudePolicy(
+/**
+ * Resolve the server-owned profile the recipe NAMES, on this side of the wire, for EITHER launcher.
+ * `createWorkflowToolPolicyResolver` throws `ToolPolicyRefusal` on an id that names nothing
+ * server-owned, and `mapWindowsLaunchRecipe`'s enclosing catch turns that into `invalid-request` — so
+ * an unknown id is REFUSED. That is deliberate and load-bearing for codex: the alternative, carrying
+ * on with a default, would mean defaulting to the more permissive sandbox for exactly the ids nobody
+ * approved. Failing closed is the only acceptable answer here.
+ */
+function resolveWorkflowPolicy(
   recipe: LaunchRecipe,
   options: WindowsLaunchRecipeOptions,
-): { policy: ClaudeToolPolicy; settings: string | undefined } {
+): ClaudeToolPolicy {
   const resolver = createWorkflowToolPolicyResolver({
     permissionMode: options.claudePermissionMode,
     profiles: options.claudeProfiles,
   });
-  const policy = resolver(recipe.toolPolicyId);
+  return resolver(recipe.toolPolicyId);
+}
+
+function resolveClaudePolicy(
+  recipe: LaunchRecipe,
+  options: WindowsLaunchRecipeOptions,
+): { policy: ClaudeToolPolicy; settings: string | undefined } {
+  const policy = resolveWorkflowPolicy(recipe, options);
   const scopes = options.claudeScopes?.[recipe.toolPolicyId] ?? { readScope: [], writeScope: [] };
   return {
     policy,
@@ -255,13 +277,29 @@ export function mapWindowsLaunchRecipe(
         codexShim: null, codexEntry: null,
       } };
     }
+    // A codex worker carries no `--allowedTools`; its only real cap is the sandbox, so the profile the
+    // recipe names has to reach the child as `-s`/`sandbox_mode` or it reaches the child as nothing at
+    // all. `-s workspace-write` used to be a hardcoded literal here (`recipe.sandbox` is the frame's
+    // launcher discriminator, never a mode), so `checker-readonly` and `producer` produced identical
+    // argv: the review stages of orgs/faceless-youtube/workflows/iteration-loop-demo.md, whose work
+    // orders read "Read only ... Never edit the artifact", launched with unattended write and command
+    // execution across the worktree under `approval_policy=never`. The Linux broker was fixed in
+    // 5996b9c6; this is the same derivation, from the same table, so the two cannot disagree.
+    const sandboxMode = codexSandboxMode(resolveWorkflowPolicy(recipe, options).allowedTools);
+    // `exec resume` accepts no `-s/--sandbox` flag — plain `exec` offers
+    // `-s [read-only, workspace-write, danger-full-access]` and resume offers only `-c`, `--last`, `-m`
+    // — so the resume branch pins the config key that flag sets instead. Without it a resumed session
+    // inherited whatever the CLI defaulted to and could silently outrank the fresh launch it continues.
+    // `CODEX_CONFIGURATION_PINS` STAYS LAST in every branch (only `--cd`/`-C <cwd>` may follow): codex
+    // is last-wins on `-c`, and that ordering is what keeps `approval_policy=never`, `mcp_servers={}`,
+    // `sandbox_workspace_write.network_access=false` and `web_search="disabled"` un-overridable.
     const args = recipe.mode === 'headless-json'
       ? recipe.resumeRef === undefined
-        ? ['exec', '-', '--json', '--model', recipe.model as string, '-s', 'workspace-write',
+        ? ['exec', '-', '--json', '--model', recipe.model as string, '-s', sandboxMode,
             ...CODEX_CONFIGURATION_PINS, '--cd', cwd]
         : ['exec', 'resume', recipe.resumeRef, '-', '--json', '-c', `model=${recipe.model}`,
-            ...CODEX_CONFIGURATION_PINS]
-      : ['--model', recipe.model as string, '-s', 'workspace-write', ...CODEX_CONFIGURATION_PINS, '-C', cwd];
+            '-c', `sandbox_mode="${sandboxMode}"`, ...CODEX_CONFIGURATION_PINS]
+      : ['--model', recipe.model as string, '-s', sandboxMode, ...CODEX_CONFIGURATION_PINS, '-C', cwd];
     const appData = requiredRoot(options.environment, 'APPDATA');
     const programFiles = requiredRoot(options.environment, 'ProgramFiles');
     return { ok: true, value: {

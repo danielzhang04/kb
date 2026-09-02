@@ -15,10 +15,13 @@
  *   - claude: `allowedTools` is joined into the child's `--allowedTools` argv, so the broker's copy of
  *     the profile has to reproduce the dashboard's byte for byte or `createAttemptToolPolicyIdResolver`
  *     refuses the launch. The tool cap IS the profile.
- *   - codex: the CLI takes no per-tool allowlist, so `allowedTools` never reaches codex argv. The
- *     broker uses the profile for two things only — the id must name a server-owned profile at all,
- *     and the profile's tools decide the codex `-s`/`sandbox_mode` (see `buildBrokerLaunch` in
- *     pty/fdPinnedPaths.ts). A codex worker is capped by the sandbox, not by a tool list.
+ *   - codex: the CLI takes no per-tool allowlist, so `allowedTools` never reaches codex argv. Each
+ *     launcher uses the profile for two things only — the id must name a server-owned profile at all,
+ *     and the profile's tools decide the codex `-s`/`sandbox_mode` (`codexSandboxMode` below, read by
+ *     `buildBrokerLaunch` in pty/fdPinnedPaths.ts on Linux and `mapWindowsLaunchRecipe` in
+ *     pty/launcherProfiles.ts on Windows). A codex worker is capped by the sandbox, not by a tool
+ *     list, so that derivation lives HERE, in the one module both launchers already read, and not
+ *     beside either of them.
  *
  * D13/D15 — these are the forward-looking capability caps a spawned worker is launched with. They are
  * SERVER-OWNED data (a code-reviewed change adds one) and a workflow definition can only NAME a
@@ -94,3 +97,30 @@ export const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = 
     allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
   },
 ];
+
+/**
+ * The codex sandbox mode a profile launches under, DERIVED from its tools rather than hardcoded.
+ * `recipe.sandbox` on the wire is the frame's launcher DISCRIMINATOR (`codex-workspace-write`) and has
+ * never been read as a mode, so the `-s workspace-write` literal both launchers used to carry made
+ * `checker-readonly` and `producer` produce byte-identical argv: a review stage whose work order says
+ * "Read only. Never edit the artifact" launched with unattended write and command execution across the
+ * worktree, held read-only by prose alone. Codex takes no `--allowedTools`, so the sandbox is the ONLY
+ * place a codex worker's cap can be expressed — this is the codex half of what `--allowedTools` does
+ * for claude.
+ *
+ * A profile granting none of Bash/Write/Edit cannot write or execute, so it launches `read-only`;
+ * anything else launches `workspace-write`. `danger-full-access` is never emitted under any
+ * circumstance: it is unreachable from this function by construction, and it must stay that way.
+ *
+ * ONE definition, deliberately: the Linux broker (pty/fdPinnedPaths.ts) and the Windows launcher
+ * (pty/launcherProfiles.ts) both import it from here. A second copy beside either of them is exactly
+ * the drift this leaf module exists to end — and it is a pure function over a string array, so hosting
+ * it here costs the module none of its zero imports.
+ */
+const WRITE_CAPABLE_TOOLS: readonly string[] = ['Bash', 'Write', 'Edit'];
+
+export function codexSandboxMode(allowedTools: readonly string[]): 'read-only' | 'workspace-write' {
+  return allowedTools.some((tool) => WRITE_CAPABLE_TOOLS.includes(tool))
+    ? 'workspace-write'
+    : 'read-only';
+}
