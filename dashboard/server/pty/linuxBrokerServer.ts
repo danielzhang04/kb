@@ -85,6 +85,7 @@ type Receipt = { requestHash: string; sessionId: string };
 type OutboundState = { blocked: boolean; pending: Uint8Array[]; pendingBytes: number };
 
 export type LinuxBrokerServerOptions = {
+  log?: (message: string) => void;
   epochId: string;
   expectedClientUid: number;
   expectedClientGid: number;
@@ -173,9 +174,11 @@ export class LinuxBrokerServer {
   private recoveryComplete: boolean;
 
   private readonly options: LinuxBrokerServerOptions;
+  private readonly log: (message: string) => void;
 
   constructor(options: LinuxBrokerServerOptions) {
     this.options = options;
+    this.log = options.log ?? (() => {});
     for (const session of options.recoveredSessions ?? []) this.recovered.set(session.sessionId, session);
     for (const receipt of options.recoveredReceipts ?? []) {
       this.receipts.set(receipt.operationKey, { requestHash: receipt.requestHash, sessionId: receipt.sessionId });
@@ -203,12 +206,23 @@ export class LinuxBrokerServer {
   }
 
   accept(socket: Duplex, peer: BrokerPeerIdentity): void {
-    if (peer.uid !== this.options.expectedClientUid || peer.gid !== this.options.expectedClientGid || !this.recoveryComplete) {
+    if (peer.uid !== this.options.expectedClientUid || peer.gid !== this.options.expectedClientGid) {
+      this.log('broker: closed peer connection: peer-identity-mismatch');
+      socket.destroy();
+      return;
+    }
+    if (!this.recoveryComplete) {
+      this.log('broker: closed peer connection: recovery-incomplete');
       socket.destroy();
       return;
     }
     let greeted = false;
-    const decoder = new BrokerFrameDecoder(decodeBrokerClientFrame);
+    const decoder = new BrokerFrameDecoder(decodeBrokerClientFrame, (error) => {
+      if (!(error instanceof BrokerProtocolError) || error.requestId === null) return false;
+      this.sendError(socket, error.requestId, null, error.refusal, safeDetail(error));
+      this.log(`broker: refused request ${error.refusal}`);
+      return true;
+    });
     socket.on('data', (chunk: Buffer) => {
       try {
         for (const frame of decoder.push(chunk)) {
@@ -229,8 +243,9 @@ export class LinuxBrokerServer {
           });
         }
       } catch (error) {
-        this.sendError(socket, null, null,
-          error instanceof BrokerProtocolError ? error.refusal : 'invalid-request', safeDetail(error));
+        const refusal = error instanceof BrokerProtocolError ? error.refusal : 'invalid-request';
+        this.sendError(socket, null, null, refusal, safeDetail(error));
+        this.log(`broker: closed peer connection: protocol-error:${refusal}`);
         socket.destroy();
       }
     });
@@ -505,6 +520,7 @@ export class LinuxBrokerServer {
       session.attachments.delete(socket);
       session.pausedInputs.delete(socket);
     }
+    this.log('broker: closed peer connection: slow-peer');
     socket.destroy();
   }
 

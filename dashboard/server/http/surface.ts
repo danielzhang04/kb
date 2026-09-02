@@ -220,6 +220,12 @@ export function makeSurfaceContext(
           connect: async () => connectSocket(BROKER_SOCKET_PATH),
           dashboardEpochId: `epoch-${randomBytes(16).toString('hex')}`,
           makeRequestId: () => `req-${randomBytes(16).toString('hex')}`,
+          onDisconnect: ({ cause, error, lastErrorFrame }) => {
+            console.warn(`[pty-broker] disconnected ${JSON.stringify({ cause, error, lastErrorFrame })}`);
+          },
+          onReconcile: ({ sessionId, error }) => {
+            console.warn(`[pty-broker] reconcile failed ${JSON.stringify({ sessionId, error })}`);
+          },
         })))
     : undefined;
   const ptySessionHost = underlyingPtySessionHost

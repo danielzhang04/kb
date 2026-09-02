@@ -325,12 +325,12 @@ function fakeSocket(): FakeSocket {
 describe('handlePtyConnection', () => {
   const principal: BrowserPrincipal = { operator: 'daniel', browserSessionRef: REF };
 
-  function ctxFor(calls: Calls): PtyRouteContext {
+  function ctxFor(calls: Calls, overrides: Partial<SessionRegistryPort> = {}): PtyRouteContext {
     return makePtyRouteContext({
       repoRoot: process.cwd(),
       sessionConfig,
       allowedOrigins: ['https://kb.test'],
-      registry: fakeRegistry(calls),
+      registry: fakeRegistry(calls, overrides),
       persistence: fakePersistence(3),
       appendAudit: () => ({ ts: '', action: '', owner: '', result: '' } as never),
     });
@@ -338,16 +338,38 @@ describe('handlePtyConnection', () => {
 
   it('creates and attaches on the first create frame, answering with `created`', async () => {
     const calls: Calls = [];
+    const forwardedCwds: string[] = [];
     const socket = fakeSocket();
-    await handlePtyConnection(socket, principal, ctxFor(calls));
+    await handlePtyConnection(socket, principal, ctxFor(calls, {
+      create: async (_principal, request) => {
+        calls.push('create');
+        forwardedCwds.push(request.relativeCwd);
+        return { ok: true, value: summary() };
+      },
+    }));
     socket.emit(JSON.stringify({
-      type: 'create', requestId: 'r1', launcher: 'shell', rootId: 'repo', relativeCwd: '', cols: 80, rows: 24,
+      type: 'create', requestId: 'r1', launcher: 'shell', rootId: 'repo', relativeCwd: '.', cols: 80, rows: 24,
     }));
     await new Promise((r) => setTimeout(r, 0));
     expect(calls).toEqual(['create', 'attach']);
+    expect(forwardedCwds).toEqual(['']);
     expect(socket.sent).toEqual([
       { type: 'created', requestId: 'r1', revision: 3, session: summary(), attachmentId: ATTACHMENT_ID },
     ]);
+  });
+
+  it('refuses an unsafe cwd by request id without calling the registry', async () => {
+    const calls: Calls = [];
+    const socket = fakeSocket();
+    await handlePtyConnection(socket, principal, ctxFor(calls));
+    socket.emit(JSON.stringify({
+      type: 'create', requestId: 'r1', launcher: 'shell', rootId: 'repo', relativeCwd: '../x', cols: 80, rows: 24,
+    }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(socket.sent).toEqual([{
+      type: 'error', requestId: 'r1', sessionId: null, code: 'unsafe-cwd', detail: 'relativeCwd is unsafe',
+    }]);
+    expect(calls).toEqual([]);
   });
 
   it('refuses input naming an attachment this socket does not hold, without writing', async () => {

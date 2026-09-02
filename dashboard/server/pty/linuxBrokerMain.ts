@@ -332,6 +332,7 @@ export async function startLinuxBrokerMain(socketFd = 3): Promise<LinuxBrokerMai
     enumerateLaunchers: () => enumerateBrokerLaunchers({ rootUid: 0, ...identities }),
     makeSessionId: () => `pty-${randomBytes(16).toString('hex')}`,
     now: () => new Date().toISOString(),
+    log: (message) => { process.stderr.write(`${message}\n`); },
     recoveredSessions,
     recoveredReceipts: oldState?.receipts,
     killOrphan: terminateVerifiedIdentity,

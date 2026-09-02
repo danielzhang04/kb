@@ -41,11 +41,13 @@ export function canonicalLaunchers(values: readonly unknown[]): SessionLauncher[
 
 export class BrokerProtocolError extends Error {
   readonly refusal: HostRefusalCode;
+  readonly requestId: string | null;
 
-  constructor(message: string, refusal: HostRefusalCode = 'invalid-request') {
+  constructor(message: string, refusal: HostRefusalCode = 'invalid-request', requestId: string | null = null) {
     super(message);
     this.name = 'BrokerProtocolError';
     this.refusal = refusal;
+    this.requestId = requestId;
   }
 }
 
@@ -117,19 +119,19 @@ function rootId(value: unknown): SafeRootId {
   return value;
 }
 
-function relativeCwd(value: unknown): string {
-  const candidate = text(value, 'relativeCwd');
+export function isSafeRelativeCwd(candidate: string): boolean {
   if (Buffer.byteLength(candidate, 'utf8') > 240 || candidate.includes('\\')
       || candidate.startsWith('/') || /^[A-Za-z]:/.test(candidate) || candidate.startsWith('//')
-      || /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/u.test(candidate)) {
-    throw new BrokerProtocolError('relativeCwd is unsafe', 'unsafe-cwd');
-  }
-  if (candidate === '') return candidate;
+      || /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/u.test(candidate)) return false;
+  if (candidate === '') return true;
   const parts = candidate.split('/');
-  if (parts.some((part) => part === '' || part === '.' || part === '..' || /[. ]$/.test(part)
-      || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(part))) {
-    throw new BrokerProtocolError('relativeCwd is unsafe', 'unsafe-cwd');
-  }
+  return !parts.some((part) => part === '' || part === '.' || part === '..' || /[. ]$/.test(part)
+    || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(part));
+}
+
+function relativeCwd(value: unknown): string {
+  const candidate = text(value, 'relativeCwd');
+  if (!isSafeRelativeCwd(candidate)) throw new BrokerProtocolError('relativeCwd is unsafe', 'unsafe-cwd');
   return candidate;
 }
 
@@ -177,7 +179,12 @@ function commonRequest(frame: Record<string, unknown>, sessionNullable: boolean)
 
 export function decodeBrokerClientFrame(value: unknown): BrokerClientFrame {
   const frame = record(value);
-  switch (frame.type) {
+  const requestId = typeof frame.requestId === 'string' && requestIdPattern.test(frame.requestId)
+    ? frame.requestId
+    : null;
+  let recognizedRequestType = false;
+  try {
+    switch (frame.type) {
     case 'hello':
       exact(frame, ['type', 'requestId', 'sessionId', 'protocol', 'dashboardEpochId']);
       commonRequest(frame, true);
@@ -185,6 +192,7 @@ export function decodeBrokerClientFrame(value: unknown): BrokerClientFrame {
       identifier(frame.dashboardEpochId, 'dashboardEpochId', epochIdPattern);
       break;
     case 'create':
+      recognizedRequestType = true;
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'operationKey', 'recipe', 'rootId', 'relativeCwd', 'cols', 'rows']);
       commonRequest(frame, true);
       identifier(frame.epochId, 'epochId', epochIdPattern);
@@ -193,29 +201,46 @@ export function decodeBrokerClientFrame(value: unknown): BrokerClientFrame {
       rootId(frame.rootId); relativeCwd(frame.relativeCwd); size(frame.cols, frame.rows);
       break;
     case 'attach':
+      recognizedRequestType = true;
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'fromSequence']);
       commonRequest(frame, false); identifier(frame.epochId, 'epochId', epochIdPattern); sequence(frame.fromSequence, 'fromSequence');
       break;
     case 'input':
+      recognizedRequestType = true;
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'sequence', 'encoding', 'data']);
       commonRequest(frame, false); identifier(frame.epochId, 'epochId', epochIdPattern); sequence(frame.sequence);
       if (frame.encoding !== 'base64') throw new BrokerProtocolError('encoding is invalid');
       canonicalBase64(frame.data);
       break;
     case 'resize':
+      recognizedRequestType = true;
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'sequence', 'cols', 'rows']);
       commonRequest(frame, false); identifier(frame.epochId, 'epochId', epochIdPattern); sequence(frame.sequence); size(frame.cols, frame.rows);
       break;
     case 'close':
+      recognizedRequestType = true;
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'sequence']);
       commonRequest(frame, false); identifier(frame.epochId, 'epochId', epochIdPattern); sequence(frame.sequence);
       break;
     case 'launchers':
+      recognizedRequestType = true;
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId']);
       commonRequest(frame, true); identifier(frame.epochId, 'epochId', epochIdPattern);
       break;
     default:
       throw new BrokerProtocolError('broker client frame type is invalid');
+    }
+  } catch (error) {
+    const recoverableRefusals: ReadonlySet<HostRefusalCode> = new Set([
+      'unsafe-root', 'unsafe-cwd', 'size-out-of-range', 'input-too-large',
+      'launcher-unavailable', 'not-found', 'capacity', 'epoch-lost',
+      'binding-conflict', 'invalid-request',
+    ]);
+    if (recognizedRequestType && requestId !== null && error instanceof BrokerProtocolError
+        && recoverableRefusals.has(error.refusal)) {
+      throw new BrokerProtocolError(error.message, error.refusal, requestId);
+    }
+    throw error;
   }
   return frame as BrokerClientFrame;
 }
@@ -337,9 +362,11 @@ export function encodeBrokerFrame(frame: unknown): Uint8Array {
 export class BrokerFrameDecoder<T> {
   private buffered = Buffer.alloc(0);
   private readonly decode: (value: unknown) => T;
+  private readonly recover: ((error: unknown) => boolean) | undefined;
 
-  constructor(decode: (value: unknown) => T) {
+  constructor(decode: (value: unknown) => T, recover?: (error: unknown) => boolean) {
     this.decode = decode;
+    this.recover = recover;
   }
 
   push(chunk: Uint8Array): T[] {
@@ -357,7 +384,11 @@ export class BrokerFrameDecoder<T> {
       this.buffered = this.buffered.subarray(length + 4);
       let value: unknown;
       try { value = JSON.parse(body.toString('utf8')); } catch { throw new BrokerProtocolError('broker frame is not valid JSON'); }
-      frames.push(this.decode(value));
+      try {
+        frames.push(this.decode(value));
+      } catch (error) {
+        if (this.recover?.(error) !== true) throw error;
+      }
     }
     return frames;
   }

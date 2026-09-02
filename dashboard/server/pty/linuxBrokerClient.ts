@@ -48,6 +48,12 @@ export type LinuxBrokerClientOptions = {
   makeAttachmentId?: () => string;
   now?: () => string;
   requestTimeoutMs?: number;
+  onDisconnect?: (info: {
+    cause: 'socket-close' | 'socket-error' | 'explicit' | 'decode-error';
+    error: string | null;
+    lastErrorFrame: { code: string; detail: string | null } | null;
+  }) => void;
+  onReconcile?: (info: { sessionId: string; error: string }) => void;
 };
 
 function failure<T>(refusal: HostRefusalCode, detail: string | null): PortResult<T> {
@@ -60,7 +66,8 @@ export class LinuxBrokerClient implements SessionHost {
   private ready: Extract<BrokerServerFrame, { type: 'ready' }> | null = null;
   private readonly pending = new Map<string, Pending>();
   private readonly sessions = new Map<string, Session>();
-  private unavailable = false;
+  private closedForever = false;
+  private lastErrorFrame: { code: string; detail: string | null } | null = null;
 
   private readonly options: LinuxBrokerClientOptions;
 
@@ -239,34 +246,80 @@ export class LinuxBrokerClient implements SessionHost {
   }
 
   disconnect(): void {
-    this.socket?.destroy();
-    this.handleDisconnect();
+    if (this.closedForever) return;
+    this.closedForever = true;
+    const socket = this.socket;
+    this.handleDisconnect(socket, 'explicit', null);
+    socket?.destroy();
   }
 
   private async ensureConnected(): Promise<void> {
-    if (this.unavailable) throw new Error('broker disconnected');
+    if (this.closedForever) throw new Error('broker disconnected');
     if (this.ready !== null && this.socket !== null && !this.socket.destroyed) return;
     if (this.connecting !== null) return this.connecting;
-    this.connecting = this.open();
-    try { await this.connecting; } finally { this.connecting = null; }
+    const connecting = this.open();
+    this.connecting = connecting;
+    try { await connecting; } finally {
+      if (this.connecting === connecting) this.connecting = null;
+    }
   }
 
   private async open(): Promise<void> {
     const socket = await this.options.connect();
+    if (this.closedForever) {
+      socket.destroy();
+      throw new Error('broker disconnected');
+    }
     if (socket.destroyed) throw new Error('broker socket is closed');
     this.socket = socket;
+    this.lastErrorFrame = null;
     const decoder = new BrokerFrameDecoder(decodeBrokerServerFrame);
     socket.on('data', (chunk: Buffer) => {
-      try { for (const frame of decoder.push(chunk)) this.handleFrame(frame); }
-      catch { socket.destroy(); }
+      if (socket !== this.socket) return;
+      try { for (const frame of decoder.push(chunk)) this.handleFrame(socket, frame); }
+      catch (error) {
+        this.handleDisconnect(socket, 'decode-error', this.errorMessage(error));
+        socket.destroy();
+      }
     });
-    socket.once('close', () => this.handleDisconnect());
-    socket.once('error', () => this.handleDisconnect());
-    const requestId = this.options.makeRequestId();
-    const ready = await this.request({ type: 'hello', requestId, sessionId: null,
-      protocol: BROKER_PROTOCOL, dashboardEpochId: this.options.dashboardEpochId }, socket);
-    if (ready.type !== 'ready') throw new Error('broker hello did not return ready');
-    this.ready = ready;
+    socket.once('close', () => this.handleDisconnect(socket, 'socket-close', null));
+    socket.once('error', (error: Error) => {
+      this.handleDisconnect(socket, 'socket-error', error.message);
+      socket.destroy();
+    });
+    try {
+      const requestId = this.options.makeRequestId();
+      const ready = await this.request({ type: 'hello', requestId, sessionId: null,
+        protocol: BROKER_PROTOCOL, dashboardEpochId: this.options.dashboardEpochId }, socket);
+      if (ready.type !== 'ready') throw new Error('broker hello did not return ready');
+      this.ready = ready;
+      this.reconcileAbandoned(ready);
+    } catch (error) {
+      socket.destroy();
+      this.handleDisconnect(socket, 'socket-error', this.errorMessage(error));
+      throw error;
+    }
+  }
+
+  private reconcileAbandoned(ready: Extract<BrokerServerFrame, { type: 'ready' }>): void {
+    const abandoned = ready.sessions.filter((item) => this.sessions.get(item.sessionId)?.exited === true);
+    if (abandoned.length === 0) return;
+    this.ready!.sessions = ready.sessions.filter((item) => !abandoned.includes(item));
+    for (const item of abandoned) {
+      const session = this.sessions.get(item.sessionId)!;
+      void this.request({ type: 'close', requestId: this.options.makeRequestId(),
+        sessionId: item.sessionId, epochId: item.epochId,
+        sequence: session.nextInputSequence++ }).then((response) => {
+        if (response.type !== 'ack' || response.action !== 'close') {
+          throw new Error(response.type === 'error'
+            ? `broker reconciliation refused: ${response.code}`
+            : 'broker reconciliation returned an unexpected response');
+        }
+      }).catch((error: unknown) => this.options.onReconcile?.({
+        sessionId: item.sessionId,
+        error: this.errorMessage(error),
+      }));
+    }
   }
 
   private request(frame: BrokerClientFrame, socketOverride?: Duplex): Promise<BrokerServerFrame> {
@@ -291,7 +344,11 @@ export class LinuxBrokerClient implements SessionHost {
     });
   }
 
-  private handleFrame(frame: BrokerServerFrame): void {
+  private handleFrame(socket: Duplex, frame: BrokerServerFrame): void {
+    if (socket !== this.socket) return;
+    if (frame.type === 'error') {
+      this.lastErrorFrame = { code: frame.code, detail: frame.detail };
+    }
     if (frame.requestId !== null) {
       const pending = this.pending.get(frame.requestId);
       if (pending !== undefined) {
@@ -337,11 +394,19 @@ export class LinuxBrokerClient implements SessionHost {
       observedAt: (this.options.now ?? (() => new Date().toISOString()))() };
   }
 
-  private handleDisconnect(): void {
-    if (this.unavailable) return;
-    this.unavailable = true;
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private handleDisconnect(
+    socket: Duplex | null,
+    cause: 'socket-close' | 'socket-error' | 'explicit' | 'decode-error',
+    error: string | null,
+  ): void {
+    if (socket !== this.socket) return;
     this.socket = null;
     this.ready = null;
+    this.connecting = null;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(new Error('broker disconnected'));
@@ -354,5 +419,8 @@ export class LinuxBrokerClient implements SessionHost {
       for (const sink of session.sinks.values()) if (!sink.closed()) sink.exit(exit);
       session.exit.resolve(exit);
     }
+    const lastErrorFrame = this.lastErrorFrame;
+    this.lastErrorFrame = null;
+    this.options.onDisconnect?.({ cause, error, lastErrorFrame });
   }
 }
