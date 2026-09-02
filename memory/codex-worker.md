@@ -316,6 +316,13 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 - Continuation check: a bare `Continue` did not satisfy the external approval gate's requirement for
   explicit authorization to publish the operational checkpoint to the Codex Git remote, and browser
   discovery still returned no backend. No push or run mutation occurred.
+- 2026-08-06: The optimized Poyais L24 four-engine follow-up supersedes the earlier 0/4 test as the
+  current replacement-quality verdict without erasing that older protocol record. Treat the actual
+  canonical and plate as style authority (controlled soft cel shading is valid). OpenAI GPT-Image-2
+  is production-ready; Qwen-Image-Edit-2511 is viable behind expression/hand/pose/scale gates;
+  FLUX.2 Klein 4B and HiDream O1 Image are not reliable replacements. Seeds were runner-only latent
+  initialization, not prompt/reference content. The complete reproducible run is stored at
+  `C:\Users\danie\second-take-open-model-bakeoff\optimized-l24`; the rented RunPod pod was deleted.
 
 
 # codex-worker
