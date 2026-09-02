@@ -142,10 +142,13 @@ describe('probePublicPtyCapability', () => {
       launchers: ['shell', 'claude', 'codex'], roots: ['repo', 'worktrees'],
       epochId: 'epoch-1', checkedAt: CHECKED_AT,
     }));
+    const linux = vi.fn(async (): Promise<PtyCapabilityProbe> => { throw new Error('must not probe'); });
     const capability = await probePublicPtyCapability({
-      platform: 'win32', epochId: 'epoch-1', now, probeWindowsHost: probe,
+      platform: 'win32', epochId: 'epoch-1', now, probeWindowsHost: probe, probeLinuxHost: linux,
     });
     expect(probe).toHaveBeenCalledOnce();
+    // The Windows arm is untouched by the Linux wiring: the broker is never reached from a desktop.
+    expect(linux).not.toHaveBeenCalled();
     expect(probe.mock.lastCall?.[0]).toMatchObject({ epochId: 'epoch-1' });
     expect(capability).toEqual({
       pty: true, host: 'desktop', launchers: ['shell', 'claude', 'codex'],
@@ -178,13 +181,46 @@ describe('probePublicPtyCapability', () => {
     });
   });
 
-  it('never calls the Windows host probe off Windows and refuses with the broker reason', async () => {
-    const probe = vi.fn(async (): Promise<PtyCapabilityProbe> => { throw new Error('must not probe'); });
+  it('never calls the Windows host probe off Windows, and RUNS the Linux broker probe instead', async () => {
+    // This test used to assert the opposite: that Linux unconditionally published
+    // `broker-unavailable` without asking anything. That was the stub, and it encoded the bug — the
+    // daemon told its operator it had no terminal and no CLIs on a VM where both were installed, so
+    // `placement/requirements.ts` refused every agent launch with `409 no-complete-placement`.
+    const windows = vi.fn(async (): Promise<PtyCapabilityProbe> => { throw new Error('must not probe'); });
+    const linux = vi.fn(async (options: { now: () => string }): Promise<PtyCapabilityProbe> => ({
+      available: true, host: 'vm', transport: 'unix-broker',
+      launchers: ['shell', 'claude'], roots: ['repo', 'worktrees'],
+      epochId: 'epoch-0123456789abcdef0123456789abcdef', checkedAt: options.now(),
+    }));
     expect(await probePublicPtyCapability({
-      platform: 'linux', epochId: 'epoch-1', now, probeWindowsHost: probe,
+      platform: 'linux', epochId: 'epoch-1', now, probeWindowsHost: windows, probeLinuxHost: linux,
+    })).toEqual({
+      pty: true, host: 'vm', launchers: ['shell', 'claude'], roots: ['repo', 'worktrees'],
+      checkedAt: CHECKED_AT,
+    });
+    expect(linux).toHaveBeenCalledOnce();
+    expect(windows).not.toHaveBeenCalled();
+    // The composition's own attempt time is what gets stamped — the probe is not free to invent one.
+    expect(linux.mock.lastCall?.[0].now()).toBe(CHECKED_AT);
+  });
+
+  it('publishes the Linux refusal it was given, and degrades a throwing broker probe to no terminal', async () => {
+    expect(await probePublicPtyCapability({
+      platform: 'linux', epochId: 'epoch-1', now,
+      probeLinuxHost: async () => ({
+        available: false, host: 'vm', transport: 'unix-broker',
+        reason: 'shell-unavailable', detail: 'broker enumerated no shell', checkedAt: CHECKED_AT,
+      }),
+    })).toEqual({
+      pty: false, diagnostic: { reason: 'shell-unavailable', detail: 'broker enumerated no shell', checkedAt: CHECKED_AT },
+    });
+
+    // Boot must survive a broker probe that explodes: no terminal, not a dead daemon.
+    expect(await probePublicPtyCapability({
+      platform: 'linux', epochId: 'epoch-1', now,
+      probeLinuxHost: async () => { throw new Error('koffi failed to load libc'); },
     })).toEqual({
       pty: false, diagnostic: { reason: 'broker-unavailable', detail: null, checkedAt: CHECKED_AT },
     });
-    expect(probe).not.toHaveBeenCalled();
   });
 });

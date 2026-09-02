@@ -59,7 +59,7 @@ def test_service_freezes_the_section_three_sandbox_directive_set():
     assert service["ProtectSystem"] == "strict"
     assert service["ReadOnlyPaths"] == "/var/lib/kb/ops /var/lib/kb-shell/home"
     assert service["ReadWritePaths"] == "/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex"
-    assert service["InaccessiblePaths"] == "/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation"
+    assert service["InaccessiblePaths"] == "/var/lib/kb/state /opt/kb-releases -/var/lib/kb-activation"
     assert service["CapabilityBoundingSet"] == ""
     assert service["AmbientCapabilities"] == ""
     assert service["NoNewPrivileges"] == "yes"
@@ -75,16 +75,26 @@ def test_service_omits_restrict_address_families_protect_proc_and_proc_subset():
 
 
 def test_runtime_directory_is_kb_shell_kb_dashboard_0750_and_the_service_never_sets_0700():
-    socket_section = dict(parse_unit(SOCKET_TEXT)["Socket"])
+    socket_pairs = parse_unit(SOCKET_TEXT)["Socket"]
+    exec_start_pre = [value for key, value in socket_pairs if key == "ExecStartPre"]
+    socket_section = dict((key, value) for key, value in socket_pairs if key != "ExecStartPre")
     assert socket_section["DirectoryMode"] == "0750"
     assert socket_section["RuntimeDirectory"] == "kb-shell"
     assert socket_section["RuntimeDirectoryMode"] == "0750"
     assert (socket_section["User"], socket_section["Group"]) == ("kb-shell", "kb-dashboard")
     assert socket_section["SocketMode"] == "0600"
+    # RuntimeDirectory=/User=/Group= on a .socket unit do NOT chown the runtime directory (proven on
+    # the VM: they left /run/kb-shell root:root); this privileged ExecStartPre pair is what actually
+    # makes it kb-shell:kb-dashboard, and both must be present in this order.
+    assert exec_start_pre == [
+        "+/usr/bin/chown kb-shell:kb-dashboard /run/kb-shell",
+        "+/usr/bin/chmod 0750 /run/kb-shell",
+    ]
     service = dict(parse_unit(SERVICE_TEXT)["Service"])
     assert "RuntimeDirectoryMode" not in service
     assert "RuntimeDirectory" not in service
     assert "RuntimeDirectoryMode=0700" not in SERVICE_TEXT
+    assert "ExecStartPre" not in service
 
 
 @pytest.mark.parametrize("injected", [

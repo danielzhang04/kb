@@ -19,12 +19,12 @@ const CLOSED_PTY = {
   pty: false as const,
   diagnostic: { reason: 'broker-unavailable' as const, detail: null, checkedAt: '2026-08-25T00:00:00.000Z' },
 };
-/** What `pty/brokerProbe.ts` accepts on the VM: the launcher set is exactly `shell,claude,codex`. */
+/** A fully provisioned VM: the broker enumerated all three launchers off the real filesystem. */
 const VM_PTY = {
   pty: true as const, host: 'vm' as const, launchers: ['shell' as const, 'claude' as const, 'codex' as const],
   roots: ['repo' as const, 'worktrees' as const], checkedAt: '2026-08-25T00:00:00.000Z',
 };
-/** Windows drops `claude`/`codex` INDIVIDUALLY (`pty/probe.ts`), so a partial set is real there. */
+/** Both hosts drop `claude`/`codex` INDIVIDUALLY, so a partial set is real on either. */
 const DESKTOP_SHELL_ONLY = {
   pty: true as const, host: 'desktop' as const, launchers: ['shell' as const],
   roots: ['worktrees' as const, 'repo' as const], checkedAt: '2026-08-25T00:00:00.000Z',
@@ -50,6 +50,18 @@ describe('advertisedCliStatuses — read off the PTY capability, never probed by
       .toEqual({ claude: 'ready', codex: 'missing' });
     expect(advertisedCliStatuses({ ...DESKTOP_SHELL_ONLY, launchers: ['shell', 'codex'] }))
       .toEqual({ claude: 'missing', codex: 'ready' });
+  });
+
+  it('is per-launcher on the VM TOO, now that the broker enumerates what it can really pin', () => {
+    // Before enumeration this state could not be represented: `brokerProbe.ts` refused any launcher set
+    // that was not exactly `shell,claude,codex`, so a VM with one CLI advertised no terminal and both
+    // CLIs `missing`. A launcher the broker did not name still reads `missing` — never `ready`.
+    expect(advertisedCliStatuses({ ...VM_PTY, launchers: ['shell', 'claude'] }))
+      .toEqual({ claude: 'ready', codex: 'missing' });
+    expect(advertisedCliStatuses({ ...VM_PTY, launchers: ['shell', 'codex'] }))
+      .toEqual({ claude: 'missing', codex: 'ready' });
+    expect(advertisedCliStatuses({ ...VM_PTY, launchers: ['shell'] }))
+      .toEqual({ claude: 'missing', codex: 'missing' });
   });
 
   it('never invents `login-required` — nothing observable here distinguishes it from ready', () => {

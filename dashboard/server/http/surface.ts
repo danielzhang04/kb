@@ -16,7 +16,7 @@
  * gate falls back to its real default.
  */
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { resolve as resolvePath } from 'node:path';
 import { connect as connectSocket } from 'node:net';
 import type { FastifyInstance } from 'fastify';
@@ -213,10 +213,13 @@ export function makeSurfaceContext(
           epochId: randomUUID(),
           roots: { repo: repoRoot, worktrees: resolvePath(stateRoot, 'worktrees') },
         })
+        // `epoch-`/`req-` + 32 hex, NOT a UUID: `brokerProtocol.ts` decodes these ids against those
+        // exact patterns, so a UUID here is refused by the broker at `hello` and every session on the
+        // VM fails. It never showed because Linux always probed `pty:false` and this branch was dead.
         : new LinuxBrokerClient({
           connect: async () => connectSocket(BROKER_SOCKET_PATH),
-          dashboardEpochId: randomUUID(),
-          makeRequestId: () => randomUUID(),
+          dashboardEpochId: `epoch-${randomBytes(16).toString('hex')}`,
+          makeRequestId: () => `req-${randomBytes(16).toString('hex')}`,
         })))
     : undefined;
   const ptySessionHost = underlyingPtySessionHost

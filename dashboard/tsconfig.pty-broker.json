@@ -10,10 +10,12 @@
     "sourceMap": false
   },
   "include": [
+    "server/control/workflowProfiles.ts",
     "server/pty/brokerProtocol.ts",
     "server/pty/fdPinnedPaths.ts",
     "server/pty/linuxBrokerServer.ts",
     "server/pty/linuxBrokerMain.ts",
+    "server/pty/unixServiceIdentity.ts",
     "shared/ptyProtocol.ts"
   ]
 }

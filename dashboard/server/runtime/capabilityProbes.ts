@@ -27,12 +27,15 @@ import type { PublicPtyCapability } from '../pty/contracts.ts';
  *  - Windows: `pty/probe.ts` already ran the launcher-path access probes as the daemon's own user, which
  *    IS the principal that launches there.
  *
- * GRANULARITY CONSEQUENCE on Linux, by design and worth knowing: `pty/brokerProbe.ts` accepts the broker
- * only when its launcher set is EXACTLY `shell,claude,codex`; anything else is a
- * `broker-identity-mismatch` and the whole PTY capability comes back unavailable. So a VM either has the
- * full launcher set (both CLIs `ready`) or no terminal at all (both `missing`) — a partial CLI install is
- * not a state the VM can be in. Windows is genuinely per-launcher: `claude` and `codex` are optional there
- * and are dropped individually, so a desktop CAN advertise one and not the other.
+ * Both hosts are now genuinely per-launcher. `claude` and `codex` are OPTIONAL everywhere: Windows drops
+ * them individually (`pty/probe.ts`), and on Linux the broker enumerates what it can actually pin
+ * (`pty/fdPinnedPaths.ts` `enumerateBrokerLaunchers`) while `pty/brokerProbe.ts` requires only `shell`.
+ * A VM with one CLI installed therefore advertises exactly that one — it used to advertise no terminal
+ * at all, because the probe treated a partial launcher set as a broker IDENTITY failure and collapsed
+ * the whole capability. Identity and capability are separate questions now, and only `shell` is a floor.
+ *
+ * The set is still resolved ONCE, at boot. A CLI installed afterwards reads `missing` until the daemon
+ * restarts, on both hosts, deliberately.
  *
  * `login-required` is never emitted: nothing observable to the daemon distinguishes a logged-out CLI from
  * a logged-in one, and `match()` treats `login-required` exactly like `missing`, so guessing would add a

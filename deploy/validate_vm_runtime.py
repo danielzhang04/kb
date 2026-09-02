@@ -72,11 +72,23 @@ BROKER_SERVICE_DIRECTIVES = {
     "ProtectSystem": "strict",
     "ReadOnlyPaths": "/var/lib/kb/ops /var/lib/kb-shell/home",
     "ReadWritePaths": "/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex",
-    "InaccessiblePaths": "/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation",
+    # `-` prefix: ignore-if-missing on this ONE path. /var/lib/kb-activation is never created by
+    # anything in the repo, and systemd refuses to build the mount namespace (NAMESPACE, 226) when a
+    # listed InaccessiblePaths entry does not exist - confirmed on the VM, where every broker spawn
+    # died with "Failed to set up mount namespacing: /var/lib/kb-activation: No such file or
+    # directory". `-` makes the unit correct whether or not the directory exists, while still denying
+    # it the moment it does.
+    "InaccessiblePaths": "/var/lib/kb/state /opt/kb-releases -/var/lib/kb-activation",
     "CapabilityBoundingSet": "",
     "AmbientCapabilities": "",
     "RestrictSUIDSGID": "yes",
 }
+# The privileged fixup that actually makes /run/kb-shell kb-shell:kb-dashboard 0750 - see the header
+# comment on kb-shell-broker.socket for the VM evidence that RuntimeDirectory=/User=/Group= alone do
+# not do this on a .socket unit. These are systemd's own repeatable ExecStartPre= directive: each
+# line below is one exec, and BOTH must appear, in this order, for the socket unit to validate.
+BROKER_SOCKET_RUNTIME_DIR_CHOWN = "+/usr/bin/chown kb-shell:kb-dashboard /run/kb-shell"
+BROKER_SOCKET_RUNTIME_DIR_CHMOD = "+/usr/bin/chmod 0750 /run/kb-shell"
 BROKER_SOCKET_DIRECTIVES = {
     "ListenStream": BROKER_SOCKET_PATH,
     "Accept": "no",
@@ -90,7 +102,19 @@ BROKER_SOCKET_DIRECTIVES = {
     "RuntimeDirectory": "kb-shell",
     "RuntimeDirectoryMode": "0750",
     "RuntimeDirectoryPreserve": "restart",
+    # A tuple, not a string: this is the one directive in the frozen sets that systemd allows (and
+    # this fix requires) to repeat. `_exact_directives`/`_collapse_directives` collect repeats of a
+    # tuple-valued key in file order and compare them as a tuple, instead of raising "repeats
+    # directive" the way every scalar directive here still does.
+    "ExecStartPre": (BROKER_SOCKET_RUNTIME_DIR_CHOWN, BROKER_SOCKET_RUNTIME_DIR_CHMOD),
 }
+# The `+`-prefixed ExecStartPre pair is a privilege escalation by definition (that is the point of
+# `+`), so it must be individually allowlisted past `_assert_no_privilege_escalation` by exact text -
+# an attacker-added `+`-prefixed Exec line that is not byte-identical to one of these two is still
+# refused, and so is a third one.
+BROKER_SOCKET_PERMITTED_PRIVILEGED_EXEC = frozenset(
+    f"ExecStartPre={value}" for value in BROKER_SOCKET_DIRECTIVES["ExecStartPre"]
+)
 # [Unit] and [Install] are set-equality-checked too: without this an OnFailure=, ConditionPathExists=,
 # JoinsNamespaceOf= or an extra Alias=/WantedBy= slips into a file advertised as exact.
 BROKER_SERVICE_UNIT_SECTION = {
@@ -414,12 +438,31 @@ def parse_unit(text: str) -> dict[str, list[tuple[str, str]]]:
     return sections
 
 
-def _exact_directives(pairs: list[tuple[str, str]], expected: dict[str, str], unit: str) -> None:
-    seen: dict[str, str] = {}
+def _collapse_directives(pairs: list[tuple[str, str]], expected: dict[str, object],
+                         unit: str) -> dict[str, object]:
+    """Fold parsed (key, value) pairs into one dict, in file order.
+
+    A key repeats only when `expected` maps it to a tuple - systemd's own repeatable directives
+    (ExecStartPre= is the one member today). Those repeats are collected in order and compared as a
+    tuple. Every other key is still scalar: a second occurrence is unexpected drift, not intent, and
+    is refused the same way it always was.
+    """
+    seen: dict[str, object] = {}
+    repeatable: dict[str, list[str]] = {}
     for key, value in pairs:
+        if isinstance(expected.get(key), tuple):
+            repeatable.setdefault(key, []).append(value)
+            continue
         if key in seen:
             raise RuntimeError(f"{unit} repeats directive {key}")
         seen[key] = value
+    for key, values in repeatable.items():
+        seen[key] = tuple(values)
+    return seen
+
+
+def _exact_directives(pairs: list[tuple[str, str]], expected: dict[str, object], unit: str) -> None:
+    seen = _collapse_directives(pairs, expected, unit)
     if seen != expected:
         added = sorted(set(seen) - set(expected))
         removed = sorted(set(expected) - set(seen))
@@ -428,9 +471,14 @@ def _exact_directives(pairs: list[tuple[str, str]], expected: dict[str, str], un
             f"{unit} directive set drifted: added={added} removed={removed} changed={drifted}")
 
 
-def _assert_no_privilege_escalation(text: str, unit: str) -> None:
+def _assert_no_privilege_escalation(text: str, unit: str,
+                                    permitted_prefixed_exec: frozenset[str] = frozenset()) -> None:
     # Directives only: comments explain the sandbox, and explaining why `sudo` is impossible must not
-    # be the thing that fails the unit.
+    # be the thing that fails the unit. `permitted_prefixed_exec` is an exact-text allowlist (full
+    # "Directive=value" lines) for the one case a privileged Exec prefix is required on purpose - the
+    # socket unit's ExecStartPre `+chown`/`+chmod` pair that fixes /run/kb-shell ownership. Because the
+    # match is byte-for-byte against the pinned literal, an attacker-added `+`-prefixed line that is
+    # not identical to one of these two is still refused here.
     directives = [line for line in text.splitlines()
                   if line.strip() and not line.strip().startswith(("#", ";"))]
     lowered = "\n".join(directives).lower()
@@ -438,9 +486,10 @@ def _assert_no_privilege_escalation(text: str, unit: str) -> None:
         if token in lowered:
             raise RuntimeError(f"{unit} references a privilege-escalation token: {token.strip()}")
     for line in directives:
-        if line.strip().startswith("Exec") and "=" in line:
-            argv = line.split("=", 1)[1].strip()
-            if argv[:1] in {"+", "!", "@", "-", ":"}:
+        stripped = line.strip()
+        if stripped.startswith("Exec") and "=" in stripped:
+            argv = stripped.split("=", 1)[1].strip()
+            if argv[:1] in {"+", "!", "@", "-", ":"} and stripped not in permitted_prefixed_exec:
                 raise RuntimeError(f"{unit} uses a privileged or special Exec prefix")
 
 
@@ -473,7 +522,7 @@ def validate_broker_socket(text: str) -> None:
         raise RuntimeError("broker socket must declare exactly one Unix ListenStream")
     if not BROKER_SOCKET_PATH.startswith("/") or ":" in BROKER_SOCKET_PATH:
         raise RuntimeError("broker socket listener is not an AF_UNIX path")
-    _assert_no_privilege_escalation(text, BROKER_SOCKET_UNIT)
+    _assert_no_privilege_escalation(text, BROKER_SOCKET_UNIT, BROKER_SOCKET_PERMITTED_PRIVILEGED_EXEC)
 
 
 def validate_broker_units(unit_root: Path = BROKER_UNIT_ROOT) -> bool:

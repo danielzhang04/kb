@@ -2,11 +2,16 @@
 # connects; the broker (kb-shell) is socket-activated and receives it as fd 3. There is deliberately
 # no TCP/IP listener anywhere in this vertical, and the service unit declares no ListenStream at all.
 #
-# /run/kb-shell ownership lives HERE, not on the service: the runtime directory must be
-# kb-shell:kb-dashboard 0750 so kb-dashboard can traverse to broker.sock while only kb-shell can write
-# state.json. A service-side `RuntimeDirectory=` would chown the directory to the service's own
-# User:Group (kb-shell:kb-shell) on every start and lock the dashboard out, so the socket unit owns it
-# and preserves it across broker restarts.
+# /run/kb-shell ownership does NOT come from `User=`/`Group=` on this socket unit, despite both being
+# set below: verified on the VM (2026-09-01) that with this exact RuntimeDirectory=/User=/Group= set,
+# systemd still created /run/kb-shell root:root, because RuntimeDirectory= is realized as the parent
+# of ListenStream= and owned root:root regardless of the socket unit's own User=/Group=. Deleting the
+# directory and restarting did not change this - it is not a stale-preserve artifact.
+#
+# What actually establishes kb-shell:kb-dashboard 0750 - confirmed on the VM - is the ExecStartPre
+# pair below. The `+` prefix runs each command with full privileges regardless of this unit's
+# User=kb-shell, which on its own could not chown to the kb-dashboard group. Do not remove the
+# ExecStartPre lines on the theory that RuntimeDirectory=/User=/Group= already cover it: they do not.
 [Unit]
 Description=kb shell broker socket
 PartOf=kb-shell-broker.service
@@ -27,6 +32,10 @@ RuntimeDirectoryMode=0750
 # this unit anyway). Stopping the socket should take /run/kb-shell with it, so a stopped vertical
 # leaves no state.json behind.
 RuntimeDirectoryPreserve=restart
+# The privileged fixup that actually makes /run/kb-shell kb-shell:kb-dashboard 0750 - see the header
+# comment. `+` runs each command as root regardless of User=kb-shell above.
+ExecStartPre=+/usr/bin/chown kb-shell:kb-dashboard /run/kb-shell
+ExecStartPre=+/usr/bin/chmod 0750 /run/kb-shell
 
 [Install]
 WantedBy=sockets.target

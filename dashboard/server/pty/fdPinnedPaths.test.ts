@@ -1,13 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  WORKFLOW_EXECUTION_PROFILES,
+  WORKFLOW_PERMISSION_MODE,
+} from '../control/workflowProfiles.ts';
+
+import {
   BROKER_RUNTIME_POLICY,
   BROKER_SYSTEMD_POLICY,
   FdPinnedPathError,
   LINUX_CHILD_ENV_KEYS,
   type PinnedIdentity,
+  type PinningFileSystem,
   buildBrokerLaunch,
+  buildWorkflowPolicyTable,
+  codexSandboxMode,
+  enumerateBrokerLaunchers,
+  launcherExecutable,
   pinBrokerLaunch,
+  pinnableLauncher,
   resolveLinuxRoot,
   validateRelativeCwd,
 } from './fdPinnedPaths.ts';
@@ -46,32 +57,252 @@ describe('fdPinnedPaths', () => {
 
   it('owns the closed recipe-to-argv table and minimal child environment', () => {
     const claude = buildBrokerLaunch({
-      launcher: 'claude', mode: 'headless-json', model: 'claude-sonnet-4-5',
-      toolPolicyId: 'standard', sandbox: 'claude-policy', resumeRef: 'resume-1',
+      launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId: 'producer', sandbox: 'claude-policy', resumeRef: 'resume-1',
     }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
     expect(claude.executable).toBe('/var/lib/kb-shell/home/.local/bin/claude');
     expect(claude.args).toEqual([
       '-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose',
-      '--model', 'claude-sonnet-4-5', '--resume', 'resume-1', '--allowedTools',
-      'Read,Write,Edit,Bash', '--permission-mode', 'acceptEdits',
+      '--model', 'claude-opus-5', '--resume', 'resume-1', '--allowedTools',
+      'Bash,Read,Write,Edit,Glob,Grep', '--permission-mode', 'default',
     ]);
 
     const codex = buildBrokerLaunch({
-      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6',
-      toolPolicyId: 'standard', sandbox: 'codex-workspace-write',
+      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: 'producer', sandbox: 'codex-workspace-write',
     }, 'worktrees', 'run-1', { cols: 100, rows: 30 });
     expect(codex.args).toEqual([
-      'exec', '-', '--json', '--model', 'gpt-5.6', '-s', 'workspace-write',
+      'exec', '-', '--json', '--model', 'gpt-5.6-terra', '-s', 'workspace-write',
       '-c', 'approval_policy=never', '-c', 'forced_login_method="chatgpt"',
       '-c', 'mcp_servers={}', '-c', 'sandbox_workspace_write.network_access=false',
       '-c', 'web_search="disabled"', '--cd', '/var/lib/kb-shell/worktrees/run-1',
     ]);
     expect(Object.keys(codex.env).sort()).toEqual([...LINUX_CHILD_ENV_KEYS].sort());
     expect(codex.env).not.toHaveProperty('TOKEN');
+  });
+
+  /**
+   * The regression the profile table was extracted for: EVERY id the control plane can put on the wire
+   * (`control/workflowProfiles.ts`, the same literal `attemptSessionAdapter` resolves against) has to
+   * build on both agent launchers. The broker previously knew one id, `standard`, that nothing sends,
+   * so every real agent launch died on `unknown ... tool policy`. Driving the table itself means a
+   * profile added later is covered the day it is added.
+   */
+  it.each(WORKFLOW_EXECUTION_PROFILES)('launches workflow profile $id on both agent launchers', (profile) => {
+    const claude = buildBrokerLaunch({
+      launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId: profile.id, sandbox: 'claude-policy',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(claude.executable).toBe('/var/lib/kb-shell/home/.local/bin/claude');
+    // The cap the dashboard approved reaches the child verbatim, in table order.
+    expect(claude.args.slice(-4)).toEqual([
+      '--allowedTools', [...profile.allowedTools].join(','),
+      '--permission-mode', WORKFLOW_PERMISSION_MODE,
+    ]);
+
+    const codex = buildBrokerLaunch({
+      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: profile.id, sandbox: 'codex-workspace-write',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(codex.executable).toBe('/var/lib/kb-shell/home/.local/bin/codex');
+  });
+
+  it('gives each profile its own --allowedTools argument rather than one blanket cap', () => {
+    const allowedTools = (toolPolicyId: string): string => {
+      const { args } = buildBrokerLaunch({
+        launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+        toolPolicyId, sandbox: 'claude-policy',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      return args[args.indexOf('--allowedTools') + 1]!;
+    };
+    expect(allowedTools('checker-readonly')).toBe('Read,Glob,Grep');
+    expect(allowedTools('producer')).toBe('Bash,Read,Write,Edit,Glob,Grep');
+    expect(allowedTools('checker-readonly')).not.toBe(allowedTools('producer'));
+    // A read-only profile never reaches the child carrying a write capability.
+    expect(allowedTools('checker-readonly')).not.toContain('Bash');
+    expect(allowedTools('scanner')).not.toContain('Bash');
+    // An id nobody serves is still refused: dropping the enumeration did not open the policy name up.
+    for (const unknown of ['standard', 'shell-default', 'producer-x']) {
+      expect(() => buildBrokerLaunch({
+        launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+        toolPolicyId: unknown, sandbox: 'claude-policy',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('unknown Claude tool policy');
+      expect(() => buildBrokerLaunch({
+        launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+        toolPolicyId: unknown, sandbox: 'codex-workspace-write',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('unknown Codex tool policy');
+    }
+  });
+
+  /**
+   * THE CODEX CAP. Codex takes no `--allowedTools`, so before this the profile name selected nothing
+   * that reached the child: `checker-readonly` and `producer` produced byte-identical argv, both
+   * `-s workspace-write` with `approval_policy=never`. The one real workflow definition in the repo
+   * (`orgs/faceless-youtube/workflows/iteration-loop-demo.md`) declares `workflowProfile:
+   * checker-readonly` on its review stages with work orders saying "Read only ... Never edit the
+   * artifact" — those stages launched with unattended write and command execution across the worktree,
+   * held read-only by prose alone. The sandbox is now derived from the profile, which is the only
+   * place a codex worker's cap can live.
+   */
+  it('derives the codex sandbox from the profile instead of capping every profile the same', () => {
+    const sandboxFor = (toolPolicyId: string, resumeRef?: string): string => {
+      const { args } = buildBrokerLaunch({
+        launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+        toolPolicyId, sandbox: 'codex-workspace-write', ...(resumeRef ? { resumeRef } : {}),
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      // A fresh launch spells it as the flag; `exec resume` takes no `-s`, so it spells it as the
+      // config key that flag sets. Both branches must answer the same question the same way.
+      const flag = args.indexOf('-s');
+      if (flag !== -1) return args[flag + 1]!;
+      const pinned = args.find((entry, index) => args[index - 1] === '-c' && entry.startsWith('sandbox_mode='));
+      expect(pinned).toBeDefined();
+      return pinned!.slice('sandbox_mode='.length).replaceAll('"', '');
+    };
+
+    // Every profile, on BOTH the fresh and the resume path, and the two paths never disagree.
+    const expected: Record<string, 'read-only' | 'workspace-write'> = {
+      'checker-readonly': 'read-only',
+      research: 'read-only',
+      'gmail-triage': 'workspace-write',
+      'drive-author': 'workspace-write',
+      producer: 'workspace-write',
+      scanner: 'workspace-write',
+    };
+    for (const profile of WORKFLOW_EXECUTION_PROFILES) {
+      const grantsWrite = profile.allowedTools.some((tool) => ['Bash', 'Write', 'Edit'].includes(tool));
+      const mode = grantsWrite ? 'workspace-write' : 'read-only';
+      expect(mode).toBe(expected[profile.id]);
+      expect(sandboxFor(profile.id)).toBe(mode);
+      // A resumed session cannot silently gain capability the fresh launch would not have had.
+      expect(sandboxFor(profile.id, 'thread-1')).toBe(mode);
+    }
+
+    // A profile granting none of Bash/Write/Edit lands read-only; granting any one of them does not.
+    expect(codexSandboxMode(['Read', 'Glob', 'Grep', 'WebFetch'])).toBe('read-only');
+    for (const tool of ['Bash', 'Write', 'Edit']) {
+      expect(codexSandboxMode(['Read', tool])).toBe('workspace-write');
+    }
+    // `danger-full-access` is not reachable from the derivation under any input.
+    expect(['read-only', 'workspace-write']).toContain(codexSandboxMode([]));
+    expect(codexSandboxMode(['danger-full-access'])).toBe('read-only');
+
+    // The interactive branch is capped from the profile too, not left on a literal.
+    const interactive = buildBrokerLaunch({
+      launcher: 'codex', mode: 'interactive', model: 'gpt-5.6-terra',
+      toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(interactive.args.slice(0, 4)).toEqual(['--model', 'gpt-5.6-terra', '-s', 'read-only']);
+  });
+
+  /**
+   * Codex is last-wins on `-c`, so `pinnedCodexConfig` — `approval_policy=never` and the
+   * network/mcp/web-search pins — is only un-overridable while it is the LAST `-c` group in argv.
+   * Deriving the sandbox added a `-c sandbox_mode=` to the resume branch, which is exactly the kind of
+   * edit that can slide in after the pins; this holds every branch to the ordering.
+   */
+  it('keeps the pinned codex config last in every codex branch', () => {
+    const PINS = [
+      '-c', 'approval_policy=never', '-c', 'forced_login_method="chatgpt"',
+      '-c', 'mcp_servers={}', '-c', 'sandbox_workspace_write.network_access=false',
+      '-c', 'web_search="disabled"',
+    ];
+    const branches = [
+      { mode: 'headless-json', resumeRef: undefined, trailing: 2 },
+      { mode: 'headless-json', resumeRef: 'thread-1', trailing: 0 },
+      { mode: 'interactive', resumeRef: undefined, trailing: 2 },
+    ] as const;
+    for (const branch of branches) {
+      for (const toolPolicyId of ['checker-readonly', 'producer']) {
+        const { args } = buildBrokerLaunch({
+          launcher: 'codex', mode: branch.mode, model: 'gpt-5.6-terra',
+          toolPolicyId, sandbox: 'codex-workspace-write',
+          ...(branch.resumeRef ? { resumeRef: branch.resumeRef } : {}),
+        }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+        // Only `--cd <cwd>` may follow the pins, and nothing else may.
+        const tail = branch.trailing === 0 ? args : args.slice(0, -branch.trailing);
+        expect(tail.slice(-PINS.length)).toEqual(PINS);
+        if (branch.trailing === 2) expect(args.slice(-2)).toEqual(['--cd', '/var/lib/kb-shell/worktrees/run-1']);
+        // Every `-c` the branch adds of its own sits BEFORE the pins.
+        const lastPin = args.lastIndexOf('web_search="disabled"');
+        expect(args.slice(lastPin + 1).some((value) => value === '-c')).toBe(false);
+      }
+    }
+  });
+
+  /**
+   * The broker derives its table from the shared literal, so without its own filters it would launch a
+   * profile the dashboard's `createWorkflowToolPolicyResolver` would refuse to resolve. Refusing at Map
+   * construction takes the broker out at start-up, which is visible; launching an over-capable worker
+   * is not.
+   */
+  it('refuses to build its policy table from a malformed, forbidden, empty, or absent profile', () => {
+    expect(buildWorkflowPolicyTable(WORKFLOW_EXECUTION_PROFILES).size)
+      .toBe(WORKFLOW_EXECUTION_PROFILES.length);
+    // A tool name that would corrupt the comma-joined `--allowedTools` value or smuggle a flag.
+    for (const malformed of ['Read,Write', 'Read Write', '--dangerously-skip-permissions', 'a"b', "a'b", '']) {
+      expect(() => buildWorkflowPolicyTable([{ id: 'bad', allowedTools: ['Read', malformed] }]))
+        .toThrow(/names a malformed tool/);
+    }
+    // A publish/send capability may not enter through any profile.
+    expect(() => buildWorkflowPolicyTable([{ id: 'bad', allowedTools: ['Read', 'upload_video'] }]))
+      .toThrow(/names forbidden tool 'upload_video'/);
+    expect(() => buildWorkflowPolicyTable([
+      { id: 'bad', allowedTools: ['mcp__claude_ai_Gmail__send_message'] },
+    ])).toThrow(/names forbidden tool/);
+    expect(() => buildWorkflowPolicyTable([{ id: 'bad', allowedTools: [] }])).toThrow(/grants no tools/);
+    expect(() => buildWorkflowPolicyTable([])).toThrow(/the workflow profile table is empty/);
+    expect(() => buildWorkflowPolicyTable([])).toThrow(FdPinnedPathError);
+  });
+
+  /**
+   * The whole kb model registry (`governance/model-routing.yaml`), not a broker-local copy of it. The
+   * broker checks the launcher prefix and nothing more, so a model the fleet adopts tomorrow launches
+   * without a broker edit — the enumeration that used to live here overlapped the real registry in
+   * exactly one id and grounded every agent launch.
+   */
+  it('accepts every registry model on its own launcher and refuses a crossed recipe', () => {
+    for (const model of ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']) {
+      const launch = buildBrokerLaunch({
+        launcher: 'claude', mode: 'headless-json', model,
+        toolPolicyId: 'checker-readonly', sandbox: 'claude-policy',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      expect(launch.args).toContain(model);
+    }
+    for (const model of ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol']) {
+      const launch = buildBrokerLaunch({
+        launcher: 'codex', mode: 'headless-json', model,
+        toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      expect(launch.args).toContain(model);
+    }
     expect(() => buildBrokerLaunch({
-      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-evil',
-      toolPolicyId: 'standard', sandbox: 'codex-workspace-write',
-    }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('approved model');
+      launcher: 'claude', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: 'checker-readonly', sandbox: 'claude-policy',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('does not belong to this launcher');
+    expect(() => buildBrokerLaunch({
+      launcher: 'codex', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('does not belong to this launcher');
+  });
+
+  /**
+   * `shell-default` is not a workflow profile and must never need to be one: the shell recipe is pinned
+   * to that exact id by `decodeLaunchRecipe`, and `buildBrokerLaunch` returns before any policy lookup.
+   */
+  it('launches the shell on shell-default without consulting the profile table', () => {
+    expect(WORKFLOW_EXECUTION_PROFILES.map((profile) => profile.id)).not.toContain('shell-default');
+    const shell = buildBrokerLaunch({
+      launcher: 'shell', mode: 'interactive', model: null,
+      toolPolicyId: 'shell-default', sandbox: 'interactive',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(shell.executable).toBe('/bin/bash');
+    expect(shell.args).toEqual([]);
+    // ...and no other policy id can be smuggled onto the shell launcher in its place.
+    for (const toolPolicyId of ['producer', 'standard']) {
+      expect(() => buildBrokerLaunch({
+        launcher: 'shell', mode: 'interactive', model: null, toolPolicyId, sandbox: 'interactive',
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('shell recipe is invalid');
+    }
   });
 
   it('opens every component relative to pinned dirfds, accepts 02770 worktrees, and launches only proc fds', async () => {
@@ -166,5 +397,160 @@ describe('fdPinnedPaths', () => {
     expect(symlinkRechecks.length).toBeGreaterThan(0);
     expect(symlinkRechecks.every((value) => value.startsWith('/proc/self/fd/'))).toBe(true);
     await pinned.close();
+  });
+});
+
+/**
+ * A VM filesystem, described as the nodes the pin walk will actually open. Each fixture states the
+ * machine it describes and nothing more: no path is special-cased, so a launcher appears in an
+ * enumeration exactly when the same walk that runs at launch would accept it.
+ */
+type FakeNode = { kind: 'file' | 'directory'; uid: number; gid: number; mode: number; content?: string };
+const PIN_IDENTITIES = { rootUid: 0, shellUid: 1000, shellGid: 1000, dashboardUid: 1001, dashboardGid: 1001 };
+
+/** The provisioned VM: both CLIs installed under the 0700 kb-shell home, bash where bash lives. */
+function vmTree(): Record<string, FakeNode> {
+  const rootDir = (mode = 0o755): FakeNode => ({ kind: 'directory', uid: 0, gid: 0, mode });
+  const homeDir = (mode: number): FakeNode => ({ kind: 'directory', uid: 1000, gid: 1000, mode });
+  const cli = (content: string): FakeNode => ({ kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content });
+  return {
+    '/': rootDir(),
+    '/bin': rootDir(),
+    '/bin/bash': { kind: 'file', uid: 0, gid: 0, mode: 0o755, content: 'ELF' },
+    '/usr': rootDir(),
+    '/usr/bin': rootDir(),
+    '/usr/bin/node': { kind: 'file', uid: 0, gid: 0, mode: 0o755, content: 'ELF' },
+    '/var': rootDir(),
+    '/var/lib': rootDir(),
+    '/var/lib/kb-shell': { kind: 'directory', uid: 0, gid: 1000, mode: 0o750 },
+    '/var/lib/kb-shell/home': homeDir(0o700),
+    '/var/lib/kb-shell/home/.local': homeDir(0o750),
+    '/var/lib/kb-shell/home/.local/bin': homeDir(0o750),
+    // The real shape: npm-installed CLIs are node scripts, so enumeration must clear the shebang
+    // allowlist and pin the interpreter too, exactly as launch does.
+    '/var/lib/kb-shell/home/.local/bin/claude': cli('#!/usr/bin/env node\nrequire("./cli.js");\n'),
+    '/var/lib/kb-shell/home/.local/bin/codex': cli('#!/usr/bin/env node\nrequire("./cli.js");\n'),
+  };
+}
+
+function pinningFsOver(tree: Record<string, FakeNode>): PinningFileSystem & { openFds(): number } {
+  let nextFd = 10;
+  let nextIno = 1n;
+  const openPaths = new Map<number, string>();
+  const inodes = new Map<string, bigint>();
+  const identityOf = (absolute: string): PinnedIdentity => {
+    const node = tree[absolute];
+    if (node === undefined) throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
+    if (!inodes.has(absolute)) inodes.set(absolute, nextIno++);
+    return { dev: 1n, ino: inodes.get(absolute)!, uid: node.uid, gid: node.gid,
+      mode: (node.kind === 'directory' ? 0o040000 : 0o100000) | node.mode, kind: node.kind };
+  };
+  // The walk addresses every component through its pinned parent dirfd; resolve that back to the
+  // absolute path the fixture is written in, so the fixture never has to know about fd numbers.
+  const absoluteOf = (target: string): string => {
+    const viaFd = /^\/proc\/self\/fd\/(\d+)\/(.+)$/.exec(target);
+    if (viaFd === null) return target;
+    const parent = openPaths.get(Number(viaFd[1]));
+    if (parent === undefined) throw new Error('walk used an unpinned descriptor');
+    return parent === '/' ? `/${viaFd[2]!}` : `${parent}/${viaFd[2]!}`;
+  };
+  return {
+    open(target: string): number {
+      const absolute = absoluteOf(target);
+      identityOf(absolute);
+      const fd = nextFd++;
+      openPaths.set(fd, absolute);
+      return fd;
+    },
+    identity: (fd: number) => identityOf(openPaths.get(fd)!),
+    identityAt: (target: string) => identityOf(absoluteOf(target)),
+    readlink() { throw new Error('not a symlink'); },
+    read: (fd: number) => Buffer.from(tree[openPaths.get(fd)!]?.content ?? '', 'utf8'),
+    close: (fd: number) => { openPaths.delete(fd); },
+    /** Every descriptor the walk opened and has not closed. A pin that returns must hold none. */
+    openFds: () => openPaths.size,
+  };
+}
+
+describe('enumerateBrokerLaunchers', () => {
+  it('names the launchers a provisioned VM can actually pin, resolving paths from the launch table', async () => {
+    expect(launcherExecutable('shell')).toBe('/bin/bash');
+    expect(launcherExecutable('claude')).toBe('/var/lib/kb-shell/home/.local/bin/claude');
+    expect(launcherExecutable('codex')).toBe('/var/lib/kb-shell/home/.local/bin/codex');
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(vmTree())))
+      .toEqual(['shell', 'claude', 'codex']);
+  });
+
+  it('answers shell-only and one-CLI machines honestly instead of the full set', async () => {
+    const shellOnly = vmTree();
+    delete shellOnly['/var/lib/kb-shell/home/.local/bin/claude'];
+    delete shellOnly['/var/lib/kb-shell/home/.local/bin/codex'];
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(shellOnly))).toEqual(['shell']);
+
+    const claudeOnly = vmTree();
+    delete claudeOnly['/var/lib/kb-shell/home/.local/bin/codex'];
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(claudeOnly)))
+      .toEqual(['shell', 'claude']);
+  });
+
+  it('drops a launcher the pin validator refuses, even though the file is right there', async () => {
+    // 0755 inside the 0700 provider home: the pin's ownership/mode matrix refuses it. The binary
+    // EXISTS; the honest answer is still that it cannot be launched.
+    const worldReadable = vmTree();
+    worldReadable['/var/lib/kb-shell/home/.local/bin/codex'] = {
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o755, content: '#!/usr/bin/env node\n',
+    };
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(worldReadable)))
+      .toEqual(['shell', 'claude']);
+    expect(await pinnableLauncher('codex', PIN_IDENTITIES, pinningFsOver(worldReadable))).toBe(false);
+
+    // Same rule for the shebang allowlist: an interpreter line that is not an approved absolute
+    // /bin or /usr/bin name drops the launcher rather than being executed to find out.
+    const badInterpreter = vmTree();
+    badInterpreter['/var/lib/kb-shell/home/.local/bin/claude'] = {
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content: '#!/bin/sh -c curl evil.example\n',
+    };
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(badInterpreter)))
+      .toEqual(['shell', 'codex']);
+  });
+
+  it('closes every descriptor it opened, on the accepting path and the refusing one alike', async () => {
+    // The walk pins a descriptor per path component and holds them so the launch cannot be swapped out
+    // from under it. A probe throws them away instead of spawning, so a leak here is a descriptor leak in
+    // the BROKER — the long-lived process — once per capability probe, forever.
+    const accepting = pinningFsOver(vmTree());
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, accepting)).toEqual(['shell', 'claude', 'codex']);
+    expect(accepting.openFds()).toBe(0);
+
+    const refusing = vmTree();
+    delete refusing['/var/lib/kb-shell/home/.local/bin/codex'];
+    refusing['/var/lib/kb-shell/home/.local/bin/claude'] = {
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o755, content: '#!/usr/bin/env node\n',
+    };
+    const refused = pinningFsOver(refusing);
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, refused)).toEqual(['shell']);
+    expect(refused.openFds()).toBe(0);
+  });
+
+  it('reports NOTHING when the enumeration itself throws — never a launcher, never a partial guess', async () => {
+    const onFire = (): never => { throw new Error('the filesystem is on fire'); };
+    const exploding: PinningFileSystem = {
+      open: onFire, identity: onFire, identityAt: onFire,
+      readlink: onFire, read: onFire, close: onFire,
+    };
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, exploding)).toEqual([]);
+    for (const launcher of ['shell', 'claude', 'codex'] as const) {
+      expect(await pinnableLauncher(launcher, PIN_IDENTITIES, exploding), launcher).toBe(false);
+    }
+
+    // A single launcher whose walk explodes takes only itself out of the set.
+    const healthy = pinningFsOver(vmTree());
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, {
+      ...healthy,
+      open: (target: string, flags: number) => {
+        if (target.endsWith('/codex')) throw new Error('EIO');
+        return healthy.open(target, flags);
+      },
+    })).toEqual(['shell', 'claude']);
   });
 });

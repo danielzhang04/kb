@@ -21,6 +21,7 @@ import {
   BROKER_MAX_QUEUED_INPUT_BYTES,
   BROKER_PROTOCOL,
   BrokerFrameDecoder,
+  canonicalLaunchers,
   decodeBrokerServerFrame,
   encodeBrokerFrame,
 } from './brokerProtocol.ts';
@@ -67,14 +68,30 @@ export class LinuxBrokerClient implements SessionHost {
     this.options = options;
   }
 
+  /**
+   * The host's own capability answer. `launchers` is the set the BROKER enumerated off the real
+   * filesystem as `kb-shell` — never a literal, and never inferred from the fact that a socket
+   * accepted us. A connection proves the broker is there; it proves nothing about what is installed
+   * inside `/var/lib/kb-shell/home`, which this process cannot even read.
+   *
+   * `roots` stays the policy constant it has always been: `LINUX_ROOTS` is a compiled-in pair that
+   * `pinBrokerLaunch` enforces at launch, not something the broker discovers.
+   *
+   * Fail closed on every path — an old broker that does not know the `launchers` request answers with
+   * an `error` frame, and that lands here as "no capability", not as a guess.
+   */
   async probe(): Promise<PtyCapabilityProbe> {
     const checkedAt = (this.options.now ?? (() => new Date().toISOString()))();
     try {
       await this.ensureConnected();
-      if (this.ready === null) throw new Error('broker did not send ready');
+      const ready = this.ready;
+      if (ready === null) throw new Error('broker did not send ready');
+      const response = await this.request({ type: 'launchers',
+        requestId: this.options.makeRequestId(), sessionId: null, epochId: ready.epochId });
+      if (response.type !== 'launchers') throw new Error('broker did not enumerate its launchers');
       return { available: true, host: 'vm', transport: 'unix-broker',
-        launchers: ['shell', 'claude', 'codex'], roots: ['repo', 'worktrees'],
-        epochId: this.ready.epochId, checkedAt };
+        launchers: canonicalLaunchers(response.launchers), roots: ['repo', 'worktrees'],
+        epochId: ready.epochId, checkedAt };
     } catch {
       return { available: false, host: 'vm', transport: 'unix-broker',
         reason: 'broker-unavailable', detail: null, checkedAt };

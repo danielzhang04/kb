@@ -10,7 +10,13 @@ import {
 import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 
-import type { LaunchRecipe, SafeRootId, SessionSize } from '../../shared/ptyProtocol.ts';
+import {
+  codexSandboxMode,
+  FORBIDDEN_WORKFLOW_TOOLS,
+  WORKFLOW_EXECUTION_PROFILES,
+  WORKFLOW_PERMISSION_MODE,
+} from '../control/workflowProfiles.ts';
+import type { LaunchRecipe, SafeRootId, SessionLauncher, SessionSize } from '../../shared/ptyProtocol.ts';
 import { decodeLaunchRecipe } from './brokerProtocol.ts';
 
 export const LINUX_ROOTS = {
@@ -47,7 +53,9 @@ export const BROKER_RUNTIME_POLICY = {
  *
  * The runtime directory lives on the SOCKET unit: a service-side RuntimeDirectory= is chowned to the
  * service's own User:Group on every start, which would make /run/kb-shell kb-shell:kb-shell and lock
- * the dashboard out of broker.sock.
+ * the dashboard out of broker.sock. On the socket unit itself, RuntimeDirectory=/User=/Group= do NOT
+ * chown the directory either (verified on the VM: they left it root:root) - the socket's privileged
+ * ExecStartPre `+chown`/`+chmod` pair below is what actually makes it kb-shell:kb-dashboard 0750.
  */
 export const BROKER_SYSTEMD_POLICY = {
   socket: {
@@ -63,6 +71,12 @@ export const BROKER_SYSTEMD_POLICY = {
     RuntimeDirectory: 'kb-shell',
     RuntimeDirectoryMode: '0750',
     RuntimeDirectoryPreserve: 'restart',
+    // The one repeatable systemd directive in this frozen table: two ExecStartPre execs, in this
+    // order. `+` runs each as root regardless of this unit's own User=kb-shell.
+    ExecStartPre: [
+      '+/usr/bin/chown kb-shell:kb-dashboard /run/kb-shell',
+      '+/usr/bin/chmod 0750 /run/kb-shell',
+    ],
   },
   service: {
     Type: 'simple',
@@ -79,7 +93,10 @@ export const BROKER_SYSTEMD_POLICY = {
     ProtectSystem: 'strict',
     ReadOnlyPaths: '/var/lib/kb/ops /var/lib/kb-shell/home',
     ReadWritePaths: '/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex',
-    InaccessiblePaths: '/var/lib/kb/state /opt/kb-releases /var/lib/kb-activation',
+    // `-` prefix: ignore-if-missing on this one path. Nothing in the repo ever creates
+    // /var/lib/kb-activation, and systemd refuses to build the mount namespace when a listed
+    // InaccessiblePaths entry does not exist (confirmed on the VM: every spawn died at NAMESPACE).
+    InaccessiblePaths: '/var/lib/kb/state /opt/kb-releases -/var/lib/kb-activation',
     CapabilityBoundingSet: '',
     AmbientCapabilities: '',
     RestrictSUIDSGID: 'yes',
@@ -87,14 +104,26 @@ export const BROKER_SYSTEMD_POLICY = {
 } as const;
 
 const deniedRoots = BROKER_RUNTIME_POLICY.inaccessiblePaths;
-const claudePolicies = {
-  standard: { allowedTools: ['Read', 'Write', 'Edit', 'Bash'], permissionMode: 'acceptEdits', settings: undefined },
-} as const;
-const codexPolicies = new Set(['standard']);
-export const APPROVED_MODELS = {
-  claude: ['claude-haiku-4-5', 'claude-sonnet-4-5', 'claude-sonnet-4-6', 'claude-opus-4-6'],
-  codex: ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.6'],
-} as const;
+
+/**
+ * The launcher/model cross-check, and deliberately NOTHING MORE — there is no model enumeration here
+ * on purpose. Do not reintroduce one.
+ *
+ * 1. `decodeLaunchRecipe` has already run `modelPattern` (/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,95}$/) over
+ *    this value: it cannot be empty, cannot begin with `-`, and cannot contain whitespace, quotes, or
+ *    shell metacharacters.
+ * 2. The value reaches the child as a single `--model <value>` argv element of an execve'd process.
+ *    There is no shell, so there is no injection an allowlist would be blocking.
+ * 3. WHICH model a run may use is a governance decision, and it is already enforced upstream at the
+ *    control plane by `governance/model-routing.yaml` + `scripts/routing.py`. A second copy in the
+ *    broker buys no security — it only guarantees that every model the fleet adopts breaks every
+ *    agent launch until someone edits this file, which is exactly what happened: the enumeration
+ *    listed six ids, the registry named seven others, and the two sets overlapped in one entry.
+ *
+ * What remains is the one check that IS about this frame: a recipe whose launcher and model disagree
+ * is crossed up, and a crossed recipe is a bug we refuse rather than execute.
+ */
+const MODEL_PREFIXES = { claude: /^claude-/, codex: /^gpt-/ } as const;
 const pinnedCodexConfig = [
   '-c', 'approval_policy=never',
   '-c', 'forced_login_method="chatgpt"',
@@ -109,6 +138,83 @@ export class FdPinnedPathError extends Error {
     this.name = 'FdPinnedPathError';
   }
 }
+
+/**
+ * Mirrors `isWellFormedToolName` (control/claudeLaunchPolicy.ts) — deliberately COPIED, not imported.
+ * That module reaches the workflow-profile loader and the rest of the control plane, while the broker
+ * payload is a compiled bundle with no repo behind it, so importing it would drag the control plane
+ * into the broker bundle or throw at broker start-up. Five lines of duplication is the cheaper of the
+ * two, and `profiles.test.ts` holds the two copies to the same verdict on the same table.
+ */
+function isWellFormedToolName(name: string): boolean {
+  return typeof name === 'string'
+    && name.length > 0
+    && name.length <= 200
+    && !/[\s,\0"']/.test(name)
+    && !name.startsWith('-');
+}
+
+/**
+ * The broker's tool-policy table, DERIVED from the one server-owned profile table
+ * (`control/workflowProfiles.ts`) rather than hand-written beside it, and RE-FILTERED here rather than
+ * taken on trust. `toolPolicyId` on the wire is a NAME, and what the broker does with the profile that
+ * name selects is NOT the same on both launchers:
+ *
+ *   - claude: the resolved `allowedTools` becomes the child's `--allowedTools` argv, so the broker has
+ *     to land on exactly the policy the dashboard approved or `createAttemptToolPolicyIdResolver`
+ *     refuses the launch. This is the hop that actually carries a tool cap.
+ *   - codex: the CLI has no per-tool allowlist, so the resolved tools never reach codex argv. There the
+ *     name is a membership test, and the tools decide the codex sandbox mode (`codexSandboxMode`) —
+ *     nothing more. Do not read the claude sentence above as describing codex; it does not.
+ *
+ * The filters are the broker holding its OWN opinion rather than inheriting the dashboard's.
+ * `createWorkflowToolPolicyResolver` refuses a malformed tool name (one that would corrupt the
+ * comma-joined `--allowedTools` value or smuggle a flag) and any tool on `FORBIDDEN_WORKFLOW_TOOLS`;
+ * deriving from the shared literal without those checks would let a profile the dashboard would refuse
+ * to resolve still launch here. Applying them at Map construction takes the broker out at start-up
+ * instead, which is the failure we want: a broker that will not start is visible, a broker that
+ * launches an over-capable worker is not.
+ *
+ * `shell-default` is deliberately absent: `decodeLaunchRecipe` pins the shell recipe's policy id to
+ * that exact value and `buildBrokerLaunch` returns before any lookup, so the shell launcher never
+ * consults this table.
+ */
+export function buildWorkflowPolicyTable(
+  profiles: readonly { id: string; allowedTools: readonly string[] }[],
+): Map<string, { allowedTools: readonly string[]; permissionMode: string }> {
+  // An empty table leaves every agent launch unservable and `PROBE_POLICY_ID` undefined; say so here
+  // rather than failing later on an unrelated subscript.
+  if (profiles.length === 0) throw new FdPinnedPathError('the workflow profile table is empty');
+  const table = new Map<string, { allowedTools: readonly string[]; permissionMode: string }>();
+  for (const profile of profiles) {
+    if (profile.allowedTools.length === 0) {
+      throw new FdPinnedPathError(`workflow profile '${profile.id}' grants no tools`);
+    }
+    for (const tool of profile.allowedTools) {
+      if (!isWellFormedToolName(tool)) {
+        throw new FdPinnedPathError(`workflow profile '${profile.id}' names a malformed tool`);
+      }
+      if (FORBIDDEN_WORKFLOW_TOOLS.includes(tool)) {
+        throw new FdPinnedPathError(`workflow profile '${profile.id}' names forbidden tool '${tool}'`);
+      }
+    }
+    table.set(profile.id, {
+      allowedTools: profile.allowedTools,
+      permissionMode: WORKFLOW_PERMISSION_MODE,
+    });
+  }
+  return table;
+}
+
+const workflowPolicies = buildWorkflowPolicyTable(WORKFLOW_EXECUTION_PROFILES);
+
+/**
+ * Re-exported, not redefined. The derivation itself lives in `control/workflowProfiles.ts` because the
+ * Windows launcher (`pty/launcherProfiles.ts`) needs the SAME rule and does not share this module: two
+ * copies of "which profile may write" is precisely the class of drift the importless profile leaf was
+ * extracted to end, and it shipped here first, so this file kept the name it exported.
+ */
+export { codexSandboxMode };
 
 export type PinnedIdentity = {
   dev: bigint;
@@ -178,29 +284,42 @@ export function buildBrokerLaunch(
   const cwd = absoluteCwd(rootId, relative);
   const common = { cwd, env: childEnvironment(size), cols: size.cols, rows: size.rows };
   if (recipe.launcher === 'shell') return { executable: '/bin/bash', args: [], ...common };
-  if (!APPROVED_MODELS[recipe.launcher].includes(recipe.model as never)) {
-    throw new FdPinnedPathError('recipe model is not in the approved model table');
+  if (!MODEL_PREFIXES[recipe.launcher].test(recipe.model!)) {
+    throw new FdPinnedPathError('recipe model does not belong to this launcher');
   }
 
   if (recipe.launcher === 'claude') {
-    const policy = claudePolicies[recipe.toolPolicyId as keyof typeof claudePolicies];
+    const policy = workflowPolicies.get(recipe.toolPolicyId);
     if (policy === undefined) throw new FdPinnedPathError('unknown Claude tool policy');
     const args = recipe.mode === 'headless-json'
       ? ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose']
       : [];
-    if (policy.settings !== undefined) args.push('--settings', policy.settings);
+    // No `--settings` on Linux, and none is constructed here: the read-scope blob is not part of the
+    // v1 recipe frame, and the child is confined by the unit's own ReadOnlyPaths/ReadWritePaths
+    // instead. Adding one is a protocol change, not a line in this function.
     args.push('--model', recipe.model!);
     if (recipe.resumeRef !== undefined) args.push('--resume', recipe.resumeRef);
     args.push('--allowedTools', policy.allowedTools.join(','), '--permission-mode', policy.permissionMode);
     return { executable: '/var/lib/kb-shell/home/.local/bin/claude', args, ...common };
   }
 
-  if (!codexPolicies.has(recipe.toolPolicyId)) throw new FdPinnedPathError('unknown Codex tool policy');
+  const codexPolicy = workflowPolicies.get(recipe.toolPolicyId);
+  if (codexPolicy === undefined) throw new FdPinnedPathError('unknown Codex tool policy');
+  // Codex argv carries no `--allowedTools`; the profile's cap reaches the child as the sandbox mode.
+  const sandboxMode = codexSandboxMode(codexPolicy.allowedTools);
+  // `exec resume` accepts no `-s/--sandbox` flag — verified against the installed CLI: its option list
+  // offers `-c`, `--last`, `-m` and no sandbox flag, while plain `exec` offers
+  // `-s [read-only, workspace-write, danger-full-access]`. The equivalent is the config key that flag
+  // sets, `sandbox_mode`, so the resume branch pins it with `-c`. Without it a resumed session
+  // inherited whatever the CLI happened to default to and could silently outrank the fresh launch it
+  // continues. `pinnedCodexConfig` STAYS LAST in every branch: codex is last-wins on `-c`, and that
+  // ordering is what keeps `approval_policy=never` and the network/mcp/web-search pins un-overridable.
   const args = recipe.mode === 'headless-json'
     ? recipe.resumeRef === undefined
-      ? ['exec', '-', '--json', '--model', recipe.model!, '-s', 'workspace-write', ...pinnedCodexConfig, '--cd', cwd]
-      : ['exec', 'resume', recipe.resumeRef, '-', '--json', '-c', `model=${recipe.model!}`, ...pinnedCodexConfig]
-    : ['--model', recipe.model!, '-s', 'workspace-write', ...pinnedCodexConfig, '--cd', cwd];
+      ? ['exec', '-', '--json', '--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig, '--cd', cwd]
+      : ['exec', 'resume', recipe.resumeRef, '-', '--json', '-c', `model=${recipe.model!}`,
+        '-c', `sandbox_mode="${sandboxMode}"`, ...pinnedCodexConfig]
+    : ['--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig, '--cd', cwd];
   return { executable: '/var/lib/kb-shell/home/.local/bin/codex', args, ...common };
 }
 
@@ -250,25 +369,50 @@ export type PinnedBrokerLaunch = {
   close(): Promise<void>;
 };
 
+/** The service accounts every metadata rule in the walk below is written against. */
+export type PinIdentities = {
+  rootUid: number; shellUid: number; shellGid: number; dashboardUid: number; dashboardGid: number;
+};
+
+/**
+ * The only directories a broker child may be executed out of. Exported because the capability probe
+ * asks "would pinning this launcher succeed?" against the SAME list the launch asks it against — a
+ * second copy would drift, and a probe answering about a different root set is a probe that lies.
+ */
+export const APPROVED_EXECUTABLE_ROOTS = [
+  '/bin', '/usr/bin', '/usr/local/bin', '/var/lib/kb-shell/home/.local',
+] as const;
+
+/**
+ * The shebang allowlist, in one place. `#!/usr/bin/env node` is rewritten to the concrete interpreter
+ * (env resolves through PATH, which a pinned launch may not depend on); anything else must already be
+ * an absolute `/bin` or `/usr/bin` name. `null` means "not approved" and is always fatal.
+ */
+function shebangInterpreter(prefix: string): string | null {
+  const firstLine = prefix.split(/\r?\n/, 1)[0]!.slice(2).trim();
+  return firstLine === '/usr/bin/env node' ? '/usr/bin/node'
+    : /^\/(?:usr\/)?bin\/[A-Za-z0-9._-]+$/.test(firstLine) ? firstLine : null;
+}
+
+type PinWalk = {
+  openAbsolute(absolute: string, leafKind: 'file' | 'directory', allowedRoots: readonly string[]): number;
+  /** Re-lstat every pathname opened so far and refuse if any moved under our own handles. */
+  verifyRechecks(): void;
+  closeHeld(): void;
+};
+
 /**
  * Linux openat-style primitive: open `/` once, then open every component through
  * `/proc/self/fd/<pinned-dirfd>/<component>` with O_NOFOLLOW (and O_DIRECTORY for directories).
  * Symlink objects are themselves pinned with O_PATH|O_NOFOLLOW before their target is traversed.
- * Every original pathname identity is rechecked before returning, while launch uses only proc-fd paths.
+ * Every original pathname identity is rechecked before use, while launch uses only proc-fd paths.
+ *
+ * One walk, two callers: `pinBrokerLaunch`, which then spawns, and `pinnableLauncher`, which then
+ * throws the descriptors away. They must never diverge — the moment the probe validates something
+ * weaker than the launch, the daemon starts advertising launchers that refuse at `create`, which is
+ * the same class of lie as advertising a launcher nobody looked for.
  */
-export async function pinBrokerLaunch(
-  launch: BrokerLaunchSpec,
-  identities: { rootUid: number; shellUid: number; shellGid: number; dashboardUid: number; dashboardGid: number },
-  fs: PinningFileSystem = productionPinningFs,
-): Promise<PinnedBrokerLaunch> {
-  if (!Object.values(LINUX_ROOTS).some((root) => isWithin(launch.cwd, root))
-      || deniedRoots.some((root) => isWithin(launch.cwd, root))) {
-    throw new FdPinnedPathError('cwd is outside an approved root');
-  }
-  const executableRoots = ['/bin', '/usr/bin', '/usr/local/bin', '/var/lib/kb-shell/home/.local'];
-  if (!executableRoots.some((root) => isWithin(launch.executable, root))) {
-    throw new FdPinnedPathError('executable is outside an approved root');
-  }
+function beginPinWalk(identities: PinIdentities, fs: PinningFileSystem): PinWalk {
   const held: number[] = [];
   const rechecks: Array<{ path: string; identity: PinnedIdentity }> = [];
   const closeHeld = (): void => {
@@ -366,25 +510,47 @@ export async function pinBrokerLaunch(
     return parentFd;
   };
 
-  try {
-    const cwdRoot = Object.values(LINUX_ROOTS).find((root) => isWithin(launch.cwd, root))!;
-    const cwdFd = openAbsolute(launch.cwd, 'directory', [cwdRoot]);
-    const entrypointFd = openAbsolute(launch.executable, 'file', executableRoots);
+  const verifyRechecks = (): void => {
     for (const check of rechecks) {
       const current = fs.identityAt(check.path, check.identity);
       if (current.dev !== check.identity.dev || current.ino !== check.identity.ino || current.kind !== check.identity.kind) {
         throw new FdPinnedPathError('pinned ancestor identity changed');
       }
     }
+  };
+
+  return {
+    openAbsolute: (absolute, leafKind, allowedRoots) => openAbsolute(absolute, leafKind, allowedRoots),
+    verifyRechecks,
+    closeHeld,
+  };
+}
+
+export async function pinBrokerLaunch(
+  launch: BrokerLaunchSpec,
+  identities: PinIdentities,
+  fs: PinningFileSystem = productionPinningFs,
+): Promise<PinnedBrokerLaunch> {
+  if (!Object.values(LINUX_ROOTS).some((root) => isWithin(launch.cwd, root))
+      || deniedRoots.some((root) => isWithin(launch.cwd, root))) {
+    throw new FdPinnedPathError('cwd is outside an approved root');
+  }
+  if (!APPROVED_EXECUTABLE_ROOTS.some((root) => isWithin(launch.executable, root))) {
+    throw new FdPinnedPathError('executable is outside an approved root');
+  }
+  const walk = beginPinWalk(identities, fs);
+  try {
+    const cwdRoot = Object.values(LINUX_ROOTS).find((root) => isWithin(launch.cwd, root))!;
+    const cwdFd = walk.openAbsolute(launch.cwd, 'directory', [cwdRoot]);
+    const entrypointFd = walk.openAbsolute(launch.executable, 'file', APPROVED_EXECUTABLE_ROOTS);
+    walk.verifyRechecks();
     const prefix = Buffer.from(fs.read(entrypointFd, 256)).toString('utf8');
     let executableFd = entrypointFd;
     let args = launch.args;
     if (prefix.startsWith('#!')) {
-      const firstLine = prefix.split(/\r?\n/, 1)[0]!.slice(2).trim();
-      const interpreter = firstLine === '/usr/bin/env node' ? '/usr/bin/node'
-        : /^\/(?:usr\/)?bin\/[A-Za-z0-9._-]+$/.test(firstLine) ? firstLine : null;
+      const interpreter = shebangInterpreter(prefix);
       if (interpreter === null) throw new FdPinnedPathError('script interpreter is not approved');
-      executableFd = openAbsolute(interpreter, 'file', executableRoots);
+      executableFd = walk.openAbsolute(interpreter, 'file', APPROVED_EXECUTABLE_ROOTS);
       args = [`/proc/self/fd/${entrypointFd}`, ...args];
     }
     const cwdProcPath = `/proc/self/fd/${cwdFd}`;
@@ -397,10 +563,98 @@ export async function pinBrokerLaunch(
       },
       executableFd,
       cwdFd,
-      close: async () => closeHeld(),
+      close: async () => walk.closeHeld(),
     };
   } catch (error) {
-    closeHeld();
+    walk.closeHeld();
     throw error instanceof FdPinnedPathError ? error : new FdPinnedPathError('fd-pinned launch refused');
   }
+}
+
+/**
+ * The recipe a launcher is PROBED with. It exists so the executable path comes out of
+ * `buildBrokerLaunch` — the same table launch reads — instead of a second copy of
+ * `/var/lib/kb-shell/home/.local/bin/<name>`. The model and the policy id are placeholders that exist
+ * only to get past validation: nothing is spawned and the argv is discarded, so the model is the
+ * shortest string satisfying the launcher's prefix check, and the policy id is read out of the
+ * profile table rather than written out again, so a renamed profile cannot silently un-probe a
+ * launcher. (`buildWorkflowPolicyTable` above has already refused an empty table by name, so the
+ * subscript cannot be the thing that reports it.)
+ */
+const PROBE_POLICY_ID = WORKFLOW_EXECUTION_PROFILES[0]!.id;
+
+function probeRecipe(launcher: SessionLauncher): LaunchRecipe {
+  if (launcher === 'shell') {
+    return { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'shell-default', sandbox: 'interactive' };
+  }
+  return launcher === 'claude'
+    ? { launcher: 'claude', mode: 'interactive', model: 'claude-probe', toolPolicyId: PROBE_POLICY_ID, sandbox: 'claude-policy' }
+    : { launcher: 'codex', mode: 'interactive', model: 'gpt-probe', toolPolicyId: PROBE_POLICY_ID, sandbox: 'codex-workspace-write' };
+}
+
+/** The executable a launcher resolves to, straight out of the launch table. */
+export function launcherExecutable(launcher: SessionLauncher): string {
+  return buildBrokerLaunch(probeRecipe(launcher), 'repo', '', { cols: 80, rows: 24 }).executable;
+}
+
+/**
+ * "Would pinning this launcher succeed right now?" — answered by walking the executable exactly as
+ * `pinBrokerLaunch` does (O_NOFOLLOW component by component, the ownership/mode matrix, the symlink
+ * depth limit, the recheck sweep, the shebang allowlist and its interpreter) and then dropping the
+ * descriptors instead of spawning. It deliberately does NOT walk a cwd: a broken approved root is a
+ * property of the host, not of a launcher, and letting it answer "codex is missing" would misname the
+ * fault — the host's own root policy is checked where it belongs, at `create`.
+ *
+ * FAIL CLOSED, without exception. Every refusal, every errno, every unexpected throw returns `false`.
+ * There is no error this function can see that means "the launcher is probably fine": the entire point
+ * of the enumeration is that a launcher it names is one an operator may be routed onto.
+ */
+export async function pinnableLauncher(
+  launcher: SessionLauncher,
+  identities: PinIdentities,
+  fs: PinningFileSystem = productionPinningFs,
+): Promise<boolean> {
+  let executable: string;
+  let walk: PinWalk;
+  try {
+    executable = launcherExecutable(launcher);
+    if (!APPROVED_EXECUTABLE_ROOTS.some((root) => isWithin(executable, root))) return false;
+    walk = beginPinWalk(identities, fs);
+  } catch { return false; }
+  try {
+    const entrypointFd = walk.openAbsolute(executable, 'file', APPROVED_EXECUTABLE_ROOTS);
+    walk.verifyRechecks();
+    const prefix = Buffer.from(fs.read(entrypointFd, 256)).toString('utf8');
+    if (prefix.startsWith('#!')) {
+      const interpreter = shebangInterpreter(prefix);
+      if (interpreter === null) return false;
+      walk.openAbsolute(interpreter, 'file', APPROVED_EXECUTABLE_ROOTS);
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    walk.closeHeld();
+  }
+}
+
+/**
+ * The broker's answer to "which launchers can I actually launch?", produced by inspecting the real
+ * filesystem AS `kb-shell` — the only principal that can see inside `/var/lib/kb-shell/home` (0700,
+ * `kb-shell`), which is exactly why this runs in the broker and not in the daemon.
+ *
+ * Every launcher is asked independently and every failure is that launcher's own: one launcher that
+ * throws can never remove another from the set, and can never add itself to it.
+ */
+export async function enumerateBrokerLaunchers(
+  identities: PinIdentities,
+  fs: PinningFileSystem = productionPinningFs,
+): Promise<SessionLauncher[]> {
+  const available: SessionLauncher[] = [];
+  for (const launcher of ['shell', 'claude', 'codex'] as const) {
+    let pinnable = false;
+    try { pinnable = await pinnableLauncher(launcher, identities, fs); } catch { pinnable = false; }
+    if (pinnable) available.push(launcher);
+  }
+  return available;
 }

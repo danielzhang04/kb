@@ -81,6 +81,7 @@ export const validBrokerClientFrames = [
   { type: 'input', requestId, sessionId, epochId, sequence: 0, encoding: 'base64', data: 'YQ==' },
   { type: 'resize', requestId, sessionId, epochId, sequence: 1, cols: 80, rows: 24 },
   { type: 'close', requestId, sessionId, epochId, sequence: 2 },
+  { type: 'launchers', requestId, sessionId: null, epochId },
 ] as const satisfies readonly BrokerClientFrame[];
 
 export const validBrokerServerFrames = [
@@ -96,6 +97,10 @@ export const validBrokerServerFrames = [
   { type: 'data', requestId: null, sessionId, epochId, sequence: 5, encoding: 'base64', data: 'YQ==' },
   { type: 'exit', requestId: null, sessionId, epochId, sequence: 6, exitCode: null, signal: null,
     reason: 'abandoned', observedAt: '2026-08-22T00:00:03.000Z' },
+  { type: 'launchers', requestId, sessionId: null, epochId, launchers: ['shell', 'claude', 'codex'] },
+  // The empty set is a LEGAL answer, not a malformed one: a broker that can launch nothing says so.
+  { type: 'launchers', requestId, sessionId: null, epochId, launchers: [] },
+  { type: 'launchers', requestId, sessionId: null, epochId, launchers: ['shell'] },
 ] as const satisfies readonly BrokerServerFrame[];
 
 export const invalidPtyProtocolVectors = [
@@ -125,4 +130,7 @@ export const invalidPtyProtocolVectors = [
   { case: 'raw-authority-argv', frame: { ...validBrokerClientFrames[1], argv: ['bash'] } },
   { case: 'raw-authority-env', frame: { ...validBrokerClientFrames[1], env: { TOKEN: 'x' } } },
   { case: 'raw-authority-user', frame: { ...validBrokerClientFrames[1], user: 'root' } },
+  { case: 'launchers-duplicated', frame: { type: 'launchers', requestId, sessionId: null, epochId, launchers: ['shell', 'shell'] } },
+  { case: 'launchers-out-of-order', frame: { type: 'launchers', requestId, sessionId: null, epochId, launchers: ['codex', 'shell'] } },
+  { case: 'launchers-unknown-member', frame: { type: 'launchers', requestId, sessionId: null, epochId, launchers: ['shell', 'bash'] } },
 ] as const satisfies readonly unknown[];

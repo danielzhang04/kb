@@ -261,6 +261,12 @@ describe('POST /api/auth/browser-session', () => {
   const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
   const REF_COOKIE_RE =
     /^kb_browser_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000$/;
+  /** The value-less `Max-Age=0` eviction header a refusal sends so an HttpOnly dead ref can be dropped.
+   *  Its attributes match a real ref cookie exactly — a browser only replaces a cookie when they do. */
+  const EVICTION_COOKIE = 'kb_browser_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0';
+  /** Any cookie actually CARRYING a ref. A refusal must never produce one of these. */
+  const carriesRef = (cookies: string[]): boolean =>
+    cookies.some((value) => /^kb_browser_session=[A-Za-z0-9_-]{43}/.test(value));
 
   afterEach(async () => {
     await app?.close();
@@ -320,7 +326,7 @@ describe('POST /api/auth/browser-session', () => {
     ]);
   });
 
-  it('401s a forged ref and sets NO cookie — a presented ref is never implicitly re-minted over', async () => {
+  it('401s a forged ref and issues NO ref — a presented ref is never implicitly re-minted over', async () => {
     const instance = mount(createBrowserSessionRefStore());
     const forged = Buffer.alloc(32, 'f').toString('base64url');
 
@@ -328,7 +334,30 @@ describe('POST /api/auth/browser-session', () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({ error: 'browser-session-ref-invalid' });
-    expect(setCookies(response)).toEqual([]);
+    // Plan L235 unchanged: the refusal hands back nothing a browser could present as a credential.
+    expect(carriesRef(setCookies(response))).toBe(false);
+  });
+
+  it('EXPIRES the refused ref, so a browser that cannot clear an HttpOnly cookie can still recover', async () => {
+    // The bug this pins: a daemon restart empties the ref store, every browser then holds a ref the
+    // daemon has forgotten, `kb_browser_session` is HttpOnly so no script can drop it, and the browser
+    // is stuck on 401 here + 428 at `/api/pty` across reloads with no user-reachable recovery.
+    const instance = mount(createBrowserSessionRefStore());
+    const forgotten = Buffer.alloc(32, 'f').toString('base64url');
+
+    const refused = await post(instance, `kb_browser_session=${forgotten}`);
+
+    expect(refused.statusCode).toBe(401);
+    expect(setCookies(refused)).toEqual([EVICTION_COOKIE]);
+    // EXPIRING IS NOT MINTING: the header carries no ref at all, so the refusal cannot be an implicit
+    // re-mint however the browser treats it.
+    expect(carriesRef(setCookies(refused))).toBe(false);
+
+    // Having dropped the dead cookie, the browser's very next call presents nothing and mints cleanly —
+    // a separate request on the ordinary mint path, which is exactly what plan L235 prescribes.
+    const recovered = await post(instance);
+    expect(recovered.statusCode).toBe(204);
+    expect(setCookies(recovered)[0]).toMatch(REF_COOKIE_RE);
   });
 
   it('401s an EXPIRED ref rather than handing back a fresh one', async () => {
@@ -341,7 +370,8 @@ describe('POST /api/auth/browser-session', () => {
     const response = await post(instance, `kb_browser_session=${ref}`);
 
     expect(response.statusCode).toBe(401);
-    expect(setCookies(response)).toEqual([]);
+    expect(setCookies(response)).toEqual([EVICTION_COOKIE]);
+    expect(carriesRef(setCookies(response))).toBe(false);
   });
 
   it('401s a request carrying TWO ref cookies (fail-closed on an ambiguous credential)', async () => {
@@ -354,7 +384,8 @@ describe('POST /api/auth/browser-session', () => {
 
     // The second cookie could be attacker-planted on a sibling path; picking either one is a guess.
     expect(response.statusCode).toBe(401);
-    expect(setCookies(response)).toEqual([]);
+    expect(setCookies(response)).toEqual([EVICTION_COOKIE]);
+    expect(carriesRef(setCookies(response))).toBe(false);
   });
 
   it('401s a malformed value without minting over it', async () => {
@@ -363,7 +394,8 @@ describe('POST /api/auth/browser-session', () => {
     const response = await post(instance, 'kb_browser_session=not-a-ref');
 
     expect(response.statusCode).toBe(401);
-    expect(setCookies(response)).toEqual([]);
+    expect(setCookies(response)).toEqual([EVICTION_COOKIE]);
+    expect(carriesRef(setCookies(response))).toBe(false);
   });
 
   it('503s — never 401 — when the ref store is unavailable, and sets no cookie', async () => {
@@ -373,6 +405,8 @@ describe('POST /api/auth/browser-session', () => {
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ error: 'browser-session-ref-unavailable' });
+    // A store that could not ANSWER has said nothing about the ref: a 503 must never delete a
+    // possibly-live credential, which would log an operator out over a read failure (D6).
     expect(setCookies(response)).toEqual([]);
   });
 
@@ -414,6 +448,10 @@ describe('assert/verify — a presented ref is never silently re-minted (plan L2
     const cookies = ([] as string[]).concat(response.headers['set-cookie'] as string | string[]);
     expect(cookies.some((value) => value.startsWith('kb_session='))).toBe(true);
     // RED on a revert of the 401 fall-through: the old code minted a real ref for this forged cookie.
-    expect(cookies.some((value) => value.startsWith('kb_browser_session='))).toBe(false);
+    // The assertion is on a cookie CARRYING a ref, not on the name: signing in while holding a dead ref
+    // also EXPIRES it (value-less, Max-Age=0), so the operator is not left authenticated but permanently
+    // without a PTY principal. Deleting is not minting.
+    expect(cookies.some((value) => /^kb_browser_session=[A-Za-z0-9_-]{43}/.test(value))).toBe(false);
+    expect(cookies).toContain('kb_browser_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0');
   });
 });

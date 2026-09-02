@@ -693,6 +693,67 @@ describe('two-phase attempt session adapter', () => {
     await expect(launch.result).resolves.toMatchObject({ state: 'succeeded', summary: `${workflow.id} ok` });
   });
 
+  /**
+   * D4. The Codex branch used to fall back to `input.profile.id` when an attempt declared no workflow
+   * profile, and a real execution-profile id is `worker:codex:gpt-5.6-terra` — colons, which the
+   * broker's `policyPattern` refuses. That fallback could never produce a launchable recipe; it only
+   * converted "no tool cap was approved" into a frame the broker rejects, which tears the socket down
+   * instead of failing one launch. Both runtimes now refuse it here, by name.
+   */
+  it.each(['claude', 'codex'] as const)('refuses a %s attempt that declares no workflow profile', async (runtime) => {
+    const host = new MemorySessionHost();
+    const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+    const launch = adapter.begin(declaration(runtime, {
+      workflowProfile: null,
+      // The real shape of a control-plane execution-profile id, i.e. the value the old fallback used.
+      profile: { ...(runtime === 'claude' ? CLAUDE_PROFILE : CODEX_PROFILE), id: `worker:${runtime}:model-1` },
+    } as Partial<ApprovedAttemptDeclaration>));
+    const receipt = await launch.receipt;
+    expect(receipt.ok).toBe(false);
+    expect(receipt).toMatchObject({ refusal: 'invalid-request' });
+    expect((await launch.result).state).toBe('failed');
+    // Nothing reached the host, so no colon-bearing toolPolicyId was ever put on the wire.
+    expect(host.attempts).toHaveLength(0);
+  });
+
+  /**
+   * The codex branch used to SHAPE-CHECK `workflowProfile` against `TOOL_POLICY_ID_RE` and stop there,
+   * while the claude branch resolved it through `createWorkflowToolPolicyResolver`. `research-v2` is
+   * spellable on the wire and names nothing server-owned, so it passed the sender, reached the broker,
+   * and came back as a generic `unknown Codex tool policy` — a wasted round trip and a rejected frame
+   * for a fact the sender already had. Both runtimes now refuse a non-server-owned id here, by name.
+   */
+  it.each(['claude', 'codex'] as const)(
+    'refuses a %s attempt naming a syntactically valid but non-server-owned workflow profile',
+    async (runtime) => {
+      const host = new MemorySessionHost();
+      const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+      // Passes `TOOL_POLICY_ID_RE` (/^[a-z][a-z0-9-]{0,63}$/) and is in no profile table.
+      expect('research-v2').toMatch(/^[a-z][a-z0-9-]{0,63}$/);
+      const launch = adapter.begin(declaration(runtime, { workflowProfile: 'research-v2' }));
+      const receipt = await launch.receipt;
+      expect(receipt.ok).toBe(false);
+      expect(receipt).toMatchObject({ refusal: 'invalid-request' });
+      expect((await launch.result).state).toBe('failed');
+      // Nothing reached the host, so the broker never spent a frame refusing what the sender knew.
+      expect(host.attempts).toHaveLength(0);
+    },
+  );
+
+  it('never emits a toolPolicyId the broker policy pattern would refuse', async () => {
+    for (const runtime of ['claude', 'codex'] as const) {
+      const host = new MemorySessionHost();
+      const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+      adapter.begin(declaration(runtime, { workflowProfile: 'checker-readonly' }));
+      host.resolveCreate(0);
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+      const { toolPolicyId } = host.attempts[0].request.recipe;
+      expect(toolPolicyId).toBe('checker-readonly');
+      expect(toolPolicyId).not.toContain(':');
+      expect(toolPolicyId).toMatch(/^[a-z][a-z0-9-]{0,63}$/);
+    }
+  });
+
   it('resumes Claude by the exact prior session and records the emitted continuation without replaying its declaration', async () => {
     const host = new MemorySessionHost();
     const input = declaration();

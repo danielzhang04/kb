@@ -65,6 +65,19 @@ function serializeCookie(ref: string): string {
   return `${BROWSER_SESSION_COOKIE_NAME}=${ref}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${BROWSER_SESSION_MAX_AGE_SECONDS}`;
 }
 
+/**
+ * The EVICTION cookie for a ref that was presented and refused. Same name, Path, HttpOnly, Secure and
+ * SameSite as a real ref cookie — a browser only replaces a cookie when those match — but it carries an
+ * EMPTY value and `Max-Age=0`, so the only thing a browser can do with it is delete the dead ref it was
+ * holding. It is built here, beside {@link serializeCookie}, and never from a ref: no value this module
+ * mints can reach it, so an eviction can never become an implicit re-mint (plan L235). It exists because
+ * `kb_browser_session` is `HttpOnly`: the client is told to "drop the dead cookie first" and has no way
+ * to obey — only a `Set-Cookie` can drop it, which left a browser holding a ref the daemon had forgotten
+ * permanently unable to reach the PTY surface (401 on mint, 428 on `/api/pty`, forever).
+ */
+export const BROWSER_SESSION_EVICTION_COOKIE =
+  `${BROWSER_SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
+
 export function isBrowserSessionRef(value: unknown): value is string {
   if (typeof value !== 'string' || !BROWSER_SESSION_REF_RE.test(value)) return false;
   try {

@@ -36,6 +36,11 @@ import '@xterm/xterm/css/xterm.css';
 import '../styles/console.css';
 import { useOptionalSession } from '../lib/sessionContext';
 import {
+  browserSessionMessage,
+  ensureBrowserSession as defaultEnsureBrowserSession,
+} from '../lib/browserSessionClient';
+import type { BrowserSessionOutcome } from '../lib/browserSessionClient';
+import {
   attachFrame,
   closeFrame,
   createFrame,
@@ -171,6 +176,12 @@ export interface ConsolePaneProps {
   socketFactory?: PtySocketFactory;
   /** REST client, used only to close a session whose socket is already gone. */
   sessionsClient?: TerminalSessionsClient;
+  /**
+   * How this pane obtains the browser-session cookie `/api/pty` requires before the socket may open.
+   * Injected for the same reason `socketFactory` is: a test can hold the promise open and prove no
+   * socket is created until it resolves.
+   */
+  ensureBrowserSession?: () => Promise<BrowserSessionOutcome>;
   /** Every decoded server frame, so a manager can fold it into the W4 workspace model. */
   onServerFrame?: (frame: BrowserServerFrame) => void;
   /** This console's session, the moment the host confirms it. */
@@ -190,6 +201,7 @@ export function ConsolePane({
   replaySource,
   socketFactory = defaultPtySocketFactory,
   sessionsClient = defaultTerminalSessionsClient,
+  ensureBrowserSession = defaultEnsureBrowserSession,
   onServerFrame,
   onSession,
   registerControl,
@@ -222,6 +234,8 @@ export function ConsolePane({
   onSessionRef.current = onSession;
   const sessionsClientRef = useRef(sessionsClient);
   sessionsClientRef.current = sessionsClient;
+  const ensureBrowserSessionRef = useRef(ensureBrowserSession);
+  ensureBrowserSessionRef.current = ensureBrowserSession;
   const registerControlRef = useRef(registerControl);
   registerControlRef.current = registerControl;
 
@@ -337,6 +351,20 @@ export function ConsolePane({
     setState('connecting');
 
     void (async () => {
+      // The `/api/pty` upgrade resolves a BROWSER principal, so this browser must already hold a live
+      // `kb_browser_session` cookie when the socket is opened — without one the route answers 428 and
+      // the operator reads a bare "the connection failed". Nothing in the client used to ask for that
+      // cookie, which is why no browser on the tailnet deployment could ever open a terminal. A
+      // definitive refusal is SHOWN and no socket is opened; a transport failure is not treated as a
+      // refusal, because the server never spoke and refusing to even try would turn a blip into a dead
+      // terminal — the socket's own diagnostics then say what happened.
+      const browserSession = await ensureBrowserSessionRef.current();
+      if (disposed) return;
+      if (!browserSession.ok && browserSession.reason !== 'unreachable') {
+        setState('error');
+        setDiagnostic(browserSessionMessage(browserSession.reason));
+        return;
+      }
       // A pane that already has a grid (a reconnect) keeps it: the scrollback is the whole point.
       const grid = await ensureGrid();
       if (disposed || grid === null) return;

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles, workflowProfileIds } from '../control/environment.ts';
+import { ToolPolicyRefusal, createWorkflowToolPolicyResolver } from '../control/claudeLaunchPolicy.ts';
+import { buildWorkflowPolicyTable } from '../pty/fdPinnedPaths.ts';
 
 describe('workflow execution profiles', () => {
   it('exposes every server-owned profile the shipped definitions reference, including the readonly checker and C1 scanner', () => {
@@ -23,6 +25,29 @@ describe('workflow execution profiles', () => {
       for (const tool of profile.allowedTools) {
         expect(tool).not.toMatch(/upload_video|send_email|gmail_send|send_message/i);
       }
+    }
+  });
+
+  /**
+   * The broker cannot import the control plane (its payload is a compiled leaf bundle), so it carries
+   * its own copy of the malformed/forbidden filters. Two copies is a licence to drift, so both are
+   * held to the same verdict on the same inputs here.
+   */
+  it('makes the broker table and the control-plane resolver agree on which profiles are launchable', () => {
+    const profiles = loadWorkflowProfiles();
+    const resolve = createWorkflowToolPolicyResolver({ profiles });
+    for (const profile of profiles) {
+      expect(resolve(profile.id).allowedTools).toEqual([...profile.allowedTools]);
+      expect(buildWorkflowPolicyTable(profiles).get(profile.id)!.allowedTools).toEqual(profile.allowedTools);
+    }
+    for (const bad of [
+      { id: 'bad', allowedTools: ['Read', 'upload_video'] },
+      { id: 'bad', allowedTools: ['Read,Write'] },
+      { id: 'bad', allowedTools: ['--dangerously-skip-permissions'] },
+      { id: 'bad', allowedTools: [] },
+    ]) {
+      expect(() => createWorkflowToolPolicyResolver({ profiles: [bad] })('bad')).toThrow(ToolPolicyRefusal);
+      expect(() => buildWorkflowPolicyTable([bad])).toThrow();
     }
   });
 

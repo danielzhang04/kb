@@ -6,6 +6,7 @@ import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import { defaultPlatformRoot } from '../runtime/python.ts';
 import type { ExecutionProfile, PolicyEnvironment } from './policy.ts';
 import { loadRepositoryRegistry, type RepositoryRegistry } from './repositoryRegistry.ts';
+import { WORKFLOW_EXECUTION_PROFILES, type WorkflowExecutionProfile } from './workflowProfiles.ts';
 
 export interface RuntimeSkillRegistry {
   runtimes: Record<string, string[]>;
@@ -40,72 +41,13 @@ export function loadRuntimeSkillRegistry(repoRoot: string): RuntimeSkillRegistry
 }
 
 /**
- * D13/D15 — named worker tool-allowlist profiles a workflow definition selects by name. These are the
- * forward-looking capability caps a spawned worker would be launched with; they are SERVER-OWNED data
- * (a code-reviewed change adds one) and a workflow definition can only NAME a profile, never widen it.
- *
- * INVARIANT: no default profile grants a publish/send capability — never `upload_video`, never a
- * send-mail tool. Gmail reach is read/search/label/DRAFT only; email is never sent from a workflow.
+ * The workflow tool-allowlist profile table now lives in the importless leaf module
+ * `workflowProfiles.ts`, because the kb-shell PTY broker has to read the SAME table from a compiled
+ * bundle that has no repo and no control plane. These re-exports keep every existing importer of
+ * `environment.ts` working unchanged.
  */
-export interface WorkflowExecutionProfile {
-  id: string;
-  /** The closed `--allowedTools` set a worker on this profile may use. */
-  allowedTools: readonly string[];
-}
-
-/** Tools a workflow worker may NEVER be granted through any default profile (external publish/send). */
-export const FORBIDDEN_WORKFLOW_TOOLS: readonly string[] = [
-  'upload_video',
-  'mcp__google-workspace__send_email',
-  'mcp__google-workspace__gmail_send',
-  'mcp__claude_ai_Gmail__send_message',
-];
-
-const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = [
-  {
-    id: 'checker-readonly',
-    allowedTools: ['Read', 'Glob', 'Grep'],
-  },
-  {
-    id: 'research',
-    allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep'],
-  },
-  {
-    id: 'gmail-triage',
-    allowedTools: [
-      'mcp__google-workspace__search_gmail_messages',
-      'mcp__google-workspace__get_gmail_message_content',
-      'mcp__google-workspace__list_gmail_labels',
-      'mcp__google-workspace__modify_gmail_message_labels',
-      'mcp__google-workspace__draft_gmail_message',
-      'Read',
-      'Write',
-    ],
-  },
-  {
-    id: 'drive-author',
-    allowedTools: [
-      'mcp__google-workspace__search_drive_files',
-      'mcp__google-workspace__get_drive_file_content',
-      'mcp__google-workspace__create_drive_file',
-      'mcp__google-workspace__upload_to_drive',
-      'Read',
-      'Write',
-    ],
-  },
-  {
-    id: 'producer',
-    allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
-  },
-  {
-    // C1 (2026-07-21) — read-only scan class: Read/Glob/Grep to inspect + one Write for the report.
-    // NO Bash (removes the git-plumbing object-store bypass entirely) and NO Edit. This is exactly the
-    // capability self-lint-report.md already tells the worker to use. See
-    // docs/specs/2026-07-21-worker-read-scope-design.md §5.3.
-    id: 'scanner',
-    allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
-  },
-];
+export type { WorkflowExecutionProfile } from './workflowProfiles.ts';
+export { FORBIDDEN_WORKFLOW_TOOLS } from './workflowProfiles.ts';
 
 /** The server-owned workflow tool-allowlist profiles. Frozen data; a definition names one by id. */
 export function loadWorkflowProfiles(): WorkflowExecutionProfile[] {

@@ -4,6 +4,7 @@ import type {
   HostRefusalCode,
   LaunchRecipe,
   SafeRootId,
+  SessionLauncher,
   SessionSize,
 } from '../../shared/ptyProtocol.ts';
 
@@ -25,6 +26,18 @@ const refusalCodes = new Set<HostRefusalCode>([
   'launcher-unavailable', 'input-too-large', 'size-out-of-range', 'not-found',
   'binding-conflict', 'epoch-lost', 'cancelled', 'internal',
 ]);
+
+/**
+ * The launcher set, in the ONE wire form this protocol admits: canonical order, no duplicates, nothing
+ * outside the closed set. Every party that handles an enumerated set runs it through here — the broker
+ * before it answers, the client before it believes, the probe before it publishes — so an enumeration
+ * cannot smuggle a launcher past a decoder by reordering or repeating it, and a junk entry is DROPPED
+ * rather than allowed to fail the whole set open or closed by accident.
+ */
+export const SESSION_LAUNCHER_ORDER = ['shell', 'claude', 'codex'] as const;
+export function canonicalLaunchers(values: readonly unknown[]): SessionLauncher[] {
+  return SESSION_LAUNCHER_ORDER.filter((launcher) => values.includes(launcher));
+}
 
 export class BrokerProtocolError extends Error {
   readonly refusal: HostRefusalCode;
@@ -197,6 +210,10 @@ export function decodeBrokerClientFrame(value: unknown): BrokerClientFrame {
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'sequence']);
       commonRequest(frame, false); identifier(frame.epochId, 'epochId', epochIdPattern); sequence(frame.sequence);
       break;
+    case 'launchers':
+      exact(frame, ['type', 'requestId', 'sessionId', 'epochId']);
+      commonRequest(frame, true); identifier(frame.epochId, 'epochId', epochIdPattern);
+      break;
     default:
       throw new BrokerProtocolError('broker client frame type is invalid');
   }
@@ -237,6 +254,20 @@ export function decodeBrokerServerFrame(value: unknown): BrokerServerFrame {
         identifier(entry.epochId, 'epochId', epochIdPattern);
         if (seen.has(id)) throw new BrokerProtocolError('ready sessions contain duplicates');
         seen.add(id);
+      }
+      break;
+    }
+    case 'launchers': {
+      exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'launchers']);
+      commonRequest(frame, true);
+      identifier(frame.epochId, 'epochId', epochIdPattern);
+      // One wire form per value: the canonical rewrite must be a no-op, so a set that is out of order,
+      // repeated, or carrying anything outside the closed launcher set is REFUSED here rather than
+      // silently narrowed. A narrowed set would still be honest, but it would also hide a broker whose
+      // enumeration is producing something this protocol never described.
+      if (!Array.isArray(frame.launchers)
+          || canonicalLaunchers(frame.launchers).join(',') !== frame.launchers.join(',')) {
+        throw new BrokerProtocolError('enumerated launchers are invalid');
       }
       break;
     }

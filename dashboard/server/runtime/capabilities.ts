@@ -3,6 +3,7 @@ import type { PrOpener } from '../write/branch.ts';
 import type { CoordinationPublication } from '../write/outbox.ts';
 import type { PtyCapabilityProbe, PublicPtyCapability } from '../pty/contracts.ts';
 import { probeWindowsPty, toPublicPtyCapability, type WindowsPtyProbeOptions } from '../pty/probe.ts';
+import { probeLinuxBrokerHost } from '../pty/brokerProbe.ts';
 import type { HostKind } from '../control/p2Contracts.ts';
 import type { CliStatus } from '../placement/contracts.ts';
 
@@ -92,20 +93,37 @@ export function unavailablePtyCapability(
 
 /**
  * Probe the real host exactly once, at composition. On Windows this is W1's closed local probe over
- * the actual node-pty/launcher/root policy; off Windows the Linux broker probe is W6.2's, so until it
- * lands composition publishes the closed `broker-unavailable` refusal rather than any boolean.
+ * the actual node-pty/launcher/root policy. Off Windows it is the broker probe: the daemon asks the
+ * `kb-shell` broker over its Unix socket, because the daemon runs as `kb-dashboard` and structurally
+ * cannot see inside `/var/lib/kb-shell/home` (0700 `kb-shell`) to answer for itself.
+ *
+ * Both branches degrade to the SAME thing — a closed capability with a reason — and neither may throw:
+ * a daemon that cannot resolve its terminal stack comes up without a terminal, it does not fail to
+ * come up. This runs once per process (`index.ts`), and its result is what `selfAdvertise.ts`
+ * publishes; nothing re-probes on a timer, so a CLI installed after boot needs a daemon restart.
  */
 export async function probePublicPtyCapability(options: {
   platform?: NodeJS.Platform;
   epochId: string;
   now?: () => Date;
   probeWindowsHost?: (probeOptions: WindowsPtyProbeOptions) => Promise<PtyCapabilityProbe>;
+  probeLinuxHost?: (probeOptions: { now: () => string }) => Promise<PtyCapabilityProbe>;
 }): Promise<PublicPtyCapability> {
   const platform = options.platform ?? process.platform;
   const now = options.now ?? (() => new Date());
   const checkedAt = now().toISOString();
   if (platform !== 'win32') {
-    return { pty: false, diagnostic: { reason: 'broker-unavailable', detail: null, checkedAt } };
+    try {
+      // The probe stamps the composition's own attempt time, not one of its own: this is the single
+      // moment the host was asked, and every branch below reports the same instant.
+      return toPublicPtyCapability(
+        await (options.probeLinuxHost ?? probeLinuxBrokerHost)({ now: () => checkedAt }),
+      );
+    } catch {
+      // Same rule as the Windows arm: a probe that throws is a host that cannot be advertised, and it
+      // degrades to "no terminal" rather than taking the daemon down with it.
+      return unavailablePtyCapability(platform, checkedAt);
+    }
   }
   try {
     const probe = await (options.probeWindowsHost ?? probeWindowsPty)({ epochId: options.epochId, now });

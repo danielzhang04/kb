@@ -29,7 +29,11 @@ import {
 } from './webauthn.ts';
 import type { WebAuthnUser } from './webauthn.ts';
 import { mintSessionFromVerifiedAssertion } from './session.ts';
-import { BROWSER_SESSION_COOKIE_NAME, parseBrowserSessionCookie } from './browserSessionRef.ts';
+import {
+  BROWSER_SESSION_COOKIE_NAME,
+  BROWSER_SESSION_EVICTION_COOKIE,
+  parseBrowserSessionCookie,
+} from './browserSessionRef.ts';
 import { OPERATOR_SUBJECT } from './mode.ts';
 import { findCredential, rememberChallenge, consumeChallenge } from './credentialStore.ts';
 import type { SurfaceContext } from '../http/context.ts';
@@ -141,7 +145,18 @@ export function registerBrowserSessionRoute(scope: FastifyInstance, ctx: Surface
       case 'unchanged':
         return reply.code(204).send();
       case 'refused':
-        // No `Set-Cookie`: a refused ref is not replaced behind the browser's back.
+        // Still 401, still no ref: a refused ref is never replaced behind the browser's back. What IS
+        // sent is the value-less `Max-Age=0` eviction cookie, which can only DELETE the dead ref this
+        // request presented. The client is told to "drop the dead cookie first" and physically cannot —
+        // `kb_browser_session` is HttpOnly, so no script may clear it — which left every browser holding
+        // a ref the daemon had forgotten (a restart empties the store) permanently stuck: 401 here, 428
+        // at `/api/pty`, across reloads, with no user-reachable recovery. Expiring is not minting: this
+        // header carries no ref, so the response cannot upgrade a refused ref into a valid one. The
+        // browser's NEXT call presents nothing and takes the ordinary mint path — exactly the sequence
+        // plan L235 prescribes. A 503 (`default` below) still sends nothing: a store that could not
+        // answer has said nothing about the ref, and deleting a possibly-live credential on a storage
+        // fault would be the D6 mistake of logging an operator out over a read failure.
+        reply.header('Set-Cookie', [BROWSER_SESSION_EVICTION_COOKIE]);
         return reply.code(401).send({ error: 'browser-session-ref-invalid' });
       default:
         return reply.code(503).send({ error: 'browser-session-ref-unavailable' });
@@ -270,12 +285,15 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     // proven to belong to the operator. A browser that presents a live ref keeps it (renewed inside its
     // window). A browser presenting an unknown/expired/malformed ref is REFUSED, not silently re-minted
     // over — plan L235 — so it leaves sign-in with no cookie and calls `POST /api/auth/browser-session`
-    // (which refuses it the same way, 401, telling the client to drop the dead cookie first). A ref store
+    // (which refuses it the same way, 401). Both paths EXPIRE the dead ref — a value-less `Max-Age=0`
+    // cookie that deletes and never mints — because the client is told to drop it and, HttpOnly, cannot;
+    // so the browser's next call presents nothing and mints cleanly instead of 428ing forever. A ref store
     // that cannot answer (503) likewise yields NO cookie: the sign-in still succeeds (a storage fault must
     // never log the operator out) and the browser simply has no PTY principal, which downstream is a closed
     // refusal rather than a default principal.
     const outcome = await resolveBrowserSessionCookie(ctx, req.headers.cookie);
     if (outcome.kind === 'minted' || outcome.kind === 'renewed') cookies.push(outcome.cookie);
+    else if (outcome.kind === 'refused') cookies.push(BROWSER_SESSION_EVICTION_COOKIE);
     reply.header('Set-Cookie', cookies);
     return reply.code(200).send({ token, expiresAt: claims.exp });
   });

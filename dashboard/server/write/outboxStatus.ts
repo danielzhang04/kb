@@ -134,12 +134,24 @@ function readPendingManifestTimes(spoolRoot: string): { pending: number; times: 
   }
 }
 
+/**
+ * This is a liveness alarm, not a security or capacity control: admission.ts refuses all
+ * new-work once the oldest unreceipted bundle crosses it. Bundles only drain via the manual,
+ * fleet-pausing promote_vm_outbox.py -> apply_ops_reconciliation.py ceremony, so the steady
+ * state after a successful drain is pending: 1 (the unlock's own audit row spools right
+ * after). A short threshold therefore degrades the platform ~15 minutes after every
+ * successful drain, forever. 24 hours matches the once-daily cadence that ceremony's
+ * quiescence requirement and human ssh signature actually permit; accumulation stays bounded
+ * by maxPending below.
+ */
+export const DEFAULT_OUTBOX_MAX_AGE_MS = 24 * 60 * 60_000;
+
 export function outboxStatus(
   spoolRoot: string,
   options: { maxPending?: number; maxAgeMs?: number; now?: () => number } = {},
 ): OutboxStatus {
   const maxPending = options.maxPending ?? 100;
-  const maxAgeMs = options.maxAgeMs ?? 15 * 60_000;
+  const maxAgeMs = options.maxAgeMs ?? DEFAULT_OUTBOX_MAX_AGE_MS;
   const now = options.now ?? Date.now;
   const scan = readPendingManifestTimes(spoolRoot);
   const oldestAgeMs = scan.times.length === 0 ? 0 : Math.max(0, now() - Math.min(...scan.times));

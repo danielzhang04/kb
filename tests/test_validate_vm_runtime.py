@@ -337,7 +337,7 @@ REPO = Path(__file__).resolve().parents[1]
 TS_POLICY = REPO / "dashboard/server/pty/fdPinnedPaths.ts"
 
 
-def _typescript_broker_policy() -> dict[str, dict[str, str]]:
+def _typescript_broker_policy() -> dict[str, dict[str, str | tuple[str, ...]]]:
     """Parse `BROKER_SYSTEMD_POLICY` out of the TypeScript source.
 
     Textual on purpose: a JSON export would need a build step to stay current, and the whole point
@@ -347,11 +347,17 @@ def _typescript_broker_policy() -> dict[str, dict[str, str]]:
     constants = dict(re.findall(r"^export const ([A-Z_]+) = '([^']*)';$", text, re.MULTILINE))
     body = re.search(r"export const BROKER_SYSTEMD_POLICY = \{\n(.*?)\n\} as const;", text, re.S)
     assert body is not None, "BROKER_SYSTEMD_POLICY literal not found in fdPinnedPaths.ts"
-    sections: dict[str, dict[str, str]] = {}
+    sections: dict[str, dict[str, str | tuple[str, ...]]] = {}
     for name, block in re.findall(r"^  (\w+): \{\n(.*?)\n  \},$", body.group(1), re.S | re.MULTILINE):
-        entries: dict[str, str] = {}
+        entries: dict[str, str | tuple[str, ...]] = {}
+        # A repeatable systemd directive (ExecStartPre= today) is an array of ordered string
+        # literals, not a single quoted value - pull those out first so the scalar pass below never
+        # sees the array's own lines.
+        for key, array_body in re.findall(r"^    (\w+): \[\n(.*?)\n    \],$", block, re.S | re.MULTILINE):
+            entries[key] = tuple(re.findall(r"^      '([^']*)',$", array_body, re.MULTILINE))
+        scalar_block = re.sub(r"^    \w+: \[\n.*?\n    \],$\n?", "", block, flags=re.S | re.MULTILINE)
         for key, quoted, identifier in re.findall(
-                r"^    (\w+): (?:'([^']*)'|([A-Za-z_][A-Za-z0-9_]*)),$", block, re.MULTILINE):
+                r"^    (\w+): (?:'([^']*)'|([A-Za-z_][A-Za-z0-9_]*)),$", scalar_block, re.MULTILINE):
             entries[key] = quoted if not identifier else constants[identifier]
         entries.pop("", None)
         sections[name] = entries
@@ -369,9 +375,13 @@ def test_the_frozen_broker_policy_is_identical_in_all_three_copies(unit, section
     the single source of truth. That is only true if drift in any one of them is a red test.
     """
     text = (REPO / "deploy/systemd" / unit).read_text(encoding="utf-8")
-    from_unit = dict(validate_vm_runtime.parse_unit(text)[section])
     from_python = (validate_vm_runtime.BROKER_SERVICE_DIRECTIVES if section == "Service"
                    else validate_vm_runtime.BROKER_SOCKET_DIRECTIVES)
+    # `_collapse_directives`, not a plain `dict()`, of the parsed pairs: a bare `dict()` silently
+    # keeps only the LAST occurrence of a repeated key, which would make a genuinely dropped
+    # ExecStartPre= line invisible to this comparison instead of a red test.
+    from_unit = validate_vm_runtime._collapse_directives(
+        validate_vm_runtime.parse_unit(text)[section], from_python, unit)
     from_typescript = _typescript_broker_policy()[expected_key]
     assert from_unit == dict(from_python)
     assert from_typescript == dict(from_python)
