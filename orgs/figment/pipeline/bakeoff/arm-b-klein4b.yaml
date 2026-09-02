@@ -11,9 +11,10 @@
   "volume_mount_path": "/workspace",
   "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
   "comfyui": {
-    "root": "/workspace",
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
     "port": 8188,
-    "start_command": "if [ ! -d /workspace/ComfyUI/.git ]; then git -C /workspace/ComfyUI init && git -C /workspace/ComfyUI remote add origin https://github.com/comfyanonymous/ComfyUI.git; fi && git -C /workspace/ComfyUI fetch --depth 1 origin refs/tags/v0.20.1 && git -C /workspace/ComfyUI checkout --detach FETCH_HEAD && python -m pip install -r /workspace/ComfyUI/requirements.txt && cd /workspace/ComfyUI && python main.py --listen 127.0.0.1 --port 8188 --output-directory /workspace/output"
+    "start_command": "python main.py --listen 127.0.0.1 --port 8188"
   },
   "ready_timeout_seconds": 900,
   "job_timeout_seconds": 900,

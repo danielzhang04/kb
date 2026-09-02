@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -38,8 +39,9 @@ DEFAULT_READY_TIMEOUT = 20 * 60.0
 REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-COMFYUI_TAG = "v0.3.76"
 DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
+OPS_LEDGER_DIR = Path("C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost")
+LEDGER_LOCK_TIMEOUT = 5.0
 
 
 _active_redactor: ApiKeyRedactionFilter | None = None
@@ -87,14 +89,10 @@ def redact_for_stderr(value: Any) -> str:
     return str(value)
 
 
-def redacting_excepthook(exc_type: type[BaseException], exc: BaseException, _tb: Any) -> None:
-    """Last-resort one-line exception reporting; never emit a raw traceback."""
-    print(redact_for_stderr(f"{exc_type.__name__}: {exc}"), file=sys.stderr)
-
-
-# main() catches command failures, but this also protects importers that invoke a command
-# outside main() and allow it to reach the interpreter.
-sys.excepthook = redacting_excepthook
+def redacting_excepthook(exc_type: type[BaseException], exc: BaseException, tb: Any) -> None:
+    """Last-resort full traceback reporting with the active credential redacted."""
+    formatted = "".join(traceback.format_exception(exc_type, exc, tb))
+    print(redact_for_stderr(formatted), file=sys.stderr, end="")
 
 
 def build_logger(redactor: ApiKeyRedactionFilter | None = None) -> logging.Logger:
@@ -209,10 +207,10 @@ def teardown_signal_mask(logger: logging.Logger):
         received.set()
         logger.warning("signal %s received during teardown; finishing all attempts", signum)
 
-    for signum in (signal.SIGINT, signal.SIGTERM):
-        previous[signum] = signal.getsignal(signum)
-        signal.signal(signum, handler)
     try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous[signum] = signal.getsignal(signum)
+            signal.signal(signum, handler)
         yield
     finally:
         for signum, old in previous.items():
@@ -225,7 +223,8 @@ class PodLease:
     def __init__(self, api: Any, payload: dict[str, Any] | None, logger: logging.Logger,
                  *, pod_id: str | None = None, sleep: Callable[[float], None] = time.sleep,
                  attempts: int = TERMINATE_ATTEMPTS,
-                 on_acquired: Callable[[str, dict[str, Any] | None], None] | None = None):
+                 on_acquired: Callable[[str, dict[str, Any] | None], None] | None = None,
+                 started_utc: datetime | None = None):
         self.api = api
         self.payload = payload
         self.logger = logger
@@ -241,6 +240,9 @@ class PodLease:
         self._known_ids: set[str] = {self.pod_id} if self.pod_id else set()
         self._acquired_notified = bool(self.pod_id)
         self._create_uncertain = False
+        if started_utc is not None and started_utc.tzinfo is None:
+            started_utc = started_utc.replace(tzinfo=timezone.utc)
+        self.started_utc = started_utc.astimezone(timezone.utc) if started_utc else None
 
     @property
     def pod_name(self) -> str | None:
@@ -269,10 +271,41 @@ class PodLease:
         name = self.pod_name
         if not name:
             return []
-        return [
+        candidates = [
             pod for pod in self.api.list_pods()
             if isinstance(pod, dict) and pod.get("name") == name and pod.get("id")
         ]
+        if self.started_utc is None:
+            return candidates
+        matches: list[dict[str, Any]] = []
+        for pod in candidates:
+            raw_created = next(
+                (pod.get(key) for key in ("createdAt", "created_at", "created")
+                 if pod.get(key) is not None),
+                None,
+            )
+            if raw_created is None:
+                self.logger.warning(
+                    "pod %s has no creation timestamp; recovering by exact name only",
+                    pod.get("id"),
+                )
+                matches.append(pod)
+                continue
+            try:
+                created = parse_remote_timestamp(raw_created)
+            except (TypeError, ValueError, OverflowError) as exc:
+                self.logger.error(
+                    "pod %s has unusable creation timestamp; refusing name recovery: %s",
+                    pod.get("id"), exc,
+                )
+                continue
+            if created >= self.started_utc:
+                matches.append(pod)
+            else:
+                self.logger.warning(
+                    "ignoring older pod %s during name recovery", pod.get("id")
+                )
+        return matches
 
     def _mark_verified(self, label: str) -> None:
         self._verified_absent = True
@@ -313,6 +346,8 @@ class PodLease:
             try:
                 self.close()
             except BaseException as teardown_exc:
+                if isinstance(teardown_exc, PodStillRunning):
+                    raise attach_lease_status(teardown_exc, self) from exc
                 wrapped = HarnessError(
                     f"pod creation failed and teardown was not verified: "
                     f"{type(exc).__name__}: {exc}; {type(teardown_exc).__name__}: {teardown_exc}"
@@ -339,7 +374,7 @@ class PodLease:
             print(message, file=sys.stderr)
 
     def close(self) -> None:
-        with teardown_signal_mask(self.logger), self._lock:
+        with self._lock, teardown_signal_mask(self.logger):
             if self._verified_absent:
                 return
             if not self._known_ids and not self.pod_name:
@@ -390,12 +425,6 @@ class PodLease:
                 if ever_discovered and all_ids_absent and name_scan_ok:
                     self._mark_verified(self.pod_id or self.pod_name or "UNKNOWN")
                     return
-                # With an ambiguous create and no discovered id, require the final name
-                # scan to be empty; early empty lists may only reflect eventual consistency.
-                if (not ever_discovered and self._create_uncertain and name_scan_ok
-                        and attempt == self.attempts):
-                    self._mark_verified(self.pod_name or "UNKNOWN")
-                    return
                 if attempt < self.attempts:
                     self.sleep(min(2 ** (attempt - 1), 8))
             label = self.pod_id or self.pod_name or "UNKNOWN"
@@ -417,6 +446,26 @@ def attach_lease_status(exc: BaseException, lease: PodLease) -> BaseException:
     except BaseException:
         pass
     return exc
+
+
+def parse_remote_timestamp(value: Any) -> datetime:
+    """Parse the common ISO or epoch timestamp shapes returned for RunPod pods."""
+    if isinstance(value, bool):
+        raise ValueError("boolean is not a creation timestamp")
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+        if abs(seconds) >= 100_000_000_000:
+            seconds /= 1000.0
+        return datetime.fromtimestamp(seconds, timezone.utc)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("empty creation timestamp")
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 class Watchdog:
@@ -473,10 +522,10 @@ def shutdown_signals(cancel: threading.Event):
         cancel.set()
         raise RunCancelled(f"received signal {signum}")
 
-    for signum in (signal.SIGINT, signal.SIGTERM):
-        previous[signum] = signal.getsignal(signum)
-        signal.signal(signum, handler)
     try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous[signum] = signal.getsignal(signum)
+            signal.signal(signum, handler)
         yield
     finally:
         for signum, old in previous.items():
@@ -618,6 +667,20 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
         raise HarnessError("price_usd_per_hour must be finite and positive")
     if not isinstance(manifest.get("jobs"), list) or not manifest["jobs"]:
         raise HarnessError("manifest jobs must be a non-empty list")
+    comfy = manifest.get("comfyui")
+    if not isinstance(comfy, dict):
+        raise HarnessError("manifest comfyui configuration is required")
+    git_ref = comfy.get("git_ref")
+    if not isinstance(git_ref, str) or not git_ref.strip():
+        raise HarnessError("comfyui.git_ref is required")
+    if not isinstance(comfy.get("replace_non_git_root", False), bool):
+        raise HarnessError("comfyui.replace_non_git_root must be true or false")
+    volume_root = PurePosixPath(str(manifest.get("volume_mount_path", "/workspace")))
+    comfy_root = PurePosixPath(str(comfy.get("root", "/workspace/ComfyUI")))
+    if (not volume_root.is_absolute() or not comfy_root.is_absolute()
+            or ".." in volume_root.parts or ".." in comfy_root.parts
+            or comfy_root == volume_root or not comfy_root.is_relative_to(volume_root)):
+        raise HarnessError("comfyui.root must be an absolute subdirectory of volume_mount_path")
     for job in manifest["jobs"]:
         expected = job.get("expected_images", 1) if isinstance(job, dict) else None
         if (not isinstance(job, dict) or isinstance(expected, bool)
@@ -708,10 +771,22 @@ def repo_ledger_dir() -> Path:
     return repo_root() / "ledgers" / "cost"
 
 
+def configured_ledger_dir(explicit: Path | None = None) -> Path:
+    if explicit is not None:
+        return explicit
+    env_value = os.environ.get("KB_LEDGER_DIR")
+    if env_value:
+        return Path(env_value)
+    if OPS_LEDGER_DIR.is_dir():
+        return OPS_LEDGER_DIR
+    return repo_ledger_dir()
+
+
 def daily_budget_state(*, budget_path: Path | None = None,
-                       ledger_dir: Path | None = None) -> tuple[float, float]:
+                       ledger_dir: Path | None = None,
+                       logger: logging.Logger | None = None) -> tuple[float, float]:
     budget_path = budget_path or repo_root() / "governance" / "budget.yaml"
-    ledger_dir = ledger_dir or repo_ledger_dir()
+    ledger_dir = configured_ledger_dir(ledger_dir)
     budget = parse_simple_yaml(budget_path.read_text(encoding="utf-8"))
     if not isinstance(budget, dict) or not isinstance(budget.get("daily_usd_limit"), (int, float)):
         raise HarnessError("governance budget is missing numeric daily_usd_limit")
@@ -725,7 +800,9 @@ def daily_budget_state(*, budget_path: Path | None = None,
             with path.open("r", encoding="utf-8", newline="") as handle:
                 reader = csv.DictReader(handle, delimiter="\t")
                 if not reader.fieldnames or "usd" not in reader.fieldnames:
-                    raise HarnessError(f"cost ledger has no usd column: {path}")
+                    if logger:
+                        logger.warning("skipping cost ledger without usd column: %s", path)
+                    continue
                 for row in reader:
                     value = float(row["usd"])
                     if not math.isfinite(value) or value < 0:
@@ -737,8 +814,11 @@ def daily_budget_state(*, budget_path: Path | None = None,
 
 
 def enforce_daily_budget(estimate: float, *, budget_path: Path | None = None,
-                         ledger_dir: Path | None = None) -> tuple[float, float]:
-    daily_limit, spent = daily_budget_state(budget_path=budget_path, ledger_dir=ledger_dir)
+                         ledger_dir: Path | None = None,
+                         logger: logging.Logger | None = None) -> tuple[float, float]:
+    daily_limit, spent = daily_budget_state(
+        budget_path=budget_path, ledger_dir=ledger_dir, logger=logger,
+    )
     if estimate < 0 or spent + estimate > daily_limit:
         raise HarnessError(
             f"daily budget refused: ${spent:.4f} spent + ${estimate:.4f} estimate "
@@ -822,6 +902,8 @@ def _safe_node_name(url: str, explicit: str | None) -> str:
 def bootstrap_script(manifest: dict[str, Any]) -> str:
     comfy = manifest.get("comfyui") or {}
     root = str(comfy.get("root", "/workspace/ComfyUI"))
+    git_ref = str(comfy["git_ref"])
+    replace_non_git_root = comfy.get("replace_non_git_root") is True
     port = int(comfy.get("port", 8188))
     lines = [
         "#!/usr/bin/env bash",
@@ -833,14 +915,22 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
         "run_required curl-present curl --version",
         "if [ \"$fail\" -ne 0 ]; then exit \"$fail\"; fi",
     ]
+    clone_comfy = (
+        f"git clone --branch {shlex.quote(git_ref)} --depth 1 "
+        f"https://github.com/comfyanonymous/ComfyUI {shlex.quote(root)}"
+    )
+    non_git_root = (
+        f"rm -rf {shlex.quote(root)} && {clone_comfy}"
+        if replace_non_git_root else
+        "echo 'ComfyUI root exists but is not a git checkout; set "
+        "comfyui.replace_non_git_root: true to replace it' >&2; exit 1"
+    )
     install_comfy = (
         f"if [ -d {shlex.quote(root + '/.git')} ]; then "
-        f"git -C {shlex.quote(root)} fetch --depth 1 origin tag {shlex.quote(COMFYUI_TAG)} && "
-        f"git -C {shlex.quote(root)} checkout --detach {shlex.quote(COMFYUI_TAG)}; "
-        f"elif [ -e {shlex.quote(root)} ]; then "
-        f"echo 'ComfyUI root exists but is not a git checkout' >&2; exit 1; "
-        f"else git clone --branch {shlex.quote(COMFYUI_TAG)} --depth 1 "
-        f"https://github.com/comfyanonymous/ComfyUI {shlex.quote(root)}; fi && "
+        f"git -C {shlex.quote(root)} fetch --depth 1 origin {shlex.quote(git_ref)} && "
+        f"git -C {shlex.quote(root)} checkout --detach FETCH_HEAD; "
+        f"elif [ -e {shlex.quote(root)} ]; then {non_git_root}; "
+        f"else {clone_comfy}; fi && "
         f"python -m pip install -r {shlex.quote(root + '/requirements.txt')}"
     )
     lines.extend([
@@ -881,6 +971,7 @@ def bootstrap_script(manifest: dict[str, Any]) -> str:
         f"cd {shlex.quote(root)} && nohup bash -lc {shlex.quote(start)} > /tmp/figment-comfy.log 2>&1 & fi"
     )
     lines.append(f"run_required comfy-start bash -lc {shlex.quote(start_cmd)}")
+    lines.append('if [ "$fail" -ne 0 ]; then exit "$fail"; fi')
     health_cmd = (
         f"for n in $(seq 1 120); do curl --silent --fail http://127.0.0.1:{port}/system_stats >/dev/null && exit 0; sleep 2; done; "
         "tail -n 100 /tmp/figment-comfy.log 2>/dev/null; exit 1"
@@ -1072,11 +1163,11 @@ class ComfyClient:
                 outputs: list[dict[str, str]] = []
                 for node in (entry.get("outputs") or {}).values():
                     for image in node.get("images", []):
-                        if image.get("filename"):
+                        if image.get("filename") and image.get("type") == "output":
                             outputs.append({
                                 "filename": str(image["filename"]),
                                 "subfolder": str(image.get("subfolder", "")),
-                                "type": str(image.get("type", "output")),
+                                "type": "output",
                             })
                 if outputs:
                     return outputs
@@ -1200,34 +1291,70 @@ def append_cost_row(ledger_dir: Path, gpu: str, step: str, usd: float) -> Path:
     return path
 
 
+@contextmanager
+def exclusive_ledger_lock(path: Path, timeout: float = LEDGER_LOCK_TIMEOUT):
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    deadline = time.monotonic() + timeout
+    descriptor: int | None = None
+    while descriptor is None:
+        try:
+            descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError as exc:
+            if time.monotonic() >= deadline:
+                raise HarnessError(f"timed out waiting for cost ledger lock: {lock_path}") from exc
+            time.sleep(0.01)
+        except OSError as exc:
+            raise HarnessError(f"could not acquire cost ledger lock {lock_path}: {exc}") from exc
+    try:
+        os.write(descriptor, f"{os.getpid()}\n".encode("ascii"))
+        os.close(descriptor)
+        descriptor = None
+        yield
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise HarnessError(f"could not release cost ledger lock {lock_path}: {exc}") from exc
+
+
 def upsert_cost_row(ledger_dir: Path, model: str, step: str, usd: float) -> Path:
     if any(char in model + step for char in "\t\r\n"):
         raise HarnessError("ledger model and step must be single TSV fields")
     ledger_dir.mkdir(parents=True, exist_ok=True)
     path = ledger_dir / f"figment-{datetime.now(timezone.utc):%Y-%m-%d}.tsv"
-    rows: list[dict[str, str]] = []
-    if path.exists() and path.stat().st_size:
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter="\t")
-            if reader.fieldnames != ["model", "step", "usd"]:
-                raise HarnessError(f"unexpected cost ledger schema: {path}")
-            rows = list(reader)
-    replacement = {"model": model, "step": step, "usd": f"{usd:.6f}"}
-    replaced = False
-    for index, row in enumerate(rows):
-        if row.get("model") == model and row.get("step") == step:
-            rows[index] = replacement
-            replaced = True
-            break
-    if not replaced:
-        rows.append(replacement)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["model", "step", "usd"], delimiter="\t",
-                                lineterminator="\n")
-        writer.writeheader()
-        writer.writerows(rows)
-    temporary.replace(path)
+    with exclusive_ledger_lock(path):
+        rows: list[dict[str, str]] = []
+        if path.exists() and path.stat().st_size:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                if reader.fieldnames != ["model", "step", "usd"]:
+                    raise HarnessError(f"unexpected cost ledger schema: {path}")
+                rows = list(reader)
+        replacement = {"model": model, "step": step, "usd": f"{usd:.6f}"}
+        replaced = False
+        for index, row in enumerate(rows):
+            if row.get("model") == model and row.get("step") == step:
+                rows[index] = replacement
+                replaced = True
+                break
+        if not replaced:
+            rows.append(replacement)
+        temporary = path.with_name(
+            f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+        )
+        try:
+            with temporary.open("x", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(
+                    handle, fieldnames=["model", "step", "usd"], delimiter="\t",
+                    lineterminator="\n",
+                )
+                writer.writeheader()
+                writer.writerows(rows)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
     return path
 
 
@@ -1247,8 +1374,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 comfy_factory: Callable[[str], Any] | None = None,
                 tunnel_factory: Callable[[Any, int, logging.Logger], Any] | None = None,
                 sleep: Callable[[float], None] = time.sleep,
-                ledger_dir: Path | None = None, budget_path: Path | None = None,
-                daily_ledger_dir: Path | None = None) -> dict[str, Any]:
+                ledger_dir: Path | None = None,
+                budget_path: Path | None = None) -> dict[str, Any]:
     require_manifest(manifest, manifest_path)
     max_minutes = effective_max_minutes(max_minutes, manifest)
     if not dry_run and max_usd is None:
@@ -1257,13 +1384,19 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     logger = logger or build_logger(redactor)
     if redactor:
         set_active_redactor(redactor)
+    ledger_target = (
+        out_dir / "dry-run-ledger"
+        if dry_run and ledger_dir is None else configured_ledger_dir(ledger_dir)
+    )
+    logger.info("cost ledger directory: %s", ledger_target)
     daily_limit: float | None = None
     daily_spent: float | None = None
     if not dry_run:
         daily_limit, daily_spent = enforce_daily_budget(
             estimate,
             budget_path=budget_path,
-            ledger_dir=daily_ledger_dir or ledger_dir or repo_ledger_dir(),
+            ledger_dir=ledger_target,
+            logger=logger,
         )
     logger.info("preflight cost estimate: $%.4f for %.2f minute(s)", estimate, max_minutes)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1273,12 +1406,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         raise HarnessError("live run requires an authenticated API")
 
     payload = create_payload(manifest)
-    ledger_target = ledger_dir or repo_ledger_dir()
-    if dry_run and ledger_dir is None:
-        ledger_target = out_dir / "dry-run-ledger"
     ledger_model = gpu_model_label(manifest["gpu"]["type"])
     started = time.monotonic()  # The budget clock begins immediately before create.
-    started_utc = datetime.now(timezone.utc)
+    started_utc = datetime.now(timezone.utc).replace(microsecond=0)
     result: dict[str, Any] = {
         "schema": "figment/runpod-run@1",
         "dry_run": dry_run,
@@ -1305,11 +1435,25 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         )
         logger.info("provisional cost row: %s", cost_path)
 
-    lease = PodLease(api, payload, logger, sleep=sleep, on_acquired=record_acquired)
+    lease = PodLease(
+        api, payload, logger, sleep=sleep, on_acquired=record_acquired,
+        started_utc=started_utc,
+    )
     cancel = threading.Event()
     watchdog: Watchdog | None = None
     caught: BaseException | None = None
     actual_hourly: float | None = None
+
+    def retain_finalization_failure(label: str, secondary: BaseException) -> None:
+        nonlocal caught
+        logger.error(
+            "secondary finalization failure during %s: %s: %s",
+            label, type(secondary).__name__, secondary,
+        )
+        if caught is None:
+            caught = secondary
+            result["error"] = f"{type(secondary).__name__}: {secondary}"
+
     try:
         with shutdown_signals(cancel), lease:
             result["pod_id"] = lease.pod_id
@@ -1387,37 +1531,52 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         caught = exc
         result["error"] = f"{type(exc).__name__}: {exc}"
     finally:
-        if watchdog:
-            watchdog.stop(teardown_budget_seconds(lease.attempts))
-            if caught is None and watchdog.error:
-                caught = watchdog.error
-                result["error"] = f"{type(caught).__name__}: {caught}"
-            elif caught is None and watchdog.fired.is_set():
-                caught = RunCancelled("maximum runtime reached")
-                result["error"] = f"{type(caught).__name__}: {caught}"
-        pod_id, _pod_name, verified = lease.snapshot()
-        result["pod_id"] = pod_id or result["pod_id"]
-        result["termination_verified"] = verified
-        elapsed = time.monotonic() - started
-        result["finished_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        result["elapsed_seconds"] = round(elapsed, 3)
-        result["hourly_price_usd"] = actual_hourly
-        settled_cost = 0.0 if dry_run else estimate
-        if not dry_run and actual_hourly is not None:
-            measured = actual_hourly * elapsed / 3600.0
-            settled_cost = measured if verified else max(estimate, measured)
-        result["estimated_actual_usd"] = round(settled_cost, 6)
-        write_json(out_dir / "run.json", result, redactor)
+        try:
+            if watchdog:
+                watchdog.stop(teardown_budget_seconds(lease.attempts))
+                if caught is None and watchdog.error:
+                    caught = watchdog.error
+                    result["error"] = f"{type(caught).__name__}: {caught}"
+                elif caught is None and watchdog.fired.is_set():
+                    caught = RunCancelled("maximum runtime reached")
+                    result["error"] = f"{type(caught).__name__}: {caught}"
+        except BaseException as secondary:
+            retain_finalization_failure("watchdog stop", secondary)
+        try:
+            pod_id, _pod_name, verified = lease.snapshot()
+            result["pod_id"] = pod_id or result["pod_id"]
+            result["termination_verified"] = verified
+            elapsed = time.monotonic() - started
+            result["finished_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            result["elapsed_seconds"] = round(elapsed, 3)
+            result["hourly_price_usd"] = actual_hourly
+            settled_cost = 0.0 if dry_run else estimate
+            if not dry_run and actual_hourly is not None:
+                measured = actual_hourly * elapsed / 3600.0
+                settled_cost = measured if verified else max(estimate, measured)
+            result["estimated_actual_usd"] = round(settled_cost, 6)
+        except BaseException as secondary:
+            retain_finalization_failure("result accounting", secondary)
+        try:
+            write_json(out_dir / "run.json", result, redactor)
+        except BaseException as secondary:
+            retain_finalization_failure("run.json write", secondary)
         if images_manifest:
-            write_json(out_dir / "manifest.json", {"images": images_manifest}, redactor)
+            try:
+                write_json(out_dir / "manifest.json", {"images": images_manifest}, redactor)
+            except BaseException as secondary:
+                retain_finalization_failure("manifest.json write", secondary)
         if result["pod_id"]:
-            cost_path = upsert_cost_row(
-                ledger_target,
-                ledger_model,
-                f"pod-create {result['pod_id']}",
-                float(result["estimated_actual_usd"]),
-            )
-            logger.info("cost row: %s", cost_path)
+            try:
+                cost_path = upsert_cost_row(
+                    ledger_target,
+                    ledger_model,
+                    f"pod-create {result['pod_id']}",
+                    float(result["estimated_actual_usd"]),
+                )
+                logger.info("cost row: %s", cost_path)
+            except BaseException as secondary:
+                retain_finalization_failure("cost ledger write", secondary)
     if caught is None and not result["termination_verified"]:
         caught = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
     if caught:
@@ -1453,6 +1612,7 @@ def command_run(args: argparse.Namespace) -> int:
             api=api,
             logger=logger,
             redactor=redactor,
+            ledger_dir=args.ledger_dir,
         )
         if not result["termination_verified"]:
             error = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
@@ -1516,6 +1676,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true", help="exercise every local stage with no network")
     run.add_argument("--max-usd", type=float)
     run.add_argument("--max-minutes", type=float)
+    run.add_argument(
+        "--ledger-dir", type=Path,
+        help="cost ledger root (fallback: KB_LEDGER_DIR, ops worktree, then repo ledger)",
+    )
     run.set_defaults(func=command_run)
     terminate = sub.add_parser("terminate", help="terminate a pod and verify it is absent")
     terminate.add_argument("--pod-id", required=True)
@@ -1526,6 +1690,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    sys.excepthook = redacting_excepthook
     args = build_parser().parse_args(argv)
 
     def report(exc: BaseException, summary: str) -> None:
@@ -1553,7 +1718,9 @@ def main(argv: list[str] | None = None) -> int:
         report(exc, str(exc))
         return 1
     except BaseException as exc:
-        report(exc, f"{type(exc).__name__}: {exc}")
+        redacting_excepthook(type(exc), exc, exc.__traceback__)
+        if getattr(exc, "termination_verified", True) is False:
+            report(exc, "unexpected failure")
         return 1
 
 

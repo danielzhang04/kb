@@ -31,6 +31,8 @@ that file. Required fields are:
 - `gpu.type`, with optional `gpu.count` and `gpu.cloud`;
 - `image` or `template_id`, plus optional `network_volume_id`;
 - a conservative `price_usd_per_hour` for pre-create estimation;
+- `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
+  `/workspace/ComfyUI` and may not equal the mount itself);
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
 - optional public-HTTPS `custom_nodes`;
 - a ComfyUI API-format `workflow` object or JSON path;
@@ -43,23 +45,32 @@ job seed to every matching node before applying that job's explicit substitution
 explicit substitution can deliberately override the automatic value.
 
 The example uses a PyTorch image that does not contain ComfyUI. Bootstrap first checks
-Python, Git, and curl and exits before downloads if a prerequisite is missing. It then clones
-`https://github.com/comfyanonymous/ComfyUI` at pinned tag `v0.3.76` and installs its
-`requirements.txt`. Existing tagged checkouts and non-empty model files are reused. A failed
-ComfyUI install, dependency install, or model download is fatal, so the enclosing lease
-immediately terminates and verifies the Pod.
+Python, Git, and curl and exits before downloads if a prerequisite is missing. The harness is
+the sole owner of the ComfyUI install: it fetches and checks out `comfyui.git_ref` in an
+existing Git checkout, or clones that ref when the root is absent, then installs
+`requirements.txt`. An existing non-Git root fails before model downloads unless the manifest
+explicitly sets `comfyui.replace_non_git_root: true`; only that opt-in permits removal and
+replacement of the nested root. Existing non-empty model files are reused. A failed ComfyUI
+install, dependency install, model download, or start is fatal and short-circuits later
+bootstrap steps, so the enclosing lease immediately terminates and verifies the Pod.
 
 ComfyUI history entries with `completed: false` are treated as work in progress. Only
-`status_str: error`, timeout, or a completed job with zero images is a job failure. Before any
-SCP, the returned image count must equal the job's `expected_images`; after SCP, every file
-must exist and have non-zero size. Failed SCP stderr is logged through the redactor.
+`status_str: error`, timeout, or a completed job with zero output images is a job failure.
+Preview and temporary images are ignored. Before any SCP, the returned output-image count
+must equal the job's `expected_images`; after SCP, every file must exist and have non-zero
+size. Failed SCP stderr is logged through the redactor.
 
 ## Spend ceilings
 
 A live `run` requires `--max-usd`. Before create, the harness computes the manifest estimate,
 reads `governance/budget.yaml` `daily_usd_limit`, sums the `usd` column in today's
-`ledgers/cost/*.tsv`, and refuses when existing spend plus the estimate exceeds the daily
-limit. `max_minutes` is the minimum of the CLI value, manifest value, and the hard
+cost ledgers, and refuses when existing spend plus the estimate exceeds the daily limit.
+Files without a `usd` column are skipped with a warning; malformed values in a declared
+`usd` column still fail closed. The ledger directory is selected in this order:
+`--ledger-dir`, `KB_LEDGER_DIR`,
+`C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost` when that directory exists, then the
+repo's `ledgers/cost`. The selected path is logged. `governance/budget.yaml` always comes from
+the harness repo root. `max_minutes` is the minimum of the CLI value, manifest value, and the hard
 `DEFAULT_MAX_MINUTES` of 60; a manifest can only lower the ceiling.
 
 The manifest rate is never trusted after create. Once the Pod is READY, its
@@ -71,7 +82,8 @@ At Pod acquisition, the cost ledger receives a provisional row with model
 `runpod:<gpu-short-name>`, step `pod-create <id>`, and the preflight estimate. Verified
 teardown replaces that same row with elapsed cost at the READY rate. An unverified teardown
 keeps at least the provisional estimate. Dry-run rows remain under
-`<out>/dry-run-ledger/` at zero USD.
+`<out>/dry-run-ledger/` at zero USD unless `--ledger-dir` is explicitly supplied. Ledger
+upserts use an exclusive bounded lock and a unique atomic-replace temporary file.
 
 ## Commands
 
@@ -87,7 +99,7 @@ typing the secret into PowerShell history:
 ```powershell
 $env:RUNPOD_API_KEY = (Get-Content -Raw 'C:\secure\runpod-api-key.txt').Trim()
 try {
-  py -3 runpod_run.py run --manifest manifest.yaml --out .\run-001 --max-usd 0.30 --max-minutes 20
+  py -3 runpod_run.py run --manifest manifest.yaml --out .\run-001 --max-usd 0.30 --max-minutes 20 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost
 } finally {
   Remove-Item Env:RUNPOD_API_KEY -ErrorAction SilentlyContinue
 }
@@ -114,17 +126,22 @@ the flat deliverable image set.
 
 `PodLease` registers its atexit cleanup before the create request. If create times out,
 returns a proxy error or bad JSON, or omits the ID after RunPod created the Pod, teardown
-recovers every matching Pod by the request's unique name, terminates it, and verifies absence.
-Failed list calls are retried by the same five-attempt close path.
+recovers matching Pods by the request's unique name and, when provided by RunPod, a creation
+timestamp no older than this run. Missing creation timestamps are logged before proceeding on
+the exact name alone. Failed or empty list calls are retried by the same five-attempt close
+path. An empty name scan never proves absence: only a 404 for a known Pod ID can mark teardown
+verified.
 
 The watchdog's wall-clock budget begins at the create call. It independently invokes the
 same idempotent close path, and finalization waits for its full delete/verify/backoff budget
 before reading the lease verdict under the lease lock. SIGINT and SIGTERM become flag-only
 for the duration of `close()`, so all five teardown attempts remain available.
 
-Close treats only `GET /pods/{id}` returning 404 (or a completed name-recovery sweep with no
-match) as verified absence; a successful DELETE alone is not proof. On every unverified exit,
-the CLI prints:
+Close treats only `GET /pods/{id}` returning 404 as verified absence; a successful DELETE or
+an empty name scan alone is not proof. Final ledger/JSON write failures are reported as
+secondary errors and cannot replace an earlier teardown failure. On every unverified exit,
+the CLI prints an ID-specific terminate command when the ID is known, or a `status` recovery
+command when only the name is known:
 
 ```text
 POD STILL RUNNING <id> — run: terminate --pod-id <id>

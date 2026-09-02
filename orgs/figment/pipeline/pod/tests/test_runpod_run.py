@@ -10,6 +10,7 @@ import threading
 import time
 import traceback
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ import pytest
 import sys
 
 POD_DIR = Path(__file__).resolve().parents[1]
+BAKEOFF_DIR = POD_DIR.parent / "bakeoff"
 # Restricted workers may not access the user-wide temp directory. Pytest reads this lazily
 # when tmp_path is first requested, so keep its scratch tree inside this test's own scope.
 os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(POD_DIR))
@@ -60,7 +62,7 @@ class FakeRemote:
         assert "set -e" not in script
         assert "STEP %s rc=%s" in script
         assert "https://github.com/comfyanonymous/ComfyUI" in script
-        assert rr.COMFYUI_TAG in script
+        assert "v0.20.1" in script
         assert script.index("python-present") < script.index("comfy-install")
         assert script.index("comfy-install") < script.index("model-1") if "model-1" in script else True
         self.bootstrapped = True
@@ -130,6 +132,13 @@ def manifest():
         "gpu": {"type": "NVIDIA GeForce RTX 4090", "count": 1, "cloud": "SECURE"},
         "image": "runpod/pytorch:test",
         "price_usd_per_hour": 0.50,
+        "volume_mount_path": "/workspace",
+        "comfyui": {
+            "root": "/workspace/ComfyUI",
+            "git_ref": "v0.20.1",
+            "port": 8188,
+            "start_command": "python main.py --listen 127.0.0.1 --port 8188",
+        },
         "workflow": {
             "1": {"class_type": "KSampler", "inputs": {"seed": 1, "positive": ["2", 0]}},
             "2": {"class_type": "CLIPTextEncode", "inputs": {"text": "old"}},
@@ -343,10 +352,8 @@ def test_explicit_seed_substitution_overrides_automatic_seed():
 
 
 def test_flux_manifests_dry_run_without_node_99(tmp_path):
-    bakeoff_dir = POD_DIR.parent / "bakeoff"
-
     for manifest_name in ("arm-b-klein4b.yaml", "smoke.yaml"):
-        manifest_path = bakeoff_dir / manifest_name
+        manifest_path = BAKEOFF_DIR / manifest_name
         assert "99" not in json.loads(manifest_path.read_text(encoding="utf-8"))["workflow"]
         assert rr.main([
             "run", "--manifest", str(manifest_path), "--dry-run",
@@ -539,8 +546,7 @@ def test_A5_daily_budget_is_summed_and_refused_before_create(tmp_path):
         rr.run_harness(
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=60, dry_run=False, api=api, logger=logger,
-            ledger_dir=tmp_path / "run-ledger", budget_path=budget,
-            daily_ledger_dir=daily_ledgers,
+            ledger_dir=daily_ledgers, budget_path=budget,
         )
     assert api.creates == 0
 
@@ -645,6 +651,7 @@ def test_B1_main_and_excepthook_redact_requests_style_exception(
     stderr = capsys.readouterr().err
     assert secret not in stderr
     assert "[REDACTED]" in stderr
+    assert 'File "' in stderr
 
     try:
         raise RuntimeError(f"traceback carried {secret}")
@@ -652,7 +659,10 @@ def test_B1_main_and_excepthook_redact_requests_style_exception(
         formatted = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         assert secret not in redactor.redact(formatted)
         rr.redacting_excepthook(type(exc), exc, exc.__traceback__)
-    assert secret not in capsys.readouterr().err
+    hook_stderr = capsys.readouterr().err
+    assert secret not in hook_stderr
+    assert "[REDACTED]" in hook_stderr
+    assert 'File "' in hook_stderr
     rr.set_active_redactor(None)
 
 
@@ -691,7 +701,7 @@ def test_C2_incomplete_comfy_history_keeps_polling(monkeypatch):
         StubResponse(200, {
             "prompt": {
                 "status": {"completed": True, "status_str": "success"},
-                "outputs": {"9": {"images": [{"filename": "done.png"}]}},
+                "outputs": {"9": {"images": [{"filename": "done.png", "type": "output"}]}},
             }
         }),
     ]
@@ -825,3 +835,286 @@ def test_SSH_flag_symmetry_ssh_lowercase_scp_uppercase(tmp_path, monkeypatch):
     assert "-p" in ssh_command and "-P" not in ssh_command
     assert scp_command[0] == "scp"
     assert "-P" in scp_command and "-p" not in scp_command
+
+
+@pytest.mark.parametrize(
+    "manifest_name",
+    ["arm-a-zimage.yaml", "arm-b-klein4b.yaml", "smoke.yaml"],
+)
+def test_N0_real_bakeoff_bootstrap_owns_comfyui_and_fails_fast(manifest_name):
+    manifest_path = BAKEOFF_DIR / manifest_name
+    real_manifest = rr.load_manifest(manifest_path)
+    rr.require_manifest(real_manifest, manifest_path)
+
+    script = rr.bootstrap_script(real_manifest)
+    lines = script.splitlines()
+    assert "git -C /workspace/ComfyUI fetch --depth 1 origin v0.20.1" in script
+    assert "git clone --branch v0.20.1 --depth 1" in script
+    assert "https://github.com/comfyanonymous/ComfyUI /workspace/ComfyUI" in script
+    assert "elif [ -e /workspace ]; then" not in script
+    assert script.index("comfy-install") < script.index("model-1")
+
+    model_steps = [index for index, line in enumerate(lines) if line.startswith("run_required model-")]
+    assert len(model_steps) == len(real_manifest["models"])
+    for index in model_steps:
+        assert lines[index + 1] == 'if [ "$fail" -ne 0 ]; then exit "$fail"; fi'
+
+
+def test_N0_manifest_requires_git_ref_and_nested_comfy_root(tmp_path):
+    missing_ref = manifest()
+    missing_ref["comfyui"].pop("git_ref")
+    with pytest.raises(rr.HarnessError, match="comfyui.git_ref is required"):
+        rr.require_manifest(missing_ref, tmp_path / "manifest.yaml")
+
+    mount_as_root = manifest()
+    mount_as_root["comfyui"]["root"] = "/workspace"
+    with pytest.raises(rr.HarnessError, match="subdirectory of volume_mount_path"):
+        rr.require_manifest(mount_as_root, tmp_path / "manifest.yaml")
+
+
+@pytest.mark.parametrize(
+    "unsafe_root", ["/workspace/ComfyUI/..", "/other/ComfyUI", "relative/ComfyUI"],
+)
+def test_N0_comfy_root_cannot_escape_or_alias_volume_mount(tmp_path, unsafe_root):
+    configured = manifest()
+    configured["comfyui"]["root"] = unsafe_root
+    with pytest.raises(rr.HarnessError, match="subdirectory of volume_mount_path"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+@pytest.mark.parametrize("replace_root", [False, True])
+def test_N0_non_git_comfy_root_replacement_requires_opt_in(replace_root):
+    configured = manifest()
+    configured["comfyui"]["replace_non_git_root"] = replace_root
+
+    script = rr.bootstrap_script(configured)
+
+    assert ("rm -rf /workspace/ComfyUI" in script) is replace_root
+
+
+def test_N1_empty_name_scans_never_verify_uncertain_create(monkeypatch, capsys):
+    monkeypatch.setattr(rr.atexit, "register", lambda _callback: None)
+    monkeypatch.setattr(rr.atexit, "unregister", lambda _callback: None)
+
+    class InvisibleCreatedPod:
+        def create_pod(self, _payload):
+            raise TimeoutError("POST timed out after create")
+
+        def list_pods(self):
+            return []
+
+        def delete_pod(self, _pod_id):
+            raise AssertionError("no pod id should be invented")
+
+        def get_pod(self, _pod_id):
+            raise AssertionError("no pod id should be invented")
+
+    def uncertain_command(_args):
+        lease = rr.PodLease(
+            InvisibleCreatedPod(), {"name": "figment-bakeoff-invisible"},
+            logging.getLogger("N1"), sleep=lambda _seconds: None, attempts=2,
+        )
+        with lease:
+            pass
+
+    monkeypatch.setattr(rr, "command_run", uncertain_command)
+    code = rr.main(["run", "--manifest", "unused", "--out", "unused", "--dry-run"])
+    stderr = capsys.readouterr().err
+    assert code == 1
+    assert "termination verified" not in stderr.lower()
+    assert "POD STILL RUNNING figment-bakeoff-invisible" in stderr
+    assert "run: status" in stderr
+
+
+def test_N2_final_ledger_failure_cannot_displace_pod_still_running(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(rr.atexit, "register", lambda _callback: None)
+    monkeypatch.setattr(rr.atexit, "unregister", lambda _callback: None)
+    ledger_dir = tmp_path / "ledger"
+
+    class ImmortalForeignLedger(FakeAPI):
+        def delete_pod(self, _pod_id):
+            self.deletes += 1
+            ledger = next(ledger_dir.glob("*.tsv"))
+            ledger.write_text("foreign\theader\nvalue\tvalue\n", encoding="utf-8")
+
+    api = ImmortalForeignLedger()
+
+    def immortal_command(_args):
+        run_with(api, tmp_path, ledger_dir=ledger_dir)
+        return 0
+
+    monkeypatch.setattr(rr, "command_run", immortal_command)
+    code = rr.main(["run", "--manifest", "unused", "--out", "unused", "--dry-run"])
+    stderr = capsys.readouterr().err
+    assert code == 1
+    assert api.deletes == rr.TERMINATE_ATTEMPTS
+    assert "POD STILL RUNNING pod-123" in stderr
+    assert "terminate --pod-id pod-123" in stderr
+
+
+def test_N3_daily_budget_sums_mixed_usd_headers_and_skips_headerless(tmp_path):
+    budget = tmp_path / "budget.yaml"
+    budget.write_text("daily_usd_limit: 5.00\n", encoding="utf-8")
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    (ledgers / f"model-{today}.tsv").write_text(
+        "model\tstep\tusd\na\tb\t1.250000\n", encoding="utf-8"
+    )
+    (ledgers / f"note-{today}.tsv").write_text(
+        "note\tusd\nprior work\t0.500000\n", encoding="utf-8"
+    )
+    (ledgers / f"headerless-{today}.tsv").write_text(
+        "unlabelled work\t0.750000\n", encoding="utf-8"
+    )
+    logger, stream = logger_and_stream()
+
+    daily_limit, spent = rr.daily_budget_state(
+        budget_path=budget, ledger_dir=ledgers, logger=logger,
+    )
+
+    assert daily_limit == 5.0
+    assert spent == pytest.approx(1.75)
+    assert "skipping cost ledger without usd column" in stream.getvalue()
+
+
+def test_N3_ledger_dir_precedence_and_ops_fallback(tmp_path, monkeypatch):
+    cli_dir = tmp_path / "cli"
+    env_dir = tmp_path / "env"
+    ops_dir = tmp_path / "ops"
+    ops_dir.mkdir()
+    monkeypatch.setattr(rr, "OPS_LEDGER_DIR", ops_dir)
+    monkeypatch.setenv("KB_LEDGER_DIR", str(env_dir))
+    assert rr.configured_ledger_dir(cli_dir) == cli_dir
+    assert rr.configured_ledger_dir() == env_dir
+    monkeypatch.delenv("KB_LEDGER_DIR")
+    assert rr.configured_ledger_dir() == ops_dir
+    monkeypatch.setattr(rr, "OPS_LEDGER_DIR", tmp_path / "missing-ops")
+    assert rr.configured_ledger_dir() == rr.repo_ledger_dir()
+
+
+def test_N6_partial_signal_mask_install_restores_first_handler(monkeypatch):
+    original = {signal.SIGINT: object(), signal.SIGTERM: object()}
+    installed = []
+
+    monkeypatch.setattr(rr.signal, "getsignal", lambda signum: original[signum])
+
+    def install(signum, handler):
+        installed.append((signum, handler))
+        if signum == signal.SIGTERM and handler is not original[signal.SIGTERM]:
+            raise RuntimeError("SIGTERM install failed")
+
+    monkeypatch.setattr(rr.signal, "signal", install)
+    with pytest.raises(RuntimeError, match="SIGTERM install failed"):
+        with rr.teardown_signal_mask(logging.getLogger("N6")):
+            pass
+    assert (signal.SIGINT, original[signal.SIGINT]) in installed
+
+
+def test_N7_concurrent_ledger_upserts_both_land(tmp_path):
+    barrier = threading.Barrier(3)
+    errors = []
+
+    def upsert(step):
+        barrier.wait()
+        try:
+            rr.upsert_cost_row(tmp_path, "runpod:rtx-4090", step, 0.1)
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=upsert, args=(f"pod-create pod-{index}",)) for index in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert not errors
+    assert all(not thread.is_alive() for thread in threads)
+    rows = next(tmp_path.glob("*.tsv")).read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 3
+    assert any("pod-create pod-0" in row for row in rows)
+    assert any("pod-create pod-1" in row for row in rows)
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+@pytest.mark.parametrize(
+    ("created_at", "expected_count"),
+    [
+        (datetime(2026, 1, 1, tzinfo=timezone.utc), 0),
+        (datetime(2026, 1, 3, tzinfo=timezone.utc), 1),
+        (None, 1),
+    ],
+)
+def test_N8_name_recovery_rejects_pods_older_than_this_run(created_at, expected_count):
+    pod = ready_pod("same-name")
+    if created_at is not None:
+        pod["createdAt"] = created_at.isoformat().replace("+00:00", "Z")
+
+    class MatchingAPI:
+        def list_pods(self):
+            return [pod]
+
+    logger, stream = logger_and_stream()
+    lease = rr.PodLease(
+        MatchingAPI(), {"name": "same-name"}, logger,
+        started_utc=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+    assert len(lease._named_matches()) == expected_count
+    if created_at is None:
+        assert "has no creation timestamp" in stream.getvalue()
+
+
+def test_N9_wait_outputs_counts_only_output_images(monkeypatch):
+    history = {
+        "prompt": {
+            "status": {"completed": True, "status_str": "success"},
+            "outputs": {"9": {"images": [
+                {"filename": "preview.png", "type": "temp"},
+                {"filename": "final.png", "type": "output"},
+            ]}},
+        }
+    }
+
+    class HistorySession:
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, history)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    outputs = rr.ComfyClient("http://comfy", session=HistorySession()).wait_outputs(
+        "prompt", 10, QuietWatchdog()
+    )
+    assert outputs == [{"filename": "final.png", "subfolder": "", "type": "output"}]
+
+
+def test_C5_comfy_start_failure_short_circuits_before_health():
+    lines = rr.bootstrap_script(manifest()).splitlines()
+    start_index = next(index for index, line in enumerate(lines) if line.startswith("run_required comfy-start"))
+    health_index = next(index for index, line in enumerate(lines) if line.startswith("run_required comfy-health"))
+    assert lines[start_index + 1] == 'if [ "$fail" -ne 0 ]; then exit "$fail"; fi'
+    assert start_index + 1 < health_index
+
+
+def test_B3_scp_failure_stderr_is_redacted(tmp_path, monkeypatch):
+    secret = "scp-secret-key"
+    session = StubSession([], key=secret)
+    redactor = rr.ApiKeyRedactionFilter(session)
+    logger, stream = logger_and_stream(redactor)
+
+    def fake_run(_command, **_kwargs):
+        return type("Completed", (), {
+            "returncode": 23,
+            "stdout": "",
+            "stderr": f"server reflected Authorization=Bearer {secret}\n",
+        })()
+
+    monkeypatch.setattr(rr.subprocess, "run", fake_run)
+    remote = rr.RemoteExecutor("example", 2222, tmp_path / "known", logger)
+    with pytest.raises(rr.HarnessError, match="scp download failed"):
+        remote.copy("/workspace/ComfyUI/output/a.png", tmp_path / "a.png", 1)
+    assert secret not in stream.getvalue()
+    assert "[REDACTED]" in stream.getvalue()
