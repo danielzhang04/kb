@@ -1,0 +1,1285 @@
+{
+  "gpu": {
+    "type": "NVIDIA GeForce RTX 4090",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "price_usd_per_hour": 0.8,
+  "max_minutes": 40,
+  "container_disk_gb": 60,
+  "volume_gb": 60,
+  "volume_mount_path": "/workspace",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
+    "port": 8188,
+    "start_command": "python main.py"
+  },
+  "readiness_timeout_seconds": 1200,
+  "job_timeout_seconds": 900,
+  "models": [
+    {
+      "repo_id": "Comfy-Org/z_image",
+      "filename": "split_files/diffusion_models/z_image_bf16.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/z_image",
+      "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/z_image",
+      "filename": "split_files/vae/ae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    }
+  ],
+  "custom_nodes": [],
+  "workflow": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "z_image_bf16.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen_3_4b.safetensors",
+        "type": "lumina2",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "ae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "placeholder positive prompt",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "underage appearance, nudity, exposed body, translucent or broken clothing, controlled commercial set, direct burst lighting, synthetic smooth skin",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "6": {
+      "class_type": "EmptySD3LatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1280,
+        "batch_size": 1
+      }
+    },
+    "7": {
+      "class_type": "ModelSamplingAuraFlow",
+      "inputs": {
+        "shift": 3,
+        "model": [
+          "1",
+          0
+        ]
+      }
+    },
+    "8": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 1,
+        "steps": 22,
+        "cfg": 4,
+        "sampler_name": "res_multistep",
+        "scheduler": "beta",
+        "denoise": 1,
+        "model": [
+          "7",
+          0
+        ],
+        "positive": [
+          "4",
+          0
+        ],
+        "negative": [
+          "5",
+          0
+        ],
+        "latent_image": [
+          "6",
+          0
+        ]
+      }
+    },
+    "9": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "8",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "10": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "placeholder",
+        "images": [
+          "9",
+          0
+        ]
+      }
+    }
+  },
+  "jobs": [
+    {
+      "seed": 100001,
+      "output_name": "grid01-makeup-bare-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears no makeup: her own softly angled brows are untouched, and her bare lips keep their natural colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "bare",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-makeup-bare-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears no makeup: her own softly angled brows are untouched, and her bare lips keep their natural colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "bare",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-makeup-tinted-balm-mascara-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears only tinted muted rose balm and one coat of mascara; her own softly angled brows are untouched. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "tinted-balm-mascara",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-makeup-tinted-balm-mascara-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears only tinted muted rose balm and one coat of mascara; her own softly angled brows are untouched. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "tinted-balm-mascara",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-makeup-light-everyday-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears light everyday makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, soft blush, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "light-everyday",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-makeup-light-everyday-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears light everyday makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, soft blush, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "light-everyday",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-makeup-soft-glam-lite-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears soft glam-lite makeup: defined lashes, her own softly angled brows brushed up, soft blush, and a satin muted rose lip, with no contour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "soft-glam-lite",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-makeup-soft-glam-lite-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears soft glam-lite makeup: defined lashes, her own softly angled brows brushed up, soft blush, and a satin muted rose lip, with no contour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "soft-glam-lite",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-makeup-soft-glam-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears soft glam makeup: bronze-brown shadow, softly smoked outer corners, subtle brown liner, her own softly angled brows brushed up, and a glossy berry-nude lip, with no bronzer or contour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "soft-glam",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-makeup-soft-glam-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears soft glam makeup: bronze-brown shadow, softly smoked outer corners, subtle brown liner, her own softly angled brows brushed up, and a glossy berry-nude lip, with no bronzer or contour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "makeup",
+        "variant": "soft-glam",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-prettiness-control-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-prettiness-control-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-prettiness-strikingly-pretty-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. She is strikingly pretty, with symmetrical features and clear skin. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "strikingly-pretty",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-prettiness-strikingly-pretty-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. She is strikingly pretty, with symmetrical features and clear skin. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "strikingly-pretty",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-prettiness-photogenic-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. She is photogenic, shown at a flattering angle with soft flattering window light on her face. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "photogenic",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-prettiness-photogenic-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. She is photogenic, shown at a flattering angle with soft flattering window light on her face. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "photogenic",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-prettiness-pretty-photogenic-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. She is strikingly pretty and photogenic, with symmetrical features, clear skin, a flattering angle, and soft flattering window light on her face. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "pretty-photogenic",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-prettiness-pretty-photogenic-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. She is strikingly pretty and photogenic, with symmetrical features, clear skin, a flattering angle, and soft flattering window light on her face. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "prettiness",
+        "variant": "pretty-photogenic",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-body-control-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-body-control-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-body-slender-small-frame-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a slender body: a narrow waist, a small frame, and visible collarbones. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "slender-small-frame",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-body-slender-small-frame-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a slender body: a narrow waist, a small frame, and visible collarbones. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "slender-small-frame",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-body-lean-toned-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean, toned body: long limbs and a flat stomach visible under the cami. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "lean-toned",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-body-lean-toned-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean, toned body: long limbs and a flat stomach visible under the cami. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "lean-toned",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-body-petite-slight-hourglass-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a petite, slim body: a slight hourglass and narrow shoulders. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "petite-slight-hourglass",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-body-petite-slight-hourglass-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a petite, slim body: a slight hourglass and narrow shoulders. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "body",
+        "variant": "petite-slight-hourglass",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-age-control-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-age-control-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-age-twenty-one-fresh-faced-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a twenty-one-year-old adult woman, fresh-faced, with smooth skin and a youthful adult face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "twenty-one-fresh-faced",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-age-twenty-one-fresh-faced-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a twenty-one-year-old adult woman, fresh-faced, with smooth skin and a youthful adult face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "twenty-one-fresh-faced",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-age-college-age-adult-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a college-age adult woman in her early twenties with youthful adult features and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "college-age-adult",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-age-college-age-adult-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a college-age adult woman in her early twenties with youthful adult features and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "college-age-adult",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-age-very-early-twenties-adult-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a young adult woman in her very early twenties, with a soft youthful adult face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "very-early-twenties-adult",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-age-very-early-twenties-adult-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a young adult woman in her very early twenties, with a soft youthful adult face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "age",
+        "variant": "very-early-twenties-adult",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-posture-candid-control-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "posture",
+        "variant": "candid-control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-posture-candid-control-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "posture",
+        "variant": "candid-control",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-posture-relaxed-flattering-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she sits in a relaxed but flattering pose: chin slightly down, eyes to camera, a small natural smile, and her hair falling naturally; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "posture",
+        "variant": "relaxed-flattering",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-posture-relaxed-flattering-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. A friend holds the phone at sitting distance while she sits in a relaxed but flattering pose: chin slightly down, eyes to camera, a small natural smile, and her hair falling naturally; her hands rest naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "posture",
+        "variant": "relaxed-flattering",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 100001,
+      "output_name": "grid01-posture-casual-selfie-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. She takes a casual selfie with the phone at arm's length, a soft smile, and her eyes looking into the lens; her free hand rests naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "posture",
+        "variant": "casual-selfie",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    },
+    {
+      "seed": 200002,
+      "output_name": "grid01-posture-casual-selfie-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photograph of a woman in her early twenties, about twenty-one, with an adult woman's face and a lean-curvy adult woman's frame. Her jawline is set beneath a soft square face with rounded corners, and her hands and neck read the same age as her face. Her monolid eyes have a slight rise at the outer corners. Her skin is medium tan with an even neutral warmth, visible pores, and a single mole near the left jaw hinge. Dark-brown hair falls below her shoulders in loose, rope-like curls, air-dried with uneven ends. She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour. She is seated on the edge of a bed beside a window in soft daylight, wearing a fully opaque black cotton camisole and one thin silver chain. She takes a casual selfie with the phone at arm's length, a soft smile, and her eyes looking into the lens; her free hand rests naturally in her lap. Her skin is left as skin, with pores visible across her nose and cheeks and light unevenness at the forehead. Her cheeks keep their natural rounded volume without added shadow or cosmetic warmth, and her medium-width mouth carries only balm over its natural colour. The frame feels casual and unperformed, made in a real bedroom. The ordinary phone image has mild lens softness, sensor grain, light JPEG artifacts, ordinary background focus, no computational sharpening, and no HDR halos. Asian-American woman."
+        },
+        {
+          "node_id": "6",
+          "field": "width",
+          "value": 1024
+        },
+        {
+          "node_id": "6",
+          "field": "height",
+          "value": 1280
+        }
+      ],
+      "calibration": {
+        "axis": "posture",
+        "variant": "casual-selfie",
+        "arm": "z_image",
+        "lora_applied": false
+      }
+    }
+  ],
+  "calibration": {
+    "base_job": "trial-04-c03-s1-seed-100001",
+    "axes": [
+      "makeup",
+      "prettiness",
+      "body",
+      "age",
+      "posture"
+    ],
+    "cell_seconds": 35,
+    "bootstrap_minutes": 9,
+    "output_prefix": "grid01"
+  }
+}

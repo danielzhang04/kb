@@ -1,14 +1,16 @@
 {
   "axis": "makeup",
-  "description": "Treat makeup as the discrete bare-to-defined ladder identified by r10.",
+  "description": "Bracket makeup from bare through trial-03-style soft glam with bronzer and contour removed, holding every other prompt phrase fixed.",
   "apply": {
     "type": "replace",
-    "target": "warm taupe shadow, subtle brown liner, bronzed cheeks, and a glossy nude-rose lip"
+    "target": "She wears almost no makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, and muted rose balm over her natural lip colour."
   },
   "variants": [
-    {"name": "bare", "value": "a bare face with no visible makeup, natural brows, and a moisturized natural lip"},
-    {"name": "soft-glam", "value": "warm taupe shadow, subtle brown liner, softly bronzed cheeks, full groomed brows, and a glossy nude-rose lip"},
-    {"name": "defined", "value": "defined warm contour, crisp brown winged liner, polished full brows, and a deeper soft-matte rose lip"}
+    {"name": "bare", "value": "She wears no makeup: her own softly angled brows are untouched, and her bare lips keep their natural colour."},
+    {"name": "tinted-balm-mascara", "value": "She wears only tinted muted rose balm and one coat of mascara; her own softly angled brows are untouched."},
+    {"name": "light-everyday", "value": "She wears light everyday makeup: a thin brown line close to the upper lash, one coat of mascara, her own softly angled brows brushed up, soft blush, and muted rose balm over her natural lip colour."},
+    {"name": "soft-glam-lite", "value": "She wears soft glam-lite makeup: defined lashes, her own softly angled brows brushed up, soft blush, and a satin muted rose lip, with no contour."},
+    {"name": "soft-glam", "value": "She wears soft glam makeup: bronze-brown shadow, softly smoked outer corners, subtle brown liner, her own softly angled brows brushed up, and a glossy berry-nude lip, with no bronzer or contour."}
   ],
-  "seeds": [100001, 200002, 300003]
+  "seeds": [100001, 200002]
 }

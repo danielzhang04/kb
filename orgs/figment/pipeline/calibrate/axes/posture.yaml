@@ -1,0 +1,14 @@
+{
+  "axis": "posture",
+  "description": "Bracket the trial-04 candid pose against two flattering phone-photo poses while holding the woman herself and the rest of the shot fixed.",
+  "apply": {
+    "type": "replace",
+    "target": "A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap."
+  },
+  "variants": [
+    {"name": "candid-control", "value": "A friend holds the phone at sitting distance while she slouches, her air-dried hair falling as it settles, her mouth relaxed, looking slightly past the lens as if caught mid-thought; her hands rest naturally in her lap."},
+    {"name": "relaxed-flattering", "value": "A friend holds the phone at sitting distance while she sits in a relaxed but flattering pose: chin slightly down, eyes to camera, a small natural smile, and her hair falling naturally; her hands rest naturally in her lap."},
+    {"name": "casual-selfie", "value": "She takes a casual selfie with the phone at arm's length, a soft smile, and her eyes looking into the lens; her free hand rests naturally in her lap."}
+  ],
+  "seeds": [100001, 200002]
+}

@@ -39,17 +39,17 @@ def test_age_prompt_variants_are_adult_only():
         assert not any(term in value for term in forbidden)
 
 
-def test_fixed_seeds_and_manifest_passes_harness_dry_run(tmp_path):
+def test_two_fixed_seeds_and_manifest_passes_harness_dry_run(tmp_path):
     axis = CALIBRATE / "axes" / "makeup.yaml"
     output = tmp_path / "grid.yaml"
     manifest = grid_run.build_manifest(
-        PIPELINE / "bakeoff" / "arm-a-zimage.yaml",
+        PIPELINE / "bakeoff" / "probe-a-zimage.yaml",
         [axis],
-        "trial-03-c01-s1-seed-100001",
+        "trial-04-c03-s1-seed-100001",
     )
     grid_run.write_manifest(manifest, output)
-    assert [job["seed"] for job in manifest["jobs"]] == [100001, 200002, 300003] * 3
-    assert len(manifest["jobs"]) == 9
+    assert [job["seed"] for job in manifest["jobs"]] == [100001, 200002] * 5
+    assert len(manifest["jobs"]) == 10
     result = subprocess.run(
         [
             sys.executable,
@@ -68,6 +68,50 @@ def test_fixed_seeds_and_manifest_passes_harness_dry_run(tmp_path):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "preflight cost estimate" in result.stdout + result.stderr
+
+
+def test_grid01_is_40_single_axis_cells_with_probe_configuration():
+    probe_path = PIPELINE / "bakeoff" / "probe-a-zimage.yaml"
+    axis_paths = [
+        CALIBRATE / "axes" / name
+        for name in ("makeup.yaml", "prettiness.yaml", "body.yaml", "age.yaml", "posture.yaml")
+    ]
+    probe = grid_run.load_document(probe_path)
+    manifest = grid_run.build_manifest(
+        probe_path,
+        axis_paths,
+        "trial-04-c03-s1-seed-100001",
+        output_prefix="grid01",
+        cell_seconds=35,
+        bootstrap_minutes=9,
+        max_minutes=40,
+    )
+    assert len(manifest["jobs"]) == 40
+    assert manifest["max_minutes"] == 40
+    assert manifest["price_usd_per_hour"] == 0.80
+    assert manifest["readiness_timeout_seconds"] == 1200
+    for key, value in probe.items():
+        if key not in {"jobs", "max_minutes"}:
+            assert manifest[key] == value
+
+    base_job = grid_run.find_base_job(probe, "trial-04-c03-s1-seed-100001")
+    base_prompt = grid_run.read_prompt(base_job)
+    jobs_by_name = {job["output_name"]: job for job in manifest["jobs"]}
+    assert len(jobs_by_name) == 40
+    for axis_path in axis_paths:
+        axis = grid_run.load_axis(axis_path)
+        for variant in axis["variants"]:
+            expected_prompt = base_prompt.replace(
+                axis["apply"]["target"], variant["value"], 1
+            )
+            for seed in axis["seeds"]:
+                name = grid_run.output_name(
+                    axis["axis"], variant["name"], seed, "grid01"
+                )
+                job = jobs_by_name[name]
+                assert job["seed"] == seed
+                assert job["expected_images"] == 1
+                assert grid_run.read_prompt(job) == expected_prompt
 
 
 def test_sheet_layout_is_deterministic(tmp_path):

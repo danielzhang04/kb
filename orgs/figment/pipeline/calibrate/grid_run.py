@@ -50,8 +50,10 @@ def load_axis(path: Path) -> dict[str, Any]:
     missing = [key for key in ("axis", "description", "apply", "variants", "seeds") if key not in axis]
     if missing:
         raise GridError(f"axis file {path} is missing: {', '.join(missing)}")
-    if axis["seeds"] != [100001, 200002, 300003]:
-        raise GridError(f"axis {axis['axis']} must use the fixed three seeds")
+    if axis["seeds"] not in ([100001, 200002], [100001, 200002, 300003]):
+        raise GridError(
+            f"axis {axis['axis']} must use the fixed two- or three-seed sequence"
+        )
     if not 3 <= len(axis["variants"]) <= 6:
         raise GridError(f"axis {axis['axis']} must define 3-6 variants")
     names = [str(item.get("name", "")) for item in axis["variants"]]
@@ -138,7 +140,14 @@ def slug(value: Any) -> str:
     return result
 
 
-def output_name(axis_name: str, variant_name: str, seed: int) -> str:
+def output_name(
+    axis_name: str, variant_name: str, seed: int, output_prefix: str | None = None
+) -> str:
+    if output_prefix:
+        return (
+            f"{slug(output_prefix)}-{slug(axis_name)}-{slug(variant_name)}-"
+            f"seed-{int(seed)}"
+        )
     return f"cal__{slug(axis_name)}__{slug(variant_name)}__seed_{int(seed)}"
 
 
@@ -220,7 +229,14 @@ def install_lora_chain(
 
 
 def build_manifest(
-    arm_path: Path, axis_paths: list[Path], base_job_name: str
+    arm_path: Path,
+    axis_paths: list[Path],
+    base_job_name: str,
+    *,
+    output_prefix: str | None = None,
+    cell_seconds: int = 70,
+    bootstrap_minutes: int = 8,
+    max_minutes: int | None = None,
 ) -> dict[str, Any]:
     if not axis_paths:
         raise GridError("at least one --axis is required")
@@ -228,12 +244,15 @@ def build_manifest(
     axes = [load_axis(path) for path in axis_paths]
     if len({str(axis["axis"]) for axis in axes}) != len(axes):
         raise GridError("the same axis was supplied more than once")
+    if cell_seconds <= 0 or bootstrap_minutes < 0:
+        raise GridError("runtime assumptions must be non-negative with positive cell seconds")
+    if max_minutes is not None and max_minutes <= 0:
+        raise GridError("max_minutes must be positive when supplied")
     kind = arm_kind(manifest)
     base_job = find_base_job(manifest, base_job_name)
     base_prompt = read_prompt(base_job)
 
     manifest = copy.deepcopy(manifest)
-    manifest["readiness_timeout_seconds"] = 480
     loader_ids = install_lora_chain(manifest, axes, kind)
     jobs: list[dict[str, Any]] = []
     for axis in axes:
@@ -242,7 +261,9 @@ def build_manifest(
             for seed in axis["seeds"]:
                 job = copy.deepcopy(base_job)
                 job["seed"] = int(seed)
-                job["output_name"] = output_name(axis["axis"], variant["name"], seed)
+                job["output_name"] = output_name(
+                    axis["axis"], variant["name"], seed, output_prefix
+                )
                 job["expected_images"] = 1
                 write_prompt(job, varied_prompt)
                 for key, node_id in loader_ids.items():
@@ -263,15 +284,26 @@ def build_manifest(
                 }
                 jobs.append(job)
     manifest["jobs"] = jobs
-    manifest["max_minutes"] = math.ceil(8 + len(jobs) * 70 / 60)
+    harness = _load_harness()
+    readiness_floor = math.ceil(
+        harness.manifest_readiness_timeout_seconds(manifest) / 60 + 5
+    )
+    manifest["max_minutes"] = (
+        max_minutes
+        if max_minutes is not None
+        else max(
+            readiness_floor,
+            math.ceil(bootstrap_minutes + len(jobs) * cell_seconds / 60),
+        )
+    )
     manifest["price_usd_per_hour"] = min(float(manifest["price_usd_per_hour"]), 0.80)
     manifest["calibration"] = {
         "base_job": base_job_name,
         "axes": [axis["axis"] for axis in axes],
-        "cell_seconds": 70,
-        "bootstrap_minutes": 8,
+        "cell_seconds": cell_seconds,
+        "bootstrap_minutes": bootstrap_minutes,
+        "output_prefix": output_prefix,
     }
-    harness = _load_harness()
     # Validate the generated in-memory structure through the same function used by
     # the harness dry-run entry point before writing it.
     harness.require_manifest(manifest, arm_path)
@@ -291,7 +323,12 @@ def _find_cell_image(run_dir: Path, name: str) -> Path | None:
     return None
 
 
-def build_sheet(run_dir: Path, axis_path: Path, out_path: Path) -> None:
+def build_sheet(
+    run_dir: Path,
+    axis_path: Path,
+    out_path: Path,
+    output_prefix: str | None = None,
+) -> None:
     from PIL import Image, ImageDraw, ImageFont
 
     axis = load_axis(axis_path)
@@ -311,9 +348,8 @@ def build_sheet(run_dir: Path, axis_path: Path, out_path: Path) -> None:
     for row, variant in enumerate(variants):
         y = header_h + row * cell_h
         draw.text((8, y + 8), str(variant["name"]), fill="black", font=font)
-        name = output_name(axis["axis"], variant["name"], seeds[0])
         for column, seed in enumerate(seeds):
-            name = output_name(axis["axis"], variant["name"], seed)
+            name = output_name(axis["axis"], variant["name"], seed, output_prefix)
             path = _find_cell_image(run_dir, name)
             box = (label_w + column * cell_w, y, label_w + (column + 1) * cell_w, y + cell_h)
             draw.rectangle(box, outline="#777777", width=1)
@@ -381,10 +417,15 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--axis", type=Path, action="append", required=True)
     build.add_argument("--base-job", required=True)
     build.add_argument("--out", type=Path, required=True)
+    build.add_argument("--output-prefix")
+    build.add_argument("--cell-seconds", type=int, default=70)
+    build.add_argument("--bootstrap-minutes", type=int, default=8)
+    build.add_argument("--max-minutes", type=int)
     sheet = sub.add_parser("sheet", help="render a labelled axis contact sheet")
     sheet.add_argument("--run-dir", type=Path, required=True)
     sheet.add_argument("--axis", type=Path, required=True)
     sheet.add_argument("--out", type=Path, required=True)
+    sheet.add_argument("--output-prefix")
     table = sub.add_parser("table", help="build a lever-table findings skeleton")
     table.add_argument("--run-dirs", type=Path, nargs="+", required=True)
     table.add_argument("--out", type=Path, required=True)
@@ -395,7 +436,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "build":
-            manifest = build_manifest(args.arm, args.axis, args.base_job)
+            manifest = build_manifest(
+                args.arm,
+                args.axis,
+                args.base_job,
+                output_prefix=args.output_prefix,
+                cell_seconds=args.cell_seconds,
+                bootstrap_minutes=args.bootstrap_minutes,
+                max_minutes=args.max_minutes,
+            )
             write_manifest(manifest, args.out)
             print(
                 f"built {len(manifest['jobs'])} cells across "
@@ -409,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
         elif args.command == "sheet":
-            build_sheet(args.run_dir, args.axis, args.out)
+            build_sheet(args.run_dir, args.axis, args.out, args.output_prefix)
             print(f"wrote {args.out}")
         else:
             build_table(args.run_dirs, args.out)

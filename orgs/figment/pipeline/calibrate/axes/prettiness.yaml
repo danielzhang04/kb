@@ -1,0 +1,15 @@
+{
+  "axis": "prettiness",
+  "description": "Test explicit attractiveness and photogenic wording while leaving the c03 identity and all other prompt text fixed.",
+  "apply": {
+    "type": "replace",
+    "target": "Her monolid eyes have a slight rise at the outer corners."
+  },
+  "variants": [
+    {"name": "control", "value": "Her monolid eyes have a slight rise at the outer corners."},
+    {"name": "strikingly-pretty", "value": "Her monolid eyes have a slight rise at the outer corners. She is strikingly pretty, with symmetrical features and clear skin."},
+    {"name": "photogenic", "value": "Her monolid eyes have a slight rise at the outer corners. She is photogenic, shown at a flattering angle with soft flattering window light on her face."},
+    {"name": "pretty-photogenic", "value": "Her monolid eyes have a slight rise at the outer corners. She is strikingly pretty and photogenic, with symmetrical features, clear skin, a flattering angle, and soft flattering window light on her face."}
+  ],
+  "seeds": [100001, 200002]
+}

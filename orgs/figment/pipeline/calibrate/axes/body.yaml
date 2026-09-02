@@ -1,16 +1,15 @@
 {
   "axis": "body",
-  "description": "Counter the Klein fuller-body prior with literal build language and pose/framing cues while keeping clothing fitted and opaque.",
+  "description": "Bracket physical descriptions for a slim-to-lean-curvy read while holding identity, styling, posture, and shot text fixed.",
   "apply": {
     "type": "replace",
-    "target": "a slim, softly waist-defined build"
+    "target": "with an adult woman's face and a lean-curvy adult woman's frame."
   },
   "variants": [
-    {"name": "slim-neutral", "value": "a slender build with a narrow frame and a softly defined waist"},
-    {"name": "slim-hip-cocked", "value": "a slender narrow-framed build, seated with her weight shifted so the waist remains readable"},
-    {"name": "lean-curvy", "value": "a lean-curvy build with a narrow torso, a clearly defined waist, and a gentle natural hip line"},
-    {"name": "lean-curvy-seated", "value": "a lean-curvy build with a defined waist, seated at a slight three-quarter angle so the waist-to-hip line reads clearly"},
-    {"name": "slim-thick-balanced", "value": "a slim-thick build with a narrow waist and softly fuller hips, still visibly slender through the shoulders, arms, and legs"}
+    {"name": "control", "value": "with an adult woman's face and a lean-curvy adult woman's frame."},
+    {"name": "slender-small-frame", "value": "with an adult woman's face and a slender body: a narrow waist, a small frame, and visible collarbones."},
+    {"name": "lean-toned", "value": "with an adult woman's face and a lean, toned body: long limbs and a flat stomach visible under the cami."},
+    {"name": "petite-slight-hourglass", "value": "with an adult woman's face and a petite, slim body: a slight hourglass and narrow shoulders."}
   ],
-  "seeds": [100001, 200002, 300003]
+  "seeds": [100001, 200002]
 }

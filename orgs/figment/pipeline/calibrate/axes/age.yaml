@@ -1,15 +1,15 @@
 {
   "axis": "age",
-  "description": "Move apparent age around the operator's about-21 adult target without any minor-coded wording.",
+  "description": "Bracket adult-coded wording around the about-twenty-one target while holding identity, body, styling, and shot text fixed.",
   "apply": {
     "type": "replace",
-    "target": "an unambiguously adult woman in her mid-twenties"
+    "target": "a woman in her early twenties, about twenty-one, with an adult woman's face"
   },
   "variants": [
-    {"name": "early-twenties-adult", "value": "an unambiguously adult woman in her early twenties"},
-    {"name": "twenty-one-adult", "value": "an unambiguously adult twenty-one-year-old woman"},
-    {"name": "young-adult-natural", "value": "an unambiguously adult young woman around twenty-one with natural skin texture and understated makeup"},
-    {"name": "adult-casual-cues", "value": "an unambiguously adult woman around twenty-one with fresh natural skin, understated makeup, and relaxed adult confidence"}
+    {"name": "control", "value": "a woman in her early twenties, about twenty-one, with an adult woman's face"},
+    {"name": "twenty-one-fresh-faced", "value": "a twenty-one-year-old adult woman, fresh-faced, with smooth skin and a youthful adult face"},
+    {"name": "college-age-adult", "value": "a college-age adult woman in her early twenties with youthful adult features"},
+    {"name": "very-early-twenties-adult", "value": "a young adult woman in her very early twenties, with a soft youthful adult face"}
   ],
-  "seeds": [100001, 200002, 300003]
+  "seeds": [100001, 200002]
 }
