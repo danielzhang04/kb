@@ -117,6 +117,14 @@ class RunCancelled(HarnessError):
     """SIGINT, SIGTERM, or the wall-clock watchdog requested shutdown."""
 
 
+class BootstrapFailed(HarnessError):
+    """A bootstrap failure marker and its redacted diagnostic tail."""
+
+    def __init__(self, reason: str, bootstrap_log_tail: list[str]):
+        super().__init__(f"bootstrap failed: {reason}")
+        self.bootstrap_log_tail = bootstrap_log_tail
+
+
 @dataclass(frozen=True)
 class UploadItem:
     """One validated local file and its ComfyUI input destination."""
@@ -1302,6 +1310,26 @@ def ready_hourly_price(pod: dict[str, Any]) -> float:
     return hourly
 
 
+def settled_cost_estimate(*, elapsed_seconds: float, dry_run: bool,
+                          ready_hourly_price_usd: float | None,
+                          manifest_hourly_price_usd: float,
+                          preflight_estimate_usd: float,
+                          termination_verified: bool) -> tuple[float, str]:
+    """Return the final cost and its evidence basis without inflating early failures."""
+    if dry_run:
+        return 0.0, "dry-run"
+    elapsed_seconds = max(0.0, elapsed_seconds)
+    if ready_hourly_price_usd is None:
+        return (
+            manifest_hourly_price_usd * elapsed_seconds / 3600.0,
+            "ceiling-rate estimate",
+        )
+    measured = ready_hourly_price_usd * elapsed_seconds / 3600.0
+    if termination_verified:
+        return measured, "READY-rate measured"
+    return max(preflight_estimate_usd, measured), "READY-rate conservative estimate"
+
+
 def create_payload(
     manifest: dict[str, Any], manifest_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -1401,20 +1429,42 @@ def readiness_timeout_reason(pod: dict[str, Any], proxy_status: int | str | None
     )
 
 
-def _log_bootstrap_tail(proxy: Any, logger: logging.Logger) -> None:
-    status, text = proxy.fetch_artifact("_bootstrap.log")
-    if status != 200 or not text:
-        return
-    tail = "\n".join(text.splitlines()[-BOOTSTRAP_LOG_TAIL_LINES:])
-    for line in tail.splitlines():
+def _bootstrap_log_tail(proxy: Any, logger: logging.Logger, *, lines: int,
+                        failure_context: bool = False) -> list[str]:
+    """Fetch and log a redacted bootstrap tail, retaining only the requested lines."""
+    try:
+        status, text = proxy.fetch_artifact("_bootstrap.log")
+    except Exception as exc:
+        if failure_context:
+            logger.warning(
+                "could not fetch bootstrap log after failure: %s", type(exc).__name__,
+            )
+        return []
+    if status != 200:
+        if failure_context:
+            logger.warning("could not fetch bootstrap log after failure: /view returned %s", status)
+        return []
+    if not text:
+        if failure_context:
+            logger.warning("could not fetch bootstrap log after failure: empty response")
+        return []
+    tail = [redact_for_stderr(line) for line in text.splitlines()[-lines:]]
+    for line in tail:
         logger.info("bootstrap log tail: %s", line)
+    return tail
 
 
-def _raise_if_bootstrap_failed(proxy: Any) -> None:
+def _log_bootstrap_tail(proxy: Any, logger: logging.Logger) -> None:
+    _bootstrap_log_tail(proxy, logger, lines=BOOTSTRAP_LOG_TAIL_LINES)
+
+
+def _raise_if_bootstrap_failed(proxy: Any, logger: logging.Logger) -> None:
     status, text = proxy.fetch_artifact("_bootstrap.failed")
     if status == 200:
-        reason = " ".join(text.strip().split()) or "unknown bootstrap failure"
-        raise HarnessError(f"bootstrap failed: {reason}")
+        # Fetch diagnostics before raising: the surrounding lease will terminate the Pod.
+        log_tail = _bootstrap_log_tail(proxy, logger, lines=40, failure_context=True)
+        reason = redact_for_stderr(" ".join(text.strip().split()) or "unknown bootstrap failure")
+        raise BootstrapFailed(reason, log_tail[-10:])
 
 
 def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
@@ -1438,7 +1488,7 @@ def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
         last_proxy_status = proxy.health_status()
         watchdog.check()
         if pod.get("desiredStatus") == "RUNNING":
-            _raise_if_bootstrap_failed(proxy)
+            _raise_if_bootstrap_failed(proxy, logger)
             watchdog.check()
             if poll_number % bootstrap_log_every_polls == 0:
                 _log_bootstrap_tail(proxy, logger)
@@ -1536,10 +1586,13 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "on_exit() { rc=$?; if [ \"$rc\" -ne 0 ] && [ \"$fatal_active\" -eq 0 ]; then fatal \"unexpected bootstrap failure at line ${BASH_LINENO[0]} rc=$rc\" \"$rc\"; fi; }",
         "trap on_exit EXIT",
         "run_required() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc\"; if [ \"$rc\" -ne 0 ]; then fatal \"$label failed with rc=$rc\" \"$rc\"; fi; }",
+        "retry_required() { label=\"$1\"; shift; attempt=1; while :; do \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label attempt=$attempt rc=$rc\"; if [ \"$rc\" -eq 0 ]; then return 0; fi; if [ \"$attempt\" -ge 3 ]; then fatal \"$label failed after $attempt attempts with rc=$rc\" \"$rc\"; return \"$rc\"; fi; if [ \"$attempt\" -eq 1 ]; then backoff=15; else backoff=30; fi; log_line \"STEP $label retrying in ${backoff}s\"; sleep \"$backoff\"; attempt=$((attempt + 1)); done; }",
+        "wait_for_network() { elapsed=0; while :; do if getent hosts github.com >>\"$BOOTSTRAP_LOG\" 2>&1 && getent hosts huggingface.co >>\"$BOOTSTRAP_LOG\" 2>&1; then log_line \"NETWORK dns ready after ${elapsed}s\"; return 0; fi; rc=$?; log_line \"NETWORK dns wait elapsed=${elapsed}s rc=$rc\"; if [ \"$elapsed\" -ge 90 ]; then fatal \"network DNS was not ready after ${elapsed}s\" \"$rc\"; fi; sleep 5; elapsed=$((elapsed + 5)); done; }",
         "run_cosmetic() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc (cosmetic)\"; return 0; }",
         "run_required python-present python --version",
         "run_required git-present git --version",
         "run_required curl-present curl --version",
+        "wait_for_network",
     ]
     clone_comfy = (
         f"git clone --branch {shlex.quote(git_ref)} --depth 1 "
@@ -1560,7 +1613,7 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         f"python -m pip install -r {shlex.quote(root + '/requirements.txt')}"
     )
     lines.extend([
-        f"run_required comfy-install bash -lc {shlex.quote(install_comfy)}",
+        f"retry_required comfy-install bash -lc {shlex.quote(install_comfy)}",
     ])
     for index, model in enumerate(manifest.get("models", []), start=1):
         destination = str(PurePosixPath(str(model["destination_dir"])) / PurePosixPath(str(model["filename"])).name)
@@ -1570,10 +1623,10 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
             f"mkdir -p {shlex.quote(str(model['destination_dir']))} && "
             f"if [ -s {shlex.quote(destination)} ]; then true; else "
             f"tmp={shlex.quote(destination + '.partial')}; "
-            f"curl --fail --location --retry 3 --output \"$tmp\" {shlex.quote(url)} && "
+            f"curl --fail --location --output \"$tmp\" {shlex.quote(url)} && "
             f"test -s \"$tmp\" && mv \"$tmp\" {shlex.quote(destination)}; fi"
         )
-        lines.append(f"run_required model-{index} bash -lc {shlex.quote(command)}")
+        lines.append(f"retry_required model-{index} bash -lc {shlex.quote(command)}")
     nodes_root = f"{root}/custom_nodes"
     for index, node in enumerate(manifest.get("custom_nodes", []), start=1):
         name = _safe_node_name(str(node["git_url"]), node.get("name"))
@@ -1584,10 +1637,10 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
             f"git -C {shlex.quote(target)} pull --ff-only; else "
             f"git clone --depth 1 {shlex.quote(str(node['git_url']))} {shlex.quote(target)}; fi"
         )
-        lines.append(f"run_required node-{index} bash -lc {shlex.quote(command)}")
+        lines.append(f"retry_required node-{index} bash -lc {shlex.quote(command)}")
         requirements = f"{target}/requirements.txt"
         install = f"if [ -f {shlex.quote(requirements)} ]; then python -m pip install -r {shlex.quote(requirements)}; else true; fi"
-        lines.append(f"run_required node-deps-{index} bash -lc {shlex.quote(install)}")
+        lines.append(f"retry_required node-deps-{index} bash -lc {shlex.quote(install)}")
     training_script: tuple[str, str] | None = None
     if "training" in manifest:
         if manifest_path is None:
@@ -2354,6 +2407,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         result["error"] = f"{type(exc).__name__}: {exc}"
         if isinstance(exc, ReadinessTimeout):
             result["last_pod_state"] = exc.last_pod_state
+        if isinstance(exc, BootstrapFailed):
+            result["bootstrap_log_tail"] = exc.bootstrap_log_tail
     finally:
         try:
             if proxy_client is not None:
@@ -2383,11 +2438,16 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             result["finished_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             result["elapsed_seconds"] = round(elapsed, 3)
             result["hourly_price_usd"] = actual_hourly
-            settled_cost = 0.0 if dry_run else estimate
-            if not dry_run and actual_hourly is not None:
-                measured = actual_hourly * elapsed / 3600.0
-                settled_cost = measured if verified else max(estimate, measured)
+            settled_cost, cost_basis = settled_cost_estimate(
+                elapsed_seconds=elapsed,
+                dry_run=dry_run,
+                ready_hourly_price_usd=actual_hourly,
+                manifest_hourly_price_usd=float(manifest["price_usd_per_hour"]),
+                preflight_estimate_usd=estimate,
+                termination_verified=verified,
+            )
             result["estimated_actual_usd"] = round(settled_cost, 6)
+            result["estimated_actual_usd_basis"] = cost_basis
         except BaseException as secondary:
             retain_finalization_failure("result accounting", secondary)
         try:

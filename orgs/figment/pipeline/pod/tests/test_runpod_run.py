@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import io
 import base64
+import itertools
 import json
 import logging
 import os
 import signal
+import shutil
+import subprocess
 import threading
 import time
 import traceback
@@ -364,6 +367,86 @@ def test_bootstrap_failed_marker_names_reason_and_terminates(tmp_path):
     assert api.deletes == 1
     record = json.loads((tmp_path / "out" / "run.json").read_text())
     assert record["termination_verified"] is True
+
+
+def test_P1k_bootstrap_failure_logs_tail_persists_ten_lines_and_uses_ceiling_rate(
+        tmp_path, monkeypatch):
+    class FailedBootstrapProxy(FakeComfy):
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, "comfy-install failed with rc=128\n"
+            return 200, "\n".join(f"bootstrap line {index}" for index in range(45))
+
+    # The first reading starts the billing clock; the later readings enter and exit readiness.
+    ticks = itertools.chain([1000.0], itertools.repeat(1024.0))
+    monkeypatch.setattr(rr.time, "monotonic", lambda: next(ticks))
+    api = FakeAPI()
+    logger, stream = logger_and_stream()
+    ledger_dir = tmp_path / "ledger"
+    with pytest.raises(rr.BootstrapFailed, match="comfy-install failed with rc=128"):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1.0, max_minutes=1.0, dry_run=False, api=api, logger=logger,
+            comfy_factory=FailedBootstrapProxy, sleep=lambda _seconds: None,
+            ledger_dir=ledger_dir,
+        )
+
+    record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert record["bootstrap_log_tail"] == [f"bootstrap line {index}" for index in range(35, 45)]
+    assert record["estimated_actual_usd"] == pytest.approx(24 * 0.50 / 3600, abs=1e-6)
+    assert record["estimated_actual_usd_basis"] == "ceiling-rate estimate"
+    assert "bootstrap log tail: bootstrap line 5" in stream.getvalue()
+    assert api.deletes == 1
+    ledger_value = float(next(ledger_dir.glob("*.tsv")).read_text().splitlines()[1].split("\t")[2])
+    assert ledger_value == pytest.approx(24 * 0.50 / 3600, abs=1e-6)
+
+
+def test_P1k_bootstrap_retry_helper_retries_then_succeeds_and_fails():
+    script = rr.bootstrap_script(manifest())
+    retry = next(line for line in script.splitlines() if line.startswith("retry_required()"))
+    bash = shutil.which("bash")
+    assert bash is not None
+    prelude = "\n".join([
+        "BOOTSTRAP_LOG=/dev/null",
+        'log_line() { echo "$1"; }',
+        'fatal() { return "$2"; }',
+        'sleep() { :; }',
+        retry,
+    ])
+    succeeded = subprocess.run(
+        [bash, "-c", prelude + "\ntries=0; run() { tries=$((tries + 1)); [ \"$tries\" -ge 2 ]; }; retry_required demo run; echo tries=$tries"],
+        capture_output=True, text=True, check=False,
+    )
+    assert succeeded.returncode == 0
+    assert "STEP demo attempt=1 rc=1" in succeeded.stdout
+    assert "STEP demo attempt=2 rc=0" in succeeded.stdout
+    assert "tries=2" in succeeded.stdout
+
+    failed = subprocess.run(
+        [bash, "-c", prelude + "\ntries=0; run() { tries=$((tries + 1)); return 17; }; retry_required demo run; echo rc=$? tries=$tries"],
+        capture_output=True, text=True, check=False,
+    )
+    assert failed.returncode == 0
+    assert "STEP demo attempt=3 rc=17" in failed.stdout
+    assert "rc=17 tries=3" in failed.stdout
+
+
+def test_P1k_network_wait_precedes_all_bootstrap_network_steps():
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "org/model",
+        "filename": "model.safetensors",
+        "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+    }]
+    script = rr.bootstrap_script(configured)
+    assert "getent hosts github.com" in script
+    assert "getent hosts huggingface.co" in script
+    assert script.index("wait_for_network\n") < script.index("retry_required comfy-install")
+    assert "retry_required model-1" in script
+    assert "retrying in ${backoff}s" in script
 
 
 def test_exception_mid_job_terminates_and_verifies(tmp_path):
@@ -1126,9 +1209,9 @@ def test_N0_real_bakeoff_bootstrap_owns_comfyui_and_fails_fast(manifest_name):
     assert "elif [ -e /workspace ]; then" not in script
     assert script.index("comfy-install") < script.index("model-1")
 
-    model_steps = [index for index, line in enumerate(lines) if line.startswith("run_required model-")]
+    model_steps = [index for index, line in enumerate(lines) if line.startswith("retry_required model-")]
     assert len(model_steps) == len(real_manifest["models"])
-    assert 'fatal "$label failed with rc=$rc" "$rc"' in script
+    assert 'fatal "$label failed after $attempt attempts with rc=$rc" "$rc"' in script
     assert "--listen 0.0.0.0 --port 8188" in script
     assert "--output-directory /workspace/output" in script
     assert 'sleep 60' in script

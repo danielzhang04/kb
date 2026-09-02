@@ -50,9 +50,12 @@ job seed to every matching node before applying that job's explicit substitution
 explicit substitution can deliberately override the automatic value.
 
 The example uses a PyTorch image that does not contain ComfyUI. Bootstrap first checks
-Python, Git, and curl and exits before downloads if a prerequisite is missing. The harness is
-the sole owner of the ComfyUI install: it fetches and checks out `comfyui.git_ref` in an
-existing Git checkout, or clones that ref when the root is absent, then installs
+Python, Git, and curl and exits before downloads if a prerequisite is missing. Before its first
+network step it waits up to 90 seconds for DNS resolution of both GitHub and Hugging Face,
+logging every wait. Git clone/fetch, every `pip install`, and every model download each retry up
+to three times, with 15-second then 30-second backoff and an rc record for every attempt. The
+harness is the sole owner of the ComfyUI install: it fetches and checks out `comfyui.git_ref` in
+an existing Git checkout, or clones that ref when the root is absent, then installs
 `requirements.txt`. An existing non-Git root fails before model downloads unless the manifest
 explicitly sets `comfyui.replace_non_git_root: true`; only that opt-in permits removal and
 replacement of the nested root. Existing non-empty model files are reused. A failed ComfyUI
@@ -135,8 +138,10 @@ causes immediate terminate-and-verify.
 
 At Pod acquisition, the cost ledger receives a provisional row with model
 `runpod:<gpu-short-name>`, step `pod-create <id>`, and the preflight estimate. Verified
-teardown replaces that same row with elapsed cost at the READY rate. An unverified teardown
-keeps at least the provisional estimate. Dry-run rows remain under
+teardown replaces that same row with elapsed cost at the READY rate. If the run exits before a
+READY price is available, the final ledger value is elapsed seconds times the manifest hourly
+ceiling rate; `run.json` labels this a `ceiling-rate estimate`. An unverified teardown after a
+READY price keeps at least the provisional estimate. Dry-run rows remain under
 `<out>/dry-run-ledger/` at zero USD unless `--ledger-dir` is explicitly supplied. Ledger
 upserts use an exclusive bounded lock and a unique atomic-replace temporary file.
 
@@ -186,8 +191,10 @@ Every readiness poll logs elapsed time, desired/current/runtime status when pres
 `lastStatusChange`, the proxy status code (or sanitized exception type), and machine GPU/host
 fields when present. Every fifth poll also requests
 `/view?filename=_bootstrap.log&type=output` and logs the last 20 lines. Each RUNNING poll
-checks `_bootstrap.failed`; when present, its reason becomes the `HarnessError`, after which
-the lease terminates the Pod and verifies absence. On timeout the harness logs the last full
+checks `_bootstrap.failed`; when present, the harness fetches and logs the redacted last 40
+bootstrap-log lines before raising, stores the redacted last 10 as `bootstrap_log_tail` in
+`run.json`, then the lease terminates the Pod and verifies absence. A failed log fetch is logged
+explicitly. On timeout the harness logs the last full
 Pod object through the credential redactor, stores the same redacted object in `run.json` as
 `last_pod_state`, and classifies image-pull, pending, or proxy-not-ready state.
 
