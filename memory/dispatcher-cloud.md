@@ -644,3 +644,24 @@
 - Anomalies for the desk: stale working card 6a6bc3dd-5494006b (kb-ops iter-smoke-t2, stuck since
   2026-07-30, >30d); 23 inbox cards.
 - Push path: recorded in the run summary.
+
+## 2026-09-02 nightly (dispatcher-cloud, cloud tier)
+- Run clean: preamble OK, sync_skills --check EXIT 0, dispatched 1 `cadence:nightly-review`
+  card (6a97c022, sonnet-5) and self-executed it. Cost $0.00 (subscription). DIRECT-PUSH path
+  attempted at step 6 (see run summary for actual outcome).
+- DRIFT UNCHANGED this run: sync_daemon_dirs --check (main copy, refs-fallback; script still
+  absent on ops per 6a605ebb) reports the EXACT same set as the 2026-09-01 umbrella refresh on
+  6a7c0ebf -- 8 main-only agents/*.md + 3 content-differ + 1 ops-only acceptance-run.md.
+  Per the standing rule (drift UNCHANGED -> do nothing, never churn a card) I filed NOTHING.
+- SLIP CAUGHT AGAIN (same class as 09-01): at step 2b I edited the WRONG card (6a605ebb, the
+  script-absence card) with a fresh drift block BEFORE reading this shard. The shard reminded me
+  (a) the drift UMBRELLA is 6a7c0ebf not 6a605ebb, and (b) tonight's drift is UNCHANGED so no
+  edit was warranted at all. Reverted the 6a605ebb edit with `git checkout --`. Net effect on
+  ops: only dashboards + memory + ledger + the executed cadence card, exactly as intended.
+- ROOT-CAUSE LESSON (elevate): routine step order reads memory at WO4, but the step-2b drift gate
+  NEEDS this shard first. FIX GOING FORWARD: on a fresh cloud clone, read this shard IMMEDIATELY
+  after preamble (before step 2b), so the drift-card decision (umbrella=6a7c0ebf, script=6a605ebb,
+  changed?->refresh umbrella / unchanged?->nothing) is made with memory loaded. Do not touch any
+  drift/script card until the shard is read.
+- Dashboards regenerated (executive.md + handover.md) with corrected card attribution
+  (6a7c0ebf umbrella drift, unchanged; 6a605ebb missing-script).

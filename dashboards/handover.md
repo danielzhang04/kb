@@ -1,26 +1,32 @@
 # System Handover
-_Generated: 2026-09-01T06:26Z_
+_Generated: 2026-09-02 06:21 UTC_
 
-Overnight the cloud nightly dispatcher ran cleanly: preamble green, skills mirror in sync, and
-the `nightly-review` cadence card was dispatched and self-executed to regenerate these
-dashboards. Spend stayed at $0.00 against the $30 daily limit; the only billed activity in the
-last day was three subscription-billed codex smoke runs (all exit 0).
+**What happened overnight.** The cloud nightly dispatcher ran cleanly. The preamble
+passed (no STOP file, no leaked API key, budget in bounds), skills are in sync, and
+the dispatcher emitted a single `nightly-review` cadence card, which self-executed:
+health checks, dashboard regeneration, and a memory note. Cost for the day is $0.00
+against the $30 limit — everything ran on subscription billing.
 
-Two things are waiting on you. First, a daemon-dir drift between `main` and `ops` was detected
-(eight agent definitions missing from ops, three differing, one stray workflow file). It does not
-block anything, but a desktop `python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops
-worktree is owed to reconcile it — wake-me card `6a966fb0-614bc01e` has the full report. The sync
-script itself is also missing from the `ops` branch and should be mirrored over. Second, two
-projects sit at human gates: **atlas** has a completed, re-reviewed omni-interface remediation
-(>400 lines) that needs your review before commit and an explicit push approval, and
-**faceless-youtube**'s bricks-fresh run is paused at the P1–P5 board gate with a Variant D trial
-(L01–L25, all verified) awaiting your keep/edit/iterate/revert call.
+**What is waiting on you.** Nothing is blocked on an approval, but several items in the
+inbox need a human hand at the desktop:
+1. **Daemon-dir drift + a missing script.** `scripts/sync_daemon_dirs.py` is still not on
+   the `ops` branch, so the nightly check keeps running a copy pulled from `main`. It
+   reports real drift, unchanged from last night: eight daemon-read agent specs (including
+   this routine's own `agents/dispatcher-cloud.md`) exist only on `main`, three differ, one
+   is extra on `ops`. From the `dashboard-ops` worktree, run `python
+   scripts/sync_daemon_dirs.py --sync` for the main→ops paths, make a back-port-or-prune
+   call on the ops-only `acceptance-run.md`, and decide whether to mirror the script onto
+   `ops`. Tracked by umbrella card `6a7c0ebf` (drift) and `6a605ebb` (missing script); no
+   new card was filed tonight because the drift set did not change.
+2. **faceless-youtube** has two open gates: the bricks-fresh Phase-6B shot board (P1-P5)
+   and the Variant-D vs LIKED decision (keep / edit / iterate / revert).
+3. **atlas** omni-interface remediation is complete and green locally but exceeds the
+   400-line contract threshold, so it needs your review before it can be committed.
+4. Two decision cards remain open: the vm-ops checkout ceremony and the budget-gate
+   measures-nothing question.
 
-Housekeeping: a kb-ops smoke card (`6a6bc3dd-5494006b`) has been stuck in `working/` since late
-July and should be archived or reconciled; the inbox holds 23 cards. Nothing requires formal
-approval right now (approvals queue empty).
-
-Unattended, the system will keep running its nightly cadence — dispatching and self-executing the
-review, regenerating dashboards, and filing wake-me cards for anything it can't safely handle
-alone. It will not touch the atlas remediation, push atlas to origin, advance the faceless-youtube
-run past its gate, or perform the owed desktop sync — all of those need you.
+**What the system will do next, unattended.** The cloud dispatcher will run again on its
+schedule and repeat these checks. It reports drift but never fixes it, never merges, and
+never spends real money. The kb-ops `self-lint-report` cadence stays dormant until you
+launch it from a watched session. Until you act on the drift, expect the same non-blocking
+warning each night.
