@@ -13,6 +13,8 @@ import {
   type PinnedIdentity,
   type PinningFileSystem,
   buildBrokerLaunch,
+  buildWorkflowPolicyTable,
+  codexSandboxMode,
   enumerateBrokerLaunchers,
   launcherExecutable,
   pinBrokerLaunch,
@@ -130,6 +132,126 @@ describe('fdPinnedPaths', () => {
         toolPolicyId: unknown, sandbox: 'codex-workspace-write',
       }, 'worktrees', 'run-1', { cols: 80, rows: 24 })).toThrow('unknown Codex tool policy');
     }
+  });
+
+  /**
+   * THE CODEX CAP. Codex takes no `--allowedTools`, so before this the profile name selected nothing
+   * that reached the child: `checker-readonly` and `producer` produced byte-identical argv, both
+   * `-s workspace-write` with `approval_policy=never`. The one real workflow definition in the repo
+   * (`orgs/faceless-youtube/workflows/iteration-loop-demo.md`) declares `workflowProfile:
+   * checker-readonly` on its review stages with work orders saying "Read only ... Never edit the
+   * artifact" — those stages launched with unattended write and command execution across the worktree,
+   * held read-only by prose alone. The sandbox is now derived from the profile, which is the only
+   * place a codex worker's cap can live.
+   */
+  it('derives the codex sandbox from the profile instead of capping every profile the same', () => {
+    const sandboxFor = (toolPolicyId: string, resumeRef?: string): string => {
+      const { args } = buildBrokerLaunch({
+        launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+        toolPolicyId, sandbox: 'codex-workspace-write', ...(resumeRef ? { resumeRef } : {}),
+      }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+      // A fresh launch spells it as the flag; `exec resume` takes no `-s`, so it spells it as the
+      // config key that flag sets. Both branches must answer the same question the same way.
+      const flag = args.indexOf('-s');
+      if (flag !== -1) return args[flag + 1]!;
+      const pinned = args.find((entry, index) => args[index - 1] === '-c' && entry.startsWith('sandbox_mode='));
+      expect(pinned).toBeDefined();
+      return pinned!.slice('sandbox_mode='.length).replaceAll('"', '');
+    };
+
+    // Every profile, on BOTH the fresh and the resume path, and the two paths never disagree.
+    const expected: Record<string, 'read-only' | 'workspace-write'> = {
+      'checker-readonly': 'read-only',
+      research: 'read-only',
+      'gmail-triage': 'workspace-write',
+      'drive-author': 'workspace-write',
+      producer: 'workspace-write',
+      scanner: 'workspace-write',
+    };
+    for (const profile of WORKFLOW_EXECUTION_PROFILES) {
+      const grantsWrite = profile.allowedTools.some((tool) => ['Bash', 'Write', 'Edit'].includes(tool));
+      const mode = grantsWrite ? 'workspace-write' : 'read-only';
+      expect(mode).toBe(expected[profile.id]);
+      expect(sandboxFor(profile.id)).toBe(mode);
+      // A resumed session cannot silently gain capability the fresh launch would not have had.
+      expect(sandboxFor(profile.id, 'thread-1')).toBe(mode);
+    }
+
+    // A profile granting none of Bash/Write/Edit lands read-only; granting any one of them does not.
+    expect(codexSandboxMode(['Read', 'Glob', 'Grep', 'WebFetch'])).toBe('read-only');
+    for (const tool of ['Bash', 'Write', 'Edit']) {
+      expect(codexSandboxMode(['Read', tool])).toBe('workspace-write');
+    }
+    // `danger-full-access` is not reachable from the derivation under any input.
+    expect(['read-only', 'workspace-write']).toContain(codexSandboxMode([]));
+    expect(codexSandboxMode(['danger-full-access'])).toBe('read-only');
+
+    // The interactive branch is capped from the profile too, not left on a literal.
+    const interactive = buildBrokerLaunch({
+      launcher: 'codex', mode: 'interactive', model: 'gpt-5.6-terra',
+      toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+    expect(interactive.args.slice(0, 4)).toEqual(['--model', 'gpt-5.6-terra', '-s', 'read-only']);
+  });
+
+  /**
+   * Codex is last-wins on `-c`, so `pinnedCodexConfig` — `approval_policy=never` and the
+   * network/mcp/web-search pins — is only un-overridable while it is the LAST `-c` group in argv.
+   * Deriving the sandbox added a `-c sandbox_mode=` to the resume branch, which is exactly the kind of
+   * edit that can slide in after the pins; this holds every branch to the ordering.
+   */
+  it('keeps the pinned codex config last in every codex branch', () => {
+    const PINS = [
+      '-c', 'approval_policy=never', '-c', 'forced_login_method="chatgpt"',
+      '-c', 'mcp_servers={}', '-c', 'sandbox_workspace_write.network_access=false',
+      '-c', 'web_search="disabled"',
+    ];
+    const branches = [
+      { mode: 'headless-json', resumeRef: undefined, trailing: 2 },
+      { mode: 'headless-json', resumeRef: 'thread-1', trailing: 0 },
+      { mode: 'interactive', resumeRef: undefined, trailing: 2 },
+    ] as const;
+    for (const branch of branches) {
+      for (const toolPolicyId of ['checker-readonly', 'producer']) {
+        const { args } = buildBrokerLaunch({
+          launcher: 'codex', mode: branch.mode, model: 'gpt-5.6-terra',
+          toolPolicyId, sandbox: 'codex-workspace-write',
+          ...(branch.resumeRef ? { resumeRef: branch.resumeRef } : {}),
+        }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
+        // Only `--cd <cwd>` may follow the pins, and nothing else may.
+        const tail = branch.trailing === 0 ? args : args.slice(0, -branch.trailing);
+        expect(tail.slice(-PINS.length)).toEqual(PINS);
+        if (branch.trailing === 2) expect(args.slice(-2)).toEqual(['--cd', '/var/lib/kb-shell/worktrees/run-1']);
+        // Every `-c` the branch adds of its own sits BEFORE the pins.
+        const lastPin = args.lastIndexOf('web_search="disabled"');
+        expect(args.slice(lastPin + 1).some((value) => value === '-c')).toBe(false);
+      }
+    }
+  });
+
+  /**
+   * The broker derives its table from the shared literal, so without its own filters it would launch a
+   * profile the dashboard's `createWorkflowToolPolicyResolver` would refuse to resolve. Refusing at Map
+   * construction takes the broker out at start-up, which is visible; launching an over-capable worker
+   * is not.
+   */
+  it('refuses to build its policy table from a malformed, forbidden, empty, or absent profile', () => {
+    expect(buildWorkflowPolicyTable(WORKFLOW_EXECUTION_PROFILES).size)
+      .toBe(WORKFLOW_EXECUTION_PROFILES.length);
+    // A tool name that would corrupt the comma-joined `--allowedTools` value or smuggle a flag.
+    for (const malformed of ['Read,Write', 'Read Write', '--dangerously-skip-permissions', 'a"b', "a'b", '']) {
+      expect(() => buildWorkflowPolicyTable([{ id: 'bad', allowedTools: ['Read', malformed] }]))
+        .toThrow(/names a malformed tool/);
+    }
+    // A publish/send capability may not enter through any profile.
+    expect(() => buildWorkflowPolicyTable([{ id: 'bad', allowedTools: ['Read', 'upload_video'] }]))
+      .toThrow(/names forbidden tool 'upload_video'/);
+    expect(() => buildWorkflowPolicyTable([
+      { id: 'bad', allowedTools: ['mcp__claude_ai_Gmail__send_message'] },
+    ])).toThrow(/names forbidden tool/);
+    expect(() => buildWorkflowPolicyTable([{ id: 'bad', allowedTools: [] }])).toThrow(/grants no tools/);
+    expect(() => buildWorkflowPolicyTable([])).toThrow(/the workflow profile table is empty/);
+    expect(() => buildWorkflowPolicyTable([])).toThrow(FdPinnedPathError);
   });
 
   /**

@@ -404,6 +404,16 @@ function prepareAttempt(
   // naming the missing profile. An attempt with no workflow profile has no cap to resolve, so it is
   // refused here, where the reason is still legible.
   if (input.workflowProfile === null) throw new Error('codex attempt has no workflow profile');
+  // ...and the id is RESOLVED, not merely shape-checked. `TOOL_POLICY_ID_RE` only says the name is
+  // spellable on the wire; a syntactically perfect name for a profile that was renamed or retired
+  // passes it, reaches the broker, and comes back as a generic `unknown Codex tool policy` — a round
+  // trip and a dead frame for something the sender already knew. The claude branch resolves through
+  // `createWorkflowToolPolicyResolver`; the two branches are only symmetric, as the comment above
+  // claims, if codex does too. Codex has no `--allowedTools`, so the resolved policy is not carried
+  // into the recipe — the point of the call is the server-ownedness verdict, which is exactly the
+  // check the broker's membership test performs one hop later.
+  const resolveCodexPolicy = options.resolveClaudePolicy ?? createWorkflowToolPolicyResolver();
+  resolveCodexPolicy(input.workflowProfile);
   if (!TOOL_POLICY_ID_RE.test(input.workflowProfile)) {
     throw new Error('codex attempt resolved an invalid server-owned tool policy id');
   }

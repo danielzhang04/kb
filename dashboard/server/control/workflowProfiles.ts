@@ -1,14 +1,24 @@
 /**
- * The server-owned workflow tool-allowlist profiles, as a LEAF module: types and one frozen literal,
- * with zero imports.
+ * The server-owned workflow tool-allowlist profiles, as a LEAF module: types and one module-level
+ * literal, with zero imports. (It is `readonly` to the type system, not `Object.freeze`d at runtime —
+ * every consumer copies out of it, and no code path mutates it.)
  *
  * It has no filesystem, no registry, and no control-plane dependency ON PURPOSE. Two processes read
- * this table and they do not share a repo: the dashboard (which resolves the `--allowedTools` cap it
- * approves) and the kb-shell PTY broker (which independently re-resolves the SAME cap from the
- * `toolPolicyId` name the launch recipe carries). The broker payload is a compiled bundle with no
- * repo access, so anything this module imported would either have to be bundled too or would throw at
- * broker start-up. Keeping it importless is what lets both sides read one table instead of two, and
- * two hand-written tables that disagree is exactly the defect this module was extracted to end.
+ * this table and they do not share a repo: the dashboard (which resolves the cap it approves) and the
+ * kb-shell PTY broker (which re-resolves from the `toolPolicyId` NAME the launch recipe carries). The
+ * broker payload is a compiled bundle with no repo access, so anything this module imported would
+ * either have to be bundled too or would throw at broker start-up. Keeping it importless is what lets
+ * both sides read one table instead of two, and two hand-written tables that disagree is exactly the
+ * defect this module was extracted to end.
+ *
+ * WHAT THE RE-RESOLVED CAP BECOMES DIFFERS BY LAUNCHER, and it matters:
+ *   - claude: `allowedTools` is joined into the child's `--allowedTools` argv, so the broker's copy of
+ *     the profile has to reproduce the dashboard's byte for byte or `createAttemptToolPolicyIdResolver`
+ *     refuses the launch. The tool cap IS the profile.
+ *   - codex: the CLI takes no per-tool allowlist, so `allowedTools` never reaches codex argv. The
+ *     broker uses the profile for two things only — the id must name a server-owned profile at all,
+ *     and the profile's tools decide the codex `-s`/`sandbox_mode` (see `buildBrokerLaunch` in
+ *     pty/fdPinnedPaths.ts). A codex worker is capped by the sandbox, not by a tool list.
  *
  * D13/D15 — these are the forward-looking capability caps a spawned worker is launched with. They are
  * SERVER-OWNED data (a code-reviewed change adds one) and a workflow definition can only NAME a

@@ -11,6 +11,7 @@ import type { BigIntStats } from 'node:fs';
 import path from 'node:path';
 
 import {
+  FORBIDDEN_WORKFLOW_TOOLS,
   WORKFLOW_EXECUTION_PROFILES,
   WORKFLOW_PERMISSION_MODE,
 } from '../control/workflowProfiles.ts';
@@ -104,23 +105,6 @@ export const BROKER_SYSTEMD_POLICY = {
 const deniedRoots = BROKER_RUNTIME_POLICY.inaccessiblePaths;
 
 /**
- * The broker's tool-policy table, DERIVED from the one server-owned profile table
- * (`control/workflowProfiles.ts`) rather than hand-written beside it. `toolPolicyId` on the wire is a
- * NAME; the broker re-resolves the cap from that name on its own side and has to land on exactly the
- * policy the dashboard approved, or `createAttemptToolPolicyIdResolver` refuses the launch. Two
- * hand-maintained tables is how this broker shipped knowing only `standard` — an id nothing has ever
- * sent — while every real launch named a workflow profile and died on `unknown ... tool policy`.
- *
- * `shell-default` is deliberately absent: `decodeLaunchRecipe` pins the shell recipe's policy id to
- * that exact value and `buildBrokerLaunch` returns before any lookup, so the shell launcher never
- * consults this table.
- */
-const workflowPolicies = new Map(WORKFLOW_EXECUTION_PROFILES.map((profile) => [profile.id, {
-  allowedTools: profile.allowedTools,
-  permissionMode: WORKFLOW_PERMISSION_MODE,
-}]));
-
-/**
  * The launcher/model cross-check, and deliberately NOTHING MORE — there is no model enumeration here
  * on purpose. Do not reintroduce one.
  *
@@ -152,6 +136,96 @@ export class FdPinnedPathError extends Error {
     super(message);
     this.name = 'FdPinnedPathError';
   }
+}
+
+/**
+ * Mirrors `isWellFormedToolName` (control/claudeLaunchPolicy.ts) — deliberately COPIED, not imported.
+ * That module reaches the workflow-profile loader and the rest of the control plane, while the broker
+ * payload is a compiled bundle with no repo behind it, so importing it would drag the control plane
+ * into the broker bundle or throw at broker start-up. Five lines of duplication is the cheaper of the
+ * two, and `profiles.test.ts` holds the two copies to the same verdict on the same table.
+ */
+function isWellFormedToolName(name: string): boolean {
+  return typeof name === 'string'
+    && name.length > 0
+    && name.length <= 200
+    && !/[\s,\0"']/.test(name)
+    && !name.startsWith('-');
+}
+
+/**
+ * The broker's tool-policy table, DERIVED from the one server-owned profile table
+ * (`control/workflowProfiles.ts`) rather than hand-written beside it, and RE-FILTERED here rather than
+ * taken on trust. `toolPolicyId` on the wire is a NAME, and what the broker does with the profile that
+ * name selects is NOT the same on both launchers:
+ *
+ *   - claude: the resolved `allowedTools` becomes the child's `--allowedTools` argv, so the broker has
+ *     to land on exactly the policy the dashboard approved or `createAttemptToolPolicyIdResolver`
+ *     refuses the launch. This is the hop that actually carries a tool cap.
+ *   - codex: the CLI has no per-tool allowlist, so the resolved tools never reach codex argv. There the
+ *     name is a membership test, and the tools decide the codex sandbox mode (`codexSandboxMode`) —
+ *     nothing more. Do not read the claude sentence above as describing codex; it does not.
+ *
+ * The filters are the broker holding its OWN opinion rather than inheriting the dashboard's.
+ * `createWorkflowToolPolicyResolver` refuses a malformed tool name (one that would corrupt the
+ * comma-joined `--allowedTools` value or smuggle a flag) and any tool on `FORBIDDEN_WORKFLOW_TOOLS`;
+ * deriving from the shared literal without those checks would let a profile the dashboard would refuse
+ * to resolve still launch here. Applying them at Map construction takes the broker out at start-up
+ * instead, which is the failure we want: a broker that will not start is visible, a broker that
+ * launches an over-capable worker is not.
+ *
+ * `shell-default` is deliberately absent: `decodeLaunchRecipe` pins the shell recipe's policy id to
+ * that exact value and `buildBrokerLaunch` returns before any lookup, so the shell launcher never
+ * consults this table.
+ */
+export function buildWorkflowPolicyTable(
+  profiles: readonly { id: string; allowedTools: readonly string[] }[],
+): Map<string, { allowedTools: readonly string[]; permissionMode: string }> {
+  // An empty table leaves every agent launch unservable and `PROBE_POLICY_ID` undefined; say so here
+  // rather than failing later on an unrelated subscript.
+  if (profiles.length === 0) throw new FdPinnedPathError('the workflow profile table is empty');
+  const table = new Map<string, { allowedTools: readonly string[]; permissionMode: string }>();
+  for (const profile of profiles) {
+    if (profile.allowedTools.length === 0) {
+      throw new FdPinnedPathError(`workflow profile '${profile.id}' grants no tools`);
+    }
+    for (const tool of profile.allowedTools) {
+      if (!isWellFormedToolName(tool)) {
+        throw new FdPinnedPathError(`workflow profile '${profile.id}' names a malformed tool`);
+      }
+      if (FORBIDDEN_WORKFLOW_TOOLS.includes(tool)) {
+        throw new FdPinnedPathError(`workflow profile '${profile.id}' names forbidden tool '${tool}'`);
+      }
+    }
+    table.set(profile.id, {
+      allowedTools: profile.allowedTools,
+      permissionMode: WORKFLOW_PERMISSION_MODE,
+    });
+  }
+  return table;
+}
+
+const workflowPolicies = buildWorkflowPolicyTable(WORKFLOW_EXECUTION_PROFILES);
+
+/**
+ * The codex sandbox, DERIVED from the profile rather than hardcoded. `recipe.sandbox` is the frame's
+ * launcher discriminator (`codex-workspace-write`) and has never been read as a mode, so the
+ * `-s workspace-write` literal that used to sit in the argv made `checker-readonly` and `producer`
+ * produce byte-identical argv: a review stage whose work order says "Read only. Never edit the
+ * artifact" launched with unattended write and command execution across the worktree, held read-only
+ * by prose alone. Codex takes no `--allowedTools`, so the sandbox is the ONLY place a codex worker's
+ * cap can be expressed — this is the codex half of what `--allowedTools` does for claude.
+ *
+ * A profile granting none of Bash/Write/Edit cannot write or execute, so it launches `read-only`;
+ * anything else launches `workspace-write`. `danger-full-access` is never emitted under any
+ * circumstance: it is unreachable from this function by construction, and it must stay that way.
+ */
+const WRITE_CAPABLE_TOOLS: readonly string[] = ['Bash', 'Write', 'Edit'];
+
+export function codexSandboxMode(allowedTools: readonly string[]): 'read-only' | 'workspace-write' {
+  return allowedTools.some((tool) => WRITE_CAPABLE_TOOLS.includes(tool))
+    ? 'workspace-write'
+    : 'read-only';
 }
 
 export type PinnedIdentity = {
@@ -241,12 +315,23 @@ export function buildBrokerLaunch(
     return { executable: '/var/lib/kb-shell/home/.local/bin/claude', args, ...common };
   }
 
-  if (!workflowPolicies.has(recipe.toolPolicyId)) throw new FdPinnedPathError('unknown Codex tool policy');
+  const codexPolicy = workflowPolicies.get(recipe.toolPolicyId);
+  if (codexPolicy === undefined) throw new FdPinnedPathError('unknown Codex tool policy');
+  // Codex argv carries no `--allowedTools`; the profile's cap reaches the child as the sandbox mode.
+  const sandboxMode = codexSandboxMode(codexPolicy.allowedTools);
+  // `exec resume` accepts no `-s/--sandbox` flag — verified against the installed CLI: its option list
+  // offers `-c`, `--last`, `-m` and no sandbox flag, while plain `exec` offers
+  // `-s [read-only, workspace-write, danger-full-access]`. The equivalent is the config key that flag
+  // sets, `sandbox_mode`, so the resume branch pins it with `-c`. Without it a resumed session
+  // inherited whatever the CLI happened to default to and could silently outrank the fresh launch it
+  // continues. `pinnedCodexConfig` STAYS LAST in every branch: codex is last-wins on `-c`, and that
+  // ordering is what keeps `approval_policy=never` and the network/mcp/web-search pins un-overridable.
   const args = recipe.mode === 'headless-json'
     ? recipe.resumeRef === undefined
-      ? ['exec', '-', '--json', '--model', recipe.model!, '-s', 'workspace-write', ...pinnedCodexConfig, '--cd', cwd]
-      : ['exec', 'resume', recipe.resumeRef, '-', '--json', '-c', `model=${recipe.model!}`, ...pinnedCodexConfig]
-    : ['--model', recipe.model!, '-s', 'workspace-write', ...pinnedCodexConfig, '--cd', cwd];
+      ? ['exec', '-', '--json', '--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig, '--cd', cwd]
+      : ['exec', 'resume', recipe.resumeRef, '-', '--json', '-c', `model=${recipe.model!}`,
+        '-c', `sandbox_mode="${sandboxMode}"`, ...pinnedCodexConfig]
+    : ['--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig, '--cd', cwd];
   return { executable: '/var/lib/kb-shell/home/.local/bin/codex', args, ...common };
 }
 
@@ -505,7 +590,8 @@ export async function pinBrokerLaunch(
  * only to get past validation: nothing is spawned and the argv is discarded, so the model is the
  * shortest string satisfying the launcher's prefix check, and the policy id is read out of the
  * profile table rather than written out again, so a renamed profile cannot silently un-probe a
- * launcher.
+ * launcher. (`buildWorkflowPolicyTable` above has already refused an empty table by name, so the
+ * subscript cannot be the thing that reports it.)
  */
 const PROBE_POLICY_ID = WORKFLOW_EXECUTION_PROFILES[0]!.id;
 

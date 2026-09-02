@@ -716,6 +716,30 @@ describe('two-phase attempt session adapter', () => {
     expect(host.attempts).toHaveLength(0);
   });
 
+  /**
+   * The codex branch used to SHAPE-CHECK `workflowProfile` against `TOOL_POLICY_ID_RE` and stop there,
+   * while the claude branch resolved it through `createWorkflowToolPolicyResolver`. `research-v2` is
+   * spellable on the wire and names nothing server-owned, so it passed the sender, reached the broker,
+   * and came back as a generic `unknown Codex tool policy` — a wasted round trip and a rejected frame
+   * for a fact the sender already had. Both runtimes now refuse a non-server-owned id here, by name.
+   */
+  it.each(['claude', 'codex'] as const)(
+    'refuses a %s attempt naming a syntactically valid but non-server-owned workflow profile',
+    async (runtime) => {
+      const host = new MemorySessionHost();
+      const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+      // Passes `TOOL_POLICY_ID_RE` (/^[a-z][a-z0-9-]{0,63}$/) and is in no profile table.
+      expect('research-v2').toMatch(/^[a-z][a-z0-9-]{0,63}$/);
+      const launch = adapter.begin(declaration(runtime, { workflowProfile: 'research-v2' }));
+      const receipt = await launch.receipt;
+      expect(receipt.ok).toBe(false);
+      expect(receipt).toMatchObject({ refusal: 'invalid-request' });
+      expect((await launch.result).state).toBe('failed');
+      // Nothing reached the host, so the broker never spent a frame refusing what the sender knew.
+      expect(host.attempts).toHaveLength(0);
+    },
+  );
+
   it('never emits a toolPolicyId the broker policy pattern would refuse', async () => {
     for (const runtime of ['claude', 'codex'] as const) {
       const host = new MemorySessionHost();
