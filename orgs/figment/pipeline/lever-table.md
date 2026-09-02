@@ -274,7 +274,7 @@ sneakers, apartment hallway reads early-twenties casual, where the prior cream w
 trousers + dark sweater in a hotel-style bedroom read 30-something corporate. Proportions
 in v2 are natural (leg length correct, no vertical compression).
 
-### STILL OPEN
+### STILL OPEN (as of the crash) — both closed below, 2026-09-02
 
 1. **Body shape.** v2 full-body is straight-slim with no waist-hip contrast. The
    slim-thick target remains unmet despite fitted garments, which the earlier study said
@@ -287,3 +287,81 @@ in v2 are natural (leg length correct, no vertical compression).
 3. **Wardrobe colour fidelity** — a specified garment colour still renders wrong on some
    seeds (`proof_fullbody_seedA_colorfidelity_miss.png` retained as the example).
 4. Skin Realism LoRA still untested — CivitAI login-gated, needs Daniel.
+
+---
+
+## Defect-fix round 2 (2026-09-02) — items 1 and 2 above, both CLOSED
+
+Full narrative and per-seed evidence in `personas/trial-02/calibration-proof-v3/NOTES.md`;
+summarized here for the lever table's own record. Items 3 and 4 above are untouched by
+this round (still open).
+
+### FIXED: portrait/full-body divergence (item 2)
+
+**Root cause, found by diffing the two v2 prompt JSONs directly**: the skin/makeup/hair/
+age wording was already byte-identical between portrait and full-body — the divergence
+was not a wording mismatch, it was an *absence*. The portrait prompt carried no wardrobe,
+jewelry, or environment anchor at all, while the full-body prompt anchored hard on
+casual-youth context (fitted tank, jeans, sneakers, gold pendant, sunlit apartment). An
+ungrounded "close-up portrait, bust shot" instruction on this checkpoint defaults to a
+studio beauty-editorial prior (grey seamless backdrop, styled blowout, pearl earrings,
+dramatic side light) even with "editorial" already sitting in the negative prompt —
+negative-prompt terms alone could not out-compete a missing positive anchor.
+
+**Fix**: gave the portrait the same casual anchors as the full-body (black fitted tank
+top, gold pendant necklace, blurred casual apartment hallway, "hair down and loose... not
+salon-styled"), reduced the bust-shot framing clause from `:1.3` to `:1.1`, and added
+negative terms for the specific failure observed (studio backdrop, pearl earrings, styled
+blowout, beauty-campaign photography, "late twenties/thirties/mature woman"). Now baked
+into the committed `workflows/portrait_refined.json`.
+
+**Verified**: portrait and full-body now read as the same early-twenties woman in the
+same casual register at two framings — the literal success test from the defect brief.
+See `calibration-proof-v3/proof_portrait.png` vs `proof_fullbody.png`.
+
+### FIXED: body shape / slim-thick (item 1) — the longest-running unsolved problem
+
+**What finally moved it**: the **olaz Hourglass Body Shape SDXL LoRA**
+(`civitai.com/models/129130`, SDXL v2 file, version id 911708) — confirmed **anonymously
+downloadable** (a plain HTTPS GET 307-redirects to a signed download URL, no CivitAI
+login), unlike every previously-tried CivitAI body/skin asset in this project (Skin
+Realism, FameGrid, Stable Yogi Realism, all 401 for anonymous requests). At **strength
+0.6**, model+clip, inserted right after the checkpoint loader (rewiring every downstream
+node): genuine, moderate waist-hip contrast — narrower waist, fuller bust/hip line, still
+reads slim rather than heavy or muscular — with **no visible face distortion or anatomy
+defect**, unlike `bodyproportion.safetensors` / `contourluxe.safetensors`, which degraded
+faces at every weight tested. This is the first body-shape lever in this project's history
+that has actually worked cleanly.
+
+**Reproducibility**: 3/3 tested seeds (the workflow's default 51005 family, 700001 — the
+same seed as the v2 straight-slim baseline, enabling a clean before/after — and a fresh
+900001 family) all showed genuine curve at 0.6. At **1.0** the effect is stronger but bust
+size pushes toward the "exaggerated hourglass" pole the brief explicitly excludes — 0.6 is
+the chosen production weight, not 1.0.
+
+**Untested candidates, and why they weren't needed this round**: the brief's own top
+hypothesis was pose/contrapposto (a hip-cocked stance) or camera-angle changes, on the
+theory that the existing straight-on symmetric skeleton (`figment_pose_corrected_v1.png`,
+unchanged by this fix) structurally can't show waist-hip contrast. The LoRA produced a
+working fix without needing that — **pose was not tested this round because a fix was
+found first**, not because it was tried and failed. If the LoRA's cascade side effect (see
+next paragraph) ever needs correcting via pose instead, that investigation is still
+available and this project already has a promising untested asset for it:
+`ComfyUI/input/pose_fullbody_threequarter.png`, an existing (never-yet-tested-for-this)
+skeleton with genuine shoulder/hip asymmetry and weight shifted onto one leg.
+
+**Negative/honest caveat — a real cascade, not a clean isolated result**: on 2 of 3 tested
+seeds, the LoRA also nudged the wardrobe from the prompt's literal "fitted white tank top"
+toward a cropped/racerback style, and gave the hair more volume/wave than requested —
+same *class* of effect as the heritage-noun cascade in Section 1 above (one lever change
+dragging unrelated attributes with it). Stayed inside guardrails (crop tops already
+whitelisted for this project, no exposure below the waistband, non-suggestive standing
+pose) but is named honestly rather than hidden. A future round wanting a strictly
+non-cropped top alongside this LoRA should expect to need to reinforce the wardrobe
+clause, the same way the heritage-cascade fix needed reinforcement and still wasn't 100%.
+
+**Now baked into the committed recipe**: both `workflows/fullbody_refined.json` and
+`workflows/portrait_refined.json` carry a `LoraLoader` node
+(`olaz_hourglass_v2_sdxl.safetensors`, strength 0.6/0.6) wired ahead of every downstream
+model/clip consumer. It is included in the portrait workflow too for recipe parity even
+though its effect is invisible on a bust-only framing.

@@ -51,6 +51,44 @@ do not rely on them; let the agent's monitor report.
 - Civitai account + Buzz (arm B). IG professional test account + Meta token (Test 0).
   Fanvue written confirmation. See `daniel-provisioning.md`.
 
+## Round 4 casting (2026-09-01, untracked)
+
+`personas/trial-02/candidates-v4/` — 8 distinct women, portrait+full-body pairs,
+Asian-American/hotter/slim-to-athletic-varied-build register (see its NOTES.md for the
+full look spec, prompts, and per-pair assessment). Awaiting Daniel's review.
+
+**Mandatory QA lesson**: a full-body IP-Adapter + ControlNet generation can silently
+fail to render the sampled clothing entirely (one pair in this round came back with
+bare hips/legs and a garbled cover object where a dress should have been) — this
+happened even with "nude" already in the negative prompt. **Every full-body output
+must be visually inspected before being treated as deliverable**, not assumed compliant
+from the prompt alone. Caught and regenerated this round; would have shipped an accidental-
+nudity image otherwise.
+
+## Round 5 + 6 casting (2026-09-01, untracked)
+
+Round 5 (`candidates-v5/`) shipped all 8 portraits but only 6/8 full bodies (person02,
+person04 lost every full-body attempt to content-ceiling failures — see its NOTES.md).
+
+Round 6 (`candidates-v6/`) closes that gap and answers the open LoRA-weight question:
+`bodyproportion.safetensors` / `contourluxe.safetensors` (in ComfyUI's `loras/` folder)
+degrade face/proportion quality **at every weight tested**, not just when over-applied —
+the working fix is to drop both LoRAs entirely and get the hourglass figure from prompt
+weighting alone (`(slim thick build, ... pronounced hourglass curve...:1.3)` + a second
+reinforcing waist-hip clause at `:1.2`, backed by a symmetric negative prompt banning both
+underweight and plus-size terms). All 8 pairs now delivered and accepted — see its
+NOTES.md for the full recipe, per-person table, and honest per-pair assessment (including
+a third recurrence of the silent-clothing-failure mode on person03's full-body, caught
+and fixed with one reinforced-prompt retry).
+
+**Mandatory QA lesson, reconfirmed a third time**: a full-body IP-Adapter + ControlNet
+generation can silently fail to render the sampled clothing entirely, even with "nude,
+nipple, naked, unclothed" already in the negative prompt at full weight. Round 4 caught
+bare-hips/garbled-cover-object; round 5 lost person02/04 to bikini-and-thong-reading
+outfits on underweight bodies; round 6's person03 came back fully topless. **Every
+full-body output must be visually inspected before being treated as deliverable** — no
+exceptions, no matter how thorough the negative prompt looks on paper.
+
 ## Do not repeat
 
 - `npx eromify-mcp` — package does NOT exist on npm (404, zero registry hits).

@@ -1,0 +1,354 @@
+[
+  {
+    "axis": "C",
+    "variant": "C1_main_clause_noun",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C1_main_clause_noun__seed100001.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C2_trailing_low_weight",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe, (east asian american heritage:0.8)",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C2_trailing_low_weight__seed100001.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C3_pheno_only_no_noun",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C3_pheno_only_no_noun__seed100001.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C1_main_clause_noun",
+    "seed": 200002,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C1_main_clause_noun__seed200002.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C2_trailing_low_weight",
+    "seed": 200002,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe, (east asian american heritage:0.8)",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C2_trailing_low_weight__seed200002.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C3_pheno_only_no_noun",
+    "seed": 200002,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C3_pheno_only_no_noun__seed200002.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C1_main_clause_noun",
+    "seed": 300003,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C1_main_clause_noun__seed300003.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C2_trailing_low_weight",
+    "seed": 300003,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe, (east asian american heritage:0.8)",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C2_trailing_low_weight__seed300003.png"
+  },
+  {
+    "axis": "C",
+    "variant": "C3_pheno_only_no_noun",
+    "seed": 300003,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\C\\C__C3_pheno_only_no_noun__seed300003.png"
+  },
+  {
+    "axis": "D",
+    "variant": "D1_fitted_hourglass",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\D\\D__D1_fitted_hourglass__seed100001.png"
+  },
+  {
+    "axis": "D",
+    "variant": "D2_loose_hourglass",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing an oversized cream sweater and loose wide-leg trousers, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\D\\D__D2_loose_hourglass__seed100001.png"
+  },
+  {
+    "axis": "D",
+    "variant": "D1_fitted_hourglass",
+    "seed": 200002,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\D\\D__D1_fitted_hourglass__seed200002.png"
+  },
+  {
+    "axis": "D",
+    "variant": "D2_loose_hourglass",
+    "seed": 200002,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing an oversized cream sweater and loose wide-leg trousers, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\D\\D__D2_loose_hourglass__seed200002.png"
+  },
+  {
+    "axis": "D",
+    "variant": "D1_fitted_hourglass",
+    "seed": 300003,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\D\\D__D1_fitted_hourglass__seed300003.png"
+  },
+  {
+    "axis": "D",
+    "variant": "D2_loose_hourglass",
+    "seed": 300003,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing an oversized cream sweater and loose wide-leg trousers, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\D\\D__D2_loose_hourglass__seed300003.png"
+  },
+  {
+    "axis": "F",
+    "variant": "F0_weighted_clauses",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\F\\F__F0_weighted_clauses__seed100001.png"
+  },
+  {
+    "axis": "F",
+    "variant": "F1_weighted_clauses",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (subtle hourglass silhouette, defined waist:1.2), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\F\\F__F1_weighted_clauses__seed100001.png"
+  },
+  {
+    "axis": "F",
+    "variant": "F2_weighted_clauses",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (subtle hourglass silhouette, defined waist:1.2), (soft glam makeup with defined eyeliner:1.2), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\F\\F__F2_weighted_clauses__seed100001.png"
+  },
+  {
+    "axis": "F",
+    "variant": "F3_weighted_clauses",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (subtle hourglass silhouette, defined waist:1.2), (soft glam makeup with defined eyeliner:1.2), (warm-toned skin with visible natural texture:1.2), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\F\\F__F3_weighted_clauses__seed100001.png"
+  },
+  {
+    "axis": "F",
+    "variant": "F4_weighted_clauses",
+    "seed": 100001,
+    "kind": "fullbody",
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, (subtle hourglass silhouette, defined waist:1.2), (soft glam makeup with defined eyeliner:1.2), (warm-toned skin with visible natural texture:1.2), (delicate gold jewelry, sunlit bedroom lighting:1.2), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\F\\F__F4_weighted_clauses__seed100001.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A1_baseline_shared_with_B2",
+    "seed": 100001,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A1_baseline_shared_with_B2__seed100001.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A2_texture_plus_prompt_only",
+    "seed": 100001,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm-toned skin, visible pores, subtle skin texture, matte-warm skin, natural unretouched skin texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A2_texture_plus_prompt_only__seed100001.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A3_glossy_pole_prompt_only",
+    "seed": 100001,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, glossy dewy skin, radiant glass skin, luminous poreless skin, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A3_glossy_pole_prompt_only__seed100001.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A4_igselfie_lora_w0.3",
+    "seed": 100001,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "lora": [
+      "instagram_selfie_sdxl.safetensors",
+      0.3
+    ],
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A4_igselfie_lora_w0.3__seed100001.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A5_igselfie_lora_w0.5",
+    "seed": 100001,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "lora": [
+      "instagram_selfie_sdxl.safetensors",
+      0.5
+    ],
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A5_igselfie_lora_w0.5__seed100001.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A1_baseline_shared_with_B2",
+    "seed": 200002,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A1_baseline_shared_with_B2__seed200002.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A2_texture_plus_prompt_only",
+    "seed": 200002,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm-toned skin, visible pores, subtle skin texture, matte-warm skin, natural unretouched skin texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A2_texture_plus_prompt_only__seed200002.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A3_glossy_pole_prompt_only",
+    "seed": 200002,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, glossy dewy skin, radiant glass skin, luminous poreless skin, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A3_glossy_pole_prompt_only__seed200002.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A4_igselfie_lora_w0.3",
+    "seed": 200002,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "lora": [
+      "instagram_selfie_sdxl.safetensors",
+      0.3
+    ],
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A4_igselfie_lora_w0.3__seed200002.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A5_igselfie_lora_w0.5",
+    "seed": 200002,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "lora": [
+      "instagram_selfie_sdxl.safetensors",
+      0.5
+    ],
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A5_igselfie_lora_w0.5__seed200002.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A1_baseline_shared_with_B2",
+    "seed": 300003,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A1_baseline_shared_with_B2__seed300003.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A2_texture_plus_prompt_only",
+    "seed": 300003,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm-toned skin, visible pores, subtle skin texture, matte-warm skin, natural unretouched skin texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A2_texture_plus_prompt_only__seed300003.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A3_glossy_pole_prompt_only",
+    "seed": 300003,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, glossy dewy skin, radiant glass skin, luminous poreless skin, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A3_glossy_pole_prompt_only__seed300003.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A4_igselfie_lora_w0.3",
+    "seed": 300003,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "lora": [
+      "instagram_selfie_sdxl.safetensors",
+      0.3
+    ],
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A4_igselfie_lora_w0.3__seed300003.png"
+  },
+  {
+    "axis": "A",
+    "variant": "A5_igselfie_lora_w0.5",
+    "seed": 300003,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte or glossy lip, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "lora": [
+      "instagram_selfie_sdxl.safetensors",
+      0.5
+    ],
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\A\\A__A5_igselfie_lora_w0.5__seed300003.png"
+  },
+  {
+    "axis": "B",
+    "variant": "B1_bare_pole",
+    "seed": 100001,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, bare-faced, no makeup, minimal makeup, natural bare lips, no eyeliner, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\B\\B__B1_bare_pole__seed100001.png"
+  },
+  {
+    "axis": "B",
+    "variant": "B3_fullglam_pole",
+    "seed": 100001,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, full glam makeup, bold contour, matte lip, sharp winged liner, dramatic eyeshadow, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\B\\B__B3_fullglam_pole__seed100001.png"
+  },
+  {
+    "axis": "B",
+    "variant": "B1_bare_pole",
+    "seed": 200002,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, bare-faced, no makeup, minimal makeup, natural bare lips, no eyeliner, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\B\\B__B1_bare_pole__seed200002.png"
+  },
+  {
+    "axis": "B",
+    "variant": "B3_fullglam_pole",
+    "seed": 200002,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, full glam makeup, bold contour, matte lip, sharp winged liner, dramatic eyeshadow, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\B\\B__B3_fullglam_pole__seed200002.png"
+  },
+  {
+    "axis": "B",
+    "variant": "B1_bare_pole",
+    "seed": 300003,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, bare-faced, no makeup, minimal makeup, natural bare lips, no eyeliner, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\B\\B__B1_bare_pole__seed300003.png"
+  },
+  {
+    "axis": "B",
+    "variant": "B3_fullglam_pole",
+    "seed": 300003,
+    "kind": "portrait",
+    "positive": "a 25 year old east asian american woman, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm skin tone with visible pores and natural texture, full glam makeup, bold contour, matte lip, sharp winged liner, dramatic eyeshadow, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, close-up portrait, bust shot, shoulders up",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\B\\B__B3_fullglam_pole__seed300003.png"
+  }
+]

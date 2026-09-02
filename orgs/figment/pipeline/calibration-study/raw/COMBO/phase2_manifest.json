@@ -1,0 +1,20 @@
+[
+  {
+    "variant": "COMBO_hair-balayage",
+    "seed": 100001,
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm-toned skin, visible pores, subtle skin texture, matte-warm skin, natural unretouched skin texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte nude-pink lip, no red lipstick, balayage highlights over dark brown hair, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe, (east asian american heritage:0.8)",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\COMBO\\COMBO__COMBO_hair-balayage__seed100001.png"
+  },
+  {
+    "variant": "COMBO_hair-flat",
+    "seed": 200002,
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm-toned skin, visible pores, subtle skin texture, matte-warm skin, natural unretouched skin texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte nude-pink lip, no red lipstick, flat jet-black hair, no highlights, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe, (east asian american heritage:0.8)",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\COMBO\\COMBO__COMBO_hair-flat__seed200002.png"
+  },
+  {
+    "variant": "COMBO_hair-subtle",
+    "seed": 300003,
+    "positive": "full body head-to-toe photo, entire body visible from head to feet, standing, a 25 year old woman with warm-toned skin, monolid-leaning eyes, straight dark hair, round soft face shape, soft contoured cheeks, full groomed natural eyebrows, warm-toned skin, visible pores, subtle skin texture, matte-warm skin, natural unretouched skin texture, soft glam makeup, subtle visible eyeliner not heavy, soft-matte nude-pink lip, no red lipstick, subtle balayage over black hair, (slim build with a defined waist and gentle hip curve:1.2), (subtle hourglass silhouette:1.1), wearing a fitted olive-green sweater and dark wide-leg jeans, delicate gold pendant necklace, standing in a plain sunlit bedroom, closed round neckline, fully opaque clothing covering torso and hips, standing with both feet planted on the ground, candid phone photograph, amateur photography, unedited, film grain, adult woman in her mid-20s, full body shot, standing, feet visible, head to toe, (east asian american heritage:0.8)",
+    "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\calibration-study\\raw\\COMBO\\COMBO__COMBO_hair-subtle__seed300003.png"
+  }
+]
