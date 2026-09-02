@@ -1,0 +1,22 @@
+{
+  "axis": "film_phone",
+  "description": "Separate clean phone, grain, and amateur-snapshot prose, with the r11 Z-Image-Turbo phone LoRA retained as an explicitly experimental Base-compatibility cell.",
+  "apply": {"type": "append"},
+  "variants": [
+    {"name": "clean-phone", "value": "The image keeps the restrained imperfections of a recent handheld phone camera"},
+    {"name": "fine-film-grain", "value": "Fine organic film grain and gentle color response remain visible without looking filtered"},
+    {"name": "amateur-snapshot", "value": "Slight handheld softness, modest sensor noise, and imperfect casual framing make this feel like an amateur phone snapshot"},
+    {
+      "name": "z-galaxy-ace-120-experimental",
+      "value": "Small-sensor noise, mild lens softness, and early smartphone dynamic range shape the candid snapshot",
+      "lora": {
+        "z_image": {
+          "repo_id": "rahul7star/ZImageLora",
+          "filename": "Realistic_Photo/Galaxy_Ace_real_photo_ZIT.safetensors",
+          "weight": 1.2
+        }
+      }
+    }
+  ],
+  "seeds": [100001, 200002, 300003]
+}

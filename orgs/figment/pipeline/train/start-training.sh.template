@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+trigger='{{trigger}}'
+data_root="/workspace/ComfyUI/input/${trigger}"
+trainer_root=/workspace/diffusion-pipe
+train_output=/workspace/train-output
+mkdir -p /workspace/output "$train_output"
+
+fail() {
+  printf '%s\n' "$*" > /workspace/output/_training.failed
+  exit 1
+}
+
+if [[ ! -d "$trainer_root/.git" ]]; then
+  git clone --recurse-submodules --branch '{{diffusion_pipe_git_ref}}' \
+    https://github.com/tdrussell/diffusion-pipe.git "$trainer_root" \
+    || fail 'trainer clone failed'
+fi
+python -m pip install -r "$trainer_root/requirements.txt" \
+  || fail 'trainer install failed'
+
+python /workspace/ComfyUI/main.py "$@" &
+comfy_pid=$!
+trap 'kill "$comfy_pid" 2>/dev/null || true' EXIT
+
+while [[ ! -f "$data_root/_dataset.ready" ]]; do
+  kill -0 "$comfy_pid" 2>/dev/null \
+    || fail 'ComfyUI stopped before dataset upload'
+  sleep 2
+done
+
+mapfile -t images < <(find "$data_root" -maxdepth 1 -type f -name '*.png' | sort)
+[[ ${#images[@]} -eq 40 ]] \
+  || fail "expected 40 PNG files, found ${#images[@]}"
+for image in "${images[@]}"; do
+  [[ -s "${image%.png}.txt" ]] \
+    || fail "missing caption for $(basename "$image")"
+done
+
+cd "$trainer_root"
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export NCCL_P2P_DISABLE=1
+export NCCL_IB_DISABLE=1
+deepspeed --num_gpus=1 train.py --deepspeed \
+  --config "$data_root/training.toml" \
+  || fail 'training failed'
+
+lora=$(find "$train_output/$trigger" -type f -name '*.safetensors' \
+  -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+[[ -n "$lora" && -s "$lora" ]] || fail 'no LoRA safetensors produced'
+cp "$lora" "/workspace/output/${trigger}.safetensors"
+touch /workspace/output/_training.complete
+wait "$comfy_pid"

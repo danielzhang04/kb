@@ -1,0 +1,14 @@
+{
+  "axis": "makeup",
+  "description": "Treat makeup as the discrete bare-to-defined ladder identified by r10.",
+  "apply": {
+    "type": "replace",
+    "target": "warm taupe shadow, subtle brown liner, bronzed cheeks, and a glossy nude-rose lip"
+  },
+  "variants": [
+    {"name": "bare", "value": "a bare face with no visible makeup, natural brows, and a moisturized natural lip"},
+    {"name": "soft-glam", "value": "warm taupe shadow, subtle brown liner, softly bronzed cheeks, full groomed brows, and a glossy nude-rose lip"},
+    {"name": "defined", "value": "defined warm contour, crisp brown winged liner, polished full brows, and a deeper soft-matte rose lip"}
+  ],
+  "seeds": [100001, 200002, 300003]
+}

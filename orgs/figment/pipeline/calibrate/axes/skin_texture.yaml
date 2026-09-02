@@ -1,0 +1,36 @@
+{
+  "axis": "skin_texture",
+  "description": "Test prose texture cues plus the Z-Image skin LoRA candidate recorded in r11; Klein has no verified compatible skin LoRA, so those cells remain prompt-only on that arm.",
+  "apply": {
+    "type": "replace",
+    "target": "warm fair peach skin with visible pores and a satin-natural finish"
+  },
+  "variants": [
+    {"name": "baseline-satin", "value": "warm fair peach skin with visible pores and a satin-natural finish"},
+    {"name": "natural-visible-texture", "value": "warm fair peach skin with visible pores, subtle natural texture, and an unretouched satin finish"},
+    {"name": "matte-real-texture", "value": "warm fair peach skin with fine pores, slight tonal variation, and a natural matte finish"},
+    {
+      "name": "z-skin-lora-035",
+      "value": "warm fair peach skin with visible pores, subtle natural texture, and an unretouched satin finish",
+      "lora": {
+        "z_image": {
+          "repo_id": "lastremorse/z-image-Realistic-Skin-Texture-style-lora",
+          "filename": "skin texture v2.1.safetensors",
+          "weight": 0.35
+        }
+      }
+    },
+    {
+      "name": "z-skin-lora-055",
+      "value": "warm fair peach skin with visible pores, subtle natural texture, and an unretouched satin finish",
+      "lora": {
+        "z_image": {
+          "repo_id": "lastremorse/z-image-Realistic-Skin-Texture-style-lora",
+          "filename": "skin texture v2.1.safetensors",
+          "weight": 0.55
+        }
+      }
+    }
+  ],
+  "seeds": [100001, 200002, 300003]
+}

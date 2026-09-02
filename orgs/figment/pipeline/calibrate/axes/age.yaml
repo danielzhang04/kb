@@ -1,0 +1,15 @@
+{
+  "axis": "age",
+  "description": "Move apparent age around the operator's about-21 adult target without any minor-coded wording.",
+  "apply": {
+    "type": "replace",
+    "target": "an unambiguously adult woman in her mid-twenties"
+  },
+  "variants": [
+    {"name": "early-twenties-adult", "value": "an unambiguously adult woman in her early twenties"},
+    {"name": "twenty-one-adult", "value": "an unambiguously adult twenty-one-year-old woman"},
+    {"name": "young-adult-natural", "value": "an unambiguously adult young woman around twenty-one with natural skin texture and understated makeup"},
+    {"name": "adult-casual-cues", "value": "an unambiguously adult woman around twenty-one with fresh natural skin, understated makeup, and relaxed adult confidence"}
+  ],
+  "seeds": [100001, 200002, 300003]
+}

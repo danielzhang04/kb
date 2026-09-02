@@ -1,0 +1,64 @@
+# Render this template from the winning bake-off manifest. The three model records
+# and inline workflow shown as placeholders MUST be copied from that same arm.
+gpu:
+  type: NVIDIA GeForce RTX 4090
+  count: 1
+  cloud: SECURE
+price_usd_per_hour: 0.80
+max_minutes: 60
+container_disk_gb: 80
+volume_gb: 80
+volume_mount_path: /workspace
+image: runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04
+readiness_timeout_seconds: 1200
+job_timeout_seconds: 2700
+comfyui:
+  root: /workspace/ComfyUI
+  git_ref: v0.20.1
+  port: 8188
+  start_command: bash /workspace/start-training.sh
+
+# Copy verbatim from either arm-a-zimage.yaml or arm-b-klein4b.yaml.
+models: "{{winning_arm_models}}"
+workflow: "{{winning_arm_workflow}}"
+seed_fields: [seed, noise_seed]
+
+# Proposed harness extension. It expands files in stable order, uploads each as a
+# multipart `image` field, and sends type=input plus the stated subfolder. The
+# ready marker is deliberately last so the start script never observes a partial set.
+uploads:
+  - files:
+      - "{{dataset_dir}}/*.png"
+      - "{{dataset_dir}}/*.txt"
+      - "{{rendered_config_dir}}/dataset.toml"
+      - "{{rendered_config_dir}}/training.toml"
+    subfolder: "{{trigger}}"
+    type: input
+    overwrite: false
+  - files: ["{{dataset_dir}}/_dataset.ready"]
+    subfolder: "{{trigger}}"
+    type: input
+    overwrite: false
+
+training:
+  repository: https://github.com/tdrussell/diffusion-pipe.git
+  git_ref: "{{diffusion_pipe_git_ref}}"
+  root: /workspace/diffusion-pipe
+  trigger: "{{trigger}}"
+  ready_marker: "/workspace/ComfyUI/input/{{trigger}}/_dataset.ready"
+  complete_marker: /workspace/output/_training.complete
+  failed_marker: /workspace/output/_training.failed
+  start_script_path: /workspace/start-training.sh
+  start_script_file: start-training.sh.template
+
+# A harness worker replaces this compatibility job with artifact waiting/downloading.
+jobs:
+  - seed: 100001
+    output_name: "training-transport-sentinel-{{trigger}}"
+    substitutions: []
+    expected_images: 1
+artifacts:
+  - remote: "{{trigger}}.safetensors"
+    type: output
+    local: "{{trigger}}.safetensors"
+    wait_for: _training.complete

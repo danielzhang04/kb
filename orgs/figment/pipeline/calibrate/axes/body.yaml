@@ -1,0 +1,16 @@
+{
+  "axis": "body",
+  "description": "Counter the Klein fuller-body prior with literal build language and pose/framing cues while keeping clothing fitted and opaque.",
+  "apply": {
+    "type": "replace",
+    "target": "a slim, softly waist-defined build"
+  },
+  "variants": [
+    {"name": "slim-neutral", "value": "a slender build with a narrow frame and a softly defined waist"},
+    {"name": "slim-hip-cocked", "value": "a slender narrow-framed build, seated with her weight shifted so the waist remains readable"},
+    {"name": "lean-curvy", "value": "a lean-curvy build with a narrow torso, a clearly defined waist, and a gentle natural hip line"},
+    {"name": "lean-curvy-seated", "value": "a lean-curvy build with a defined waist, seated at a slight three-quarter angle so the waist-to-hip line reads clearly"},
+    {"name": "slim-thick-balanced", "value": "a slim-thick build with a narrow waist and softly fuller hips, still visibly slender through the shoulders, arms, and legs"}
+  ],
+  "seeds": [100001, 200002, 300003]
+}
