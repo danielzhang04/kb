@@ -622,6 +622,89 @@ def test_A1_create_timeout_after_create_still_terminates(tmp_path):
     assert record["termination_verified"] is True
 
 
+def test_P1j_timeout_logs_create_error_and_uses_uncertain_banner(tmp_path, monkeypatch):
+    monkeypatch.setattr(rr.atexit, "register", lambda _callback: None)
+    monkeypatch.setattr(rr.atexit, "unregister", lambda _callback: None)
+
+    class InvisibleCreate:
+        def create_pod(self, _payload):
+            raise TimeoutError("POST timed out")
+
+        def list_pods(self):
+            return []
+
+        def delete_pod(self, _pod_id):
+            raise AssertionError("no pod id should be invented")
+
+        def get_pod(self, _pod_id):
+            raise AssertionError("no pod id should be invented")
+
+    logger, stream = logger_and_stream()
+    with pytest.raises(rr.PodStillRunning, match="create returned uncertain") as caught:
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=InvisibleCreate(), logger=logger,
+            comfy_factory=FakeComfy, sleep=lambda _seconds: None,
+            ledger_dir=tmp_path / "ledger",
+        )
+
+    assert "TimeoutError: POST timed out" in stream.getvalue()
+    assert "a pod may exist" in str(caught.value)
+    record = json.loads((tmp_path / "out" / "run.json").read_text())
+    assert record["create_error"] == "TimeoutError: POST timed out"
+    assert not (tmp_path / "ledger").exists()
+
+
+def test_P1j_http_429_logs_redacted_body_and_no_visible_pod_banner(tmp_path, monkeypatch):
+    monkeypatch.setattr(rr.atexit, "register", lambda _callback: None)
+    monkeypatch.setattr(rr.atexit, "unregister", lambda _callback: None)
+    key = "create-response-secret"
+    session = StubSession(
+        [StubResponse(429, {"error": f"rate limited: {key}"})]
+        + [StubResponse(200, []) for _ in range(10)],
+        key=key,
+    )
+    redactor = rr.ApiKeyRedactionFilter(session)
+    logger, stream = logger_and_stream(redactor)
+
+    with pytest.raises(rr.PodStillRunning, match="no pod with this name is visible") as caught:
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=rr.RunPodAPI(session), logger=logger,
+            redactor=redactor, comfy_factory=FakeComfy, sleep=lambda _seconds: None,
+            ledger_dir=tmp_path / "ledger",
+        )
+
+    logs = stream.getvalue()
+    record_text = (tmp_path / "out" / "run.json").read_text()
+    assert "CreateCallError" in logs
+    assert "HTTP 429" in logs
+    assert "rate limited" in logs
+    assert "most likely never created" in str(caught.value)
+    assert key not in logs + record_text
+    assert "[REDACTED]" in logs + record_text
+    assert not (tmp_path / "ledger").exists()
+
+
+def test_P1j_definite_create_refusal_scans_once_without_ledger(tmp_path):
+    session = StubSession([
+        StubResponse(400, {"error": "no GPU available"}),
+        StubResponse(200, []),
+    ])
+    logger, _stream = logger_and_stream()
+
+    with pytest.raises(rr.CreateFailed, match="CREATE FAILED: CreateCallError"):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=rr.RunPodAPI(session), logger=logger,
+            comfy_factory=FakeComfy, sleep=lambda _seconds: None,
+            ledger_dir=tmp_path / "ledger",
+        )
+
+    assert [call[0] for call in session.calls] == ["POST", "GET"]
+    assert not (tmp_path / "ledger").exists()
+
+
 def test_A2_main_keyboard_interrupt_never_claims_unverified_teardown(monkeypatch, capsys):
     class ImmortalAPI(FakeAPI):
         def delete_pod(self, _pod_id):
@@ -1113,8 +1196,9 @@ def test_N1_empty_name_scans_never_verify_uncertain_create(monkeypatch, capsys):
     stderr = capsys.readouterr().err
     assert code == 1
     assert "termination verified" not in stderr.lower()
-    assert "POD STILL RUNNING figment-bakeoff-invisible" in stderr
-    assert "run: status" in stderr
+    assert "create returned uncertain" in stderr
+    assert "a pod may exist" in stderr
+    assert "verify with `status`" in stderr
 
 
 def test_N2_final_ledger_failure_cannot_displace_pod_still_running(

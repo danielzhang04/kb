@@ -97,6 +97,22 @@ class PodStillRunning(HarnessError):
     """Termination could not be verified."""
 
 
+class CreateCallError(HarnessError):
+    """A non-success response from the create call, retained for diagnosis."""
+
+    def __init__(self, status_code: int, body: str):
+        self.status_code = int(status_code)
+        self.body = body[:500]
+        detail = f"RunPod POST /pods returned HTTP {self.status_code}"
+        if self.body:
+            detail += f": {self.body}"
+        super().__init__(detail)
+
+
+class CreateFailed(HarnessError):
+    """The provider definitively rejected the create request."""
+
+
 class RunCancelled(HarnessError):
     """SIGINT, SIGTERM, or the wall-clock watchdog requested shutdown."""
 
@@ -197,7 +213,21 @@ class RunPodAPI:
             raise HarnessError(f"RunPod {method} {path} returned invalid JSON") from exc
 
     def create_pod(self, payload: dict[str, Any]) -> dict[str, Any]:
-        data = self._request("POST", "/pods", json_body=payload)
+        response = self.session.request(
+            "POST", self.base_url + "/pods", json=payload, timeout=REQUEST_TIMEOUT,
+        )
+        if not 200 <= response.status_code < 300:
+            body = getattr(response, "content", b"")
+            if isinstance(body, bytes):
+                body = body.decode("utf-8", errors="replace")
+            raise CreateCallError(response.status_code, str(body))
+        if response.status_code == 204 or not getattr(response, "content", b""):
+            data = None
+        else:
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise HarnessError("RunPod POST /pods returned invalid JSON") from exc
         if not isinstance(data, dict):
             raise HarnessError("RunPod create response was not an object")
         return data
@@ -295,6 +325,9 @@ class PodLease:
         self._known_ids: set[str] = {self.pod_id} if self.pod_id else set()
         self._acquired_notified = bool(self.pod_id)
         self._create_uncertain = False
+        self.create_error: str | None = None
+        self._create_response_received = False
+        self._create_name_match_seen = False
         if started_utc is not None and started_utc.tzinfo is None:
             started_utc = started_utc.replace(tzinfo=timezone.utc)
         self.started_utc = started_utc.astimezone(timezone.utc) if started_utc else None
@@ -362,6 +395,36 @@ class PodLease:
                 )
         return matches
 
+    @staticmethod
+    def _definitely_not_created(exc: BaseException) -> bool:
+        if not isinstance(exc, CreateCallError):
+            return False
+        body = exc.body.lower()
+        return (
+            (400 <= exc.status_code < 500 and exc.status_code not in (408, 429))
+            or "no gpu available" in body
+            or "no gpus available" in body
+            or "insufficient funds" in body
+        )
+
+    def _create_failure_banner(self) -> str:
+        error = self.create_error or "unknown create failure"
+        if self._create_response_received and not self._create_name_match_seen:
+            return (
+                f"create call failed ({error}) and no pod with this name is visible "
+                "— most likely never created; verify with `status`"
+            )
+        return (
+            f"create returned uncertain ({error}) and a pod may exist; "
+            "verify with `status`"
+        )
+
+    def failure_banner(self) -> str:
+        if self.create_error:
+            return self._create_failure_banner()
+        label = self.pod_id or self.pod_name or "UNKNOWN"
+        return f"POD STILL RUNNING {label}"
+
     def _mark_verified(self, label: str) -> None:
         self._verified_absent = True
         self.logger.warning("termination verified: pod %s is absent", label)
@@ -391,12 +454,34 @@ class PodLease:
             if not self.pod_id:
                 self._create_uncertain = True
                 matches = self._named_matches()
+                self._create_name_match_seen = bool(matches)
                 if len(matches) != 1:
                     raise HarnessError(
                         "pod creation may have succeeded but its id was not returned"
                     )
                 self._remember_pod(matches[0])
         except BaseException as exc:
+            self._create_response_received = isinstance(exc, CreateCallError)
+            self.create_error = redact_for_stderr(f"{type(exc).__name__}: {exc}")
+            self.logger.error("create call failed: %s", self.create_error)
+            if self._definitely_not_created(exc):
+                # A definite refusal cannot create a pod. One exact-name scan is retained
+                # as a guard against a provider-side inconsistency, but it is not retried.
+                try:
+                    matches = self._named_matches()
+                    self._create_name_match_seen = bool(matches)
+                    for pod in matches:
+                        self._remember_pod(pod)
+                except BaseException as scan_exc:
+                    self.logger.error(
+                        "pod-name safety scan after definite create failure failed: %s: %s",
+                        type(scan_exc).__name__, scan_exc,
+                    )
+                if not self._known_ids:
+                    self._mark_verified("(create definitively failed)")
+                    wrapped = CreateFailed(f"CREATE FAILED: {self.create_error}")
+                    attach_lease_status(wrapped, self)
+                    raise wrapped from exc
             self._create_uncertain = True
             try:
                 self.close()
@@ -422,8 +507,7 @@ class PodLease:
             pass
         pod_id, name, verified = self.snapshot()
         if not verified:
-            label = pod_id or name or "UNKNOWN"
-            message = f"POD STILL RUNNING {label}"
+            message = self.failure_banner()
             self.logger.critical(message)
             # Logging handlers may already be torn down during interpreter exit.
             print(message, file=sys.stderr)
@@ -442,6 +526,7 @@ class PodLease:
                     try:
                         matches = self._named_matches()
                         name_scan_ok = True
+                        self._create_name_match_seen = self._create_name_match_seen or bool(matches)
                         for pod in matches:
                             self._remember_pod(pod)
                         ever_discovered = ever_discovered or bool(matches)
@@ -470,6 +555,9 @@ class PodLease:
                 if self._create_uncertain and name_scan_ok:
                     try:
                         remaining = self._named_matches()
+                        self._create_name_match_seen = (
+                            self._create_name_match_seen or bool(remaining)
+                        )
                         for pod in remaining:
                             self._remember_pod(pod)
                         name_scan_ok = not remaining
@@ -482,8 +570,7 @@ class PodLease:
                     return
                 if attempt < self.attempts:
                     self.sleep(min(2 ** (attempt - 1), 8))
-            label = self.pod_id or self.pod_name or "UNKNOWN"
-            message = f"POD STILL RUNNING {label}"
+            message = self.failure_banner()
             self.logger.critical(message)
             raise PodStillRunning(message)
 
@@ -498,6 +585,9 @@ def attach_lease_status(exc: BaseException, lease: PodLease) -> BaseException:
         setattr(exc, "pod_id", pod_id)
         setattr(exc, "pod_name", pod_name)
         setattr(exc, "termination_verified", verified)
+        setattr(exc, "create_error", lease.create_error)
+        if lease.create_error:
+            setattr(exc, "fail_closed_banner", lease.failure_banner())
     except BaseException:
         pass
     return exc
@@ -2286,6 +2376,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         try:
             pod_id, _pod_name, verified = lease.snapshot()
             result["pod_id"] = pod_id or result["pod_id"]
+            if lease.create_error:
+                result["create_error"] = lease.create_error
             result["termination_verified"] = verified
             elapsed = time.monotonic() - started
             result["finished_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -2473,8 +2565,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     def report(exc: BaseException, summary: str) -> None:
-        print(redact_for_stderr(summary), file=sys.stderr)
+        safe_summary = redact_for_stderr(summary)
+        print(safe_summary, file=sys.stderr)
         if getattr(exc, "termination_verified", True) is False:
+            banner = getattr(exc, "fail_closed_banner", None)
+            if banner:
+                safe_banner = redact_for_stderr(banner)
+                if safe_banner != safe_summary:
+                    print(safe_banner, file=sys.stderr)
+                return
             pod_id = getattr(exc, "pod_id", None)
             if pod_id:
                 print(
