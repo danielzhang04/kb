@@ -1,0 +1,83 @@
+# figment — mandate (operator's end goal, stated 2026-09-03)
+
+This file is the standing definition of what figment is building. Every spec, plan, and worker
+brief derives from it. GUARDRAILS.md still binds on top of it. Edited by the operator or the boss
+session only.
+
+## End state
+
+An end-to-end automated pipeline that starts from ONE reference image of a fictional adult woman
+and ends with continuously researched, monitored, and optimised accounts: Instagram first,
+other social platforms as they earn it, and a Fanvue-class paid platform. Two content tiers from
+one identity: Instagram-level (clothed/swimwear ceiling) and explicit (paid tier). Several
+creators over time, each from her own reference image, run from one dashboard.
+
+## The pipeline, stage by stage
+
+1. **Anchor** — operator supplies the reference image (fictional, adult, cull-checked). It is
+   the persona's identity source of record.
+2. **Identity expansion** — one-reference conditioning (FLUX.2 klein 4B Base native path) into a
+   balanced multi-view set; automated identity scoring; operator eye-gate.
+3. **Persona LoRA** — trained on the expansion set. Scope of the LoRA: the face under motion
+   (video frames), every camera angle and distance, body shape and proportions clothed, minimally
+   clothed, and unclothed at various angles, so the identity holds across both tiers. See the
+   tier constraint below for WHERE each part of that set is generated and trained.
+4. **Register lock** — the operator's look (see `pipeline/look-spec-v2.md`, operator taste
+   anchor) held as settings on top of the LoRA: makeup, skin finish, body, lighting families,
+   wardrobe families. Calibration grids live here.
+5. **Image generation with passes** — base render → face detailer → consistency check against the
+   anchor (automated identity + register scoring) → upscale/detail pass → mandatory visual QA →
+   quarantine and regenerate failures. "Perfect or culled," never "good enough."
+6. **Video generation with passes** — image-to-video (Wan 2.2 self-hosted backbone; Kling/Veo for
+   the Instagram tier where terms allow) with the same detail, consistency, and QA passes on
+   frames; face holds under motion.
+7. **Content strategy from research** — what goes viral in the reference cohort: image types,
+   account aesthetics, video formats, thirst-trap patterns, settings, trending audios, comment
+   patterns, posting frequency, dances; per platform. Continuous, not one-off.
+8. **Post and measure** — official APIs with AI disclosure set; per-account tracking, analytics,
+   link-click and funnel attribution, revenue; audience AI-suspicion logged as signal.
+9. **Optimise** — metrics feed the next batch's content mix and the research loop; the system
+   runs unattended between operator gates.
+
+## The dashboard
+
+One working dashboard in the 10sorlabs "studio" shape rather than a status page: generate,
+edit inputs, run flows, review QA boards, approve, schedule, post, and track analytics for every
+account from one place. It runs on the kb agent architecture (same agents, same cards, same
+ledgers) — either as a figment surface inside the kb VM dashboard or as a figment app that
+drives the kb agent architecture directly; decide in the spec. Account tracking and analytics
+are first-class views, not add-ons.
+
+## Research streams (standing, not one-off)
+
+- **Reference-cohort content analysis** — the inspiration board accounts and additions: which
+  posts, formats, settings, and captions produce reach, saves, comments, link clicks; account
+  aesthetic patterns; posting cadence. Read-only study per GUARDRAILS; evidence recorded with
+  dates.
+- **Platform trend research** — audios, hashtags, formats, dances, comment behaviour, frequency
+  norms, per platform, refreshed on a cadence.
+- **Tooling watch** — models, adapters, detailers, video engines, consistency tools; 10sorlabs
+  and Eromify-class stacks as pattern references (never as dependencies).
+
+## Tier constraint (binding, from GUARDRAILS #3 and the W0 board)
+
+Rented compute (RunPod, fal, Replicate, Modal) prohibits adult content. Therefore: identity
+expansion, LoRA training, and generation for the Instagram tier may run on pods; every
+unclothed or explicit image — including the unclothed portion of the LoRA training set and the
+training run that includes it — is generated and trained on operator-controlled hardware only,
+by the operator. Agents build and test that path with clothed data; the operator runs it.
+Separate stores, prompts, and accounts per tier.
+
+## What exists today (2026-09-03)
+
+- Pod harness with spend guards, HTTP transport, QA toolkit, calibration driver, training
+  scaffolding, identity checker: `pipeline/` (branch `claude/figment`).
+- Research r1–r13 in `research/`; look-spec-v2 and the operator taste anchor in `pipeline/`.
+- Model decisions: Z-Image (look) + FLUX.2 klein 4B Base (identity) on RunPod; Wan 2.2 for video.
+- Open provisioning items: Fanvue written confirmation; Instagram professional test account +
+  Meta token (Test 0); owned GPU for the explicit tier.
+
+## Next
+
+Operator supplies the anchor image. Next session opens with the architectural brainstorm and a
+written spec for creator 001 end to end (stages 1–9 + dashboard), then the plan.
