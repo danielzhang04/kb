@@ -161,6 +161,27 @@ export interface RunMetadataDto extends RunDto {
   eventCount: number;
 }
 
+/** One checker review criterion, exactly as `server/control/proposal.ts#ProposalReviewCriterion` emits it. */
+export interface ReviewCriterionDto {
+  id: string;
+  description: string;
+}
+
+/** Compiler-owned checker review contract (`server/control/proposal.ts#ProposalReview`). */
+export interface StageReviewDto {
+  subjectStageId: string;
+  maxCreatorReworks: number;
+  criteria: ReviewCriterionDto[];
+}
+
+/** Compiler-owned completion gate (`server/control/proposal.ts#ProposalCompletionGate`). */
+export interface CompletionGateDto {
+  id: string;
+  kind: 'approval';
+  prompt: string;
+  requiresReview: 'pass';
+}
+
 export interface StageDto {
   stageRef: string;
   runRef: string;
@@ -173,6 +194,16 @@ export interface StageDto {
   currentAttemptRef: string | null;
   /** Immutable logical-worker provenance, or null for a legacy/unassigned stage. */
   assignment: ResolvedAgentAssignmentDto | null;
+  /** Compiler-owned checker contract; immutable after launch. */
+  workflowProfile: string | null;
+  /** Compiler-owned checker review contract; immutable after launch. */
+  review: StageReviewDto | null;
+  /** Compiler-owned completion gate; immutable after launch. */
+  completionGate: CompletionGateDto | null;
+  /** Current logical creator projection; immutable history lives in StageGenerationDto. */
+  currentGeneration: number;
+  currentGenerationRef: string | null;
+  acceptedGenerationRef: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -188,6 +219,10 @@ export interface AttemptDto {
   state: AttemptState;
   version: number;
   managedSessionRef: string | null;
+  /** Logical creator-generation lineage; null for ordinary/legacy attempts. */
+  logicalGeneration: number | null;
+  baseGenerationRef: string | null;
+  baseCommit: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1083,15 +1118,32 @@ const runDto: WireValidator = (value) => exactDto(value, {
     composerRef: wireString, agentId: wireString, declarationPath: wireString, declarationHash: wireString,
   })),
 });
+const reviewCriterionDto: WireValidator = (value) => exactDto(value, {
+  id: wireString, description: wireString,
+});
+/** Closed mirror of `server/control/proposal.ts#ProposalReview`, the compiler-owned checker contract. */
+const stageReviewDto: WireValidator = (value) => exactDto(value, {
+  subjectStageId: wireString, maxCreatorReworks: wireNumber, criteria: arrayOf(reviewCriterionDto),
+});
+/** Closed mirror of `server/control/proposal.ts#ProposalCompletionGate`; shared with the loop decoder. */
+const completionGateDto: WireValidator = (value) => exactDto(value, {
+  id: wireString, kind: wireString, prompt: wireString, requiresReview: wireString,
+});
 const stageDto: WireValidator = (value) => exactDto(value, {
   stageRef: wireString, runRef: wireString, stageId: wireString, title: wireString,
   dependsOn: arrayOf(wireString), canonicalCardRef: nullable(wireString), state: wireString, version: wireNumber,
-  currentAttemptRef: nullable(wireString), assignment: nullable(assignmentDto), createdAt: wireString, updatedAt: wireString,
+  currentAttemptRef: nullable(wireString), assignment: nullable(assignmentDto),
+  workflowProfile: nullable(wireString), review: nullable(stageReviewDto),
+  completionGate: nullable(completionGateDto), currentGeneration: wireNumber,
+  currentGenerationRef: nullable(wireString), acceptedGenerationRef: nullable(wireString),
+  createdAt: wireString, updatedAt: wireString,
 });
 const attemptDto: WireValidator = (value) => exactDto(value, {
   attemptRef: wireString, runRef: wireString, stageRef: wireString, generation: wireNumber,
   predecessorAttemptRef: nullable(wireString), runtime: wireString, model: wireString, state: wireString,
-  version: wireNumber, managedSessionRef: nullable(wireString), createdAt: wireString, updatedAt: wireString,
+  version: wireNumber, managedSessionRef: nullable(wireString), logicalGeneration: nullable(wireNumber),
+  baseGenerationRef: nullable(wireString), baseCommit: nullable(wireString),
+  createdAt: wireString, updatedAt: wireString,
 });
 const managedSessionDto: WireValidator = (value) => exactDto(value, {
   sessionRef: wireString, runRef: wireString, stageRef: nullable(wireString), attemptRef: nullable(wireString),
@@ -1189,7 +1241,7 @@ const iterationLoopDto: WireValidator = (value) => exactDto(value, {
   createdAt: wireString, updatedAt: wireString,
 }, {
   goal: wireString,
-  completionGate: (entry) => exactDto(entry, { id: wireString, kind: wireString, prompt: wireString, requiresReview: wireString }),
+  completionGate: completionGateDto,
   turnOwnerParticipantId: wireString, currentStepId: wireString, acceptedGenerationRefs: arrayOf(wireString),
   lastReceiptRef: wireString, completionGateRef: wireString, interventionRef: wireString,
   parkReason: wireString, unresolvedResidue: residueDto,
