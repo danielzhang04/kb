@@ -46,6 +46,15 @@ that reads younger than that is culled — not relabelled.
   not constraints. The first persona picks her own values for each of them later.
 - **Inspiration scope:** the six primaries weight highest, but every account on the board
   is valid inspiration for analysis of the locked axes.
+- **Operator taste anchor (2026-09-03, three reference screenshots supplied directly):** the
+  target makeup register is ABG / e-girl glam, HEAVIER than §2's "light, self-applied" centre:
+  sharp winged black liner, long defined lashes, groomed straight brows, soft blush, glossy
+  pink-nude full lips (natural fullness), fair luminous skin with visible texture (freckles
+  acceptable), jet-black hair (shag with curtain bangs, or long with a money piece), pouty
+  relaxed expression, corset/bustier/cami tops, layered thin silver chains, mirror or
+  arm's-length phone shots under flat white bedroom light. Where §2 and this note disagree,
+  this note wins. Contour and bronzer stay out; the earlier "baddie" miss was contour +
+  bronzer + augmented lips, not liner.
 
 ## 1. Per-account rows
 
