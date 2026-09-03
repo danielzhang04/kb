@@ -43,6 +43,10 @@ WARDROBE = (
     "a fitted navy ribbed top with full coverage",
     "a fully opaque rust-brown camisole with a modest neckline",
 )
+MAX_JOBS_PER_MANIFEST = 10
+JOB_TIMEOUT_SECONDS = 240
+READINESS_TIMEOUT_SECONDS = 900
+MAX_MINUTES = 60
 
 
 class IdentitySetError(ValueError):
@@ -146,9 +150,9 @@ def make_prompt(
     ).replace("  ", " ")
 
 
-def build_identity_manifest(
+def build_identity_manifests(
     arm_path: Path, candidate: str, settings_path: Path, trigger: str, caption_dir: Path
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{2,63}", trigger):
         raise IdentitySetError("trigger must be 3-64 safe token characters and start with a letter")
     manifest = load_document(arm_path)
@@ -193,12 +197,7 @@ def build_identity_manifest(
                 }
                 jobs.append(job)
                 index += 1
-    manifest = copy.deepcopy(manifest)
-    manifest["jobs"] = jobs
-    manifest["readiness_timeout_seconds"] = 480
-    manifest["max_minutes"] = math.ceil(8 + len(jobs) * 70 / 60)
-    manifest["price_usd_per_hour"] = min(float(manifest["price_usd_per_hour"]), 0.80)
-    manifest["identity_set"] = {
+    identity_set = {
         "candidate": candidate,
         "trigger": trigger,
         "angles": list(ANGLES),
@@ -206,8 +205,30 @@ def build_identity_manifest(
         "distances": list(DISTANCES),
         "lever_settings": str(settings_path),
     }
-    _load_harness().require_manifest(manifest, arm_path)
-    return manifest
+    shard_count = math.ceil(len(jobs) / MAX_JOBS_PER_MANIFEST)
+    harness = _load_harness()
+    manifests: list[dict[str, Any]] = []
+    for shard_index, start in enumerate(range(0, len(jobs), MAX_JOBS_PER_MANIFEST), start=1):
+        shard_jobs = jobs[start:start + MAX_JOBS_PER_MANIFEST]
+        shard_manifest = copy.deepcopy(manifest)
+        shard_manifest["jobs"] = shard_jobs
+        shard_manifest["job_timeout_seconds"] = JOB_TIMEOUT_SECONDS
+        shard_manifest["readiness_timeout_seconds"] = READINESS_TIMEOUT_SECONDS
+        shard_manifest["max_minutes"] = MAX_MINUTES
+        shard_manifest["price_usd_per_hour"] = min(
+            float(shard_manifest["price_usd_per_hour"]), 0.80
+        )
+        shard_identity_set = copy.deepcopy(identity_set)
+        if shard_count > 1:
+            shard_identity_set["shard"] = {
+                "index": shard_index,
+                "count": shard_count,
+                "cell_names": [job["output_name"] for job in shard_jobs],
+            }
+        shard_manifest["identity_set"] = shard_identity_set
+        harness.require_manifest(shard_manifest, arm_path)
+        manifests.append(shard_manifest)
+    return manifests
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -225,12 +246,25 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     captions = args.caption_dir or args.out.parent / f"{args.out.stem}-captions"
     try:
-        manifest = build_identity_manifest(
+        manifests = build_identity_manifests(
             args.arm, args.candidate, args.lever_table, args.trigger, captions
         )
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"built {len(manifest['jobs'])} identity cells; captions={captions}")
+        if len(manifests) == 1:
+            output_paths = [args.out]
+        else:
+            output_paths = [
+                args.out.with_name(f"{args.out.stem}-shard-{index:02d}.yaml")
+                for index in range(1, len(manifests) + 1)
+            ]
+        for output_path, manifest in zip(output_paths, manifests, strict=True):
+            output_path.write_text(
+                json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+        print(
+            f"built {sum(len(manifest['jobs']) for manifest in manifests)} identity cells "
+            f"in {len(manifests)} manifest(s); captions={captions}"
+        )
         return 0
     except (IdentitySetError, OSError, ValueError) as exc:
         print(f"identity-set error: {exc}", file=sys.stderr)
