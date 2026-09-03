@@ -7,6 +7,7 @@ import {
   createWorkflowToolPolicyResolver,
   ToolPolicyRefusal,
 } from './claudeLaunchPolicy.ts';
+import { toolCapArgv } from './workflowProfiles.ts';
 import { createAttemptSessionAdapter } from './attemptSessionAdapter.ts';
 import { mapWindowsLaunchRecipe } from '../pty/launcherProfiles.ts';
 import { createSessionRecordRegistry } from '../pty/sessionRecord.ts';
@@ -161,6 +162,16 @@ describe('the end-to-end wire: proposal profile -> resolved policy -> recipe tab
     expect(launch.value.args).toContain('--permission-mode');
     // The proposal's OTHER profile is a different cap, so the join is real and not a coincidence.
     expect(allowedTools).not.toBe(PROFILES[0].allowedTools.join(','));
+    // ...and the END of the wire is `--tools`, the flag that decides which tools the child HAS.
+    // `--allowedTools` alone only suppresses prompts, so a wire that carried it and nothing else
+    // delivered the full 68-tool built-in set to a stage whose work order says "Review ... never edit".
+    const tools = launch.value.args[launch.value.args.indexOf('--tools') + 1];
+    expect(tools).toBe('Read,Edit,Write');
+    expect(tools!.split(',')).not.toContain('Bash');
+    expect(launch.value.args).toContain('--strict-mcp-config');
+    expect(launch.value.args.slice(
+      launch.value.args.indexOf('--tools'), launch.value.args.indexOf('--allowedTools'),
+    )).toEqual(toolCapArgv(['Read', 'Edit', 'Write']));
   });
 
   it('refuses a policy id the recipe table would not reproduce', () => {

@@ -13,6 +13,7 @@ import path from 'node:path';
 import {
   codexSandboxMode,
   FORBIDDEN_WORKFLOW_TOOLS,
+  toolCapArgv,
   WORKFLOW_EXECUTION_PROFILES,
   WORKFLOW_PERMISSION_MODE,
 } from '../control/workflowProfiles.ts';
@@ -345,6 +346,10 @@ export function buildBrokerLaunch(
     // instead. Adding one is a protocol change, not a line in this function.
     args.push('--model', recipe.model!);
     if (recipe.resumeRef !== undefined) args.push('--resume', recipe.resumeRef);
+    // The cap FIRST, the pre-approval second. `--tools` is what the child is actually given
+    // (`toolCapArgv`, control/workflowProfiles.ts); `--allowedTools` only keeps those given tools from
+    // prompting. Passing the second without the first is what launched `scanner` with Bash.
+    args.push(...toolCapArgv(policy.allowedTools));
     args.push('--allowedTools', policy.allowedTools.join(','), '--permission-mode', policy.permissionMode);
     return { executable: '/var/lib/kb-shell/home/.local/bin/claude', args, ...common };
   }

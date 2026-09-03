@@ -124,3 +124,67 @@ export function codexSandboxMode(allowedTools: readonly string[]): 'read-only' |
     ? 'workspace-write'
     : 'read-only';
 }
+
+/** The prefix every MCP-server tool name carries; `--tools` names only the CLI's BUILT-IN set. */
+const MCP_TOOL_PREFIX = 'mcp__';
+
+/**
+ * THE ACTUAL TOOL CAP for a claude worker, as argv.
+ *
+ * `--allowedTools` is a PROMPT-SUPPRESSION list, not an allowlist: it says which tool calls skip the
+ * permission prompt, and it says nothing about which tools the child is given. Verified on the VM
+ * against claude_code_version 2.1.257 - a `scanner` launch (profile `Read, Glob, Grep, Write`) came up
+ * with 68 tools in its `system/init` event, Bash/Edit/Task/WebFetch/WebSearch among them, and the
+ * worker then called Bash three times with an empty `permission_denials`. The cap the profile table
+ * describes, and that docs/specs/2026-07-21-worker-read-scope-design.md section 5.3 designed ("No
+ * Bash, no Edit ... removing Bash removes the git-plumbing bypass entirely"), was never applied.
+ *
+ * `--tools` is the flag that applies it. From the installed CLI's own help:
+ *   `--tools <tools...>   Specify the list of available tools from the built-in set. Use "" to
+ *                         disable all tools, "default" to use all tools, or specify tool names
+ *                         (e.g. "Bash,Edit,Read").`
+ * It is stated as the SET of available tools, so it is an allowlist and not an exclusion list - which
+ * is why it is preferred over `--disallowedTools`: an exclusion list cannot name a tool a future CLI
+ * release adds, and the 68-tool init above is exactly what such a list would keep missing.
+ *
+ * MCP tools are NOT in the built-in set, so `--tools` cannot cap them and they are filtered out of its
+ * value. A profile that names no `mcp__*` tool therefore also gets `--strict-mcp-config`:
+ *   `--strict-mcp-config   Only use MCP servers from --mcp-config, ignoring all other MCP
+ *                          configurations`
+ * Neither launcher passes `--mcp-config`, so on that reading of the help text "only the servers from
+ * --mcp-config" is the empty set and the child loads no MCP server - which would remove the
+ * `mcp__claude_ai_Gmail__send_message` and `mcp__claude_ai_Google_Drive__trash_file` reach the same
+ * init event listed. THAT REMOVAL IS EXPECTED, NOT YET OBSERVED: `claude --tools Read,Glob
+ * --strict-mcp-config --version` on the VM proves only that the flags parse. The acceptance criterion
+ * is the post-deploy `system/init` event - its `tools` array must shrink to exactly the profile and
+ * carry no `mcp__*` entry. A profile that DOES name MCP tools (gmail-triage, drive-author) still needs
+ * its servers loaded, so it does not get the flag, and its MCP surface stays capped by `--allowedTools`
+ * alone; narrowing that is a follow-up that needs a per-profile `--mcp-config`, not a line here.
+ *
+ * `--allowedTools` stays alongside on purpose: the capped tools still have to be pre-approved or the
+ * child prompts for every call and a headless worker hangs on the prompt.
+ */
+export function toolCapArgv(allowedTools: readonly string[]): string[] {
+  const builtIn = allowedTools.filter((tool) => !tool.startsWith(MCP_TOOL_PREFIX));
+  // `--allowedTools` accepts a SCOPING form (`Bash(git *)`); `--tools` names built-in tools and nothing
+  // else, so a scoped entry would land in the cap as a tool name that matches nothing. `isWellFormedToolName`
+  // permits parentheses, so this is the only place that catches it - and it fails closed rather than
+  // shipping a cap whose meaning depends on how the CLI treats an unknown name.
+  const scoped = builtIn.find((tool) => tool.includes('(') || tool.includes(')'));
+  if (scoped !== undefined) {
+    throw new Error(
+      `refusing to spawn a worker: profile tool '${scoped}' is an --allowedTools scoping form, not a built-in tool name`,
+    );
+  }
+  // An all-MCP profile would join to '', the help's "disable all tools" value. Refuse instead: no
+  // server-owned profile is shaped that way today, and a cap whose correctness rests on the CLI's
+  // handling of an empty option value is not a cap we can verify.
+  if (builtIn.length === 0) {
+    throw new Error(
+      'refusing to spawn a worker: the workflow execution profile grants no built-in tool, so no --tools cap can be built',
+    );
+  }
+  const argv = ['--tools', builtIn.join(',')];
+  if (builtIn.length === allowedTools.length) argv.push('--strict-mcp-config');
+  return argv;
+}

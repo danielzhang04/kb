@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   codexSandboxMode,
+  toolCapArgv,
   WORKFLOW_EXECUTION_PROFILES,
 } from '../control/workflowProfiles.ts';
+import { buildBrokerLaunch } from './fdPinnedPaths.ts';
 import type { LaunchRecipe, SessionHostRequest } from './contracts.ts';
 import {
   CODEX_CONFIGURATION_PINS,
@@ -83,8 +85,35 @@ describe('Windows launcher profiles', () => {
       '-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose',
       '--settings', expect.stringContaining('Read(/memory/**)'),
       '--model', 'claude-sonnet-4-5', '--resume', 'resume-1',
+      '--tools', 'Read,Edit', '--strict-mcp-config',
       '--allowedTools', 'Read,Edit', '--permission-mode', 'default',
     ]);
+  });
+
+  /**
+   * ONE CAP, TWO LAUNCHERS. The Linux broker and the Windows launcher compose claude argv separately,
+   * so the tool cap is exactly the kind of thing that lands on one side only - which is how
+   * `--allowedTools` came to be the sole "cap" on both while capping nothing. Both read `toolCapArgv`
+   * from the same importless leaf, and this drives every server-owned profile through both.
+   */
+  it.each(WORKFLOW_EXECUTION_PROFILES)('caps profile $id identically on both claude launchers', (profile) => {
+    const windows = mapWindowsLaunchRecipe(baseRequest({
+      launcher: 'claude', mode: 'headless-json', model: 'claude-sonnet-4-5',
+      toolPolicyId: profile.id, sandbox: 'claude-policy',
+    }), { environment, rootPath: 'C:\\worktrees', claudeProfiles: [profile] });
+    expect(windows.ok).toBe(true);
+    if (!windows.ok) return;
+    const linux = buildBrokerLaunch({
+      launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId: profile.id, sandbox: 'claude-policy',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 }).args;
+
+    const capSlice = (args: readonly string[]): readonly string[] =>
+      args.slice(args.indexOf('--tools'), args.indexOf('--allowedTools'));
+    expect(capSlice(windows.value.args)).toEqual(toolCapArgv(profile.allowedTools));
+    expect(capSlice(linux)).toEqual(capSlice(windows.value.args));
+    // The cap is a real subset of the built-in set, never the CLI's "all tools" escape hatch.
+    expect(windows.value.args[windows.value.args.indexOf('--tools') + 1]).not.toBe('default');
   });
 
   it('maps Codex fresh and resume recipes to the one pinned argv table', () => {
