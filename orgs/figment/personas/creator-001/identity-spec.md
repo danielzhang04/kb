@@ -17,9 +17,12 @@ Source batch: `personas/anchors/gemini-batch-01/g01..g08.jpg` (untracked image b
 - Upper body and bust: as in **g01, g02, g06, g08** (they agree).
 - Hips and lower body: between **g02 and g07** — slim, strong waist-to-hip ratio, visibly toned,
   thighs pressing at the hem of shorts, not the fuller build of g03/g05.
+- g08 reads slightly too athletic; it is NOT a body reference.
 - Mechanism: expansion set generated from the face anchors with the build described in the
-  prompt; cells curated to this target; optional composite anchor via a two-reference edit
-  (face g04 + body g08) if the prompt route drifts.
+  prompt; cells curated to this target. Drift risk is the model's own fuller-body prior
+  (observed on both bases 2026-09-02), not the rejected candidates, which are never fed in.
+  If a composite anchor is ever needed: face g04 + body g07 (g07 is also a face anchor, so
+  one frame carries both) or body g02.
 
 ## Next
 
