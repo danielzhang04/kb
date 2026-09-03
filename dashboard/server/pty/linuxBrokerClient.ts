@@ -118,6 +118,11 @@ export class LinuxBrokerClient implements SessionHost {
   create(request: SessionHostRequest, sink: SessionSink): HostLaunch {
     const receipt = deferred<PortResult<HostStartReceipt>>();
     const provisionalExit = deferred<ObservedExit>();
+    // Set once the create ack has bound a session and sink (`bindSession`, run synchronously inside
+    // `handleFrame`). If anything after that point throws, the catch below uses this to find and
+    // release what was already registered; otherwise the session and its sink outlive this attempt
+    // with no close ever sent, a leak `listEpoch()` and every future frame for that id would carry.
+    let bound: { sessionId: string; attachmentId: string } | null = null;
     void (async () => {
       try {
         await this.ensureConnected();
@@ -145,10 +150,12 @@ export class LinuxBrokerClient implements SessionHost {
           throw new Error('broker create ack was not bound to a session');
         }
         const attachmentId = creating.attachmentId;
+        bound = { sessionId: response.sessionId, attachmentId };
         const attached = await this.request({ type: 'attach', requestId: this.options.makeRequestId(),
           sessionId: response.sessionId, epochId: response.epochId, fromSequence: 0 });
         if (attached.type === 'error') {
           session.sinks.delete(attachmentId);
+          bound = null;
           // The compensating close is cleanup; whether it succeeds does not change WHY the create was
           // refused, so the attach's own refusal is what the caller is told either way.
           await this.close(response.sessionId);
@@ -162,6 +169,10 @@ export class LinuxBrokerClient implements SessionHost {
           boundAt, replayed: response.replayed } });
         void session.exit.promise.then(provisionalExit.resolve);
       } catch {
+        if (bound !== null) {
+          this.sessions.get(bound.sessionId)?.sinks.delete(bound.attachmentId);
+          void this.close(bound.sessionId);
+        }
         receipt.resolve(failure('unavailable', null));
         provisionalExit.resolve(this.abandoned('pty-00000000000000000000000000000000', 0));
       }
@@ -237,10 +248,25 @@ export class LinuxBrokerClient implements SessionHost {
   /** The session's real exit if it lands within the request timeout, else a synthesized `closed` one. */
   private exitWithinTimeout(session: Session, sessionId: string, sequence: number): Promise<ObservedExit> {
     return new Promise<ObservedExit>((resolve) => {
-      const timer = setTimeout(() => resolve({
-        sessionId, sequence, exitCode: null, signal: null, reason: 'closed',
-        observedAt: (this.options.now ?? (() => new Date().toISOString()))(),
-      }), this.options.requestTimeoutMs ?? 5_000);
+      const timer = setTimeout(() => {
+        // The real exit frame never landed in time, so this session is being torn down on the
+        // synthesized verdict below. Mark it exited and drop it from the ready listing NOW, the same
+        // way a real `exit` frame does in `handleFrame`; otherwise `session.exited` stays false and
+        // the id lingers in `listEpoch()` until a real exit frame arrives, if one ever does. Marking it
+        // here also makes that late real frame a no-op: `handleFrame`'s `session.exited` guard drops it,
+        // so it can never double-resolve `session.exit` or double-remove the id from `ready.sessions`.
+        if (session.exited) return;
+        session.exited = true;
+        const exit: ObservedExit = {
+          sessionId, sequence, exitCode: null, signal: null, reason: 'closed',
+          observedAt: (this.options.now ?? (() => new Date().toISOString()))(),
+        };
+        session.exit.resolve(exit);
+        if (this.ready !== null) {
+          this.ready.sessions = this.ready.sessions.filter((item) => item.sessionId !== sessionId);
+        }
+        resolve(exit);
+      }, this.options.requestTimeoutMs ?? 5_000);
       timer.unref?.();
       void session.exit.promise.then((exit) => { clearTimeout(timer); resolve(exit); });
     });
