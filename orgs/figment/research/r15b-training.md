@@ -14,6 +14,12 @@ audio was recovered as text. All settings below come from directly reading the o
 1500–1600px and from the sibling JSON/txt files, which for a settings-panel lesson is strictly more
 precise than a transcript would be (exact typed values vs. spoken approximations).
 
+**Update (2026-09-03):** faster-whisper transcripts for all four module folders now exist
+(`transcript.txt` beside each `lesson.mp4`), independent of the video-vision MCP path above. They
+have been checked claim-by-claim against this report — see "From the narration" and "Claim-check"
+sections below. Spoken values win over inferred/UI-only ones per the checking brief; several
+settings-table rows were corrected as a result, most notably module 05's GPU and step count.
+
 ---
 
 ## Module 11 — `11_lora_training_krea` (12:44) — current training path, Ostris AI Toolkit + KREA2
@@ -40,7 +46,7 @@ side to pick the best one before using it to generate images.
 | Batch size / grad accum / steps | 1 / 1 / **3000** | 3:27–4:01 | UI |
 | Optimizer / LR / weight decay | AdamW8Bit / **0.0001** / 0.0001 | 3:27–4:01 | UI |
 | Timestep type / bias / loss | Sigmoid→**Linear** (on Krea2 select) / Balanced / MSE | 3:27–4:01 | UI |
-| EMA / regularization toggles | all off (Use EMA, Unload TE, Cache Text Embeddings, Differential Output Preservation, Blank Prompt Preservation, Contrastive Guidance Loss) | 3:41 | UI |
+| EMA / regularization toggles | Use EMA / Unload TE / Differential Output Preservation / Blank Prompt Preservation / Contrastive Guidance Loss off; **Cache Text Embeddings ON** — spoken twice, once inline ("just toggle the cache text embeddings," 4:01) and again in the closing recap ("choose your model, put this to 15, then select cache text embeddings, and disable sampling — that's all you have to do," 4:30–4:39). **Correction:** the original UI-only read had this toggle in the "all off" group; audio wins. | 4:01, 4:30–4:39 (audio) | UI + audio — corrected |
 | Dataset: caption dropout / ext / repeats | 0.05 / txt / 1 | 3:27 | UI |
 | Resolution buckets | **512 / 768 / 1024** on; 256/1280/1328/1536/2048 off | 3:27–4:01 | UI |
 | Captioner | **Qwen3-VL** (`Qwen/Qwen3-VL-8B-Instruct`), float8, max res 512, max new tokens 128, Low VRAM on | 2:28 | UI |
@@ -145,17 +151,21 @@ recipe: Z-Image Turbo + a training adapter, half the rank, no checkpoint-ranking
 | Setting | Value | Timecode | Source |
 |---|---|---|---|
 | Model architecture | **Z-image Turbo (w/ Training Adapter)**, path `Tongyi-MAI/Z-Image-Turbo`, adapter `ostris/zimage_turbo_training_adapter/...` | 1:48 | UI |
-| Target type / Linear rank | LoRA / **16** (half of module 11's 32) | 1:55 | UI |
-| Optimizer / LR / weight decay | AdamW8Bit / **0.00025** (2.5× module 11's) / 0.0001 | 2:01 | UI |
+| Target type / Linear rank | LoRA / **16** (half of module 11's 32) | 1:55; confirmed 1:56 audio ("linear rank to 16") | UI + audio |
+| Quantization (transformer / text encoder) | **none / none** — explicitly spoken ("put transformer and text encoder quantization to none," 1:53), vs. module 11's qfloat8/qfloat8. Missing from the original table. | 1:53 | audio |
+| Save data type | **FP32** — spoken ("for the data type change it to FP32," 1:59), vs. module 11's BF16. Missing from the original table. | 1:59 | audio |
+| Optimizer / LR / weight decay | AdamW8Bit / **0.00025** (2.5× module 11's) / 0.0001 | 2:01; LR confirmed 2:02 audio ("learning rate change it to 0.00025") | UI + audio |
 | Timestep type / bias | Weighted / Balanced | 1:48–2:01 | UI |
-| Steps | **3000** (job form briefly showed 5000 mid-edit, final run confirmed 3000/3000 in the completed job log) | 2:08, 2:48 | UI |
-| Resolution buckets | **512 only** — single-resolution training, no 768/1024 buckets | 2:08–2:15 | UI |
+| Steps | **Correction — spoken value is 5000, not a typo.** The original read treated an on-screen "5000" as a mid-edit slip auto-resolved to the completed job's "3000/3000" log. Audio says otherwise, deliberately and unambiguously: "Then put the steps to 5000" (2:07). Module 06's transcript then independently confirms this was the *intended* value, not an error: "I trained these LoRa's to 3000 steps but in my tutorial I'm saying 5000 steps, so this is why my numbers are different — but the **5000 step training gives better results**" (4:26–4:40, `06_generating_images/transcript.txt`). Read together: the operator taught 5000 as the recommended step count, but the specific run captured on screen for this lesson only completed 3000 (a cheaper/faster demo run) — both numbers are real, they are not the same run, and 5000 is the better-results recommendation, not a typo. | 2:07 (audio) vs. 2:48 (UI job log, this run) / cross-confirmed 4:26–4:40 in 06's audio | audio wins — corrected |
+| Resolution buckets | **512 only** — single-resolution training, no 768/1024 buckets; confirmed by audio ("untick 768 and 1024 resolutions, only 512" — transcript renders these as "7,6,8 and 10,24" / "5,12", a whisper number-parsing artefact) | 2:08–2:15; audio 2:09–2:14 | UI + audio |
 | Save every / max saves to keep | 250 / **4** (kept at default — NOT bumped, so older checkpoints get pruned) | 3:27 (m11 default) / job log | UI + log |
 | Sample: sampler / guidance / steps | FlowMatch / **1** / **8** | 2:15 | UI |
-| Sample prompts | 3 generic Ostris toolkit defaults ("photo of a man...", "a man holding a sign...", "a bulldog..."), not dataset-specific | 2:15 | UI |
-| Training GPU | RunPod **NVIDIA A100 80GB PCIe** + AMD EPYC 7763 64-core (cheaper tier than module 11's Blackwell Pro 6000) | 2:28 | UI |
+| Sample prompts | **Conflict — spoken instruction differs from what's on screen.** Audio: "for the sample section just remove everything but two samples and put in whatever you want, it doesn't really matter" (2:14–2:22) — i.e. cut to **2** arbitrary prompts. On-screen (original read): 3 generic Ostris toolkit defaults kept as-is. Both recorded; the spoken instruction is the taught procedure, the UI capture may reflect a different pass. | 2:14–2:22 (audio) vs. 2:15 (UI) | audio + UI — conflict, both recorded |
+| Training GPU | **Correction — WRONG in the original table.** Audio: "go with an **L40S**" (0:17–0:18), not an A100. No A100 is mentioned anywhere in this lesson's transcript. Strike "NVIDIA A100 80GB PCIe + AMD EPYC 7763"; the taught GPU tier is an **L40S**, still cheaper/more available than module 11's Blackwell Pro 6000. | 0:17–0:18 (audio) | audio — corrected, was WRONG |
+| Volume disk | **250GB** — spoken, missing from the original table ("increase this volume to 250GB and deploy," 0:29–0:36) | 0:29–0:36 | audio |
+| Training time estimate (spoken) | **"gonna take like 40 minutes, maybe quicker if you got a faster GPU"** — missing from the original table; no iter/sec or duration was captured from audio for the specific completed run cited in "Result" below (that figure remains UI-only) | 2:30–2:34 | audio |
 | Result | completed 3000/3000 steps at **1.20 iter/sec**, final loss **≈3.113e-01**; log shows old checkpoints (1500, 1750) actively pruned as newer ones save, leaving only the last 4 + final | 2:48 | UI (job console log) |
-| Ranking step | **none** — the in-training sample grid (fashion/lifestyle shots) is the only quality signal; no dataset-tester harness in this legacy module | 2:35–2:42 | UI |
+| Ranking step | **Correction — not "none".** There is no dedicated dataset-tester harness in this module, but a real manual ranking step happens one module later: `06_generating_images/transcript.txt` shows the operator loading all 5 saved checkpoints (normal/final, 2000, 2250, 2500, 2750 steps), running each on a fixed seed with everything else disabled, and picking a winner by eye — "we don't know which one is gonna render us the best results... 2250, I like it... this is probably the best LoRa" (2:34–4:25). Reclassify as: informal cross-checkpoint comparison in the following lesson, not a formal harness, not absent. | 2:34–4:25, `06_generating_images/transcript.txt` (audio) | audio — corrected |
 
 **Maps onto our stack:** this is a useful low-cost baseline recipe (rank 16, single resolution,
 A100 tier, no ranking step) — a fallback config for quick iteration before committing to the
@@ -169,6 +179,69 @@ as a possible operator typo/correction rather than a real value, resolved agains
 
 ---
 
+## From the narration (faster-whisper, 2026-09-03)
+
+Spoken content the original UI/JSON-only pass missed or under-recorded, by module. Timecodes are
+from each module's `transcript.txt` (mm:ss, converted from the file's seconds).
+
+**Module 11 (`11_lora_training_krea`)**
+- **Warning: do not use the turbo model with the training adapter for this path.** "For the model
+  we're gonna use Krea 2 raw — do not use the turbo with the training adapter, don't do it, because
+  the results are way worse. So choose the raw." (3:30–3:41)
+- **Why disable sampling — real time saved.** "This drastically improves the training time — like
+  normally it takes over two hours, but if we disable the samples we can cut it down to like 70 to
+  80 minutes." (4:15–4:30)
+- **Actual training time for this run: 1 hour 17 minutes**, "pretty decent" per the operator.
+  (4:50–5:02)
+- **Captioning time on a Pro 6000: about 2 minutes.** (2:35–2:40)
+- **Old single-word "woman" captioning is explicitly retired**: "I used to have like a [caption
+  method] that put the caption 'woman' on every one of the images — that's no longer necessary."
+  (2:11–2:18) — direct spoken confirmation that module 11's Qwen3-VL captioner supersedes module
+  04/05's single-word approach.
+- **Winning checkpoint for this demo run: step 1250**, picked by eye across all 12 saved
+  checkpoints in the dataset-tester grid ("this is 1250, this is good, so we're just gonna go with
+  1250," 10:08–10:12).
+- **Identity LoRA strength was tuned live at inference**, separate from the fixed style-LoRA
+  strengths already in the table: tried 1.2 ("way more consistent"), then reduced back toward 1.0
+  because "the plastic skin texture from our dataset bleeds through into our regular image" at
+  higher strength (11:38–12:04). The plastic-skin artefact is called out twice as a known limitation
+  of the small demo dataset, not the method.
+- Results disclaimer up front: this LoRA isn't "exceptionally good" because it's trained on the
+  small demo dataset from module 10, not a custom one — "if you can use your own dataset, use it."
+  (0:13–0:31)
+
+**Module 10 (`10_dataset_generator_v2`)**
+- **Prompt-matching rule (missed procedural claim):** the stock face/body prompts ship with
+  mismatched attributes (e.g. "black hair and blonde highlights" for a blonde subject) — "it's just
+  important that you match the prompts to your input images." (3:59–4:21)
+- **Curation step is missing from the report entirely.** Not every generated image is usable —
+  "this makes no sense, if we train this it's gonna show this kind of behavior, we obviously don't
+  want that, so we're gonna remove that from the dataset." (4:45–4:57)
+- **ComfyUI download bug**: outputs can only be downloaded in **batches of 10**, not all at once —
+  "you cannot download them all at once, it's like some stupid ComfyUI bug." (5:40–5:48)
+- RunPod template download size: **~44GB**. (0:45–0:52)
+
+**Module 04 (`04_generating_a_dataset`)**
+- **Local VRAM minimum: 16GB** — "you're gonna need a good GPU, like at least 16 gigabytes,
+  anything under, don't bother." (1:46–1:53)
+- Same **10-image download batch limit** as module 10, independently restated: "you cannot download
+  all of these 40 images at once for some reason, so you're gonna have to do it in batches of 10."
+  (3:33–3:44)
+- Single-word "woman" captioning confirmed verbatim, with the operator's own rationale: "they all
+  have the same single word, just 'woman,' but trust me it's better this way." (4:22–4:33) — module
+  11 later calls this same approach "no longer necessary"; not a contradiction, an explicit
+  supersession.
+
+**Module 05 (`05_training_a_lora`) — see corrected settings-table rows above for the GPU, step-count,
+quantization, data-type and sample-prompt corrections. Additional narration-only points:**
+- **Single-word captioning rationale, stated more fully than in module 04**: "we don't want a LoRA
+  that is very precise for prompting... we're not gonna prompt too much because we make it very hard
+  to get the right results... this way we make it not lean so much towards certain prompts and
+  structures." (1:20–1:35)
+- In-training sample grid is described as genuinely informative here: "you can really see how the
+  model forms — at the beginning she doesn't look like a girl at all, and once we scroll down she
+  really starts to resemble her." (2:36–2:49)
+
 ## What to adopt (10 lines)
 
 1. **Checkpoint-ranking as a formal step** (module 11): train N checkpoints on a fixed cadence, run one fixed prompt+seed across all of them in parallel ComfyUI branches, pick the winner — directly portable to diffusion-pipe + our harness.
@@ -180,4 +253,46 @@ as a possible operator typo/correction rather than a real value, resolved agains
 7. **Rank/LR pairing observed**: rank 32 paired with LR 0.0001 (Krea2, multi-res, full run) vs rank 16 paired with LR 0.00025 (Z-Image Turbo, single-res, cheap run) — lower rank ran a proportionally higher LR.
 8. The **turbo-model inference recipe** (steps 4, cfg 1, denoise 1, sampler/scheduler pair) recurs identically across their dataset generation, training samples, and final generation — a single reusable fast-inference preset worth codifying once per base model.
 9. Do **not** adopt single-word captioning (module 04) — it is their own documented legacy mistake.
-10. GPU tiering: they deliberately run cheap baseline experiments on A100 80GB and only pay for RTX PRO 6000 Blackwell (96GB) once a recipe is locked — worth mirroring as a cost gate.
+10. GPU tiering: they deliberately run cheap baseline experiments on L40S/A100-class hardware and only
+    pay for RTX PRO 6000 Blackwell (96GB) once a recipe is locked — worth mirroring as a cost gate.
+    (Module 05's baseline GPU corrected to L40S below — text above already said "cheaper tier," the
+    specific GPU name was wrong.)
+
+## Claim-check (2026-09-03, sonnet)
+
+Checked all 51 pre-existing settings-table rows across modules 11, 10, 04, 05 against faster-whisper
+transcripts (`transcript.txt` beside each `lesson.mp4`), reconciling against the sibling JSON/`.bat`
+files where transcript and JSON disagreed. 4 new rows added to module 05's table (quantization,
+save data type, volume disk, training-time estimate) are spoken facts absent from the original
+table and are counted separately, in "narration-only additions" below, not in this verdict table.
+
+| Module | Rows checked | VERIFIED | PARTLY | WRONG | UNVERIFIED |
+|---|---|---|---|---|---|
+| 11 — lora_training_krea | 23 | 21 | 1 | 1 | 0 |
+| 10 — dataset_generator_v2 | 8 | 8 | 0 | 0 | 0 |
+| 04 — generating_a_dataset | 8 | 8 | 0 | 0 | 0 |
+| 05 — training_a_lora | 12 | 8 | 0 | 4 | 0 |
+| **Total** | **51** | **45** | **1** | **5** | **0** |
+
+**The 5 WRONG rows, all corrected in place above:**
+1. Module 11 — "Cache Text Embeddings" was listed as off; spoken instruction (twice) turns it on.
+2. Module 05 — training GPU was listed as an A100 80GB; spoken instruction is an L40S.
+3. Module 05 — step count "5000" was dismissed as a mid-edit typo resolved to 3000; audio (cross-
+   confirmed independently in module 06) shows 5000 was the deliberate taught value, and the
+   completed 3000-step run was a separate, cheaper demo pass.
+4. Module 05 — sample prompts were read as "3 generic defaults kept as-is"; spoken instruction says
+   to cut to 2, contents arbitrary. Both values recorded as a conflict.
+5. Module 05 — "no ranking step" is corrected: an informal 5-checkpoint visual ranking happens in the
+   next lesson (`06_generating_images`), just not as a formal harness like module 11's.
+
+**17 narration-only additions** (spoken settings/rules absent from the report entirely, none of them
+contradicting anything already there) were folded into the new "From the narration" section above —
+8 for module 11 (turbo+training-adapter warning, sampling-disabled time saving 2hr→70–80min, actual
+training time 1h17m, winning checkpoint 1250, captioning duration ~2min, old single-word-caption
+retirement quote, live LoRA-strength tuning + plastic-skin caveat, the results disclaimer), 4 for
+module 10 (prompt-matching rule, dataset curation/culling step, the 10-image ComfyUI download-batch
+bug, ~44GB template size), 3 for module 04 (16GB local VRAM floor, the same 10-image download-batch
+bug independently restated, the single-word-captioning rationale quote), and 2 for module 05
+(fuller single-word-captioning rationale, the in-training sample-grid narrative) — plus the 4 new
+settings-table rows on module 05 counted separately above (quantization=none, data-type=FP32,
+volume-disk=250GB, ~40-minute training-time estimate).

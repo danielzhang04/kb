@@ -9,6 +9,13 @@ pre-prompt bodies stay at r14's structural description (they're also on disk ver
 sibling JSON, cited by node id, not retyped). Reconciliation rule: where JSON default and
 spoken/on-screen value differ, both are recorded and flagged.
 
+**Update (2026-09-03):** cross-checked modules 07 and 08 against the independent faster-whisper
+`transcript.txt` files that now sit beside each `lesson.mp4` (a separate pass from the
+claude-video-vision transcription used originally). The two agree closely — this report's original
+audio-sourced rows all held up — with two additions folded in below: a "start low, refine up" frame
+budget tip and a two-location `force_rate` sync note for module 08. See "From the narration" and
+"Claim-check" sections.
+
 ---
 
 ## 07 — Editing images (07:12) · Flux2Edit workflow
@@ -79,7 +86,9 @@ terse, run, terminate the pod.
 | KSampler | steps **6**, cfg **1**, `euler` / `simple`, denoise **1** | 184s | JSON |
 | ModelSamplingSD3 shift | **5** | 184s | JSON |
 | WanSCAILToVideo | width **512**, height **896**, length **81** frames, batch 1, pose_strength **1.0**, pose range 0–1, previous_frame_count **5** | 184s | JSON |
-| Driving-video load node | `force_rate` **16**, `frame_load_cap` **81**, `skip_first_frames` 0, `select_every_nth` 1 | 03:47 | on-screen, matches JSON's 81-frame length |
+| Driving-video load node | `force_rate` **16**, `frame_load_cap` **81**, `skip_first_frames` 0, `select_every_nth` 1 (this is the production config used in the demo) | 03:47 | on-screen, matches JSON's 81-frame length |
+| **Testing methodology (missing procedural claim)** | Start a new subject/clip at a **low frame rate and a low frame cap (~60 frames)** for fast iteration — "the longer the video, the higher the frame rate, the longer it's gonna take to generate, and so the longer it's gonna take to test, so it's best to test quickly and then once you find a good configuration, refine it." Only raise toward the 16fps ceiling (see Iteration guidance row below) once a working setup is found. | 03:50–04:20 | audio |
+| **`force_rate` must be synced in two places (missing procedural claim)** | Setting `force_rate` on the driving-video load node requires making the matching change on the output node as well: "if you put the force rate to 12fps here, you're also gonna have to do it here, this output." | 04:20–04:26 | audio |
 | Resize (driving video) | `scale total pixels` → **0.5** megapixels, `nearest-exact` | 184s / 03:44 | JSON + on-screen |
 | Negative prompt | unmodified default Wan2.1 Chinese negative-prompt block (garish color, overexposed, static, blurred detail, subtitle/watermark, deformed limbs, fused fingers, cluttered background, walking backwards, etc.) | 184s | JSON |
 | Positive/motion prompt discipline | **keep it to subject + outfit + action only** — e.g. "a blonde hair girl wearing a black dress dancing"; explicitly do NOT describe background, lighting, or expression, because the model will attend to whatever is described instead of the subject | 05:29–05:58 | audio |
@@ -188,6 +197,16 @@ setting or procedure beyond r14; both fully transcribed, nothing withheld.
 
 ---
 
+## From the narration (faster-whisper, 2026-09-03)
+
+This report's original claude-video-vision pass already recovered audio for modules 07 and 08, so
+the independent faster-whisper transcripts mostly corroborate rather than add. Two genuinely missing
+procedural rules were found and folded into module 08's table above (testing methodology: start at
+~60 frames / low frame rate, refine up; `force_rate` must be set in two places). No further
+narration-only items surfaced for modules 07 or 08 — every other spoken claim in the transcripts was
+already captured, including exact-match quotes ("keep it to one," "did you match the start frame,"
+the clothing-swap reference-image discipline, the anti-multi-person driving-clip rubric).
+
 ## What to adopt (10 lines)
 
 1. Targeted-edit primitive (module 07: base + reference + one-sentence instruction, `ReferenceLatent`×4, euler_ancestral/cfg1/guidance4) as a Flux.2 "fix in place" pass.
@@ -200,3 +219,24 @@ setting or procedure beyond r14; both fully transcribed, nothing withheld.
 8. 2×2 grid batching for throughput, after confirming our model doesn't silently collapse to 1-of-4 without an explicit grid keyword.
 9. Generate at target resolution directly when the cost delta to upscaling is small; don't default to upscale-after as a reflex.
 10. Fast-inference recipe to test: 6-step/cfg-1/distill-LoRA sampling, if a Wan-2.2-compatible distill LoRA exists.
+
+## Claim-check (2026-09-03, sonnet)
+
+Checked all 33 pre-existing settings-table rows across modules 07 and 08 against faster-whisper
+transcripts (`transcript.txt` beside each `lesson.mp4`). This report already had working audio from
+its original claude-video-vision pass, and it held up under independent re-transcription — every row
+checked out, including several exact-quote matches ("keep it to one," "did you match the start
+frame," the anti-multi-person driving-clip rubric). 2 new rows were added to module 08 (the
+"test low, refine up" frame-budget methodology and the two-location `force_rate` sync requirement)
+and are counted separately, not in this verdict table.
+
+| Module | Rows checked | VERIFIED | PARTLY | WRONG | UNVERIFIED |
+|---|---|---|---|---|---|
+| 07 — editing_images | 16 | 16 | 0 | 0 | 0 |
+| 08 — motion_control | 17 | 17 | 0 | 0 | 0 |
+| **Total** | **33** | **33** | **0** | **0** | **0** |
+
+No WRONG or PARTLY rows. This is the strongest-sourced of the three reports — its original author
+evidently did have working audio despite the sibling reports' whisper failures — and the faster-
+whisper pass functioned mainly as independent confirmation plus 2 narration-only additions (both
+folded into module 08's table above).
