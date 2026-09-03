@@ -60,8 +60,12 @@ the expansion and LoRA for her run through the finished pipeline, never ahead of
 
 ## Next
 
-1. Identity expansion on FLUX.2 klein 4B Base: 3 face refs (g04, g01, g07) → balanced multi-view
-   set (angles × distances × lighting × wardrobe families incl. swimwear/lingerie tier), scored
-   by `pipeline/train/identity_check.py`, operator eye-gate on the grid.
+1. Identity expansion on FLUX.2 klein 4B Base: 3 face refs (g01, g02, g07, canonical order per
+   the reference set of record above) → balanced multi-view set (angles × distances × lighting ×
+   clothed wardrobe families; swimwear/lingerie is its own later batch, S2b), scored by
+   `pipeline/train/identity_check.py`, operator eye-gate on the grid. P1 corrects the g04/g01/g07
+   upload order that had drifted into `train/runs/creator-001-expansion-01.yaml` (REVIEW-e
+   condition 3) back to the ruled g01/g02/g07 order; `persona.yaml` is now the single machine
+   source of truth any runner resolves this reference order from.
 2. Persona LoRA (diffusion-pipe) on the curated set; held-out identity test.
 3. Voice: see MANDATE §Voice.

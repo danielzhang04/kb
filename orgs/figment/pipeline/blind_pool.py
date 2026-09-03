@@ -152,7 +152,15 @@ def cmd_build(args):
 
 # ---------- reveal ----------
 
-_AXIS_REASON_RE = re.compile(r"^(identity|realism|hands|lighting): (soft-fail|hard-fail)$")
+# The failure taxonomy across all seven review axes (P1 step 1.5) — the four quality
+# axes (qa_stamp.py's parked_reasons, unchanged shape) plus the three mandatory
+# safety axes (qa_stamp.py's separate safety_reasons field, design §2.4a). Each axis
+# keeps its own enum; never conflate "hard-fail" with "flag" or "fail".
+_AXIS_REASON_RE = re.compile(
+    r"^(?P<axis>identity|realism|hands|lighting): (?P<state>soft-fail|hard-fail)$"
+    r"|^(?P<safety_axis>adult_read|garment_integrity|real_person_resemblance): "
+    r"(?P<safety_state>ambiguous|fail|flag)$"
+)
 
 
 def _load_images(path: Path, what: str):
@@ -194,9 +202,20 @@ def cmd_reveal(args):
             for reason in e.get("parked_reasons") or []:
                 m = _AXIS_REASON_RE.match(str(reason))
                 if m:
-                    axis_failures[arm][f"{m.group(1)}: {m.group(2)}"] += 1
+                    axis, state = m.group("axis"), m.group("state")
+                    axis_failures[arm][f"{axis}: {state}"] += 1
                 else:
                     other_reasons[arm][str(reason)] += 1
+        # safety_failed is orthogonal to review_status (design §2.4a: a safety
+        # failure never forces review_status to "parked") — so this scans
+        # safety_reasons unconditionally, not only when status == "parked".
+        for reason in e.get("safety_reasons") or []:
+            m = _AXIS_REASON_RE.match(str(reason))
+            if m:
+                axis, state = m.group("safety_axis"), m.group("safety_state")
+                axis_failures[arm][f"{axis}: {state}"] += 1
+            else:
+                other_reasons[arm][str(reason)] += 1
 
     if unmatched:
         sys.exit(

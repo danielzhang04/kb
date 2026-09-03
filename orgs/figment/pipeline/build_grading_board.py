@@ -47,6 +47,14 @@ try:
 except ImportError:
     sys.exit("Pillow required:  py -3 -m pip install pillow")
 
+# The complete human rubric (design §2.4a / qa_stamp.py QUALITY_AXES + SAFETY_VALUES) —
+# a fixed, unconditional legend rendered on every card, blind or not. This is a legend
+# of labels for the human grader, never a ruling input: the board stays read-only, it
+# writes no review_status and no safety verdict (qa_stamp.py remains the sole writer).
+QUALITY_AXES = ("identity", "realism", "hands", "lighting")
+SAFETY_AXES = ("adult_read", "garment_integrity", "real_person_resemblance")
+ALL_SEVEN_AXES = QUALITY_AXES + SAFETY_AXES
+
 
 # ---------- data ----------
 
@@ -157,6 +165,9 @@ button[aria-pressed=true]{background:var(--fg);color:var(--bg);border-color:var(
 .badge.unreviewed{background:var(--mut)}
 .rsn{margin:8px 0 0;color:var(--flag);font-size:13px}
 .rsn li{margin:2px 0}
+.rubric{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0 0;padding:9px 0 0;border-top:1px solid var(--line)}
+.rubric span{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:1px 7px}
+.rubric span.safety{color:var(--flag);border-color:var(--flag)}
 #lb{position:fixed;inset:0;background:rgba(0,0,0,.94);display:none;z-index:99;
  flex-direction:column;align-items:center;justify-content:center}
 #lb.on{display:flex}
@@ -192,9 +203,22 @@ fb.onclick=()=>{on=!on;fb.setAttribute('aria-pressed',on);
 """
 
 
+def _rubric_legend_html() -> str:
+    """The fixed, unconditional seven-axis rubric legend rendered on every card — a
+    legend of labels for the human grader, never a ruling input (no `review_status`
+    or safety verdict is read or written here; `qa_stamp.py` alone writes those)."""
+    spans = "".join(
+        "<span>%s</span>" % html.escape(axis) for axis in QUALITY_AXES
+    ) + "".join(
+        '<span class="safety">%s</span>' % html.escape(axis) for axis in SAFETY_AXES
+    )
+    return '<div class="rubric">%s</div>' % spans
+
+
 def build(images, title, subtitle, blind, max_w, quality, budget_mb):
     total_budget = int(budget_mb * 1e6)
     per_image_budget = max(50_000, int(total_budget * 0.9 / max(1, len(images))))
+    rubric = _rubric_legend_html()
 
     out, total = [], 0
     for e in images:
@@ -217,8 +241,8 @@ def build(images, title, subtitle, blind, max_w, quality, budget_mb):
             rsn = '<ul class="rsn">%s</ul>' % items
         out.append(
             '<figure class="card%s"><img loading="lazy" src="%s" alt="%s">'
-            '<div class="meta"><div class="hd"><span class="id">%s</span>%s%s</div>%s</div></figure>'
-            % (flag, uri, html.escape(e["image_id"]), html.escape(e["image_id"]), tags, badge, rsn)
+            '<div class="meta"><div class="hd"><span class="id">%s</span>%s%s</div>%s%s</div></figure>'
+            % (flag, uri, html.escape(e["image_id"]), html.escape(e["image_id"]), tags, badge, rsn, rubric)
         )
 
     nflag = sum(1 for e in images if e["review_status"] == "parked")

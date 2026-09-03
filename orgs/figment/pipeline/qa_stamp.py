@@ -9,9 +9,23 @@ lighting (see orgs/figment/pipeline/trial-protocol.md).
 
 Why it exists (same lesson FYT learned the hard way): a review gate that has no honest
 "not yet looked at" state gets hand-waved to `verified` under time pressure. This script is
-the ONLY writer of `review_status` / `parked_reasons` onto a figment batch manifest — the
-grader (human or agent) never edits the manifest directly, it only produces a rulings file
-that this script converts.
+the ONLY writer of `review_status` / `parked_reasons` / `safety_failed` / `safety_reasons`
+onto a figment batch manifest — the grader (human or agent) never edits the manifest
+directly, it only produces a rulings file that this script converts.
+
+**Seven axes, two independent verdicts (P1 step 1.5 / design §2.4a).** The four
+`QUALITY_AXES` (identity/realism/hands/lighting) drive `review_status`
+(verified|parked) exactly as before — an axis simply absent from a ruling means "not
+evaluated" and is treated leniently (pass by omission), same as always. The three
+`SAFETY_VALUES` axes (adult_read/garment_integrity/real_person_resemblance,
+GUARDRAILS 1/2/4) are a SEPARATE, MANDATORY verdict: every one of the three must be
+present and a valid enum value on every ruling, or `classify`/`stamp` raise before any
+atomic write — a missing safety axis is a malformed judge output, never a silent pass.
+Their combined result is `safety_failed` (bool) + `safety_reasons` (list), written
+alongside `review_status`/`parked_reasons` but never merged into them: **`review_status`
+stays orthogonal to the safety axes** — a safety failure never forces `review_status`
+to "parked", and downstream lifecycle quarantine (`pipeline/expand/batch_state.py`)
+reads `safety_failed` directly rather than inferring it from `review_status`.
 
 Batch manifest schema (tolerant of a bare list or a `{"images": [...]}` wrapper):
     {
@@ -22,33 +36,49 @@ Batch manifest schema (tolerant of a bare list or a `{"images": [...]}` wrapper)
           "arm": "A",                     # informational, untouched by this script
           "prompt_setup_id": "P1",        # informational, untouched by this script
           "review_status": "unreviewed",  # written ONLY by this script: verified|parked
-          "parked_reasons": []            # written ONLY by this script
+          "parked_reasons": [],           # written ONLY by this script
+          "safety_failed": false,         # written ONLY by this script
+          "safety_reasons": []            # written ONLY by this script
         }, ...
       ]
     }
-Only `image_id`, `review_status`, and `parked_reasons` are load-bearing for this script.
-`path` / `arm` / `prompt_setup_id` (and anything else present) are preserved byte-identical.
-`blind_pool.py`'s pool manifest is a minimal instance of this same schema with `arm` and
-`prompt_setup_id` omitted (blind grading has no arm to show); this script does not care.
+Only `image_id`, `review_status`, `parked_reasons`, `safety_failed`, and `safety_reasons`
+are load-bearing for this script. `path` / `arm` / `prompt_setup_id` (and anything else
+present) are preserved byte-identical. `blind_pool.py`'s pool manifest is a minimal
+instance of this same schema with `arm` and `prompt_setup_id` omitted (blind grading has
+no arm to show); this script does not care.
 
 Rulings file (the grader's output; tolerant of a bare list or a `{"rulings": [...]}` wrapper):
     [
       {
         "image_id": "img_0001",
-        "identity": "pass",        # pass | soft-fail | hard-fail
+        "identity": "pass",        # pass | soft-fail | hard-fail   (QUALITY_AXES)
         "realism": "pass",
         "hands": "hard-fail",
         "lighting": "pass",
+        "adult_read": "pass",              # pass | ambiguous | fail   (SAFETY, mandatory)
+        "garment_integrity": "pass",       # pass | fail               (SAFETY, mandatory)
+        "real_person_resemblance": "clear", # clear | flag              (SAFETY, mandatory)
         "why": "left hand has six fingers in the mirror reflection"  # optional
       }, ...
     ]
 
-Ruling -> status map:
+Ruling -> `review_status` map (QUALITY_AXES only, unchanged from before P1):
   * every axis present on the ruling is "pass"           -> verified, parked_reasons: []
   * any axis present is "soft-fail" or "hard-fail"        -> parked, one reason per bad axis
-  * a ruling naming NO axis at all                        -> parked ("unspecified defect")
-  * an axis value that is not pass|soft-fail|hard-fail    -> HARD ERROR (never silently a pass)
-  * a ruling naming an image_id absent from the manifest  -> HARD ERROR (typo / mismatched pair)
+  * a ruling naming NO quality axis at all                -> parked ("unspecified defect")
+  * a quality axis value not pass|soft-fail|hard-fail     -> HARD ERROR (never silently a pass)
+
+Ruling -> `safety_failed` map (SAFETY_VALUES, new in P1, always evaluated):
+  * `adult_read` anything but "pass"                      -> safety_failed: true
+  * `garment_integrity` anything but "pass"                -> safety_failed: true
+  * `real_person_resemblance == "flag"`                    -> safety_failed: true
+  * any of the three missing, null, or an out-of-enum value -> HARD ERROR, fail-closed
+    (this includes a legacy ruling authored before the safety axes existed — it is
+    correct for that to fail closed rather than silently pass safety)
+
+A ruling naming an image_id absent from the manifest is always a HARD ERROR (typo or a
+mismatched rulings/manifest pair) — unchanged from before P1.
 
 An entry the rulings file never mentions is left exactly as-is (usually "unreviewed") —
 this script only writes what it was actually told to judge.
@@ -64,8 +94,9 @@ import os
 import sys
 from pathlib import Path
 
-# Review axes: figment's own (identity / realism / hands / lighting), NOT FYT's
-# fidelity/style/rig — see the module docstring and reuse-from-fyt.md.
+# Quality review axes: figment's own (identity / realism / hands / lighting), NOT
+# FYT's fidelity/style/rig — see the module docstring and reuse-from-fyt.md.
+QUALITY_AXES = ("identity", "realism", "hands", "lighting")
 AXES = (
     ("identity", "identity match"),
     ("realism", "realism / anti-gloss"),
@@ -73,6 +104,22 @@ AXES = (
     ("lighting", "lighting plausibility"),
 )
 _VALID_STATES = ("pass", "soft-fail", "hard-fail")
+
+# Safety axes: mandatory on every ruling, GUARDRAILS 1/2/4, design §2.4a. Each axis
+# has its own enum — never conflate them with the quality axes' pass/soft-fail/hard-fail.
+SAFETY_AXES = ("adult_read", "garment_integrity", "real_person_resemblance")
+SAFETY_VALUES = {
+    "adult_read": {"pass", "ambiguous", "fail"},
+    "garment_integrity": {"pass", "fail"},
+    "real_person_resemblance": {"clear", "flag"},
+}
+# The subset of each safety axis's enum that trips safety_failed (anything but the
+# named "ok" value(s)).
+_SAFETY_FAIL_VALUES = {
+    "adult_read": {"ambiguous", "fail"},
+    "garment_integrity": {"fail"},
+    "real_person_resemblance": {"flag"},
+}
 
 
 def _ruling_id(ruling: dict):
@@ -132,16 +179,61 @@ def _reasons(ruling: dict, states: dict) -> list:
     return reasons
 
 
+def _safety_states(ruling: dict) -> dict:
+    """Return `{axis: normalized_state}` for all three `SAFETY_AXES`. Unlike
+    `_axis_states`, every safety axis is MANDATORY: missing, `null`, or an
+    out-of-enum value HARD-ERRORS rather than being treated as "not evaluated" —
+    GUARDRAILS 1/2/4 have no honest default, so there is no lenient case here."""
+    rid = _ruling_id(ruling) or "?"
+    out = {}
+    for axis in SAFETY_AXES:
+        if axis not in ruling or ruling[axis] is None:
+            raise ValueError(
+                f"missing required safety axis on ruling {rid!r}: {axis!r} is "
+                f"mandatory (expected one of {sorted(SAFETY_VALUES[axis])}) — a "
+                f"legacy ruling with no safety axes at all fails closed here, it is "
+                f"never silently treated as passing safety"
+            )
+        raw = ruling[axis]
+        state = raw.strip().lower() if isinstance(raw, str) else None
+        if state not in SAFETY_VALUES[axis]:
+            raise ValueError(
+                f"malformed safety verdict on ruling {rid!r}: {axis}={raw!r} "
+                f"(expected one of {sorted(SAFETY_VALUES[axis])})"
+            )
+        out[axis] = state
+    return out
+
+
+def _safety_failed(states: dict) -> bool:
+    return any(states[axis] in _SAFETY_FAIL_VALUES[axis] for axis in SAFETY_AXES)
+
+
+def _safety_reasons(states: dict) -> list:
+    return [
+        f"{axis}: {state}"
+        for axis, state in states.items()
+        if state in _SAFETY_FAIL_VALUES[axis]
+    ]
+
+
 def classify(ruling: dict):
-    """Map one grader ruling to `(review_status, parked_reasons)`."""
+    """Map one grader ruling to `(review_status, parked_reasons, safety_failed,
+    safety_reasons)`. The safety axes are validated (and can raise) even when the
+    quality-axis outcome alone would already be `parked` — every ruling must carry a
+    complete, valid safety verdict, full stop."""
     if not isinstance(ruling, dict):
         raise ValueError(
             f"malformed ruling entry: expected an object, got {type(ruling).__name__}: {ruling!r}"
         )
+    safety_states = _safety_states(ruling)  # mandatory — raises fail-closed first
+    safety_failed = _safety_failed(safety_states)
+    safety_reasons = _safety_reasons(safety_states)
+
     states = _axis_states(ruling)
     if _is_clean(states):
-        return "verified", []
-    return "parked", _reasons(ruling, states)
+        return "verified", [], safety_failed, safety_reasons
+    return "parked", _reasons(ruling, states), safety_failed, safety_reasons
 
 
 def _images(manifest):
@@ -160,9 +252,12 @@ def _rulings(data):
 
 
 def stamp(manifest, rulings):
-    """Write `review_status` + `parked_reasons` onto every ruled image's manifest entry, IN
-    PLACE. Entries are matched to rulings by `image_id`. Returns
-    `(n_verified, m_parked, n_unreviewed)`.
+    """Write `review_status` + `parked_reasons` + `safety_failed` + `safety_reasons`
+    onto every ruled image's manifest entry, IN PLACE. Entries are matched to rulings
+    by `image_id`. Returns `(n_verified, m_parked, n_unreviewed)` — the return arity
+    is unchanged from before P1; `safety_failed` is read by the caller off the
+    manifest entry itself (as `pipeline/expand/batch_state.py`'s reducer does), not
+    off this return value.
 
     Unlike FYT's `stamp_review.py` (which fabricates a fresh manifest entry for a ruling
     with no matching shot — layered plates/cutouts reviewed under a different id than the
@@ -198,10 +293,12 @@ def stamp(manifest, rulings):
                 f"typo or a mismatched rulings/manifest pair. Fix the ruling or the "
                 f"manifest rather than silently creating a phantom entry."
             )
-        status, reasons = classify(ruling)
+        status, reasons, safety_failed, safety_reasons = classify(ruling)
         entry = by_id[rid]
         entry["review_status"] = status
         entry["parked_reasons"] = reasons
+        entry["safety_failed"] = safety_failed
+        entry["safety_reasons"] = safety_reasons
         if status == "verified":
             n_verified += 1
         else:

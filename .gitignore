@@ -40,3 +40,17 @@ dashboard/.artifacts/
 # figment anchor images staged for pod uploads (image bulk stays untracked)
 orgs/figment/pipeline/train/runs/anchors/
 orgs/figment/research/10sorlabs-package/
+
+# figment P1 — creator-001 lifecycle artifacts (batch.json/scores.json/gate.json stay
+# tracked; the bulk and blind-grading secrets beside them never do). The repo-root
+# source directory these anchors are staged from, and blind_pool image bulk staged
+# for pod uploads (see orgs/figment/pipeline/expand/runs/_uploads/ below).
+personas/anchors/
+orgs/figment/personas/*/anchors/
+orgs/figment/personas/*/batches/*/images/
+orgs/figment/personas/*/batches/*/rejected/
+orgs/figment/personas/*/batches/*/blind/
+orgs/figment/personas/*/batches/*/blind-key.json
+orgs/figment/personas/*/batches/*/board.html
+orgs/figment/pipeline/*/runs/_uploads/
+orgs/figment/pipeline/*/runs/out/
