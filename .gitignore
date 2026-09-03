@@ -36,3 +36,6 @@ naming.json
 kit/.rendered/
 state/scratch/
 dashboard/.artifacts/
+
+# figment anchor images staged for pod uploads (image bulk stays untracked)
+orgs/figment/pipeline/train/runs/anchors/

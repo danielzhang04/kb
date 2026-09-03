@@ -1,0 +1,336 @@
+{
+  "gpu": {"type": "NVIDIA GeForce RTX 4090", "count": 1, "cloud": "SECURE"},
+  "price_usd_per_hour": 0.80,
+  "max_minutes": 30,
+  "container_disk_gb": 60,
+  "volume_gb": 60,
+  "volume_mount_path": "/workspace",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "avoid_machine_hosts": ["qvf79yutw3t2"],
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
+    "port": 8188,
+    "start_command": "python main.py"
+  },
+  "readiness_timeout_seconds": 1200,
+  "job_timeout_seconds": 900,
+  "models": [
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/vae/flux2-vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    }
+  ],
+  "custom_nodes": [],
+  "workflow": "../workflows/klein4b_multiref_api.json",
+  "seed_fields": ["noise_seed"],
+  "uploads": [
+    {
+      "files": ["_uploads/g04.jpg", "_uploads/g01.jpg", "_uploads/g07.jpg"],
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": false
+    }
+  ],
+  "jobs": [
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-front-close-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. At eye level she faces the camera squarely in a close portrait showing her face and shoulders, wearing a fully opaque black corset top and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-front-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. At eye level she faces the camera squarely in a half-body portrait, wearing a fitted black camisole, a short dark skirt, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-front-full-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. At eye level she faces the camera squarely in a head-to-toe full-body frame, wearing a fitted charcoal baby tee, snug black shorts that visibly press at the upper-thigh hems, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 896},
+        {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896},
+        {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-three-quarter-left-close-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She turns about forty-five degrees to show her left three-quarter view in a close portrait of face and shoulders, wearing a fully opaque burgundy bustier and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-three-quarter-left-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She turns about forty-five degrees to show her left three-quarter view in a half-body portrait, wearing a fitted ivory camisole, snug dark shorts, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-three-quarter-left-full-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She turns about forty-five degrees to show her left three-quarter view in a head-to-toe full-body frame, wearing a fitted black tee, snug denim shorts that visibly press at the upper-thigh hems, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 896},
+        {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896},
+        {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-three-quarter-right-close-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She turns about forty-five degrees to show her right three-quarter view in a close portrait of face and shoulders, wearing a fully opaque black lace-trim camisole and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-three-quarter-right-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She turns about forty-five degrees to show her right three-quarter view in a half-body portrait, wearing a fitted charcoal baby tee, a short pleated black skirt, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-three-quarter-right-full-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She turns about forty-five degrees to show her right three-quarter view in a head-to-toe full-body frame, wearing a fitted wine-red corset top, snug black shorts that visibly press at the upper-thigh hems, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 896},
+        {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896},
+        {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-profile-left-close-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She is shown in a clean left profile with one ear visible in a close portrait of face and shoulders, wearing a fully opaque dark satin corset top and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-profile-left-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She is shown in a clean left profile with one ear visible in a half-body portrait, wearing a fitted black camisole, snug faded-denim shorts, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-profile-left-full-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. She is shown in a clean left profile with one ear visible in a head-to-toe full-body frame, wearing a fitted white baby tee, snug dark shorts that visibly press at the upper-thigh hems, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering but not polished or studio-made."},
+        {"node_id": "21", "field": "width", "value": 896},
+        {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896},
+        {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-from-above-close-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. The phone is held slightly above her eye line and angled down for a close portrait of face and shoulders, wearing a fully opaque black bustier and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering and anatomically natural without wide-angle distortion."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-from-above-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. The phone is held above her and angled down for a half-body portrait, wearing a fitted pale-grey camisole, snug black shorts, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering and anatomically natural without wide-angle distortion."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-from-above-full-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. The phone is held above her and angled down while keeping her head-to-toe body in frame, wearing a fitted black cami, snug denim shorts that visibly press at the upper-thigh hems, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering and anatomically natural without wide-angle distortion."},
+        {"node_id": "21", "field": "width", "value": 896},
+        {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896},
+        {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-from-below-close-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. The phone sits slightly below her chin and angles gently upward for a close portrait of face and shoulders, wearing a fully opaque deep-red corset top and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering and anatomically natural without wide-angle distortion."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-from-below-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. The phone sits slightly below chest height and angles gently upward for a half-body portrait, wearing a fitted white baby tee, a short black skirt, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering and anatomically natural without wide-angle distortion."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-from-below-full-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. The phone sits near hip height and angles gently upward while keeping her head-to-toe body in frame, wearing a fitted black baby tee, snug grey shorts that visibly press at the upper-thigh hems, and layered thin silver chains. Flat white bedroom light, relaxed pout, natural pores, subtle phone-camera grain, candid framing, flattering and anatomically natural without wide-angle distortion."},
+        {"node_id": "21", "field": "width", "value": 896},
+        {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896},
+        {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-window-daylight-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. In a three-quarter half-body view beside a bedroom window, she wears a fitted black camisole, snug faded-denim shorts, and layered thin silver chains. Soft natural window daylight rolls across her face, with a relaxed pout, natural pores, slight phone-camera grain, and casual arm's-length framing that feels candid, flattering, and unstaged."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-lamp-night-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. In a front half-body bedroom view at night, she wears a fully opaque burgundy corset top, a short black skirt, and layered thin silver chains. One shaded bedside lamp gives warm low light and honest shadow falloff, with a relaxed pout, natural pores, slight phone-camera grain, and casual handheld framing that feels candid, flattering, and unstaged."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-on-camera-flash-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. In a right three-quarter half-body party snapshot, she wears a fitted white baby tee, snug black shorts, and layered thin silver chains. Direct on-camera phone flash creates crisp falloff against a dim ordinary room while retaining fine skin texture, with a relaxed pout, slight sensor grain, spontaneous composition, and a candid flattering finish rather than a commercial studio look."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-car-interior-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. Seated in a parked car in a left three-quarter half-body view, she wears a fitted dark satin camisole, snug charcoal shorts, and layered thin silver chains. Mixed dashboard glow and soft street light shape the car interior, with a relaxed pout, natural pores, slight phone-camera grain, casual arm's-length framing, and a candid flattering late-night finish."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-mirror-selfie-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. In a bedroom mirror half-body selfie, she wears a fully opaque black corset top, a short pleated skirt, and layered thin silver chains, with the phone naturally visible in one hand. Flat white room light, relaxed pout, natural pores, slight phone-camera grain, an ordinary lived-in background, and an informal flattering composition that is candid rather than studio-polished."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-exp01-bathroom-mirror-half-body-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "A candid-but-flattering phone photo of the same woman as the reference images: an unambiguously adult woman around twenty-one with a face slightly sharper than round, softly full cheeks tapering to a small chin, almond eyes framed by sharp winged black liner and long defined lashes, groomed straight brows, glossy pink-nude naturally full lips, fair luminous skin with fine visible texture, and jet-black hair. She has a slim adult build with a clearly defined waist and strong waist-to-hip curve, toned arms and legs, and firm thighs that press lightly at the hems of fitted shorts; keep her lean and toned, not fuller-bodied or heavily athletic. In a bathroom mirror half-body selfie, she wears a fitted pale-pink camisole, snug black shorts, and layered thin silver chains, with the phone naturally visible in one hand. Plain overhead bathroom light reflects softly from tile without smoothing her skin, with a relaxed pout, natural pores, slight phone-camera grain, and an everyday flattering composition that feels candid and unretouched."},
+        {"node_id": "21", "field": "width", "value": 1024},
+        {"node_id": "21", "field": "height", "value": 1280},
+        {"node_id": "24", "field": "width", "value": 1024},
+        {"node_id": "24", "field": "height", "value": 1280}
+      ]
+    }
+  ]
+}
