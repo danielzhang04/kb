@@ -139,6 +139,65 @@ in one mutate; `bind()` was deleted from the attempt path) rather than patching 
 6. **Rollback** of a bad PTY-document migration: stop the daemon, restore
    `session-runs.json.v2.bak` over the migrated file, restart.
 
+### d1. A release deploy does NOT reinstall systemd units - do this by hand when a unit changes
+
+`scripts/deploy_platform_release.py` signs the tarball, `scp`s it, and calls
+`activate_release.py activate`; `activate_release.py` extracts the release, flips
+`/opt/kb-releases/current`, and restarts the daemon. **Neither ever writes
+`/etc/systemd/system/kb-dashboard.service`.** The only writer is
+`deploy/bootstrap_vm.py#install_dashboard_unit` (line 425), reached from the `bootstrap` and `converge`
+subcommands - and `converge` re-renders the WHOLE fragment, so the per-VM `DASHBOARD_TAILNET_HOST`,
+`DASHBOARD_TAILNET_OPERATOR`, and `DASHBOARD_DESKTOP_HELPER_ORIGIN` values must be passed again.
+
+`validate_vm_runtime.py` asserts `UMask=0002` in its **static** phase, which runs from
+`activate_release.py` before the symlink flip and from the unit's own `ExecStartPre`. Be precise about
+what that buys today: the copy those two actually execute is the RESIDENT
+`/usr/local/lib/kb/validate_vm_runtime.py`, refreshed only by `bootstrap_vm.py`
+(`install_root_validators`, line 452) - a release deploy ships the new validator into
+`/opt/kb-releases/<version>/deploy/` where nothing executes it. So an activation onto an unconverged VM
+does **not** refuse; it refuses only once the resident validator has been refreshed. Until then the wall
+is desktop-side: `scripts/deploy_platform_release.py#assert_dashboard_umask` probes
+`systemctl show kb-dashboard -p UMask --value` over ssh and refuses the deploy before uploading a byte.
+
+**Order matters, and it is the opposite of `bootstrap_vm.py`'s internal one.** `UMask=0002` is inert to
+the old resident validator (it has no rule about `UMask`), while a refreshed validator against an old
+unit fails `ExecStartPre` on the next start. So: **install the unit + `daemon-reload` FIRST, refresh the
+resident validators SECOND, restart the daemon LAST.** `converge` does both writes with no start in
+between, which is why its own note reads the other way; a hand ceremony has no such atomicity. If you
+do refresh the validators first anyway, **do not restart or stop the daemon until the new unit is
+installed** - between those two steps the service cannot start.
+
+```sh
+# ON THE VM, as root. Preferred - re-renders the unit exactly as bootstrap does, in one step:
+python3 /path/to/release/deploy/bootstrap_vm.py converge \
+  --tailnet-host kb.tail82dd4f.ts.net \
+  --tailnet-operator daniel.zhang.t1@gmail.com \
+  --desktop-helper-origin https://<helper>.ts.net
+systemctl restart kb-dashboard.service
+
+# Minimal hand path when only the unit body changed (host/operator lines already installed).
+# 1. UNIT FIRST - inert to the old validator, so nothing breaks if you stop here.
+cp /etc/systemd/system/kb-dashboard.service /root/kb-dashboard.service.pre-$(date -u +%Y%m%dT%H%M%SZ)
+# add the new directive(s) to [Service], keeping every existing Environment= line
+systemctl daemon-reload
+systemctl show kb-dashboard -p UMask --value          # must print 0002 BEFORE any restart
+# 2. RESIDENT VALIDATORS SECOND - now the unit already satisfies the rule they arm.
+install -o root -g root -m 0555 /opt/kb-releases/current/deploy/validate_vm_runtime.py \
+  /usr/local/lib/kb/validate_vm_runtime.py
+python3 -I -B /usr/local/lib/kb/validate_vm_runtime.py --phase static \
+  --ops-root /var/lib/kb/ops --unit kb-dashboard.service
+# 3. RESTART LAST.
+systemctl restart kb-dashboard.service
+```
+
+**Wall 1, the reason this section exists** (first successful claude launch, 2026-09-03): the daemon runs
+`git worktree add` for every attempt, so the daemon's umask - not any later `chmod` - sets the modes
+inside the run worktree. At systemd's default 0022 git wrote 2755 dirs / 644 files under the setgid
+`kb-shell` group and the worker (uid `kb-shell`) could not write a byte into the tree it was handed;
+`adapters.ts#chmodWorktreeComponents` only forces 02770 on the path components down to the attempt dir.
+`UMask=0002` in `[Service]` is the fix, and it removes no control: write scope is enforced post-hoc from
+`git status` (`adapters.ts:344-350`), never from filesystem modes.
+
 ## e. The drain
 
 A ledger-only audit bundle (cost rows, no instruction content) needs no signature to promote. A
@@ -176,6 +235,13 @@ new-work route until a drain runs, whether or not anyone touched the VM in betwe
   between the three canonical hops; put it behind `startRunSession` directly.
 - **P4e** — W22 residue from the seam-restructure round, not yet swept.
 - **P3d** — Terminal launcher UX (no root select on first launch is what let `repo` ship default).
+- **VM work products have no route off the box.** Wall 2's fix proves lineage durability against the
+  local shared object store under `KB_COORDINATION_PUBLICATION=outbox`, which is correct - there is no
+  remote to push to. But that means the `codex/managed-*` branches a VM run produces stay on the VM: the
+  outbox `COORDINATION` regex (`scripts/promote_vm_outbox.py`, `deploy/apply_ops_reconciliation.py`)
+  deliberately carries coordination paths only, and widening it to carry work products would turn the
+  outbox into a general code channel. A separate promotion path for `codex/managed-*` is owed as a
+  follow-up; until it exists, treat a VM run's work product as inspectable on the VM only.
 - **P7** — the 24h drain ceiling in §e degrades admission daily with only a signed manual ceremony;
   auto-drain or a no-fleet-pause receipt path is owed as a follow-up PR.
 

@@ -54,6 +54,25 @@ def test_effective_unit_rejects_a_non_tailnet_auth_mode():
         validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
+@pytest.mark.parametrize("value", ["0022", "0077", "0000", ""])
+def test_effective_unit_requires_the_group_writable_umask(value):
+    """Wall 1 (Gate 4, 2026-09-03): the daemon creates every run worktree with `git worktree add`, so its
+    umask - not any later chmod - decides whether the kb-shell worker can write in the tree it was handed.
+    At systemd's default 0022 git writes 2755/644 and EVERY worker write inside the run worktree failed.
+    A unit that has lost `UMask=0002` must fail ExecStartPre, not the first launch of the day."""
+    show = valid_static_unit()
+    show["UMask"] = value
+    with pytest.raises(RuntimeError, match="UMask must be 0002"):
+        validate_vm_runtime.validate_static_unit(show, VALID_UNIT_TEXT)
+
+
+def test_shipped_dashboard_unit_carries_the_group_writable_umask():
+    """The assertion above is only a wall if the unit we SHIP still satisfies it."""
+    unit = Path(__file__).resolve().parents[1] / "deploy" / "systemd" / "kb-dashboard.service"
+    service = validate_vm_runtime.parse_unit(unit.read_text(encoding="utf-8"))["Service"]
+    assert ("UMask", "0002") in service
+
+
 def test_effective_unit_requires_the_pinned_operator():
     # DASHBOARD_TAILNET_OPERATOR is REQUIRED, not optional — a unit missing it fails the closed-set check.
     text = VALID_UNIT_TEXT.replace("Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com\n", "")
@@ -103,6 +122,7 @@ def valid_static_unit():
         "EnvironmentFiles": "",
         "UnsetEnvironment": "GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION",
         "KillMode": "control-group",
+        "UMask": "0002",
         "ReadOnlyPaths": "/opt/kb-releases",
         "ReadWritePaths": "/var/lib/kb/state /var/lib/kb/ops",
     }

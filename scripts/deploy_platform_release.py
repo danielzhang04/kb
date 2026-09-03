@@ -25,6 +25,15 @@ V1_ATTESTATION_KEYS = frozenset({"archive", "schema", "sha256", "sourceCommit", 
 V2_ATTESTATION_KEYS = frozenset(RELEASE_ATTESTATION_KEYS)
 STATE_MIGRATIONS = frozenset({"compatible", "breaking"})
 CANONICAL_DECIMAL = re.compile(r"(?:0|[1-9][0-9]*)")
+# The daemon runs `git worktree add` for every attempt, so ITS umask decides whether the kb-shell worker
+# can write in the run worktree it was handed; at systemd's default 0022 git writes 2755/644 and every
+# worker write fails. deploy/systemd/kb-dashboard.service ships UMask=0002 and
+# deploy/validate_vm_runtime.py asserts it - but the resident copy of that validator at
+# /usr/local/lib/kb is refreshed ONLY by `bootstrap_vm.py converge`, never by a release deploy, so on a
+# VM that has not converged the validator on the box still has no UMask rule. THIS script is the only
+# guard guaranteed to be as current as the repo, so it probes the live unit before uploading anything.
+DASHBOARD_UMASK_PROBE = ["systemctl", "show", "kb-dashboard", "-p", "UMask", "--value"]
+EXPECTED_DASHBOARD_UMASK = "0002"
 
 
 def parse_local_attestation(attestation: Path, archive: Path) -> dict[str, str]:
@@ -65,11 +74,30 @@ def parse_local_attestation(attestation: Path, archive: Path) -> dict[str, str]:
     return value
 
 
+def assert_dashboard_umask(host: str, run=subprocess.run) -> None:
+    """Refuse the deploy unless the LIVE kb-dashboard unit already carries UMask=0002.
+
+    Read-only and fail-closed: an unreadable value, a systemd default 0022, or anything else refuses.
+    Fixing it is the unit-install ceremony in docs/runbooks/2026-09-03-vm-agent-launch-preflight.md d1,
+    which a release deploy does not perform (it never writes /etc/systemd/system/kb-dashboard.service).
+    """
+    result = run(["ssh", host, *DASHBOARD_UMASK_PROBE], check=True, text=True, capture_output=True)
+    value = (result.stdout or "").strip()
+    if value != EXPECTED_DASHBOARD_UMASK:
+        raise RuntimeError(
+            f"refusing to deploy: kb-dashboard UMask is {value!r}, must be {EXPECTED_DASHBOARD_UMASK}. "
+            "Every worker write inside the run worktree fails without it. Install the unit and reload "
+            "systemd first - see docs/runbooks/2026-09-03-vm-agent-launch-preflight.md section d1."
+        )
+
+
 def deploy(archive: Path, attestation: Path, signing_key: Path, host: str, run=subprocess.run) -> None:
     signed = parse_local_attestation(attestation, archive)
     signature = attestation.with_suffix(attestation.suffix + ".sig")
     signature.unlink(missing_ok=True)
     run(["ssh-keygen", "-Y", "sign", "-f", str(signing_key), "-n", "kb-release", str(attestation)], check=True)
+    # Before ANY byte reaches the VM, and so long before the activation this would otherwise fail inside.
+    assert_dashboard_umask(host, run=run)
     upload_id = secrets.token_hex(16)
     remote = f"/var/tmp/kb-release-upload/{upload_id}"
     run(["ssh", host, "install", "-d", "-m", "0700", remote], check=True)

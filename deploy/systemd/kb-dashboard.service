@@ -10,6 +10,18 @@ Group=kb-dashboard
 # kb-shell, 02770) that the broker's children execute in. Without this it cannot even traverse the
 # worktree root, and the whole PTY execution vertical is dead on the VM.
 SupplementaryGroups=kb-shell
+# UMask=0002 is load-bearing, not hygiene. The daemon runs `git worktree add` for every attempt, so
+# ITS umask decides the modes git creates inside the run worktree. systemd's default 0022 makes git
+# write 2755 directories and 644 files under the setgid kb-shell group, and the worker process (uid
+# kb-shell, a different account) can then only READ the tree it was handed - every write inside the
+# run worktree fails. 0002 makes the same git create 2775/664, group-writable by kb-shell.
+# This removes no control: the workflow contract (orgs/kb-ops/workflows/acceptance-run.md) is
+# "the worker writes into orgs/kb-ops/output/, the control plane inspects `git status` and commits",
+# and write-scope enforcement is post-hoc over that status (dashboard/server/control/adapters.ts),
+# never filesystem modes. The broker's fd-pinning validator (dashboard/server/pty/fdPinnedPaths.ts)
+# only checks the pinned cwd chain, which adapters.ts#chmodWorktreeComponents still re-forces to
+# EXACTLY 02770 after creation. Asserted by deploy/validate_vm_runtime.py's static phase.
+UMask=0002
 RuntimeDirectory=kb-dashboard
 RuntimeDirectoryMode=0750
 WorkingDirectory=/opt/kb-releases/current/dashboard

@@ -71,6 +71,11 @@ function fixture(options: {
   pushFailsOnce?: boolean; changedAsSymlink?: boolean; changedAsIrregular?: boolean; nonReview?: boolean;
   /** What the READ-ONLY coordination-branch seam reports. Omitted => `ops` (a sane coordination checkout). */
   coordinationBranch?: string | null;
+  /** Omitted => `direct` (the desktop). `outbox` is the VM, where origin is `disabled://`. */
+  publication?: 'direct' | 'outbox';
+  /** What `refs/heads/<lineage branch>` holds in the SHARED object store after the cherry-pick. Omitted
+   *  => the integration commit, i.e. what a real cherry-pick on a checked-out branch actually writes. */
+  storedLineageCommit?: string;
 } = {}) {
   const workspace = root();
   const repoRoot = join(workspace, 'repo');
@@ -162,8 +167,12 @@ function fixture(options: {
   const attemptCommit = 'b'.repeat(40);
   const lineageBase = 'c'.repeat(40);
   const integrationCommit = 'd'.repeat(40);
+  const publication = options.publication ?? 'direct';
   let attemptHead = attemptBase;
   let lineageHead = lineageBase;
+  // The lineage worktree has its branch CHECKED OUT, so a commit there advances `refs/heads/<branch>` in
+  // the shared refdb of `repoRoot` too. That shared ref is what the outbox durability proof reads.
+  let lineageStoredRef = lineageBase;
   let staged = false;
   let failAttemptResolution = options.failAfterAttemptCommit ?? false;
   let failLineageResolution = options.failAfterCherryPick ?? false;
@@ -209,6 +218,7 @@ function fixture(options: {
       }
       if (args[0] === 'cherry-pick') {
         lineageHead = integrationCommit;
+        lineageStoredRef = options.storedLineageCommit ?? integrationCommit;
         const lineageFile = join(cwd, ...changedPath.split('/'));
         mkdirSync(join(cwd, 'dashboard/server'), { recursive: true });
         writeFileSync(lineageFile, content);
@@ -224,6 +234,9 @@ function fixture(options: {
         if (args[1] === '--abbrev-ref') return { exitCode: 0, stdout: Buffer.from(lineageBranch), stderr: '' };
         if (args[1] === 'HEAD^') return { exitCode: 0, stdout: Buffer.from(cwd === attemptPath ? attemptBase : lineageBase), stderr: '' };
         if (args[1]?.startsWith('refs/remotes/')) return { exitCode: 0, stdout: Buffer.from(integrationCommit), stderr: '' };
+        if (args[1] === '--verify' && String(args[2]).startsWith('refs/heads/')) {
+          return { exitCode: 0, stdout: Buffer.from(lineageStoredRef), stderr: '' };
+        }
         if (cwd === attemptPath && attemptHead === attemptCommit && failAttemptResolution) {
           failAttemptResolution = false;
           return { exitCode: 1, stdout: Buffer.alloc(0), stderr: 'simulated daemon exit after attempt commit' };
@@ -319,7 +332,9 @@ function fixture(options: {
       const end = cardText.indexOf('\n```', start);
       expect(verify).toEqual({
         cardRef, runRef, result: JSON.parse(cardText.slice(start, end)),
-        ...(verify.gitCommit ? { gitCommit: 'e'.repeat(40) } : {}),
+        // Under `outbox` the published commit is coordination HEAD (the fake's `f`s), not a fetched
+        // `origin/ops` (its `e`s) - the integrator reads the local checkout, exactly as it does on the VM.
+        ...(verify.gitCommit ? { gitCommit: (publication === 'outbox' ? 'f' : 'e').repeat(40) } : {}),
       });
       return { exitCode: 0, stdout: JSON.stringify({ path: doneRel }), stderr: '' };
     }
@@ -383,12 +398,13 @@ function fixture(options: {
   const coordinationBranch = options.coordinationBranch === undefined ? 'ops' : options.coordinationBranch;
   const integratorOptions = {
     repoRoot, coordinationRoot, integrationRoot, worktreeRoot, stateRoot, baseCommit: 'a'.repeat(40),
-    gitRunner, coordinationGit, runPy, reconciliationPublisher, readStoreRevision,
+    gitRunner, coordinationGit, runPy, reconciliationPublisher, readStoreRevision, publication,
+    outboxRoot: join(workspace, 'outbox'),
     resolveCoordinationBranch: async (path: string) => { branchResolutions.push(path); return coordinationBranch; },
   };
   const integrator = createCanonicalGitResultIntegrator(integratorOptions);
   return {
-    input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, doneRel, branchResolutions,
+    input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, repoRoot, doneRel, branchResolutions,
     restartIntegrator: () => createCanonicalGitResultIntegrator(integratorOptions),
     setPushFails(value: boolean) { pushFails = value; },
     setCardFails(value: boolean) { cardFails = value; },
@@ -577,6 +593,38 @@ describe('canonical Git result integrator', () => {
     item.setLineagePushFails(false);
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
     expect(item.gitCalls.filter((call) => call.args[0] === 'cherry-pick')).toHaveLength(1);
+  });
+
+  it('proves lineage durability against the shared object store under outbox publication, never a push', async () => {
+    // WALL 2 (Gate 4, 2026-09-03): on the VM `remote.origin.url`/`pushurl` are
+    // `disabled://desktop-promotion-only` and the integrator pins `protocol.allow=never`, so the
+    // unconditional `push origin HEAD:refs/heads/<lineage>` failed with `fatal: transport 'disabled' not
+    // allowed` on EVERY stage of EVERY run and dropped each one into containment. `lineagePushFails`
+    // stands in for that transport refusal: under `outbox` NOTHING may reach the remote, so the run must
+    // complete anyway, proving durability against the shared object store the lineage worktree lives in.
+    const item = fixture({ publication: 'outbox', lineagePushFails: true });
+    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({
+      status: 'integrated', durability: 'canonical', integrationCommit: 'd'.repeat(40),
+    });
+    expect(JSON.parse(readFileSync(join(item.stateRoot, 'control/canonical-integration.json'), 'utf8')).records[0].state)
+      .toBe('canonical-committed');
+    expect(item.gitCalls.filter((call) => call.args[0] === 'push')).toEqual([]);
+    expect(item.gitCalls.filter((call) => call.args[0] === 'fetch')).toEqual([]);
+    expect(item.gitCalls.filter((call) => call.cwd === item.repoRoot && call.args[0] === 'rev-parse'
+      && call.args[1] === '--verify' && String(call.args[2]).startsWith('refs/heads/codex/managed-')))
+      .not.toEqual([]);
+  });
+
+  it('refuses under outbox publication when the stored lineage ref differs from the integrated commit', async () => {
+    // The outbox proof is a PROOF, not a bypass: a shared-store ref that does not carry the journaled
+    // integration commit refuses and parks the record at `lineage-local`, exactly as a refused push did.
+    const item = fixture({ publication: 'outbox', storedLineageCommit: 'e'.repeat(40) });
+    await expect(item.integrator.integrate(item.input))
+      .rejects.toThrow('stored lineage does not equal the integrated commit');
+    expect(item.cardMutations()).toBe(0);
+    expect(JSON.parse(readFileSync(join(item.stateRoot, 'control/canonical-integration.json'), 'utf8')).records[0].state)
+      .toBe('lineage-local');
+    expect(item.gitCalls.filter((call) => call.args[0] === 'push')).toEqual([]);
   });
 
   it('fails closed on a partial or unrelated coordination index before card mutation', async () => {

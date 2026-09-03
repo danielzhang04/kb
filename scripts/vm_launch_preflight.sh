@@ -297,6 +297,15 @@ section "systemd units"
 for unit in kb-dashboard.service kb-shell-broker.socket kb-shell-broker.service; do
   systemctl is-active --quiet "$unit" && ok "$unit active" || bad "$unit not active"
 done
+# Wall 1, found by the first successful claude launch (2026-09-03): the daemon runs `git worktree add`
+# for every attempt, so ITS umask sets the modes inside the run worktree. At systemd's default 0022 git
+# writes 2755 dirs / 644 files under the setgid kb-shell group and the worker (uid kb-shell) cannot
+# write a byte into the tree it was handed. The unit ships UMask=0002; this proves the INSTALLED unit
+# still carries it, because a release deploy does not reinstall units.
+dashboard_umask=$(systemctl show kb-dashboard -p UMask --value 2>/dev/null)
+[ "$dashboard_umask" = "0002" ] \
+  && ok "kb-dashboard UMask=0002 (workers can write in their run worktree)" \
+  || bad "kb-dashboard UMask=$dashboard_umask, needs 0002 - every worker write inside the run worktree will fail. Fix: add UMask=0002 to [Service] in deploy/systemd/kb-dashboard.service, reinstall the unit on the VM, systemctl daemon-reload, systemctl restart kb-dashboard"
 
 # ---------------------------------------------------------------------------------------------
 section "admission / readiness / health (over the tailnet URL)"
