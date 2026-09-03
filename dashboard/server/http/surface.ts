@@ -16,6 +16,7 @@
  * gate falls back to its real default.
  */
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { resolve as resolvePath } from 'node:path';
 import { connect as connectSocket } from 'node:net';
@@ -243,9 +244,30 @@ export function makeSurfaceContext(
   const ptyPersistence = capabilities.pty
     ? (overrides.ptyPersistence ?? createSessionPersistence(stateRoot))
     : undefined;
+  // ONE migration, awaited before ANY reader of the real PTY document — never at compose (tests build
+  // contexts inertly), only from the boot step `registerWriteSurface` wires below, which runs before the
+  // app accepts its first request. Before this, only `ptySessionRuns`'s lazy write-time `migrate` awaited
+  // it: the session registry read the SAME document straight off `persistence.read()`/`.mutate()` with no
+  // migration wired in at all, so a v2 file on disk failed the registry's first read with a generic
+  // `PTY session document is invalid` and the migration never ran (the bug this closure exists to close).
+  // A test double supplied through `overrides.ptyPersistence` never names this process's real `stateRoot`,
+  // so it is intentionally excluded here — production (and any test using the real, unoverridden
+  // persistence) is the only caller for which `stateRoot` and `ptyPersistence` are guaranteed to agree on
+  // one file. `existsSync` short-circuits the common case (a fresh daemon that never wrote v1/v2) so boot
+  // never fails with "source is missing" on an install that only ever spoke v3.
+  let ptyDocumentMigration: Promise<void> | null = null;
+  const ensurePtyDocumentMigrated: () => Promise<void> = overrides.ptyPersistence !== undefined
+    ? async () => {}
+    : () => {
+      ptyDocumentMigration ??= (async () => {
+        if (!existsSync(resolvePath(stateRoot, 'pty', 'session-runs.json'))) return;
+        await migratePtySessionStateRoot(stateRoot);
+      })();
+      return ptyDocumentMigration;
+    };
   const ptySessionRuns = capabilities.pty && ptyPersistence
     ? (overrides.ptySessionRuns
-      ?? createSessionRunStore(ptyPersistence, { migrate: () => migratePtySessionStateRoot(stateRoot) }))
+      ?? createSessionRunStore(ptyPersistence, { migrate: ensurePtyDocumentMigrated }))
     : undefined;
   // The ONE v2 session registry. It is the only holder of the cross-controller close port: the closer is
   // handed OUT through `installDeploymentCloser` (Daniel's `close-ptys-and-continue` deployment action)
@@ -457,6 +479,10 @@ export function makeSurfaceContext(
     browserSessionRefs: overrides.browserSessionRefs
       ?? createBrowserSessionRefStore(ptyPersistence ? { persistence: ptyPersistence } : {}),
     ptySessionRuns,
+    // The `registerWriteSurface` boot hook awaits this before the app accepts its first request, so the
+    // registry's raw `persistence.read()`/`.mutate()` calls and the run store's write-time migrate always
+    // see an already-migrated (or already-v3) document. Absent without PTY persistence.
+    ensurePtyDocumentMigrated: ptyPersistence ? ensurePtyDocumentMigrated : undefined,
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
     // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
     // place on unlock and clears them on lock.
@@ -568,6 +594,21 @@ export function makeSurfaceContext(
 
 /** Register the governed write surface (auth + write + composer + approvals) as one guarded child scope. */
 export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext): void {
+  // File-only: no PTY host is probed or contacted here, only the on-disk document. Runs before the app
+  // starts listening, so it happens-before every route this function (and `registerV1NodeRoutes`, and the
+  // sibling `/api/pty` scope in `index.ts`) registers — no request can reach a PTY route while this is
+  // still in flight. See `ensurePtyDocumentMigrated`'s doc comment in `context.ts` for why this exists.
+  app.addHook('onReady', async () => {
+    try {
+      await ctx.ensurePtyDocumentMigrated?.();
+    } catch (error) {
+      // Degrade, never brick: per the invariant in runtime/capabilities.ts (~100-103), a daemon
+      // that cannot resolve its terminal stack comes up without a terminal, it does not fail to
+      // come up. A migration failure here must leave boot to finish; the registry's own read-time
+      // handling is what degrades any route that subsequently touches the unmigrated document.
+      console.error('[pty-registry] PTY document migration failed', error instanceof Error ? error.message : String(error));
+    }
+  });
   app.addHook('onReady', async () => {
     if (ctx.coordinationPublication !== 'outbox') return;
     try {

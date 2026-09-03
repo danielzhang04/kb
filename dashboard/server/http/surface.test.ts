@@ -33,6 +33,7 @@ import type {
 } from '../pty/contracts.ts';
 import { assertPtySessionsDocumentV3, createEmptyPtySessionsDocument } from '../pty/sessionPersistence.ts';
 import type { SessionPersistence } from '../pty/sessionPersistence.ts';
+import * as sessionMigration from '../pty/sessionMigration.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { AttemptIoAppend } from '../control/attemptIo.ts';
 import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
@@ -854,6 +855,150 @@ describe('write surface — composition chain', () => {
     // Routing is resolver-sourced (effectiveForAgent) — present + concrete, never client input.
     expect(typeof payload.runtime).toBe('string');
     expect(typeof payload.model).toBe('string');
+  });
+});
+
+/**
+ * The 2026-09-03 VM defect: a v2 document on disk failed the session REGISTRY's first raw
+ * `persistence.read()` with a generic "PTY session document is invalid", because nothing had ever
+ * triggered the migration wired only into the session-RUN store's lazy write-time `migrate`. These prove
+ * `ensurePtyDocumentMigrated` (surface.ts) actually runs — once, before either consumer's first touch —
+ * from the `registerWriteSurface` boot hook, using the REAL `createSessionPersistence(stateRoot)` port
+ * (no `ptyPersistence` override) so the on-disk file and the migration operate on the same file.
+ */
+describe('write surface — PTY document migration runs before any reader (boot)', () => {
+  /** A minimal, strictly-valid v2 PTY document — the same shape `sessionMigration.test.ts` uses to prove
+   *  `migratePtySessionDocument` maps v2 -> v3. */
+  function writeV2Document(stateRoot: string): { path: string; original: Buffer } {
+    const document = {
+      schema: 'kb.pty-sessions/v2', revision: 3, sessions: [], attemptBindings: [],
+      operationReceipts: [], attemptOperations: {}, legacyRuns: [], legacyArchiveKeys: [],
+    };
+    const dir = join(stateRoot, 'pty');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'session-runs.json');
+    const original = Buffer.from(`${JSON.stringify(document)}\n`, 'utf8');
+    writeFileSync(path, original);
+    return { path, original };
+  }
+
+  it('migrates a v2 document on disk at boot, before the registry ever reads it', async () => {
+    const { path, original } = writeV2Document(testStateRoot!);
+    const injected = recordingSessionHost();
+    const warnings: unknown[][] = [];
+    vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => { warnings.push(args); });
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: injected.host,
+    });
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+
+    await app.ready();
+
+    // The file is v3 on disk with the byte-identical original preserved as a `.v2.bak` sibling — the
+    // migration's own contract (proved directly in `sessionMigration.test.ts`), now proved to have
+    // actually RUN at boot rather than staying a closure nothing ever calls.
+    expect(readFileSync(`${path}.v2.bak`)).toEqual(original);
+    const migrated = JSON.parse(readFileSync(path, 'utf8'));
+    expect(migrated.schema).toBe('kb.pty-sessions/v3');
+
+    // The regression this closes: before the boot-hook wiring, the registry's FIRST read hit the raw v2
+    // file, `assertPtySessionsDocumentV3` threw, and the registry swallowed it into `onBackgroundError`
+    // -> `console.warn('[pty-registry]', 'PTY session document is invalid')`, returning `[]` either way.
+    // Revert the wiring (or the `existsSync` guard) and this goes red: a read that used to warn now
+    // succeeds clean.
+    const sessions = await ctx.ptySessionRegistry?.list({ operator: 'operator', browserSessionRef: 'bsr-1' });
+    expect(sessions).toEqual([]);
+    expect(warnings.some((args) => String(args[0]).includes('[pty-registry]'))).toBe(false);
+  });
+
+  it('runs the on-disk migration exactly once, however many readers/writers touch the document', async () => {
+    writeV2Document(testStateRoot!);
+    const migrateSpy = vi.spyOn(sessionMigration, 'migratePtySessionStateRoot');
+    const injected = recordingSessionHost();
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: injected.host,
+    });
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+
+    await app.ready();
+    // Boot ordering: migration must already have run by the time `ready()` resolves, before either
+    // consumer below has been given a chance to touch the document at all.
+    expect(migrateSpy).toHaveBeenCalledTimes(1);
+    // Boot already migrated. A registry read (raw `persistence.read()`) and a session-run write (the
+    // store's own lazy write-time `migrate`) both touch the same document after boot; neither should
+    // trigger a second migration attempt.
+    await ctx.ptySessionRegistry?.list({ operator: 'operator', browserSessionRef: 'bsr-1' });
+    await ctx.ptySessionRuns?.create({ owner: 'operator', kind: 'agent', targetRef: 'agent-x', ptySessionId: null });
+
+    expect(migrateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unparseable PTY document on disk degrades boot instead of crash-looping it', async () => {
+    // Regression: before the onReady hook wrapped `ensurePtyDocumentMigrated` in try/catch, a
+    // migration failure rethrew out of the hook and Fastify's `ready()` (and therefore `listen()`)
+    // rejected — a boot-time crash-loop, contradicting the capabilities.ts invariant that a daemon
+    // unable to resolve its terminal stack comes up without a terminal rather than failing to come up.
+    const dir = join(testStateRoot!, 'pty');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'session-runs.json'), 'not json at all');
+    const injected = recordingSessionHost();
+    const errors: unknown[][] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args); });
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: injected.host,
+    });
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+
+    // If the hook still rethrows, this await rejects and the test fails right here.
+    await app.ready();
+
+    const migrationErrors = errors.filter(
+      (args) => String(args[0]).includes('[pty-registry] PTY document migration failed'),
+    );
+    expect(migrationErrors).toHaveLength(1);
+
+    // The registry's own read-time handling degrades any subsequent touch of the still-unmigrated
+    // document: `list` must return an empty result, not throw.
+    await expect(
+      ctx.ptySessionRegistry?.list({ operator: 'operator', browserSessionRef: 'bsr-1' }),
+    ).resolves.toEqual([]);
+  });
+
+  it('does not migrate the real state root when `ptyPersistence` is overridden by a test double', async () => {
+    // Same `writeV2Document` fixture, but as an UNRELATED file the overridden fake never touches: proves
+    // the boot hook does not go around the injected persistence and mutate `stateRoot` behind its back.
+    const { original } = writeV2Document(testStateRoot!);
+    let document = createEmptyPtySessionsDocument();
+    const persistence: SessionPersistence = {
+      read: () => structuredClone(document),
+      mutate: async (_expectedRevision, callback) => {
+        const draft = structuredClone(document);
+        const value = await callback(draft);
+        draft.revision += 1;
+        assertPtySessionsDocumentV3(draft);
+        document = draft;
+        return { revision: draft.revision, value };
+      },
+    };
+    const injected = recordingSessionHost();
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: injected.host,
+      ptyPersistence: persistence,
+    });
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+
+    await app.ready();
+
+    expect(readFileSync(join(testStateRoot!, 'pty', 'session-runs.json'))).toEqual(original);
+    expect(existsSync(join(testStateRoot!, 'pty', 'session-runs.json.v2.bak'))).toBe(false);
   });
 });
 
