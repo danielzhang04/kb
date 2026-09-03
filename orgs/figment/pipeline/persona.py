@@ -32,6 +32,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _POD_MODULE_NAME = "_figment_pipeline_pod_runpod_run"
+_GATES_MODULE_NAME = "_figment_pipeline_persona_gates"
 
 
 def _load_pod_runpod_run():
@@ -50,6 +51,22 @@ def _load_pod_runpod_run():
         raise ImportError(f"could not load pod/runpod_run.py from {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[_POD_MODULE_NAME] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_gates():
+    """Load gates.py by file path (same ad-hoc-loading convention as
+    `_load_pod_runpod_run` — reuses `gates.sha256_file` rather than reimplementing a
+    second streaming-sha256 helper)."""
+    if _GATES_MODULE_NAME in sys.modules:
+        return sys.modules[_GATES_MODULE_NAME]
+    path = Path(__file__).resolve().parent / "gates.py"
+    spec = importlib.util.spec_from_file_location(_GATES_MODULE_NAME, path)
+    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+        raise ImportError(f"could not load gates.py from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_GATES_MODULE_NAME] = module
     spec.loader.exec_module(module)
     return module
 
@@ -110,6 +127,20 @@ ALLOWED_FLOOR_STATUSES = frozenset({"uncalibrated", "calibrated"})
 
 def _fail(message: str) -> None:
     raise PersonaError(message)
+
+
+def _require_matching_sha256(resolved: Path, declared: str, field: str) -> None:
+    """Fail closed unless `declared` equals `resolved`'s live sha256 digest (design
+    §2.2 / module docstring: drift between a spec doc and its persona-recorded hash
+    must be detectable, not silent). Only called when the file is known to exist —
+    the caller's own missing-file check runs first and takes precedence."""
+    actual = _load_gates().sha256_file(resolved)
+    if actual != declared:
+        _fail(
+            f"persona.{field} does not match the live file digest for {resolved}: "
+            f"declared {declared!r}, actual {actual!r} — the spec file has drifted "
+            f"from the persona document that references it"
+        )
 
 
 def _require_dict(value: Any, field: str) -> dict:
@@ -234,9 +265,11 @@ def validate_persona(
     resolved_spec = _resolve_reference(
         base_dir, spec_path, "identity.spec.path", must_stay_within=True
     )
-    _require_nonempty_str(spec.get("sha256"), "identity.spec.sha256")
-    if require_assets and not resolved_spec.is_file():
-        _fail(f"persona.identity.spec.path points at a missing file: {resolved_spec}")
+    spec_sha256 = _require_nonempty_str(spec.get("sha256"), "identity.spec.sha256")
+    if require_assets:
+        if not resolved_spec.is_file():
+            _fail(f"persona.identity.spec.path points at a missing file: {resolved_spec}")
+        _require_matching_sha256(resolved_spec, spec_sha256, "identity.spec.sha256")
 
     floor = _require_dict(identity.get("floor"), "identity.floor")
     for key in ("anchor_cosine_p5", "min_face_px"):
@@ -306,10 +339,12 @@ def validate_persona(
     resolved_register_spec = _resolve_reference(
         base_dir, register_spec.get("path"), "register.spec.path", must_stay_within=False
     )
-    _require_nonempty_str(register_spec.get("sha256"), "register.spec.sha256")
+    register_spec_sha256 = _require_nonempty_str(register_spec.get("sha256"), "register.spec.sha256")
     _require_nonempty_str(register_spec.get("section"), "register.spec.section")
-    if require_assets and not resolved_register_spec.is_file():
-        _fail(f"persona.register.spec.path points at a missing file: {resolved_register_spec}")
+    if require_assets:
+        if not resolved_register_spec.is_file():
+            _fail(f"persona.register.spec.path points at a missing file: {resolved_register_spec}")
+        _require_matching_sha256(resolved_register_spec, register_spec_sha256, "register.spec.sha256")
     settings = _require_dict(register.get("settings"), "register.settings")
     _require_nonempty_str(settings.get("makeup"), "register.settings.makeup")
     _require_nonempty_str(settings.get("skin"), "register.settings.skin")

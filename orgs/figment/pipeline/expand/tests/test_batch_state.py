@@ -254,6 +254,49 @@ def test_cli_apply_scores_generated_cells_and_quarantines_no_face(tmp_path, batc
     assert cells_by_id["exp02-s002"]["rejected_reason"] == "no-face"
 
 
+def test_cli_apply_joins_60_of_60_under_the_real_harness_naming_scheme(tmp_path, capsys):
+    # P2R review finding 2: the harness's on-disk image name is
+    # "c001-<cell_id>" (build_expansion_set.py's output_name =
+    # f"c001-{cell['cell_id']}"), while batch.json's own cells key on cell_id alone
+    # ("exp02-s001"). identity_check.py's raw-only writer now resolves and carries
+    # that cell_id explicitly in each score row (see _resolve_cell_id), and
+    # batch_state.py's _load_score_rows already prefers a row's cell_id over its
+    # image_id — so this fixture reproduces exactly what that writer now emits for
+    # a real expansion-02-shaped batch: 40 "s" cells + 20 "r" cells, image_id in the
+    # harness's c001-prefixed form, cell_id resolved to the bare allocation id.
+    cell_ids = [f"exp02-s{i:03d}" for i in range(1, 41)] + [f"exp02-r{i:03d}" for i in range(1, 21)]
+    cells = [{"cell_id": cid, "stratum_id": f"strat-{cid}"} for cid in cell_ids]
+    real_batch = bs.new_batch(
+        batch_id="expansion-02", persona_id="creator-001",
+        allocation_sha256="a" * 64, cells=cells,
+    )
+    batch_path = tmp_path / "batch.json"
+    batch_path.write_text(json.dumps(real_batch), encoding="utf-8")
+
+    scores_path = tmp_path / "scores.json"
+    rows = [
+        {
+            "image_id": f"c001-{cid}",
+            "cell_id": cid,
+            "face_detected": cid != "exp02-s001",  # exactly one deterministic no-face
+        }
+        for cid in cell_ids
+    ]
+    scores_path.write_text(json.dumps({"images": rows}), encoding="utf-8")
+
+    assert bs.main(["apply", "--batch", str(batch_path), "--scores", str(scores_path)]) == 0
+    out = capsys.readouterr().out
+    assert "scored 59; quarantined no-face=1; threshold-routed=0" in out
+
+    updated = json.loads(batch_path.read_text(encoding="utf-8"))
+    states = {c["cell_id"]: c["state"] for c in updated["cells"]}
+    assert len(states) == 60
+    # 60 of 60 matched: every cell advanced off "generated".
+    assert set(states.values()) <= {"scored", "quarantined"}
+    assert states["exp02-s001"] == "quarantined"
+    assert all(states[cid] == "scored" for cid in cell_ids if cid != "exp02-s001")
+
+
 def test_cli_apply_is_idempotent_on_a_second_run(tmp_path, batch, capsys):
     batch_path = tmp_path / "batch.json"
     batch_path.write_text(json.dumps(batch), encoding="utf-8")

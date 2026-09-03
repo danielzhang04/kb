@@ -82,10 +82,19 @@ def _write_persona(tmp_path, data, *, with_assets=True):
         anchors.mkdir()
         for name in ("g01.jpg", "g02.jpg", "g07.jpg"):
             (anchors / name).write_bytes(b"\xff\xd8\xff")  # fake jpeg bytes
-        (persona_dir / "identity-spec.md").write_text("fixture identity spec\n", encoding="utf-8")
+        # Byte-identical copies of the REAL spec files, not placeholder text: `data`
+        # (from _base_persona_dict) carries the real files' sha256 in
+        # identity.spec.sha256 / register.spec.sha256, and validate_persona now
+        # checks those against the live file digest (finding 4) — a placeholder
+        # fixture would fail every test that doesn't explicitly want a mismatch.
+        (persona_dir / "identity-spec.md").write_bytes(
+            (PERSONAS / "creator-001" / "identity-spec.md").read_bytes()
+        )
         pipeline_dir = tmp_path / "pipeline"
         pipeline_dir.mkdir(parents=True)
-        (pipeline_dir / "look-spec-v2.md").write_text("fixture look spec\n", encoding="utf-8")
+        (pipeline_dir / "look-spec-v2.md").write_bytes(
+            (PIPELINE / "look-spec-v2.md").read_bytes()
+        )
     path = persona_dir / "persona.yaml"
     path.write_text(json.dumps(data), encoding="utf-8")
     return path
@@ -175,6 +184,41 @@ def test_register_spec_path_is_allowed_to_leave_the_persona_directory(tmp_path):
     data = _base_persona_dict()
     path = _write_persona(tmp_path, data, with_assets=False)
     load_persona(path, require_assets=False)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Spec sha256 drift detection (finding 4 — P2R review, medium)
+# ---------------------------------------------------------------------------
+
+
+def test_identity_spec_sha256_mismatch_rejected(tmp_path):
+    data = _base_persona_dict()
+    path = _write_persona(tmp_path, data)
+    # Tamper the staged identity-spec.md AFTER persona.yaml is written, so its
+    # declared sha256 (copied verbatim from the real, matching file) now disagrees
+    # with the live file on disk — exactly the "stale spec" scenario finding 4 named.
+    spec_path = path.parent / "identity-spec.md"
+    spec_path.write_bytes(spec_path.read_bytes() + b"\ntampered\n")
+    with pytest.raises(PersonaError, match="identity.spec.sha256 does not match"):
+        load_persona(path)
+
+
+def test_register_spec_sha256_mismatch_rejected(tmp_path):
+    data = _base_persona_dict()
+    path = _write_persona(tmp_path, data)
+    look_spec_path = tmp_path / "pipeline" / "look-spec-v2.md"
+    look_spec_path.write_bytes(look_spec_path.read_bytes() + b"\ntampered\n")
+    with pytest.raises(PersonaError, match="register.spec.sha256 does not match"):
+        load_persona(path)
+
+
+def test_spec_sha256_check_is_skipped_when_require_assets_is_false(tmp_path):
+    data = _base_persona_dict()
+    path = _write_persona(tmp_path, data)
+    spec_path = path.parent / "identity-spec.md"
+    spec_path.write_bytes(spec_path.read_bytes() + b"\ntampered\n")
+    # Must not raise: require_assets=False skips every filesystem/digest check.
+    load_persona(path, require_assets=False)
 
 
 def test_locked_persona_matches_the_committed_look_spec_and_identity_spec_hashes():

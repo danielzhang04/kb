@@ -14,6 +14,19 @@ Two modes:
 
       {
         "image_id": str, "path": str,
+        "cell_id": str | null,               # allocation cell_id, resolved from the
+                                                # batch's own cell list when running in
+                                                # --persona/--batch mode (None in legacy
+                                                # --anchor/--images mode, or when no
+                                                # unambiguous cell_id match exists) —
+                                                # see _resolve_cell_id. batch_state.py's
+                                                # apply CLI joins on cell_id first,
+                                                # image_id only as a fallback, so this
+                                                # closes the join-key mismatch between
+                                                # the harness's on-disk image name
+                                                # (persona-short-code-prefixed, e.g.
+                                                # "c001-exp02-s001") and batch.json's
+                                                # own cell_id ("exp02-s001").
         "face_detected": bool,
         "face_cosine": float | null,        # cosine to the anchor face, if both embedded
         "dinov2_cohesion": float | null,     # cosine to the training-set DINOv2 centroid
@@ -32,6 +45,13 @@ Two modes:
   resolves the anchor from `persona.identity.references[0]` and the image directory
   from the batch directory's `images/` subdirectory (the canonical harvested-image
   location, design §2.3).
+
+  `--out` normally names an output DIRECTORY (`identity_report.json` is written
+  inside it) — legacy behavior, unchanged. When `--raw-only` is given and `--out`
+  itself ends in `.json`, that path is treated as the report FILE to write directly
+  (parent directories created as needed), not as a directory to create — Task 7 step
+  7.5 passes `--out .../scores.json` and expects that literal file, not a directory
+  named `scores.json`.
 """
 
 from __future__ import annotations
@@ -248,6 +268,24 @@ class DinoV2Embedder:
         return vector(embedding)
 
 
+def _resolve_cell_id(image_id: str, cell_ids: list[str]) -> str | None:
+    """Best-effort, deterministic mapping from a harvested image's on-disk id (the
+    pod harness's own `output_name`, e.g. `"c001-exp02-s001"` — see
+    `build_expansion_set.py`'s `output_name = f"{{persona_short_code}}-{{cell_id}}"`)
+    back to the allocation's own `cell_id` (`"exp02-s001"`). Matches by exact equality
+    first, then by suffix (`"<anything>-<cell_id>"`) against `cell_ids` — the batch's
+    own known cell list — never by hardcoding a persona-specific prefix, so this works
+    for any short code. Returns `None` (never raises) when no `cell_id` matches or
+    more than one does, so an ambiguous or absent join is left unresolved rather than
+    guessed at."""
+    if image_id in cell_ids:
+        return image_id
+    matches = [cid for cid in cell_ids if image_id.endswith("-" + cid)]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
 def _evaluate_raw_only(
     anchor: Path,
     image_dir: Path,
@@ -255,6 +293,8 @@ def _evaluate_raw_only(
     images: list[Path],
     face_embedder: Callable[[Path], Any],
     dino_embedder: Callable[[Path], Any],
+    *,
+    cell_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Raw-only mode (design finding 24): per-image observations, never a verdict.
     Never writes `rulings.json`; the word "pass" never appears anywhere in the
@@ -317,6 +357,7 @@ def _evaluate_raw_only(
         rows.append({
             "image_id": path.stem,
             "path": path.name,
+            "cell_id": _resolve_cell_id(path.stem, cell_ids) if cell_ids else None,
             "face_detected": face_detected,
             "face_cosine": face_cosine_value,
             "dinov2_cohesion": dino_cohesion.get(path),
@@ -337,12 +378,25 @@ def _evaluate_raw_only(
         "summary": {"total": len(rows)},
         "images": rows,
     }
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "identity_report.json").write_text(
-        json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    _write_raw_only_report(out_dir, report)
     return report
+
+
+def _write_raw_only_report(out: Path, report: dict[str, Any]) -> None:
+    """Write the raw-only report to `out`. When `out` ends in `.json` it names the
+    report FILE directly — its parent directories are created, but `out` itself is
+    never treated as a directory to create (design finding 1: Task 7 step 7.5 passes
+    `--out .../scores.json` and expects that literal file, not a directory named
+    `scores.json`). Any other `out` keeps the legacy directory behavior: the
+    directory is created and `identity_report.json` is written inside it."""
+    out = Path(out)
+    text = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+    if out.suffix.lower() == ".json":
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+    else:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "identity_report.json").write_text(text, encoding="utf-8")
 
 
 def evaluate(
@@ -353,6 +407,7 @@ def evaluate(
     dino_embedder: Callable[[Path], Any],
     *,
     raw_only: bool = False,
+    cell_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     images = sorted(
         path for path in image_dir.iterdir()
@@ -361,7 +416,9 @@ def evaluate(
     if not images:
         raise IdentityCheckError("image directory contains no candidate images")
     if raw_only:
-        return _evaluate_raw_only(anchor, image_dir, out_dir, images, face_embedder, dino_embedder)
+        return _evaluate_raw_only(
+            anchor, image_dir, out_dir, images, face_embedder, dino_embedder, cell_ids=cell_ids
+        )
     failures: dict[Path, list[str]] = {path: [] for path in images}
     try:
         anchor_face = vector(face_embedder(anchor))
@@ -505,6 +562,23 @@ def _load_persona_for_scoring(persona_path: Path) -> dict:
     return persona_module.load_persona(Path(persona_path))
 
 
+def _load_batch_cell_ids(batch_path: Path) -> list[str]:
+    """Read `batch.json`'s own `cell_id` list, for `_resolve_cell_id` to join
+    against. Never raises on a malformed/partial document — an empty list simply
+    means no cell_id resolution is possible, and rows fall back to `cell_id: null`."""
+    try:
+        data = json.loads(Path(batch_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    cells = data.get("cells") if isinstance(data, dict) else None
+    if not isinstance(cells, list):
+        return []
+    return [
+        cell["cell_id"] for cell in cells
+        if isinstance(cell, dict) and cell.get("cell_id")
+    ]
+
+
 def resolve_scoring_inputs(args: argparse.Namespace) -> tuple[Path, Path]:
     """Resolve `(anchor, image_dir)` from either input mode. The two modes are
     mutually exclusive; exactly one complete pair must be given."""
@@ -538,8 +612,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         anchor, image_dir = resolve_scoring_inputs(args)
+        cell_ids = _load_batch_cell_ids(args.batch) if args.batch is not None else None
         report = evaluate(
-            anchor, image_dir, args.out, FaceNetEmbedder(), DinoV2Embedder(), raw_only=args.raw_only
+            anchor, image_dir, args.out, FaceNetEmbedder(), DinoV2Embedder(),
+            raw_only=args.raw_only, cell_ids=cell_ids,
         )
         if args.raw_only:
             print(f"identity check (raw-only): {report['summary']['total']} image(s) scored")

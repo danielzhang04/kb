@@ -279,6 +279,112 @@ def test_compute_raw_metrics_fails_closed_on_a_degenerate_crop():
     assert metrics["local_luminance_variance"] is None
 
 
+# ---------------------------------------------------------------------------
+# P2R review finding 1 — raw-only `--out` ending in .json writes that FILE
+# ---------------------------------------------------------------------------
+
+
+def test_raw_only_out_ending_in_json_writes_that_file_not_a_directory(tmp_path):
+    anchor = tmp_path / "anchor.png"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    Image.new("RGB", (4, 4), "white").save(anchor)
+    Image.new("RGB", (4, 4), "white").save(images_dir / "good-a.png")
+
+    out = tmp_path / "batches" / "expansion-02" / "scores.json"  # parent dir absent
+    report = checker.evaluate(
+        anchor, images_dir, out, lambda _p: [1.0, 0.0], lambda _p: [1.0, 0.0], raw_only=True
+    )
+    assert out.is_file()
+    assert not out.is_dir()
+    on_disk = json.loads(out.read_text(encoding="utf-8"))
+    assert on_disk == report
+    assert on_disk["mode"] == "raw-only"
+
+
+def test_raw_only_out_without_json_suffix_keeps_legacy_directory_behavior(tmp_path):
+    anchor = tmp_path / "anchor.png"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    Image.new("RGB", (4, 4), "white").save(anchor)
+    Image.new("RGB", (4, 4), "white").save(images_dir / "good-a.png")
+
+    out = tmp_path / "scores-out"  # no .json suffix -> directory, as before
+    checker.evaluate(
+        anchor, images_dir, out, lambda _p: [1.0, 0.0], lambda _p: [1.0, 0.0], raw_only=True
+    )
+    assert out.is_dir()
+    assert (out / "identity_report.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# P2R review finding 2 — join-key resolution (harness image_id -> allocation cell_id)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_cell_id_matches_by_suffix_and_fails_closed_on_ambiguity():
+    cell_ids = ["exp02-s001", "exp02-s002", "exp02-r001"]
+    assert checker._resolve_cell_id("c001-exp02-s001", cell_ids) == "exp02-s001"
+    assert checker._resolve_cell_id("exp02-s002", cell_ids) == "exp02-s002"  # exact match
+    assert checker._resolve_cell_id("nope", cell_ids) is None
+    # Ambiguous: two known cell_ids both match "a-b-cell1" as a "-<cell_id>" suffix
+    # ("b-cell1" and "cell1") and neither is an exact match -> unresolved, never guessed.
+    assert checker._resolve_cell_id("a-b-cell1", ["cell1", "b-cell1"]) is None
+
+
+def test_raw_only_rows_carry_cell_id_resolved_from_the_batch_cell_list(tmp_path):
+    anchor = tmp_path / "anchor.png"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    Image.new("RGB", (4, 4), "white").save(anchor)
+    # Harness on-disk naming: "c001-<cell_id>" (build_expansion_set.py's output_name).
+    for cell_id in ("exp02-s001", "exp02-s002"):
+        Image.new("RGB", (4, 4), "white").save(images_dir / f"c001-{cell_id}.png")
+
+    out = tmp_path / "out"
+    report = checker.evaluate(
+        anchor, images_dir, out, lambda _p: [1.0, 0.0], lambda _p: [1.0, 0.0],
+        raw_only=True, cell_ids=["exp02-s001", "exp02-s002"],
+    )
+    by_image_id = {row["image_id"]: row for row in report["images"]}
+    assert by_image_id["c001-exp02-s001"]["cell_id"] == "exp02-s001"
+    assert by_image_id["c001-exp02-s002"]["cell_id"] == "exp02-s002"
+
+
+def test_raw_only_rows_have_null_cell_id_when_no_batch_context_is_given(tmp_path):
+    anchor = tmp_path / "anchor.png"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    Image.new("RGB", (4, 4), "white").save(anchor)
+    Image.new("RGB", (4, 4), "white").save(images_dir / "c001-exp02-s001.png")
+
+    report = checker.evaluate(
+        anchor, images_dir, tmp_path / "out", lambda _p: [1.0, 0.0], lambda _p: [1.0, 0.0],
+        raw_only=True,
+    )
+    assert report["images"][0]["cell_id"] is None
+
+
+def test_load_batch_cell_ids_reads_the_batch_cells_list(tmp_path):
+    batch_path = tmp_path / "batch.json"
+    batch_path.write_text(json.dumps({
+        "cells": [
+            {"cell_id": "exp02-s001"},
+            {"cell_id": "exp02-s002"},
+            {"not_a_cell_id": "ignored"},
+        ]
+    }), encoding="utf-8")
+    assert checker._load_batch_cell_ids(batch_path) == ["exp02-s001", "exp02-s002"]
+
+
+def test_load_batch_cell_ids_is_never_fatal_on_a_malformed_document(tmp_path):
+    batch_path = tmp_path / "batch.json"
+    batch_path.write_text("not json", encoding="utf-8")
+    assert checker._load_batch_cell_ids(batch_path) == []
+    missing = tmp_path / "does-not-exist.json"
+    assert checker._load_batch_cell_ids(missing) == []
+
+
 def test_resolve_scoring_inputs_rejects_mixed_or_missing_modes():
     parser = checker.build_parser()
 
@@ -303,22 +409,29 @@ def test_resolve_scoring_inputs_rejects_mixed_or_missing_modes():
 
 
 def test_resolve_scoring_inputs_persona_batch_mode_resolves_paths(tmp_path):
+    import hashlib
+
     persona_dir = tmp_path / "personas" / "creator-001"
     persona_dir.mkdir(parents=True)
     (persona_dir / "anchors").mkdir()
     anchor_file = persona_dir / "anchors" / "g01.jpg"
     for name in ("g01.jpg", "g02.jpg", "g07.jpg"):
         (persona_dir / "anchors" / name).write_bytes(b"\xff\xd8\xff")
-    (persona_dir / "identity-spec.md").write_text("x\n", encoding="utf-8")
+    identity_spec_bytes = b"x\n"
+    (persona_dir / "identity-spec.md").write_bytes(identity_spec_bytes)
     pipeline_dir = tmp_path / "pipeline"
     pipeline_dir.mkdir()
-    (pipeline_dir / "look-spec-v2.md").write_text("x\n", encoding="utf-8")
+    look_spec_bytes = b"x\n"
+    (pipeline_dir / "look-spec-v2.md").write_bytes(look_spec_bytes)
 
     persona_data = json.loads(PIPELINE.parent.joinpath(
         "personas", "creator-001", "persona.yaml"
     ).read_text(encoding="utf-8"))
-    persona_data["identity"]["spec"]["sha256"] = "0" * 64
-    persona_data["register"]["spec"]["sha256"] = "0" * 64
+    # persona.py now validates these against the live file digest (P2R finding 4) —
+    # so the fixture's declared hashes must match the fixture files actually staged
+    # above, not an arbitrary placeholder.
+    persona_data["identity"]["spec"]["sha256"] = hashlib.sha256(identity_spec_bytes).hexdigest()
+    persona_data["register"]["spec"]["sha256"] = hashlib.sha256(look_spec_bytes).hexdigest()
     (persona_dir / "persona.yaml").write_text(json.dumps(persona_data), encoding="utf-8")
 
     batch_dir = tmp_path / "batches" / "expansion-02"
