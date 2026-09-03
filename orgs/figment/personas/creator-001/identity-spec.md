@@ -24,6 +24,22 @@ Source batch: `personas/anchors/gemini-batch-01/g01..g08.jpg` (untracked image b
   If a composite anchor is ever needed: face g04 + body g07 (g07 is also a face anchor, so
   one frame carries both) or body g02.
 
+## Composite findings (2026-09-03, klein 4B Base multi-reference, runs composite-01/02/03)
+
+- **Reference order = canvas.** Faces first → the first face image's whole scene/body is kept
+  (composite-01: perfect g04 face, g04's scene and slim build, body ref ignored). Body frame
+  first → body, pose, outfit, room kept and the face replaced (composite-02/03).
+- **Face-swap quality depends on face pixel density.** On full-body frames (g02, g07 bodies)
+  the swapped face comes out mask-like with a literal white/black wing artifact, with OR
+  without makeup words in the prompt (composite-03 identity-only prompt did not fix it). On
+  the half-body frame (g06 body, face large in frame) the swap is CLEAN: natural liner, the
+  cluster-A face, g06's body.
+- **Rule for expansion:** generate the identity set at half-body/close framing where the
+  face is large (clean identity), and get full-body cells via a second pass (face-crop edit
+  or face detailer on the full-body render) rather than a single full-frame swap.
+- Identity across seeds is stable (composite-01 ×3, composite-02 g06 ×2): the klein
+  reference path holds the face; the LoRA will have consistent material.
+
 ## Next
 
 1. Identity expansion on FLUX.2 klein 4B Base: 3 face refs (g04, g01, g07) → balanced multi-view
