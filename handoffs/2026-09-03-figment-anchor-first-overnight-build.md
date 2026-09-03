@@ -7,7 +7,7 @@ and a written MANDATE. This handoff is the mandate for the terminal that picks u
 write the spec, plan, and build the end-to-end system under independent adversarial review,
 overnight, stopping at every human gate.
 
-Branch `claude/figment` (worktree `C:\Users\danie\kb-worktrees\figment`), tip `39903e9a`,
+Branch `claude/figment` (worktree `C:\Users\danie\kb-worktrees\figment`), tip `63e4e32a`,
 nothing merged to main. `personas/` and the anchor staging dirs are untracked by design.
 
 ## Read first — the mandate and the rules
@@ -34,14 +34,14 @@ tested on clothed data. Claude does not author, prompt, or judge explicit imager
 loop runs on the operator's hardware via operator-authored template grammar + a local open model,
 per MANDATE. Do not route around this via subagents.
 
-## Reference set (operator pick 2026-09-03 07:05)
+## Reference set (operator pick 2026-09-03 07:10)
 
-To the model every reference is simply "her" (klein takes up to four; no anchor/composite
-distinction). Set of record: `personas/anchors/gemini-batch-01/g01.jpg`, `g02.jpg` (carries the
-body target; its slightly wider face shifts the averaged identity a touch toward g02, accepted),
-`g07.jpg`, and optionally C5 = `personas/creator-001/composite-03/c001-comp03-body-g06-seed-200002.png`.
-Body exemplars for prompt wording: g02, g07, C2 (`composite-03/c001-comp03-body-g02-seed-200002.png`).
-Every other composite cell is rejected. Full detail: `orgs/figment/personas/creator-001/identity-spec.md`.
+To the model every reference is simply "her" (klein takes up to four). Set of record:
+`personas/anchors/gemini-batch-01/g01.jpg`, `g02.jpg` (carries the body target; its slightly
+wider face shifts the averaged identity a touch toward g02, accepted), `g07.jpg`. NO composites:
+all composite cells were judged off on second look and scrapped as references; runs
+composite-01/02/03 remain on disk only as evidence for the klein findings. Body exemplars for
+prompt wording: g02, g07. Full detail: `orgs/figment/personas/creator-001/identity-spec.md`.
 
 **ORDERING (operator ruling):** creator 001 is the first influencer AND the pipeline proof,
 exactly like FYT's first channel. Research → infrastructure → tests, audits, reviews → then
@@ -166,7 +166,7 @@ run the LAUNCH PROMPT below. First action after loading: `py -3 orgs/figment/pip
 You are the figment build terminal for creator 001. Run `python scripts/preamble.py`, then read
 ops `handoffs/2026-09-03-figment-anchor-first-overnight-build.md` and its Load list in full.
 Mandate: `orgs/figment/MANDATE.md`. Hard rules: GUARDRAILS.md; zero platform spend; every pod
-through the harness with `--max-usd` and `--arc-cap-usd 52.85`; stop at every human gate
+through the harness with `--max-usd`, `--ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost` (the arc sum lives there; the default ops dir shows $0), and `--arc-cap-usd 52.85`; stop at every human gate
 (anchor/composite pick, identity grid, register proof, batch approval, anything explicit-tier,
 any spend past a manifest ceiling) and write state before stopping; research (10sorlabs package
 pass first) BEFORE any training pod; independent adversarial review + tests before any
@@ -174,4 +174,4 @@ spend-controlling, identity-scoring, or posting code runs live; parallelise wher
 hurt quality; slim files and skills; codex ~75% / claude ~25% by stakes, models graded by
 transcript grep. Deliver: research reports (claim-checked), the creator-001 spec + plan, the
 built stages up to the first eye-gate, a full handoff via save-session, and lessons in
-`memory/<agent-id>.md`. Begin with `runpod_run.py status`, then the research pass.
+`memory/<agent-id>.md`. Begin with `py -3 orgs/figment/pipeline/pod/runpod_run.py status --ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost --arc-cap-usd 52.85` (expect zero pods, arc total ≈ $2.85), then the research pass.
