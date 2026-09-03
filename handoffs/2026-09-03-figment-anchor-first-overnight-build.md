@@ -108,7 +108,16 @@ top of it. `orgs/figment/pipeline/look-spec-v2.md` §0 carries the operator's ta
 
 ### Exact Next Step
 
-When the operator supplies the reference image set (`personas/<creator-slug>/anchor/`): open
+**UPDATE 04:30 — the reference set EXISTS.** Eight Gemini candidates are at
+`personas/anchors/gemini-batch-01/g01..g08.jpg` (untracked); the operator's picks and body
+target are in `orgs/figment/personas/creator-001/identity-spec.md` (face anchors g04, g01,
+g07, sharper-leaning; body between g02 and g07; g08 NOT a body reference). A codex worker
+is building `orgs/figment/pipeline/train/runs/creator-001-expansion-01.yaml` (klein 4B Base
+multi-reference, 24 cells, ~$0.15) — check `claude/figment` for it; if present and dry-run
+clean, that run is the first pod, gated on operator spend approval, followed by the 24-grid
+eye-gate. GUARDRAILS gained the research-browsing ruling (signed-in sessions read-only, free
+subs only, zero spend). MANDATE gained Fanvue economics, template catalogue, content-mix/
+carousel capability, and a Voice section. Then: open
 an architectural brainstorm (superpowers:brainstorming → spec at
 `docs/superpowers/specs/2026-09-xx-figment-creator-001-design.md` → writing-plans) covering
 MANDATE stages 1-9 and the dashboard, using 10sorlabs' step order as the skeleton and this
