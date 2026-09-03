@@ -234,6 +234,49 @@ round; ONE engineer with the real harness closed the vertical in one pass. Patte
 real-host harness FIRST, then let an opus debugger own the edit→run loop; use codex for well-specified
 mechanical rounds only.
 
+## 2026-09-03 — PR #151 MERGED (d84e4688) + DEPLOYED; Gate 4a relaunch hit two VM-only walls → PR #152
+- Deploy of d84e4688 (broker 1e412f3a) OK. First relaunch: `[pty-registry] PTY session document is invalid` — the
+  v2→v3 migration was wired lazily into the session-run store only; the registry read the raw v2 file first.
+  Hand-migrated on the VM (`migratePtySessionStateRoot` as kb-dashboard; `.v2.bak` written), daemon restarted.
+- Second relaunch: `claude attempt session start refused (internal): pinned component open refused`. Cause: the
+  worktree adapter creates `run-<ref>` at 0700 (adapters.ts mkdirSync mode 0o700) and git creates `attempt-<ref>`
+  at 2755; the broker (uid kb-shell, group-only) cannot open the run dir; the validator (fdPinnedPaths.ts:424)
+  demands exactly 02770. PROVEN on the VM with the release's own `pinBrokerLaunch` as kb-shell: 02770 tree → ok;
+  2700 → the exact live refusal; 2755 → "worktree component metadata is unsafe". (Probe trick: chmod as
+  `sudo -u kb-dashboard -g kb-shell`, else setgid is silently dropped; the daemon has SupplementaryGroups=kb-shell.)
+- PR #152 (`claude/vm-launch-modes`): chmod every worktree component the adapter creates to 02770 (fd-based,
+  O_NOFOLLOW, after opus W25 caught the symlink-following hazard on a kb-shell-writable tree); PTY document
+  migration runs once at boot before any reader (memoised; failure degrades, does not brick boot). Linux mode test
+  red without the fix (0700=448 vs 02770=1528). Manifest gate forbids `skipIf` in focused files → platform guard
+  lives inside the test body.
+- The bridge keeps 409-ing the stale stage cards `wf-fe2fcb76…`, `wf-d0eaf235…` every tick (P4c); harmless noise.
+- NEXT: merge #152 → rebuild from main → Daniel deploys → Gate 4a driver (w7 brief; acceptance-run) → Daniel
+  approves g1/g2 in the Inbox → Gate 4b → P6 audit.
+
+## 2026-09-03 10:22Z — FIRST REAL CLAUDE LAUNCH ON THE VM (release 079e5ab6, run-a9bdd60f)
+The whole chain worked: control plane → adapter → registry start → broker → node-pty child as kb-shell; session
+`pty-e2890418`, one prompt delivered, transcript captured. The CLI exited 1:
+`Error: Input must be provided either through stdin or as a prompt argument when using --print` — `claude -p`
+refuses a TTY stdin, and node-pty gives all three fds a TTY. Empirical probes on the VM as kb-shell:
+`-p "<prompt>"` = one turn only (claude exits after it); `cat | claude` inside the pty = hangs; stream-json over
+a plain pipe = works, multi-turn, before EOF; **stdin=pipe + stdout/stderr=pty slave = works, two turns in 4 s**
+(target shape). W30 (opus + harness loop) is building that in the broker (`linuxBrokerMain.ts` launcher: pipe
+stdin for `headless-json` recipes, pty for `shell`; input frames routed to the pipe; fd-pinned exec kept).
+Probe scripts: scratchpad `ptyprobe*.py` (python pty/subprocess as kb-shell) — reuse them.
+W30 built the pipe branch (openpty via node-pty's native binding + child_process.spawn with stdio
+[pipe, slave, slave], detached); harness 25/25 with STDIN_TTY tripwire. Opus W32 BLOCKED it on fd hygiene:
+the pty MASTER leaks into the child (transcript forgery), the child's stdout is O_NONBLOCK (burst truncation),
+no controlling tty (SIGWINCH never delivered), resize-after-master-close on a recycled fd, stdin write-end
+never closed. Fix shape (in flight, same engineer): a root-owned Python shim packed in the broker payload,
+run as `/usr/bin/python3 /proc/self/fd/<shim> <pinned-cli-fd> args…`: reopen the tty blocking + TIOCSCTTY,
+close every fd >= 3 except the pinned CLI fd, exec `/proc/self/fd/<n>`. Tests: no /dev/ptmx in the child's
+/proc/self/fd, 1 MiB burst exact, WINCH trap after resize, resize-after-close guard, stdin destroyed.
+
+## Process lesson (Daniel, 2026-09-03): 10-15 merges chased one vertical
+Genuinely sequential: #149→#150→#151→W30. Avoidable: #152 (probe the VM validator before asking for a
+deploy) and the three CI PRs (run the workflow's steps once on WSL). Rule: before any deploy, run
+`scripts/vm_launch_preflight.sh`, probe the exact CLI invocation shape on the VM, and run the CI steps on Linux.
+
 ## Known traps carried forward (do not rediscover)
 - Lock/unlock only over `https://kb.tail82dd4f.ts.net` (localhost → `untrusted-peer`).
 - Between approval generation and signing NOTHING may touch the VM — any audit row spools a bundle
