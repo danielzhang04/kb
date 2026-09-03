@@ -1,0 +1,247 @@
+#!/bin/bash
+# VM agent-launch preflight — run ON THE VM as root, READ-ONLY. Changes nothing.
+#
+# Generalised successor to the prior gate3-preflight.sh (2026-09-02). Run this before EVERY Gate
+# window and before every deploy that touches dashboard/server/pty/**,
+# dashboard/server/control/attemptSessionAdapter.ts, or the broker unit files: PRs #149-#152 each
+# found their defect via a live launch attempt refusing on the VM, never via a unit test or a code
+# read, because nothing else on the box inspects the exact filesystem shape the broker's
+# fd-pinning walk (dashboard/server/pty/fdPinnedPaths.ts) demands. This script inspects it first.
+# See docs/runbooks/2026-09-03-vm-agent-launch-preflight.md for the full narrative and citations.
+#
+# Usage: sudo ./vm_launch_preflight.sh [https://tailnet-url]
+#   The tailnet URL is optional. Without it, the admission/health/readyz checks are skipped (they
+#   need a real HTTP round trip); everything else — identities, filesystem shape, sockets, systemd
+#   units, session state — is checked regardless.
+
+fail=0
+tailnet_url="${1:-}"
+ok()   { echo "  ok    $*"; }
+bad()  { echo "  FAIL  $*"; fail=1; }
+warn() { echo "  warn  $*"; }
+section() { echo; echo "== $* =="; }
+
+# ---------------------------------------------------------------------------------------------
+section "identities"
+id kb-shell 2>/dev/null || bad "kb-shell account missing"
+id kb-dashboard 2>/dev/null || bad "kb-dashboard account missing"
+# kb-dashboard.service:12 grants kb-shell via SupplementaryGroups=, which applies to the SERVICE
+# PROCESS, not the account — `id kb-dashboard` never shows it, so asking the account is a false
+# failure. Ask systemd what the unit actually grants.
+systemctl show kb-dashboard.service -p SupplementaryGroups 2>/dev/null | grep -q "kb-shell" \
+  && ok "kb-dashboard.service grants SupplementaryGroups=kb-shell" \
+  || bad "kb-dashboard.service does NOT grant kb-shell (unit line 12 must set SupplementaryGroups=kb-shell)"
+
+# ---------------------------------------------------------------------------------------------
+section "root-owned chain above the home"
+for p in / /var /var/lib /var/lib/kb-shell; do
+  read -r u g m < <(stat -c '%U %G %a' "$p" 2>/dev/null)
+  if [ "$u" = "root" ] && { [ "$m" = "755" ] || [ "$m" = "750" ]; }; then ok "$p ($u:$g $m)"
+  else bad "$p is $u:$g $m — needs root-owned 0755 or 0750"; fi
+done
+
+# ---------------------------------------------------------------------------------------------
+section "the provider home (mode must be EXACTLY 0700)"
+read -r u g m < <(stat -c '%U %G %a' /var/lib/kb-shell/home 2>/dev/null)
+[ "$u:$g" = "kb-shell:kb-shell" ] && [ "$m" = "700" ] \
+  && ok "/var/lib/kb-shell/home ($u:$g $m)" \
+  || bad "/var/lib/kb-shell/home is $u:$g $m — needs kb-shell:kb-shell 0700 exactly"
+
+# ---------------------------------------------------------------------------------------------
+section "auth state directories (must EXIST or systemd refuses to start the unit)"
+for p in /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex; do
+  if [ -d "$p" ]; then
+    read -r u g m < <(stat -c '%U %G %a' "$p")
+    [ "$u:$g" = "kb-shell:kb-shell" ] && { [ "$m" = "700" ] || [ "$m" = "750" ]; } \
+      && ok "$p ($u:$g $m)" || bad "$p is $u:$g $m — needs kb-shell:kb-shell 0700|0750"
+  else bad "$p MISSING — install_pty_broker.py says the unit will not start"; fi
+done
+for f in /var/lib/kb-shell/home/.claude/.credentials.json /var/lib/kb-shell/home/.codex/auth.json; do
+  [ -s "$f" ] && ok "$(basename "$f") present and non-empty" || bad "$(basename "$f") absent/empty — login not done"
+done
+
+# ---------------------------------------------------------------------------------------------
+section "wrong ownership anywhere under .local (npm/root installs cause this)"
+if [ -d /var/lib/kb-shell/home/.local ]; then
+  n=$(find /var/lib/kb-shell/home/.local \( ! -user kb-shell -o ! -group kb-shell \) 2>/dev/null | wc -l)
+  [ "$n" = "0" ] && ok "everything under .local is kb-shell:kb-shell" \
+    || { bad "$n path(s) not owned by kb-shell:kb-shell:"; find /var/lib/kb-shell/home/.local \( ! -user kb-shell -o ! -group kb-shell \) 2>/dev/null | head -10 | sed 's/^/        /'; }
+else bad "/var/lib/kb-shell/home/.local missing"; fi
+
+section "0755 modes under .local (THE most common failure — npm's default)"
+if [ -d /var/lib/kb-shell/home/.local ]; then
+  n=$(find /var/lib/kb-shell/home/.local ! -type l ! -perm 0700 ! -perm 0750 2>/dev/null | wc -l)
+  [ "$n" = "0" ] && ok "every component is 0700 or 0750" \
+    || { bad "$n path(s) with a refused mode:"; find /var/lib/kb-shell/home/.local ! -type l ! -perm 0700 ! -perm 0750 2>/dev/null | head -10 | xargs -r stat -c '        %a %n' 2>/dev/null; }
+  s=$(find /var/lib/kb-shell/home/.local -perm /6000 2>/dev/null | wc -l)
+  [ "$s" = "0" ] && ok "no setuid/setgid anywhere under .local" || bad "$s setuid/setgid path(s)"
+fi
+
+# ---------------------------------------------------------------------------------------------
+section "the two launchers"
+for cli in claude codex; do
+  p="/var/lib/kb-shell/home/.local/bin/$cli"
+  if [ -e "$p" ] || [ -L "$p" ]; then
+    read -r u g m t < <(stat -c '%U %G %a %F' "$p")
+    if [ -L "$p" ]; then
+      # A symlink is legal here. The fd-pinning walk pins the link itself with O_PATH|O_NOFOLLOW
+      # and checks kind, the 0o6000 special bits, and OWNER only — it never looks at a symlink's
+      # mode. Linux symlinks are always 0777 and chmod cannot change that, so applying the
+      # 0700|0750 file rule here would be a false failure. npm stamps the link with the
+      # installing user, so a root-run install yields root:root and IS refused.
+      [ "$u:$g" = "kb-shell:kb-shell" ] \
+        && ok "$cli (symlink, $u:$g — mode not checked for symlinks)" \
+        || bad "$cli symlink is $u:$g — needs kb-shell:kb-shell (install as kb-shell, not root)"
+      tgt=$(readlink -f "$p")
+      case "$tgt" in
+        /bin/*|/usr/bin/*|/usr/local/bin/*|/var/lib/kb-shell/home/.local/*) ok "  symlink target inside an approved root: $tgt";;
+        *) bad "  symlink escapes the approved roots: $tgt";;
+      esac
+      read -r tu tg tm < <(stat -c '%U %G %a' "$tgt" 2>/dev/null)
+      [ "$tu:$tg" = "kb-shell:kb-shell" ] && { [ "$tm" = "700" ] || [ "$tm" = "750" ]; } \
+        && ok "  target ($tu:$tg $tm)" \
+        || bad "  target is $tu:$tg $tm — needs kb-shell:kb-shell 0700|0750"
+      p="$tgt"
+    else
+      [ "$u:$g" = "kb-shell:kb-shell" ] && { [ "$m" = "700" ] || [ "$m" = "750" ]; } \
+        && ok "$cli ($u:$g $m, $t)" || bad "$cli is $u:$g $m — needs kb-shell:kb-shell 0700|0750"
+    fi
+    sb=$(head -c 128 "$p" 2>/dev/null | tr -d '\0' | head -1)
+    case "$sb" in
+      '#!'*) case "$sb" in
+               '#!/usr/bin/env node'|'#!/bin/'*|'#!/usr/bin/'*) ok "  shebang accepted: $sb";;
+               *) bad "  shebang REFUSED (fdPinnedPaths.ts shebangInterpreter): $sb";;
+             esac;;
+      *) ok "  no shebang (native binary — the safest shape)";;
+    esac
+  else bad "$cli NOT INSTALLED at $p"; fi
+done
+
+section "node interpreter (needed if either launcher is a JS shim)"
+if [ -e /usr/bin/node ]; then
+  read -r u g m < <(stat -c '%U %G %a' /usr/bin/node)
+  [ "$u" = "root" ] && [ "$m" = "755" ] && ok "/usr/bin/node ($u:$g $m)" || bad "/usr/bin/node is $u:$g $m — needs root 0755"
+else bad "/usr/bin/node missing (only matters for a '#!/usr/bin/env node' shim)"; fi
+
+# ---------------------------------------------------------------------------------------------
+section "worktree root (fdPinnedPaths.ts: dashboard-owned, group kb-shell, mode EXACTLY 02770)"
+if [ -d /var/lib/kb-shell/worktrees ]; then
+  read -r u g m < <(stat -c '%U %G %a' /var/lib/kb-shell/worktrees)
+  [ "$u" = "kb-dashboard" ] && [ "$g" = "kb-shell" ] && [ "$m" = "2770" ] \
+    && ok "/var/lib/kb-shell/worktrees ($u:$g $m)" \
+    || bad "/var/lib/kb-shell/worktrees is $u:$g $m — needs kb-dashboard:kb-shell, mode EXACTLY 2770"
+else bad "/var/lib/kb-shell/worktrees MISSING — attempts fail at provision with EACCES"; fi
+
+section "every run-* / attempt-* worktree component (PR #152: adapters.ts creates these at 0700/2755, the validator demands exactly 02770)"
+if [ -d /var/lib/kb-shell/worktrees ]; then
+  offenders=0
+  while IFS= read -r -d '' path; do
+    read -r g m < <(stat -c '%G %a' "$path" 2>/dev/null)
+    if [ "$g" != "kb-shell" ] || [ "$m" != "2770" ]; then
+      bad "$path is group=$g mode=$m — needs group kb-shell, mode EXACTLY 2770"
+      offenders=$((offenders + 1))
+    fi
+  done < <(find /var/lib/kb-shell/worktrees -mindepth 1 -maxdepth 2 -type d \( -name 'run-*' -o -name 'attempt-*' \) -print0 2>/dev/null)
+  [ "$offenders" = "0" ] && ok "every run-*/attempt-* directory found is 2770 group kb-shell"
+else
+  warn "worktree root missing — skipped (already reported above)"
+fi
+
+# ---------------------------------------------------------------------------------------------
+section "PTY session document schema"
+pty_doc=/var/lib/kb/state/pty/session-runs.json
+if [ -s "$pty_doc" ]; then
+  schema=$(grep -o '"schema"[[:space:]]*:[[:space:]]*"[^"]*"' "$pty_doc" | head -1 | sed -E 's/.*"([^"]+)"$/\1/')
+  [ "$schema" = "kb.pty-sessions/v3" ] && ok "session-runs.json schema is kb.pty-sessions/v3" \
+    || bad "session-runs.json schema is '$schema', expected kb.pty-sessions/v3 — the boot migration (http/surface.ts ensurePtyDocumentMigrated) has not run"
+elif [ -s "${pty_doc}.v2.bak" ]; then
+  bad "session-runs.json is missing but ${pty_doc}.v2.bak exists — a migration ran and left only the backup; the live document never landed"
+else
+  warn "no session-runs.json yet (fresh install, or no session has ever started) — not a failure"
+fi
+
+# ---------------------------------------------------------------------------------------------
+section "broker substrate"
+systemctl is-active --quiet kb-shell-broker.socket && ok "kb-shell-broker.socket active" || bad "kb-shell-broker.socket not active"
+if [ -S /run/kb-shell/broker.sock ]; then
+  read -r u g m < <(stat -c '%U %G %a' /run/kb-shell/broker.sock)
+  [ "$u:$g" = "kb-dashboard:kb-dashboard" ] && [ "$m" = "600" ] && ok "broker.sock ($u:$g $m)" \
+    || bad "broker.sock is $u:$g $m — brokerProbe.ts needs kb-dashboard:kb-dashboard 0600"
+  if command -v ss >/dev/null 2>&1; then
+    if ss -xp 2>/dev/null | grep -q "/run/kb-shell/broker.sock.*ESTAB"; then
+      ok "daemon holds an ESTAB peer connection to broker.sock"
+    else
+      warn "no ESTAB peer on broker.sock right now — daemon not connected yet (lazy connect); not a FAIL unless a launch is imminent"
+    fi
+  else
+    warn "ss not available — cannot check for a live daemon<->broker connection"
+  fi
+else bad "/run/kb-shell/broker.sock absent"; fi
+read -r u g m < <(stat -c '%U %G %a' /run/kb-shell 2>/dev/null)
+[ "$u:$g" = "kb-shell:kb-dashboard" ] && [ "$m" = "750" ] && ok "/run/kb-shell ($u:$g $m)" \
+  || bad "/run/kb-shell is $u:$g $m — the socket unit's ExecStartPre chown/chmod needs kb-shell:kb-dashboard 0750"
+
+section "no API keys in the broker environment (constitution: subscription auth only)"
+env_out=$(systemctl show kb-shell-broker.service -p Environment 2>/dev/null)
+echo "$env_out" | grep -qE "ANTHROPIC_API_KEY|OPENAI_API_KEY" \
+  && bad "an API key is present in the unit environment" || ok "no API key in the unit environment"
+
+# ---------------------------------------------------------------------------------------------
+section "no stale live PTY sessions in /run/kb-shell/state.json"
+broker_state=/run/kb-shell/state.json
+if [ -s "$broker_state" ]; then
+  pids=$(grep -o '"pid"[[:space:]]*:[[:space:]]*[0-9]*' "$broker_state" | grep -o '[0-9]*$')
+  if [ -z "$pids" ]; then
+    ok "no sessions recorded in state.json"
+  else
+    stale=0
+    for pid in $pids; do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        bad "state.json records session pid $pid, which is not a running process — stale entry"
+        stale=$((stale + 1))
+      fi
+    done
+    [ "$stale" = "0" ] && ok "every recorded session pid is a live process"
+  fi
+else
+  warn "no /run/kb-shell/state.json yet — nothing to check"
+fi
+
+# ---------------------------------------------------------------------------------------------
+section "systemd units"
+for unit in kb-dashboard.service kb-shell-broker.socket kb-shell-broker.service; do
+  systemctl is-active --quiet "$unit" && ok "$unit active" || bad "$unit not active"
+done
+
+# ---------------------------------------------------------------------------------------------
+section "admission / readiness / health (over the tailnet URL)"
+if [ -z "$tailnet_url" ]; then
+  warn "no tailnet URL passed as \$1 — skipping admission/readyz/health checks"
+else
+  if command -v curl >/dev/null 2>&1; then
+    health_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$tailnet_url/healthz" 2>/dev/null)
+    [ "$health_code" = "200" ] && ok "/healthz -> 200" || bad "/healthz -> $health_code, expected 200"
+
+    admission_probe="$tailnet_url/api/workflows/vm-launch-preflight-probe-nonexistent"
+    admission_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X PUT "$admission_probe" 2>/dev/null)
+    if [ "$admission_code" = "404" ]; then ok "admission probe -> 404 (healthy)"
+    elif [ "$admission_code" = "503" ]; then bad "admission probe -> 503 (outbox-degraded — the daily drain has not run; see docs/runbooks/2026-09-03-vm-agent-launch-preflight.md §e)"
+    else bad "admission probe -> $admission_code, expected 404"; fi
+
+    ready_body=$(curl -s --max-time 10 "$tailnet_url/readyz" 2>/dev/null)
+    if echo "$ready_body" | grep -q '"execution-locked"\|"execution-locking"'; then
+      bad "readyz reports execution is not unlocked: $ready_body"
+    elif echo "$ready_body" | grep -q '"quiescent"'; then
+      ok "readyz reachable and execution is unlocked"
+    else
+      warn "readyz did not return the expected shape — got: $ready_body"
+    fi
+  else
+    warn "curl not available — cannot check admission/readyz/health"
+  fi
+fi
+
+echo
+if [ "$fail" = "0" ]; then echo "PRE-FLIGHT CLEAN — every launch-time condition satisfied."
+else echo "PRE-FLIGHT FAILED — fix the FAIL lines above before launching a session."; fi
+exit $fail
