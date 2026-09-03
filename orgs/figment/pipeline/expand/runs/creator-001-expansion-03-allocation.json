@@ -1,0 +1,295 @@
+{
+  "schema": "figment/expansion-allocation@1",
+  "persona_id": "creator-001",
+  "batch_id": "expansion-03",
+  "cells": [
+    {
+      "cell_id": "exp03-g01-t01",
+      "anchor": "g01",
+      "template_id": "T01",
+      "denoise": 0.2,
+      "seed": 530001,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t02",
+      "anchor": "g01",
+      "template_id": "T02",
+      "denoise": 0.2,
+      "seed": 530002,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t03",
+      "anchor": "g01",
+      "template_id": "T03",
+      "denoise": 0.2,
+      "seed": 530003,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t04",
+      "anchor": "g01",
+      "template_id": "T04",
+      "denoise": 0.2,
+      "seed": 530004,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t05",
+      "anchor": "g01",
+      "template_id": "T05",
+      "denoise": 0.2,
+      "seed": 530005,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t06",
+      "anchor": "g01",
+      "template_id": "T06",
+      "denoise": 0.28,
+      "seed": 530006,
+      "is_pilot": true
+    },
+    {
+      "cell_id": "exp03-g01-t07",
+      "anchor": "g01",
+      "template_id": "T07",
+      "denoise": 0.28,
+      "seed": 530007,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t08",
+      "anchor": "g01",
+      "template_id": "T08",
+      "denoise": 0.28,
+      "seed": 530008,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t09",
+      "anchor": "g01",
+      "template_id": "T09",
+      "denoise": 0.28,
+      "seed": 530009,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t10",
+      "anchor": "g01",
+      "template_id": "T10",
+      "denoise": 0.35,
+      "seed": 530010,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t11",
+      "anchor": "g01",
+      "template_id": "T11",
+      "denoise": 0.35,
+      "seed": 530011,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g01-t12",
+      "anchor": "g01",
+      "template_id": "T12",
+      "denoise": 0.35,
+      "seed": 530012,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t01",
+      "anchor": "g02",
+      "template_id": "T01",
+      "denoise": 0.2,
+      "seed": 531001,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t02",
+      "anchor": "g02",
+      "template_id": "T02",
+      "denoise": 0.2,
+      "seed": 531002,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t03",
+      "anchor": "g02",
+      "template_id": "T03",
+      "denoise": 0.2,
+      "seed": 531003,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t04",
+      "anchor": "g02",
+      "template_id": "T04",
+      "denoise": 0.2,
+      "seed": 531004,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t05",
+      "anchor": "g02",
+      "template_id": "T05",
+      "denoise": 0.2,
+      "seed": 531005,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t06",
+      "anchor": "g02",
+      "template_id": "T06",
+      "denoise": 0.28,
+      "seed": 531006,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t07",
+      "anchor": "g02",
+      "template_id": "T07",
+      "denoise": 0.28,
+      "seed": 531007,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t08",
+      "anchor": "g02",
+      "template_id": "T08",
+      "denoise": 0.28,
+      "seed": 531008,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t09",
+      "anchor": "g02",
+      "template_id": "T09",
+      "denoise": 0.28,
+      "seed": 531009,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t10",
+      "anchor": "g02",
+      "template_id": "T10",
+      "denoise": 0.35,
+      "seed": 531010,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g02-t11",
+      "anchor": "g02",
+      "template_id": "T11",
+      "denoise": 0.35,
+      "seed": 531011,
+      "is_pilot": true
+    },
+    {
+      "cell_id": "exp03-g02-t12",
+      "anchor": "g02",
+      "template_id": "T12",
+      "denoise": 0.35,
+      "seed": 531012,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t01",
+      "anchor": "g07",
+      "template_id": "T01",
+      "denoise": 0.2,
+      "seed": 532001,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t02",
+      "anchor": "g07",
+      "template_id": "T02",
+      "denoise": 0.2,
+      "seed": 532002,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t03",
+      "anchor": "g07",
+      "template_id": "T03",
+      "denoise": 0.2,
+      "seed": 532003,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t04",
+      "anchor": "g07",
+      "template_id": "T04",
+      "denoise": 0.2,
+      "seed": 532004,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t05",
+      "anchor": "g07",
+      "template_id": "T05",
+      "denoise": 0.2,
+      "seed": 532005,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t06",
+      "anchor": "g07",
+      "template_id": "T06",
+      "denoise": 0.28,
+      "seed": 532006,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t07",
+      "anchor": "g07",
+      "template_id": "T07",
+      "denoise": 0.28,
+      "seed": 532007,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t08",
+      "anchor": "g07",
+      "template_id": "T08",
+      "denoise": 0.28,
+      "seed": 532008,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t09",
+      "anchor": "g07",
+      "template_id": "T09",
+      "denoise": 0.28,
+      "seed": 532009,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t10",
+      "anchor": "g07",
+      "template_id": "T10",
+      "denoise": 0.35,
+      "seed": 532010,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t11",
+      "anchor": "g07",
+      "template_id": "T11",
+      "denoise": 0.35,
+      "seed": 532011,
+      "is_pilot": false
+    },
+    {
+      "cell_id": "exp03-g07-t12",
+      "anchor": "g07",
+      "template_id": "T12",
+      "denoise": 0.35,
+      "seed": 532012,
+      "is_pilot": true
+    }
+  ]
+}

@@ -77,10 +77,17 @@ variable changes versus the runs that held identity.
 | denoise substitution | node `29`, field `denoise` |
 | anchor / reference substitution | nodes `6`/`7`/`8`, field `image` |
 | `uploads` | `{"files": ["_uploads/creator-001/g01.jpg", "…g02.jpg", "…g07.jpg"], "subfolder": "creator-001", "type": "input", "overwrite": true}` — identical to expansion-02 shard-01 |
-| manifest envelope | copy `expansion-02-shard-01.yaml` wholesale; change `workflow`, `jobs`, `max_minutes` 82→60 |
+| manifest envelope | copy the non-graph fields of `orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-01.yaml` wholesale (review finding 5: that is the real path — no bare `expansion-02-shard-01.yaml` file exists); change `workflow`, `jobs`; `max_minutes` stays 82, matching that file's own value |
 
-Output size is the anchor's 1 MP frame: **g01 1392×752** (that anchor is landscape 1408×768), **g02 and g07
-768×1376**. There is no `EmptyFlux2LatentImage` width/height left to keep in sync.
+Output size is the anchor's 1 MP frame, from `ImageScaleToTotalPixels(megapixels=1.0, resolution_steps=16)`
+on each anchor's own native size: **g01** (1408×768 native) → **1392×752**; **g02**/**g07** (768×1376
+native, ~1.057 MP, over target by nearly the same margin as g01's 1.081 MP) are shrunk by the same node
+and formula, to **≈752×1344** (hand-computed from the node's own megapixel/step formula, not read from a
+live ComfyUI log — treat as approximate pending a real run). The earlier "g02 and g07 768×1376" claim was
+internally inconsistent (review finding 4): the same node cannot shrink g01 and leave g02/g07 unchanged.
+Does not affect graph correctness — `GetImageSize` (node 21) reads the real post-scale size dynamically,
+not this documented literal — so this was a doc-accuracy defect, not a build blocker. There is no
+`EmptyFlux2LatentImage` width/height left to keep in sync.
 
 ## 2. Variation grammar — 12 templates × 3 anchors = 36 cells
 
@@ -125,30 +132,59 @@ run that held identity. **§0 wins for these four tokens only.** Every other §4
 bronzer/contour, plastic-skin, body, light, age) stays fully banned, and §4c's no-bare-numeral rule holds —
 the adult read is inherited from the anchor plus node `5`'s negative, never asserted in the positive prompt.
 
-## 3. Pilot — 6 cells, 1 pod, before the other 30
+## 3. Pilot — 3 paired A/B trials (6 jobs, 2 pods), before the other 33
 
-Widest deviations first, 2 per anchor, 2 per denoise rung, so a method failure shows in one shard.
+**Review fix #1 (blocking, applied here).** The Boss addendum requires the pilot to compare Mechanism A
+(edit-mode, full denoise, the verified `train/workflows/klein4b_multiref_api.json` graph, unchanged) against
+Mechanism B (this design's img2img graph, denoise ladder) on the SAME three variations, one pair per
+anchor — not six Mechanism-B-only cells. The pilot below replaces the original P1–P6 table with exactly
+that: 3 cells, each rendered once via Mechanism A and once via Mechanism B, at that template's own assigned
+denoise rung (§2's table) — no floor-probe deviation from the template's normal rung; the earlier P1/P6
+0.20-on-T06 "floor probe" is dropped, since the A/B comparison itself is now the test of whether Mechanism
+B works at all.
 
-| # | anchor | template | denoise | what it decides |
-|---|---|---|---|---|
-| P1 | g01 | T06 turn −30° | 0.20 | is 0.20 enough to move a head 30°? (floor probe) |
-| P2 | g01 | T12 wardrobe | 0.35 | does a clothed-family swap survive at the top rung? |
-| P3 | g02 | T07 turn +30° | 0.28 | the set's intended mid-rung setting on its widest pose |
-| P4 | g02 | T11 tight crop | 0.35 | can the prompt change composition at all? (expected NO) |
-| P5 | g07 | T10 camera height | 0.28 | perspective change without composition change |
-| P6 | g07 | T06 turn −30° | 0.20 | replicate of P1 on a portrait anchor |
+| anchor | template | denoise (arm B) | what the pair decides |
+|---|---|---|---|
+| g01 | T06 turn −30° | 0.28 | does img2img (B) hold identity through a 30° turn as well as edit-mode (A)? |
+| g02 | T11 tight crop | 0.35 | can either mechanism change composition — B via denoise, A via edit instruction? |
+| g07 | T12 wardrobe swap | 0.35 | does a clothed-family swap survive in both mechanisms at the top rung? |
 
-Shape: one manifest, 6 jobs (harness and ComfyUI cap at 10 outputs per pod; expansion-02 ran 6 × 10).
+Mechanism A's prompt is the review's suggested edit-grammar form (≤25 words): *"The same woman as the
+reference, identical face; \<edit\>; same room, same light."* Mechanism B's prompt is the design's own
+≤40-word template prompt (§2), at the template's assigned denoise rung. Both jobs in a pair share the same
+seed and the same target-anchor-first `LoadImage`/`ReferenceLatent` ordering (design §1a row "6") — the only
+thing that differs between them is the mechanism itself.
+
+**Two manifests, not one.** `pod/README.md` documents a manifest as carrying exactly one `workflow`; a
+6-job manifest spanning two graphs is not a harness feature. The pilot is therefore
+`creator-001-expansion-03-pilot-A.yaml` (Mechanism A, 3 jobs) and `creator-001-expansion-03-pilot-B.yaml`
+(Mechanism B, 3 jobs) — 2 pods, not 1.
+
 Cost model: expansion-02 measured **159 s/cell at 50 steps**; sampling is ~linear in effective steps, so
-10/14/18 steps ≈ 32/45/57 s plus ~12 s fixed (four VAE encodes, decode, save) → **45 / 57 / 70 s per cell**,
-mean ≈ 55 s. Pilot ≈ 6 min of sampling; the full 36 cells ≈ 33 min across 4 shards (10/10/10/6).
-`max_minutes: 60`, `job_timeout_seconds: 360`, `readiness_timeout_seconds: 900`; envelope otherwise unchanged.
+Mechanism B's 14/18-step rungs (T06/T11/T12) run ≈45/57 s plus ~12 s fixed overhead; Mechanism A runs the
+full 50-step schedule, ≈159 s/cell like expansion-02. Pilot-A ≈ 8 min of sampling, pilot-B ≈ 3 min — each
+well inside `max_minutes: 82`, `job_timeout_seconds: 360`, `readiness_timeout_seconds: 900` (envelope
+otherwise unchanged, matching the real `expand/runs/creator-001-expansion-02-shard-01.yaml` file's own
+values — see §1c fix, review finding 5).
 
-**Zero-cost calibration to run before the pilot.** `persona.yaml.identity.floor.anchor_cosine_p5` is
-`uncalibrated`. Score each anchor against the other two with `identity_check.py` legacy mode
-(`--anchor <g0X> --images <dir holding the other two> --out <dir>`): that yields the
-same-woman-different-photo band for this exact metric on this exact person, at $0, and either confirms 0.75
-or moves it before any pod spend.
+**Go/no-go build prerequisites (review finding 3 — literal, sequenced steps, not prose to skim past):**
+
+1. **Zero-cost anchor-vs-anchor calibration, before any pod spend.** `persona.yaml.identity.floor.anchor_cosine_p5`
+   starts `uncalibrated`. Score each anchor against the other two with `identity_check.py` legacy mode
+   (`--anchor <g0X> --images <dir holding the other two> --out <dir>`): that yields the
+   same-woman-different-photo band for this exact metric on this exact person, at $0, and either confirms
+   0.75 or moves it. This step is owned by whichever agent is calibrating `persona.yaml`'s identity fields;
+   the builder does not gate on it (manifest construction is network-free either way), but no pilot cosine
+   from either arm may be treated as a number until it has run.
+2. **Per-cell own-anchor scoring must exist before any pilot cosine is trusted.** `identity_check.py`'s
+   `--persona/--batch` mode resolves the anchor from `persona.identity.references[0]` (g01) for every
+   scored image — it cannot produce "cosine vs its OWN anchor" for a mixed-anchor batch. Score the pilot as
+   three legacy-mode runs (or an equivalent per-cell-anchor patch) before reading either arm's numbers, not
+   after.
+
+With two arms now in the pilot, both prerequisites above must be satisfied before EITHER arm's cosines are
+read — reading Mechanism A's numbers while Mechanism B's scoring defect is still open (or vice versa) would
+produce a decision on an incomplete comparison.
 
 ## 4. Acceptance
 
@@ -157,9 +193,41 @@ or moves it before any pod spend.
 | primary gate | per-cell face cosine **≥ 0.75 against its OWN anchor** |
 | operator gate | eye-gate on the grading board; the operator's verdict outranks the number in both directions |
 | failure handling | a failing cell is **dropped, never repaired** (module 10 narration: "we're gonna remove that from the dataset") |
-| pilot pass bar | ≥ 4 of 6 cells ≥ 0.75 **and** the operator reads all 6 as the same woman; otherwise stop and re-cut the ladder |
 | duplicate guard | any accepted cell with pairwise DINOv2 cosine > 0.95 to another accepted cell is a duplicate; keep one |
-| control cells | T01 × 3 are metrology only — excluded from the LoRA training set |
+| control cells | T01 × 3 (in the full 33-cell batch) are metrology only — excluded from the LoRA training set |
+
+### 4a. Pilot — per-arm rollup and decision rule (review fix #2)
+
+A single conflated "≥4 of 6 ≥ 0.75" bar cannot tell the operator which mechanism the other 33 cells should
+run on. Report the pilot as two separate 3-cell rollups, not one 6-cell count:
+
+| arm | cells | pass bar | operator read |
+|---|---|---|---|
+| Mechanism A | 3 (g01/T06, g02/T11, g07/T12, edit-mode) | cosine ≥ 0.75 per cell | same woman on all 3? |
+| Mechanism B | 3 (same 3, img2img) | cosine ≥ 0.75 per cell | same woman on all 3? |
+
+**Decision rule**, applied only after both go/no-go prerequisites in §3 have run:
+
+- If exactly one arm passes both its numeric bar (≥2 of 3 ≥ 0.75, since a single anchor's cell failing is
+  tolerated the way the old 6-cell bar tolerated 2 failures) and the operator's same-woman read on all 3 —
+  that arm gets the other 33 cells. The pre-built `full-{A,B}-shard-NN.yaml` manifests mean this requires no
+  rebuild, only a run of the already-decided arm's shards.
+- If both arms pass, prefer Mechanism B (the design's primary method — anchor-anchored, denoise-ladder
+  composition control) unless the operator's eye-read prefers Mechanism A specifically.
+- If both arms fail, or the operator eye-reads either arm as not-the-same-woman on any of its 3 cells: stop.
+  Do not run either arm's 33-cell batch. Re-cut the ladder (denoise rungs, the edit-grammar prompt, or the
+  template grammar itself) and re-pilot.
+- A tie on the numeric bar with a split operator read (one arm passes numerically, the other reads better by
+  eye) is itself a stop condition — it means the two signals disagree, which the original single-count bar
+  could not even express. Escalate to the operator rather than picking one silently.
+
+### 4b. Full batch — 33 cells, arm chosen by §4a
+
+The 3 pilot cells (g01/T06, g02/T11, g07/T12) are excluded from the full batch — they were already rendered
+(both arms) during piloting. The remaining 33 of the 36 design-§2 cells are built as
+`creator-001-expansion-03-full-{A,B}-shard-NN.yaml`, 10 jobs/shard (4 shards: 10/10/10/3), for **both** arms
+— since the arm decision (§4a) happens after the pilot is scored, not at build time, both sets are pre-built
+so the winning arm needs no rebuild. Only the decided arm's shards are actually run.
 
 **Why 0.75.** Negative baseline: expansion-02's own distribution puts 0.75 at its **p75** — the threshold
 admits roughly the top quarter of a run the operator called 90% wrong, so it is not a lax bar, and it sits
@@ -197,8 +265,8 @@ Until one of those exists, the acceptance criterion is not measurable.
 
 | # | risk | evidence | mitigation |
 |---|---|---|---|
-| 1 | klein 4B **Base** may not be a competent img2img editor at 0.20–0.35. The package's 0.23 runs on klein **9B** and only as a finish pass over a Qwen-Image-Edit render; the official 4B Base edit template uses `ReferenceLatent` at full denoise, never a partial one. | §0, official template | the pilot is exactly this test; P1/P6 at 0.20 and P2/P4/P5 at 0.35 bracket it |
-| 2 | Composition is frozen by the initial latent — T10/T11 (camera height, tight crop) may not move at any rung ≤0.35. | mechanism | both sit at 0.35 and are in the pilot; if they fail, framing comes from anchor variety plus a downstream crop, not from prompts |
+| 1 | klein 4B **Base** may not be a competent img2img editor at 0.20–0.35. The package's 0.23 runs on klein **9B** and only as a finish pass over a Qwen-Image-Edit render; the official 4B Base edit template uses `ReferenceLatent` at full denoise, never a partial one. | §0, official template | this is now the pilot's actual A/B question (review fix #1): the g01/T06 pair tests it directly at 0.28, against Mechanism A's full-denoise edit-mode on the same variation |
+| 2 | Composition is frozen by the initial latent — T10/T11 (camera height, tight crop) may not move at any rung ≤0.35. | mechanism | the g02/T11 pilot pair tests exactly this at 0.35, against Mechanism A on the same crop instruction; if Mechanism B fails, framing comes from anchor variety plus a downstream crop, not from prompts |
 | 3 | **Over-similar cells → LoRA overfit.** The package spreads ~30 images over 15 face-angle + 15 body-pose prompts including profiles, over-shoulder, low and high angles; we hold 36 cells within ±30° of three frames, 15 of them at denoise 0.20. | r15b module 10 | duplicate guard (§4), control cells excluded, DINOv2 cohesion tracked against expansion-02's 0.711 median as the spread reference |
 | 4 | The 0.75 gate is provisional and the positive baseline does not exist as a number. | §4 | anchor-vs-anchor calibration first, at $0 |
 | 5 | g01 is landscape 1408×768, so all 12 of its cells are landscape; the set's aspect spread is decided by the anchors. | measured | acceptable for 512/768/1024 bucket training, but flag to the operator before the run |

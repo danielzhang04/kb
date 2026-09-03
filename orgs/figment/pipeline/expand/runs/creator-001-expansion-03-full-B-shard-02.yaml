@@ -1,0 +1,703 @@
+{
+  "gpu": {
+    "type": "NVIDIA GeForce RTX 4090",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "price_usd_per_hour": 0.8,
+  "models": [
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/vae/flux2-vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    }
+  ],
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
+    "port": 8188,
+    "start_command": "python main.py"
+  },
+  "custom_nodes": [],
+  "avoid_machine_hosts": [
+    "qvf79yutw3t2"
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "flux-2-klein-base-4b.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen_3_4b.safetensors",
+        "type": "flux2",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "flux2-vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. She faces the camera front-on, eyes on the lens. Candid phone photo, chest-up.",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "nudity, exposed breasts, exposed genitals, transparent clothing, broken clothing, unnatural body proportions, heavy visible makeup, plastic-looking skin, studio product photograph.",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "6": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g01.jpg"
+      }
+    },
+    "7": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g02.jpg"
+      }
+    },
+    "8": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g07.jpg"
+      }
+    },
+    "9": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "6",
+          0
+        ],
+        "upscale_method": "nearest-exact",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "10": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "7",
+          0
+        ],
+        "upscale_method": "nearest-exact",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "11": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "8",
+          0
+        ],
+        "upscale_method": "nearest-exact",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "12": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "9",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "13": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "10",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "14": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "11",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "15": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "4",
+          0
+        ],
+        "latent": [
+          "12",
+          0
+        ]
+      }
+    },
+    "16": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "15",
+          0
+        ],
+        "latent": [
+          "13",
+          0
+        ]
+      }
+    },
+    "17": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "16",
+          0
+        ],
+        "latent": [
+          "14",
+          0
+        ]
+      }
+    },
+    "18": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "5",
+          0
+        ],
+        "latent": [
+          "12",
+          0
+        ]
+      }
+    },
+    "19": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "18",
+          0
+        ],
+        "latent": [
+          "13",
+          0
+        ]
+      }
+    },
+    "20": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "19",
+          0
+        ],
+        "latent": [
+          "14",
+          0
+        ]
+      }
+    },
+    "21": {
+      "class_type": "GetImageSize",
+      "inputs": {
+        "image": [
+          "9",
+          0
+        ]
+      }
+    },
+    "22": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": 530001
+      }
+    },
+    "23": {
+      "class_type": "CFGGuider",
+      "inputs": {
+        "cfg": 4.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "17",
+          0
+        ],
+        "negative": [
+          "20",
+          0
+        ]
+      }
+    },
+    "24": {
+      "class_type": "Flux2Scheduler",
+      "inputs": {
+        "steps": 50,
+        "width": [
+          "21",
+          0
+        ],
+        "height": [
+          "21",
+          1
+        ]
+      }
+    },
+    "25": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "euler"
+      }
+    },
+    "29": {
+      "class_type": "SplitSigmasDenoise",
+      "inputs": {
+        "sigmas": [
+          "24",
+          0
+        ],
+        "denoise": 0.2
+      }
+    },
+    "26": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "22",
+          0
+        ],
+        "guider": [
+          "23",
+          0
+        ],
+        "sampler": [
+          "25",
+          0
+        ],
+        "sigmas": [
+          "29",
+          1
+        ],
+        "latent_image": [
+          "12",
+          0
+        ]
+      }
+    },
+    "27": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "26",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "28": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "creator-001-expansion-03",
+        "images": [
+          "27",
+          0
+        ]
+      }
+    }
+  },
+  "seed_fields": [
+    "noise_seed"
+  ],
+  "uploads": [
+    {
+      "files": [
+        "_uploads/creator-001/g01.jpg",
+        "_uploads/creator-001/g02.jpg",
+        "_uploads/creator-001/g07.jpg"
+      ],
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true
+    }
+  ],
+  "job_timeout_seconds": 360,
+  "readiness_timeout_seconds": 900,
+  "max_minutes": 82,
+  "container_disk_gb": 60,
+  "volume_gb": 0,
+  "jobs": [
+    {
+      "seed": 530012,
+      "output_name": "c001-exp03-g01-t12",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. She is wearing a black ribbed cami and two thin silver chains. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.35
+        }
+      ]
+    },
+    {
+      "seed": 531001,
+      "output_name": "c001-exp03-g02-t01",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. She faces the camera front-on, eyes on the lens. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "seed": 531002,
+      "output_name": "c001-exp03-g02-t02",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. Her head is turned fifteen degrees to her left, eyes still on the lens. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "seed": 531003,
+      "output_name": "c001-exp03-g02-t03",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. Her head is turned fifteen degrees to her right, looking slightly past the lens. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "seed": 531004,
+      "output_name": "c001-exp03-g02-t04",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. Her mouth is relaxed and slightly open, eyes half-lidded, not performing. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "seed": 531005,
+      "output_name": "c001-exp03-g02-t05",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. A small closed-mouth smile, eyes on the lens. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "seed": 531006,
+      "output_name": "c001-exp03-g02-t06",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. Her head is turned thirty degrees to her left, eyes still on the lens. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.28
+        }
+      ]
+    },
+    {
+      "seed": 531007,
+      "output_name": "c001-exp03-g02-t07",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. Her head is turned thirty degrees to her right, chin a little lower. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.28
+        }
+      ]
+    },
+    {
+      "seed": 531008,
+      "output_name": "c001-exp03-g02-t08",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. Late-afternoon light through one window, nothing else lit. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.28
+        }
+      ]
+    },
+    {
+      "seed": 531009,
+      "output_name": "c001-exp03-g02-t09",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair. One lamp across the room; the far side of her face falls into shadow. Candid phone photo, chest-up."
+        },
+        {
+          "node_id": "6",
+          "field": "image",
+          "value": "creator-001/g02.jpg"
+        },
+        {
+          "node_id": "7",
+          "field": "image",
+          "value": "creator-001/g01.jpg"
+        },
+        {
+          "node_id": "8",
+          "field": "image",
+          "value": "creator-001/g07.jpg"
+        },
+        {
+          "node_id": "29",
+          "field": "denoise",
+          "value": 0.28
+        }
+      ]
+    }
+  ]
+}

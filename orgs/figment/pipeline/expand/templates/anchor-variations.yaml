@@ -1,0 +1,107 @@
+{
+  "schema": "figment/expansion-03-anchor-variations@1",
+  "identity_register_clause": "The same woman as the reference, identical face. Winged black liner, defined lashes, glossy pink-nude lips, jet-black hair.",
+  "capture_clause_default": "Candid phone photo, chest-up.",
+  "capture_clause_t11": "Candid phone photo.",
+  "edit_frame_prefix": "The same woman as the reference, identical face;",
+  "edit_frame_suffix": "same room, same light.",
+  "templates": [
+    {
+      "template_id": "T01",
+      "axis": "control",
+      "denoise": 0.2,
+      "variation_clause": "She faces the camera front-on, eyes on the lens.",
+      "edit_action": "face the camera front-on, eyes on the lens"
+    },
+    {
+      "template_id": "T02",
+      "axis": "turn--15",
+      "denoise": 0.2,
+      "variation_clause": "Her head is turned fifteen degrees to her left, eyes still on the lens.",
+      "edit_action": "turn her head fifteen degrees to her left, eyes still on the lens"
+    },
+    {
+      "template_id": "T03",
+      "axis": "turn-+15-gaze",
+      "denoise": 0.2,
+      "variation_clause": "Her head is turned fifteen degrees to her right, looking slightly past the lens.",
+      "edit_action": "turn her head fifteen degrees to her right, look slightly past the lens"
+    },
+    {
+      "template_id": "T04",
+      "axis": "expression",
+      "denoise": 0.2,
+      "variation_clause": "Her mouth is relaxed and slightly open, eyes half-lidded, not performing.",
+      "edit_action": "relax her mouth and open it slightly, half-lidded eyes, not performing"
+    },
+    {
+      "template_id": "T05",
+      "axis": "expression",
+      "denoise": 0.2,
+      "variation_clause": "A small closed-mouth smile, eyes on the lens.",
+      "edit_action": "add a small closed-mouth smile, eyes on the lens"
+    },
+    {
+      "template_id": "T06",
+      "axis": "turn--30",
+      "denoise": 0.28,
+      "variation_clause": "Her head is turned thirty degrees to her left, eyes still on the lens.",
+      "edit_action": "turn her head thirty degrees to her left, eyes still on the lens"
+    },
+    {
+      "template_id": "T07",
+      "axis": "turn-+30",
+      "denoise": 0.28,
+      "variation_clause": "Her head is turned thirty degrees to her right, chin a little lower.",
+      "edit_action": "turn her head thirty degrees to her right, chin a little lower"
+    },
+    {
+      "template_id": "T08",
+      "axis": "light",
+      "denoise": 0.28,
+      "variation_clause": "Late-afternoon light through one window, nothing else lit.",
+      "edit_action": "change the light to late-afternoon light through one window, nothing else lit"
+    },
+    {
+      "template_id": "T09",
+      "axis": "light",
+      "denoise": 0.28,
+      "variation_clause": "One lamp across the room; the far side of her face falls into shadow.",
+      "edit_action": "change the light to one lamp across the room, one side in shadow"
+    },
+    {
+      "template_id": "T10",
+      "axis": "camera-height",
+      "denoise": 0.35,
+      "variation_clause": "The phone is held just above eye level and she looks up into it.",
+      "edit_action": "raise the phone just above eye level, she looks up into it"
+    },
+    {
+      "template_id": "T11",
+      "axis": "crop",
+      "denoise": 0.35,
+      "variation_clause": "Tight head-and-shoulders crop, her head near the top edge.",
+      "edit_action": "move in to a tight head-and-shoulders crop"
+    },
+    {
+      "template_id": "T12",
+      "axis": "wardrobe",
+      "denoise": 0.35,
+      "variation_clause": {
+        "g01": "She is wearing a black ribbed cami and two thin silver chains.",
+        "g02": "She is wearing an oversized cream knit cardigan over a plain top.",
+        "g07": "She is wearing a plain oversized grey tee."
+      },
+      "edit_action": {
+        "g01": "change her top to a black ribbed cami with two thin silver chains",
+        "g02": "change her top to an oversized cream knit cardigan over a plain top",
+        "g07": "change her top to a plain oversized grey tee"
+      }
+    }
+  ],
+  "pilot_cells": [
+    {"anchor": "g01", "template_id": "T06"},
+    {"anchor": "g02", "template_id": "T11"},
+    {"anchor": "g07", "template_id": "T12"}
+  ]
+}
