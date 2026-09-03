@@ -61,7 +61,14 @@ no-spend workflows end to end.
 - Local: `claude/outbox-max-age-default` (worktree `agent-aa79b80c…`) is folded into #149 — dead once
   #149 merges. `.claude/worktrees/agent-a86c4245…` is the #149 branch worktree — same.
 
-## Rulings needed from Daniel (asked at plan time; answers recorded below when given)
+## Rulings from Daniel (2026-09-02 ~16:40 UTC)
+- R1 = **not tried yet** → P3 gains a one-minute gate: Daniel opens the Terminal page once, boss watches the journal.
+- R2 = **merge now** → DONE: #149 merged as `654ea4bd`; both dead worktrees + branches swept.
+- R3 = **sign today; design a fix after Gate 4** → P7 added: codex-planned PR for the drain cadence (auto-drain or a receipt path without fleet pause + signature).
+- R4 = **Daniel approves gates in the dashboard Inbox** (browser coverage); boss pings one gate at a time.
+- R5 = not asked; non-blocking fixes stay parked unless Daniel says otherwise.
+
+### As asked
 - R1 Browser terminal confirmed working on his side? (if no → a P3 item before launches)
 - R2 Merge #149 before Gate 4 (recommended: yes — the VM already runs its tip; merging makes
   main == VM and lets the two dead worktrees be swept)
@@ -136,6 +143,97 @@ No code changes.
   on completion), `memory/claude-boss.md` lessons, `orgs/kb-ops/STATE.md` if stale, sweep branches.
 - Optional per R5: W5 (codex terra) PR for `rootId:'repo'` + bootstrap-copy sync, opus-reviewed.
 
+## P3b — the browser terminal was broken by three composed defects (found 2026-09-02 16:45–17:10 UTC)
+Daniel: "Terminal is unavailable on this host right now." after a hard reload + New shell. Proven by a
+syscall trace on the daemon (`strace -f -p <daemon>` over the broker fd; log saved in the boss scratchpad
+as `dtrace-17h02.log`) and reproduced in a real headless Edge over CDP (`scratchpad/cdp/run-1.log`):
+1. `Terminal.tsx` sent `relativeCwd: "."` (and default root `repo`). My hand-rolled probe sent `""`,
+   which is the only reason the 09-02 shell proof "worked".
+2. `brokerProtocol.ts relativeCwd()` treats `"."` as a BrokerProtocolError; `linuxBrokerServer.accept()`
+   answered `{"requestId":null,"code":"unsafe-cwd"}` and DESTROYED the daemon's socket.
+3. `linuxBrokerClient.handleDisconnect()` set a sticky `unavailable`; `ensureConnected()` threw forever
+   → every later create (terminal OR agent launch) returned `unavailable` until a daemon restart.
+Also: the empty-state Terminal layout has no root select, so the first launch always ships the React
+default; `repo` cannot pass the VM validator (`internal: root-owned component metadata is unsafe`) → P3c.
+**Fix branch** (codex sol build → opus adversarial review → codex fix round → gates): lazy reconnect +
+disconnect diagnostics; broker per-request refusals keep the connection (hello/undecodable still
+destroy); daemon boundary validates cwd with the shared `isSafeRelativeCwd`, `"."`→`""`; Terminal sends
+`""`, default root `worktrees`. Opus round found 2 MED (orphaned broker sessions after a drop → `capacity`
+at 16; socket leak on failed `hello`) — fixed in the W5 round before PR.
+**Deploy** = Daniel's step: WSL build (`npm run build:pty-broker` + `build_platform_release.py`), then
+`deploy_platform_release.py <tar> <attestation> --signing-key <his key> --host root@100.89.73.118`,
+then `install_pty_broker.py --digest <manifest digest>` (broker changed!), then `systemctl restart
+kb-dashboard`. Then Daniel's browser check, THEN Gate 4.
+**Lesson re-hit:** `codex --follow-up` drops `--cwd/--worktree` and writes into the main checkout
+([[codex-followup-loses-cwd]]) — I knew and did it anyway; harvest from the main checkout was fine but
+never again: fresh dispatch with `--cwd` for any writing follow-up.
+
+## P3b DEPLOYED (PR #150 merged e7064569; VM release e7064569 + broker b1cf5b6a… live 18:18Z). Daniel's
+browser shell proven (`kb-shell@kb:/var/lib/kb-shell/worktrees`). Deploy script that worked:
+`scratchpad/deploy-pty-fix.ps1` (lock → deploy_platform_release under Git Bash with POSIX paths →
+install_pty_broker --digest → daemon restart → unlock → health/admission). Two script bugs fixed on the way:
+`-notmatch` on a multi-line ssh result is an array (never a boolean); python `re.sub` repl turns `` into
+backspace — never build paths through a regex repl.
+
+## Gate 4a — FIRST LAUNCH FAILED, three walls found (run-fa45349f, 18:26Z)
+Draft attempt refused in 1.4 s: `claude attempt session start refused (invalid-request): attempt operation
+key is invalid`. Root: `execution.ts:2124` mints `automatic-attempt:<ref>`; PTY validators
+(`sessionRecord.ts:165`, `sessionPersistence.ts:49`, `brokerProtocol.ts:19`, `windowsSessionHost.ts:110`)
+require `op-<64hex>`. NO agent attempt had ever started on a real host — every earlier proof used fake ports.
+W8 (codex sol): deterministic `op-`+sha256 mapping at the attemptSessionAdapter boundary (gated green).
+W9 (opus): mapping complete+safe, BLOCKED by two further unconditional walls — `bind()` needs a run-provenance
+SessionRecord nobody writes (`persistRunSession` has 0 callers; adapter bypasses the registry), and bind
+receives the host OUTPUT SEQUENCE as `expectedRevision` (document revision expected). Plus: persistence
+validator ordering (317), test fake hiding unmapped reads, missing control→host log, managedExecution cancel
+key for iteration turns, sessionId field misuse. W10 (codex sol, in flight): fix all + a real-store
+integration test `attemptVertical.integration.test.ts` (real sessionRecord + persistence validator + broker-shaped fake host).
+Also found: queue bridge can claim engine-owned stage cards between the 3 canonical hops (second launch path) → P4c.
+Also fixed today: agents catalog drift (ops had 10 of 18 declarations → Schedules offline) → `sync_daemon_dirs --sync`
+pushed `d7e962d4` to ops; VM picks it up at the next drain.
+
+## ARCHITECTURE VERDICT (opus W18, fresh context, 2026-09-02 evening) — why the walls keep appearing
+One attempt = 12 durable writes across 6 stores, 12 identifier namespaces, and 3 meanings sharing 2 field names
+(`sequence`, `revision`). Confirmed tensions: (b) two writers of the session truth split across
+`sessions`/`attemptBindings`/`attemptOperations`/`operationReceipts` — ~60% of all defects; (c) sequence
+semantics differ per path (hosts count frames; transcript API expects byte offsets) — STILL LIVE until W16 lands;
+(d) epoch handled in four places, no owner; (e) exit observed by the adapter, recorded by the registry; (g)
+boot-time broker coupling crash-loops the daemon. Refuted: the `op-`+sha256 idempotency token is the standard
+Docker-exec/CRI shape — keep it. Shapes that fit: Docker ExecCreate/ExecStart/Inspect, systemd transient
+units, tmux/mosh. Six rules: one writer per durable fact + atomic start; runtime names the session, caller
+supplies a token; one cursor space minted once; never two meanings per field name; epoch belongs to its
+minter; per-request failures never kill transport, boot never depends on the runtime.
+**Recommendation B (adopted):** keep the patch, restructure ONE seam (~1 day): S1 registry owns the start
+(`startRunSession` does host.create + sink + all four collections in one mutate; delete `bind()` from the
+attempt path); S2 one cursor space minted in the registry sink for both paths, rename
+`HostStartReceipt.revision` → `outputSequence`; S3 registry is the only exit recorder (refused close →
+terminal non-abandoned reason); S4 land the rest of W16 (no boot probe, pty doc v2→v3 migration + rollback
+note, key fallback); S5 fake hosts count frames; `realBroker.integration.test.ts` (W17) is the merge gate;
+fix the create-ok/attach-failed leak in linuxBrokerClient.ts:136-142. THEN Gate 4a/4b. Later: put the queue
+bridge (P4c) behind `startRunSession`; make `document.epochId` a read-through of the broker epoch.
+
+**Real-broker harness (W17) EXISTS and WORKS**: `dashboard/server/pty/realBroker.integration.test.ts` — real
+`LinuxBrokerServer` + `LinuxBrokerClient` + protocol + registry + persistence validator + retention + attempt
+adapter over a real Unix socket with a real node-pty bash child; Linux-only (`describe.skipIf`), run under WSL
+`~/kb-v3` (`npx vitest run server/pty/realBroker.integration.test.ts`, node-pty present). First run against
+round-3 code: scenario 1 fails with the transcript missing `READY` (frame-counter vs byte-offset drop), the rest
+cascade — the first live wall ever reproduced by a test. It is the merge gate from now on.
+Round 4 (W16) landed: byte-cursor sequencing, client DTO field, no boot probe (manual create activates epoch),
+pty document v2→v3 with migration (`.v2.bak` written; rollback = stop daemon, restore `session-runs.json.v2.bak`),
+refused-close records terminal exit, legacy key fallback, store validation. Harness on round-4 tree: scenario 1
+reaches the END of the vertical on a REAL broker (launch, mapped keys over the wire, node-pty child, both
+prompts as stream-json, `GOT:` echo, five lines with byte cursors); only the FIRST frame (`READY`) is lost —
+emitted before the session row exists. W19 (seam restructure: registry-owned atomic start with the early-frame
+queue inside the registry) is the fix by construction.
+W19 (seam restructure) + W20 (scoped opus review) + W21 (opus debugger WITH the harness in the loop) landed:
+harness 4/4 green on the real broker, repeated. W21's root cause of the post-restructure refusal: the adapter
+treated "exit after the last approved prompt" as a start failure, and the compensating close hit an
+already-finalized broker session (`not-found` masked the real refusal). Also fixed IN THE BROKER:
+node-pty's first frame lost between spawn and listener registration (production launcher too); client now
+binds session+sink synchronously on the create ack. Lesson: the reading-review loop found three walls per
+round; ONE engineer with the real harness closed the vertical in one pass. Pattern for next time: build the
+real-host harness FIRST, then let an opus debugger own the edit→run loop; use codex for well-specified
+mechanical rounds only.
+
 ## Known traps carried forward (do not rediscover)
 - Lock/unlock only over `https://kb.tail82dd4f.ts.net` (localhost → `untrusted-peer`).
 - Between approval generation and signing NOTHING may touch the VM — any audit row spools a bundle
@@ -152,10 +250,16 @@ No code changes.
 `--settings` read-scope blob on Linux (protocol v2 deferred); `kb-node-proxy.service` stub.
 
 ## Checklist (updated as phases close)
-- [ ] P0 rulings R1–R5 recorded
-- [ ] P1 #149 merged, worktrees swept
+- [x] P0 rulings R1–R4 recorded (R5 parked)
+- [x] P1 #149 merged (654ea4bd), worktrees swept
 - [ ] P2 drain complete, admission 404-healthy
-- [ ] P3 preflight PASS
+- [x] P3 preflight PASS (W2 sonnet, 10/10 live checks)
+- [x] P3b PTY resilience PR #150 merged + deployed (e7064569) + Daniel browser check PASSED
+- [x] P4-fix + P4d attempt-start vertical: PR #151 (969bfa26) OPEN — harness 4/4 green on the real broker; NEXT = Daniel merges → WSL rebuild from main → Daniel deploy (deploy-pty-fix.ps1: update Sha + BrokerDigest) → Gate 4a driver (w7 brief) → Daniel approves 2 Inbox gates → Gate 4b
+- [ ] P4c queue-bridge second launch path (after Gate 4)
+- [ ] P3d Terminal launcher UX
+- [ ] P3c repo-root validation (after Gate 4)
 - [ ] P4 acceptance-run PASS (claude proven)
 - [ ] P5 iteration-loop-demo complete (codex proven)
 - [ ] P6 opus evidence audit PASS; memory + STATE + handoff updated
+- [ ] P7 D-1 drain-cadence design PR (codex plan → opus review), after Gate 4
