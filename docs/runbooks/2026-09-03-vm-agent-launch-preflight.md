@@ -190,3 +190,29 @@ pipe works multi-turn before EOF; **stdin on a pipe + stdout/stderr on the PTY s
 That is the broker change (headless-json recipes: pipe stdin, route `input` frames to the pipe, keep the
 fd-pinned exec; `shell` keeps the TTY). Rule for the future: any headless CLI launched under the broker must
 be probed for its stdin contract with the pipe+pty shape before the recipe is trusted.
+
+## Addendum 2026-09-03 (overnight): how the pipe is delivered, and the codex entrypoint trap
+
+**The shape that shipped.** For `headless-json` recipes the broker spawns the CLI with stdin on a pipe and
+stdout/stderr on the PTY slave, through a root-owned Python shim (`dashboard/server/pty/pipeStdinExec.py`,
+packed beside `main.js` in the broker archive and run with `python3 -I`). The shim re-opens the controlling
+tty blocking, takes `TIOCSCTTY`, closes every fd except 0/1/2 and the pinned CLI descriptor (set
+`FD_CLOEXEC`), then `execv('/proc/self/fd/<cli>')`. The CLI and the shim reach the child as descriptors in
+stdio slots; no pathname is re-resolved. `/usr/bin/python3` is pinned ONCE at broker start through the same
+walk as every other executable; if it is missing the daemon stops advertising `claude`/`codex` (shells stay
+servable) instead of advertising a launcher that refuses at create. The harness asserts the child sees
+`STDIN_TTY=0`, no `/dev/ptmx`, exactly fds `0,1,2,3`, a controlling tty (SIGWINCH), and a blocking terminal
+that takes a 1 MiB burst intact.
+
+**Codex is a shebang wrapper, not a binary.** `~/.local/bin/codex -> @openai/codex/bin/codex.js` starts
+`#!/usr/bin/env node` and only `spawn`s the real ELF at
+`~/.local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex`
+(hoisted installs put it one level up under `@openai/codex-linux-x64/...`). A script entrypoint cannot be
+exec'd through a pinned descriptor (the kernel opens the interpreter, and the script fd is already
+close-on-exec by then), so the launcher now resolves codex through a FIXED candidate list, native binary
+first, and both the capability probe and `create` use the same resolver. The wrapper adds only
+`CODEX_MANAGED_*` update-hint env; argv passes through untouched. `scripts/vm_launch_preflight.sh` now
+prints the resolved codex target and fails on a shebang, and checks python3 and the deployed shim.
+
+**Rule for the future:** before trusting any CLI under the broker, `head -c 4` its resolved entrypoint as
+the shell user. `#!` means find the native binary and pin that.

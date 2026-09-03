@@ -117,6 +117,91 @@ for cli in claude codex; do
   else bad "$cli NOT INSTALLED at $p"; fi
 done
 
+section "codex must pin at the NATIVE binary, never the npm wrapper (W30)"
+# ~/.local/bin/codex is a 7 KB `#!/usr/bin/env node` wrapper whose only job is to spawn the vendored
+# native. A shebang entrypoint reaches its interpreter as `args[0] = /proc/self/fd/<n>`, and that
+# descriptor is FD_CLOEXEC, so it is already gone by the time node opens it: the tty path has always
+# been silently broken for it and the headless path refuses it outright. fdPinnedPaths.ts therefore
+# resolves codex through CODEX_EXECUTABLE_CANDIDATES, first hit wins. This is that list, in order.
+codex_local=/var/lib/kb-shell/home/.local
+codex_tail=@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex
+codex_resolved=""
+for cand in "$codex_local/lib/node_modules/@openai/codex/node_modules/$codex_tail" \
+            "$codex_local/lib/node_modules/$codex_tail" \
+            "$codex_local/bin/codex"; do
+  [ -f "$cand" ] || continue
+  if [ "$(head -c 2 "$cand" 2>/dev/null)" = '#!' ]; then
+    warn "candidate is a #! script, skipped (cannot be a pinned entrypoint): $cand"
+    continue
+  fi
+  codex_resolved="$cand"
+  break
+done
+if [ -n "$codex_resolved" ]; then
+  ok "codex resolves to a native binary: $codex_resolved"
+  read -r u g m < <(stat -c '%U %G %a' "$codex_resolved")
+  [ "$u:$g" = "kb-shell:kb-shell" ] && { [ "$m" = "700" ] || [ "$m" = "750" ]; } \
+    && ok "  ($u:$g $m)" \
+    || bad "  is $u:$g $m - the pin walk needs kb-shell:kb-shell 0700|0750"
+  # The pin walk opens EVERY component O_NOFOLLOW and applies the same ownership/mode matrix to each,
+  # so the leaf being right is not enough: npm creates the nested vendor directories 0755 under a
+  # default umask, and one 0755 directory anywhere on this path refuses the whole launch.
+  rel=${codex_resolved#"$codex_local"/}
+  comp="$codex_local"
+  bad_comp=""
+  IFS=/ read -r -a parts <<< "$rel"
+  for ((i = 0; i < ${#parts[@]} - 1; i++)); do
+    comp="$comp/${parts[i]}"
+    read -r cu cg cm < <(stat -c '%U %G %a' "$comp" 2>/dev/null)
+    if [ "$cu:$cg" != "kb-shell:kb-shell" ] || { [ "$cm" != "700" ] && [ "$cm" != "750" ]; }; then
+      bad_comp="$comp is $cu:$cg $cm"
+      break
+    fi
+  done
+  [ -z "$bad_comp" ] \
+    && ok "  every directory below .local on that path is kb-shell:kb-shell 0700|0750" \
+    || bad "  first refused component: $bad_comp - needs kb-shell:kb-shell 0700|0750"
+else
+  bad "NO native codex candidate exists - every headless codex launch refuses at create, and the capability probe will not advertise codex at all"
+fi
+
+section "pipe-stdin exec shim (W30: headless launches exec python3 on pipeStdinExec.py)"
+# The shim is what gives a headless child a pipe on fd 0, a BLOCKING terminal on fd 1/2, a
+# controlling tty, and a descriptor table with nothing inherited. The broker pins python3 once at
+# start-up; if that pin fails, no agent launcher is advertised at all.
+py=/usr/bin/python3
+if [ -e "$py" ]; then
+  read -r lu lm lt < <(stat -c '%U %a %F' "$py")
+  pytgt="$py"
+  if [ "$lt" = "symbolic link" ]; then
+    [ "$lu" = "root" ] && ok "$py symlink is root-owned" || bad "$py symlink is $lu - needs root"
+    pytgt=$(readlink -f "$py")
+    case "$pytgt" in
+      /bin/*|/usr/bin/*|/usr/local/bin/*) ok "  target inside an approved root: $pytgt";;
+      *) bad "  target escapes the approved roots: $pytgt";;
+    esac
+  fi
+  read -r tu tg tm < <(stat -c '%U %G %a' "$pytgt" 2>/dev/null)
+  # fdPinnedPaths.ts validateComponent: a root-owned FILE must be EXACTLY 0755. The 0750 alternative
+  # applies to directories only, so accepting it here would green a python3 the walk then refuses.
+  [ "$tu" = "root" ] && [ "$tm" = "755" ] \
+    && ok "  $pytgt ($tu:$tg $tm)" \
+    || bad "  $pytgt is $tu:$tg $tm - the pin walk needs root-owned 0755 exactly"
+else
+  bad "$py MISSING - the broker's boot-time exec pin fails and NO agent launcher is advertised"
+fi
+shim=/opt/kb-shell-broker/current/server/pty/pipeStdinExec.py
+if [ -f "$shim" ]; then
+  read -r su sm < <(stat -c '%U %a' "$shim")
+  # Whoever can write the shim owns every headless child. The release archive stamps it 0444.
+  [ "$su" = "root" ] && [ "$((0$sm & 0022))" = "0" ] \
+    && ok "$shim (root $sm)" \
+    || bad "$shim is $su $sm - needs root-owned with no group or other write bit"
+else
+  bad "$shim MISSING from the deployed release - every headless launch refuses at create"
+fi
+
+# ---------------------------------------------------------------------------------------------
 section "node interpreter (needed if either launcher is a JS shim)"
 if [ -e /usr/bin/node ]; then
   read -r u g m < <(stat -c '%U %G %a' /usr/bin/node)
