@@ -99,6 +99,11 @@ are first-class views, not add-ons.
   behaviour; no bloat, no duplicate docs, no speculative abstractions. Prefer one
   well-named file over five thin ones; prefer extending an existing harness key over a new
   tool. Every new skill or script justifies itself by a stage it serves.
+- **Research before training (operator ruling 2026-09-03)**: the 10sorlabs package pass
+  (modules, videos, playbooks, downloads — especially module 11 training, module 10 dataset
+  generation, module 16 prompt guide), the identity/tuning research, and the detailer/de-gloss
+  research are completed and folded into the spec BEFORE any expansion or LoRA training pod
+  runs. Pods for training come after the reading, not in parallel with it.
 - **Stop rules**: human gates (anchor/composite pick, identity grid, register proof, batch
   approval, anything explicit-tier, any spend past a manifest ceiling) stop the run; the
   terminal parks the state, writes what it has, and waits.
