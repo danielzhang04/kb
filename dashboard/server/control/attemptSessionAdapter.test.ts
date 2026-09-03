@@ -2,11 +2,33 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { createSessionRecordRegistry } from '../pty/sessionRecord.ts';
+import { createEmptyPtySessionsDocument } from '../pty/sessionPersistence.ts';
+import type { SessionPersistence } from '../pty/sessionPersistence.ts';
+import { sha256Hex } from '../shared/hashing.ts';
 import { createAttemptIoStore } from './attemptIo.ts';
 import {
   attemptDeclarationFingerprint,
-  createAttemptSessionAdapter,
+  createAttemptSessionAdapter as createAttemptSessionAdapterRaw,
 } from './attemptSessionAdapter.ts';
+
+type AdapterOptions = Parameters<typeof createAttemptSessionAdapterRaw>[0];
+type TestAdapterOptions = Omit<AdapterOptions, 'sessionRecords'> & {
+  bindings?: AttemptBindingPort;
+  sessionRecords?: AdapterOptions['sessionRecords'];
+  hostKind?: 'desktop' | 'vm';
+};
+function createAttemptSessionAdapter(
+  options: TestAdapterOptions,
+) {
+  const { bindings = new MemoryBindings(), sessionRecords, hostKind: _hostKind, ...adapterOptions } = options;
+  return createAttemptSessionAdapterRaw({
+    ...adapterOptions,
+    sessionRecords: sessionRecords ?? ('startRunSession' in bindings
+      ? bindings as AdapterOptions['sessionRecords']
+      : createMemorySessionRecords(options.host, bindings)),
+  });
+}
 import {
   DEFAULT_MAX_OUTPUT_BYTES as CLAUDE_DEFAULT_MAX_OUTPUT_BYTES,
   DEFAULT_TIMEOUT_MS as CLAUDE_DEFAULT_TIMEOUT_MS,
@@ -118,6 +140,7 @@ interface HostAttempt {
 }
 
 class MemorySessionHost implements SessionHost {
+  private outputSequence = 0;
   readonly attempts: HostAttempt[] = [];
   readonly writes: Array<{ sessionId: string; bytes: Uint8Array }> = [];
   readonly closeCalls: string[] = [];
@@ -129,6 +152,7 @@ class MemorySessionHost implements SessionHost {
   private readonly queuedRefuse = new Map<number, PortResult<HostStartReceipt>>();
   finishAfterWrite: number | null = null;
   rejectClose = false;
+  refuseClose = false;
   writeCalls = 0;
   listEpochCalls = 0;
   drainCalls: string[] = [];
@@ -163,7 +187,7 @@ class MemorySessionHost implements SessionHost {
     if (!attempt) { this.queuedResolve.set(index, overrides); return; }
     const receipt: HostStartReceipt = {
       operationKey: attempt.request.operationKey, sessionId: attempt.sessionId,
-      epochId: 'epoch-11111111111111111111111111111111', revision: 1,
+      epochId: 'epoch-11111111111111111111111111111111', outputSequence: 1,
       boundAt: '2026-08-23T00:00:01.000Z', replayed: false, ...overrides,
     };
     this.receipts.set(attempt.request.operationKey, receipt);
@@ -183,9 +207,10 @@ class MemorySessionHost implements SessionHost {
   emitBytes(index: number, bytes: Uint8Array, replay = false): void {
     const attempt = this.attempts[index];
     attempt.sink.data({
-      sessionId: attempt.sessionId, sequence: this.writes.length + 1, encoding: 'base64',
+      sessionId: attempt.sessionId, sequence: this.outputSequence, encoding: 'base64',
       data: Buffer.from(bytes).toString('base64'), replay,
     });
+    this.outputSequence += 1;
   }
 
   finish(index: number, exitCode: number | null = 0, reason: ObservedExit['reason'] = 'exited'): ObservedExit {
@@ -223,6 +248,7 @@ class MemorySessionHost implements SessionHost {
   async close(sessionId: string) {
     this.closeCalls.push(sessionId);
     if (this.rejectClose) throw new Error('close rejected');
+    if (this.refuseClose) return { ok: false as const, refusal: 'internal' as const, detail: 'close refused' };
     const index = this.attempts.findIndex((attempt) => attempt.sessionId === sessionId && !attempt.finished);
     const exit = index >= 0 ? this.finish(index, null, 'closed') : {
       sessionId, sequence: 99, exitCode: null, signal: null, reason: 'closed' as const,
@@ -254,14 +280,22 @@ class MemorySessionHost implements SessionHost {
  * A deliberately dumb CAS store: revision match or `binding-conflict`, nothing else. Declaration-identity,
  * cancellation and terminal-status guards belong to the adapter and are asserted through it.
  */
+type BindingInput = {
+  operator: string;
+  runRef: string;
+  attemptRef: string;
+  managedSessionRef: string;
+  sessionId: string;
+};
+
 class MemoryBindings implements AttemptBindingPort {
   readonly rows: AttemptBinding[] = [];
-  readonly calls: Parameters<AttemptBindingPort['bind']>[0][] = [];
+  readonly calls: BindingInput[] = [];
   readonly operations = new Map<string, AttemptOperationRecord>();
   readonly conflictOn = new Set<number>();
   gate: Deferred<void> | null = null;
   nextRefusal: PortResult<{ revision: number }> | null = null;
-  rejectBind = false;
+  rejectStartBinding = false;
   rejectOperationWrite = false;
   beforeWrite: ((record: AttemptOperationRecord, expectedRevision: number | null, call: number) => void) | null = null;
   writeCalls = 0;
@@ -272,11 +306,11 @@ class MemoryBindings implements AttemptBindingPort {
     this.events = events;
   }
 
-  async bind(input: Parameters<AttemptBindingPort['bind']>[0]): Promise<PortResult<{ revision: number }>> {
+  async recordBinding(input: BindingInput): Promise<PortResult<{ revision: number }>> {
     this.calls.push(input);
     const gate = this.gate;
     if (gate) await gate.promise;
-    if (this.rejectBind) throw new Error('bind rejected');
+    if (this.rejectStartBinding) throw new Error('start binding rejected');
     if (this.nextRefusal) {
       const refusal = this.nextRefusal;
       this.nextRefusal = null;
@@ -323,19 +357,218 @@ class MemoryBindings implements AttemptBindingPort {
     return { ok: true, value: structuredClone(written) };
   }
 
-  seed(record: AttemptOperationRecord): void { this.operations.set(record.operationKey, structuredClone(record)); }
+  seed(record: AttemptOperationRecord): void {
+    this.operations.set(record.operationKey, structuredClone(record));
+  }
 }
+
+function createMemorySessionRecords(
+  host: SessionHost,
+  bindings: AttemptBindingPort,
+): AdapterOptions['sessionRecords'] {
+  const startStore = bindings as AttemptBindingPort & {
+    recordBinding(input: BindingInput): Promise<PortResult<{ revision: number }>>;
+  };
+  return {
+    byAttempt: (operator, attemptRef) => bindings.byAttempt(operator, attemptRef),
+    readOperation: (operationKey) => bindings.readOperation(operationKey),
+    writeOperation: (record, expectedRevision) => bindings.writeOperation(record, expectedRevision),
+    async startRunSession(input) {
+      const launch = host.create({
+        operationKey: input.hostOperationKey,
+        principal: {
+          operator: input.operator,
+          browserSessionRef: RUN_CONTROLLER_NULL_BROWSER_SESSION_REF,
+        },
+        recipe: input.recipe,
+        rootId: input.rootId,
+        relativeCwd: input.relativeCwd,
+        cols: input.size.cols,
+        rows: input.size.rows,
+      }, input.sink);
+      const receipt = await launch.receipt;
+      if (!receipt.ok) return receipt;
+      const current = await bindings.readOperation(input.hostOperationKey);
+      if (current === null) {
+        await host.close(receipt.value.sessionId);
+        return { ok: false, refusal: 'internal', detail: 'missing pending operation' };
+      }
+      if (current.sessionId !== null && current.sessionId !== receipt.value.sessionId) {
+        await host.close(receipt.value.sessionId);
+        return { ok: false, refusal: 'binding-conflict', detail: 'run session binding conflict' };
+      }
+      const bound = await bindings.writeOperation({
+        ...current,
+        status: 'bound',
+        sessionId: receipt.value.sessionId,
+        receipt: {
+          operationKey: input.hostOperationKey,
+          requestHash: input.requestHash,
+          status: 'bound',
+          sessionId: receipt.value.sessionId,
+          attemptRef: input.attemptRef,
+          refusal: null,
+          createdAt: current.receipt?.createdAt ?? receipt.value.boundAt,
+          settledAt: receipt.value.boundAt,
+        },
+      }, current.revision);
+      if (!bound.ok) {
+        await host.close(receipt.value.sessionId);
+        return bound;
+      }
+      let binding: PortResult<{ revision: number }>;
+      try {
+        binding = await startStore.recordBinding({
+          operator: input.operator,
+          runRef: input.runRef,
+          attemptRef: input.attemptRef,
+          managedSessionRef: input.managedSessionRef,
+          sessionId: receipt.value.sessionId,
+        });
+      } catch (error) {
+        await host.close(receipt.value.sessionId);
+        return {
+          ok: false,
+          refusal: 'internal',
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+      if (!binding.ok) {
+        await host.close(receipt.value.sessionId);
+        return binding;
+      }
+      return {
+        ok: true,
+        value: {
+          sessionId: receipt.value.sessionId,
+          epochId: receipt.value.epochId,
+          outputCursor: 0,
+          replayed: receipt.value.replayed,
+          documentRevision: binding.value.revision,
+          exit: launch.exit,
+          close: () => host.close(receipt.value.sessionId),
+        },
+      };
+    },
+  };
+}
+
+function mixedOperationBindings(host: SessionHost): {
+  bindings: AttemptBindingPort;
+  sessionRecords: ReturnType<typeof createSessionRecordRegistry>;
+  readDocument: () => ReturnType<typeof createEmptyPtySessionsDocument>;
+} {
+  let document = createEmptyPtySessionsDocument();
+  const persistence: SessionPersistence = {
+    read: () => structuredClone(document),
+    mutate: async (_expectedRevision, callback) => {
+      const draft = structuredClone(document);
+      const value = await callback(draft);
+      draft.revision += 1;
+      document = draft;
+      return { revision: document.revision, value };
+    },
+  };
+  const registry = createSessionRecordRegistry({ persistence, host });
+  return { bindings: registry, sessionRecords: registry, readDocument: () => structuredClone(document) };
+}
+
+describe('control operation key translation', () => {
+  it('refuses construction without the run-session document authority', () => {
+    expect(() => createAttemptSessionAdapterRaw({
+      host: new MemorySessionHost(),
+      sessionRecords: undefined as never,
+    })).toThrow('attempt session records are required');
+  });
+
+  it('persists an automatic-attempt key with real operations and a fake binding projection', async () => {
+    const host = new MemorySessionHost();
+    const { bindings, sessionRecords, readDocument } = mixedOperationBindings(host);
+    const controlOperationKey = 'automatic-attempt:attempt-x';
+    const expectedHostKey = `op-${sha256Hex(controlOperationKey)}`;
+    const input = declaration('codex', { operationKey: controlOperationKey, attemptRef: 'attempt-x' });
+    const launch = createAttemptSessionAdapter({ host, bindings, sessionRecords }).begin(input);
+
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.attempts[0]!.receipt.resolve({
+      ok: true,
+      value: {
+        operationKey: expectedHostKey,
+        sessionId: host.attempts[0]!.sessionId,
+        epochId: `epoch-${'1'.repeat(32)}`,
+        outputSequence: 1,
+        boundAt: '2026-09-02T18:26:00.000Z',
+        replayed: false,
+      },
+    });
+
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: true,
+      value: { operationKey: controlOperationKey, attemptRef: 'attempt-x' },
+    });
+    const persisted = readDocument().attemptOperations[expectedHostKey];
+    expect(persisted?.operationKey).toMatch(/^op-[0-9a-f]{64}$/);
+    expect(persisted?.operationKey).toBe(expectedHostKey);
+    expect(persisted?.attemptRef).toBe('attempt-x');
+  });
+
+  it('memoizes one host create per control key and separates different control keys', async () => {
+    const host = new MemorySessionHost();
+    const { bindings } = mixedOperationBindings(host);
+    const firstInput = declaration('codex', {
+      operationKey: 'automatic-attempt:attempt-x',
+      attemptRef: 'attempt-x',
+    });
+    const adapter = createAttemptSessionAdapter({ host, bindings });
+
+    const first = adapter.begin(firstInput);
+    const replay = adapter.begin(firstInput);
+    expect(replay).toBe(first);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+
+    const secondControlKey = 'automatic-attempt:attempt-y';
+    adapter.begin({ ...firstInput, operationKey: secondControlKey, attemptRef: 'attempt-y' });
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(2));
+    expect(host.attempts.map((attempt) => attempt.request.operationKey)).toEqual([
+      `op-${sha256Hex(firstInput.operationKey)}`,
+      `op-${sha256Hex(secondControlKey)}`,
+    ]);
+  });
+
+  it('cancels by the control key while updating the mapped durable record', async () => {
+    const host = new MemorySessionHost();
+    const { bindings, readDocument } = mixedOperationBindings(host);
+    const controlOperationKey = 'automatic-attempt:attempt-x';
+    const expectedHostKey = `op-${sha256Hex(controlOperationKey)}`;
+    const input = declaration('codex', { operationKey: controlOperationKey, attemptRef: 'attempt-x' });
+    createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(readDocument().attemptOperations[expectedHostKey]?.status).toBe('pending'));
+
+    const cancellation = await createAttemptSessionAdapter({ host, bindings }).cancel({
+      operationKey: controlOperationKey,
+      reason: 'operator stop',
+    });
+
+    expect(cancellation.ok).toBe(true);
+    expect(readDocument().attemptOperations[expectedHostKey]).toMatchObject({
+      operationKey: expectedHostKey,
+      status: 'cancelled',
+    });
+    expect(readDocument().attemptOperations[controlOperationKey]).toBeUndefined();
+  });
+});
 
 function seededRecord(
   input: ApprovedAttemptDeclaration,
   overrides: Partial<AttemptOperationRecord> = {},
 ): AttemptOperationRecord {
   const requestHash = attemptDeclarationFingerprint(input);
+  const operationKey = `op-${sha256Hex(input.operationKey)}`;
   return {
-    operationKey: input.operationKey, requestHash, status: 'pending', promptsDelivered: 0,
+    operationKey, requestHash, status: 'pending', promptsDelivered: 0,
     sessionId: null, attemptRef: input.attemptRef,
     receipt: {
-      operationKey: input.operationKey, requestHash, status: 'pending', sessionId: null,
+      operationKey, requestHash, status: 'pending', sessionId: null,
       attemptRef: input.attemptRef, refusal: null, createdAt: '2026-08-23T00:00:00.000Z', settledAt: null,
     },
     revision: 1, updatedAt: '2026-08-23T00:00:00.000Z', ...overrides,
@@ -358,7 +591,7 @@ function codexTranscript(summary: string, threadId = 'thread-1'): string {
   ].join('\n') + '\n';
 }
 
-describe('two-phase attempt session adapter', () => {
+describe('registry-owned attempt session adapter', () => {
   it('applies ONE pair of limits to BOTH runtimes from the retained constants', () => {
     // The codex adapter no longer carries its own copy of these limits (its mirrored constants were
     // dead code): the port applies the retained pair to every runtime, so a drift has nowhere to hide.
@@ -387,19 +620,20 @@ describe('two-phase attempt session adapter', () => {
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
     await launch.receipt;
-    expect(events[0]).toBe(`bindings.write:${input.operationKey}:pending:0`);
-    expect(events[1]).toBe(`host.create:${input.operationKey}`);
-    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+    const expectedHostKey = `op-${sha256Hex(input.operationKey)}`;
+    expect(events[0]).toBe(`bindings.write:${expectedHostKey}:pending:0`);
+    expect(events[1]).toBe(`host.create:${expectedHostKey}`);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
       status: 'bound', promptsDelivered: 1, sessionId: host.attempts[0].sessionId,
       requestHash: attemptDeclarationFingerprint(input),
     });
     host.emit(0, codexTranscript('done'));
     host.finish(0);
     await expect(launch.result).resolves.toMatchObject({ state: 'succeeded' });
-    expect(bindings.operations.get(input.operationKey)?.status).toBe('completed');
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('completed');
   });
 
-  it('adopts the winner record when the create CAS is lost and never closes the winner session', async () => {
+  it('refuses a different host session after adopting a create-CAS winner', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration('codex');
@@ -414,11 +648,11 @@ describe('two-phase attempt session adapter', () => {
     const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
-    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
-    // The rival already delivered the only codex prompt, so this instance re-sends nothing.
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+    // The registry owns the collision decision and closes only the session this instance created.
     expect(host.writes).toHaveLength(0);
-    expect(host.closeCalls).toHaveLength(0);
-    expect(bindings.operations.get(input.operationKey)?.promptsDelivered).toBe(1);
+    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.promptsDelivered).toBe(1);
   });
 
   it('reserves each prompt durably before writing it and never re-sends a reserved prompt', async () => {
@@ -450,7 +684,7 @@ describe('two-phase attempt session adapter', () => {
     await vi.waitFor(() => {
       expect(betweenHost.writes).toHaveLength(1);
       expect(betweenHost.writeCalls).toBe(2);
-      expect(betweenBindings.operations.get(input.operationKey)?.promptsDelivered).toBe(2);
+      expect(betweenBindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.promptsDelivered).toBe(2);
     });
     const resumed = createAttemptSessionAdapter({ host: betweenHost, bindings: betweenBindings }).begin(input);
     await expect(resumed.receipt).resolves.toMatchObject({ ok: true, value: { replayed: true } });
@@ -464,9 +698,11 @@ describe('two-phase attempt session adapter', () => {
     const input = declaration();
     // Force the first prompt reservation to lose its CAS while a rival advances the counter to 1.
     bindings.beforeWrite = (record, _expected, call) => {
-      if (record.promptsDelivered === 1 && record.status === 'pending') {
+      if (record.promptsDelivered === 1 && record.status === 'bound') {
         bindings.conflictOn.add(call);
-        bindings.seed({ ...bindings.operations.get(input.operationKey)!, promptsDelivered: 1, revision: 9 });
+        bindings.seed({
+          ...bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)!, promptsDelivered: 1, revision: 9,
+        });
         bindings.beforeWrite = null;
       }
     };
@@ -475,7 +711,7 @@ describe('two-phase attempt session adapter', () => {
     host.resolveCreate(0);
     await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
     // The counter advanced to 2 on the winner's state; it never regressed to 1 and re-armed a duplicate.
-    expect(bindings.operations.get(input.operationKey)?.promptsDelivered).toBe(2);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.promptsDelivered).toBe(2);
     expect(host.writes).toHaveLength(0);
   });
 
@@ -487,9 +723,9 @@ describe('two-phase attempt session adapter', () => {
     // durably cancelled the key. The retry sees a terminal record and must refuse — even though the
     // reservation patch changes only the counter and would leave the status exactly as it found it.
     bindings.beforeWrite = (record, _expectedRevision, call) => {
-      if (record.promptsDelivered === 1 && record.status === 'pending') {
+      if (record.promptsDelivered === 1 && record.status === 'bound') {
         bindings.conflictOn.add(call);
-        const current = bindings.operations.get(input.operationKey)!;
+        const current = bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)!;
         bindings.seed({ ...current, status: 'cancelled' });
         bindings.beforeWrite = null;
       }
@@ -499,7 +735,7 @@ describe('two-phase attempt session adapter', () => {
     host.resolveCreate(0);
     await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
     expect(host.writes).toHaveLength(0);
-    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
       status: 'cancelled', promptsDelivered: 0,
     });
   });
@@ -527,12 +763,12 @@ describe('two-phase attempt session adapter', () => {
     expect(host.attempts).toHaveLength(0);
     expect(host.writes).toHaveLength(0);
     expect(host.closeCalls).toHaveLength(0);
-    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
       status: 'pending', promptsDelivered: 1, sessionId: 'pty-rival',
     });
   });
 
-  it('never repoints a durable sessionId another instance already claimed', async () => {
+  it('refuses and closes a new session when another instance already claimed the durable sessionId', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration('codex');
@@ -543,14 +779,15 @@ describe('two-phase attempt session adapter', () => {
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
     await expect(launch.receipt).resolves.toMatchObject({
-      ok: true, value: { sessionId: host.attempts[0].sessionId },
+      ok: false, refusal: 'binding-conflict',
     });
-    // A host that did not dedupe by operationKey handed back a different session; the durable pointer
-    // `cancel` closes still names the one that was claimed first.
+    // A host that did not dedupe by operationKey handed back a different session. The registry refuses
+    // it without repointing durable state and closes only the unclaimed newcomer.
     expect(host.attempts[0].sessionId).not.toBe('pty-claimed-by-the-winner');
-    expect(bindings.operations.get(input.operationKey)).toMatchObject({
-      status: 'bound', promptsDelivered: 1, sessionId: 'pty-claimed-by-the-winner',
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
+      status: 'failed', promptsDelivered: 0, sessionId: 'pty-claimed-by-the-winner',
     });
+    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
   });
 
   it('settles an attempt whose host receipt never resolves and releases its transcript', async () => {
@@ -564,7 +801,7 @@ describe('two-phase attempt session adapter', () => {
     expect(adapter.rawTranscript(input.attemptRef)!.byteLength).toBeGreaterThan(0);
     // The host never resolves the start receipt, so only the timer can end this attempt.
     await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
-    expect(bindings.operations.get(input.operationKey)?.status).toBe('failed');
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('failed');
     expect(adapter.rawTranscript(input.attemptRef)!.byteLength).toBe(0);
   });
 
@@ -584,7 +821,7 @@ describe('two-phase attempt session adapter', () => {
     // The session therefore idles with nothing to do until the timer reaps it.
     await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
     expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
-    expect(bindings.operations.get(input.operationKey)).toMatchObject({
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
       status: 'failed', promptsDelivered: 1,
     });
   });
@@ -595,8 +832,10 @@ describe('two-phase attempt session adapter', () => {
     const input = declaration();
     const canceller = createAttemptSessionAdapter({ host, bindings });
     await expect(canceller.cancel({ operationKey: input.operationKey, reason: 'operator stop' }))
-      .resolves.toMatchObject({ ok: true, value: { reason: 'abandoned' } });
-    expect(bindings.operations.get(input.operationKey)?.status).toBe('cancelled');
+      .resolves.toMatchObject({
+        ok: true, value: { sessionId: `pty-${'0'.repeat(32)}`, reason: 'abandoned' },
+      });
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('cancelled');
 
     const later = createAttemptSessionAdapter({ host, bindings }).begin(input);
     await expect(later.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
@@ -616,7 +855,7 @@ describe('two-phase attempt session adapter', () => {
       await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
       expect(host.attempts).toHaveLength(0);
       expect(adapter.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
-      expect(bindings.operations.get(input.operationKey)?.status).toBe(status);
+      expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe(status);
     }
   });
 
@@ -849,7 +1088,7 @@ describe('two-phase attempt session adapter', () => {
     expect(bindings.operations.size).toBe(0);
   });
 
-  it('barriers create refusal, bind failure, cancel-before-create, and exit-before-receipt without a live projection', async () => {
+  it('barriers create refusal, atomic-start failure, cancel-before-create, and exit-before-receipt without a live projection', async () => {
     const input = declaration();
 
     // Cancel before the session is created: the tombstone lands first and NO session is ever created.
@@ -859,12 +1098,14 @@ describe('two-phase attempt session adapter', () => {
     const cancelled = cancelAdapter.begin(input);
     const cancelResult = cancelAdapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' });
     expect(cancelAdapter.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
-    await expect(cancelResult).resolves.toMatchObject({ ok: true, value: { reason: 'abandoned' } });
+    await expect(cancelResult).resolves.toMatchObject({
+      ok: true, value: { sessionId: `pty-${'0'.repeat(32)}`, reason: 'abandoned' },
+    });
     await expect(cancelled.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
     await expect(cancelled.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
     expect(cancelHost.attempts).toHaveLength(0);
     expect(cancelHost.closeCalls).toHaveLength(0);
-    expect(cancelBindings.operations.get(input.operationKey)?.status).toBe('cancelled');
+    expect(cancelBindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('cancelled');
 
     // The host refuses at create: the durable record settles `failed` and no session leaks.
     const refuseHost = new MemorySessionHost();
@@ -873,7 +1114,9 @@ describe('two-phase attempt session adapter', () => {
     refuseHost.refuseCreate(0, { ok: false, refusal: 'launcher-unavailable', detail: 'claude missing' });
     await expect(refused.receipt).resolves.toEqual({ ok: false, refusal: 'launcher-unavailable', detail: 'claude missing' });
     expect(refuseHost.closeCalls).toHaveLength(0);
-    expect(refuseBindings.operations.get(input.operationKey)).toMatchObject({ status: 'failed', receipt: { refusal: 'launcher-unavailable' } });
+    expect(refuseBindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
+      status: 'failed', receipt: { refusal: 'launcher-unavailable' },
+    });
 
     const bindHost = new MemorySessionHost();
     const bindings = new MemoryBindings();
@@ -885,11 +1128,10 @@ describe('two-phase attempt session adapter', () => {
     await expect(bindFailed.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('binding-conflict') });
     expect(bindAdapter.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
     expect(bindHost.closeCalls).toEqual([bindHost.attempts[0].sessionId]);
-    expect(bindings.operations.get(input.operationKey)?.status).toBe('failed');
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('failed');
 
     const earlyHost = new MemorySessionHost();
     const earlyBindings = new MemoryBindings();
-    earlyBindings.gate = deferred();
     const earlyAdapter = createAttemptSessionAdapter({ host: earlyHost, bindings: earlyBindings });
     const early = earlyAdapter.begin(input);
     await vi.waitFor(() => expect(earlyHost.attempts).toHaveLength(1));
@@ -903,10 +1145,10 @@ describe('two-phase attempt session adapter', () => {
     await expect(early.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('internal') });
     expect(resultSettled).toBe(true);
     expect(earlyHost.writes).toHaveLength(0);
-    expect(earlyBindings.operations.get(input.operationKey)?.status).toBe('failed');
+    expect(earlyBindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('failed');
   });
 
-  it('persists cancellation through bind and refuses cancellation replay after restart', async () => {
+  it('persists cancellation through atomic start and refuses cancellation replay after restart', async () => {
     const input = declaration();
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
@@ -917,7 +1159,9 @@ describe('two-phase attempt session adapter', () => {
     host.resolveCreate(0);
     await vi.waitFor(() => expect(bindings.calls).toHaveLength(1));
     const cancellation = adapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' });
-    await vi.waitFor(() => expect(bindings.operations.get(input.operationKey)?.status).toBe('cancelled'));
+    await vi.waitFor(() => expect(
+      bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status,
+    ).toBe('cancelled'));
     bindings.gate!.resolve();
     await expect(cancellation).resolves.toMatchObject({ ok: true, value: { reason: 'closed' } });
     await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
@@ -946,7 +1190,7 @@ describe('two-phase attempt session adapter', () => {
     const attemptsBeforeRestart = host.attempts.length;
     const conflict = createAttemptSessionAdapter({ host, bindings }).begin(mutate(input));
     await expect(conflict.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
-    expect(bindings.operations.get(input.operationKey)?.requestHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.requestHash).toMatch(/^[a-f0-9]{64}$/);
     expect(host.attempts).toHaveLength(attemptsBeforeRestart);
   });
 
@@ -975,10 +1219,10 @@ describe('two-phase attempt session adapter', () => {
     expect(host.attempts).toHaveLength(1);
   });
 
-  it('maps rejected bind, prompt write, and rollback close promises to internal failures', async () => {
+  it('maps rejected atomic start, prompt write, and post-start close promises to internal failures', async () => {
     const bindHost = new MemorySessionHost();
     const bindBindings = new MemoryBindings();
-    bindBindings.rejectBind = true;
+    bindBindings.rejectStartBinding = true;
     const bind = createAttemptSessionAdapter({ host: bindHost, bindings: bindBindings }).begin(declaration());
     await vi.waitFor(() => expect(bindHost.attempts).toHaveLength(1));
     bindHost.resolveCreate(0);
@@ -995,7 +1239,7 @@ describe('two-phase attempt session adapter', () => {
     await expect(write.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
     await expect(write.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('internal') });
     expect(writeHost.closeCalls).toHaveLength(1);
-    expect(writeBindings.operations.get(declaration().operationKey)?.status).toBe('failed');
+    expect(writeBindings.operations.get(`op-${sha256Hex(declaration().operationKey)}`)?.status).toBe('failed');
 
     const closeHost = new MemorySessionHost();
     closeHost.rejectClose = true;
@@ -1015,6 +1259,32 @@ describe('two-phase attempt session adapter', () => {
     expect(rejectStore.attempts).toHaveLength(0);
   });
 
+  it.each(['throws', 'refuses'] as const)('records a terminal closed exit when the host %s during close', async (failure) => {
+    const host = new MemorySessionHost();
+    host.rejectClose = failure === 'throws';
+    host.refuseClose = failure === 'refuses';
+    const mixed = mixedOperationBindings(host);
+    const input = declaration();
+    const adapter = createAttemptSessionAdapter({
+      host, bindings: mixed.bindings, sessionRecords: mixed.sessionRecords,
+    });
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+
+    await expect(adapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' }))
+      .resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
+    expect(mixed.readDocument().sessions).toEqual([
+      expect.objectContaining({
+        sessionId: host.attempts[0].sessionId,
+        state: 'exited',
+        exit: expect.objectContaining({ exitCode: null, reason: 'closed' }),
+      }),
+    ]);
+  });
+
   it('refuses exit between Claude prompts and isolates recorder.closed exceptions', async () => {
     const host = new MemorySessionHost();
     host.finishAfterWrite = 0;
@@ -1032,7 +1302,9 @@ describe('two-phase attempt session adapter', () => {
     await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
     expect(host.writes).toHaveLength(1);
     // The exited operation is durably terminal, so it is never resumed and prompt 0 is never re-sent.
-    expect(bindings.operations.get(input.operationKey)).toMatchObject({ status: 'failed', promptsDelivered: 1 });
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
+      status: 'failed', promptsDelivered: 1,
+    });
   });
 
   it('shares exact duplicates, conflicts changed operation requests, and never re-runs a completed operation', async () => {
@@ -1051,7 +1323,7 @@ describe('two-phase attempt session adapter', () => {
     host.finish(0);
     await first.result;
     const writeCount = host.writes.length;
-    expect(bindings.operations.get(input.operationKey)?.status).toBe('completed');
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('completed');
 
     const restarted = createAttemptSessionAdapter({ host, bindings });
     const replay = restarted.begin(input);
@@ -1207,7 +1479,7 @@ describe('two-phase attempt session adapter', () => {
 
   /**
    * [C-S4] pre-receipt. The worktree-path validator runs BEFORE any durable record or host session, so
-   * an unsafe cwd can never produce a receipt (or a session the rollback would then have to close).
+   * an unsafe cwd can never produce a receipt or a session the registry would have to close.
    */
   it('refuses an unsafe attempt worktree cwd before any receipt or host session exists', async () => {
     for (const relativeCwd of ['../escape', '/etc', 'C:/kb', 'orgs/example/con', 'orgs/../../escape']) {

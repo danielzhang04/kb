@@ -191,7 +191,11 @@ export interface ManagedCancellationInput {
 /** Injected, idempotent stop authority. No production implementation is activated by this module. */
 export interface ExecutionCancellationController {
   cancelManager(input: ManagedCancellationInput): Promise<void>;
-  cancelWorker(input: ManagedCancellationInput & { attemptRef: string }): Promise<void>;
+  cancelWorker(input: ManagedCancellationInput & { attemptRef: string; attemptOperationKey: string }): Promise<void>;
+}
+
+function workerAttemptOperationKey(attemptRef: string, iterationRequestRef?: string): string {
+  return iterationRequestRef ? `iteration-turn:${iterationRequestRef}` : `automatic-attempt:${attemptRef}`;
 }
 
 export interface ResultIntegrator {
@@ -1011,7 +1015,13 @@ export class AutomaticExecutionEngine {
             intent: 'run-cancel' as const,
           };
           if (session.role === 'manager') await this.options.cancellation.cancelManager(signal);
-          else if (session.attemptRef) await this.options.cancellation.cancelWorker({ ...signal, attemptRef: session.attemptRef });
+          else if (session.attemptRef) {
+            await this.options.cancellation.cancelWorker({
+              ...signal,
+              attemptRef: session.attemptRef,
+              attemptOperationKey: session.attemptOperationKey ?? workerAttemptOperationKey(session.attemptRef),
+            });
+          }
           else throw new AutomaticExecutionError('worker session is missing its attempt reference');
           stoppedSessionRefs.push(session.sessionRef);
         } catch {
@@ -1950,9 +1960,13 @@ export class AutomaticExecutionEngine {
     if (!profile) {
       throw new AutomaticExecutionError('attempt routing is not an approved server-owned profile');
     }
+    const attemptOperationKey = workerAttemptOperationKey(attempt.attemptRef, iterationContract?.request.requestRef);
     let session = getSession(detail, attempt.managedSessionRef);
     if (!session) {
-      const created = this.options.store.createWorkerSession(input.subject, attempt.attemptRef, { expectedAttemptVersion: attempt.version });
+      const created = this.options.store.createWorkerSession(input.subject, attempt.attemptRef, {
+        expectedAttemptVersion: attempt.version,
+        attemptOperationKey,
+      });
       if (!created.ok) throw new AutomaticExecutionError(created.detail);
       session = created.value;
       detail = this.detail(input);
@@ -1966,7 +1980,9 @@ export class AutomaticExecutionEngine {
     attempt = this.detail(input).attempts.find((candidate) => candidate.attemptRef === attempt?.attemptRef) as Attempt;
     if (attempt.state === 'queued') attempt = this.transitionAttempt(input, attempt.attemptRef, 'starting');
     session = this.detail(input).sessions.find((candidate) => candidate.sessionRef === session?.sessionRef) as ManagedSession;
-    if (session.state === 'pending') session = this.transitionSession(input, session.sessionRef, 'starting');
+    if (session.state === 'pending') {
+      session = this.transitionSession(input, session.sessionRef, 'starting', attemptOperationKey);
+    }
     // `starting -> running` is DELIBERATELY not projected here ([C-S5]). Nothing has been started yet:
     // the attempt reaches `running` only in `projectAttemptRunning`, once the attempt port's start
     // receipt proves the session exists and is durably bound. A refused start therefore never leaves a
@@ -2121,7 +2137,7 @@ export class AutomaticExecutionEngine {
     policy: PolicyEnvironment,
   ): Promise<({ state: 'succeeded' | 'waiting-human' | 'stopped'; stageId: string })> {
     const { stage, proposalStage, attempt, session, profile, assignedAgent, iterationContract } = prepared;
-    const operationKey = iterationContract ? `iteration-turn:${iterationContract.request.requestRef}` : `automatic-attempt:${attempt.attemptRef}`;
+    const operationKey = session.attemptOperationKey ?? workerAttemptOperationKey(attempt.attemptRef);
     const resultOperationKey = this.resultOperationKey(this.detail(input), stage, attempt, iterationContract);
     const worktreePath = planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef);
     const iterationOwned = this.isIterationOwned(this.detail(input), stage);
@@ -2540,11 +2556,19 @@ export class AutomaticExecutionEngine {
     return result.value;
   }
 
-  private transitionSession(input: ExecuteRunInput, sessionRef: string, state: ManagedSession['state']): ManagedSession {
+  private transitionSession(
+    input: ExecuteRunInput,
+    sessionRef: string,
+    state: ManagedSession['state'],
+    attemptOperationKey?: string,
+  ): ManagedSession {
     const session = this.detail(input).sessions.find((candidate) => candidate.sessionRef === sessionRef);
     if (!session) throw new AutomaticExecutionError('session disappeared');
-    if (session.state === state) return session;
-    const result = this.options.store.transitionSession(input.subject, sessionRef, session.version, state);
+    if (session.state === state
+      && (attemptOperationKey === undefined || session.attemptOperationKey === attemptOperationKey)) return session;
+    const result = this.options.store.transitionSession(
+      input.subject, sessionRef, session.version, state, attemptOperationKey,
+    );
     if (!result.ok) throw new AutomaticExecutionError(result.detail);
     return result.value;
   }

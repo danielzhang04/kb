@@ -18,29 +18,26 @@ import { parseCodexStream } from './codexResultParser.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
 import { validateRelativeCwd } from '../pty/fdPinnedPaths.ts';
+import type { SessionRecordRegistry } from '../pty/sessionRecord.ts';
 import {
-  RUN_CONTROLLER_NULL_BROWSER_SESSION_REF,
   type ApprovedAttemptDeclaration,
   type ApprovedCheckpointInstruction,
   type ApprovedRunInstruction,
-  type AttemptBindingPort,
   type AttemptExecutionPort,
   type AttemptLaunch,
   type AttemptOperationRecord,
   type AttemptOperationStatus,
   type AttemptParserContext,
   type AttemptStartReceipt,
-  type HostLaunch,
   type HostRefusalCode,
-  type HostStartReceipt,
   type ObservedExit,
   type OperationReceipt,
   type ParsedAttemptResult,
   type PortResult,
   type SessionDataFrame,
   type SessionHost,
-  type SessionHostRequest,
   type SessionSink,
+  type StartRunSessionReceipt,
 } from '../pty/contracts.ts';
 import type { LaunchRecipe } from '../../shared/ptyProtocol.ts';
 
@@ -50,13 +47,15 @@ type ExecutionUsage = WorkerExecutionResult['usage'];
 const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
 const TERMINAL_ATTEMPT_LIMIT = 32;
+/** Valid-shaped sentinel used only when no host receipt exists. The sole production cancellation
+ * caller awaits acknowledgement but deliberately discards its value (`managedExecution.ts`). */
+const UNKNOWN_SESSION_ID = `pty-${'0'.repeat(32)}`;
 const RAW_AUTHORITY_FIELDS = new Set([
   'recipe', 'command', 'executable', 'args', 'argv', 'env', 'uid', 'user', 'host', 'token',
   'cwd', 'resumeRef',
 ]);
 const ZERO_USAGE: ExecutionUsage = { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 };
 const TERMINAL_STATUSES: ReadonlySet<AttemptOperationStatus> = new Set(['cancelled', 'failed', 'completed']);
-
 type ResumeRuntime = ApprovedAttemptDeclaration['profile']['runtime'];
 
 interface ResolvedClaudeLaunchPolicy {
@@ -73,7 +72,11 @@ export interface AttemptSessionRecorder {
 
 export interface AttemptSessionAdapterOptions {
   host: SessionHost;
-  bindings: AttemptBindingPort;
+  /** The one durable attempt/session authority, including the atomic host start. */
+  sessionRecords: Pick<SessionRecordRegistry,
+    'startRunSession' | 'byAttempt' | 'readOperation' | 'writeOperation'>;
+  /** One safe control-key to host-key mapping line per newly launched attempt. */
+  log?: (message: string) => void;
   resolveClaudePolicy?: (workflowProfile: string | null) => ClaudeToolPolicy;
   /** Maps a validated server-owned Claude policy/settings pair to the host recipe table. */
   resolveClaudePolicyId?: (input: ResolvedClaudeLaunchPolicy) => string;
@@ -126,9 +129,9 @@ interface ActiveAttempt {
   order: number;
   launch: AttemptLaunch;
   prepared: PreparedAttempt;
-  hostLaunch: HostLaunch | null;
-  /** Resolves with the host launch once phase 1 decides, or `null` when no session was created. */
-  hostLaunchReady: Deferred<HostLaunch | null>;
+  runStart: StartRunSessionReceipt | null;
+  /** Resolves with the registry-owned start once phase 1 decides, or `null` when no session was created. */
+  runStartReady: Deferred<StartRunSessionReceipt | null>;
   /** Streaming-decoded stdout; see `decodeChunk`. */
   readTranscript(): string;
   rawBytes(): Uint8Array;
@@ -297,6 +300,10 @@ export function attemptDeclarationFingerprint(input: ApprovedAttemptDeclaration)
   return sha256Hex(JSON.stringify(canonical(input)));
 }
 
+function hostKey(controlOperationKey: string): string {
+  return `op-${sha256Hex(controlOperationKey)}`;
+}
+
 function attemptAgentId(input: ApprovedAttemptDeclaration): string {
   return input.assignment?.agentId ?? input.profile.id;
 }
@@ -456,6 +463,7 @@ function receiptStatus(status: AttemptOperationStatus): OperationReceipt['status
 }
 
 export function createAttemptSessionAdapter(options: AttemptSessionAdapterOptions): AttemptSessionAdapter {
+  if (!options.sessionRecords) throw new Error('attempt session records are required');
   const attempts = new Map<string, ActiveAttempt>();
   const terminalOrder: string[] = [];
   let retainedTerminalBytes = 0;
@@ -508,18 +516,24 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
 
   const readRecord = async (operationKey: string): Promise<PortResult<AttemptOperationRecord | null>> => {
     try {
-      return { ok: true, value: await options.bindings.readOperation(operationKey) };
+      return { ok: true, value: await options.sessionRecords.readOperation(hostKey(operationKey)) };
     } catch (error) {
       return internal(error);
     }
   };
 
   const writeRecord = async (
+    controlOperationKey: string,
     record: AttemptOperationRecord,
     expectedRevision: number | null,
   ): Promise<PortResult<AttemptOperationRecord>> => {
     try {
-      return await options.bindings.writeOperation(record, expectedRevision);
+      const operationKey = hostKey(controlOperationKey);
+      return await options.sessionRecords.writeOperation({
+        ...record,
+        operationKey,
+        receipt: record.receipt ? { ...record.receipt, operationKey } : record.receipt,
+      }, expectedRevision);
     } catch (error) {
       return internal(error);
     }
@@ -553,6 +567,15 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     const status = patch.status ?? current.status;
     const updatedAt = new Date().toISOString();
     const sessionId = patch.sessionId === undefined ? current.sessionId : patch.sessionId;
+    const wireStatus = receiptStatus(status);
+    const inherited = patch.refusal === undefined ? (current.receipt?.refusal ?? null) : patch.refusal;
+    // The durable document enforces one refusal per receipt status: `pending`/`bound` carry none,
+    // `cancelled` carries exactly `cancelled`, and `failed` MUST carry one. A worker that merely reported
+    // an unsuccessful result has no host refusal of its own, and writing that receipt with a null refusal
+    // made the whole persistence mutate throw, so the operation stayed `pending` forever.
+    const refusal = wireStatus === 'cancelled'
+      ? 'cancelled'
+      : wireStatus === 'failed' ? (inherited ?? 'internal') : null;
     return {
       ...current,
       status,
@@ -562,10 +585,10 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       receipt: {
         operationKey: current.operationKey,
         requestHash: current.requestHash,
-        status: receiptStatus(status),
+        status: wireStatus,
         sessionId,
         attemptRef: current.attemptRef,
-        refusal: patch.refusal === undefined ? (current.receipt?.refusal ?? null) : patch.refusal,
+        refusal,
         createdAt: current.receipt?.createdAt ?? updatedAt,
         settledAt: TERMINAL_STATUSES.has(status) || status === 'bound' ? updatedAt : null,
       },
@@ -600,7 +623,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
           : refuse('binding-conflict', `attempt operation already ${current.status}`);
       }
       const next = mutate(current);
-      const written = await writeRecord(next, current.revision);
+      const written = await writeRecord(attempt.input.operationKey, next, current.revision);
       if (written.ok) {
         attempt.record = written.value;
         return written;
@@ -646,7 +669,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
           },
           revision: 0, updatedAt: settledAt,
         };
-        const written = await writeRecord(tombstone, null);
+        const written = await writeRecord(operationKey, tombstone, null);
         if (written.ok) { if (attempt) attempt.record = written.value; return written; }
         if (written.refusal !== 'binding-conflict') return written;
         continue;
@@ -659,6 +682,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
         return refuse('binding-conflict', `attempt operation already ${current.status}`);
       }
       const written = await writeRecord(
+        operationKey,
         nextRecord(current, { status: 'cancelled', refusal: 'cancelled' }),
         current.revision,
       );
@@ -705,7 +729,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
   const isLive = (attempt: ActiveAttempt): boolean => attempt.record !== null
     && attempt.record.status === 'bound'
     && !attempt.settled && !attempt.exited && !attempt.cancelled
-    && options.bindings.byAttempt(attempt.input.subject, attempt.input.attemptRef) !== null;
+    && options.sessionRecords.byAttempt(attempt.input.subject, attempt.input.attemptRef) !== null;
 
   const selectAttempt = (operator: string, runRef: string): ActiveAttempt | null => {
     let selected: ActiveAttempt | null = null;
@@ -719,18 +743,17 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
   const closeAttempt = (attempt: ActiveAttempt, sessionId: string): Promise<PortResult<ObservedExit>> => {
     if (attempt.closePromise) return attempt.closePromise;
     attempt.closePromise = (async () => {
+      if (attempt.runStart === null || attempt.runStart.sessionId !== sessionId) {
+        attempt.internalFailure = 'registry-owned session start is unavailable';
+        return refuse('internal', attempt.internalFailure);
+      }
       try {
-        const closed = await options.host.close(sessionId);
-        if (closed.ok) attempt.exit.resolve(closed.value);
-        else {
-          attempt.internalFailure = closed.detail ?? `session close refused: ${closed.refusal}`;
-          attempt.exit.resolve(observedExitFailure(sessionId, 'abandoned'));
-        }
+        const closed = await attempt.runStart.close();
+        if (!closed.ok) attempt.internalFailure = closed.detail ?? `session close refused: ${closed.refusal}`;
         return closed;
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         attempt.internalFailure = detail;
-        attempt.exit.resolve(observedExitFailure(sessionId, 'abandoned'));
         return { ok: false, refusal: 'internal', detail };
       }
     })();
@@ -818,7 +841,6 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     // and the operator-visible log must keep receiving frames past that cap.
     const ioDecoder = new TextDecoder('utf-8', { fatal: false });
     let exceededBeforeAttempt = false;
-    let exitedBeforeAttempt = false;
     let attempt!: ActiveAttempt;
     const sink: SessionSink = {
       data(frame) {
@@ -857,27 +879,15 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
           else maybeCloseCompletedClaude(attempt);
         }
       },
-      exit(observed) {
-        exitedBeforeAttempt = true;
-        if (attempt) attempt.exited = true;
-        try { options.recorder?.exit(input, observed); } catch { /* recorder observation is failure-isolated */ }
-        exit.resolve(observed);
-      },
+      // Run exits are observed through the registry-owned promise installed after start.
+      exit() {},
       closed() {
-        if (exitedBeforeAttempt || attempt?.settled === true) return true;
+        if (attempt?.exited === true || attempt?.settled === true) return true;
         try { return options.recorder?.closed(input) === true; } catch { return false; }
       },
     };
-    const request: SessionHostRequest = {
-      operationKey: input.operationKey,
-      // Run attempts are controller-null: charged to the declaration's owning operator with no browser.
-      principal: { operator: input.subject, browserSessionRef: RUN_CONTROLLER_NULL_BROWSER_SESSION_REF },
-      recipe: prepared.recipe,
-      rootId: input.rootId,
-      relativeCwd: input.relativeCwd,
-      cols: input.cols,
-      rows: input.rows,
-    };
+    const hostOperationKey = hostKey(input.operationKey);
+    options.log?.(`control=${input.operationKey} host=${hostOperationKey} attemptRef=${input.attemptRef}`);
 
     let receiptPromise!: Promise<PortResult<AttemptStartReceipt>>;
     let resultPromise!: Promise<WorkerExecutionResult>;
@@ -891,8 +901,8 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       order: order += 1,
       launch,
       prepared,
-      hostLaunch: null,
-      hostLaunchReady: deferred<HostLaunch | null>(),
+      runStart: null,
+      runStartReady: deferred<StartRunSessionReceipt | null>(),
       readTranscript: () => transcript,
       rawBytes: () => Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))),
       retainedBytes: () => retainedBytes,
@@ -905,7 +915,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       outputLimitExceeded: exceededBeforeAttempt,
       timedOut: false,
       cancelled: false,
-      exited: exitedBeforeAttempt,
+      exited: false,
       settled: false,
       sessionId: null,
       framesWritten: 0,
@@ -921,7 +931,8 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     };
     attempts.set(input.operationKey, attempt);
 
-    const rollback = async (
+    /** Cleans up only failures after the registry has returned a durable successful start. */
+    const failAfterStart = async (
       receiptResult: PortResult<AttemptStartReceipt>,
     ): Promise<PortResult<AttemptStartReceipt>> => {
       const cancelledRollback = !receiptResult.ok && receiptResult.refusal === 'cancelled';
@@ -955,33 +966,33 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       }
       // ---- WRITE-AHEAD PHASE 1: the durable intent lands BEFORE any session can exist. ----
       const read = await readRecord(input.operationKey);
-      if (!read.ok) { attempt.hostLaunchReady.resolve(null); return read; }
+      if (!read.ok) { attempt.runStartReady.resolve(null); return read; }
       if (read.value !== null) {
         // Terminal status is decided before declaration identity: a blind `cancel()` tombstone carries no
         // `requestHash` to compare, and a cancelled key must refuse as cancelled, not as a conflict.
         const settled = terminalRefusal(read.value);
-        if (settled) { attempt.hostLaunchReady.resolve(null); return settled; }
+        if (settled) { attempt.runStartReady.resolve(null); return settled; }
         if (read.value.requestHash !== requestFingerprint) {
-          attempt.hostLaunchReady.resolve(null);
+          attempt.runStartReady.resolve(null);
           return refuse('binding-conflict', 'operationKey already names a different approved attempt declaration');
         }
         attempt.record = read.value;
       } else {
-        const created = await writeRecord(pendingRecord(input, requestFingerprint), null);
+        const created = await writeRecord(input.operationKey, pendingRecord(input, requestFingerprint), null);
         if (created.ok) attempt.record = created.value;
         else if (created.refusal === 'binding-conflict') {
           // Another instance owns this key. Adopt and resume ITS record; never create a rival session and
           // never close the session this instance did not create.
           const adopted = await readRecord(input.operationKey);
-          if (!adopted.ok) { attempt.hostLaunchReady.resolve(null); return adopted; }
+          if (!adopted.ok) { attempt.runStartReady.resolve(null); return adopted; }
           if (adopted.value === null) {
-            attempt.hostLaunchReady.resolve(null);
+            attempt.runStartReady.resolve(null);
             return refuse('internal', 'durable attempt operation disappeared after a create conflict');
           }
           const settled = terminalRefusal(adopted.value);
-          if (settled) { attempt.hostLaunchReady.resolve(null); return settled; }
+          if (settled) { attempt.runStartReady.resolve(null); return settled; }
           if (adopted.value.requestHash !== requestFingerprint) {
-            attempt.hostLaunchReady.resolve(null);
+            attempt.runStartReady.resolve(null);
             return refuse('binding-conflict', 'operationKey already names a different approved attempt declaration');
           }
           // Losing the create CAS means the winner is running RIGHT NOW, not that it crashed: its own
@@ -990,7 +1001,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
           // CASing `bound`. Only a record whose approved prompt sequence is already fully delivered is
           // safe to adopt; anything mid-flight refuses to the loser and lets the winner finish.
           if (adopted.value.promptsDelivered !== prepared.prompts.length) {
-            attempt.hostLaunchReady.resolve(null);
+            attempt.runStartReady.resolve(null);
             return refuse(
               'binding-conflict',
               'another instance is still delivering the approved prompt sequence for this operationKey',
@@ -998,141 +1009,125 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
           }
           attempt.record = adopted.value;
         } else {
-          attempt.hostLaunchReady.resolve(null);
+          attempt.runStartReady.resolve(null);
           return created;
         }
       }
       if (attempt.cancelled || attempt.record?.status === 'cancelled') {
-        attempt.hostLaunchReady.resolve(null);
+        attempt.runStartReady.resolve(null);
         return refuse('cancelled', 'attempt was cancelled before its session was created');
       }
 
-      // ---- PHASE 1: create (or, by operationKey, re-attach to) the host session. ----
-      let hostLaunch: HostLaunch;
-      try { hostLaunch = options.host.create(request, sink); } catch (error) {
-        attempt.hostLaunchReady.resolve(null);
-        const failure = internal(error);
-        await settleRecord(attempt, 'failed', failure.refusal);
-        return failure;
-      }
-      attempt.hostLaunch = hostLaunch;
-      attempt.hostLaunchReady.resolve(hostLaunch);
-      hostLaunch.exit.then((observed) => {
-        attempt.exited = true;
-        exit.resolve(observed);
-      }, () => {
-        attempt.exited = true;
-        exit.resolve(observedExitFailure(attempt.sessionId ?? 'unknown', 'abandoned'));
-      });
-
-      const cancelledBeforeCreate = await cancellationRefusal(attempt);
-      if (cancelledBeforeCreate) return rollback(cancelledBeforeCreate);
-      let hostReceipt: PortResult<HostStartReceipt>;
+      // ---- PHASE 1: the registry creates and atomically binds the run session. ----
+      let started: PortResult<StartRunSessionReceipt>;
       try {
-        hostReceipt = await hostLaunch.receipt;
-      } catch (error) {
-        return rollback(internal(error));
-      }
-      if (!hostReceipt.ok) {
-        await settleRecord(attempt, 'failed', hostReceipt.refusal);
-        return hostReceipt;
-      }
-      attempt.sessionId = hostReceipt.value.sessionId;
-      const cancelledAfterCreate = await cancellationRefusal(attempt);
-      if (cancelledAfterCreate) return rollback(cancelledAfterCreate);
-      if (attempt.exited) return rollback(refuse('internal', 'session exited before attempt binding'));
-      let binding: PortResult<{ revision: number }>;
-      try {
-        binding = await options.bindings.bind({
-          expectedRevision: hostReceipt.value.revision,
+        started = await options.sessionRecords.startRunSession({
           operator: input.subject,
           runRef: input.runRef,
           attemptRef: input.attemptRef,
           managedSessionRef: input.sessionRef,
-          sessionId: hostReceipt.value.sessionId,
+          hostOperationKey,
+          requestHash: requestFingerprint,
+          recipe: prepared.recipe,
+          rootId: input.rootId,
+          relativeCwd: input.relativeCwd,
+          size: { cols: input.cols, rows: input.rows },
+          displayName: input.proposalStage.title,
+          sink,
         });
       } catch (error) {
-        return rollback(internal(error));
+        attempt.runStartReady.resolve(null);
+        return internal(error);
       }
-      const cancelledAfterBind = await cancellationRefusal(attempt);
-      if (cancelledAfterBind) return rollback(cancelledAfterBind);
-      if (attempt.exited) return rollback(refuse('internal', 'session exited during attempt binding'));
-      if (!binding.ok) return rollback(binding);
+      if (!started.ok) {
+        attempt.runStartReady.resolve(null);
+        return started;
+      }
+      attempt.runStart = started.value;
+      attempt.sessionId = started.value.sessionId;
+      attempt.runStartReady.resolve(started.value);
+      void started.value.exit.then((observed) => {
+        attempt.exited = true;
+        try { options.recorder?.exit(input, observed); } catch { /* recorder observation is failure-isolated */ }
+        exit.resolve(observed);
+      }, () => {
+        attempt.exited = true;
+        exit.resolve(observedExitFailure(started.value.sessionId, 'abandoned'));
+      });
+      const refreshed = await readRecord(input.operationKey);
+      if (!refreshed.ok || refreshed.value === null) {
+        return failAfterStart(refreshed.ok
+          ? refuse('internal', 'durable attempt operation disappeared after session start')
+          : refreshed);
+      }
+      attempt.record = refreshed.value;
+      const cancelledAfterStart = await cancellationRefusal(attempt);
+      if (cancelledAfterStart) return failAfterStart(cancelledAfterStart);
+      if (attempt.exited) return failAfterStart(refuse('internal', 'session exited before approved prompt delivery'));
 
       // ---- WRITE-AHEAD PHASE 2: reserve prompt i durably BEFORE its bytes leave this process. ----
       // Ordering per prompt: CAS(promptsDelivered = current + 1) -> host.write(prompt). A crash between
       // the CAS and the write loses at most that one prompt; a crash after the write can never re-send it
       // because the reservation is already durable. The closure reads `current.promptsDelivered` so a CAS
       // retry after a conflict re-applies the increment on the winner's counter instead of regressing it.
-      // The durable `sessionId` is the pointer `durablyCancel` closes. It is claimed once, by whoever
-      // first wrote a non-null one; a later writer never repoints it at the session IT created, because a
-      // host that failed to dedupe by `operationKey` would otherwise strand the original session with no
-      // durable name. `undefined` leaves the field untouched (see `nextRecord`).
-      const claimSessionId = (current: AttemptOperationRecord): string | undefined => (
-        current.sessionId === null ? hostReceipt.value.sessionId : undefined
-      );
       if ((attempt.record?.promptsDelivered ?? 0) > prepared.prompts.length) {
-        return rollback(refuse('internal', 'durable prompt progress exceeds the approved declaration'));
+        return failAfterStart(refuse('internal', 'durable prompt progress exceeds the approved declaration'));
       }
       for (;;) {
         const delivered = attempt.record?.promptsDelivered ?? 0;
         if (delivered >= prepared.prompts.length) break;
         const cancelledBeforePrompt = await cancellationRefusal(attempt);
-        if (cancelledBeforePrompt) return rollback(cancelledBeforePrompt);
-        if (attempt.exited) return rollback(refuse('internal', 'session exited before approved prompt delivery'));
+        if (cancelledBeforePrompt) return failAfterStart(cancelledBeforePrompt);
+        if (attempt.exited) return failAfterStart(refuse('internal', 'session exited before approved prompt delivery'));
         const prompt = prepared.prompts[delivered];
         const reserved = await casRecord(attempt, (current) => nextRecord(current, {
           promptsDelivered: current.promptsDelivered + 1,
-          sessionId: claimSessionId(current),
         }));
-        if (!reserved.ok) return rollback(reserved);
+        if (!reserved.ok) return failAfterStart(reserved);
         if (reserved.value.promptsDelivered !== delivered + 1) {
-          return rollback(refuse('binding-conflict', 'another instance advanced the approved prompt sequence'));
+          return failAfterStart(refuse('binding-conflict', 'another instance advanced the approved prompt sequence'));
         }
         attempt.framesWritten += input.profile.runtime === 'claude' ? 1 : 0;
         let written: PortResult<{ accepted: number }>;
-        try { written = await options.host.write(hostReceipt.value.sessionId, prompt); } catch (error) {
+        try { written = await options.host.write(started.value.sessionId, prompt); } catch (error) {
           if (input.profile.runtime === 'claude') attempt.framesWritten -= 1;
-          return rollback(internal(error));
+          return failAfterStart(internal(error));
         }
         const cancelledAfterWrite = await cancellationRefusal(attempt);
-        if (cancelledAfterWrite) return rollback(cancelledAfterWrite);
+        if (cancelledAfterWrite) return failAfterStart(cancelledAfterWrite);
         if (!written.ok || written.value.accepted !== prompt.byteLength) {
           if (input.profile.runtime === 'claude') attempt.framesWritten -= 1;
-          return rollback(written.ok
+          return failAfterStart(written.ok
             ? refuse('internal', 'host accepted only part of the approved prompt')
             : written);
         }
-        if (attempt.exited) return rollback(refuse('internal', 'session exited during approved prompt delivery'));
+        // An exit observed once the LAST approved prompt has been accepted is the attempt running, not a
+        // start failure: every byte the declaration approved is already in the session. Only an exit with
+        // prompts still undelivered aborts the start.
+        if (attempt.exited && (attempt.record?.promptsDelivered ?? 0) < prepared.prompts.length) {
+          return failAfterStart(refuse('internal', 'session exited during approved prompt delivery'));
+        }
       }
       attempt.openingPromptsWritten = true;
       const cancelledBeforeReceipt = await cancellationRefusal(attempt);
-      if (cancelledBeforeReceipt) return rollback(cancelledBeforeReceipt);
-      if (attempt.exited) return rollback(refuse('internal', 'session exited before the attempt start receipt'));
-      const bound = await casRecord(attempt, (current) => nextRecord(current, {
-        status: 'bound', sessionId: claimSessionId(current), refusal: null,
-      }));
-      if (!bound.ok) return rollback(bound);
-      const cancelledAfterBound = await cancellationRefusal(attempt);
-      if (cancelledAfterBound) return rollback(cancelledAfterBound);
-      if (attempt.exited) return rollback(refuse('internal', 'session exited before the attempt start receipt'));
+      if (cancelledBeforeReceipt) return failAfterStart(cancelledBeforeReceipt);
       maybeCloseCompletedClaude(attempt);
       return {
         ok: true,
         value: {
-          operationKey: hostReceipt.value.operationKey,
-          sessionId: hostReceipt.value.sessionId,
+          operationKey: input.operationKey,
+          sessionId: started.value.sessionId,
           attemptRef: input.attemptRef,
-          revision: binding.value.revision,
-          boundAt: hostReceipt.value.boundAt,
-          replayed: hostReceipt.value.replayed,
+          revision: started.value.documentRevision,
+          boundAt: attempt.record.receipt?.settledAt ?? new Date(0).toISOString(),
+          replayed: started.value.replayed,
         },
       };
     })();
 
     /**
      * The timer's escape hatch for an attempt that never got a session pointer. `receiptPromise` awaits
-     * `hostLaunch.receipt`; a host that never resolves it would leave the result promise pending forever,
+     * the registry start; a host that never resolves it would leave the result promise pending forever,
      * so the attempt would never reach `settleAttempt`, never become evictable, and hold its transcript
      * for the life of the process. Racing this against `receiptPromise` restores the invariant that every
      * `begin` ends in `settleAttempt`.
@@ -1217,20 +1212,18 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       if (attempt === null) {
         const cancelled = await durablyCancel(input.operationKey, null);
         if (!cancelled.ok) return cancelled;
-        return { ok: true, value: observedExitFailure(cancelled.value.sessionId ?? input.operationKey, 'abandoned') };
+        return { ok: true, value: observedExitFailure(cancelled.value.sessionId ?? UNKNOWN_SESSION_ID, 'abandoned') };
       }
       if (attempt.cancelPromise) return attempt.cancelPromise;
       attempt.cancelled = true;
       attempt.cancelPromise = (async () => {
         const cancelled = await durablyCancel(input.operationKey, attempt);
         if (!cancelled.ok) return cancelled;
-        const hostLaunch = await attempt.hostLaunchReady.promise;
-        if (!hostLaunch) {
-          return { ok: true as const, value: observedExitFailure(input.operationKey, 'abandoned') };
+        const runStart = await attempt.runStartReady.promise;
+        if (!runStart) {
+          return { ok: true as const, value: observedExitFailure(attempt.sessionId ?? UNKNOWN_SESSION_ID, 'abandoned') };
         }
-        const receipt = await hostLaunch.receipt;
-        if (!receipt.ok) return receipt;
-        return closeAttempt(attempt, receipt.value.sessionId);
+        return closeAttempt(attempt, runStart.sessionId);
       })();
       return attempt.cancelPromise;
     },

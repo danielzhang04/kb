@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  mapPtySessionV1ToV2, migratePtySessionDocument, PtySessionMigrationError,
+  mapPtySessionV1ToV3, migratePtySessionDocument, PtySessionMigrationError,
 } from './sessionMigration.ts';
 import {
   PTY_SESSIONS_V1_DOCUMENT,
@@ -27,7 +27,7 @@ function root(): string {
 /**
  * A literal `kb.pty-session-runs/v1` document — one live row, one ended row with a transcript, one
  * archived row plus its idempotency key. It is written by hand because the session-run store no longer
- * produces v1: since W6.3 it writes the `legacyRuns` array of the v2 document this migration creates, so
+ * produces v1: since W6.3 it writes the `legacyRuns` array of the current document this migration creates, so
  * the only honest source of a v1 fixture is the on-disk shape itself.
  */
 async function writeV1Fixture(stateRoot: string) {
@@ -58,8 +58,9 @@ describe('v1 PTY document migration', () => {
     expect(readFileSync(`${path}.v1.bak`)).toEqual(original);
     const migrated = JSON.parse(readFileSync(path, 'utf8'));
     expect(migrated).toMatchObject({
-      schema: 'kb.pty-sessions/v2',
+      schema: 'kb.pty-sessions/v3',
       revision: 0,
+      epochId: null,
       sessions: [],
       attemptBindings: [],
       operationReceipts: [],
@@ -69,8 +70,9 @@ describe('v1 PTY document migration', () => {
     // missing key (the strict validator refuses that) and never an array.
     expect(migrated.attemptOperations).toEqual({});
     expect(Array.isArray(migrated.attemptOperations)).toBe(false);
-    expect(Object.keys(migrated).sort()).toEqual(['attemptBindings', 'attemptOperations', 'legacyArchiveKeys',
-      'legacyRuns', 'operationReceipts', 'revision', 'schema', 'sessions']);
+    // Contract change: v3 owns epoch state, so the exact document shape deliberately gains epochId.
+    expect(Object.keys(migrated).sort()).toEqual(['attemptBindings', 'attemptOperations', 'epochId',
+      'legacyArchiveKeys', 'legacyRuns', 'operationReceipts', 'revision', 'schema', 'sessions']);
     expect(migrated.legacyRuns.find((row: { sessionRunRef: string }) => row.sessionRunRef === live.sessionRunRef)).toEqual({
       ...live,
       outcome: 'abandoned',
@@ -85,6 +87,26 @@ describe('v1 PTY document migration', () => {
       migrated: false,
       replayed: true,
     });
+  });
+
+  it('migrates strict v2 to v3 with a null epoch and a byte-identical v2 backup', async () => {
+    const stateRoot = root();
+    const path = join(stateRoot, 'pty', 'session-runs.json');
+    mkdirSync(join(stateRoot, 'pty'), { recursive: true });
+    const v2 = {
+      schema: 'kb.pty-sessions/v2', revision: 7, sessions: [], attemptBindings: [],
+      operationReceipts: [], attemptOperations: {}, legacyRuns: [], legacyArchiveKeys: [],
+    };
+    const original = Buffer.from(`${JSON.stringify(v2)}\n`, 'utf8');
+    writeFileSync(path, original);
+
+    await expect(migratePtySessionDocument(path)).resolves.toMatchObject({
+      migrated: true, replayed: false, backupPath: `${path}.v2.bak`,
+    });
+    expect(readFileSync(`${path}.v2.bak`)).toEqual(original);
+    const migrated = JSON.parse(readFileSync(path, 'utf8'));
+    expect(migrated).toEqual({ ...v2, schema: 'kb.pty-sessions/v3', epochId: null });
+    expect(migrated.attemptBindings.every((binding: Record<string, unknown>) => !('retired' in binding))).toBe(true);
   });
 
   it.each(['directory', 'mutex', 'source-read', 'backup', 'fsync-backup', 'write-temp',
@@ -207,10 +229,10 @@ describe('v1 PTY document migration', () => {
     // the record must not rewrite history backwards.
     const source = { schema: 'kb.pty-session-runs/v1' as const,
       runs: [structuredClone(PTY_SESSIONS_V1_LIVE_RUN)], archiveKeys: [] };
-    const forward = mapPtySessionV1ToV2(structuredClone(source), NOW);
+    const forward = mapPtySessionV1ToV3(structuredClone(source), NOW);
     expect(forward.legacyRuns[0]).toMatchObject({ outcome: 'abandoned', endedAt: NOW });
 
-    const behind = mapPtySessionV1ToV2(structuredClone(source), '2026-08-23T10:00:00.000Z');
+    const behind = mapPtySessionV1ToV3(structuredClone(source), '2026-08-23T10:00:00.000Z');
     expect(behind.legacyRuns[0]).toMatchObject({
       outcome: 'abandoned',
       endedAt: new Date(Date.parse(PTY_SESSIONS_V1_LIVE_RUN.startedAt) + 1).toISOString(),

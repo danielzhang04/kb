@@ -35,12 +35,12 @@
  *
  * ── Storage ──
  *
- * These records are the LEGACY arrays of the one v2 PTY document (`kb.pty-sessions/v2`, spec [C-M3]):
+ * These records are the LEGACY arrays of the one v3 PTY document (`kb.pty-sessions/v3`, spec [C-M3]):
  * `legacyRuns` and `legacyArchiveKeys`. There is exactly one document, one lock and one revision
  * counter for the whole PTY stack, injected as a {@link SessionPersistence} port — this store no longer
  * owns a file, a schema, or a validator of its own, so a session run and a v2 session record can never
  * disagree about the document they both live in. Every mutation goes through `persistence.mutate`, which
- * validates the whole v2 document and applies the shared retention caps before publishing it.
+ * validates the whole v3 document and applies the shared retention caps before publishing it.
  *
  * A daemon that still has a v1 `kb.pty-session-runs/v1` document on disk migrates it through W3's
  * `sessionMigration` (byte-for-byte `.v1.bak` first; ambiguity aborts and leaves v1 authoritative). The
@@ -51,7 +51,7 @@
  * "forbidden" — an existence oracle across operators would be its own leak.
  */
 import { randomUUID } from 'node:crypto';
-import type { PtySessionsDocumentV2 } from './contracts.ts';
+import type { PtySessionsDocumentV3 } from './contracts.ts';
 import type { SessionPersistence } from './sessionPersistence.ts';
 
 /** What a session was primed as. A plain shell or an unprimed `claude` is NOT a session run: it belongs
@@ -187,7 +187,7 @@ export interface SessionRunStoreDeps {
   migrate?: () => Promise<unknown>;
 }
 
-/** Build the durable session-run store over the one injected v2 PTY document port. Construction is
+/** Build the durable session-run store over the one injected v3 PTY document port. Construction is
  *  INERT — no directory is created and no file is read until the first read or write. */
 export function createSessionRunStore(
   persistence: SessionPersistence,
@@ -211,9 +211,9 @@ export function createSessionRunStore(
     await migrated;
   };
 
-  /** Every write is one v2 document revision. `null` = accept whatever revision is current: session runs
+  /** Every write is one v3 document revision. `null` = accept whatever revision is current: session runs
    *  are appended/patched by ref, never compare-and-set against the shared PTY revision counter. */
-  const mutate = async <R>(callback: (document: PtySessionsDocumentV2) => R): Promise<R> => {
+  const mutate = async <R>(callback: (document: PtySessionsDocumentV3) => R): Promise<R> => {
     await ensureMigrated();
     const { value } = await persistence.mutate(null, callback);
     return value;
@@ -227,7 +227,7 @@ export function createSessionRunStore(
     return new Date(Math.max(current, floor + 1)).toISOString();
   };
 
-  const findIndex = (state: PtySessionsDocumentV2, owner: string, ref: string): number =>
+  const findIndex = (state: PtySessionsDocumentV3, owner: string, ref: string): number =>
     state.legacyRuns.findIndex((entry) => entry.sessionRunRef === ref && entry.owner === owner);
 
   const requireOwner = (owner: unknown): string => {
@@ -235,7 +235,7 @@ export function createSessionRunStore(
     return owner;
   };
 
-  const readState = (): PtySessionsDocumentV2 => {
+  const readState = (): PtySessionsDocumentV3 => {
     try {
       return persistence.read();
     } catch (error) {
@@ -273,7 +273,7 @@ export function createSessionRunStore(
       };
       try {
         // Retention (live rows never evicted, orphaned archive keys dropped) is enforced for the whole
-        // v2 document by `enforcePtySessionRetention` inside `persistence.mutate`.
+        // v3 document by `enforcePtySessionRetention` inside `persistence.mutate`.
         await mutate((state) => {
           state.legacyRuns.push(structuredClone(record));
         });

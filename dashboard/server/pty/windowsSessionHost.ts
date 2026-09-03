@@ -584,7 +584,7 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
           const boundAt = now().toISOString();
           return { ok: true, value: {
             operationKey: request.operationKey, sessionId, epochId: options.epochId,
-            revision: 1, boundAt, replayed: false,
+            outputSequence: 1, boundAt, replayed: false,
           } };
         } catch {
           await pinned?.release();

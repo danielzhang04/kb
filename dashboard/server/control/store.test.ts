@@ -3249,7 +3249,38 @@ describe('run graph, attempts, and managed sessions', () => {
     if (!queuedAttempt.ok) throw new Error(queuedAttempt.detail);
     expect(queuedStore.createWorkerSession('alice', queuedAttempt.value.attemptRef, {
       expectedAttemptVersion: queuedAttempt.value.version,
-    })).toMatchObject({ ok: true, value: { role: 'worker', state: 'pending' } });
+      attemptOperationKey: '   ',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(queuedStore.createWorkerSession('alice', queuedAttempt.value.attemptRef, {
+      expectedAttemptVersion: queuedAttempt.value.version,
+      attemptOperationKey: 'x'.repeat(513),
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const workerSession = queuedStore.createWorkerSession('alice', queuedAttempt.value.attemptRef, {
+      expectedAttemptVersion: queuedAttempt.value.version,
+    });
+    expect(workerSession).toMatchObject({ ok: true, value: { role: 'worker', state: 'pending' } });
+    if (!workerSession.ok) throw new Error(workerSession.detail);
+    const invalidBackfill = queuedStore.transitionSession(
+      'alice', workerSession.value.sessionRef, workerSession.value.version, 'completed', 'automatic-attempt:queued',
+    );
+    expect(invalidBackfill).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(queuedStore.getRun('alice', queuedRun.run.runRef)).toMatchObject({
+      ok: true,
+      value: { sessions: expect.arrayContaining([
+        expect.objectContaining({
+          sessionRef: workerSession.value.sessionRef,
+          attemptOperationKey: null,
+          state: 'pending',
+          version: workerSession.value.version,
+        }),
+      ]) },
+    });
+    expect(queuedStore.transitionSession(
+      'alice', workerSession.value.sessionRef, workerSession.value.version, 'pending', 'automatic-attempt:queued',
+    )).toMatchObject({
+      ok: true,
+      value: { attemptOperationKey: 'automatic-attempt:queued', state: 'pending', version: workerSession.value.version + 1 },
+    });
 
     for (const target of ['starting', 'running', 'succeeded', 'failed', 'stopped', 'interrupted'] as const) {
       const store = createInMemoryControlPlaneStore(deterministicOptions());

@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { AttemptOperationRecord, OperationReceipt, PtySessionsDocumentV2,
+import type { AttemptOperationRecord, OperationReceipt, PtySessionsDocumentV3,
   SessionRecord } from './contracts.ts';
 import {
   applyEpochAbandonment,
   applyObservedSessionExit,
-  assertPtySessionsDocumentV2,
+  assertPtySessionsDocumentV3,
   beginOperationReceipt,
   createEmptyPtySessionsDocument,
   createSessionPersistence,
@@ -51,16 +51,16 @@ function manualRecord(overrides: Partial<SessionRecord> = {}): SessionRecord {
 }
 
 describe('strict PTY v2 persistence', () => {
-  it('accepts only the exact v2 document and closed record discriminants', () => {
+  it('accepts only the exact v3 document and closed record discriminants', () => {
     const document = createEmptyPtySessionsDocument();
     document.sessions.push(manualRecord());
-    expect(() => assertPtySessionsDocumentV2(document)).not.toThrow();
-    expect(() => assertPtySessionsDocumentV2({ ...document, extra: true })).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2({
+    expect(() => assertPtySessionsDocumentV3(document)).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3({ ...document, extra: true })).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3({
       ...document,
       sessions: [{ ...manualRecord(), controller: null }],
     })).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2({
+    expect(() => assertPtySessionsDocumentV3({
       ...document,
       sessions: [{ ...manualRecord(), state: 'exited', exit: null }],
     })).toThrow(/invalid/i);
@@ -83,11 +83,11 @@ describe('strict PTY v2 persistence', () => {
       createdAt: NOW, settledAt: NOW };
     const valid = { ...createEmptyPtySessionsDocument(), sessions: [run],
       attemptBindings: [binding], operationReceipts: [receipt] };
-    expect(() => assertPtySessionsDocumentV2(valid)).not.toThrow();
-    expect(() => assertPtySessionsDocumentV2({ ...valid, sessions: [] })).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2({ ...valid, attemptBindings: [], sessions: [],
+    expect(() => assertPtySessionsDocumentV3(valid)).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3({ ...valid, sessions: [] })).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3({ ...valid, attemptBindings: [], sessions: [],
       operationReceipts: [{ ...receipt, sessionId: `pty-${'f'.repeat(32)}` }] })).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2({ ...valid,
+    expect(() => assertPtySessionsDocumentV3({ ...valid,
       sessions: [{ ...run, runRef: 'run:colon' }],
       attemptBindings: [{ ...binding, runRef: 'run:colon' }] })).toThrow(/invalid/i);
   });
@@ -170,7 +170,7 @@ describe('strict PTY v2 persistence', () => {
     expect(document.operationReceipts.filter((receipt) => receipt.status === 'bound')).toHaveLength(500);
     // The document produced at the 500-session boundary must still satisfy the strict validator,
     // or every later create fails permanently inside mutate().
-    expect(() => assertPtySessionsDocumentV2(document)).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3(document)).not.toThrow();
   });
 
   it('drops a bound receipt with its evicted session at the 500-session boundary', () => {
@@ -206,7 +206,7 @@ describe('strict PTY v2 persistence', () => {
     expect(document.operationReceipts).toHaveLength(500);
     expect(document.operationReceipts.some((receipt) => receipt.sessionId === evicted.sessionId)).toBe(false);
     // Without this the referential check refuses the document and every later create fails forever.
-    expect(() => assertPtySessionsDocumentV2(document)).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3(document)).not.toThrow();
   });
 
   it('evicts attempt operations with their session and caps terminal rows oldest-first', () => {
@@ -253,7 +253,7 @@ describe('strict PTY v2 persistence', () => {
     expect(document.attemptOperations[operation(9_001).operationKey]).toBeDefined();
     // The row naming the evicted session left with it, so the referential check still holds.
     expect(document.attemptOperations[operation(9_002).operationKey]).toBeUndefined();
-    expect(() => assertPtySessionsDocumentV2(document)).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3(document)).not.toThrow();
   });
 
   it('accepts only exact attempt-operation rows and refuses dangling session references', () => {
@@ -273,17 +273,17 @@ describe('strict PTY v2 persistence', () => {
     const withOperation = (row: unknown, key = operation.operationKey) => ({
       ...document, attemptOperations: { [key]: row },
     });
-    expect(() => assertPtySessionsDocumentV2(withOperation(operation))).not.toThrow();
-    expect(() => assertPtySessionsDocumentV2({ ...document, attemptOperations: [] })).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2(withOperation({ ...operation, extra: true }))).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2(withOperation({ ...operation, status: 'settled' }))).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2(withOperation({ ...operation, promptsDelivered: -1 }))).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3(withOperation(operation))).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3({ ...document, attemptOperations: [] })).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, extra: true }))).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, status: 'settled' }))).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, promptsDelivered: -1 }))).toThrow(/invalid/i);
     // The map key must be the row's own operationKey.
-    expect(() => assertPtySessionsDocumentV2(withOperation(operation, `op-${'c'.repeat(64)}`))).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3(withOperation(operation, `op-${'c'.repeat(64)}`))).toThrow(/invalid/i);
     // Referential: a non-null sessionId must name a session that still exists.
-    expect(() => assertPtySessionsDocumentV2(withOperation({ ...operation,
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation,
       sessionId: `pty-${'d'.repeat(32)}` }))).toThrow(/invalid/i);
-    expect(() => assertPtySessionsDocumentV2(withOperation({ ...operation, sessionId: null }))).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, sessionId: null }))).not.toThrow();
   });
 
   it('keeps sessions in startedAt order when a launch binds out of order', () => {
@@ -297,8 +297,8 @@ describe('strict PTY v2 persistence', () => {
     expect(document.sessions.map((record) => record.startedAt))
       .toEqual(['2026-08-23T12:00:01.000Z', '2026-08-23T12:00:02.000Z']);
     // Appending instead would break the validator's ordering invariant and refuse the create.
-    expect(() => assertPtySessionsDocumentV2(document)).not.toThrow();
-    expect(() => assertPtySessionsDocumentV2({ ...document, sessions: [earlier, later].reverse() }))
+    expect(() => assertPtySessionsDocumentV3(document)).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3({ ...document, sessions: [earlier, later].reverse() }))
       .toThrow(/invalid/i);
   });
 
@@ -407,7 +407,7 @@ describe('strict PTY v2 persistence', () => {
 describe('record compile-negative shapes', () => {
   it('keeps manual and run controller/state records discriminated', () => {
     const base = manualRecord();
-    const valid: PtySessionsDocumentV2 = { ...createEmptyPtySessionsDocument(), sessions: [base] };
+    const valid: PtySessionsDocumentV3 = { ...createEmptyPtySessionsDocument(), sessions: [base] };
     expect(valid.sessions).toHaveLength(1);
 
     // @ts-expect-error manual records cannot have a null controller

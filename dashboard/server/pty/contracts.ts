@@ -4,7 +4,7 @@
 //      operator with `RUN_CONTROLLER_NULL_BROWSER_SESSION_REF`.
 //   2. Durable attempt-operation state: `AttemptOperationStatus`, `AttemptOperationRecord`,
 //      `AttemptBindingPort.readOperation`/`writeOperation` (CAS), and
-//      `PtySessionsDocumentV2.attemptOperations`. Internal only — no wire vector or manifest changes.
+//      `PtySessionsDocumentV3.attemptOperations`. Internal only — no wire vector or manifest changes.
 import type { IterationOutcomeContract } from '../control/iterationOutcome.ts';
 import type { ExecutionProfile } from '../control/policy.ts';
 import type { ProposalStage, ResolvedAgentAssignment } from '../control/proposal.ts';
@@ -92,7 +92,7 @@ export type ApprovedRunInstruction = { operator: string; runRef: string; idempot
   message: string };
 export type ApprovedCheckpointInstruction = ApprovedRunInstruction & { checkpoint: string };
 export type AttemptBinding = { operator: string; runRef: string; attemptRef: string;
-  managedSessionRef: string; sessionId: string; createdAt: string };
+  managedSessionRef: string; sessionId: string; createdAt: string; retired?: true };
 export type ClaimRunControllerInput = { runRef: string; sessionId: string;
   expectedRunVersion: number; expectedSessionRevision: number };
 export type ClaimReceipt = { revision: number; sessionId: string; replayed: boolean };
@@ -112,8 +112,31 @@ export type SessionHostRequest = { operationKey: string; principal: BrowserPrinc
   recipe: LaunchRecipe; rootId: SafeRootId;
   relativeCwd: string; cols: number; rows: number };
 export type HostStartReceipt = { operationKey: string; sessionId: string; epochId: string;
-  revision: number; boundAt: string; replayed: boolean };
+  outputSequence: number; boundAt: string; replayed: boolean };
 export type HostLaunch = { receipt: Promise<PortResult<HostStartReceipt>>; exit: Promise<ObservedExit> };
+export type StartRunSessionInput = {
+  operator: string;
+  runRef: string;
+  attemptRef: string;
+  managedSessionRef: string;
+  hostOperationKey: string;
+  requestHash: string;
+  recipe: LaunchRecipe;
+  rootId: 'worktrees';
+  relativeCwd: string;
+  size: SessionSize;
+  displayName: string;
+  sink: SessionSink;
+};
+export type StartRunSessionReceipt = {
+  sessionId: string;
+  epochId: string;
+  outputCursor: number;
+  replayed: boolean;
+  documentRevision: number;
+  exit: Promise<ObservedExit>;
+  close(): Promise<PortResult<ObservedExit>>;
+};
 export type AttemptStartReceipt = { operationKey: string; sessionId: string; attemptRef: string;
   revision: number; boundAt: string; replayed: boolean };
 export type AttemptLaunch = { receipt: Promise<PortResult<AttemptStartReceipt>>;
@@ -129,8 +152,6 @@ export interface SessionHost {
   drain(epochId: string): Promise<PortResult<{ epochId: string; closed: string[]; alreadyGone: string[] }>>;
 }
 export interface AttemptBindingPort {
-  bind(input: { expectedRevision: number; operator: string; runRef: string; attemptRef: string;
-    managedSessionRef: string; sessionId: string }): Promise<PortResult<{ revision: number }>>;
   byAttempt(operator: string, attemptRef: string): AttemptBinding | null;
   bySession(operator: string, sessionId: string): AttemptBinding | null;
   /** Every binding this operator owns for one Run, in durable attempt order (oldest first). One read
@@ -217,6 +238,12 @@ export type AttemptOperationRecord = { operationKey: string; requestHash: string
   attemptRef: string | null; receipt: OperationReceipt | null; revision: number; updatedAt: string };
 export type ArchiveKeyEntry = { key: string; sessionRunRef: string; reason: string | null };
 export type PtySessionsDocumentV2 = { schema: 'kb.pty-sessions/v2'; revision: number;
+  sessions: SessionRecord[]; attemptBindings: Omit<AttemptBinding, 'retired'>[];
+  operationReceipts: OperationReceipt[]; attemptOperations: Record<string, AttemptOperationRecord>;
+  legacyRuns: SessionRunRecord[]; legacyArchiveKeys: ArchiveKeyEntry[] };
+export type PtySessionsDocumentV3 = { schema: 'kb.pty-sessions/v3'; revision: number;
+  /** Last daemon epoch activated against this document. */
+  epochId: string | null;
   sessions: SessionRecord[]; attemptBindings: AttemptBinding[]; operationReceipts: OperationReceipt[];
   attemptOperations: Record<string, AttemptOperationRecord>;
   legacyRuns: SessionRunRecord[]; legacyArchiveKeys: ArchiveKeyEntry[] };

@@ -2718,6 +2718,7 @@ describe('AutomaticExecutionEngine', () => {
       },
     };
     const signaled: string[] = [];
+    let workerCancellation: Parameters<ExecutionCancellationController['cancelWorker']>[0] | null = null;
     const assertIntentPersisted = (): void => {
       const detail = store.getRun('operator', run.runRef);
       if (!detail.ok) throw new Error(detail.detail);
@@ -2728,11 +2729,31 @@ describe('AutomaticExecutionEngine', () => {
     };
     fake.cancellation = {
       async cancelManager(input) { assertIntentPersisted(); signaled.push(`manager:${input.sessionRef}`); },
-      async cancelWorker(input) { assertIntentPersisted(); signaled.push(`worker:${input.sessionRef}`); release(); },
+      async cancelWorker(input) {
+        assertIntentPersisted();
+        workerCancellation = input;
+        signaled.push(`worker:${input.sessionRef}`);
+        release();
+      },
     };
     const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
     const running = engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
     await enteredPromise;
+
+    // Simulate a later iteration request becoming visible while this already-launched session is still
+    // running. Cancellation must use the key carried by the session, never re-select from current Run data.
+    const readRun = store.getRun.bind(store);
+    store.getRun = ((...args: Parameters<ControlPlaneStore['getRun']>) => {
+      const result = readRun(...args);
+      if (!result.ok) return result;
+      result.value.iterationLoops.push({
+        iterationLoopRef: 'loop-newer', state: 'active', participants: [{ participantId: 'worker', stageRef: 'first' }],
+      } as never);
+      result.value.iterationRequests.push({
+        iterationLoopRef: 'loop-newer', recipientParticipantId: 'worker', requestRef: 'request-newer',
+      } as never);
+      return result;
+    }) as ControlPlaneStore['getRun'];
 
     const cancelled = await engine.cancelRun({
       subject: 'operator', runRef: run.runRef, idempotencyKey: 'cancel-live-run', reason: 'Operator requested stop.',
@@ -2741,6 +2762,13 @@ describe('AutomaticExecutionEngine', () => {
 
     expect(cancelled).toMatchObject({ state: 'stopped', interruptedSessionRefs: [], replayed: false });
     expect(signaled.map((value) => value.split(':')[0]).sort()).toEqual(['manager', 'worker']);
+    const detailAfterCancel = readRun('operator', run.runRef);
+    if (!detailAfterCancel.ok) throw new Error(detailAfterCancel.detail);
+    const workerAttemptRef = detailAfterCancel.value.attempts[0]!.attemptRef;
+    expect(workerCancellation).toMatchObject({
+      attemptRef: workerAttemptRef,
+      attemptOperationKey: `automatic-attempt:${workerAttemptRef}`,
+    });
     expect(fake.integrationOrder).toEqual([]);
     expect(store.getRun('operator', run.runRef)).toMatchObject({
       ok: true,
@@ -2756,6 +2784,85 @@ describe('AutomaticExecutionEngine', () => {
     });
     expect(replay).toMatchObject({ state: 'stopped', replayed: true, stoppedSessionRefs: [] });
     expect(signaled).toHaveLength(2);
+  });
+
+  it('derives the original worker operation key when cancelling a legacy null-key session', async () => {
+    const store = createStore();
+    const plan = proposal([stage('legacy-cancel')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    let enter = (): void => {};
+    let release = (): void => {};
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    fake.workers = {
+      async execute() {
+        enter();
+        await released;
+        return {
+          state: 'failed', summary: 'cancelled',
+          usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [],
+        };
+      },
+    };
+    let cancellation: Parameters<ExecutionCancellationController['cancelWorker']>[0] | null = null;
+    fake.cancellation = {
+      async cancelManager() {},
+      async cancelWorker(input) { cancellation = input; release(); },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const running = engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+    await entered;
+
+    const readRun = store.getRun.bind(store);
+    store.getRun = ((...args: Parameters<ControlPlaneStore['getRun']>) => {
+      const result = readRun(...args);
+      if (result.ok) {
+        for (const session of result.value.sessions) {
+          if (session.role === 'worker') session.attemptOperationKey = null;
+        }
+      }
+      return result;
+    }) as ControlPlaneStore['getRun'];
+    await engine.cancelRun({
+      subject: 'operator', runRef: run.runRef, idempotencyKey: 'cancel-legacy-null-key', reason: 'stop',
+    });
+    await running;
+
+    const detail = readRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const attemptRef = detail.value.attempts[0]!.attemptRef;
+    expect(cancellation).toMatchObject({
+      attemptRef,
+      attemptOperationKey: `automatic-attempt:${attemptRef}`,
+    });
+  });
+
+  it('derives the original worker operation key when executing a legacy null-key session', async () => {
+    const store = createStore();
+    const plan = proposal([stage('legacy-execute')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const operationKeys: string[] = [];
+    const execute = fake.workers.execute.bind(fake.workers);
+    fake.workers.execute = async (input) => {
+      operationKeys.push(input.operationKey);
+      return execute(input);
+    };
+    const transitionSession = store.transitionSession.bind(store);
+    store.transitionSession = ((...args: Parameters<ControlPlaneStore['transitionSession']>) => {
+      const result = transitionSession(...args);
+      if (result.ok && result.value.role === 'worker') result.value.attemptOperationKey = null;
+      return result;
+    }) as ControlPlaneStore['transitionSession'];
+
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const attemptRef = detail.value.attempts[0]!.attemptRef;
+    expect(operationKeys).toEqual([`automatic-attempt:${attemptRef}`]);
   });
 
   it('does not launch a Worker when cancellation arrives during asynchronous preparation', async () => {

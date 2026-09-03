@@ -157,7 +157,7 @@ export interface BuildAppOptions {
    *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
   ptySessionHost?: SurfaceContext['ptySessionHost'];
   /** The browser-session ref table, injected so a fixture can mint two independent browser identities
-   *  against the same daemon without touching the real v2 document. */
+   *  against the same daemon without touching the real v3 document. */
   browserSessionRefs?: SurfaceContext['browserSessionRefs'];
   controlStore?: ControlPlaneStore;
   fileControlAccess?: FileControlPlaneAccess;

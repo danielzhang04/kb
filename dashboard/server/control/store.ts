@@ -848,7 +848,7 @@ function publicSession(value: StoredSession): ManagedSession {
     brokerReceipts: _brokerReceipts,
     ...session
   } = value;
-  return clone(session);
+  return { ...clone(session), attemptOperationKey: value.role === 'worker' ? _operationKey : null };
 }
 
 export function publicRequest(value: StoredHumanRequest): HumanRequest {
@@ -4889,10 +4889,14 @@ function makeStore(
       if (attempt.version !== input.expectedAttemptVersion) return fail('conflict', 'attempt version changed');
       if (attempt.state !== 'queued') return fail('invalid', 'only a queued attempt can create a managed session');
       if (attempt.managedSessionRef) return fail('conflict', 'attempt already has a managed session');
+      if (input.attemptOperationKey !== undefined
+        && !validNonEmpty(input.attemptOperationKey, MAX_SHORT_TEXT)) {
+        return fail('invalid', 'attempt operation key is invalid');
+      }
       const createdAt = stamp();
       const session: StoredSession = {
         subject,
-        operationKey: null,
+        operationKey: input.attemptOperationKey ?? null,
         operationFingerprint: null,
         sessionRef: ref('session'),
         runRef: attempt.runRef,
@@ -4916,18 +4920,30 @@ function makeStore(
       return ok(publicSession(session));
     },
 
-    transitionSession(subject, sessionRef, expectedVersion, state) {
+    transitionSession(subject, sessionRef, expectedVersion, state, attemptOperationKey) {
       const document = load();
       const session = document.sessions.find((item) => item.subject === subject && item.sessionRef === sessionRef);
       if (!session) return fail('not-found', 'managed session was not found');
       if (!SESSION_STATES.has(state)) return fail('invalid', 'managed session state is invalid');
       if (session.version !== expectedVersion) return fail('conflict', 'managed session version changed');
-      if (session.state === state) return ok(publicSession(session), true);
-      if (!SESSION_EDGES[session.state].has(state)) return fail('invalid', `managed session transition ${session.state}->${state} is not allowed`);
+      if (attemptOperationKey !== undefined) {
+        if (session.role !== 'worker' || !validNonEmpty(attemptOperationKey, MAX_SHORT_TEXT)) {
+          return fail('invalid', 'worker attempt operation key is invalid');
+        }
+        if (session.operationKey !== null && session.operationKey !== attemptOperationKey) {
+          return fail('conflict', 'worker attempt operation key changed');
+        }
+      }
+      const operationKeyChanged = attemptOperationKey !== undefined && session.operationKey === null;
+      if (session.state === state && !operationKeyChanged) return ok(publicSession(session), true);
+      if (session.state !== state && !SESSION_EDGES[session.state].has(state)) {
+        return fail('invalid', `managed session transition ${session.state}->${state} is not allowed`);
+      }
       if (session.state === 'waiting' && state === 'running'
         && !boundariesAccepted(document, subject, session.runRef, session.stageRef ?? undefined)) {
         return fail('invalid', 'waiting managed-session boundaries are unresolved or not accepted');
       }
+      if (operationKeyChanged) session.operationKey = attemptOperationKey;
       session.state = state;
       session.version += 1;
       session.updatedAt = stamp();

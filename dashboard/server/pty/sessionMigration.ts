@@ -13,9 +13,10 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { renameWithRetrySync } from '../atomicRename.ts';
-import type { ArchiveKeyEntry, PtySessionsDocumentV2 } from './contracts.ts';
+import type { ArchiveKeyEntry, PtySessionsDocumentV2, PtySessionsDocumentV3 } from './contracts.ts';
 import {
   assertPtySessionsDocumentV2,
+  assertPtySessionsDocumentV3,
   createEmptyPtySessionsDocument,
   MAX_PTY_DOCUMENT_BYTES,
 } from './sessionPersistence.ts';
@@ -136,7 +137,7 @@ function assertLegacyDocument(value: unknown): asserts value is SessionRunDocume
   probe.legacyRuns = structuredClone(document.runs) as SessionRunRecord[];
   probe.legacyArchiveKeys = structuredClone(document.archiveKeys) as ArchiveKeyEntry[];
   try {
-    assertPtySessionsDocumentV2(probe);
+    assertPtySessionsDocumentV3(probe);
   } catch {
     throw migrationError('PTY session migration requires valid v1 records', ['source: record validation failed']);
   }
@@ -151,7 +152,7 @@ function abandonmentTime(startedAt: string, migrationTime: string): string {
   return new Date(Math.max(minimum, migration)).toISOString();
 }
 
-export function mapPtySessionV1ToV2(source: SessionRunDocumentV1, migrationTime: string): PtySessionsDocumentV2 {
+export function mapPtySessionV1ToV3(source: SessionRunDocumentV1, migrationTime: string): PtySessionsDocumentV3 {
   const document = createEmptyPtySessionsDocument();
   document.legacyRuns = source.runs.map((run) => run.outcome === 'live' ? {
     ...structuredClone(run),
@@ -160,7 +161,17 @@ export function mapPtySessionV1ToV2(source: SessionRunDocumentV1, migrationTime:
     version: run.version + 1,
   } : structuredClone(run));
   document.legacyArchiveKeys = structuredClone(source.archiveKeys);
-  assertPtySessionsDocumentV2(document);
+  assertPtySessionsDocumentV3(document);
+  return document;
+}
+
+export function mapPtySessionV2ToV3(source: PtySessionsDocumentV2): PtySessionsDocumentV3 {
+  const document: PtySessionsDocumentV3 = {
+    ...structuredClone(source),
+    schema: 'kb.pty-sessions/v3',
+    epochId: null,
+  };
+  assertPtySessionsDocumentV3(document);
   return document;
 }
 
@@ -245,24 +256,35 @@ export async function migratePtySessionDocument(
         throw migrationError('PTY session migration source exceeds 4000000 bytes', ['source: document oversized']);
       }
       const parsed = parseJson(original);
-      const maybeV2 = object(parsed);
-      const backupPath = `${canonicalPath}.v1.bak`;
-      if (maybeV2?.schema === 'kb.pty-sessions/v2') {
+      const maybeDocument = object(parsed);
+      if (maybeDocument?.schema === 'kb.pty-sessions/v3') {
+        try { assertPtySessionsDocumentV3(parsed); } catch {
+          throw migrationError('PTY session migration found an invalid v3 document', ['source: v3 validation failed']);
+        }
+        const v2Backup = `${canonicalPath}.v2.bak`;
+        const v1Backup = `${canonicalPath}.v1.bak`;
+        return { migrated: false, replayed: true,
+          backupPath: fs.exists(v2Backup) ? v2Backup : fs.exists(v1Backup) ? v1Backup : null };
+      }
+
+      let candidate: PtySessionsDocumentV3;
+      let backupPath: string;
+      if (maybeDocument?.schema === 'kb.pty-sessions/v2') {
         try { assertPtySessionsDocumentV2(parsed); } catch {
           throw migrationError('PTY session migration found an invalid v2 document', ['source: v2 validation failed']);
         }
-        return { migrated: false, replayed: true, backupPath: fs.exists(backupPath) ? backupPath : null };
-      }
-
-      assertLegacyDocument(parsed);
-      const source = parsed;
-      const migrationTime = (deps.now ?? (() => new Date().toISOString()))();
-      let candidate: PtySessionsDocumentV2;
-      try {
-        candidate = mapPtySessionV1ToV2(source, migrationTime);
-      } catch (error) {
-        if (error instanceof PtySessionMigrationError) throw error;
-        throw migrationError('PTY session migration validation failed', ['validation: field map refused']);
+        candidate = mapPtySessionV2ToV3(parsed);
+        backupPath = `${canonicalPath}.v2.bak`;
+      } else {
+        assertLegacyDocument(parsed);
+        const migrationTime = (deps.now ?? (() => new Date().toISOString()))();
+        try {
+          candidate = mapPtySessionV1ToV3(parsed, migrationTime);
+        } catch (error) {
+          if (error instanceof PtySessionMigrationError) throw error;
+          throw migrationError('PTY session migration validation failed', ['validation: field map refused']);
+        }
+        backupPath = `${canonicalPath}.v1.bak`;
       }
 
       const tempPath = `${canonicalPath}.${process.pid}.${randomUUID()}.tmp`;
@@ -273,7 +295,7 @@ export async function migratePtySessionDocument(
         if (fs.exists(backupPath)) {
           if (!fs.readFile(backupPath).equals(original)) {
             throw migrationError('PTY session migration cannot choose between existing source and backup',
-              ['backup: pre-existing .v1.bak differs from source']);
+              [`backup: pre-existing ${backupPath.endsWith('.v2.bak') ? '.v2.bak' : '.v1.bak'} differs from source`]);
           }
         } else {
           fs.writeFile(backupPath, original, { flag: 'wx', mode: 0o600 });
@@ -287,7 +309,7 @@ export async function migratePtySessionDocument(
         stage = 'write-temp';
         injectFailure(deps, stage);
         const encoded = Buffer.from(`${JSON.stringify(candidate)}\n`, 'utf8');
-        if (encoded.byteLength > MAX_PTY_DOCUMENT_BYTES) throw new Error('v2 document oversized');
+        if (encoded.byteLength > MAX_PTY_DOCUMENT_BYTES) throw new Error('v3 document oversized');
         fs.writeFile(tempPath, encoded, { flag: 'wx', mode: 0o600 });
 
         stage = 'fsync-temp';
@@ -296,7 +318,7 @@ export async function migratePtySessionDocument(
 
         stage = 'validation';
         injectFailure(deps, stage);
-        assertPtySessionsDocumentV2(parseJson(fs.readFile(tempPath)));
+        assertPtySessionsDocumentV3(parseJson(fs.readFile(tempPath)));
 
         stage = 'rename';
         injectFailure(deps, stage);

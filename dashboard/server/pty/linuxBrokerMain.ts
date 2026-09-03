@@ -211,21 +211,56 @@ type PtyMasterSocket = { writableNeedDrain?: boolean; once(event: string, listen
 
 export class NodePtyChild implements BrokerPty {
   readonly pid: number;
-  private dataListener: (data: Uint8Array) => void = () => {};
-  private exitListener: (exitCode: number | null, signal: number | null) => void = () => {};
+  private dataListener: ((data: Uint8Array) => void) | null = null;
+  private exitListener: ((exitCode: number | null, signal: number | null) => void) | null = null;
+  /** Output observed before the broker registered its listener. See `adopt`. */
+  private readonly bufferedData: Uint8Array[] = [];
+  private bufferedExit: { exitCode: number | null; signal: number | null } | null = null;
 
   private readonly child: IPty;
-  readonly identity: BrokerProcessIdentity;
+  private identityValue: BrokerProcessIdentity | null;
 
-  constructor(child: IPty, identity: BrokerProcessIdentity) {
+  constructor(child: IPty, identity: BrokerProcessIdentity | null = null) {
     this.child = child;
-    this.identity = identity;
+    this.identityValue = identity;
     this.pid = child.pid;
     // Spawned with `encoding: null`, so node-pty delivers Buffers: PTY output is never decoded.
     // A string can only appear if that option is lost; latin1 is the byte-preserving fallback.
-    child.onData((data: string | Uint8Array) => this.dataListener(
+    child.onData((data: string | Uint8Array) => this.observe(
       typeof data === 'string' ? Buffer.from(data, 'latin1') : Buffer.from(data)));
-    child.onExit(({ exitCode, signal }) => this.exitListener(exitCode, signal ?? null));
+    child.onExit(({ exitCode, signal }) => {
+      if (this.exitListener === null) this.bufferedExit = { exitCode, signal: signal ?? null };
+      else this.exitListener(exitCode, signal ?? null);
+    });
+  }
+
+  /**
+   * Wraps a freshly spawned child SYNCHRONOUSLY, then reads its identity. node-pty starts the master
+   * socket flowing at spawn and fires output into an emitter, so every byte written before a listener
+   * is attached is discarded with no trace. Reading `/proc/<pid>/stat` first is a real filesystem
+   * round-trip, and a launcher that wrapped the child only afterwards lost the session's opening frame
+   * (a shell banner, a CLI's first render). Buffering covers the remaining gap until the broker
+   * registers its own listener.
+   */
+  static async adopt(child: IPty): Promise<NodePtyChild> {
+    const adopted = new NodePtyChild(child);
+    try {
+      adopted.identityValue = await readProcessIdentity(child.pid);
+    } catch (error) {
+      adopted.kill();
+      throw error;
+    }
+    return adopted;
+  }
+
+  get identity(): BrokerProcessIdentity {
+    if (this.identityValue === null) throw new Error('pty process identity was never read');
+    return this.identityValue;
+  }
+
+  private observe(data: Uint8Array): void {
+    if (this.dataListener === null) this.bufferedData.push(data);
+    else this.dataListener(data);
   }
 
   /**
@@ -244,8 +279,17 @@ export class NodePtyChild implements BrokerPty {
     try { process.kill(-this.pid, 'SIGKILL'); }
     catch { try { this.child.kill('SIGKILL'); } catch { /* already gone */ } }
   }
-  onData(listener: (data: Uint8Array) => void): void { this.dataListener = listener; }
-  onExit(listener: (exitCode: number | null, signal: number | null) => void): void { this.exitListener = listener; }
+  onData(listener: (data: Uint8Array) => void): void {
+    this.dataListener = listener;
+    for (const buffered of this.bufferedData.splice(0)) listener(buffered);
+  }
+  onExit(listener: (exitCode: number | null, signal: number | null) => void): void {
+    this.exitListener = listener;
+    const buffered = this.bufferedExit;
+    if (buffered === null) return;
+    this.bufferedExit = null;
+    listener(buffered.exitCode, buffered.signal);
+  }
 }
 
 /** `encoding: null` keeps PTY output as Buffers end to end; nothing decodes child bytes. */
@@ -268,12 +312,8 @@ async function createPinnedLauncher(identities: ServiceIdentities): Promise<Brok
     launch: async (spec: BrokerLaunchSpec): Promise<BrokerPty> => {
       const pinned = await pinBrokerLaunch(spec, { rootUid: 0, ...identities });
       try {
-        const child = nodePty.spawn(pinned.launch.executable, pinned.launch.args,
-          nodePtySpawnOptions(pinned.launch));
-        let identity: BrokerProcessIdentity;
-        try { identity = await readProcessIdentity(child.pid); }
-        catch (error) { try { child.kill('SIGKILL'); } catch { /* already gone */ } throw error; }
-        return new NodePtyChild(child, identity);
+        return await NodePtyChild.adopt(nodePty.spawn(pinned.launch.executable, pinned.launch.args,
+          nodePtySpawnOptions(pinned.launch)));
       } finally { await pinned.close(); }
     },
   };

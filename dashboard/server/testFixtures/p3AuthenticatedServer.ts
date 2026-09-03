@@ -10,7 +10,7 @@
  *    `--real-windows-host`. Either way `makeSurfaceContext` wraps it in the fleet-preamble gate, so a
  *    frozen fleet refuses here exactly as it refuses in production. There is no bypass flag.
  *  - `browserSessionRefs` — an in-memory ref table, so two independent browser identities can be minted
- *    without touching the daemon's real v2 document.
+ *    without touching the daemon's real v3 document.
  *  - `sessionConfig` — a per-process HMAC secret, so the tokens this fixture prints verify against this
  *    process and nothing else.
  *
@@ -84,7 +84,7 @@ export interface P3AuthenticatedServerOptions {
 }
 
 /**
- * The fixture's epoch id. It must satisfy the v2 document's `epoch-[0-9a-f]{32}` grammar: a friendly
+ * The fixture's epoch id. It must satisfy the v3 document's `epoch-[0-9a-f]{32}` grammar: a friendly
  * label here is rejected by `sessionPersistence`'s validator at the FIRST create, which is exactly how
  * the WS surface came to look broken while only the fixture was.
  */
@@ -150,7 +150,7 @@ export function createDeterministicSessionHost(): SessionHost {
           ok: true,
           value: {
             operationKey: request.operationKey, sessionId, epochId: FIXTURE_EPOCH,
-            revision: 1, boundAt: now(), replayed: false,
+            outputSequence: 1, boundAt: now(), replayed: false,
           },
         }),
         exit,

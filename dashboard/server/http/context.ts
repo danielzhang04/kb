@@ -195,7 +195,7 @@ export interface SurfaceContext {
   /** The one platform PTY host for `/api/pty` (Windows `node-pty`, Linux broker client), already wrapped
    *  in the fleet-preamble gate. Absent when the runtime reports no PTY capability. */
   ptySessionHost?: SessionHost;
-  /** The one v2 session registry every registered PTY route goes through. */
+  /** The one v3 session registry every registered PTY route goes through. */
   ptySessionRegistry?: SessionRecordRegistry;
   /**
    * The typed, read-only raw transcript read ([C-R6]) the Run-scoped replay route serves earlier
@@ -225,7 +225,7 @@ export interface SurfaceContext {
    */
   ptySessionRuns?: SessionRunStore;
   /**
-   * The one `kb.pty-sessions/v2` document port for the process (spec [C-M3]): session records, attempt
+   * The one `kb.pty-sessions/v3` document port for the process (spec [C-M3]): session records, attempt
    * bindings, operation receipts and the legacy session-run rows all live in it, behind one lock and one
    * revision counter. Built by `makeSurfaceContext`; inert until first use.
    */

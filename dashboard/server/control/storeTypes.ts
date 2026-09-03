@@ -508,6 +508,7 @@ export interface RecordStageGenerationInput {
 
 export interface CreateWorkerSessionInput {
   expectedAttemptVersion: number;
+  attemptOperationKey?: string;
 }
 
 export interface RerouteStageInput {
@@ -854,7 +855,8 @@ export interface ControlPlaneStore
   rerouteStage(subject: string, stageRef: string, input: RerouteStageInput): ControlResult<RerouteStageResult>;
   transitionAttempt(subject: string, attemptRef: string, expectedVersion: number, state: AttemptState): ControlResult<Attempt>;
   createWorkerSession(subject: string, attemptRef: string, input: CreateWorkerSessionInput): ControlResult<ManagedSession>;
-  transitionSession(subject: string, sessionRef: string, expectedVersion: number, state: ManagedSessionState): ControlResult<ManagedSession>;
+  transitionSession(subject: string, sessionRef: string, expectedVersion: number, state: ManagedSessionState,
+    attemptOperationKey?: string): ControlResult<ManagedSession>;
   createManagerSuccessor(subject: string, runRef: string, input: CreateManagerSuccessorInput): ControlResult<ManagedSession>;
   recordManagerCommand(subject: string, runRef: string, input: ManagerCommandInput, scope?: ReadScope): ControlResult<ManagerCommandResult>;
   /** Atomically persists run-wide cancellation intent before any adapter is signaled. */

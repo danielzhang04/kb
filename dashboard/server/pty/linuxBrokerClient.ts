@@ -34,6 +34,15 @@ function deferred<T>(): Deferred<T> {
 
 type Pending = { resolve(frame: BrokerServerFrame): void; reject(error: Error): void;
   timer: ReturnType<typeof setTimeout> };
+/**
+ * A create in flight, keyed by its request id. The broker flushes the child's opening output
+ * IMMEDIATELY after the create ack, so ack and data usually land in ONE socket chunk and are decoded in
+ * one synchronous loop. Resolving the ack's promise only schedules a microtask, so a `create` that
+ * registered its session in that continuation would not yet exist when the data frame in the same chunk
+ * is dispatched, and the session's first frame would be dropped as `no-session`. The frame handler binds
+ * the session and the sink synchronously instead, and `create` reads the result here.
+ */
+type PendingCreate = { sink: SessionSink; attachmentId: string | null; error: Error | null };
 type Session = {
   sinks: Map<string, SessionSink>;
   nextInputSequence: number;
@@ -65,6 +74,7 @@ export class LinuxBrokerClient implements SessionHost {
   private connecting: Promise<void> | null = null;
   private ready: Extract<BrokerServerFrame, { type: 'ready' }> | null = null;
   private readonly pending = new Map<string, Pending>();
+  private readonly pendingCreates = new Map<string, PendingCreate>();
   private readonly sessions = new Map<string, Session>();
   private closedForever = false;
   private lastErrorFrame: { code: string; detail: string | null } | null = null;
@@ -113,37 +123,42 @@ export class LinuxBrokerClient implements SessionHost {
         await this.ensureConnected();
         const ready = this.ready;
         if (ready === null) throw new Error('broker unavailable');
-        const response = await this.request({ type: 'create', requestId: this.options.makeRequestId(),
-          sessionId: null, epochId: ready.epochId, operationKey: request.operationKey,
-          recipe: request.recipe, rootId: request.rootId, relativeCwd: request.relativeCwd,
-          cols: request.cols, rows: request.rows });
+        const requestId = this.options.makeRequestId();
+        const creating: PendingCreate = { sink, attachmentId: null, error: null };
+        this.pendingCreates.set(requestId, creating);
+        let response: BrokerServerFrame;
+        try {
+          response = await this.request({ type: 'create', requestId,
+            sessionId: null, epochId: ready.epochId, operationKey: request.operationKey,
+            recipe: request.recipe, rootId: request.rootId, relativeCwd: request.relativeCwd,
+            cols: request.cols, rows: request.rows });
+        } finally { this.pendingCreates.delete(requestId); }
         if (response.type === 'error') {
           receipt.resolve(failure(response.code, response.detail));
           provisionalExit.resolve(this.abandoned('pty-00000000000000000000000000000000', 0));
           return;
         }
         if (response.type !== 'ack' || response.action !== 'create') throw new Error('unexpected create response');
-        let session = this.sessions.get(response.sessionId);
-        if (session === undefined) {
-          session = { sinks: new Map(), nextInputSequence: 0,
-            exit: deferred<ObservedExit>(), exited: false };
-          this.sessions.set(response.sessionId, session);
+        if (creating.error !== null) throw creating.error;
+        const session = this.sessions.get(response.sessionId);
+        if (session === undefined || creating.attachmentId === null) {
+          throw new Error('broker create ack was not bound to a session');
         }
-        if (!ready.sessions.some((item) => item.sessionId === response.sessionId)) {
-          ready.sessions.push({ sessionId: response.sessionId, epochId: response.epochId });
-        }
-        const attachmentId = this.addSink(session, sink);
+        const attachmentId = creating.attachmentId;
         const attached = await this.request({ type: 'attach', requestId: this.options.makeRequestId(),
           sessionId: response.sessionId, epochId: response.epochId, fromSequence: 0 });
         if (attached.type === 'error') {
           session.sinks.delete(attachmentId);
+          // The compensating close is cleanup; whether it succeeds does not change WHY the create was
+          // refused, so the attach's own refusal is what the caller is told either way.
+          await this.close(response.sessionId);
           receipt.resolve(failure(attached.code, attached.detail));
           provisionalExit.resolve(this.abandoned(response.sessionId, response.sequence + 1));
           return;
         }
         const boundAt = (this.options.now ?? (() => new Date().toISOString()))();
         receipt.resolve({ ok: true, value: { operationKey: response.operationKey,
-          sessionId: response.sessionId, epochId: response.epochId, revision: response.sequence,
+          sessionId: response.sessionId, epochId: response.epochId, outputSequence: response.sequence,
           boundAt, replayed: response.replayed } });
         void session.exit.promise.then(provisionalExit.resolve);
       } catch {
@@ -211,8 +226,24 @@ export class LinuxBrokerClient implements SessionHost {
         epochId: this.ready.epochId, sequence: session.nextInputSequence++ });
       if (response.type === 'error') return failure(response.code, response.detail);
       if (response.type !== 'ack' || response.action !== 'close') return failure('internal', null);
-      return { ok: true, value: await session.exit.promise };
+      // The broker acks the close before the child's exit frame, and a broker that never emits that
+      // frame would leave this promise pending forever — hanging the caller's start receipt, and with it
+      // any cancel waiting on the same start. The ack is the acknowledgement; the exit frame only
+      // sharpens it, so it is raced against the same timeout every other request uses.
+      return { ok: true, value: await this.exitWithinTimeout(session, sessionId, response.sequence) };
     } catch { return failure('unavailable', null); }
+  }
+
+  /** The session's real exit if it lands within the request timeout, else a synthesized `closed` one. */
+  private exitWithinTimeout(session: Session, sessionId: string, sequence: number): Promise<ObservedExit> {
+    return new Promise<ObservedExit>((resolve) => {
+      const timer = setTimeout(() => resolve({
+        sessionId, sequence, exitCode: null, signal: null, reason: 'closed',
+        observedAt: (this.options.now ?? (() => new Date().toISOString()))(),
+      }), this.options.requestTimeoutMs ?? 5_000);
+      timer.unref?.();
+      void session.exit.promise.then((exit) => { clearTimeout(timer); resolve(exit); });
+    });
   }
 
   async listEpoch(): Promise<PortResult<{ epochId: string; sessionIds: string[] }>> {
@@ -350,6 +381,15 @@ export class LinuxBrokerClient implements SessionHost {
       this.lastErrorFrame = { code: frame.code, detail: frame.detail };
     }
     if (frame.requestId !== null) {
+      const creating = this.pendingCreates.get(frame.requestId);
+      if (creating !== undefined && frame.type === 'ack' && frame.action === 'create') {
+        this.pendingCreates.delete(frame.requestId);
+        try {
+          creating.attachmentId = this.bindSession(frame.sessionId, frame.epochId, creating.sink);
+        } catch (error) {
+          creating.error = error instanceof Error ? error : new Error(this.errorMessage(error));
+        }
+      }
       const pending = this.pending.get(frame.requestId);
       if (pending !== undefined) {
         clearTimeout(pending.timer);
@@ -378,6 +418,19 @@ export class LinuxBrokerClient implements SessionHost {
       session.exit.resolve(exit);
       this.ready.sessions = this.ready.sessions.filter((item) => item.sessionId !== frame.sessionId);
     }
+  }
+
+  /** Registers a session and one sink SYNCHRONOUSLY; see `PendingCreate`. */
+  private bindSession(sessionId: string, epochId: string, sink: SessionSink): string {
+    let session = this.sessions.get(sessionId);
+    if (session === undefined) {
+      session = { sinks: new Map(), nextInputSequence: 0, exit: deferred<ObservedExit>(), exited: false };
+      this.sessions.set(sessionId, session);
+    }
+    if (this.ready !== null && !this.ready.sessions.some((item) => item.sessionId === sessionId)) {
+      this.ready.sessions.push({ sessionId, epochId });
+    }
+    return this.addSink(session, sink);
   }
 
   private addSink(session: Session, sink: SessionSink): string {

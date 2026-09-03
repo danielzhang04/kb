@@ -30,7 +30,7 @@ import type {
 import { createTranscriptRetention } from './sessionPersistence.ts';
 import type { SessionPersistence } from './sessionPersistence.ts';
 import { createRawSessionReplayReader } from './replayReader.ts';
-import type { PtySessionsDocumentV2 } from './contracts.ts';
+import type { PtySessionsDocumentV3 } from './contracts.ts';
 import { PTY_OUTBOUND_HIGH_WATER_BYTES } from '../../shared/ptyProtocol.ts';
 import type { SessionSummary } from '../../shared/ptyProtocol.ts';
 
@@ -93,7 +93,7 @@ function fakeRegistry(calls: Calls, overrides: Partial<SessionRegistryPort> = {}
 
 function fakePersistence(revision = 12): SessionPersistence {
   return {
-    read: () => ({ revision } as PtySessionsDocumentV2),
+    read: () => ({ revision } as PtySessionsDocumentV3),
     mutate: async () => ({ revision, value: undefined as never }),
   };
 }
