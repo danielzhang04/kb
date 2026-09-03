@@ -319,12 +319,12 @@ are a curated design surface, not just a byproduct.
 | C3 | No creator-reported reach data yet exists on that policy; best-known AI personas had not applied the label within hours of the announcement | [implicator.ai](https://www.implicator.ai/instagram-will-cut-the-reach-of-ai-personas-that-skip-its-new-label/) | 2026-09-01 | medium |
 | C4 | Watch time (incl. replays), likes-per-reach and sends-per-reach are the signals Mosseri discusses most; "views" is the unified *reported* metric, not a ranking signal | [Social Media Today](https://www.socialmediatoday.com/news/instagram-updates-metrics-to-focus-creators-on-views/723645/); Mosseri Jan-2025 statement as paraphrased across trade blogs | 2025-01 / 2026 | medium — the original Mosseri statement could not be reached; the "3–5× vs likes" multiplier in circulation is **unsourced, do not cite** |
 | C5 | Hashtags do not drive distribution; Mosseri: "I wouldn't try to think of hashtags as a way to get more distribution" | [Kontentino](https://www.kontentino.com/) / Digital Diplomacy citing a Jul-2026 Mosseri Q&A | 2026-07 | medium (quote consistently attributed, original not reached) |
-| C6 | Hashtag-following and the hashtag "Recent" tab were removed | [Social Media Today](https://www.socialmediatoday.com/news/instagrams-removing-option-follow-hashtags/733155/) | 2024-12-13 | high |
+| C6 | Hashtag-following was removed | [Social Media Today](https://www.socialmediatoday.com/news/instagrams-removing-option-follow-hashtags/733155/) | 2024-11-17 (article); effective ~2024-12-13 per secondary sources | high for the follow-removal; the "Recent" tab clause is dropped — the cited article does not mention it, and hashtag pages' "Recent" tab has its own unrelated 2020/2022 history (see §8 claim-check) |
 | C7 | Reels out-reach carousels ~1.36× and single photos ~2.25× (Buffer, 4M+ posts) | Buffer analysis, seen paraphrased | 2026 | medium |
 | C8 | Carousels beat reels and single images on engagement *rate* (~0.55% vs ~0.50% vs ~0.36%) and generate far more saves | Socialinsider 2026 benchmark; [Metricool 2026 IG study](https://metricool.com/press-release-instagram-study-2026) | 2026 | medium |
 | C9 | Instagram re-serves a carousel to non-swipers ~24–48 h later, sometimes on a later slide | multiple marketing blogs, no Instagram source | 2026 | **low — folklore; obeyed only because it is free** |
 | C10 | Optimal carousel slide count 7–10 | vendor blogs, mutually contradictory (5–8 / 7–10 / 8–12) | 2026 | **low — and contradicted by our own cohort measurement of 2–5** |
-| C11 | Best days Tue/Wed (Sprout) or Mon/Tue/Thu (Hootsuite); Later finds reels and carousels peak at very different hours; every source says account data overrides | [Hootsuite](https://blog.hootsuite.com/best-time-to-post-on-instagram/), [Sprout Social](https://sproutsocial.com/insights/best-times-to-post-on-social-media/) | 2026 | medium-high for the caveat, medium for the windows |
+| C11 | Best days Tue/Wed (Sprout) or Mon/Tue/Thu (Hootsuite); Later finds reels and carousels peak at very different hours; every source says account data overrides | [Hootsuite](https://blog.hootsuite.com/best-time-to-post-on-instagram/), [Sprout Social](https://sproutsocial.com/insights/best-times-to-post-on-social-media/), [Later](https://later.com/blog/best-time-to-post-on-instagram/) | 2026 | medium-high for the caveat, medium for the windows |
 | C12 | Reel completion falls sharply with length (~74% at 7–15 s vs ~46% at 60 s+) | vendor benchmark pages, numbers vary by source | 2026 | low — directional only |
 | C13 | Sexually-suggestive-classified content (incl. plain swimwear) is excluded from Explore/hashtag recommendation to non-followers but still reaches existing followers | [Instagram Help Center](https://help.instagram.com/251027992727268); [WWD](https://wwd.com/fashion-news/intimates/feature/instagram-policy-demotes-sexually-suggestive-photos-1203132041/); [Fox News](https://www.foxnews.com/lifestyle/lingerie-swimwear-company-instagram-algorithm-inappropriate-concerns) | 2019–2026 | high |
 | C14 | Account Status (Settings → Account → Account Status) shows content violations, feature restrictions, recommendation eligibility, monetization access; appeal is in-app | inro.social, user-rights.org summarising Instagram's Recommendation Guidelines | 2026 | medium |
@@ -379,3 +379,23 @@ are a curated design surface, not just a byproduct.
 8. **`reached_audience_demographics`** could not be confirmed as a distinct metric name, and the
    `contact_button_type` enum values were not readable from the fetched docs — verify both against
    the live reference before wiring the analytics view.
+
+---
+
+## Claim-check (2026-09-03, sonnet)
+
+Facts-only pass over §8 (C1–C30) and the §6 field list against public web sources
+(developers.facebook.com/docs/instagram-platform, help.instagram.com, artificialintelligenceact.eu,
+and corroborating outlets). §7 was not re-verified (read-only browser observations, out of scope);
+scanned only for internal consistency against §1–§5 — none found (the 104/36/31 tile split sums
+correctly to 171; the 2-tile still/car ambiguity traces to `vampeess`'s notation, not a math error).
+
+**Counts:** 30 claims checked + §6 field list. VERIFIED 15 · PARTLY 9 (of which 2 were true
+corrections, 7 confirm the report's own existing vendor-sourced hedge) · UNVERIFIED 5 (not
+re-fetched this pass, no red flags) · WRONG 0. §6 field list: VERIFIED.
+
+**Corrections made:** C6 (dropped the unsourced "hashtag Recent tab" clause; the cited Social
+Media Today article only covers hashtag-follow removal and is dated Nov 17 2024, not Dec 13); C11
+(added the missing Later source URL for the reels-vs-carousels-peak-at-different-hours claim).
+
+Full verdict table: `claimcheck-r18.md` (scratchpad, this session).
