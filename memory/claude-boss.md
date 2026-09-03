@@ -96,3 +96,15 @@
   worktree on origin/ops and `git push origin <sha>:ops`; the push can take >60 s — run it separately from
   the worktree-add step.
 - Chrome-devtools consent is per MCP-server connection: subagents inherit it; no re-prompt observed all night.
+- **(close) Live run facts for next time:** 6 ephemeral 4090 pods × 10 klein 3-ref cells = 31 min and $0.38 each,
+  159 s/cell steady; total $2.28 for 60 cells. A sequential driver script (verify run.json + ledger before the
+  next create) let the pods run unattended for 3 h while I did nothing — build it before the first create.
+- **Background Bash shells get reaped mid-download**; anything > 2 min (weight downloads, scoring) runs via
+  `Start-Process` + an exit Monitor, never `run_in_background`.
+- **Missing runtime deps surface only at the live step**: `facenet_pytorch` was absent for `py -3` although the
+  tests (mock embedders) were green. Add an import smoke to the plan's preflight for any lazy-loaded model.
+- **Harvest/apply left quarantined files in `images/` and the batch stage at `building`**: the board was built
+  from 60 not 56 until I moved them; stage transitions are strictly one step. Put the file move and the stage
+  steps INTO the harvest/apply CLIs, not in the runbook.
+- **Identity drift is real and measurable**: anchor cosine median 0.68, six cells < 0.32 (flash/low-angle and
+  replicate families). Expect the eye-gate to cull ~10-15 of 56; 40 curated is still reachable.
