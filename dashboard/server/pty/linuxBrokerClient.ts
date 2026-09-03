@@ -265,10 +265,8 @@ export class LinuxBrokerClient implements SessionHost {
           sessionId, sequence, exitCode: null, signal: null, reason: 'closed',
           observedAt: (this.options.now ?? (() => new Date().toISOString()))(),
         };
-        // Deliver it to every attached sink exactly like a real `exit` frame does at :443 -
-        // an attached browser viewer waits on this same event and would otherwise hang forever,
-        // since the late real frame (if the child ignores its kill) is now a no-op below.
-        for (const sink of session.sinks.values()) if (!sink.closed()) sink.exit(exit);
+        // Settle the teardown FIRST, before touching any sink: `close()`'s caller and `listEpoch()`
+        // must never hang or lie about this session's liveness because a sink threw.
         session.exit.resolve(exit);
         // Drop the id from the ready listing on this synthesized verdict, same as a real exit frame.
         // The child itself may still be alive (it ignored the kill); reconciling that with the broker
@@ -277,6 +275,13 @@ export class LinuxBrokerClient implements SessionHost {
           this.ready.sessions = this.ready.sessions.filter((item) => item.sessionId !== sessionId);
         }
         resolve(exit);
+        // Deliver it to every attached sink exactly like a real `exit` frame does at :443 - an
+        // attached browser viewer waits on this same event and would otherwise hang forever, since the
+        // late real frame (if the child ignores its kill) is now a no-op above. A faulting sink must
+        // not strand the teardown above, which has already settled by this point.
+        try {
+          for (const sink of session.sinks.values()) if (!sink.closed()) sink.exit(exit);
+        } catch { /* sink faults must not strand the teardown */ }
       }, this.options.requestTimeoutMs ?? 5_000);
       timer.unref?.();
       void session.exit.promise.then((exit) => { clearTimeout(timer); resolve(exit); });

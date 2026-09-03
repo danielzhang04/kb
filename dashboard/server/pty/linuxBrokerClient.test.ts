@@ -580,6 +580,32 @@ describe('LinuxBrokerClient', () => {
     expect(exits).toEqual(['closed']);
   });
 
+  it('still resolves the synthesized exit and drops the id from listEpoch when a sink throws on exit', async () => {
+    // The teardown (`session.exit.resolve` + the `ready.sessions` filter) must settle BEFORE the sink
+    // fan-out runs, and the fan-out itself must be fault-isolated - otherwise a throwing sink raises
+    // out of the bare timer callback and strands `close()` (and every future `listEpoch()`) forever.
+    const child = new FakePty();
+    const [clientSocket, serverSocket] = pair();
+    const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: { launch: async () => child }, makeSessionId: () => sessionId,
+      now: () => '2026-09-02T00:00:00.000Z' });
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+    const client = new LinuxBrokerClient({ connect: async () => clientSocket, dashboardEpochId: epochId,
+      makeRequestId: () => 'req-0123456789abcdef0123456789abcdef', requestTimeoutMs: 30 });
+    await client.probe();
+    const launch = client.create({ operationKey, principal,
+      recipe: { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'shell-default', sandbox: 'interactive' },
+      rootId: 'repo', relativeCwd: '', cols: 80, rows: 24 },
+    { data: () => {}, exit: () => { throw new Error('sink faulted'); }, closed: () => false });
+    expect((await launch.receipt).ok).toBe(true);
+
+    const closed = await client.close(sessionId);
+    expect(closed).toEqual({ ok: true, value: { sessionId, sequence: expect.any(Number),
+      exitCode: null, signal: null, reason: 'closed', observedAt: expect.any(String) } });
+    expect(await client.listEpoch()).toEqual({ ok: true, value: { epochId, sessionIds: [] } });
+    expect(await launch.exit).toMatchObject({ reason: 'closed', exitCode: null });
+  });
+
   it('releases a bound session and its sink with a compensating close when create fails after binding', async () => {
     // The create ack binds the session and sink SYNCHRONOUSLY (`bindSession`, see the comment on
     // `PendingCreate`). Dropping only the follow-up `attach` request lets that bind succeed while the
