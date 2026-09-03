@@ -70,80 +70,41 @@
 - LEARNED (cost: ~6 h idle, 17:31→23:35): I ended a turn right after a commit with NO monitor/agent armed, so nothing woke the session until Daniel nudged it; meanwhile every keep-awake lease expired (session lease is idle-expiry 15 min; pid-only leases released with their dispatch pids) and the supervisor exited. Rules: (1) never end a turn without a pending Monitor/agent or the task list finished; (2) for a hands-off run take a pid-only lease on the boss session's own claude pid (`keep_awake.ps1 -Acquire -Mode pid-only -ProcessId <claude pid>`, 16 h cap) so waits don't disarm the machine; (3) check `keep_awake.ps1 -Status` after any gap.
 - CLOSE 2026-08-23 01:20: **P2 CLOSED @ `9a72bbf8`** (chain `1521b61e` W6.7 → `80d11d51` build-review fixes → `41dfd567` browser fixes → `9a72bbf8` browser round 2). Linux 279 files / 3219 tests / 0 red; Windows typecheck 0 + build + all load-timeout files green alone. Browser: nine `p2-*` scenarios, three fix rounds, final re-check 2/2. Handoff: ops `handoffs/2026-08-23-dashboard-v3-p2-closed-p3-w0.md`. Next: P3 W0 (`scratchpad/dv3-p3-w0-brief-v2.md`).
 
-## 2026-09-03 — figment anchor-first pivot + pod-harness hardening (boss session)
+## 2026-09-03 — figment creator-001 overnight build terminal (boss session, in progress)
 
-- **Prompt casting bracketed the target in two rounds and could not land it.** Over-glam
-  ("bronzer, glossy lip") then plain ("almost no makeup, slouched"). Prettiness must be named;
-  body adjectives are weak; colour words render literally. The operator's actual taste (three
-  screenshots) is ABG glam, heavier than the study's averaged centre — get the taste anchor
-  from the operator's own images before a study averages it away.
-- **The operator's pivot is the lesson: a face is a reference image, not a paragraph.**
-  Anchor → one-reference expansion (klein) → LoRA. Days of wording calibration were the slow
-  route; 10sorlabs' solo pipeline confirms the order (base pic → dataset → LoRA → generate).
-- **Every live pod failure today was infra, never the manifest**: readiness on a community
-  3090, SSH with no login key (removed SSH entirely; HTTP proxy transport), a secure host that
-  GitHub refuses anonymous git (host denylist + tarball fallback), a community host with no
-  CUDA driver in-container found only after a 20 GB pull (GPU/torch/comfy-import preflight
-  BEFORE downloads). Capture the bootstrap log on failure or you diagnose blind.
-- **Fail-closed design earned its keep three times**: watchdog kill, empty-name-scan refusal
-  to claim "verified", denylist placement bounces. Two opus passes on spend code found 8+9
-  defects; never run spend code on one review.
-- **Ledger accounting must be elapsed × rate on early exits**, never the ceiling; two rows
-  hand-corrected today.
-- **Classifier blocks are topic-keyed, not action-keyed**: Bash heredocs/reads on the casting
-  brief were blocked while Read/Edit/Write passed. For sensitive projects prefer file tools
-  and get the permission profile set before an overnight run.
-- **Orchestration**: detached Start-Process + poll Monitors (tail -F is blind on Windows);
-  fresh dispatch with --cwd for worktree writers; SendMessage mid-run to redirect a browsing
-  agent works; an opus browsing agent can stall at its first tool call — relaunch, don't wait.
-
-## 2026-09-03 (early am) — figment composites + handoff to the overnight build terminal
-
-- **A face is a reference image, not a paragraph.** Two prompt-casting rounds bracketed the
-  target and never hit it; the operator's own Gemini anchors landed the register in one shot.
-  Ask for the operator's images before spending days on wording.
-- **Klein multi-reference semantics, measured live:** first reference = canvas (its scene and
-  body are kept); face swaps onto full-body canvases come out mask-like with a literal liner
-  artifact regardless of prompt wording; half-body canvases swap cleanly. Expand at half-body,
-  add full-body via a second pass. Three 4-ref cells ≈ 3.6 min each on a 4090 (size the
-  watchdog for it).
-- **Hosted artifact publish of persona image boards is classifier-blocked; local JPEG/HTML
-  sheets opened via Start-Process work.** Put a unique tag (row letter + column + seed) on
-  every cell or the operator cannot name a pick.
-- **Ops pushes get rejected when another session moved ops mid-work:** cherry-pick the
-  handoff commit onto the fresh tip in a new temp worktree rather than re-editing.
-- **Git object write "Permission denied" was transient** (another process on the object dir);
-  a plain retry succeeded.
-- **Mandate discipline paid off:** every operator ruling of the night went into MANDATE.md
-  immediately (tier constraint, $50 cap, research-before-training, free rein over the
-  purchased package, skin-enhancer adds detail, browsing ruling in GUARDRAILS). The handoff
-  then only has to point at it.
-## 2026-09-02/03 — Prospecting project: brainstorm → spec (3 rounds) → P1 build overnight (boss session, codex-only)
-- WORKED: brainstorm-by-decision: pushbacks first (rent data/own sequencer, no LinkedIn scraping-as-permitted, SQLite not Sheet, desktop=executor/VM=orchestrator, PII never in git), then one option widget at a time. Six research workers (providers, past assets w/ zero PII, cadence, finder lanes, OSS/practitioner → distilled to 10 keepers) fed a spec that survived an 8-blocker adversarial review with all rulings applied in one patch + one verify + one micro-patch.
-- WORKED: per-task pipeline in a phase worktree: fresh terra builder → read-only terra reviewer (test-honesty section, "would it go red on revert") → fresh fix dispatch → boss runs suite in HIS shell → commit. Every review found 1-4 real defects (FK drop, approval scope unbound, nonce replay, state bypass, PII in argv, launcher untested). Parallelize only disjoint files; serialize on shared test files.
-- LAW: patch briefs for CODE plans must carry numeric preservation constraints (≥N fences, ≥N lines, every manifest test present as code) — codex-deep collapsed a 3.4k-line plan into 800 lines of prose when asked to "apply edits".
-- LAW: harness kills long background shells → every codex dispatch via Start-Process + Monitor on the .out footer; Monitors cap at 60 min → re-arm for >60-min workers.
-- LAW: stagger dispatch launches ≥20 s; concurrent `codex login status` probes crash (0xC0000409) and the dispatcher refuses with "auth stale/missing". Codex sandbox lies about the host (py 3.12 / no Datasette); verify env facts in the real shell and say so in briefs.
-- LAW: a linked worktree inherits core.hooksPath → git runs MAIN's pre-commit, not the branch's; test branch hooks by running the script directly (`bash .githooks/pre-commit`), never via `-c core.hooksPath` (a repo guard blocks it, correctly). Git also redirects hook stdout to stderr — tests must read both streams.
-- HAZARD: a demo commit with a fixture email landed on the phase branch before the branch hook could run; reset --hard removed it pre-push. Never demo a blocking hook with a real commit on a shared branch.
-- INFRA: Datasette 0.65.1 on py3.13 needs setuptools<81 (pkg_resources); gate must pass `-p no:cacheprovider` (sandbox leaves ACL-locked .pytest_cache) and filter the pkg_resources UserWarning; Popen guards must subclass `subprocess.Popen` (asyncio subclasses it).
-- STATE: spec r3 + P1/P2/P3 plans v2 on `claude/boss-2026-09-02`; P1 built on worktree `claude/prospecting-p1` @ bdd13379, host gate passed 80/80; phase review in flight; P1 human gate = Datasette on empty store + hook rejection (scratchpad/prospecting/p1-gate-demo.ps1).
-## 2026-09-03 overnight — Gate-4 blocker fix shipped as PRs (boss session, async while Daniel slept)
-- LAW (VM CLI entrypoints): `head -c 4` the RESOLVED entrypoint as the shell user before trusting any CLI under the fd-pinned broker. codex's npm bin is a `#!/usr/bin/env node` wrapper that only spawns the native ELF (nested `@openai/codex/node_modules/@openai/codex-linux-x64/vendor/.../bin/codex`); a pinned-descriptor exec cannot run a shebang (the interpreter reopens a dead `/proc/self/fd` path). Pin the native binary through a FIXED candidate list, and make the capability probe use the same resolver so the daemon never advertises what create refuses.
-- LAW (headless CLIs under a PTY): `claude -p` refuses a TTY stdin; the shape that works is stdin=pipe + stdout/stderr=pty slave. Doing it right needs work only the child can do between fork and exec (drop the pty master, fresh blocking tty open, TIOCSCTTY, close all fds, FD_CLOEXEC on the exec fd) → a root-owned Python shim run with `-I`, pinned python3 at broker start. Harness assertions that caught real bugs: `PTMX=0 FDS=0,1,2,3\r\n` (line-terminated — a substring match gave a false green), NONBLOCK probe must read fd 2 not fd 1 (`$( )` replaces fd 1 with a pipe).
-- WORKED: review-round loop per PR with the SAME opus reviewer resumed via SendMessage for the confirm pass (cheap: ~100 s, 4 tool uses) — round 1 BLOCKED → fix → round 2 confirm + new LOW → fix → ready. Three PRs, seven review rounds, every round found something real.
-- WORKED: pre-stage the morning: `morning-rebuild.ps1` builds from origin/main only after verifying it contains the merge shas, then rewrites the deploy script's defaults — one merge, one rebuild command, one deploy command, then the boss takes over.
-- HAZARD: opus 529 Overloaded killed a resumed agent twice mid-round; the tree it left was complete (verify with a round-to-round patch diff + compile before deciding to re-dispatch). Sonnet was not affected.
-- HAZARD: vitest 5 s per-test caps on Windows/WSL under concurrent load produce 2-4 timeouts per full run (p3DeletionClosure, sessionPersistence caps, store.durability.vm, paidAction #2, canonicalResultEmbeddedPython); ALWAYS re-run each alone (script file via `wsl.exe bash -l /mnt/c/...` with `MSYS_NO_PATHCONV=1`; Git Bash mangles `/mnt/c` and `$(` inside `bash -lc` quoting) before calling anything a regression. WSL idle-shutdown between commands is harmless ("up 0 min" is normal).
-- HAZARD: a fresh worktree has no node_modules; a directory junction to a sibling worktree's `dashboard/node_modules` makes tsc/vitest work there in seconds (workers cannot create it — they stop at "cannot run tests").
-
-## 2026-09-03 late — prospecting P2/P4/P5 build night (boss lessons)
-- NEVER chain `gate --record && commit && merge && launch-next-gate` in one shell line. A gate that fails or times out still lets the commit/merge/launch run; cost me three killed P2 gates and two bad P1 records. Rule: record → read status → THEN commit, as separate calls.
-- Killing a detached gate mid-run can leave a Datasette child listening on 127.0.0.1:8765; the next P1 gate then fails `test_24_launcher_script_serves_readonly`. Free the port (Get-NetTCPConnection -LocalPort 8765 → Stop-Process) before any gate relaunch.
-- Full P1 gate (with the nested test_54 self-run) takes 10–15 min on a loaded box. Never run it foreground under `timeout`; always `run-gate-p1.ps1` + Monitor.
-- P1 tests must not hard-code phase-dependent facts (schema version == 1, PII sink count 112). Derive from what is present (glob schema_p*.sql; len(VM_SINKS)). Any exact-count criterion in gate_manifest.json is a re-record trap.
-- Later phases keep reaching into P1 files (pii_guard sink for P5, store.py for P2/P4). When a P1 change is one line and semantically P1 (a new sink name), fold it INTO P1, re-record, merge forward — never let the phase branch carry a P1 edit.
-- Sandbox workers halt on "Python 3.12 / no tzdata"; every brief now carries the ENV NOTE. The T9 worker still stopped once; relaunch briefs prepend an OVERRIDE paragraph.
-- Phase-level adversarial reviews (P2, P4) each found the phase NOT runnable end-to-end despite green task reviews: task reviews judge steps, never the workflow. Always run a phase review against Daniel's literal workflow before recording a phase as done.
-- Plan text can be wrong about frozen files (P4 T9 told the worker to edit gate.py/gate_manifest.json). Brief generation must inject the frozen-file ruling above the plan text, not rely on it.
-- Reviewer 'sink' suggestions that require new pii_guard sinks are refused: keep typed envelopes with existing kinds; only fold a sink into P1 when it is semantically P1.
+- **Both providers can be down at once.** Opus returned 529 three times in an hour (spec fold, P0R review);
+  codex returned backend 404 on all four parallel build dispatches. Fallback that worked: sonnet for folds
+  and builds, sonnet for the P0R review with an opus pass owed before the training pod. Resuming a 529'd
+  Claude agent via SendMessage works once, then it dies again; check the partial file state and finish with a
+  fresh cheaper agent instead of resuming twice.
+- **Three concurrent codex dispatches wedge the 15 s `codex login status` check** (11 s alone). Raised the
+  timeout to 60 s in `scripts/codex_dispatch.py` and stagger dispatches 25 s apart.
+- **`--follow-up` still loses `--cwd`** (memory said so; I repeated it once). Writing follow-ups = fresh dispatch
+  with `--cwd` and a self-contained brief.
+- **Windows path length breaks the harness ledger tmp file** (>260 chars) when pytest's temp root is under
+  the deep scratchpad path; and pytest temp roots created by another process are ACL-locked. Use a short,
+  fresh `PYTEST_DEBUG_TEMPROOT` per run (`C:/Users/danie/AppData/Local/Temp/kbfp-<n>`).
+- **Measured numbers beat the spec's guesses:** a 3-ref klein 4B cell is 157-165 s (first job 215-260 s), not
+  "seconds"; the composite run.json files had it all along. Read the run records before sizing pods.
+- **The 10sorlabs package's real value was in the files, not the videos:** all eight workflow JSONs carried
+  the numbers r14 called unrecoverable; the MCP video server crashed on whisper, and faster-whisper (already
+  installed) transcribed nine lessons on CPU in ~40 min. Claim-checks against the narration corrected 7 rows.
+- **Two adversarial rounds on the spec were worth it**: v1 REJECT (network volume was unledgered recurring
+  spend; safety axes missing; no T2 card before spend), v2 REJECT (run shape had zero slack over the measured
+  cold job; phases mislabeled gate-independent under the contract). v3 built.
+- **One card per session wave, not per subagent** (card-schema granularity rule); write it via a temp
+  worktree on origin/ops and `git push origin <sha>:ops`; the push can take >60 s — run it separately from
+  the worktree-add step.
+- Chrome-devtools consent is per MCP-server connection: subagents inherit it; no re-prompt observed all night.
+- **(close) Live run facts for next time:** 6 ephemeral 4090 pods × 10 klein 3-ref cells = 31 min and $0.38 each,
+  159 s/cell steady; total $2.28 for 60 cells. A sequential driver script (verify run.json + ledger before the
+  next create) let the pods run unattended for 3 h while I did nothing — build it before the first create.
+- **Background Bash shells get reaped mid-download**; anything > 2 min (weight downloads, scoring) runs via
+  `Start-Process` + an exit Monitor, never `run_in_background`.
+- **Missing runtime deps surface only at the live step**: `facenet_pytorch` was absent for `py -3` although the
+  tests (mock embedders) were green. Add an import smoke to the plan's preflight for any lazy-loaded model.
+- **Harvest/apply left quarantined files in `images/` and the batch stage at `building`**: the board was built
+  from 60 not 56 until I moved them; stage transitions are strictly one step. Put the file move and the stage
+  steps INTO the harvest/apply CLIs, not in the runbook.
+- **Identity drift is real and measurable**: anchor cosine median 0.68, six cells < 0.32 (flash/low-angle and
+  replicate families). Expect the eye-gate to cull ~10-15 of 56; 40 curated is still reachable.
