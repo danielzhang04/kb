@@ -1,0 +1,486 @@
+{
+  "gpu": {
+    "type": "NVIDIA GeForce RTX 4090",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "price_usd_per_hour": 0.8,
+  "models": [
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/vae/flux2-vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    }
+  ],
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
+    "port": 8188,
+    "start_command": "python main.py"
+  },
+  "custom_nodes": [],
+  "avoid_machine_hosts": [
+    "qvf79yutw3t2"
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "flux-2-klein-base-4b.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen_3_4b.safetensors",
+        "type": "flux2",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "flux2-vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "placeholder generation instruction",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "nudity, exposed breasts, exposed genitals, transparent clothing, broken clothing, unnatural body proportions, heavy visible makeup, plastic-looking skin, studio product photograph.",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "6": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g01.jpg"
+      }
+    },
+    "7": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g02.jpg"
+      }
+    },
+    "8": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g07.jpg"
+      }
+    },
+    "9": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "6",
+          0
+        ],
+        "upscale_method": "nearest-exact",
+        "megapixels": 1.0,
+        "resolution_steps": 1
+      }
+    },
+    "10": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "7",
+          0
+        ],
+        "upscale_method": "nearest-exact",
+        "megapixels": 1.0,
+        "resolution_steps": 1
+      }
+    },
+    "11": {
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "8",
+          0
+        ],
+        "upscale_method": "nearest-exact",
+        "megapixels": 1.0,
+        "resolution_steps": 1
+      }
+    },
+    "12": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "9",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "13": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "10",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "14": {
+      "class_type": "VAEEncode",
+      "inputs": {
+        "pixels": [
+          "11",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "15": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "4",
+          0
+        ],
+        "latent": [
+          "12",
+          0
+        ]
+      }
+    },
+    "16": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "15",
+          0
+        ],
+        "latent": [
+          "13",
+          0
+        ]
+      }
+    },
+    "17": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "16",
+          0
+        ],
+        "latent": [
+          "14",
+          0
+        ]
+      }
+    },
+    "18": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "5",
+          0
+        ],
+        "latent": [
+          "12",
+          0
+        ]
+      }
+    },
+    "19": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "18",
+          0
+        ],
+        "latent": [
+          "13",
+          0
+        ]
+      }
+    },
+    "20": {
+      "class_type": "ReferenceLatent",
+      "inputs": {
+        "conditioning": [
+          "19",
+          0
+        ],
+        "latent": [
+          "14",
+          0
+        ]
+      }
+    },
+    "21": {
+      "class_type": "EmptyFlux2LatentImage",
+      "inputs": {
+        "width": 1024,
+        "height": 1280,
+        "batch_size": 1
+      }
+    },
+    "22": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": 100001
+      }
+    },
+    "23": {
+      "class_type": "CFGGuider",
+      "inputs": {
+        "cfg": 4.0,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "17",
+          0
+        ],
+        "negative": [
+          "20",
+          0
+        ]
+      }
+    },
+    "24": {
+      "class_type": "Flux2Scheduler",
+      "inputs": {
+        "steps": 50,
+        "width": 1024,
+        "height": 1280
+      }
+    },
+    "25": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "euler"
+      }
+    },
+    "26": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "22",
+          0
+        ],
+        "guider": [
+          "23",
+          0
+        ],
+        "sampler": [
+          "25",
+          0
+        ],
+        "sigmas": [
+          "24",
+          0
+        ],
+        "latent_image": [
+          "21",
+          0
+        ]
+      }
+    },
+    "27": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "26",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "28": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "creator-001-expansion-01",
+        "images": [
+          "27",
+          0
+        ]
+      }
+    }
+  },
+  "seed_fields": [
+    "noise_seed"
+  ],
+  "uploads": [
+    {
+      "files": [
+        "_uploads/creator-001/g01.jpg",
+        "_uploads/creator-001/g02.jpg",
+        "_uploads/creator-001/g07.jpg"
+      ],
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true
+    }
+  ],
+  "job_timeout_seconds": 300,
+  "readiness_timeout_seconds": 900,
+  "max_minutes": 72,
+  "container_disk_gb": 60,
+  "volume_gb": 0,
+  "jobs": [
+    {
+      "seed": 561370,
+      "output_name": "c001-exp02-r001",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is facing the camera directly, front-on, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact corset-style bustier top over her torso, its boned structure holding its own shape, fabric unbroken and fully covering, paired with plain bottoms. The room is her own bedroom. Lighting: even, flat white light with no strong shadow, like daylight through a bedroom window on an overcast day. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 562379,
+      "output_name": "c001-exp02-r002",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is facing the camera directly, front-on, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact camisole top layered with several thin silver chain necklaces, the fabric unbroken and fully covering her torso. The room is her own bedroom. Lighting: late-afternoon daylight through one window, with no other source in the room. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 563388,
+      "output_name": "c001-exp02-r003",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is facing the camera directly, front-on, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact oversized cotton t-shirt that falls loosely past her hips, fabric unbroken and fully covering. The room is her own bedroom. Lighting: a single lamp across the room as the only light, so one side of her face falls into shadow and the image is a little noisy. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 564397,
+      "output_name": "c001-exp02-r004",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is facing the camera directly, front-on, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact knit cardigan buttoned over a plain top beneath it, fabric unbroken and fully covering. The room is her own bedroom. Lighting: a direct on-camera phone flash at night, flattening her face and throwing a hard shadow on the wall behind her. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 565406,
+      "output_name": "c001-exp02-r005",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is turned three-quarters to her own left, a three-quarter angle, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact knit cardigan buttoned over a plain top beneath it, fabric unbroken and fully covering. The room is her own bedroom. Lighting: even, flat white light with no strong shadow, like daylight through a bedroom window on an overcast day. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 566415,
+      "output_name": "c001-exp02-r006",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is turned three-quarters to her own left, a three-quarter angle, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact long-sleeved going-out mini dress, fabric unbroken and fully covering down to mid-thigh. The room is her own bedroom. Lighting: late-afternoon daylight through one window, with no other source in the room. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 567424,
+      "output_name": "c001-exp02-r007",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is turned three-quarters to her own left, a three-quarter angle, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact corset-style bustier top over her torso, its boned structure holding its own shape, fabric unbroken and fully covering, paired with plain bottoms. The room is her own bedroom. Lighting: a single lamp across the room as the only light, so one side of her face falls into shadow and the image is a little noisy. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 568433,
+      "output_name": "c001-exp02-r008",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is turned three-quarters to her own left, a three-quarter angle, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact camisole top layered with several thin silver chain necklaces, the fabric unbroken and fully covering her torso. The room is her own bedroom. Lighting: a direct on-camera phone flash at night, flattening her face and throwing a hard shadow on the wall behind her. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 569442,
+      "output_name": "c001-exp02-r009",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is turned three-quarters to her own right, a three-quarter angle, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact camisole top layered with several thin silver chain necklaces, the fabric unbroken and fully covering her torso. The room is her own bedroom. Lighting: even, flat white light with no strong shadow, like daylight through a bedroom window on an overcast day. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    },
+    {
+      "seed": 570451,
+      "output_name": "c001-exp02-r010",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "text",
+          "value": "A candid phone photo of an adult woman in her early twenties, about twenty-one \u2014 a college senior in her last year. Her hands and neck read the same age as her face, and she has an adult woman's proportions and an adult woman's frame. She is turned three-quarters to her own right, a three-quarter angle, framed half-body, from the waist up. Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature. She is wearing a fully opaque, intact oversized cotton t-shirt that falls loosely past her hips, fabric unbroken and fully covering. The room is her own bedroom. Lighting: late-afternoon daylight through one window, with no other source in the room. She is not performing for the camera: her expression is relaxed, her shoulders are slouched, and she is looking slightly past the lens rather than into it. Shot handheld on a phone camera, straight out of the camera with no edits afterward, visible skin texture, no beauty filter, no warping, and no added or removed clothing in cleanup."
+        }
+      ]
+    }
+  ]
+}

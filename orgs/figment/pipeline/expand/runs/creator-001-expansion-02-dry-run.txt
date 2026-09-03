@@ -1,0 +1,81 @@
+creator-001 expansion-02 — dry-run transcript (Task 5 / P2, plan Step 5.5)
+Generated 2026-09-03. Zero network access, zero billable compute (DryRunAPI).
+
+Build command:
+py -3 orgs/figment/pipeline/expand/build_expansion_set.py build --persona orgs/figment/personas/creator-001/persona.yaml --base-manifest orgs/figment/pipeline/train/runs/creator-001-composite-02.yaml --workflow orgs/figment/pipeline/train/workflows/klein4b_multiref_api.json --out orgs/figment/pipeline/expand/runs
+Result: built 60 cells in 6 shards (10 jobs each); 60 caption sidecar(s) written to orgs/figment/pipeline/expand/runs/creator-001-expansion-02-captions
+Exit code: 0
+
+Dry-run command template (N substituted 01..06):
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-N.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-N --max-usd 1.00 --max-minutes 72 --dry-run
+
+Per-shard results:
+
+shard-01
+  manifest: creator-001-expansion-02-shard-01.yaml
+  sha256:   1b5661cb12a431b760b67b367eb1fafc85b89d715776c2c1fcdd2a224c0d6132
+  exit code: 0
+  preflight cost estimate: $0.9600 for 72.00 minute(s) (0.80 usd/hr rate, under --max-usd 1.00)
+  jobs planned: 10 (c001-exp02-s001 .. c001-exp02-s010)
+  actual cost: $0.00 (DryRunAPI — no live pod created)
+  network calls: none
+  termination: dry-run-safe (DryRunAPI "pod dry-run-pod" created and torn down locally; verified absent) — not a fabricated live termination
+
+shard-02
+  manifest: creator-001-expansion-02-shard-02.yaml
+  sha256:   f8025a72c3cafda34b745e35032f697e2a2a1262365b2d22de62b1557c355213
+  exit code: 0
+  preflight cost estimate: $0.9600 for 72.00 minute(s)
+  jobs planned: 10 (c001-exp02-s011 .. c001-exp02-s020)
+  actual cost: $0.00
+  network calls: none
+  termination: dry-run-safe
+
+shard-03
+  manifest: creator-001-expansion-02-shard-03.yaml
+  sha256:   0a88ca1aa27c1ec10cddefb6910dc7837dffdb5e451ed6020fbeea5821ce8f90
+  exit code: 0
+  preflight cost estimate: $0.9600 for 72.00 minute(s)
+  jobs planned: 10 (c001-exp02-s021 .. c001-exp02-s030)
+  actual cost: $0.00
+  network calls: none
+  termination: dry-run-safe
+
+shard-04
+  manifest: creator-001-expansion-02-shard-04.yaml
+  sha256:   f1b9e7191c54e0029776d9cc0b0453b7b3b1b645ffc64533e53f3a9fc47fefaf
+  exit code: 0
+  preflight cost estimate: $0.9600 for 72.00 minute(s)
+  jobs planned: 10 (c001-exp02-s031 .. c001-exp02-s040)
+  actual cost: $0.00
+  network calls: none
+  termination: dry-run-safe
+
+shard-05
+  manifest: creator-001-expansion-02-shard-05.yaml
+  sha256:   8d80592526dc2b13d0336abcdcdfb0530afde3c53a3225a1490230e0b6f41ae4
+  exit code: 0
+  preflight cost estimate: $0.9600 for 72.00 minute(s)
+  jobs planned: 10 (c001-exp02-r001 .. c001-exp02-r010) — the first ten replicate cells
+  actual cost: $0.00
+  network calls: none
+  termination: dry-run-safe
+
+shard-06
+  manifest: creator-001-expansion-02-shard-06.yaml
+  sha256:   699e6cf99f1a02c7ea88400ed38e11ab9976e8cf0c03043644a3c2eaed185735
+  exit code: 0
+  preflight cost estimate: $0.9600 for 72.00 minute(s)
+  jobs planned: 10 (c001-exp02-r011 .. c001-exp02-r020) — the last ten replicate cells
+  actual cost: $0.00
+  network calls: none
+  termination: dry-run-safe
+
+Summary: 6/6 shards accepted by strict `require_manifest` preflight (via `run`'s
+`allow_missing_uploads=dry_run` path), 60/60 jobs planned across the six manifests,
+$0.00 actual spend, zero network calls, all six terminate + absence-verification
+paths reported success. Ceiling if these were live: 6 pods x $1.00 max-usd = $6.00
+(design S2 table; today's ledger already carries $0.87 as of this run per
+ledgers/cost/figment-2026-09-03.tsv, worst case $6.87 against the $10 daily guard).
+No pod was ever created against RUNPOD_API_KEY; DryRunAPI supplied the manifest's
+own price_usd_per_hour (0.80) as the simulated rate.
