@@ -8,7 +8,7 @@ import {
   createWorkflowToolPolicyResolver,
   type ClaudeToolPolicy,
 } from '../control/claudeLaunchPolicy.ts';
-import { codexSandboxMode } from '../control/workflowProfiles.ts';
+import { codexSandboxMode, toolCapArgv } from '../control/workflowProfiles.ts';
 import type {
   LaunchRecipe,
   PortResult,
@@ -266,6 +266,9 @@ export function mapWindowsLaunchRecipe(
       if (settings !== undefined) args.push('--settings', settings);
       args.push('--model', recipe.model as string);
       if (recipe.resumeRef !== undefined) args.push('--resume', recipe.resumeRef);
+      // Identical to the Linux broker's claude branch (pty/fdPinnedPaths.ts) and from the same helper:
+      // `--tools` is the cap, `--allowedTools` only suppresses the prompt for what the cap already gave.
+      args.push(...toolCapArgv(policy.allowedTools));
       args.push('--allowedTools', policy.allowedTools.join(','), '--permission-mode', policy.permissionMode);
       return { ok: true, value: {
         launcher: 'claude', file: paths.claude, args, cwd, env,

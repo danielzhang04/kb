@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  toolCapArgv,
   WORKFLOW_EXECUTION_PROFILES,
   WORKFLOW_PERMISSION_MODE,
 } from '../control/workflowProfiles.ts';
@@ -65,7 +66,8 @@ describe('fdPinnedPaths', () => {
     expect(claude.executable).toBe('/var/lib/kb-shell/home/.local/bin/claude');
     expect(claude.args).toEqual([
       '-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose',
-      '--model', 'claude-opus-5', '--resume', 'resume-1', '--allowedTools',
+      '--model', 'claude-opus-5', '--resume', 'resume-1',
+      '--tools', 'Bash,Read,Write,Edit,Glob,Grep', '--strict-mcp-config', '--allowedTools',
       'Bash,Read,Write,Edit,Glob,Grep', '--permission-mode', 'default',
     ]);
 
@@ -100,17 +102,75 @@ describe('fdPinnedPaths', () => {
       toolPolicyId: profile.id, sandbox: 'claude-policy',
     }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
     expect(claude.executable).toBe('/var/lib/kb-shell/home/.local/bin/claude');
-    // The cap the dashboard approved reaches the child verbatim, in table order.
+    // The cap the dashboard approved reaches the child verbatim, in table order - as the `--tools`
+    // set the child is GIVEN, and again as the `--allowedTools` list that keeps those tools from
+    // prompting.
     expect(claude.args.slice(-4)).toEqual([
       '--allowedTools', [...profile.allowedTools].join(','),
       '--permission-mode', WORKFLOW_PERMISSION_MODE,
     ]);
+    expect(claude.args.slice(
+      claude.args.indexOf('--tools'), claude.args.indexOf('--allowedTools'),
+    )).toEqual(toolCapArgv(profile.allowedTools));
 
     const codex = buildBrokerLaunch({
       launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
       toolPolicyId: profile.id, sandbox: 'codex-workspace-write',
     }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
     expect(codex.executable).toBe('/var/lib/kb-shell/home/.local/bin/codex');
+  });
+
+  /**
+   * THE CAP ITSELF, not the prompt-suppression list. Verified on the VM (claude_code_version 2.1.257):
+   * a `scanner` launch carrying only `--allowedTools Read,Glob,Grep,Write --permission-mode default`
+   * came up with 68 tools in its `system/init` event - Task, Bash, Edit, WebFetch, WebSearch, Workflow
+   * and the `mcp__claude_ai_Gmail__*` / `mcp__claude_ai_Google_Drive__*` namespaces among them - and
+   * the worker then called Bash three times with `permission_denials: []`. `--allowedTools` decides
+   * which calls skip the prompt; `--tools` decides which tools exist.
+   */
+  it('caps a claude worker to the profile with --tools, not merely --allowedTools', () => {
+    const capOf = (toolPolicyId: string): string[] => buildBrokerLaunch({
+      launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+      toolPolicyId, sandbox: 'claude-policy',
+    }, 'worktrees', 'run-1', { cols: 80, rows: 24 }).args;
+
+    const scanner = capOf('scanner');
+    const scannerTools = scanner[scanner.indexOf('--tools') + 1]!;
+    expect(scannerTools).toBe('Read,Glob,Grep,Write');
+    for (const escape of ['Bash', 'Edit', 'Task', 'WebFetch', 'WebSearch']) {
+      expect(scannerTools.split(',')).not.toContain(escape);
+    }
+    // No MCP tool in the profile means no MCP server may be loaded at all: with `--strict-mcp-config`
+    // and no `--mcp-config`, the set of usable servers is empty, which is what removes the
+    // `mcp__claude_ai_Gmail__send_message` reach the init event listed.
+    expect(scanner).toContain('--strict-mcp-config');
+    expect(scanner).not.toContain('--mcp-config');
+    // An allowlist, never an exclusion list - the latter cannot name a tool a future CLI adds.
+    expect(scanner).not.toContain('--disallowedTools');
+
+    // A profile that legitimately runs commands still gets them; the cap is the profile, not a ban.
+    const producer = capOf('producer');
+    expect(producer[producer.indexOf('--tools') + 1]).toBe('Bash,Read,Write,Edit,Glob,Grep');
+  });
+
+  /**
+   * `--tools` names the CLI's BUILT-IN set, so an MCP-granting profile keeps its servers loadable and
+   * carries only its built-in tools in the cap. Its MCP surface stays held by `--allowedTools` alone.
+   */
+  it('keeps MCP servers loadable for a profile that names mcp__ tools', () => {
+    expect(toolCapArgv(['mcp__google-workspace__list_gmail_labels', 'Read', 'Write']))
+      .toEqual(['--tools', 'Read,Write']);
+    expect(toolCapArgv(['Read', 'Glob'])).toEqual(['--tools', 'Read,Glob', '--strict-mcp-config']);
+    // An all-MCP profile grants no built-in tool. Rather than emit `--tools ''` and rely on the CLI's
+    // handling of an empty option value, the cap refuses - fail closed, like every other unresolvable
+    // policy on this path.
+    expect(() => toolCapArgv(['mcp__google-workspace__search_gmail_messages']))
+      .toThrow(/grants no built-in tool/);
+    expect(() => toolCapArgv([])).toThrow(/grants no built-in tool/);
+    // `Bash(git *)` is legal in `--allowedTools` and meaningless in `--tools`, and
+    // `isWellFormedToolName` lets it through, so the cap is where it has to be caught.
+    expect(() => toolCapArgv(['Read', 'Bash(git *)'])).toThrow(/scoping form/);
+    expect(() => toolCapArgv(['Read(**)'])).toThrow(/scoping form/);
   });
 
   it('gives each profile its own --allowedTools argument rather than one blanket cap', () => {
