@@ -40,18 +40,25 @@ Source batch: `personas/anchors/gemini-batch-01/g01..g08.jpg` (untracked image b
 - Identity across seeds is stable (composite-01 ×3, composite-02 g06 ×2): the klein
   reference path holds the face; the LoRA will have consistent material.
 
-## Anchor set of record (operator pick, 2026-09-03 06:50)
+## Reference set of record (operator pick, 2026-09-03 07:05)
 
-- **Primary face anchors:** `personas/anchors/gemini-batch-01/g04.jpg`, `g01.jpg`, `g07.jpg`.
-- **Composite confirmations (secondary, derived):**
-  `personas/creator-001/composite-02/c001-comp02-body-g06-seed-100001.png` (B4),
-  `personas/creator-001/composite-03/c001-comp03-body-g06-seed-200002.png` (C5),
-  `personas/creator-001/composite-03/c001-comp03-body-g02-seed-200002.png` (C2, the one clean
-  full-body composite = body exemplar alongside g02/g07).
-- Everything else in composite-01/02/03 is rejected (mask-like face, drifted identity, or
-  makeup artifacts). Do not use rejected cells as references.
-- Expansion: from the primary anchors at half-body/close framing, body toward the g02/g07
-  build, curated hard; full-body via a second pass; then the LoRA.
+To the model every reference is simply "her"; there is no anchor/composite distinction. The
+set is the images that read as one woman, used together (klein takes up to four):
+
+1. `personas/anchors/gemini-batch-01/g01.jpg`
+2. `personas/anchors/gemini-batch-01/g02.jpg` (carries the body target; its slightly wider
+   face shifts the averaged identity a touch toward g02 — accepted by the operator)
+3. `personas/anchors/gemini-batch-01/g07.jpg`
+4. `personas/creator-001/composite-03/c001-comp03-body-g06-seed-200002.png` (C5, clean
+   sharper-face confirmation; optional)
+
+Every other composite cell is rejected (mask-like face, drifted identity, makeup artifacts) and
+must not be used as a reference. Body exemplars for prompt wording: g02, g07, and
+`composite-03/c001-comp03-body-g02-seed-200002.png` (C2).
+
+**Ordering (operator ruling):** creator 001 is the first influencer AND the pipeline proof, like
+FYT's first channel. Research, infrastructure, tests, audits and reviews come first, in order;
+the expansion and LoRA for her run through the finished pipeline, never ahead of it.
 
 ## Next
 
