@@ -1321,7 +1321,7 @@ describe('registry-owned attempt session adapter', () => {
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
     await expect(launch.receipt).resolves.toMatchObject({
-      ok: false, refusal: 'internal', detail: expect.stringContaining('session exited'),
+      ok: false, refusal: 'internal', detail: 'session exited during approved prompt delivery',
     });
     await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
     expect(host.writes).toHaveLength(1);

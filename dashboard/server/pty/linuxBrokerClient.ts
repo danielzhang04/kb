@@ -171,7 +171,11 @@ export class LinuxBrokerClient implements SessionHost {
       } catch {
         if (bound !== null) {
           this.sessions.get(bound.sessionId)?.sinks.delete(bound.attachmentId);
-          void this.close(bound.sessionId);
+          void this.close(bound.sessionId).then((closeResult) => {
+            if (!closeResult.ok) {
+              this.options.onReconcile?.({ sessionId: bound!.sessionId, error: closeResult.refusal });
+            }
+          });
         }
         receipt.resolve(failure('unavailable', null));
         provisionalExit.resolve(this.abandoned('pty-00000000000000000000000000000000', 0));
@@ -261,7 +265,14 @@ export class LinuxBrokerClient implements SessionHost {
           sessionId, sequence, exitCode: null, signal: null, reason: 'closed',
           observedAt: (this.options.now ?? (() => new Date().toISOString()))(),
         };
+        // Deliver it to every attached sink exactly like a real `exit` frame does at :443 -
+        // an attached browser viewer waits on this same event and would otherwise hang forever,
+        // since the late real frame (if the child ignores its kill) is now a no-op below.
+        for (const sink of session.sinks.values()) if (!sink.closed()) sink.exit(exit);
         session.exit.resolve(exit);
+        // Drop the id from the ready listing on this synthesized verdict, same as a real exit frame.
+        // The child itself may still be alive (it ignored the kill); reconciling that with the broker
+        // is deferred to `reconcileAbandoned`, which runs on the next connect.
         if (this.ready !== null) {
           this.ready.sessions = this.ready.sessions.filter((item) => item.sessionId !== sessionId);
         }

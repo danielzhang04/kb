@@ -40,17 +40,22 @@ function pair(): [MemoryDuplex, MemoryDuplex] {
 /** A client-side socket that silently drops every outgoing frame of one type, forwarding all others. */
 class DroppingMemoryDuplex extends MemoryDuplex {
   private readonly decoder = new BrokerFrameDecoder(decodeBrokerClientFrame);
-  private readonly dropType: string;
-  constructor(dropType: string) { super(); this.dropType = dropType; }
+  private readonly dropTypes: readonly string[];
+  constructor(dropTypes: readonly string[]) { super(); this.dropTypes = dropTypes; }
   override _write(chunk: Buffer, encoding: BufferEncoding, done: (error?: Error | null) => void): void {
-    let forward = true;
-    for (const frame of this.decoder.push(chunk)) if (frame.type === this.dropType) forward = false;
+    const frames = this.decoder.push(chunk);
+    // One `write()` call carries exactly one frame in this harness (matches how the client itself
+    // writes). A chunk that decodes to more than one would make the single `forward` flag below drop
+    // or keep frames it was never asked to, silently - fail loudly instead of forwarding the wrong set.
+    if (frames.length > 1) throw new Error('DroppingMemoryDuplex only supports one frame per chunk');
+    const forward = frames.every((frame) => !this.dropTypes.includes(frame.type));
     if (forward) super._write(chunk, encoding, done);
     else done();
   }
 }
-function droppingPair(dropType: string): [DroppingMemoryDuplex, MemoryDuplex] {
-  const a = new DroppingMemoryDuplex(dropType); const b = new MemoryDuplex(); a.peer = b; b.peer = a;
+function droppingPair(dropTypes: string | readonly string[]): [DroppingMemoryDuplex, MemoryDuplex] {
+  const types = typeof dropTypes === 'string' ? [dropTypes] : dropTypes;
+  const a = new DroppingMemoryDuplex(types); const b = new MemoryDuplex(); a.peer = b; b.peer = a;
   return [a, b];
 }
 class FakePty implements BrokerPty {
@@ -564,12 +569,15 @@ describe('LinuxBrokerClient', () => {
     expect(await client.listEpoch()).toEqual({ ok: true, value: { epochId, sessionIds: [] } });
     // `create()`'s own provisional exit is chained off the SAME `session.exit`, so it settles too.
     expect(await launch.exit).toMatchObject({ reason: 'closed', exitCode: null });
+    // The synthesized exit reached the attached sink exactly once - an attached browser viewer waits
+    // on this same event, and without this delivery it would hang forever.
+    expect(exits).toEqual(['closed']);
 
     // A real exit frame landing after the timeout already settled things must be a no-op: no throw, and
     // no second delivery to the sink (it is dropped, not delivered twice).
     expect(() => child.onExitListener(0, null)).not.toThrow();
     await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(exits).toEqual([]);
+    expect(exits).toEqual(['closed']);
   });
 
   it('releases a bound session and its sink with a compensating close when create fails after binding', async () => {
@@ -598,5 +606,28 @@ describe('LinuxBrokerClient', () => {
     expect(await launch.receipt).toEqual({ ok: false, refusal: 'unavailable', detail: null });
     // The bound session was released with a compensating close, reaching the broker exactly once.
     await vi.waitFor(() => expect(closeAcks).toEqual([sessionId]));
+  });
+
+  it('reports a refused compensating close through onReconcile instead of discarding it', async () => {
+    // Same leaked-bind scenario as above, but this time the compensating close ALSO gets no answer
+    // (both `attach` and `close` are dropped), so it comes back refused. That refusal must not be
+    // discarded silently - it is reported through `onReconcile`, the same hook the abandoned-session
+    // reconciliation path already uses, and carries only the refusal code, never prompt or key text.
+    const reconciled: Array<{ sessionId: string; error: string }> = [];
+    const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: { launch: async () => new ExitsOnKillPty() }, makeSessionId: () => sessionId,
+      now: () => '2026-09-02T00:00:00.000Z', log: () => {} });
+    const [clientSocket, serverSocket] = droppingPair(['attach', 'close']);
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+    const client = new LinuxBrokerClient({ connect: async () => clientSocket, dashboardEpochId: epochId,
+      makeRequestId: () => 'req-0123456789abcdef0123456789abcdef', requestTimeoutMs: 30,
+      onReconcile: (info) => reconciled.push(info) });
+    await client.probe();
+    const launch = client.create({ operationKey, principal,
+      recipe: { launcher: 'shell', mode: 'interactive', model: null, toolPolicyId: 'shell-default', sandbox: 'interactive' },
+      rootId: 'repo', relativeCwd: '', cols: 80, rows: 24 },
+    { data: () => {}, exit: () => {}, closed: () => false });
+    expect(await launch.receipt).toEqual({ ok: false, refusal: 'unavailable', detail: null });
+    await vi.waitFor(() => expect(reconciled).toEqual([{ sessionId, error: 'unavailable' }]));
   });
 });
