@@ -136,3 +136,14 @@
 - HAZARD: opus 529 Overloaded killed a resumed agent twice mid-round; the tree it left was complete (verify with a round-to-round patch diff + compile before deciding to re-dispatch). Sonnet was not affected.
 - HAZARD: vitest 5 s per-test caps on Windows/WSL under concurrent load produce 2-4 timeouts per full run (p3DeletionClosure, sessionPersistence caps, store.durability.vm, paidAction #2, canonicalResultEmbeddedPython); ALWAYS re-run each alone (script file via `wsl.exe bash -l /mnt/c/...` with `MSYS_NO_PATHCONV=1`; Git Bash mangles `/mnt/c` and `$(` inside `bash -lc` quoting) before calling anything a regression. WSL idle-shutdown between commands is harmless ("up 0 min" is normal).
 - HAZARD: a fresh worktree has no node_modules; a directory junction to a sibling worktree's `dashboard/node_modules` makes tsc/vitest work there in seconds (workers cannot create it — they stop at "cannot run tests").
+
+## 2026-09-03 late — prospecting P2/P4/P5 build night (boss lessons)
+- NEVER chain `gate --record && commit && merge && launch-next-gate` in one shell line. A gate that fails or times out still lets the commit/merge/launch run; cost me three killed P2 gates and two bad P1 records. Rule: record → read status → THEN commit, as separate calls.
+- Killing a detached gate mid-run can leave a Datasette child listening on 127.0.0.1:8765; the next P1 gate then fails `test_24_launcher_script_serves_readonly`. Free the port (Get-NetTCPConnection -LocalPort 8765 → Stop-Process) before any gate relaunch.
+- Full P1 gate (with the nested test_54 self-run) takes 10–15 min on a loaded box. Never run it foreground under `timeout`; always `run-gate-p1.ps1` + Monitor.
+- P1 tests must not hard-code phase-dependent facts (schema version == 1, PII sink count 112). Derive from what is present (glob schema_p*.sql; len(VM_SINKS)). Any exact-count criterion in gate_manifest.json is a re-record trap.
+- Later phases keep reaching into P1 files (pii_guard sink for P5, store.py for P2/P4). When a P1 change is one line and semantically P1 (a new sink name), fold it INTO P1, re-record, merge forward — never let the phase branch carry a P1 edit.
+- Sandbox workers halt on "Python 3.12 / no tzdata"; every brief now carries the ENV NOTE. The T9 worker still stopped once; relaunch briefs prepend an OVERRIDE paragraph.
+- Phase-level adversarial reviews (P2, P4) each found the phase NOT runnable end-to-end despite green task reviews: task reviews judge steps, never the workflow. Always run a phase review against Daniel's literal workflow before recording a phase as done.
+- Plan text can be wrong about frozen files (P4 T9 told the worker to edit gate.py/gate_manifest.json). Brief generation must inject the frozen-file ruling above the plan text, not rely on it.
+- Reviewer 'sink' suggestions that require new pii_guard sinks are refused: keep typed envelopes with existing kinds; only fold a sink into P1 when it is semantically P1.
