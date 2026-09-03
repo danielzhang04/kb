@@ -75,6 +75,17 @@ slot templates per carousel type, ordering and caption rules, generation of the 
 images with the same models and QA, and per-platform variants (Instagram, TikTok, Fanvue).
 The research streams decide the mixes; the dashboard exposes them as editable templates.
 
+## Voice (per creator, trained)
+
+Each creator has her own voice, as real as the state of the art allows: a synthetic reference
+voice designed for the persona (never cloned from a real person), then a per-creator
+voice model (fine-tune or few-shot clone on an open-weight TTS with voice cloning), evaluated
+blind against real phone-audio clips for naturalness, breath, and cadence; lip-sync for
+talking video via an open lip-sync model; the same QA discipline (automated scoring + eye/ear
+gate) as images. Research stream: current open-weight voice-cloning TTS and lip-sync models,
+licences, quality reports; template library for voice-led formats (talking reels, voice notes,
+DM voice replies on the paid tier via the local-model path).
+
 ## Fanvue automation (later stage)
 
 Same identity, same pipeline, the explicit tier per the constraint below: content generation
