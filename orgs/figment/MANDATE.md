@@ -26,11 +26,17 @@ creators over time, each from her own reference image, run from one dashboard.
    anchor) held as settings on top of the LoRA: makeup, skin finish, body, lighting families,
    wardrobe families. Calibration grids live here.
 5. **Image generation with passes** — base render → face detailer → consistency check against the
-   anchor (automated identity + register scoring) → upscale/detail pass → mandatory visual QA →
-   quarantine and regenerate failures. "Perfect or culled," never "good enough."
+   anchor (automated identity + register scoring) → upscale/detail pass → de-gloss/skin-texture
+   pass (the OPPOSITE of a "skin enhancer": restore pores, grain, phone-sensor character) →
+   mandatory visual QA → quarantine and regenerate failures. "Perfect or culled," never "good
+   enough." Research stream: open face-detailer / image-detailer / de-gloss repos and ComfyUI
+   nodes (Impact Pack FaceDetailer, skin-texture LoRAs, film-grain and sensor-simulation
+   nodes, upscalers), evaluated on our outputs, licence-checked.
 6. **Video generation with passes** — image-to-video (Wan 2.2 self-hosted backbone; Kling/Veo for
    the Instagram tier where terms allow) with the same detail, consistency, and QA passes on
-   frames; face holds under motion.
+   frames; face holds under motion. Video consistency and templates are first-class: research
+   stream on identity-preserving I2V, frame-level face detailing, temporal de-gloss, and reel
+   templates (formats, lengths, cuts, audio beds) built as reusable manifests.
 7. **Content strategy from research** — what goes viral in the reference cohort: image types,
    account aesthetics, video formats, thirst-trap patterns, settings, trending audios, comment
    patterns, posting frequency, dances; per platform. Continuous, not one-off.
@@ -102,6 +108,15 @@ unclothed or explicit image — including the unclothed portion of the LoRA trai
 training run that includes it — is generated and trained on operator-controlled hardware only,
 by the operator. Agents build and test that path with clothed data; the operator runs it.
 Separate stores, prompts, and accounts per tier.
+
+## Budget (operator ruling 2026-09-03)
+
+The overnight build terminal has a HARD CAP of **$50 total** for the creator-001 arc
+(expected far lower). Enforcement: every pod through the harness with `--max-usd`; the
+harness daily guard reads `governance/budget.yaml` (operator raises `daily_usd_limit` for the
+run); the harness arc cap sums every `ledgers/cost/figment-*.tsv` row and refuses a create
+that would exceed $50; every row published to `ops`. Zero spend on any platform (see
+GUARDRAILS research-browsing ruling).
 
 ## What exists today (2026-09-03)
 
