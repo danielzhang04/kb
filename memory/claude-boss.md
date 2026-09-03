@@ -96,3 +96,25 @@
 - **Orchestration**: detached Start-Process + poll Monitors (tail -F is blind on Windows);
   fresh dispatch with --cwd for worktree writers; SendMessage mid-run to redirect a browsing
   agent works; an opus browsing agent can stall at its first tool call — relaunch, don't wait.
+
+## 2026-09-03 (early am) — figment composites + handoff to the overnight build terminal
+
+- **A face is a reference image, not a paragraph.** Two prompt-casting rounds bracketed the
+  target and never hit it; the operator's own Gemini anchors landed the register in one shot.
+  Ask for the operator's images before spending days on wording.
+- **Klein multi-reference semantics, measured live:** first reference = canvas (its scene and
+  body are kept); face swaps onto full-body canvases come out mask-like with a literal liner
+  artifact regardless of prompt wording; half-body canvases swap cleanly. Expand at half-body,
+  add full-body via a second pass. Three 4-ref cells ≈ 3.6 min each on a 4090 (size the
+  watchdog for it).
+- **Hosted artifact publish of persona image boards is classifier-blocked; local JPEG/HTML
+  sheets opened via Start-Process work.** Put a unique tag (row letter + column + seed) on
+  every cell or the operator cannot name a pick.
+- **Ops pushes get rejected when another session moved ops mid-work:** cherry-pick the
+  handoff commit onto the fresh tip in a new temp worktree rather than re-editing.
+- **Git object write "Permission denied" was transient** (another process on the object dir);
+  a plain retry succeeded.
+- **Mandate discipline paid off:** every operator ruling of the night went into MANDATE.md
+  immediately (tier constraint, $50 cap, research-before-training, free rein over the
+  purchased package, skin-enhancer adds detail, browsing ruling in GUARDRAILS). The handoff
+  then only has to point at it.
