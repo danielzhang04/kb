@@ -144,34 +144,12 @@ def test_write_fails_closed_rather_than_leaving_a_torn_store(tmp_path):
     assert not list(tmp_path.glob("*.ctx.md.tmp"))
 
 
-def test_committed_route_fixture_matches_the_writer():
-    """The dashboard route's cross-parser fixture must stay REAL writer output.
-
-    `dashboard/server/contextLifecycle/__fixtures__/hook-written-store.ctx.md` is committed so the
-    route test (which cannot import this CommonJS library from the dashboard's ESM graph) parses
-    genuine `renderSections` bytes. This re-renders the documented input and compares — if the format
-    changes, regenerate the fixture with the command in `routes.test.ts`'s header comment.
-    """
-    fixture = REPO / "dashboard" / "server" / "contextLifecycle" / "__fixtures__" / "hook-written-store.ctx.md"
-    sections = [
-        {"heading": "Recent activity", "body": "- Bash git status\n- Read scripts/hooks/lib/context_store.js"},
-        {"heading": "Resumed-session summary", "body": "- user: pick the run back up\n- assistant: working [tool: Read]"},
-        {"heading": "Current gate", "body": "awaiting the human review gate"},
-        {"heading": "Invariants", "body": "Never spend real money.\nNever push to main."},
-        {"heading": "North star", "body": "Ship the Wave-1 platform slice."},
-    ]
-    result = subprocess.run(
-        [
-            "node",
-            "-e",
-            f'const store = require({json.dumps(str(STORE))});'
-            f"process.stdout.write(store.renderSections({json.dumps(sections)}));",
-        ],
-        capture_output=True,
-    )
-    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
-    rendered = result.stdout.decode("utf-8")
-    assert rendered == fixture.read_text(encoding="utf-8").replace("\r\n", "\n")
+# NOTE: `test_committed_route_fixture_matches_the_writer` (cross-parser fixture check against
+# dashboard/server/contextLifecycle/routes.ts) was removed here -- commit 25187565 (P4 W6.1, the
+# legacy projection deletion) deleted contextLifecycle/routes.ts, routes.test.ts, and the fixture
+# it pinned together, but missed this orphaned Python test, which then failed with
+# FileNotFoundError on the deleted fixture. The writer (`context_store.js`) is still covered by
+# the other tests in this module; only the deleted route's honesty check is gone.
 
 
 # ── THE U7 SEAM ────────────────────────────────────────────────────────────────────────────────
