@@ -26,8 +26,9 @@ creators over time, each from her own reference image, run from one dashboard.
    anchor) held as settings on top of the LoRA: makeup, skin finish, body, lighting families,
    wardrobe families. Calibration grids live here.
 5. **Image generation with passes** — base render → face detailer → consistency check against the
-   anchor (automated identity + register scoring) → upscale/detail pass → de-gloss/skin-texture
-   pass (the OPPOSITE of a "skin enhancer": restore pores, grain, phone-sensor character) →
+   anchor (automated identity + register scoring) → upscale/detail pass → skin-texture pass
+   (restore pores, micro-contrast, grain, phone-sensor character; any "skin enhancer" tool is
+   kept only if it ADDS texture and dropped if it smooths or relights toward gloss) →
    mandatory visual QA → quarantine and regenerate failures. "Perfect or culled," never "good
    enough." Research stream: open face-detailer / image-detailer / de-gloss repos and ComfyUI
    nodes (Impact Pack FaceDetailer, skin-texture LoRAs, film-grain and sensor-simulation
@@ -81,7 +82,8 @@ are first-class views, not add-ons.
   it for research, building, infrastructure, and structuring. Rules: licensed content — notes
   and derived implementations in the repo, no verbatim redistribution; every linked package or
   install command is verified on its registry before use (the `npx eromify-mcp` lesson); its
-  "skin enhancer" default is the setting we turn off, per stage 5.
+  "skin enhancer" pass is EVALUATED on our outputs against the reference skin, not assumed:
+  keep it if it adds texture, drop it if it smooths (stage 5).
 - **Template catalogue** — Eromify's, 10sorlabs', and other public template and format
   catalogues studied as patterns and re-implemented natively (carousel types, posting
   templates, content mixes); nothing installed from them.
