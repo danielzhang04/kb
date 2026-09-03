@@ -36,7 +36,8 @@ that file. Required fields are:
   `max_placement_attempts` (default 4), for rejecting known-bad RunPod placements;
 - `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
   `/workspace/ComfyUI` and may not equal the mount itself), with optional public-HTTPS
-  `comfyui.source_url` and `comfyui.tarball_url` overrides;
+  `comfyui.source_url` and `comfyui.tarball_url` overrides, and optional
+  `comfyui.extra_args` appended to the ComfyUI launch command;
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
 - optional public-HTTPS `custom_nodes`;
 - a ComfyUI API-format `workflow` object or JSON path;
@@ -53,8 +54,9 @@ job seed to every matching node before applying that job's explicit substitution
 explicit substitution can deliberately override the automatic value.
 
 The example uses a PyTorch image that does not contain ComfyUI. Bootstrap first checks
-Python, Git, and curl and exits before downloads if a prerequisite is missing. Before its first
-network step it waits up to 90 seconds for DNS resolution of both GitHub and Hugging Face,
+Python, Git, curl, a non-empty `nvidia-smi -L`, and `torch.cuda.is_available()` and exits
+before installs or model downloads if a prerequisite is missing. Before its first network step
+it waits up to 90 seconds for DNS resolution of both GitHub and Hugging Face,
 logging every wait. Git clone/fetch, every `pip install`, and every model download each retry up
 to three times, with 15-second then 30-second backoff and an rc record for every attempt. The
 harness is the sole owner of the ComfyUI install: it fetches and checks out `comfyui.git_ref` in
@@ -62,7 +64,9 @@ an existing Git checkout, or clones that ref when the root is absent. If all thr
 fail, it downloads the tag tarball from codeload (or `comfyui.tarball_url`), extracts it in a
 temporary directory, moves it into `comfyui.root` without `.git`, and writes a
 `.figment-tarball-<ref>` marker. A later run reuses a root carrying that marker. The winning
-Git, tarball, or marker path is logged before `requirements.txt` is installed. An existing
+Git, tarball, or marker path is logged before `requirements.txt` is installed. A 120-second
+ComfyUI import smoke (`comfy.model_management`, `comfy.utils`) then runs before the first model
+download. An existing
 non-Git root without the marker fails before model downloads unless the manifest explicitly
 sets `comfyui.replace_non_git_root: true`; only that opt-in permits removal and replacement of
 the nested root. Existing non-empty model files are reused. A failed ComfyUI install,
@@ -75,7 +79,8 @@ Immediately after each create, the harness performs a machine-aware Pod GET. A m
 machine host or machine id is terminated and verified absent before recreation. Every rejected
 Pod retains its own provisional ledger row, settled to elapsed time at the manifest ceiling
 rate. If every placement attempt is rejected, the run fails closed with no Pod left running.
-Network-class bootstrap failures learn the current machine host in both
+Network-class bootstrap failures, plus GPU/Torch preflight, ComfyUI import-smoke, and
+ComfyUI health failures, learn the current machine host in both
 `<out>/_harness/bad_hosts.json` and `%LOCALAPPDATA%/kb-figment-pod/bad_hosts.json`; session
 entries are merged into the next run's host denylist and expire after 24 hours.
 Learning signatures include Git rc 128, Git username challenges, DNS-resolution failures,

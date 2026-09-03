@@ -749,6 +749,19 @@ def bootstrap_network_failure_reason(exc: BootstrapFailed) -> str | None:
     return " ".join(str(exc).split())[:500]
 
 
+def bootstrap_host_class_failure_reason(exc: BootstrapFailed) -> str | None:
+    """Return a cacheable reason when bootstrap proves the placement is unusable."""
+    text = "\n".join([str(exc), *exc.bootstrap_log_tail])
+    match = re.search(
+        r"\b(gpu-present|torch-cuda|comfy-import-smoke|comfy-health) failed(?: with rc=\d+)?",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return " ".join(str(exc).split())[:500]
+
+
 class Watchdog:
     """Wall-clock guard that directly tears down the lease from a daemon thread."""
 
@@ -1272,6 +1285,18 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
             "comfyui.start_command must omit --listen, --port, and --output-directory; "
             "the harness supplies proxy-safe values"
         )
+    extra_args = comfy.get("extra_args", "")
+    if not isinstance(extra_args, str):
+        raise HarnessError("comfyui.extra_args must be a string when set")
+    try:
+        extra_parts = shlex.split(extra_args)
+    except ValueError as exc:
+        raise HarnessError(f"invalid comfyui.extra_args: {exc}") from exc
+    if any(part in controlled_flags for part in extra_parts):
+        raise HarnessError(
+            "comfyui.extra_args must omit --listen, --port, and --output-directory; "
+            "the harness supplies proxy-safe values"
+        )
     if not isinstance(comfy.get("replace_non_git_root", False), bool):
         raise HarnessError("comfyui.replace_non_git_root must be true or false")
     for key in ("source_url", "tarball_url"):
@@ -1690,8 +1715,11 @@ def bootstrap_script(
     replace_non_git_root = comfy.get("replace_non_git_root") is True
     port = int(comfy.get("port", 8188))
     start_base = str(comfy.get("start_command", "python main.py"))
+    extra_args = str(comfy.get("extra_args", ""))
+    normalized_extra_args = shlex.join(shlex.split(extra_args)) if extra_args else ""
     start = (
-        f"{start_base} --listen 0.0.0.0 --port {port} "
+        f"{start_base}{' ' + normalized_extra_args if normalized_extra_args else ''} "
+        f"--listen 0.0.0.0 --port {port} "
         f"--output-directory {COMFY_OUTPUT_DIR}"
     )
     diagnostic_server = """\
@@ -1757,6 +1785,8 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "run_required python-present python --version",
         "run_required git-present git --version",
         "run_required curl-present curl --version",
+        "run_required gpu-present bash -lc 'gpu_lines=$(nvidia-smi -L) && test -n \"$gpu_lines\" && printf \'%s\\n\' \"$gpu_lines\"'",
+        "run_required torch-cuda python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 3)'",
         "wait_for_network",
     ]
     clone_comfy = (
@@ -1776,6 +1806,10 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "comfyui.replace_non_git_root: true to replace it' >&2; return 64"
     )
     root_parent = str(PurePosixPath(root).parent)
+    import_smoke_command = (
+        f"cd {shlex.quote(root)} && timeout 120 python -c "
+        f"{shlex.quote('import comfy.model_management, comfy.utils')}"
+    )
     lines.extend([
         f"COMFY_ROOT={shlex.quote(root)}",
         f"COMFY_TARBALL_MARKER={shlex.quote(tarball_marker)}",
@@ -1794,6 +1828,7 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "mv \"$extracted\" \"$COMFY_ROOT\" && rm -rf \"$COMFY_ROOT/.git\" && "
         "touch \"$COMFY_TARBALL_MARKER\"; rc=$?; rm -rf \"$tmp_dir\"; return \"$rc\"; }",
         "retry_required comfy-install install_comfy",
+        f"run_required comfy-import-smoke bash -lc {shlex.quote(import_smoke_command)}",
     ])
     for index, model in enumerate(manifest.get("models", []), start=1):
         destination = str(PurePosixPath(str(model["destination_dir"])) / PurePosixPath(str(model["filename"])).name)
@@ -2705,8 +2740,11 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             result["last_pod_state"] = exc.last_pod_state
         if isinstance(exc, BootstrapFailed):
             result["bootstrap_log_tail"] = exc.bootstrap_log_tail
-            network_reason = bootstrap_network_failure_reason(exc)
-            if network_reason and active_machine_host:
+            learned_reason = (
+                bootstrap_host_class_failure_reason(exc)
+                or bootstrap_network_failure_reason(exc)
+            )
+            if learned_reason and active_machine_host:
                 learned_at = utc_now()
                 learned_paths = [
                     out_dir / "_harness" / "bad_hosts.json",
@@ -2717,10 +2755,10 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     try:
                         record_bad_machine_host(
                             bad_host_path, active_machine_host,
-                            redact_for_stderr(network_reason), now=learned_at,
+                            redact_for_stderr(learned_reason), now=learned_at,
                         )
                         logger.warning(
-                            "recorded network-failing machine host %s in %s",
+                            "recorded failing machine host %s in %s",
                             active_machine_host, bad_host_path,
                         )
                     except BaseException as secondary:
@@ -2729,7 +2767,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         )
                         learned_errors.append(f"{bad_host_path}: {safe_error}")
                         logger.error(
-                            "could not record network-failing machine host in %s: %s",
+                            "could not record failing machine host in %s: %s",
                             bad_host_path, safe_error,
                         )
                 result["learned_bad_host"] = active_machine_host

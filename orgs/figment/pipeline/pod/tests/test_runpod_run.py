@@ -454,6 +454,40 @@ def test_P1k_network_wait_precedes_all_bootstrap_network_steps():
     assert "retrying in ${backoff}s" in script
 
 
+def test_P1m_gpu_and_import_preflight_precede_model_downloads():
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "org/model",
+        "filename": "model.safetensors",
+        "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+    }]
+
+    script = rr.bootstrap_script(configured)
+    gpu_index = script.index("run_required gpu-present")
+    torch_index = script.index("run_required torch-cuda")
+    install_index = script.index("retry_required comfy-install")
+    import_index = script.index("run_required comfy-import-smoke")
+    model_index = script.index("retry_required model-1")
+
+    assert "nvidia-smi -L" in script
+    assert "torch.cuda.is_available()" in script
+    assert gpu_index < torch_index < install_index < import_index < model_index
+    assert "retry_required gpu-present" not in script
+    assert "retry_required torch-cuda" not in script
+    assert "timeout 120 python -c" in script
+
+
+def test_P1m_extra_args_are_appended_and_transport_flags_remain_owned(tmp_path):
+    configured = manifest()
+    configured["comfyui"]["extra_args"] = "--disable-smart-memory --preview-method auto"
+    script = rr.bootstrap_script(configured)
+
+    assert "python main.py --disable-smart-memory --preview-method auto --listen 0.0.0.0" in script
+    configured["comfyui"]["extra_args"] = "--port 9999"
+    with pytest.raises(rr.HarnessError, match="extra_args must omit --listen, --port"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
 def test_exception_mid_job_terminates_and_verifies(tmp_path):
     api = FakeAPI()
     with pytest.raises(RuntimeError, match="mid-job failure"):
@@ -1956,6 +1990,41 @@ def test_P1l_network_bootstrap_failure_learns_host_and_entries_expire(
         assert rr.load_recent_bad_hosts(
             path, now=datetime(2026, 9, 3, 20, 0, 1, tzinfo=timezone.utc),
         ) == set()
+
+
+@pytest.mark.parametrize(
+    "failed_step",
+    ["gpu-present failed with rc=1", "torch-cuda failed with rc=3",
+     "comfy-import-smoke failed with rc=1", "comfy-health failed with rc=1"],
+)
+def test_P1m_host_class_bootstrap_failure_learns_host(tmp_path, monkeypatch, failed_step):
+    class FailedBootstrapProxy(FakeComfy):
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, failed_step + "\n"
+            return 200, "STEP " + failed_step + "\n"
+
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    api = PlacementAPI(["host-class-failure"])
+
+    with pytest.raises(rr.BootstrapFailed, match=failed_step):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=FailedBootstrapProxy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+        )
+
+    for path in (
+            tmp_path / "out" / "_harness" / "bad_hosts.json",
+            local_appdata / "kb-figment-pod" / "bad_hosts.json"):
+        entry = json.loads(path.read_text(encoding="utf-8"))["hosts"][0]
+        assert entry["host"] == "host-class-failure"
+        assert failed_step in entry["reason"]
 
 
 def test_P1l_recent_session_hosts_are_merged_into_manifest_avoidance(tmp_path, monkeypatch):
