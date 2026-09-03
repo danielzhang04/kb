@@ -29,6 +29,20 @@ LINUX_SOCKET = pytest.mark.skipif(
     not IS_LINUX,
     reason="requires Linux AF_UNIX, SO_PEERCRED, /proc fd pinning, uid transitions, and mount namespaces",
 )
+
+# `Oracle.__init__` asserts `os.geteuid() == 0` -- it must run through the plan's
+# `sudo env -i KB_NODE_BIN=... KB_NPX_BIN=... python3 -m pytest tests/test_pty_linux_oracle.py`
+# invocation (docs/plans/2026-08-22-dv3-p3-plan.md section 7), never bare `pytest`. A hosted CI
+# runner is Linux but not root, so without this module-level gate every `oracle`-fixture test
+# ERRORs in fixture setup instead of skipping. Gate at collection so those tests report skipped,
+# not error, off the VM/WSL oracle environment -- the in-fixture assert stays as-is for the case
+# this module DOES run, so a future regression there still fails loudly on the VM.
+NOT_ROOT_ORACLE = not (IS_LINUX and hasattr(os, "geteuid") and os.geteuid() == 0)
+pytestmark = pytest.mark.skipif(
+    NOT_ROOT_ORACLE,
+    reason="Linux root-broker oracle: run via the plan's `sudo env -i ...` command on the VM/WSL, "
+           "not a hosted CI runner (see docs/plans/2026-08-22-dv3-p3-plan.md section 7)",
+)
 PROTOCOL = "kb-shell-broker/v1"
 MAX_FRAME = 98_304
 REQUEST_ID = "req-0123456789abcdef0123456789abcdef"
