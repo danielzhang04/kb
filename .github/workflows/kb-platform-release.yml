@@ -22,7 +22,11 @@ jobs:
       - run: python -m pytest -q --ignore=atlas
       # Full vitest runs on the dev platform (its only validated baseline; plan defect #18) —
       # Linux suite greening is banked for the Task-24/Gate-2 window.
-      - run: npm run typecheck && npm run build && npm prune --omit=dev
+      # build:pty-broker MUST run before `npm prune --omit=dev`: it shells out to
+      # node_modules/typescript/bin/tsc directly (build-pty-broker.mjs), and typescript is a
+      # devDependency that prune removes. It also must run on this Linux runner specifically —
+      # scripts/build_platform_release.py refuses a broker archive packed on a non-Linux host.
+      - run: npm run typecheck && npm run build && npm run build:pty-broker && npm prune --omit=dev
         working-directory: dashboard
       - run: python -m pytest -q -m slow tests/test_build_platform_release.py
       - run: python scripts/build_platform_release.py --source . --version "$GITHUB_SHA" --output "kb-platform-$GITHUB_SHA.tar.gz" --attestation "kb-platform-$GITHUB_SHA.attestation.json"
