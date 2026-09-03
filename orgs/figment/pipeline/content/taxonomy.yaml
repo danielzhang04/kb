@@ -1,0 +1,74 @@
+{
+  "source": "r18-instagram-content-playbook.md §1",
+  "types": [
+    {
+      "id": "A",
+      "name": "persona-at-angles",
+      "what_it_is": "selfie, mirror, or half-body shot; one look, one light, several angles",
+      "persona_in_frame": true,
+      "cost": "high"
+    },
+    {
+      "id": "B",
+      "name": "outfit",
+      "what_it_is": "full-body OOTD, styling detail crops",
+      "persona_in_frame": true,
+      "cost": "high"
+    },
+    {
+      "id": "C",
+      "name": "room-place",
+      "what_it_is": "bedroom, desk, street, car interior, cafe interior",
+      "persona_in_frame": "partial",
+      "cost": "low"
+    },
+    {
+      "id": "D",
+      "name": "food-drink",
+      "what_it_is": "plate, coffee, convenience-store haul",
+      "persona_in_frame": false,
+      "cost": "low"
+    },
+    {
+      "id": "E",
+      "name": "flatlay",
+      "what_it_is": "outfit laid out, bag contents, jewelry",
+      "persona_in_frame": false,
+      "cost": "low"
+    },
+    {
+      "id": "F",
+      "name": "aesthetic-filler",
+      "what_it_is": "sky, texture, neon at night, flowers, blurred motion",
+      "persona_in_frame": false,
+      "cost": "lowest",
+      "policy": "substitution-only"
+    },
+    {
+      "id": "G",
+      "name": "motion",
+      "what_it_is": "reel-native: turn, walk, dress change, get-ready sequence",
+      "persona_in_frame": true,
+      "cost": "video pass",
+      "policy": "motion-surface"
+    }
+  ],
+  "weekly": {
+    "reels": 3,
+    "carousels": 3,
+    "singles": 1,
+    "stills": 14,
+    "videos": 3
+  },
+  "still_weights": {
+    "A": 36,
+    "B": 21,
+    "C": 21,
+    "D": 14,
+    "E": 7
+  },
+  "surfaces": {
+    "still": {"aspect": "3:4", "width": 1080, "height": 1440},
+    "reel": {"aspect": "9:16", "width": 1080, "height": 1920}
+  }
+}

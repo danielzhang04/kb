@@ -1,0 +1,88 @@
+{
+  "source": "r18-instagram-content-playbook.md §3",
+  "delivery": {
+    "aspect": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_lufs": -14,
+    "burned_captions": false
+  },
+  "caption_policy": {
+    "max_hashtags": 5,
+    "hashtag_style": "niche and topical, never the broad-spam family"
+  },
+  "rules": {
+    "no_build_up_frames": true,
+    "loop_cleanly_ids": ["RT-1", "RT-2", "RT-6"]
+  },
+  "templates": [
+    {
+      "id": "RT-1",
+      "name": "outfit-turn",
+      "length_seconds": [6, 8],
+      "hook": "already mid-turn on frame 1, no build-up",
+      "cuts": "0-1",
+      "audio": "licensed-track",
+      "audio_note": "land the turn on the drop",
+      "text_overlay": "none",
+      "cta": "none",
+      "max_hashtags": 5
+    },
+    {
+      "id": "RT-2",
+      "name": "mirror-pan",
+      "length_seconds": [5, 7],
+      "hook": "phone already raised, camera moving",
+      "cuts": "0",
+      "audio": "licensed-track",
+      "text_overlay": "none",
+      "cta": "none",
+      "max_hashtags": 5
+    },
+    {
+      "id": "RT-3",
+      "name": "dress-change",
+      "length_seconds": [8, 12],
+      "hook": "first look held 1 second",
+      "cuts": "1 match-cut timed to the audio transition",
+      "audio": "licensed-track",
+      "text_overlay": "none",
+      "cta": "none",
+      "max_hashtags": 5
+    },
+    {
+      "id": "RT-4",
+      "name": "grwm-compressed",
+      "length_seconds": [12, 20],
+      "hook": "bare-face frame 1",
+      "cuts": "4-6",
+      "audio": "original-audio-plus-low-bed",
+      "text_overlay": "3-word step labels",
+      "cta": "one soft CTA",
+      "max_hashtags": 5
+    },
+    {
+      "id": "RT-5",
+      "name": "pov-caption-led",
+      "length_seconds": [6, 10],
+      "hook": "static shot, line already on screen",
+      "cuts": "0",
+      "audio": "original-audio",
+      "text_overlay": "one line, at most seven words, upper third",
+      "cta": "question line invites comments",
+      "max_hashtags": 5
+    },
+    {
+      "id": "RT-6",
+      "name": "walk-away",
+      "length_seconds": [8, 12],
+      "hook": "motion already underway",
+      "cuts": "0-1",
+      "audio": "licensed-track",
+      "text_overlay": "none",
+      "cta": "none",
+      "max_hashtags": 5
+    }
+  ]
+}

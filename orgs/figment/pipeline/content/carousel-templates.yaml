@@ -1,0 +1,105 @@
+{
+  "source": "r18-instagram-content-playbook.md §2",
+  "rules": {
+    "slot_1_is_the_frame_you_would_post_alone": true,
+    "max_slides": 5
+  },
+  "templates": [
+    {
+      "id": "CT-1",
+      "name": "photo-dump",
+      "slots": [
+        {"role": "hero", "allowed_types": ["A"]},
+        {"role": "alt-angle", "allowed_types": ["A"]},
+        {"role": "alt-angle", "allowed_types": ["A"]},
+        {"role": "alt-angle", "allowed_types": ["A"]},
+        {"role": "close", "allowed_types": ["C", "D", "F"]}
+      ],
+      "ordering_rule": "strongest first, then alt angles, then cheap close",
+      "caption_rule": "1-4 words, lowercase, no terminal period",
+      "max_hashtags": 0,
+      "use_when": "default weekly carousel"
+    },
+    {
+      "id": "CT-2",
+      "name": "two-frame-payoff",
+      "slots": [
+        {"role": "hook", "allowed_types": ["A"]},
+        {"role": "punchline", "allowed_types": ["A"]}
+      ],
+      "ordering_rule": "setup then payoff, always exactly two slides",
+      "caption_rule": "one joke line",
+      "max_hashtags": 0,
+      "use_when": "cheapest unit; use to hold cadence"
+    },
+    {
+      "id": "CT-3",
+      "name": "outfit-set",
+      "slots": [
+        {"role": "full-body", "allowed_types": ["B"]},
+        {"role": "half-body", "allowed_types": ["B"]},
+        {"role": "detail-crop", "allowed_types": ["B"]},
+        {"role": "flatlay", "allowed_types": ["E"]}
+      ],
+      "ordering_rule": "wide, then close, then object",
+      "caption_rule": "name the pieces; caption keywords are the SEO surface",
+      "max_hashtags": 0,
+      "use_when": "OOTD / new wardrobe family"
+    },
+    {
+      "id": "CT-4",
+      "name": "same-look-grid",
+      "slots": [
+        {"role": "hero-angle", "allowed_types": ["A"]},
+        {"role": "widest-angle", "allowed_types": ["A"]},
+        {"role": "closest-angle", "allowed_types": ["A"]},
+        {"role": "off-guard-angle", "allowed_types": ["A"]}
+      ],
+      "ordering_rule": "hero, then widest, then closest, then off-guard",
+      "caption_rule": "1-2 words",
+      "max_hashtags": 0,
+      "use_when": "identity reinforcement; also our best consistency evidence"
+    },
+    {
+      "id": "CT-5",
+      "name": "place-set",
+      "slots": [
+        {"role": "persona-in-place", "allowed_types": ["A"]},
+        {"role": "place-alone", "allowed_types": ["C", "D"]},
+        {"role": "place-alone", "allowed_types": ["C", "D"]},
+        {"role": "persona-in-place", "allowed_types": ["A"]}
+      ],
+      "ordering_rule": "open and close on the persona",
+      "caption_rule": "place name or a question",
+      "max_hashtags": 0,
+      "use_when": "lifestyle credibility on a cheap slot budget"
+    },
+    {
+      "id": "CT-6",
+      "name": "swipe-reveal",
+      "slots": [
+        {"role": "covered-or-plain", "allowed_types": ["A", "B"]},
+        {"role": "payoff", "allowed_types": ["B"]}
+      ],
+      "ordering_rule": "payoff is always last",
+      "caption_rule": "2-4 words teasing the swipe",
+      "max_hashtags": 0,
+      "max_frequency": "1-per-fortnight",
+      "payoff": "outfit-not-skin",
+      "use_when": "payoff is an outfit reveal, never skin"
+    },
+    {
+      "id": "CT-7",
+      "name": "grid-triptych",
+      "slots": [
+        {"role": "grid-frame", "allowed_types": ["A", "B", "C"]},
+        {"role": "grid-frame", "allowed_types": ["A", "B", "C"]},
+        {"role": "grid-frame", "allowed_types": ["A", "B", "C"]}
+      ],
+      "ordering_rule": "composed for the grid, not the swipe",
+      "caption_rule": "none, or one emoji",
+      "max_hashtags": 0,
+      "use_when": "when curating the grid"
+    }
+  ]
+}
