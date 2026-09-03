@@ -82,8 +82,26 @@ are first-class views, not add-ons.
   it for research, building, infrastructure, and structuring. Rules: licensed content — notes
   and derived implementations in the repo, no verbatim redistribution; every linked package or
   install command is verified on its registry before use (the `npx eromify-mcp` lesson); its
-  "skin enhancer" pass is EVALUATED on our outputs against the reference skin, not assumed:
-  keep it if it adds texture, drop it if it smooths (stage 5).
+  "skin enhancer" pass ADDS detail (operator confirmation 2026-09-03), so it is a candidate
+  stage-5 detail pass to adopt and verify on our outputs; a separate de-gloss step handles
+  renders that come out glossy.
+
+## Operating principles for the build terminal (operator ruling 2026-09-03)
+
+- **Parallelise wherever it does not hurt workflow or quality**: independent research
+  streams, independent builds, and pods run concurrently; serial only where an output feeds
+  the next step (anchor → composite → expansion → LoRA) or where a human gate sits.
+- **Independent adversarial review and testing throughout**, not at the end: every unit of
+  spend-controlling, identity-scoring, or posting code gets an adversarial review by a
+  separate agent plus tests before it runs live; research gets claim-checks; images get
+  mandatory visual QA. Reviews are by a different model/session than the author.
+- **Smart, slim design**: files, skills, manifests, and agents carry only what changes
+  behaviour; no bloat, no duplicate docs, no speculative abstractions. Prefer one
+  well-named file over five thin ones; prefer extending an existing harness key over a new
+  tool. Every new skill or script justifies itself by a stage it serves.
+- **Stop rules**: human gates (anchor/composite pick, identity grid, register proof, batch
+  approval, anything explicit-tier, any spend past a manifest ceiling) stop the run; the
+  terminal parks the state, writes what it has, and waits.
 - **Template catalogue** — Eromify's, 10sorlabs', and other public template and format
   catalogues studied as patterns and re-implemented natively (carousel types, posting
   templates, content mixes); nothing installed from them.
