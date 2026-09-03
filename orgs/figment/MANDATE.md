@@ -58,6 +58,30 @@ are first-class views, not add-ons.
   norms, per platform, refreshed on a cadence.
 - **Tooling watch** — models, adapters, detailers, video engines, consistency tools; 10sorlabs
   and Eromify-class stacks as pattern references (never as dependencies).
+- **Fanvue economics and operations** — pricing tiers and bundles, free+PPV vs subscription,
+  price points, post cadence, what post types and formats get paid (from public counts,
+  prices, creator reports, agency playbooks), profile/preview setups, messaging cadence and
+  tone playbooks, funnel conversion. Public and read-only; explicit content itself is scored
+  by the operator or a local model against the operator's rubric, never by Claude.
+- **Template catalogue** — Eromify's, 10sorlabs', and other public template and format
+  catalogues studied as patterns and re-implemented natively (carousel types, posting
+  templates, content mixes); nothing installed from them.
+
+## Content-mix and carousel capability (built-in, both tiers)
+
+Carousels and multi-format posts are first-class: a content-mix taxonomy per account (the
+persona at angles, lifestyle, food, room, outfit flatlays, audience-liked aesthetic filler),
+slot templates per carousel type, ordering and caption rules, generation of the non-persona
+images with the same models and QA, and per-platform variants (Instagram, TikTok, Fanvue).
+The research streams decide the mixes; the dashboard exposes them as editable templates.
+
+## Fanvue automation (later stage)
+
+Same identity, same pipeline, the explicit tier per the constraint below: content generation
+from operator-authored templates, automated QA (identity, register, compliance classifier,
+age gate), a local open model for captions and in-loop judgment where needed, scheduled
+posting and messaging through the platform's supported channels, analytics back into the
+optimisation loop.
 
 ## Tier constraint (binding, from GUARDRAILS #3 and the W0 board)
 
