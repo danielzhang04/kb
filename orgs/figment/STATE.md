@@ -71,3 +71,20 @@ Closed. All three r15b module-video reports (`r15b-training.md`, `r15b-generatio
 design spec's S2/S3/S5/S6 blocks. LoRA rank, learning rate, batch size, checkpoint cadence, and the
 video motion block are no longer video-only estimates; the dataset-tester remains the arbiter of the
 final values.
+
+## Current state — 2026-09-03 18:05 (overnight build terminal close)
+
+- **Parked at GATE A (expansion-02 eye-gate).** Batch `orgs/figment/personas/creator-001/batches/expansion-02/`
+  stage `awaiting-eye-gate-a`: 60 cells over 6 ephemeral 4090 pods ($2.28, 31 min each), 56 scored raw
+  (anchor cosine median 0.68, min 0.09), 4 deterministic no-face quarantined (s034, s035, s040, r020). Blind board
+  `board.html` (56 images, local, gitignored) + `blind-key.json` (never shown to the grader). Nothing curated,
+  approved, stamped, or trained. Spend card 044ea509 (ops) covers the run; build card b618941b covers P1-P2R.
+- **Built and committed on `claude/figment` (HEAD 2d329cb3, unmerged):** research r15/r15b/r16/r17/r18/r19 all
+  claim-checked; spec v3 (`docs/superpowers/specs/2026-09-03-figment-creator-001-design.md`, two adversarial
+  rounds); plan v2 (`docs/superpowers/plans/2026-09-03-figment-creator-001-p1.md`); harness fixes (REVIEW-e 1-17,20;
+  P0R YES); P1 persona contract/lifecycle/gates/7-axis safety rulings; P2 deterministic expansion builder + 6
+  manifests (P2R LIVE-SAFE YES); P4b taxonomy + templates; P4e nine agent declarations + workflow DAG; P4f seven
+  cadences (armed: false). Suite: 270+ tests green.
+- **Spend:** arc $5.13 of $52.85; today $3.16 of $10.00 daily (budget.yaml raised to 10 on this branch by ruling).
+- **Next:** operator rules the board (seven axes; adult_read / garment_integrity / real_person_resemblance fail
+  closed) → `qa_stamp.py` → `gate.json` GATE A → curated 40 → P5 (opus P0R pass owed) → P7 LoRA v1.
