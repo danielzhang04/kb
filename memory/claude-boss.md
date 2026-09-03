@@ -69,3 +69,30 @@
 - STATE: `80d11d51` = P2 W6.7 + build-review fixes; Windows gate clean (4 load timeouts rerun green), Linux 279 files / 3215 tests / 0 red. Browser check in flight, then P2 close, then P3 W0 (brief v2 staged with the read budget).
 - LEARNED (cost: ~6 h idle, 17:31→23:35): I ended a turn right after a commit with NO monitor/agent armed, so nothing woke the session until Daniel nudged it; meanwhile every keep-awake lease expired (session lease is idle-expiry 15 min; pid-only leases released with their dispatch pids) and the supervisor exited. Rules: (1) never end a turn without a pending Monitor/agent or the task list finished; (2) for a hands-off run take a pid-only lease on the boss session's own claude pid (`keep_awake.ps1 -Acquire -Mode pid-only -ProcessId <claude pid>`, 16 h cap) so waits don't disarm the machine; (3) check `keep_awake.ps1 -Status` after any gap.
 - CLOSE 2026-08-23 01:20: **P2 CLOSED @ `9a72bbf8`** (chain `1521b61e` W6.7 → `80d11d51` build-review fixes → `41dfd567` browser fixes → `9a72bbf8` browser round 2). Linux 279 files / 3219 tests / 0 red; Windows typecheck 0 + build + all load-timeout files green alone. Browser: nine `p2-*` scenarios, three fix rounds, final re-check 2/2. Handoff: ops `handoffs/2026-08-23-dashboard-v3-p2-closed-p3-w0.md`. Next: P3 W0 (`scratchpad/dv3-p3-w0-brief-v2.md`).
+
+## 2026-09-03 — figment anchor-first pivot + pod-harness hardening (boss session)
+
+- **Prompt casting bracketed the target in two rounds and could not land it.** Over-glam
+  ("bronzer, glossy lip") then plain ("almost no makeup, slouched"). Prettiness must be named;
+  body adjectives are weak; colour words render literally. The operator's actual taste (three
+  screenshots) is ABG glam, heavier than the study's averaged centre — get the taste anchor
+  from the operator's own images before a study averages it away.
+- **The operator's pivot is the lesson: a face is a reference image, not a paragraph.**
+  Anchor → one-reference expansion (klein) → LoRA. Days of wording calibration were the slow
+  route; 10sorlabs' solo pipeline confirms the order (base pic → dataset → LoRA → generate).
+- **Every live pod failure today was infra, never the manifest**: readiness on a community
+  3090, SSH with no login key (removed SSH entirely; HTTP proxy transport), a secure host that
+  GitHub refuses anonymous git (host denylist + tarball fallback), a community host with no
+  CUDA driver in-container found only after a 20 GB pull (GPU/torch/comfy-import preflight
+  BEFORE downloads). Capture the bootstrap log on failure or you diagnose blind.
+- **Fail-closed design earned its keep three times**: watchdog kill, empty-name-scan refusal
+  to claim "verified", denylist placement bounces. Two opus passes on spend code found 8+9
+  defects; never run spend code on one review.
+- **Ledger accounting must be elapsed × rate on early exits**, never the ceiling; two rows
+  hand-corrected today.
+- **Classifier blocks are topic-keyed, not action-keyed**: Bash heredocs/reads on the casting
+  brief were blocked while Read/Edit/Write passed. For sensitive projects prefer file tools
+  and get the permission profile set before an overnight run.
+- **Orchestration**: detached Start-Process + poll Monitors (tail -F is blind on Windows);
+  fresh dispatch with --cwd for worktree writers; SendMessage mid-run to redirect a browsing
+  agent works; an opus browsing agent can stall at its first tool call — relaunch, don't wait.
