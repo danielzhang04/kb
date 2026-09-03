@@ -37,8 +37,15 @@ restart.
 
 ## Operating norms
 
-- Read-only browsing only: no logins, no scraping, no likes/follows/comments/DMs. If a
-  bot wall or rate limit appears, record "evidence unavailable" — never work around it.
+- Research browsing (operator ruling 2026-09-03): the operator's Chrome is signed in to
+  Instagram, Fansly, Fanvue, and OnlyFans for research. Agents use those existing sessions;
+  they never sign in, sign out, change account settings, or enter credentials. Permitted:
+  viewing and clicking around; on the paid platforms, FREE subscriptions/follows for research
+  only. Forbidden, no exceptions: spending ANY money (no paid subscriptions, PPV, tips,
+  unlocks, bundles, or "free trial" flows that attach billing), linking or entering any
+  payment method, likes/comments/DMs/messages/posts on any platform, scraping, downloading
+  other creators' media. If a paywall, bot wall, or rate limit appears, record "evidence
+  unavailable" — never work around it.
 - In the operator's live Chrome: open your own tab, never touch or close his existing
   tabs, close only your own.
 - Disclosure is the operator's to place; the pipeline carries it as a persona field and
