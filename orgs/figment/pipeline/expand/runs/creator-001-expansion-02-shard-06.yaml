@@ -356,9 +356,9 @@
       "overwrite": true
     }
   ],
-  "job_timeout_seconds": 300,
+  "job_timeout_seconds": 360,
   "readiness_timeout_seconds": 900,
-  "max_minutes": 72,
+  "max_minutes": 82,
   "container_disk_gb": 60,
   "volume_gb": 0,
   "jobs": [

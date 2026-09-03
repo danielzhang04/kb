@@ -347,13 +347,13 @@ def test_build_manifests_sets_the_expansion02_time_and_disk_overrides(tmp_path):
     paths = bes.build_manifests(PERSONA, BASE, WORKFLOW, tmp_path)
     for path in paths:
         manifest = pod.load_manifest(path)
-        assert manifest["job_timeout_seconds"] == 300
+        assert manifest["job_timeout_seconds"] == 360
         assert manifest["readiness_timeout_seconds"] == 900
-        assert manifest["max_minutes"] == 72
+        assert manifest["max_minutes"] == 82
         assert manifest["container_disk_gb"] == 60
         assert manifest["volume_gb"] == 0
-        # 900 + 10*300 + 300 = 4200s against the 4320s (72 min) budget.
-        assert 900 + 10 * 300 + 300 <= manifest["max_minutes"] * 60
+        # 900 + 10*360 + 300 = 4800s against the 4920s (82 min) budget.
+        assert 900 + 10 * 360 + 300 <= manifest["max_minutes"] * 60
 
 
 def test_build_manifests_never_embeds_planning_metadata(tmp_path):

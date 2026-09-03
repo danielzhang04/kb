@@ -348,11 +348,11 @@ COPIED_MANIFEST_KEYS = (
 _OPTIONAL_COPIED_KEYS = frozenset({"models", "custom_nodes", "avoid_machine_hosts"})
 
 # The only fields this task overrides on top of the copied base (plan Step
-# 5.3): the 72-minute max_minutes is what satisfies the P0R slack condition.
+# 5.3): the 82-minute max_minutes (900 + 10*360 + 300 = 4800 s vs 4920 s) keeps 38% margin over the measured 260 s cold first job (P2R medium 3).
 MANIFEST_OVERRIDES = {
-    "job_timeout_seconds": 300,
+    "job_timeout_seconds": 360,
     "readiness_timeout_seconds": 900,
-    "max_minutes": 72,
+    "max_minutes": 82,
     "container_disk_gb": 60,
     "volume_gb": 0,
 }
