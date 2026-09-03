@@ -43,6 +43,7 @@ import argparse
 import copy
 import importlib.util
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -446,6 +447,196 @@ def build_full_manifests(
 
 
 # ---------------------------------------------------------------------------
+# Harvest — one arm's worth of finished pod runs, mirroring
+# `build_expansion_set.harvest_runs` (Step 5.4) for the pilot/full-shard run
+# layout this module's `pilot`/`full` commands actually produce.
+# ---------------------------------------------------------------------------
+
+
+def _expected_image_id(cell: dict, arm: str) -> str:
+    """The `output_name` `job_for_cell` assigns a cell under `arm` — mechanism A
+    carries the `-mechA` suffix, mechanism B carries none (mirrors
+    `job_for_cell`'s own naming, without needing a `templates_doc` to rebuild
+    the whole job)."""
+    return f"c001-{cell['cell_id']}-mechA" if arm == "A" else f"c001-{cell['cell_id']}"
+
+
+def _run_groups(cells: list[dict], arm: str) -> list[tuple[str, list[dict]]]:
+    """The ordered `(stem, cells)` pairs this harvester expects on disk for
+    `arm`: one `pilot-<arm>` group (if any pilot cells exist) followed by
+    `full-<arm>-shard-NN` groups of up to `JOBS_PER_SHARD` cells each — the
+    exact split `build_pilot_manifests`/`build_full_manifests` use to name
+    their run directories."""
+    groups: list[tuple[str, list[dict]]] = []
+    pilot = pilot_cells(cells)
+    if pilot:
+        groups.append((f"pilot-{arm}", pilot))
+    for shard_number, shard_cells in enumerate(_shard_groups(full_cells(cells)), start=1):
+        groups.append((f"full-{arm}-shard-{shard_number:02d}", shard_cells))
+    return groups
+
+
+def harvest_variation_runs(
+    persona_path: Path, allocation_path: Path, run_root: Path, batch_dir: Path, arm: str = "A",
+) -> dict:
+    """Validate every finished `pilot-<arm>` / `full-<arm>-shard-NN` run's
+    provenance before copying anything (same contract as
+    `build_expansion_set.harvest_runs`): `run.json.termination_verified is
+    True`, harvested output identity (image ids exactly match the group's
+    allocated cell ids under `arm`'s naming), and cost — then append one
+    `pod_runs[]` row per newly harvested group (via `batch_state.record_pod_run`,
+    append-only), copy provenance JSON into `<batch_dir>/pod-runs/<stem>/` and
+    images into `<batch_dir>/images/`, and — on a brand-new or freshly-first-
+    harvested batch — advance `stage` from `building` to `generated` (one step,
+    per `batch_state.mark_batch_stage`'s forward-only rule).
+
+    `batch.json`'s cells are seeded from the FULL allocation (every cell, not
+    only what is harvested by this call) at creation time, each carrying
+    `cell_id`/`anchor`/`template_id`/`mechanism`/`seed`/`image_id`/
+    `state: "generated"` — mirroring `harvest_runs`' own "seed all cells at
+    first-touch" behaviour.
+
+    Idempotent on an identical re-harvest of an already-recorded group (returned
+    under `already_harvested`, no second cost row, no second stage advance). A
+    conflicting duplicate — the same group with different content — is always
+    an error, never a silent overwrite. A group whose run directory has no
+    `run.json` yet is reported under `skipped_not_run`, never an error."""
+    if arm not in MECHANISMS:
+        raise VariationBuildError(f"arm must be one of {MECHANISMS}, got {arm!r}")
+
+    bes = _bes()
+    persona_module = bes._persona_module()
+    gates_module = bes._gates_module()
+    bs = bes._batch_state_module()
+
+    persona = persona_module.load_persona(Path(persona_path), require_assets=False)
+    persona_id = persona["id"]
+
+    allocation_path = Path(allocation_path)
+    allocation_doc = json.loads(allocation_path.read_text(encoding="utf-8"))
+    cells_all = allocation_doc["cells"] if isinstance(allocation_doc, dict) else allocation_doc
+    allocation_sha256 = gates_module.sha256_file(allocation_path)
+
+    run_root = Path(run_root)
+    batch_dir = Path(batch_dir)
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    batch_path = batch_dir / "batch.json"
+
+    if batch_path.is_file():
+        batch = json.loads(batch_path.read_text(encoding="utf-8"))
+        if batch.get("allocation_sha256") != allocation_sha256:
+            raise VariationBuildError(
+                f"{batch_path} was created from a different allocation "
+                f"({batch.get('allocation_sha256')!r} != {allocation_sha256!r}) "
+                "— refusing to harvest against a stale batch"
+            )
+    else:
+        initial_cells = [
+            {
+                "cell_id": cell["cell_id"],
+                "anchor": cell["anchor"],
+                "template_id": cell["template_id"],
+                "mechanism": arm,
+                "seed": cell["seed"],
+                "image_id": _expected_image_id(cell, arm),
+                "state": "generated",
+            }
+            for cell in cells_all
+        ]
+        batch = bs.new_batch(
+            batch_id=BATCH_LABEL, persona_id=persona_id,
+            allocation_sha256=allocation_sha256, cells=initial_cells,
+        )
+        bes._atomic_write_json(batch_path, batch)
+
+    summary: dict[str, list[str]] = {
+        "harvested": [], "already_harvested": [], "skipped_not_run": [],
+    }
+
+    for stem, cells in _run_groups(cells_all, arm):
+        run_dir = run_root / f"{persona_id}-{BATCH_LABEL}-{stem}"
+        run_json_path = run_dir / "run.json"
+        manifest_json_path = run_dir / "manifest.json"
+
+        if not run_json_path.is_file():
+            summary["skipped_not_run"].append(stem)
+            continue
+
+        run_data = json.loads(run_json_path.read_text(encoding="utf-8"))
+        if run_data.get("termination_verified") is not True:
+            raise VariationBuildError(
+                f"{stem}: run.json termination_verified is not True — "
+                "refusing to harvest an unverified pod exit"
+            )
+        if not manifest_json_path.is_file():
+            raise VariationBuildError(f"{stem}: manifest.json is missing")
+
+        images_doc = json.loads(manifest_json_path.read_text(encoding="utf-8"))
+        images = images_doc.get("images") if isinstance(images_doc, dict) else images_doc
+        if not isinstance(images, list):
+            raise VariationBuildError(f"{stem}: manifest.json has no images list")
+
+        expected_ids = {_expected_image_id(cell, arm) for cell in cells}
+        got_ids = {row.get("image_id") for row in images}
+        if len(images) != len(cells) or got_ids != expected_ids:
+            raise VariationBuildError(
+                f"{stem}: harvested output identity mismatch (expected "
+                f"{sorted(expected_ids)}, got {sorted(got_ids)})"
+            )
+
+        cost = round(float(run_data.get("estimated_actual_usd") or 0.0), 6)
+        cell_ids = sorted(cell["cell_id"] for cell in cells)
+
+        existing = next(
+            (row for row in batch.get("pod_runs", []) if row.get("shard_id") == stem),
+            None,
+        )
+        if existing is not None:
+            if existing.get("cell_ids") == cell_ids and existing.get("cost_usd") == cost:
+                summary["already_harvested"].append(stem)
+                continue
+            raise VariationBuildError(
+                f"{stem}: conflicting duplicate harvest — a pod-run row "
+                "already exists with different content; pod_runs is "
+                "append-only and is never silently overwritten"
+            )
+
+        row = {
+            "shard_id": stem,
+            "arm": arm,
+            "run_json_path": str(run_json_path),
+            "manifest_json_path": str(manifest_json_path),
+            "cell_ids": cell_ids,
+            "status": "harvested",
+            "cost_usd": cost,
+        }
+
+        def _record(current_batch: dict, row: dict = row) -> dict:
+            return bs.record_pod_run(current_batch, row)
+
+        batch = bs.apply_batch(batch_path, _record)
+
+        provenance_dir = batch_dir / "pod-runs" / stem
+        provenance_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(run_json_path, provenance_dir / "run.json")
+        shutil.copy2(manifest_json_path, provenance_dir / "manifest.json")
+
+        images_dir = batch_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        for image_row in images:
+            src = run_dir / image_row["path"]
+            if src.is_file():
+                shutil.copy2(src, images_dir / image_row["path"])
+
+        summary["harvested"].append(stem)
+
+    if batch.get("stage") == "building" and batch.get("pod_runs"):
+        batch = bs.apply_batch(batch_path, lambda current: bs.mark_batch_stage(current, "generated"))
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -508,6 +699,18 @@ def _cli_full(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cli_harvest(args: argparse.Namespace) -> int:
+    summary = harvest_variation_runs(
+        args.persona, args.allocation, args.run_root, args.batch_dir, args.arm,
+    )
+    print(
+        f"harvested {len(summary['harvested'])} group(s); "
+        f"already-harvested {len(summary['already_harvested'])}; "
+        f"not yet run {len(summary['skipped_not_run'])}"
+    )
+    return 0
+
+
 def _add_common_args(cmd: argparse.ArgumentParser) -> None:
     cmd.add_argument("--persona", required=True, type=Path)
     cmd.add_argument("--base-manifest", required=True, type=Path)
@@ -537,6 +740,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_common_args(full_cmd)
     full_cmd.set_defaults(func=_cli_full)
+
+    harvest_cmd = sub.add_parser(
+        "harvest",
+        help="validate one arm's finished pod-run provenance and copy it into the tracked batch layout",
+    )
+    harvest_cmd.add_argument("--persona", required=True, type=Path)
+    harvest_cmd.add_argument("--allocation", required=True, type=Path)
+    harvest_cmd.add_argument("--run-root", required=True, type=Path)
+    harvest_cmd.add_argument("--batch-dir", required=True, type=Path)
+    harvest_cmd.add_argument("--arm", choices=MECHANISMS, default="A")
+    harvest_cmd.set_defaults(func=_cli_harvest)
 
     return ap
 

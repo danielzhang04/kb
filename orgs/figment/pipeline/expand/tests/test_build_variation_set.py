@@ -10,6 +10,7 @@ own `BANNED_PHRASES` mirror of look-spec-v2.md §4a rather than a second copy.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -420,3 +421,329 @@ def test_every_pilot_and_full_manifest_passes_dry_run_offline(
         code = pod.main(["run", "--manifest", str(path), "--dry-run", "--out", str(out)])
         assert code == 0, f"--dry-run failed for {path.name}"
         assert (out / "run.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Harvest — one arm's finished `pilot-<arm>` / `full-<arm>-shard-NN` runs
+# (mirrors `build_expansion_set.harvest_runs`'s provenance/idempotency
+# contract for the pilot/full run layout this module's own builders emit).
+#
+# A synthetic 3-cell allocation (1 pilot cell + 2 full cells, one shard) is
+# used rather than the real 36-cell templates-driven allocation — the
+# harvester never reads `anchor-variations.yaml` at all (it only needs the
+# already-resolved `cell_id`/`anchor`/`template_id`/`seed`/`is_pilot` fields
+# an allocation.json already carries), so a hand-built fixture proves the
+# same contract with two run directories instead of five.
+# ---------------------------------------------------------------------------
+
+
+def synthetic_variation_cells() -> list[dict]:
+    return [
+        {
+            "cell_id": "exp03-g01-t06", "anchor": "g01", "template_id": "T06",
+            "denoise": 0.28, "seed": 530006, "is_pilot": True,
+        },
+        {
+            "cell_id": "exp03-g02-t01", "anchor": "g02", "template_id": "T01",
+            "denoise": 0.2, "seed": 531001, "is_pilot": False,
+        },
+        {
+            "cell_id": "exp03-g07-t02", "anchor": "g07", "template_id": "T02",
+            "denoise": 0.2, "seed": 532002, "is_pilot": False,
+        },
+    ]
+
+
+def write_variation_allocation_file(persona_id: str, out_path: Path, cells=None) -> list[dict]:
+    cells = synthetic_variation_cells() if cells is None else cells
+    out_path.write_text(json.dumps({
+        "schema": "figment/expansion-allocation@1",
+        "persona_id": persona_id,
+        "batch_id": "expansion-03",
+        "cells": cells,
+    }), encoding="utf-8")
+    return cells
+
+
+def write_fake_variation_run(
+    run_root: Path, persona_id: str, stem: str, cells: list[dict], arm: str, *,
+    termination_verified: bool = True, cost: float = 0.17, break_output_ids: bool = False,
+    missing_one_output: bool = False,
+) -> Path:
+    """A harness-shaped fake run directory for `<persona_id>-expansion-03-<stem>`
+    — `run.json`, `manifest.json`, and one dummy output PNG per cell, image ids
+    following `bvs._expected_image_id`'s per-arm naming (the `-mechA` suffix
+    for arm A, none for arm B) — enough for `harvest_variation_runs` to
+    validate against without ever touching a real pod."""
+    run_dir = run_root / f"{persona_id}-expansion-03-{stem}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    images = []
+    for index, cell in enumerate(cells):
+        image_id = bvs._expected_image_id(cell, arm)
+        if break_output_ids and index == 0:
+            image_id = "c001-not-an-allocated-cell"
+        path_name = f"{image_id}.png"
+        (run_dir / path_name).write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        images.append({
+            "image_id": image_id, "path": path_name,
+            "review_status": "unreviewed", "parked_reasons": [],
+        })
+    if missing_one_output and images:
+        images.pop()
+
+    run_json = {
+        "schema": "figment/runpod-run@1", "dry_run": False,
+        "pod_id": f"fake-pod-{stem}", "termination_verified": termination_verified,
+        "estimated_actual_usd": cost,
+        "jobs": [{"output_name": row["image_id"]} for row in images],
+    }
+    (run_dir / "run.json").write_text(json.dumps(run_json), encoding="utf-8")
+    (run_dir / "manifest.json").write_text(json.dumps({"images": images}), encoding="utf-8")
+    return run_dir
+
+
+@pytest.fixture
+def variation_allocation(persona, tmp_path):
+    allocation_path = tmp_path / "allocation.json"
+    cells = write_variation_allocation_file(persona["id"], allocation_path)
+    return allocation_path, cells
+
+
+def _cells_by_stem(cells: list[dict]) -> dict:
+    return {
+        "pilot-A": [cells[0]],
+        "full-A-shard-01": [cells[1], cells[2]],
+    }
+
+
+def test_harvest_reports_not_yet_run_group_and_batch_stage_stays_building(
+    tmp_path, variation_allocation, persona,
+):
+    allocation_path, cells = variation_allocation
+    run_root = tmp_path / "run-root-none"
+    batch_dir = tmp_path / "batch-none"
+
+    summary = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    assert summary["harvested"] == []
+    assert summary["already_harvested"] == []
+    assert sorted(summary["skipped_not_run"]) == ["full-A-shard-01", "pilot-A"]
+
+    batch = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+    assert batch["stage"] == "building"
+    assert len(batch["cells"]) == 3
+
+
+def test_harvest_batch_json_shape_anchor_present_on_every_cell(
+    tmp_path, variation_allocation, persona,
+):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch"
+    for stem, group in _cells_by_stem(cells).items():
+        write_fake_variation_run(run_root, persona_id, stem, group, "A")
+
+    summary = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    assert sorted(summary["harvested"]) == ["full-A-shard-01", "pilot-A"]
+
+    batch = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+    assert len(batch["cells"]) == 3
+    for cell in batch["cells"]:
+        assert cell.get("anchor") in {"g01", "g02", "g07"}
+        assert cell["state"] == "generated"
+        assert cell["mechanism"] == "A"
+        assert cell["image_id"] == f"c001-{cell['cell_id']}-mechA"
+        assert isinstance(cell["seed"], int)
+        assert cell.get("template_id")
+
+
+def test_harvest_advances_batch_stage_to_generated(tmp_path, variation_allocation, persona):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch"
+    write_fake_variation_run(run_root, persona_id, "pilot-A", [cells[0]], "A")
+
+    bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    batch = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+    assert batch["stage"] == "generated"
+
+
+def test_harvest_copies_images_and_pod_run_provenance(tmp_path, variation_allocation, persona):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch"
+    for stem, group in _cells_by_stem(cells).items():
+        write_fake_variation_run(run_root, persona_id, stem, group, "A")
+
+    bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+
+    images_dir = batch_dir / "images"
+    expected_names = {f"c001-{cell['cell_id']}-mechA.png" for cell in cells}
+    assert {p.name for p in images_dir.iterdir()} == expected_names
+
+    for stem in ("pilot-A", "full-A-shard-01"):
+        prov_dir = batch_dir / "pod-runs" / stem
+        assert (prov_dir / "run.json").is_file()
+        assert (prov_dir / "manifest.json").is_file()
+
+    batch = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+    assert len(batch["pod_runs"]) == 2
+    shard_ids = {row["shard_id"] for row in batch["pod_runs"]}
+    assert shard_ids == {"pilot-A", "full-A-shard-01"}
+    for row in batch["pod_runs"]:
+        assert row["status"] == "harvested"
+        assert row["arm"] == "A"
+
+
+def test_harvest_is_idempotent_on_rerun(tmp_path, variation_allocation, persona):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch"
+    for stem, group in _cells_by_stem(cells).items():
+        write_fake_variation_run(run_root, persona_id, stem, group, "A")
+
+    first = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    assert sorted(first["harvested"]) == ["full-A-shard-01", "pilot-A"]
+    batch_after_first = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+    assert len(batch_after_first["pod_runs"]) == 2
+    cost_after_first = batch_after_first["cost_usd"]
+
+    second = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    assert second["harvested"] == []
+    assert sorted(second["already_harvested"]) == ["full-A-shard-01", "pilot-A"]
+    batch_after_second = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+    assert len(batch_after_second["pod_runs"]) == 2
+    assert batch_after_second["cost_usd"] == pytest.approx(cost_after_first)
+    assert batch_after_second["stage"] == "generated"
+
+
+def test_harvest_partial_then_completes_reports_not_yet_run_then_harvested(
+    tmp_path, variation_allocation, persona,
+):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch"
+    write_fake_variation_run(run_root, persona_id, "pilot-A", [cells[0]], "A")
+
+    first = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    assert first["harvested"] == ["pilot-A"]
+    assert first["skipped_not_run"] == ["full-A-shard-01"]
+    batch = json.loads((batch_dir / "batch.json").read_text(encoding="utf-8"))
+    assert batch["stage"] == "generated"
+
+    write_fake_variation_run(run_root, persona_id, "full-A-shard-01", [cells[1], cells[2]], "A")
+    second = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    assert second["harvested"] == ["full-A-shard-01"]
+    assert second["already_harvested"] == ["pilot-A"]
+    assert second["skipped_not_run"] == []
+
+
+def test_harvest_rejects_unverified_termination_and_identity_mismatch(
+    tmp_path, variation_allocation, persona,
+):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+
+    run_root_unverified = tmp_path / "run-root-unverified"
+    write_fake_variation_run(
+        run_root_unverified, persona_id, "pilot-A", [cells[0]], "A", termination_verified=False,
+    )
+    with pytest.raises(ValueError, match="termination_verified"):
+        bvs.harvest_variation_runs(
+            PERSONA, allocation_path, run_root_unverified, tmp_path / "batch-unverified", "A",
+        )
+
+    run_root_bad_ids = tmp_path / "run-root-bad-ids"
+    write_fake_variation_run(
+        run_root_bad_ids, persona_id, "pilot-A", [cells[0]], "A", break_output_ids=True,
+    )
+    with pytest.raises(ValueError, match="identity mismatch"):
+        bvs.harvest_variation_runs(
+            PERSONA, allocation_path, run_root_bad_ids, tmp_path / "batch-bad-ids", "A",
+        )
+
+    run_root_missing = tmp_path / "run-root-missing"
+    write_fake_variation_run(
+        run_root_missing, persona_id, "pilot-A", [cells[0]], "A", missing_one_output=True,
+    )
+    with pytest.raises(ValueError, match="identity mismatch"):
+        bvs.harvest_variation_runs(
+            PERSONA, allocation_path, run_root_missing, tmp_path / "batch-missing", "A",
+        )
+
+
+def test_harvest_rejects_conflicting_duplicate_pod_run(tmp_path, variation_allocation, persona):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch-dup"
+    write_fake_variation_run(run_root, persona_id, "pilot-A", [cells[0]], "A", cost=0.42)
+
+    first = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+    assert first["harvested"] == ["pilot-A"]
+
+    write_fake_variation_run(run_root, persona_id, "pilot-A", [cells[0]], "A", cost=0.99)
+    with pytest.raises(ValueError, match="conflicting duplicate"):
+        bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+
+
+def test_harvest_defaults_to_arm_a_and_arm_b_output_names_carry_no_suffix(
+    tmp_path, variation_allocation, persona,
+):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+
+    run_root_a = tmp_path / "run-root-a"
+    batch_dir_a = tmp_path / "batch-a"
+    write_fake_variation_run(run_root_a, persona_id, "pilot-A", [cells[0]], "A")
+    summary_default = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root_a, batch_dir_a)
+    assert summary_default["harvested"] == ["pilot-A"]
+    batch_a = json.loads((batch_dir_a / "batch.json").read_text(encoding="utf-8"))
+    assert batch_a["cells"][0]["image_id"] == "c001-exp03-g01-t06-mechA"
+
+    run_root_b = tmp_path / "run-root-b"
+    batch_dir_b = tmp_path / "batch-b"
+    write_fake_variation_run(run_root_b, persona_id, "pilot-B", [cells[0]], "B")
+    summary_b = bvs.harvest_variation_runs(PERSONA, allocation_path, run_root_b, batch_dir_b, "B")
+    assert summary_b["harvested"] == ["pilot-B"]
+    batch_b = json.loads((batch_dir_b / "batch.json").read_text(encoding="utf-8"))
+    assert batch_b["cells"][0]["image_id"] == "c001-exp03-g01-t06"
+    assert not batch_b["cells"][0]["image_id"].endswith("-mechA")
+
+
+def test_harvest_rejects_stale_batch_from_different_allocation(tmp_path, variation_allocation, persona):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch-stale"
+    write_fake_variation_run(run_root, persona_id, "pilot-A", [cells[0]], "A")
+    bvs.harvest_variation_runs(PERSONA, allocation_path, run_root, batch_dir, "A")
+
+    other_allocation_path = tmp_path / "other-allocation.json"
+    write_variation_allocation_file(
+        persona_id, other_allocation_path,
+        cells=[{**cells[0], "seed": 999999}],
+    )
+    with pytest.raises(ValueError, match="different allocation"):
+        bvs.harvest_variation_runs(PERSONA, other_allocation_path, run_root, batch_dir, "A")
+
+
+def test_harvest_cli_prints_summary(tmp_path, variation_allocation, persona):
+    allocation_path, cells = variation_allocation
+    persona_id = persona["id"]
+    run_root = tmp_path / "run-root"
+    batch_dir = tmp_path / "batch-cli"
+    for stem, group in _cells_by_stem(cells).items():
+        write_fake_variation_run(run_root, persona_id, stem, group, "A")
+
+    code = bvs.main([
+        "harvest", "--persona", str(PERSONA), "--allocation", str(allocation_path),
+        "--run-root", str(run_root), "--batch-dir", str(batch_dir), "--arm", "A",
+    ])
+    assert code == 0
+    assert (batch_dir / "batch.json").is_file()
