@@ -28,7 +28,23 @@ Two modes:
                                                 # "c001-exp02-s001") and batch.json's
                                                 # own cell_id ("exp02-s001").
         "face_detected": bool,
-        "face_cosine": float | null,        # cosine to the anchor face, if both embedded
+        "face_cosine": float | null,        # cosine to the PRIMARY anchor (references[0]
+                                              # / the legacy --anchor), unchanged for
+                                              # backward compatibility
+        "anchor_cosines": {str: float | null},  # cosine to EVERY persona reference,
+                                              # keyed by its stem ("g01", "g02", "g07");
+                                              # expansion-03 design §6 risk 2 fix — a
+                                              # --persona/--batch --raw-only run no
+                                              # longer scores only references[0]
+        "anchor_cosine_max": float | null,   # max of anchor_cosines' values
+        "anchor_cosine_own": float | null,   # anchor_cosines[own_anchor], or null when
+                                              # own_anchor is null
+        "anchor_cosine": float | null,       # alias of anchor_cosine_max
+        "own_anchor": str | null,            # the reference this cell was generated
+                                              # from, resolved via _load_batch_cell_anchors
+                                              # from the cell's own "anchor"/"source_anchor"
+                                              # field (null when the batch carries neither
+                                              # field — e.g. every expansion-02 cell)
         "dinov2_cohesion": float | null,     # cosine to the training-set DINOv2 centroid
         "metrics": {                          # compute_raw_metrics() — always present,
           "laplacian_variance": float | null,        # never inferred, never omitted
@@ -60,6 +76,7 @@ import argparse
 import importlib.util
 import json
 import math
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -268,6 +285,25 @@ class DinoV2Embedder:
         return vector(embedding)
 
 
+def _embed_references(
+    references: list[Path], face_embedder: Callable[[Path], Any]
+) -> tuple[dict[str, list[float]], dict[str, str]]:
+    """Embed every persona reference anchor once, keyed by its stem (`g01`, `g02`,
+    `g07`, ...). Never raises — a reference whose embedding fails is simply absent
+    from the returned vectors dict, with its error recorded separately (design
+    finding: expansion-03 §6 risk 2 fix must score against every reference, not
+    only `references[0]`, without a single bad reference file blocking the rest)."""
+    vectors: dict[str, list[float]] = {}
+    errors: dict[str, str] = {}
+    for reference in references:
+        stem = Path(reference).stem
+        try:
+            vectors[stem] = vector(face_embedder(reference))
+        except Exception as exc:
+            errors[stem] = f"{type(exc).__name__}: {exc}"
+    return vectors, errors
+
+
 def _resolve_cell_id(image_id: str, cell_ids: list[str]) -> str | None:
     """Best-effort, deterministic mapping from a harvested image's on-disk id (the
     pod harness's own `output_name`, e.g. `"c001-exp02-s001"` — see
@@ -295,16 +331,22 @@ def _evaluate_raw_only(
     dino_embedder: Callable[[Path], Any],
     *,
     cell_ids: list[str] | None = None,
+    references: list[Path] | None = None,
+    cell_anchors: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
     """Raw-only mode (design finding 24): per-image observations, never a verdict.
     Never writes `rulings.json`; the word "pass" never appears anywhere in the
-    output — raw scores must never look like, or be mistaken for, a routing verdict."""
-    try:
-        anchor_face = vector(face_embedder(anchor))
-        anchor_error: str | None = None
-    except Exception as exc:
-        anchor_face = None
-        anchor_error = f"{type(exc).__name__}: {exc}"
+    output — raw scores must never look like, or be mistaken for, a routing verdict.
+
+    expansion-03 design §6 risk 2/6 fix: `references` (defaulting to `[anchor]` when
+    omitted, so every pre-existing caller keeps its single-anchor shape) is scored
+    per-image against EVERY entry, not only `anchor` — see `anchor_cosines` /
+    `anchor_cosine_max` / `anchor_cosine_own` on each row below."""
+    reference_paths = list(references) if references else [anchor]
+    reference_faces, reference_errors = _embed_references(reference_paths, face_embedder)
+    primary_stem = Path(anchor).stem
+    anchor_face = reference_faces.get(primary_stem)
+    anchor_error: str | None = reference_errors.get(primary_stem)
 
     face_vectors: dict[Path, list[float]] = {}
     face_errors: dict[Path, str] = {}
@@ -354,12 +396,38 @@ def _evaluate_raw_only(
         else:
             reason = None
 
+        cell_id = _resolve_cell_id(path.stem, cell_ids) if cell_ids else None
+
+        # expansion-03 design §6 risk 2 fix: score against EVERY reference, not
+        # only the primary anchor. `anchor_cosines` always carries a key for every
+        # reference (null where the image or that reference's own embedding is
+        # unavailable) so a partial-failure reference never silently disappears.
+        anchor_cosines: dict[str, float | None] = {
+            stem: None for stem in reference_faces.keys() | reference_errors.keys()
+        }
+        if face_detected:
+            for stem, ref_vector in reference_faces.items():
+                try:
+                    anchor_cosines[stem] = cosine(ref_vector, face_vectors[path])
+                except IdentityCheckError:
+                    anchor_cosines[stem] = None
+        valid_anchor_cosines = [v for v in anchor_cosines.values() if v is not None]
+        anchor_cosine_max = max(valid_anchor_cosines) if valid_anchor_cosines else None
+
+        own_anchor = cell_anchors.get(cell_id) if cell_anchors and cell_id else None
+        anchor_cosine_own = anchor_cosines.get(own_anchor) if own_anchor is not None else None
+
         rows.append({
             "image_id": path.stem,
             "path": path.name,
-            "cell_id": _resolve_cell_id(path.stem, cell_ids) if cell_ids else None,
+            "cell_id": cell_id,
             "face_detected": face_detected,
             "face_cosine": face_cosine_value,
+            "anchor_cosines": anchor_cosines,
+            "anchor_cosine_max": anchor_cosine_max,
+            "anchor_cosine_own": anchor_cosine_own,
+            "anchor_cosine": anchor_cosine_max,
+            "own_anchor": own_anchor,
             "dinov2_cohesion": dino_cohesion.get(path),
             "metrics": metrics,
             "unavailable_reason": reason,
@@ -408,6 +476,8 @@ def evaluate(
     *,
     raw_only: bool = False,
     cell_ids: list[str] | None = None,
+    references: list[Path] | None = None,
+    cell_anchors: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
     images = sorted(
         path for path in image_dir.iterdir()
@@ -417,7 +487,8 @@ def evaluate(
         raise IdentityCheckError("image directory contains no candidate images")
     if raw_only:
         return _evaluate_raw_only(
-            anchor, image_dir, out_dir, images, face_embedder, dino_embedder, cell_ids=cell_ids
+            anchor, image_dir, out_dir, images, face_embedder, dino_embedder,
+            cell_ids=cell_ids, references=references, cell_anchors=cell_anchors,
         )
     failures: dict[Path, list[str]] = {path: [] for path in images}
     try:
@@ -579,6 +650,50 @@ def _load_batch_cell_ids(batch_path: Path) -> list[str]:
     ]
 
 
+def _load_batch_cell_anchors(batch_path: Path) -> dict[str, str | None]:
+    """Read `batch.json`'s own `cells` list and resolve each cell's OWN anchor
+    identifier — expansion-03 design §6 risk 2/6: `identity_check.py --raw-only`
+    must be able to record `anchor_cosine_own` against the anchor a cell was
+    actually generated from, not only the max over every reference.
+
+    Checked in order per cell: an `"anchor"` field, then a `"source_anchor"` field
+    (both plain strings expected to match a reference's stem, e.g. `"g01"`). Neither
+    field exists on expansion-02's own cells (`build_expansion_set.py`'s
+    `generate_allocation` never writes one) — every value here is `None` for that
+    batch, and `_evaluate_raw_only` falls back to `anchor_cosine_max` accordingly,
+    exactly as the design's blocking-defect note requires. Never raises on a
+    malformed/partial document — an empty dict simply means no own-anchor
+    resolution is possible."""
+    try:
+        data = json.loads(Path(batch_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    cells = data.get("cells") if isinstance(data, dict) else None
+    if not isinstance(cells, list):
+        return {}
+    result: dict[str, str | None] = {}
+    for cell in cells:
+        if not isinstance(cell, dict) or not cell.get("cell_id"):
+            continue
+        value = cell.get("anchor")
+        if not isinstance(value, str) or not value.strip():
+            value = cell.get("source_anchor")
+        if not isinstance(value, str) or not value.strip():
+            value = None
+        result[cell["cell_id"]] = value
+    return result
+
+
+def _load_persona_references(persona_path: Path) -> list[Path]:
+    """Every `persona.identity.references` entry, resolved to an absolute path in
+    persona-declared order (`g01`, `g02`, `g07`, ...) — the full reference set
+    `--raw-only` scores each image against (expansion-03 design §6 risk 2 fix),
+    as opposed to `resolve_scoring_inputs`'s single `references[0]` anchor."""
+    persona = _load_persona_for_scoring(persona_path)
+    persona_dir = Path(persona_path).resolve().parent
+    return [(persona_dir / reference).resolve() for reference in persona["identity"]["references"]]
+
+
 def resolve_scoring_inputs(args: argparse.Namespace) -> tuple[Path, Path]:
     """Resolve `(anchor, image_dir)` from either input mode. The two modes are
     mutually exclusive; exactly one complete pair must be given."""
@@ -608,14 +723,243 @@ def resolve_scoring_inputs(args: argparse.Namespace) -> tuple[Path, Path]:
     return anchor, image_dir
 
 
+# ---------------------------------------------------------------------------
+# calibrate-anchors — expansion-03 design §3 "zero-cost calibration": pairwise
+# face cosine among a persona's own reference anchors, at $0, before any pod spend.
+# ---------------------------------------------------------------------------
+
+
+def build_calibrate_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="identity_check.py calibrate-anchors",
+        description=(
+            "Pairwise face cosine among persona.identity.references (design "
+            "§3's zero-cost calibration) — writes identity.calibration onto "
+            "persona.yaml and prints each pair plus a suggested floor."
+        ),
+    )
+    parser.add_argument("--persona", type=Path, required=True)
+    return parser
+
+
+def _find_matching_close_brace(text: str, open_index: int) -> int:
+    """Index of the `}` that closes the `{` at `open_index`, string/escape-aware
+    (so a `}` inside a JSON string value is never mistaken for structure)."""
+    depth = 0
+    in_string = False
+    escape = False
+    i = open_index
+    while i < len(text):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return i
+        i += 1
+    raise IdentityCheckError("unbalanced braces while locating a JSON object in persona.yaml")
+
+
+def _reindent_json_block(json_text: str, indent: str) -> str:
+    """`json_text` is a `json.dumps(..., indent=2)` object literal, starting with
+    `{` and ending with `}`. Reindent every line after the first by `indent`, so
+    the block can be spliced in right after `"key": ` at that indent level without
+    disturbing any other line in the file."""
+    lines = json_text.splitlines()
+    return "\n".join([lines[0]] + [indent + line for line in lines[1:]])
+
+
+def _write_calibration_block(persona_path: Path, calibration: dict[str, Any]) -> None:
+    """Write `identity.calibration` onto `persona.yaml` as a targeted text splice —
+    never a full-document re-serialize — so every other byte of the file (in
+    particular `identity.spec.sha256` / `register.spec.sha256`, which persona.py's
+    loader verifies against the live spec file digest, and every array's existing
+    inline-vs-multiline style) is left untouched. Idempotent: a second run replaces
+    the previously-written `identity.calibration` value in place rather than
+    appending a duplicate key.
+
+    `persona.yaml` is JSON-compatible YAML (persona.py's own module docstring;
+    creator-001's file is literal JSON on disk) — this reads/writes it as text,
+    locating the `identity` object (and, if present, its existing `calibration`
+    key) by brace-matching on the raw source rather than re-dumping the parsed
+    document. Same temp-file-then-`os.replace` atomicity as every other writer in
+    this tree (`build_expansion_set.py`'s `_atomic_write_json`), so the document is
+    never observed half-written."""
+    import os
+
+    persona_path = Path(persona_path)
+    text = persona_path.read_text(encoding="utf-8")
+
+    if "\n" not in text:
+        # Defensive fallback for a hand-authored compact single-line document —
+        # every real persona.yaml in this repo is pretty-printed, so the splice
+        # path above is what actually runs in production; this just avoids ever
+        # corrupting an unusual input rather than silently mis-slicing it.
+        data = json.loads(text)
+        data.setdefault("identity", {})["calibration"] = calibration
+        new_text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        tmp = persona_path.with_name(persona_path.name + ".tmp")
+        try:
+            tmp.write_text(new_text, encoding="utf-8")
+            os.replace(tmp, persona_path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+        return
+
+    identity_match = re.search(r'"identity"\s*:\s*\{', text)
+    if identity_match is None:
+        raise IdentityCheckError('persona.yaml has no top-level "identity" object')
+    identity_open = identity_match.end() - 1
+    identity_close = _find_matching_close_brace(text, identity_open)
+
+    calibration_json = json.dumps(calibration, indent=2, ensure_ascii=False)
+
+    existing_calibration_match = re.search(
+        r'"calibration"\s*:\s*\{', text[identity_open:identity_close]
+    )
+    if existing_calibration_match is not None:
+        # Re-run: replace the existing identity.calibration value in place.
+        cal_open = identity_open + existing_calibration_match.end() - 1
+        cal_close = _find_matching_close_brace(text, cal_open)
+        key_line_start = text.rfind("\n", 0, identity_open + existing_calibration_match.start()) + 1
+        key_indent = text[key_line_start:identity_open + existing_calibration_match.start()]
+        # json.dumps already bakes in the +2-per-level indent for every line after
+        # the first, so the splice base is the "calibration" key's OWN indent — not
+        # key_indent + 2, which would double that first level (the bug this
+        # function's idempotent-rerun test caught).
+        block = _reindent_json_block(calibration_json, key_indent)
+        new_text = text[:cal_open] + block + text[cal_close + 1:]
+    else:
+        # First run: append "calibration" as a new sibling key inside "identity".
+        close_line_start = text.rfind("\n", 0, identity_close) + 1
+        closing_indent = text[close_line_start:identity_close]
+        child_indent = closing_indent + "  "
+        block = _reindent_json_block(calibration_json, child_indent)
+        entry = f'{child_indent}"calibration": {block}'
+
+        inner = text[identity_open + 1:identity_close]
+        if inner.strip():
+            prefix = text[:close_line_start]
+            insert_point = len(prefix.rstrip())
+            trailing_ws = prefix[insert_point:]
+            new_text = text[:insert_point] + ",\n" + entry + trailing_ws + text[close_line_start:]
+        else:
+            new_text = (
+                text[:identity_open + 1] + "\n" + entry + "\n" + closing_indent
+                + text[identity_close:]
+            )
+
+    tmp = persona_path.with_name(persona_path.name + ".tmp")
+    try:
+        tmp.write_text(new_text, encoding="utf-8")
+        os.replace(tmp, persona_path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
+def calibrate_anchors(
+    persona_path: Path, face_embedder: Callable[[Path], Any]
+) -> dict[str, Any]:
+    """Compute the pairwise face cosine between every pair of a persona's own
+    reference anchors (design §3: "score each anchor against the other two ...
+    at $0, and either confirms 0.75 or moves it before any pod spend"). Writes the
+    result onto `persona.yaml` under `identity.calibration` (see
+    `_write_calibration_block`) and returns the same document:
+
+        {
+          "anchor_pairwise": {"g01:g02": float, "g01:g07": float, "g02:g07": float},
+          "anchor_cosine_floor_suggested": float | null,  # min pairwise - 0.05
+          "errors": {stem: str} | null,                   # per-reference embedder
+                                                            # failures, if any
+        }
+
+    `anchor_cosine_floor_suggested` is `null` only when every pairwise comparison
+    failed (no reference embedded, or fewer than two did) — never a fabricated
+    number. Raises `IdentityCheckError` when the persona has fewer than two
+    reference anchors, since a pairwise comparison is undefined below that."""
+    persona_path = Path(persona_path)
+    persona = _load_persona_for_scoring(persona_path)
+    references = persona["identity"]["references"]
+    if len(references) < 2:
+        raise IdentityCheckError(
+            "calibrate-anchors needs at least two reference anchors to compare "
+            f"pairwise, persona.identity.references has {len(references)}"
+        )
+
+    persona_dir = persona_path.resolve().parent
+    resolved = [(persona_dir / reference).resolve() for reference in references]
+    vectors, errors = _embed_references(resolved, face_embedder)
+    stems = [Path(reference).stem for reference in references]
+
+    pairwise: dict[str, float] = {}
+    for i, left in enumerate(stems):
+        for right in stems[i + 1:]:
+            if left in vectors and right in vectors:
+                pairwise[f"{left}:{right}"] = cosine(vectors[left], vectors[right])
+
+    values = list(pairwise.values())
+    floor_suggested = (min(values) - 0.05) if values else None
+
+    calibration = {
+        "anchor_pairwise": pairwise,
+        "anchor_cosine_floor_suggested": floor_suggested,
+        "errors": errors or None,
+    }
+    _write_calibration_block(persona_path, calibration)
+    return calibration
+
+
+def _cli_calibrate_anchors(argv: list[str]) -> int:
+    args = build_calibrate_parser().parse_args(argv)
+    try:
+        calibration = calibrate_anchors(args.persona, FaceNetEmbedder())
+    except (IdentityCheckError, OSError, ValueError) as exc:
+        print(f"identity-check error: {exc}", file=sys.stderr)
+        return 2
+    for pair, value in calibration["anchor_pairwise"].items():
+        print(f"{pair}: {value:.4f}")
+    floor = calibration["anchor_cosine_floor_suggested"]
+    if floor is not None:
+        print(f"anchor_cosine_floor_suggested: {floor:.4f}")
+    if calibration["errors"]:
+        print(f"reference embedding errors: {calibration['errors']}", file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["calibrate-anchors"]:
+        return _cli_calibrate_anchors(argv[1:])
+
     args = build_parser().parse_args(argv)
     try:
         anchor, image_dir = resolve_scoring_inputs(args)
         cell_ids = _load_batch_cell_ids(args.batch) if args.batch is not None else None
+        cell_anchors = _load_batch_cell_anchors(args.batch) if args.batch is not None else None
+        references = _load_persona_references(args.persona) if args.persona is not None else None
         report = evaluate(
             anchor, image_dir, args.out, FaceNetEmbedder(), DinoV2Embedder(),
             raw_only=args.raw_only, cell_ids=cell_ids,
+            references=references, cell_anchors=cell_anchors,
         )
         if args.raw_only:
             print(f"identity check (raw-only): {report['summary']['total']} image(s) scored")

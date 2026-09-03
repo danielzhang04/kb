@@ -408,6 +408,282 @@ def test_resolve_scoring_inputs_rejects_mixed_or_missing_modes():
         checker.resolve_scoring_inputs(incomplete_persona)
 
 
+# ---------------------------------------------------------------------------
+# expansion-03 design §6 risk 2 / risk 6 — score every image against EVERY
+# persona reference (not only references[0]), record anchor_cosine_max and
+# anchor_cosine_own, and a zero-cost calibrate-anchors CLI for the anchors
+# themselves (docs/superpowers/specs/2026-09-03-figment-expansion-03-design.md).
+# ---------------------------------------------------------------------------
+
+
+def test_raw_only_scores_against_every_reference_and_records_max_and_own(tmp_path):
+    anchor = tmp_path / "g01.png"
+    ref2 = tmp_path / "g02.png"
+    ref3 = tmp_path / "g07.png"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    out = tmp_path / "out"
+    for ref in (anchor, ref2, ref3):
+        Image.new("RGB", (4, 4), "white").save(ref)
+    Image.new("RGB", (4, 4), "white").save(images_dir / "c001-exp03-g01-t01.png")
+
+    face_vectors = {
+        "g01": [1.0, 0.0],
+        "g02": [0.6, 0.8],
+        "g07": [0.0, 1.0],
+        "c001-exp03-g01-t01": [0.8, 0.6],
+    }
+
+    def face_embedder(path):
+        return face_vectors[path.stem]
+
+    report = checker.evaluate(
+        anchor, images_dir, out, face_embedder, lambda _p: [1.0, 0.0],
+        raw_only=True,
+        references=[anchor, ref2, ref3],
+        cell_ids=["exp03-g01-t01"],
+        cell_anchors={"exp03-g01-t01": "g01"},
+    )
+    row = report["images"][0]
+    assert row["cell_id"] == "exp03-g01-t01"
+    assert set(row["anchor_cosines"]) == {"g01", "g02", "g07"}
+    assert row["anchor_cosines"]["g02"] == pytest.approx(0.96)
+    assert row["anchor_cosine_max"] == pytest.approx(0.96)
+    assert row["anchor_cosine_max"] == max(row["anchor_cosines"].values())
+    assert row["own_anchor"] == "g01"
+    assert row["anchor_cosine_own"] == row["anchor_cosines"]["g01"]
+    assert row["anchor_cosine_own"] == pytest.approx(0.8)
+    assert row["anchor_cosine"] == row["anchor_cosine_max"]
+    # backward compat: the legacy face_cosine field still tracks the primary
+    # (first / references[0]) anchor, exactly as it did before this defect fix.
+    assert row["face_cosine"] == row["anchor_cosines"]["g01"]
+
+
+def test_raw_only_records_null_own_anchor_when_batch_has_no_anchor_metadata(tmp_path):
+    """Mirrors expansion-02's own batch.json: cells carry no anchor/source_anchor
+    metadata field, so own-anchor resolution must fall back to null rather than
+    guessing — the max is still reported."""
+    anchor = tmp_path / "g01.png"
+    ref2 = tmp_path / "g02.png"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    Image.new("RGB", (4, 4), "white").save(anchor)
+    Image.new("RGB", (4, 4), "white").save(ref2)
+    Image.new("RGB", (4, 4), "white").save(images_dir / "c001-exp02-s001.png")
+
+    face_vectors = {"g01": [1.0, 0.0], "g02": [0.0, 1.0], "c001-exp02-s001": [1.0, 0.0]}
+
+    def face_embedder(path):
+        return face_vectors[path.stem]
+
+    report = checker.evaluate(
+        anchor, images_dir, tmp_path / "out", face_embedder, lambda _p: [1.0, 0.0],
+        raw_only=True, references=[anchor, ref2],
+        cell_ids=["exp02-s001"], cell_anchors={"exp02-s001": None},
+    )
+    row = report["images"][0]
+    assert row["own_anchor"] is None
+    assert row["anchor_cosine_own"] is None
+    assert row["anchor_cosine_max"] == pytest.approx(1.0)
+    assert row["anchor_cosine"] == pytest.approx(1.0)
+
+
+def test_raw_only_without_references_keeps_legacy_single_anchor_shape(tmp_path):
+    """No `references`/`cell_anchors` given at all (every pre-existing caller) —
+    the new fields still appear (max == the sole anchor's cosine, own always
+    null since there is no batch context) but nothing about the legacy fields
+    changes."""
+    anchor = tmp_path / "anchor.png"
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    Image.new("RGB", (4, 4), "white").save(anchor)
+    Image.new("RGB", (4, 4), "white").save(images_dir / "good-a.png")
+
+    report = checker.evaluate(
+        anchor, images_dir, tmp_path / "out",
+        lambda _p: [1.0, 0.0], lambda _p: [1.0, 0.0], raw_only=True,
+    )
+    row = report["images"][0]
+    assert row["face_cosine"] == pytest.approx(1.0)
+    assert row["anchor_cosine_max"] == pytest.approx(1.0)
+    assert row["anchor_cosine"] == pytest.approx(1.0)
+    assert row["own_anchor"] is None
+    assert row["anchor_cosine_own"] is None
+
+
+def test_load_batch_cell_anchors_reads_anchor_or_source_anchor_field(tmp_path):
+    batch_path = tmp_path / "batch.json"
+    batch_path.write_text(json.dumps({
+        "cells": [
+            {"cell_id": "exp03-g01-t01", "anchor": "g01"},
+            {"cell_id": "exp03-g02-t01", "source_anchor": "g02"},
+            {"cell_id": "exp02-s001"},
+        ]
+    }), encoding="utf-8")
+    assert checker._load_batch_cell_anchors(batch_path) == {
+        "exp03-g01-t01": "g01",
+        "exp03-g02-t01": "g02",
+        "exp02-s001": None,
+    }
+
+
+def test_load_batch_cell_anchors_is_never_fatal_on_a_malformed_document(tmp_path):
+    batch_path = tmp_path / "batch.json"
+    batch_path.write_text("not json", encoding="utf-8")
+    assert checker._load_batch_cell_anchors(batch_path) == {}
+    missing = tmp_path / "does-not-exist.json"
+    assert checker._load_batch_cell_anchors(missing) == {}
+
+
+def test_calibrate_anchors_parser_requires_persona():
+    parser = checker.build_calibrate_parser()
+    args = parser.parse_args(["--persona", "persona.yaml"])
+    assert args.persona == Path("persona.yaml")
+
+
+def test_calibrate_anchors_computes_pairwise_cosines_and_writes_persona_calibration(tmp_path):
+    import hashlib
+
+    persona_dir = tmp_path / "personas" / "creator-001"
+    persona_dir.mkdir(parents=True)
+    (persona_dir / "anchors").mkdir()
+    for name in ("g01.jpg", "g02.jpg", "g07.jpg"):
+        (persona_dir / "anchors" / name).write_bytes(b"\xff\xd8\xff")
+    identity_spec_bytes = b"x\n"
+    (persona_dir / "identity-spec.md").write_bytes(identity_spec_bytes)
+    pipeline_dir = tmp_path / "pipeline"
+    pipeline_dir.mkdir()
+    look_spec_bytes = b"x\n"
+    (pipeline_dir / "look-spec-v2.md").write_bytes(look_spec_bytes)
+
+    persona_data = json.loads(PIPELINE.parent.joinpath(
+        "personas", "creator-001", "persona.yaml"
+    ).read_text(encoding="utf-8"))
+    # The real creator-001 persona.yaml may itself already carry a calibration
+    # block (calibrate-anchors has actually been run against it) — normalize the
+    # fixture baseline so this test's own before/after comparisons stay
+    # deterministic regardless of that live file's current calibration state.
+    persona_data["identity"].pop("calibration", None)
+    persona_data["identity"]["spec"]["sha256"] = hashlib.sha256(identity_spec_bytes).hexdigest()
+    persona_data["register"]["spec"]["sha256"] = hashlib.sha256(look_spec_bytes).hexdigest()
+    persona_path = persona_dir / "persona.yaml"
+    # Pretty-printed, matching creator-001's real on-disk persona.yaml convention
+    # (_write_calibration_block splices text in place rather than re-serializing
+    # the whole document, so it needs real line structure to attach to).
+    persona_path.write_text(json.dumps(persona_data, indent=2), encoding="utf-8")
+
+    vectors = {"g01": [1.0, 0.0], "g02": [0.6, 0.8], "g07": [0.0, 1.0]}
+
+    def face_embedder(path):
+        return vectors[path.stem]
+
+    calibration = checker.calibrate_anchors(persona_path, face_embedder)
+
+    assert calibration["anchor_pairwise"] == {
+        "g01:g02": pytest.approx(0.6),
+        "g01:g07": pytest.approx(0.0),
+        "g02:g07": pytest.approx(0.8),
+    }
+    assert calibration["anchor_cosine_floor_suggested"] == pytest.approx(0.0 - 0.05)
+
+    on_disk = json.loads(persona_path.read_text(encoding="utf-8"))
+    assert on_disk["identity"]["calibration"] == calibration
+    on_disk_identity_minus_calibration = dict(on_disk["identity"])
+    del on_disk_identity_minus_calibration["calibration"]
+    assert on_disk_identity_minus_calibration == persona_data["identity"]
+    assert on_disk["grammar"] == persona_data["grammar"]
+    assert on_disk["register"] == persona_data["register"]
+
+
+def test_calibrate_anchors_rerun_replaces_existing_calibration_idempotently(tmp_path):
+    """A second calibrate-anchors run must replace identity.calibration in place —
+    never append a duplicate "calibration" key, and never drift the JSON's
+    indentation (a naive re-splice can accidentally double an indent level on
+    replace, since json.dumps' own per-line indent must not be added twice)."""
+    import hashlib
+
+    persona_dir = tmp_path / "personas" / "creator-001"
+    persona_dir.mkdir(parents=True)
+    (persona_dir / "anchors").mkdir()
+    for name in ("g01.jpg", "g02.jpg", "g07.jpg"):
+        (persona_dir / "anchors" / name).write_bytes(b"\xff\xd8\xff")
+    identity_spec_bytes = b"x\n"
+    (persona_dir / "identity-spec.md").write_bytes(identity_spec_bytes)
+    pipeline_dir = tmp_path / "pipeline"
+    pipeline_dir.mkdir()
+    look_spec_bytes = b"x\n"
+    (pipeline_dir / "look-spec-v2.md").write_bytes(look_spec_bytes)
+
+    persona_data = json.loads(PIPELINE.parent.joinpath(
+        "personas", "creator-001", "persona.yaml"
+    ).read_text(encoding="utf-8"))
+    # Normalize the fixture baseline the same way as the test above — the real
+    # persona.yaml may already carry a calibration block from a prior real run.
+    persona_data["identity"].pop("calibration", None)
+    persona_data["identity"]["spec"]["sha256"] = hashlib.sha256(identity_spec_bytes).hexdigest()
+    persona_data["register"]["spec"]["sha256"] = hashlib.sha256(look_spec_bytes).hexdigest()
+    persona_path = persona_dir / "persona.yaml"
+    persona_path.write_text(json.dumps(persona_data, indent=2), encoding="utf-8")
+
+    vectors_first = {"g01": [1.0, 0.0], "g02": [0.6, 0.8], "g07": [0.0, 1.0]}
+    vectors_second = {"g01": [1.0, 0.0], "g02": [0.0, 1.0], "g07": [-1.0, 0.0]}
+
+    checker.calibrate_anchors(persona_path, lambda path: vectors_first[path.stem])
+    text_after_first = persona_path.read_text(encoding="utf-8")
+    assert text_after_first.count('"calibration"') == 1
+
+    second = checker.calibrate_anchors(persona_path, lambda path: vectors_second[path.stem])
+    text_after_second = persona_path.read_text(encoding="utf-8")
+
+    # exactly one "calibration" key — the first run's was replaced, not duplicated
+    assert text_after_second.count('"calibration"') == 1
+    on_disk = json.loads(text_after_second)
+    assert on_disk["identity"]["calibration"] == second
+    assert second["anchor_pairwise"] == {
+        "g01:g02": pytest.approx(0.0),
+        "g01:g07": pytest.approx(-1.0),
+        "g02:g07": pytest.approx(0.0),
+    }
+    # every other field survived both writes untouched
+    on_disk_identity_minus_calibration = dict(on_disk["identity"])
+    del on_disk_identity_minus_calibration["calibration"]
+    assert on_disk_identity_minus_calibration == persona_data["identity"]
+
+    # indentation is consistent with a fresh (first-run) write — no doubled
+    # indent level from the replace path re-adding json.dumps' own per-line indent.
+    persona_path.write_text(json.dumps(persona_data, indent=2), encoding="utf-8")
+    checker.calibrate_anchors(persona_path, lambda path: vectors_second[path.stem])
+    text_fresh = persona_path.read_text(encoding="utf-8")
+    assert text_fresh == text_after_second
+
+
+def test_calibrate_anchors_requires_at_least_two_references(tmp_path):
+    import hashlib
+
+    persona_dir = tmp_path / "personas" / "creator-001"
+    persona_dir.mkdir(parents=True)
+    (persona_dir / "anchors").mkdir()
+    (persona_dir / "anchors" / "g01.jpg").write_bytes(b"\xff\xd8\xff")
+    identity_spec_bytes = b"x\n"
+    (persona_dir / "identity-spec.md").write_bytes(identity_spec_bytes)
+    pipeline_dir = tmp_path / "pipeline"
+    pipeline_dir.mkdir()
+    look_spec_bytes = b"x\n"
+    (pipeline_dir / "look-spec-v2.md").write_bytes(look_spec_bytes)
+
+    persona_data = json.loads(PIPELINE.parent.joinpath(
+        "personas", "creator-001", "persona.yaml"
+    ).read_text(encoding="utf-8"))
+    persona_data["identity"]["references"] = ["anchors/g01.jpg"]
+    persona_data["identity"]["spec"]["sha256"] = hashlib.sha256(identity_spec_bytes).hexdigest()
+    persona_data["register"]["spec"]["sha256"] = hashlib.sha256(look_spec_bytes).hexdigest()
+    persona_path = persona_dir / "persona.yaml"
+    persona_path.write_text(json.dumps(persona_data), encoding="utf-8")
+
+    with pytest.raises(checker.IdentityCheckError, match="at least two"):
+        checker.calibrate_anchors(persona_path, lambda path: [1.0, 0.0])
+
+
 def test_resolve_scoring_inputs_persona_batch_mode_resolves_paths(tmp_path):
     import hashlib
 

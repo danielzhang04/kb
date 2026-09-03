@@ -24,6 +24,15 @@
         "calibration_set_sha": null,
         "locked_by_gate": null
       }
+    },
+    "calibration": {
+      "anchor_pairwise": {
+        "g01:g02": 0.9137569242493687,
+        "g01:g07": 0.9261845536192178,
+        "g02:g07": 0.8859605928789756
+      },
+      "anchor_cosine_floor_suggested": 0.8359605928789755,
+      "errors": null
     }
   },
   "body_target": {
