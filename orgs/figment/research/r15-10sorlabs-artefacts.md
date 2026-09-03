@@ -143,11 +143,11 @@ The risk is not the scripts — it is *what* they pull.
 |---|---|---|
 | `Comfy-Org/*` (z_image_turbo, Krea-2, Wan_2.1_ComfyUI_repackaged, SCAIL-2, flux2-dev, flux2-klein-9B, sam3.1, Qwen-Image*, HunyuanVideo_1.5, vae-text-encorder-for-flux-klein-9b) | official ComfyUI org repackages | **verified — official** |
 | `black-forest-labs/FLUX.2-klein-9b-fp8` | official BFL, `gated: auto` | **verified — official, gated** |
-| `lightx2v/*` (Qwen-Image-Edit-2511-Lightning, Wan2.1-I2V StepDistill) | the lightx2v team, 344k downloads / 520 likes | **verified — established** |
+| `lightx2v/*` (Qwen-Image-Edit-2511-Lightning, Wan2.1-I2V StepDistill) | the lightx2v team; **the two named repos differ sharply**: `Qwen-Image-Edit-2511-Lightning` is 344k downloads / 520 likes, but the module-08 repo actually pulled, `Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v`, is 0 downloads / 135 likes | **verified — established (Lightning repo); lighter signal on the I2V repo** |
 | `Bingsu/adetailer`, `datasets/Gourieff/ReActor` | long-standing community detector/SAM mirrors | **verified — established**, but see pickle note below |
 | `Alissonerdx/BFS-Best-Face-Swap` | 118k downloads, 826 likes | **verified — established community** |
 | `Phr00t/Qwen-Image-Edit-Rapid-AIO` (`Qwen-Rapid-AIO-NSFW-v23`) | 2 448 likes, community NSFW merge | **verified — established community, unaudited merge** |
-| **`gravedigga/loras`** — 8 files: `realistic_snapshot_lora`, `RealisticSnapshotKrea2`, `MysticXXX_KREA2_v3`, `pawg_krea2`, `zit_upscaler`, `4xNMKDSuperscale_4xNMKDSuperscale.pt`, `QWEN2512_Bigsloppytits_v1_copy_000003000`, `bfs_head_v5_2511_merged_version_rank_16_fp16` | anonymous personal account, created 2026-06-22 (days before the toolkit's 2026-06-30 asset stamp), **0 downloads, 0 likes**, no model card | **SUSPICIOUS-BY-PROVENANCE.** Almost certainly 10sorLabs' own vendor bucket, but it is an unaudited single-owner account with zero community signal carrying the LoRAs that do the actual work in modules 03/09/10. |
+| **`gravedigga/loras`** — 8 files installed by the package: `realistic_snapshot_lora`, `RealisticSnapshotKrea2`, `MysticXXX_KREA2_v3`, `pawg_krea2`, `zit_upscaler`, `4xNMKDSuperscale_4xNMKDSuperscale.pt`, `QWEN2512_Bigsloppytits_v1_copy_000003000`, `bfs_head_v5_2511_merged_version_rank_16_fp16` | anonymous personal account, created 2026-06-22 (days before the toolkit's 2026-06-30 asset stamp), **0 downloads, 0 likes**, no model card. **The account actually hosts 30 files, not 8** — the other ~22 are more unaudited NSFW-adjacent LoRAs/mixes never named in this doc, and one of them is an unused, ungated copy of BFL's officially-gated `flux-2-klein-9b-fp8.safetensors` (no installer references it — the `.bat` files correctly pull that weight from the real `black-forest-labs` repo). | **SUSPICIOUS-BY-PROVENANCE.** Almost certainly 10sorLabs' own vendor bucket, but it is an unaudited single-owner account with zero community signal carrying the LoRAs that do the actual work in modules 03/09/10 — and a materially larger stash than this table lists. |
 | GitHub custom-node packs: `rgthree/rgthree-comfy`, `ltdrdata/ComfyUI-Impact-Pack` + `-Subpack`, `ClownsharkBatwing/RES4LYF`, `kijai/ComfyUI-KJNodes`, `Suzie1/ComfyUI_Comfyroll_CustomNodes`, `cubiq/ComfyUI_FaceAnalysis`, `chflame163/ComfyUI_LayerStyle`, `yolain/ComfyUI-Easy-Use`, `Kosinkadink/ComfyUI-VideoHelperSuite`, `numz/ComfyUI-SeedVR2_VideoUpscaler`, `PozzettiAndrea/ComfyUI-SAM3` | all well-known ComfyUI ecosystem repos, cloned from `main` with **no pinned commit** | **verified — official upstream**, but unpinned: a clone today is not the clone the lesson was recorded against |
 
 Two more repos appear **only inside a workflow's MarkdownNote**, not in any `.bat`, so they escape the
@@ -641,3 +641,19 @@ pass, again matching r14.
 - Chrome blocked bulk automatic downloads after the first file, so all 21 download-route artefacts were
   fetched in-page via authenticated `fetch()` and written from base64 — same bytes, verified by the
   sha256 column in `MANIFEST.tsv`, no reliance on the download manager.
+
+---
+
+## Claim-check (2026-09-03, sonnet)
+
+Independent facts-only pass against public registries (HF/GitHub APIs) and the on-disk package —
+47 claims/artefacts checked: **43 VERIFIED, 2 PARTLY (corrected in §2c above), 2 UNVERIFIED
+(rest on convention/reconciled, not defects), 0 WRONG.** Full verdict table:
+`claimcheck-r15.md` in the review scratchpad. Highlights: all 12 GitHub node-pack repos and all
+sampled Comfy-Org/HF weight repos exist as claimed; the §3 module 09/10/11 workflow-JSON numbers
+(samplers, LoRA strengths, DetailBoost windows, latents) match the on-disk JSON node-for-node; the
+§4 trainer archive's 40×"woman" captions and §5's SOP cadence/boost-ladder numbers match the
+extracted files exactly. The two corrections: `lightx2v/*` was one download/like figure for two
+repos with very different signal (344k/520 vs. 0/135 on the module-08 repo), and `gravedigga/loras`
+actually hosts 30 files, not the 8 named — including an unused, ungated mirror of BFL's gated
+klein-9b-fp8 weight.
