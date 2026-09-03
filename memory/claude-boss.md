@@ -69,3 +69,30 @@
 - STATE: `80d11d51` = P2 W6.7 + build-review fixes; Windows gate clean (4 load timeouts rerun green), Linux 279 files / 3215 tests / 0 red. Browser check in flight, then P2 close, then P3 W0 (brief v2 staged with the read budget).
 - LEARNED (cost: ~6 h idle, 17:31→23:35): I ended a turn right after a commit with NO monitor/agent armed, so nothing woke the session until Daniel nudged it; meanwhile every keep-awake lease expired (session lease is idle-expiry 15 min; pid-only leases released with their dispatch pids) and the supervisor exited. Rules: (1) never end a turn without a pending Monitor/agent or the task list finished; (2) for a hands-off run take a pid-only lease on the boss session's own claude pid (`keep_awake.ps1 -Acquire -Mode pid-only -ProcessId <claude pid>`, 16 h cap) so waits don't disarm the machine; (3) check `keep_awake.ps1 -Status` after any gap.
 - CLOSE 2026-08-23 01:20: **P2 CLOSED @ `9a72bbf8`** (chain `1521b61e` W6.7 → `80d11d51` build-review fixes → `41dfd567` browser fixes → `9a72bbf8` browser round 2). Linux 279 files / 3219 tests / 0 red; Windows typecheck 0 + build + all load-timeout files green alone. Browser: nine `p2-*` scenarios, three fix rounds, final re-check 2/2. Handoff: ops `handoffs/2026-08-23-dashboard-v3-p2-closed-p3-w0.md`. Next: P3 W0 (`scratchpad/dv3-p3-w0-brief-v2.md`).
+
+## 2026-09-03 — figment creator-001 overnight build terminal (boss session, in progress)
+
+- **Both providers can be down at once.** Opus returned 529 three times in an hour (spec fold, P0R review);
+  codex returned backend 404 on all four parallel build dispatches. Fallback that worked: sonnet for folds
+  and builds, sonnet for the P0R review with an opus pass owed before the training pod. Resuming a 529'd
+  Claude agent via SendMessage works once, then it dies again; check the partial file state and finish with a
+  fresh cheaper agent instead of resuming twice.
+- **Three concurrent codex dispatches wedge the 15 s `codex login status` check** (11 s alone). Raised the
+  timeout to 60 s in `scripts/codex_dispatch.py` and stagger dispatches 25 s apart.
+- **`--follow-up` still loses `--cwd`** (memory said so; I repeated it once). Writing follow-ups = fresh dispatch
+  with `--cwd` and a self-contained brief.
+- **Windows path length breaks the harness ledger tmp file** (>260 chars) when pytest's temp root is under
+  the deep scratchpad path; and pytest temp roots created by another process are ACL-locked. Use a short,
+  fresh `PYTEST_DEBUG_TEMPROOT` per run (`C:/Users/danie/AppData/Local/Temp/kbfp-<n>`).
+- **Measured numbers beat the spec's guesses:** a 3-ref klein 4B cell is 157-165 s (first job 215-260 s), not
+  "seconds"; the composite run.json files had it all along. Read the run records before sizing pods.
+- **The 10sorlabs package's real value was in the files, not the videos:** all eight workflow JSONs carried
+  the numbers r14 called unrecoverable; the MCP video server crashed on whisper, and faster-whisper (already
+  installed) transcribed nine lessons on CPU in ~40 min. Claim-checks against the narration corrected 7 rows.
+- **Two adversarial rounds on the spec were worth it**: v1 REJECT (network volume was unledgered recurring
+  spend; safety axes missing; no T2 card before spend), v2 REJECT (run shape had zero slack over the measured
+  cold job; phases mislabeled gate-independent under the contract). v3 built.
+- **One card per session wave, not per subagent** (card-schema granularity rule); write it via a temp
+  worktree on origin/ops and `git push origin <sha>:ops`; the push can take >60 s — run it separately from
+  the worktree-add step.
+- Chrome-devtools consent is per MCP-server connection: subagents inherit it; no re-prompt observed all night.
