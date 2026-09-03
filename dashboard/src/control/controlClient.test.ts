@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import liveVmRunDetail from '../../server/control/__fixtures__/run-detail.live-vm-2026-09-03.json';
 import { describe, expect, it, vi } from 'vitest';
 import {
   activateRun,
@@ -796,6 +797,79 @@ describe('[C-M4] RunDetailDto console fields are pinned, not optional', () => {
     expect(decodeRunDetail({ ...base, sessionId: 7 })).toBeNull();
     expect(decodeRunDetail({ ...base, attemptSessions: [{ ...row, operator: 'daniel' }] })).toBeNull();
     expect(decodeRunDetail({ ...base, unexpected: true })).toBeNull();
+  });
+});
+
+describe('[W51] the live VM run-detail envelope decodes key-for-key', () => {
+  /**
+   * The GOLDEN. `run-detail.live-vm-2026-09-03.json` is the byte-for-byte envelope the VM returned for
+   * `GET /api/control/runs/run-dc0e001c-...` (the kb-ops acceptance run), captured after #163. Its stage
+   * rows carry the six compiler-owned checker fields and its attempt rows the three generation-lineage
+   * fields; the client decoder ignored all nine and returned null for the whole detail. Revert the
+   * `stageDto`/`attemptDto` extension in `controlClient.ts` and this test goes red on `getRun` rejecting
+   * with `invalid run detail`.
+   */
+  it('decodes the captured VM envelope and round-trips it key-for-key', async () => {
+    const envelope = liveVmRunDetail as unknown as { ok: true; value: unknown; replayed: boolean; execution: unknown };
+    const detail = await getRun('run-dc0e001c-a94d-4e4e-8b7b-60766f86caf9', 'bearer', recordedFetch(envelope));
+
+    // Nothing is dropped, reshaped or defaulted on the way through the decoder.
+    expect(detail).toEqual(envelope.value);
+    expect(Object.keys(detail).sort()).toEqual(Object.keys(envelope.value as object).sort());
+    for (const [index, stage] of detail.stages.entries()) {
+      expect(Object.keys(stage).sort())
+        .toEqual(Object.keys((envelope.value as { stages: object[] }).stages[index] as object).sort());
+    }
+    for (const [index, attempt] of detail.attempts.entries()) {
+      expect(Object.keys(attempt).sort())
+        .toEqual(Object.keys((envelope.value as { attempts: object[] }).attempts[index] as object).sort());
+    }
+
+    // The rows the capture actually exercises are present, so an empty-list envelope cannot pass this.
+    expect(detail.stages.length).toBeGreaterThan(0);
+    expect(detail.attempts.length).toBeGreaterThan(0);
+    expect(detail.sessions.length).toBeGreaterThan(0);
+    expect(detail.humanRequests.length).toBeGreaterThan(0);
+    expect(detail.attemptSessions.length).toBeGreaterThan(0);
+  });
+
+  it('still refuses a stage or attempt row carrying a key neither side knows', () => {
+    const value = structuredClone(liveVmRunDetail).value as unknown as {
+      stages: Array<Record<string, unknown>>; attempts: Array<Record<string, unknown>>;
+    };
+    expect(decodeRunDetail(value)).not.toBeNull();
+
+    const extraStageKey = structuredClone(value);
+    extraStageKey.stages[0]!.reviewerNotes = 'invented';
+    expect(decodeRunDetail(extraStageKey)).toBeNull();
+
+    const extraAttemptKey = structuredClone(value);
+    extraAttemptKey.attempts[0]!.baseBranch = 'invented';
+    expect(decodeRunDetail(extraAttemptKey)).toBeNull();
+
+    // The nine newly admitted fields are TYPED, not merely tolerated.
+    const wrongStageType = structuredClone(value);
+    wrongStageType.stages[0]!.currentGeneration = '1';
+    expect(decodeRunDetail(wrongStageType)).toBeNull();
+
+    const wrongAttemptType = structuredClone(value);
+    wrongAttemptType.attempts[0]!.logicalGeneration = 'first';
+    expect(decodeRunDetail(wrongAttemptType)).toBeNull();
+
+    // `review` and `completionGate` are closed DTOs, never `unknown`.
+    const openReview = structuredClone(value);
+    openReview.stages[0]!.review = { subjectStageId: 'draft', maxCreatorReworks: 2, criteria: [], extra: true };
+    expect(decodeRunDetail(openReview)).toBeNull();
+
+    const closedReview = structuredClone(value);
+    closedReview.stages[0]!.review = {
+      subjectStageId: 'draft', maxCreatorReworks: 2, criteria: [{ id: 'q', description: 'Complete.' }],
+    };
+    closedReview.stages[0]!.completionGate = {
+      id: 'gate', kind: 'approval', prompt: 'Approve?', requiresReview: 'pass',
+    };
+    closedReview.stages[0]!.workflowProfile = 'worker:claude:sonnet';
+    expect(decodeRunDetail(closedReview)).not.toBeNull();
   });
 });
 

@@ -210,12 +210,14 @@ export function p2RunDetail(scenario: P2BrowserScenario) {
       stages: [
         {
           stageRef: 'research', runRef: 'run-fixture', stageId: 'research', title: 'Research', dependsOn: [],
-          canonicalCardRef: null, state: 'succeeded', version: 2, currentAttemptRef: null, assignment: null,
+          canonicalCardRef: null, state: 'succeeded', version: 2, currentAttemptRef: null, assignment: null, workflowProfile: null, review: null, completionGate: null,
+          currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null,
           createdAt: '2026-08-21T10:00:00.000Z', updatedAt: '2026-08-21T11:00:00.000Z',
         },
         {
           stageRef: 'write', runRef: 'run-fixture', stageId: 'write', title: 'Write', dependsOn: ['research'],
-          canonicalCardRef: null, state: t3 ? 'waiting-human' : 'running', version: 2, currentAttemptRef: null, assignment: null,
+          canonicalCardRef: null, state: t3 ? 'waiting-human' : 'running', version: 2, currentAttemptRef: null, assignment: null, workflowProfile: null, review: null, completionGate: null,
+          currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null,
           createdAt: '2026-08-21T11:00:00.000Z', updatedAt: NOW,
         },
       ],

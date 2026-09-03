@@ -44,8 +44,8 @@ function detail(overrides: Partial<RunDetailDto> = {}): RunDetailDto {
       createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:01:00.000Z',
     },
     stages: [
-      { stageRef: 'stage-research', runRef: 'run-1', stageId: 'research', title: 'Research', dependsOn: [], canonicalCardRef: 'card-research', state: 'succeeded', version: 2, currentAttemptRef: null, assignment: null, createdAt: '', updatedAt: '' },
-      { stageRef: 'stage-write', runRef: 'run-1', stageId: 'write', title: 'Write', dependsOn: ['research'], canonicalCardRef: 'card-write', state: 'running', version: 2, currentAttemptRef: null, assignment: null, createdAt: '', updatedAt: '' },
+      { stageRef: 'stage-research', runRef: 'run-1', stageId: 'research', title: 'Research', dependsOn: [], canonicalCardRef: 'card-research', state: 'succeeded', version: 2, currentAttemptRef: null, assignment: null, workflowProfile: null, review: null, completionGate: null, currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null, createdAt: '', updatedAt: '' },
+      { stageRef: 'stage-write', runRef: 'run-1', stageId: 'write', title: 'Write', dependsOn: ['research'], canonicalCardRef: 'card-write', state: 'running', version: 2, currentAttemptRef: null, assignment: null, workflowProfile: null, review: null, completionGate: null, currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null, createdAt: '', updatedAt: '' },
     ],
     attempts: [], sessions: [], humanRequests: [], stageGenerations: [], generationSupersessions: [],
     iterationLoops: [], iterationRequests: [], iterationReceipts: [],
