@@ -69,6 +69,15 @@ are first-class views, not add-ons.
   prices, creator reports, agency playbooks), profile/preview setups, messaging cadence and
   tone playbooks, funnel conversion. Public and read-only; explicit content itself is scored
   by the operator or a local model against the operator's rubric, never by Claude.
+- **10sorlabs package (purchased 2026-09-03)** — modules, setup links, teaching videos, and
+  playbooks at https://webpanel.10sorlabs.com/ (operator's account, signed in in his Chrome).
+  Fold it into learning, research, infrastructure, and structuring across the board: read every
+  module read-only, summarise into `research/r14-10sorlabs-package.md` (module map, workflows,
+  settings, playbooks, tool list), and turn what applies into our own manifests and templates.
+  Rules: it is licensed course content — notes and derived implementations only, no verbatim
+  redistribution in the repo; every linked package/install command is verified on its registry
+  before use (the `npx eromify-mcp` lesson); its "skin enhancer" default is the setting we turn
+  off, per stage 5.
 - **Template catalogue** — Eromify's, 10sorlabs', and other public template and format
   catalogues studied as patterns and re-implemented natively (carousel types, posting
   templates, content mixes); nothing installed from them.
