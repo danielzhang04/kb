@@ -146,8 +146,11 @@ Files: `personas/anchors/gemini-batch-01/g01..g08.jpg` (Gemini candidates), comp
 
 ### Exact Next Step
 
-Open the new terminal in the figment worktree, run the preamble, read the Load list, then
-run the LAUNCH PROMPT below. First action after loading: `py -3 orgs/figment/pipeline/pod/runpod_run.py status`
+Open the new terminal in the kb MAIN checkout `C:\Users\danie\kb` (that is what loads CLAUDE.md,
+BOSS.md, the auto-memory index, and the skills), run the preamble, read the Load list, then run
+the LAUNCH PROMPT below. All figment work happens in the worktree
+`C:\Users\danie\kb-worktrees\figment` (dispatch workers with `--cwd` there, commit there, never
+move the main checkout's branch). First action after loading: `py -3 orgs/figment/pipeline/pod/runpod_run.py status`
 (must show zero pods and the arc total), then the research pass, then the brainstorm.
 
 ### Load list
@@ -163,7 +166,9 @@ run the LAUNCH PROMPT below. First action after loading: `py -3 orgs/figment/pip
 
 ## LAUNCH PROMPT (paste into the new terminal)
 
-You are the figment build terminal for creator 001. Run `python scripts/preamble.py`, then read
+You are the figment build terminal for creator 001, opened in the kb main checkout; all figment
+work happens in the worktree C:/Users/danie/kb-worktrees/figment (workers with --cwd there,
+commits there, main checkout branch untouched). Run `python scripts/preamble.py`, then read
 ops `handoffs/2026-09-03-figment-anchor-first-overnight-build.md` and its Load list in full.
 Mandate: `orgs/figment/MANDATE.md`. Hard rules: GUARDRAILS.md; zero platform spend; every pod
 through the harness with `--max-usd`, `--ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost` (the arc sum lives there; the default ops dir shows $0), and `--arc-cap-usd 52.85`; stop at every human gate
