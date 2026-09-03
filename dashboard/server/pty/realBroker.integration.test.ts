@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, constants as fsConstants, existsSync, mkdtempSync, openSync, readFileSync, rmSync,
+  writeFileSync } from 'node:fs';
 import { createServer, connect as connectSocket, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,15 +15,18 @@ import type {
   PortResult,
 } from './contracts.ts';
 import { BrokerFrameDecoder, decodeBrokerServerFrame, encodeBrokerFrame } from './brokerProtocol.ts';
+import { buildBrokerLaunch, pinPipeStdinExec, type PinnedPipeStdinExec } from './fdPinnedPaths.ts';
 import { LinuxBrokerClient } from './linuxBrokerClient.ts';
 import {
   LinuxBrokerServer,
+  type BrokerPty,
   type BrokerPtyLauncher,
   type BrokerRuntimeState,
 } from './linuxBrokerServer.ts';
 import {
-  NodePtyChild,
-  nodePtySpawnOptions,
+  loadBrokerNodePty,
+  pipeStdinShimPath,
+  spawnBrokerChild,
   terminateVerifiedIdentity,
 } from './linuxBrokerMain.ts';
 import { createSessionRecordRegistry } from './sessionRecord.ts';
@@ -38,7 +42,48 @@ import {
 // that exited after reading only the first prompt raced the second one's delivery and dropped it about
 // half the time. Reading both is also a stronger assertion: the pty echo alone proved only that the bytes
 // reached the terminal, never that the child read them.
-const FIRST_SCRIPT = 'echo READY; for i in 1 2 3 4 5; do printf "line-%s-%s\\n" $i "$(head -c 300 /dev/zero | tr "\\0" x)"; done; read -r FIRST; read -r SECOND; echo "GOT1:$FIRST"; echo "GOT2:$SECOND"; exit 7';
+// The child reports what KIND of fd 0 it was handed before it reads a byte from it. `claude -p` and
+// `codex exec -` both refuse a tty on stdin, so a headless recipe that lands on STDIN_TTY=1 is the
+// exact live failure this harness exists to keep out (VM run-a9bdd60f, exit 1 on the first real
+// claude launch). The shell recipe asserts the other side of the same switch.
+const TTY_PROBE = 'if [ -t 0 ]; then echo "STDIN_TTY=1"; else echo "STDIN_TTY=0"; fi';
+// The child counts pty MASTERS in its own descriptor table. node-pty's openpty marks neither end
+// FD_CLOEXEC and libuv closes nothing past the stdio slots, so an unfixed pipe launch hands the agent
+// - and every grandchild under it - a master it can read its own transcript from, or write to and
+// have the slave echo attacker-chosen bytes back as if the child had printed them.
+// It also lists the descriptor table itself. `ls` runs in a subshell of the child and so inherits
+// whatever the child holds, plus its own directory handle: 0, 1, 2 and 3 is a child that inherited
+// NOTHING - not the shim it was execed from, not the CLI descriptor, not the master.
+const PTMX_PROBE = 'echo "PTMX=$(ls -l /proc/self/fd | grep -c ptmx)'
+  + ' FDS=$(ls /proc/self/fd | sort -n | paste -sd, -)"';
+// A controlling terminal, which setsid alone does not give: without it /dev/tty will not open and
+// SIGWINCH on resize is delivered to nobody.
+const CTTY_PROBE = 'echo "CTTY=$(if : < /dev/tty; then echo yes; else echo no; fi)"';
+const FIRST_SCRIPT = `${TTY_PROBE}; ${PTMX_PROBE}; echo READY; for i in 1 2 3 4 5; do printf "line-%s-%s\\n" $i "$(head -c 300 /dev/zero | tr "\\0" x)"; done; read -r FIRST; read -r SECOND; echo "GOT1:$FIRST"; echo "GOT2:$SECOND"; exit 7`;
+const SHELL_SCRIPT = `${TTY_PROBE}; echo READY; read -r FIRST; echo "GOT1:$FIRST"; exit 7`;
+// `stty` reads fd 0, so it is pointed at fd 2 - the pty slave, and the one descriptor a command
+// substitution does not replace with a pipe. It reports the master's window, which is what `resize`
+// moves for a pipe-mode child just as it does for a tty one.
+const RESIZE_SCRIPT = `${TTY_PROBE}; ${PTMX_PROBE}; ${CTTY_PROBE}; trap 'echo WINCH' WINCH; echo READY;`
+  + ` read -r GO; echo "SIZE:$(stty size 0<&2)"; exit 0`;
+// 1 MiB with no newline in it, so the pty's LF -> CRLF translation cannot blur the count. `tr -c x y`
+// maps every byte that is not 'x' - here a megabyte of NULs - onto 'y', with no backslash escape to
+// survive two levels of quoting.
+const BURST_BYTES = 1_048_576;
+// O_NONBLOCK read straight off the descriptor rather than inferred from behaviour: the burst below is
+// the behavioural half, and on its own it is not decisive, because the broker reads the master
+// continuously and a non-blocking terminal only fails once the pty buffer actually fills.
+// /proc/self/fdinfo/<n> states the flag outright (O_NONBLOCK is 04000). It reads fd 2, not fd 1:
+// inside `$( )` fd 1 is the command substitution's PIPE, so a probe pointed there measures the wrong
+// descriptor entirely. fd 2 is the terminal in both stdin modes and no substitution replaces it.
+const NONBLOCK_PROBE = 'NB=$(sed -n "s/^flags:[[:space:]]*//p" /proc/self/fdinfo/2);'
+  + ' echo "NONBLOCK=$(( (NB & 04000) != 0 ))"';
+const BURST_SCRIPT = `${NONBLOCK_PROBE}; echo READY; read -r GO; head -c ${BURST_BYTES} /dev/zero | tr -c x y;`
+  + ' echo "BURST-END"; exit 0';
+const SHELL_RECIPE = { launcher: 'shell', mode: 'interactive', model: null,
+  toolPolicyId: 'shell-default', sandbox: 'interactive' } as const;
+const HEADLESS_RECIPE = { launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+  toolPolicyId: 'producer', sandbox: 'claude-policy' } as const;
 const FIRST_PROMPT = 'FIRST-REAL-PROMPT';
 const SECOND_PROMPT = 'SECOND-REAL-PROMPT';
 const EPOCH_ONE = `epoch-${'1'.repeat(32)}`;
@@ -140,7 +185,7 @@ async function waitForFrame(
 describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start vertical', () => {
   const launchScripts: string[] = [];
   const launchSpecs: Array<Parameters<BrokerPtyLauncher['launch']>[0]> = [];
-  const children: NodePtyChild[] = [];
+  const children: BrokerPty[] = [];
   const refusalResults: Array<PortResult<unknown>> = [];
   const brokerErrors: Array<Extract<BrokerServerFrame, { type: 'error' }>> = [];
   let sessionCounter = 1;
@@ -154,6 +199,8 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
   let adapter: ReturnType<typeof createAttemptSessionAdapter>;
   let running: RunningBroker | null = null;
   let rawSocket: Socket | null = null;
+  let pipeExec: PinnedPipeStdinExec | null = null;
+  let bashFd = -1;
 
   const track = <T>(result: PortResult<T>): PortResult<T> => {
     if (!result.ok) refusalResults.push(result);
@@ -164,21 +211,27 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     async launch(spec) {
       launchSpecs.push(spec);
       expect(spec).toMatchObject({
-        executable: expect.stringMatching(/\/claude$/),
         args: expect.any(Array),
         env: expect.any(Object),
         cols: 120,
         rows: 42,
       });
+      // Only the two executables this harness drives; which stdin each recipe earns is asserted by
+      // the tests themselves, so a wrong `stdinMode` fails on the CHILD's own STDIN_TTY report rather
+      // than here, before the child has run at all.
+      expect(spec.executable).toMatch(/\/(claude|bash)$/);
       expect(spec.cwd.endsWith('/orgs/example/worktree')).toBe(true);
       const script = launchScripts.shift();
       if (script === undefined) throw new Error('real broker launcher had no queued test script');
-      const nodePty = await import('node-pty');
-      const child = nodePty.spawn('/bin/bash', ['-c', script], {
-        ...nodePtySpawnOptions(spec),
-        cwd: stateRoot,
-      });
-      const wrapped = await NodePtyChild.adopt(child);
+      // The PRODUCTION spawner, on the production spec and the production exec shim: only the
+      // executable, argv and cwd are swapped for the test script, so `stdinMode` decides fd 0 here -
+      // and the shim does the master/blocking/ctty work - exactly as on the VM.
+      const wrapped = await spawnBrokerChild({
+        launch: { ...spec, executable: '/bin/bash', args: ['-c', script], cwd: stateRoot },
+        executableFd: bashFd,
+        argv0: 'bash',
+        shebang: false,
+      }, await loadBrokerNodePty(), pipeExec);
       children.push(wrapped);
       return wrapped;
     },
@@ -243,6 +296,19 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
   }
 
   beforeAll(async () => {
+    const selfUid = process.getuid?.() ?? 0;
+    const selfGid = process.getgid?.() ?? 0;
+    // The release archive stamps the shim 0444 and the installer extracts it as root, so on the VM it
+    // is root-owned and unwritable. A git checkout under a 002 umask is 0664, which the pin refuses -
+    // correctly. Normalise the working copy rather than weakening the rule; the mode is not tracked by
+    // git, so this leaves no diff.
+    chmodSync(pipeStdinShimPath(), 0o644);
+    // The same pin the broker takes at start-up, against the same walk: /usr/bin/python3 must be a
+    // root-owned executable under an approved root on this host too, or the harness is not exercising
+    // the production hop at all.
+    pipeExec = pinPipeStdinExec(pipeStdinShimPath(), { rootUid: 0, shellUid: selfUid,
+      shellGid: selfGid, dashboardUid: selfUid, dashboardGid: selfGid });
+    bashFd = openSync('/bin/bash', fsConstants.O_RDONLY);
     stateRoot = mkdtempSync(join(tmpdir(), 'real-broker-attempt-'));
     socketPath = join(stateRoot, 'broker.sock');
     brokerStatePath = join(stateRoot, 'broker-runtime.json');
@@ -294,6 +360,7 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     }
     client.disconnect();
     await stopBroker();
+    pipeExec?.close();
     vi.restoreAllMocks();
     rmSync(stateRoot, { recursive: true, force: true });
   });
@@ -311,6 +378,12 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     await vi.waitFor(() => {
       const bytes = readFileSync(transcriptPath);
       const output = bytes.toString('utf8');
+      // The headless recipe's child was handed a PIPE on fd 0. Flip `stdinMode` back to 'tty' in
+      // `buildBrokerLaunch` and this is the assertion that goes red.
+      expect(output).toContain('STDIN_TTY=0');
+      expect(output).not.toContain('STDIN_TTY=1');
+      // Not one pty master in the agent's descriptor table - and nothing else inherited either.
+      expect(output).toContain('PTMX=0 FDS=0,1,2,3\r\n');
       expect(output).toContain('READY');
       for (let index = 1; index <= 5; index += 1) {
         expect(output).toContain(`line-${index}-${'x'.repeat(300)}`);
@@ -336,6 +409,7 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     });
     expect(rawDocument.attemptOperations).not.toHaveProperty(input.operationKey);
     expect(launchSpecs).toHaveLength(1);
+    expect(launchSpecs[0]).toMatchObject({ stdinMode: 'pipe' });
 
     const retained = structuredClone(rawDocument);
     const terminal = retained.sessions.find((item) => item.sessionId === receipt.value.sessionId);
@@ -401,7 +475,7 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     await stopBroker();
     await stale.result;
     await startBroker(EPOCH_TWO);
-    launchScripts.push('read -r REPLY; echo "EPOCH-THREE:$REPLY"; exit 0');
+    launchScripts.push('read -r REPLY; read -r SECOND; echo "EPOCH-THREE:$REPLY"; exit 0');
     const thirdInput = claudeDeclaration(3);
     const third = adapter.begin(thirdInput);
     const thirdReceipt = await third.receipt;
@@ -477,7 +551,7 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     });
     expect(rawSocket.destroyed).toBe(false);
 
-    launchScripts.push('read -r REPLY; echo "ATTEMPT-FOUR:$REPLY"; exit 0');
+    launchScripts.push('read -r REPLY; read -r SECOND; echo "ATTEMPT-FOUR:$REPLY"; exit 0');
     const fourth = adapter.begin(claudeDeclaration(4));
     await expect(fourth.receipt).resolves.toMatchObject({ ok: true });
     await fourth.result;
@@ -485,5 +559,107 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     expect(brokerErrors).toEqual([
       expect.objectContaining({ requestId: `req-${'b'.repeat(32)}`, code: 'unsafe-cwd' }),
     ]);
+  }, 30_000);
+
+  /**
+   * The other side of the switch, on the same spawner. An interactive recipe still gets a tty on fd 0
+   * and still takes its input through the pty master - which is what makes STDIN_TTY=0 above a
+   * statement about the RECIPE, rather than about the spawner having lost the ability to make a tty.
+   */
+  it.sequential('keeps a tty on stdin for an interactive shell recipe', async () => {
+    launchScripts.push(SHELL_SCRIPT);
+    const spec = buildBrokerLaunch(SHELL_RECIPE, 'worktrees', 'orgs/example/worktree',
+      { cols: 120, rows: 42 });
+    expect(spec.stdinMode).toBe('tty');
+    const child = await launcher.launch(spec);
+    let output = '';
+    child.onData((data) => { output += Buffer.from(data).toString('utf8'); });
+    const exited = new Promise<number | null>((resolve) => child.onExit((exitCode) => resolve(exitCode)));
+    await vi.waitFor(() => expect(output).toContain('READY'), { timeout: 10_000, interval: 25 });
+    await child.write(Buffer.from('SHELL-OVER-THE-PTY\n'));
+    await expect(exited).resolves.toBe(7);
+    expect(output).toContain('STDIN_TTY=1');
+    expect(output).toContain('GOT1:SHELL-OVER-THE-PTY');
+    // ...while every agent launch the adapter drove above took the pipe branch.
+    expect(launchSpecs.filter((item) => item.executable.endsWith('/claude'))).not.toHaveLength(0);
+    expect(launchSpecs.filter((item) => item.executable.endsWith('/claude'))
+      .every((item) => item.stdinMode === 'pipe')).toBe(true);
+    expect(refusalResults).toEqual([]);
+  }, 30_000);
+
+  /**
+   * Splitting fd 0 off the pty must not cost the session its terminal: a pipe-mode child still gets
+   * its window size from the master, and still reports its own exit status rather than the master's
+   * EOF. The child reads the size back out of fd 2 after the resize lands.
+   */
+  it.sequential('resizes a pipe-mode child through the pty master and observes its exit', async () => {
+    launchScripts.push(RESIZE_SCRIPT);
+    const spec = buildBrokerLaunch(HEADLESS_RECIPE, 'worktrees', 'orgs/example/worktree',
+      { cols: 120, rows: 42 });
+    expect(spec.stdinMode).toBe('pipe');
+    const child = await launcher.launch(spec);
+    let output = '';
+    child.onData((data) => { output += Buffer.from(data).toString('utf8'); });
+    const exited = new Promise<number | null>((resolve) => child.onExit((exitCode) => resolve(exitCode)));
+    await vi.waitFor(() => expect(output).toContain('READY'), { timeout: 10_000, interval: 25 });
+    child.resize(133, 44);
+    await child.write(Buffer.from('go\n'));
+    await expect(exited).resolves.toBe(0);
+    expect(output).toContain('STDIN_TTY=0');
+    expect(output).toContain('PTMX=0 FDS=0,1,2,3\r\n');
+    // A controlling terminal, not merely a session: /dev/tty opens and SIGWINCH is delivered.
+    expect(output).toContain('CTTY=yes');
+    expect(output).toContain('WINCH');
+    expect(output).toContain('SIZE:44 133');
+    // The prompt went to the pipe, so the pty never echoed it back into the transcript.
+    expect(output).not.toContain('go\r\n');
+  }, 30_000);
+
+  /**
+   * The blocking-terminal proof. node-pty opens the pty slave O_NONBLOCK and dup2 shares the open
+   * file description, so a child given that descriptor directly fails its own large writes with
+   * EAGAIN - `write error: Resource temporarily unavailable` out of bash. Every byte has to arrive.
+   */
+  it.sequential('carries a 1 MiB burst off a pipe-mode child without a short or failed write', async () => {
+    launchScripts.push(BURST_SCRIPT);
+    const child = await launcher.launch(buildBrokerLaunch(HEADLESS_RECIPE, 'worktrees',
+      'orgs/example/worktree', { cols: 120, rows: 42 }));
+    let output = '';
+    child.onData((data) => { output += Buffer.from(data).toString('latin1'); });
+    const exited = new Promise<number | null>((resolve) => child.onExit((exitCode) => resolve(exitCode)));
+    await vi.waitFor(() => expect(output).toContain('READY'), { timeout: 10_000, interval: 25 });
+    await child.write(Buffer.from('go\n'));
+    await expect(exited).resolves.toBe(0);
+    // The terminal the child was handed is BLOCKING, and every byte of the burst arrived.
+    expect(output).toContain('NONBLOCK=0');
+    expect(output).toContain('BURST-END');
+    expect(output).not.toMatch(/Resource temporarily unavailable|WouldBlock|write error/);
+    expect(output.split('y').length - 1).toBe(BURST_BYTES);
+  }, 60_000);
+
+  /**
+   * The write-after-exit path, which the two-prompt scripts elsewhere deliberately avoid: the stdin
+   * pipe is gone (settle destroys it), so a write has no reader, no drain and no 'close' left to wait
+   * on. It must resolve rather than hang, and its EPIPE must not surface as an unhandled 'error'.
+   */
+  it.sequential('resolves a write issued after a pipe-mode child has exited', async () => {
+    launchScripts.push('echo READY; exit 0');
+    const child = await launcher.launch(buildBrokerLaunch(HEADLESS_RECIPE, 'worktrees',
+      'orgs/example/worktree', { cols: 120, rows: 42 }));
+    const errors: unknown[] = [];
+    const onRejection = (reason: unknown): void => { errors.push(reason); };
+    process.on('unhandledRejection', onRejection);
+    const exited = new Promise<number | null>((resolve) => child.onExit((exitCode) => resolve(exitCode)));
+    await expect(exited).resolves.toBe(0);
+    await expect(child.write(Buffer.from('after-exit\n'))).resolves.toBeUndefined();
+    await expect(child.write(Buffer.from('again\n'))).resolves.toBeUndefined();
+    // ...and a resize after the master is gone is a no-op, not an ioctl on a recycled descriptor.
+    expect(() => child.resize(80, 24)).not.toThrow();
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    // The SAME function reference: `process.off` with a fresh closure removes nothing, and the
+    // listener would have outlived the test and collected every later rejection in the file.
+    process.off('unhandledRejection', onRejection);
+    expect(process.listeners('unhandledRejection')).not.toContain(onRejection);
+    expect(errors).toEqual([]);
   }, 30_000);
 });

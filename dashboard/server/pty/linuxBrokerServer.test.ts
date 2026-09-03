@@ -1,4 +1,5 @@
-import { Duplex } from 'node:stream';
+import { EventEmitter } from 'node:events';
+import { Duplex, PassThrough } from 'node:stream';
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,10 +7,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { BrokerClientFrame, BrokerServerFrame } from '../../shared/ptyProtocol.ts';
 import { BrokerFrameDecoder, decodeBrokerServerFrame, encodeBrokerFrame } from './brokerProtocol.ts';
-import { BROKER_RUNTIME_POLICY, buildBrokerLaunch } from './fdPinnedPaths.ts';
-import { NodePtyChild, assertBrokerRuntimeNode, brokerRuntimePolicy, decodeBrokerRuntimeState,
-  loadRuntimeState, nodePtySpawnOptions, parseLinuxBrokerInvocation, runLinuxBrokerEntrypoint,
-  terminateVerifiedIdentity, validateServiceIdentity } from './linuxBrokerMain.ts';
+import { BROKER_RUNTIME_POLICY, buildBrokerLaunch, type BrokerLaunchSpec } from './fdPinnedPaths.ts';
+import { NodePtyChild, PipeStdinChild, assertBrokerRuntimeNode, brokerRuntimePolicy,
+  decodeBrokerRuntimeState, loadRuntimeState, nodePtySpawnOptions, parseLinuxBrokerInvocation,
+  runLinuxBrokerEntrypoint, terminateVerifiedIdentity, validateServiceIdentity } from './linuxBrokerMain.ts';
 import {
   LinuxBrokerServer,
   MAX_BROKER_RECEIPTS,
@@ -66,6 +67,31 @@ const epochId = 'epoch-0123456789abcdef0123456789abcdef';
 const operationKey = 'op-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const shellRecipe = { launcher: 'shell', mode: 'interactive', model: null,
   toolPolicyId: 'shell-default', sandbox: 'interactive' } as const;
+const headlessRecipe = { launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
+  toolPolicyId: 'producer', sandbox: 'claude-policy' } as const;
+
+/**
+ * A child that owns BOTH sinks a broker child can have - a stdin pipe and a pty master - and routes
+ * `write` by the `stdinMode` its launch spec carried. A headless child whose input went to the pty
+ * would be the live failure in mirror image: the bytes would echo into the transcript and the CLI,
+ * reading `--input-format stream-json` off fd 0, would wait for a prompt that never came.
+ */
+class TwoSinkPty implements BrokerPty {
+  readonly pid = 5150;
+  readonly identity = { pid: 5150, pgid: 5150, startTimeTicks: '7' };
+  readonly pipeWrites: Uint8Array[] = [];
+  readonly ptyWrites: Uint8Array[] = [];
+  private readonly stdinMode: BrokerLaunchSpec['stdinMode'];
+  constructor(stdinMode: BrokerLaunchSpec['stdinMode']) { this.stdinMode = stdinMode; }
+  write(data: Uint8Array): Promise<void> {
+    (this.stdinMode === 'pipe' ? this.pipeWrites : this.ptyWrites).push(Buffer.from(data));
+    return Promise.resolve();
+  }
+  resize(): void {}
+  kill(): void {}
+  onData(): void {}
+  onExit(): void {}
+}
 
 /** A broker plus a connected client, driving create/exit cycles that exercise the receipt ring. */
 function makeReceiptHarness() {
@@ -323,6 +349,129 @@ describe('LinuxBrokerServer', () => {
       data: Buffer.alloc(65_537).toString('base64') });
     await tick();
     expect(frames).toContainEqual(expect.objectContaining({ type: 'error', code: 'input-too-large' }));
+  });
+
+  /**
+   * The stdin switch as the SERVER sees it. `create` resolves the recipe into a spec whose
+   * `stdinMode` the launcher acts on, and every accepted `input` frame goes to `child.write` - the
+   * stdin pipe for a headless child, the pty master for an interactive one. Both recipes are driven
+   * through the same broker in one test so a change that collapses the two is red here.
+   */
+  it('routes input to the stdin pipe for a headless recipe and to the pty for a shell recipe', async () => {
+    const specs: BrokerLaunchSpec[] = [];
+    const children: TwoSinkPty[] = [];
+    let sessionCounter = 0;
+    const server = new LinuxBrokerServer({
+      epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: {
+        launch: async (spec) => {
+          specs.push(spec);
+          const child = new TwoSinkPty(spec.stdinMode);
+          children.push(child);
+          return child;
+        },
+      },
+      makeSessionId: () => `pty-${(sessionCounter++).toString(16).padStart(32, '0')}`,
+      now: () => '2026-09-03T00:00:00.000Z',
+    });
+    const [clientSocket, serverSocket] = pair();
+    const frames: BrokerServerFrame[] = [];
+    const decoder = new BrokerFrameDecoder(decodeBrokerServerFrame);
+    clientSocket.on('data', (chunk: Buffer) => frames.push(...decoder.push(chunk)));
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 99 });
+    const send = (frame: BrokerClientFrame): void => { clientSocket.write(encodeBrokerFrame(frame)); };
+    send({ type: 'hello', requestId, sessionId: null, protocol: 'kb-shell-broker/v1', dashboardEpochId: epochId });
+
+    const sessionOf = (index: number): string => `pty-${index.toString(16).padStart(32, '0')}`;
+    for (const [index, recipe] of [headlessRecipe, shellRecipe].entries()) {
+      send({ type: 'create', requestId: `req-${index.toString(16).padStart(32, '0')}`, sessionId: null,
+        epochId, operationKey: `op-${index.toString(16).padStart(64, '0')}`, recipe,
+        rootId: 'worktrees', relativeCwd: 'run-1', cols: 80, rows: 24 });
+      await tick();
+      send({ type: 'input', requestId, sessionId: sessionOf(index), epochId, sequence: 0,
+        encoding: 'base64', data: Buffer.from(`prompt-${index}`).toString('base64') });
+      await tick();
+    }
+
+    expect(specs.map((spec) => spec.stdinMode)).toEqual(['pipe', 'tty']);
+    const [headless, shell] = children;
+    expect(headless!.pipeWrites).toEqual([Buffer.from('prompt-0')]);
+    expect(headless!.ptyWrites).toEqual([]);
+    expect(shell!.ptyWrites).toEqual([Buffer.from('prompt-1')]);
+    expect(shell!.pipeWrites).toEqual([]);
+    expect(frames.filter((frame) => frame.type === 'error')).toEqual([]);
+    expect(frames).toContainEqual(expect.objectContaining({ type: 'ack', action: 'input',
+      sessionId: sessionOf(0), accepted: 8 }));
+  });
+
+  /**
+   * The two descriptor rules a pipe-mode child lives under, on the one interleaving that separates
+   * them from `settled`: the pty master can go BEFORE the process is reaped (the child closed fd 1
+   * and fd 2, or the master reported EIO first), which leaves `settle` waiting on the exit status
+   * with the master's descriptor already closed and its NUMBER free for the next open.
+   *
+   *   - No resize may reach that number afterwards. An ioctl on a recycled descriptor is EBADF or
+   *     ENOTTY surfaced to the client as `internal` AFTER the server advanced inputSequence, which
+   *     desyncs the session - or, worse, a TIOCSWINSZ landing on another session's pty.
+   *   - The stdin pipe is closed when the exit is reported. Left open it is a descriptor and a libuv
+   *     handle leaked per completed headless run, and a pending `write` waits on a 'close' that never
+   *     comes.
+   */
+  it('stops resizing a pipe-mode child once its master is gone and closes its stdin at exit', async () => {
+    const resizes: Array<{ fd: number; cols: number; rows: number }> = [];
+    const exits: Array<number | null> = [];
+    const stdin = new PassThrough();
+    const master = new PassThrough();
+    const child = Object.assign(new EventEmitter(), { stdin, kill: () => {} });
+    const wrapped = new PipeStdinChild(4321, child as never, master as never, 77,
+      (fd, cols, rows) => { resizes.push({ fd, cols, rows }); });
+    wrapped.onExit((exitCode) => exits.push(exitCode));
+
+    wrapped.resize(100, 30);
+    expect(resizes).toEqual([{ fd: 77, cols: 100, rows: 30 }]);
+
+    // The master goes first; nothing has reaped the process, so the exit is still pending.
+    master.destroy();
+    await tick();
+    expect(exits).toEqual([]);
+    wrapped.resize(120, 40);
+    expect(resizes).toEqual([{ fd: 77, cols: 100, rows: 30 }]);
+    expect(stdin.destroyed).toBe(false);
+
+    child.emit('exit', 7, null);
+    await tick();
+    expect(exits).toEqual([7]);
+    expect(stdin.destroyed).toBe(true);
+    // Reported once, and still no resize gets through.
+    child.emit('exit', 9, null);
+    wrapped.resize(140, 50);
+    await tick();
+    expect(exits).toEqual([7]);
+    expect(resizes).toHaveLength(1);
+  });
+
+  /**
+   * D6: a spawn that never became a process. `child_process` reports it as an 'error' event and never
+   * an 'exit', so the session's exit frame carries no code and no signal - which tells an operator
+   * nothing at all. The reason belongs in the transcript, the one place they are already looking, as
+   * one bounded ASCII line so a byte-exact transcript stays byte-exact.
+   */
+  it('writes a failed spawn into the transcript instead of exiting silently', async () => {
+    const chunks: string[] = [];
+    const exits: Array<number | null> = [];
+    const stdin = new PassThrough();
+    const master = new PassThrough();
+    const child = Object.assign(new EventEmitter(), { stdin, kill: () => {} });
+    const wrapped = new PipeStdinChild(4321, child as never, master as never, 77, () => {});
+    wrapped.onData((data) => chunks.push(Buffer.from(data).toString('latin1')));
+    wrapped.onExit((exitCode) => exits.push(exitCode));
+
+    child.emit('error', new Error('spawn /proc/self/fd/9 ENOENT\nsecond line \u00e9'));
+    await tick();
+    // One line, printable ASCII only, and the newline and the accented byte are gone.
+    expect(chunks).toEqual(['[broker] spawn failed: spawn /proc/self/fd/9 ENOENT second line  \r\n']);
+    expect(exits).toEqual([null]);
+    expect(stdin.destroyed).toBe(true);
   });
 
   it('kills an old epoch, finalizes an exit once, and drops a late exit after shutdown', async () => {

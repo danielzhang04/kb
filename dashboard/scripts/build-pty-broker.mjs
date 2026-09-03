@@ -10,7 +10,7 @@
 // that could carry build-host state (mtime, uid/gid, uname/gname, ordering) is pinned, and the gzip
 // container is written by hand so no zlib build stamps its OS byte or mtime into the output.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +40,11 @@ const BARE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'
 const ENTRY_SOURCE = "import { runLinuxBrokerProcess } from './server/pty/linuxBrokerMain.js';\n"
   + 'void runLinuxBrokerProcess();\n';
 const PACKAGE_MARKER = '{"name":"kb-shell-broker","private":true,"type":"module"}\n';
+// tsc emits JavaScript and nothing else, so the pipe-stdin exec shim - a .py file the broker resolves
+// beside its own module at runtime - has to be copied in by hand. It is not optional: without it every
+// headless (claude/codex) launch refuses at create, so it is copied here and asserted below alongside
+// the compiler's own required output.
+const EXTRA_PAYLOAD_FILES = ['server/pty/pipeStdinExec.py'];
 
 function fail(message) {
   process.stderr.write(`build:pty-broker: ${message}\n`);
@@ -187,13 +192,21 @@ if (compiled.status !== 0) fail('tsc -p tsconfig.pty-broker.json failed');
 
 writeFileSync(path.join(outputRoot, 'main.js'), ENTRY_SOURCE, 'utf8');
 writeFileSync(path.join(outputRoot, 'package.json'), PACKAGE_MARKER, 'utf8');
+for (const relative of EXTRA_PAYLOAD_FILES) {
+  const source = path.join(dashboardRoot, relative);
+  if (!existsSync(source)) fail(`payload file ${relative} is missing from the source tree`);
+  mkdirSync(path.join(outputRoot, path.dirname(relative)), { recursive: true });
+  copyFileSync(source, path.join(outputRoot, relative));
+}
 for (const required of ['server/pty/linuxBrokerMain.js', 'server/pty/linuxBrokerServer.js',
   'server/pty/brokerProtocol.js', 'server/pty/fdPinnedPaths.js',
   'server/pty/unixServiceIdentity.js', 'shared/ptyProtocol.js',
   // The server-owned workflow tool-allowlist table the broker re-resolves `toolPolicyId` against.
   // Absent from the payload, every claude/codex launch dies at import time, so it is listed here and
   // the build FAILS rather than shipping a broker that throws on the first agent session.
-  'server/control/workflowProfiles.js']) {
+  'server/control/workflowProfiles.js',
+  // The exec shim: absent, every headless launch refuses at create with a pinning error.
+  'server/pty/pipeStdinExec.py']) {
   if (!existsSync(path.join(outputRoot, required))) fail(`broker compiler did not emit ${required}`);
 }
 

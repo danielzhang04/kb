@@ -25,6 +25,45 @@ export const LINUX_ROOTS = {
 } as const satisfies Record<SafeRootId, string>;
 
 export const BROKER_SOCKET_PATH = '/run/kb-shell/broker.sock';
+/**
+ * The pipe-stdin exec hop. A headless child needs three things done between fork and exec that no
+ * parent can do for it - drop the inherited pty master, put a BLOCKING terminal on fd 1/2, and take
+ * that terminal as its controlling tty - so `pipeStdinExec.py` does them and then execs the pinned
+ * CLI. `/usr/bin/python3` is a root-owned binary under an approved executable root and is pinned by
+ * the same walk every other broker executable goes through; the shim itself and the CLI reach the
+ * child as DESCRIPTORS in stdio slots, because dup2 clears FD_CLOEXEC and that is the only way a
+ * descriptor survives the exec into python.
+ */
+export const PIPE_STDIN_INTERPRETER = '/usr/bin/python3';
+/**
+ * Where codex actually is, in preference order. `~/.local/bin/codex` is an npm WRAPPER -
+ * `#!/usr/bin/env node`, 7 KB, whose whole job is to spawn the vendored native binary - and a wrapper
+ * cannot be the pinned entrypoint: a shebang entrypoint reaches its interpreter as
+ * `args[0] = /proc/self/fd/<n>`, a descriptor that is FD_CLOEXEC and therefore already gone by the
+ * time node opens it. That has always been broken on the tty path and the headless path refuses it
+ * outright, so codex must be pinned at the NATIVE binary the wrapper would have spawned.
+ *
+ * A fixed list, not a readlink and not a read of the wrapper's JavaScript: resolution stays inside
+ * the same O_NOFOLLOW walk every other executable goes through, so a candidate that is not
+ * kb-shell-owned 0700/0750 under the provider home is refused rather than followed. First hit wins;
+ * (a) is the nested npm layout the VM has, (b) the hoisted one, (c) the wrapper path itself, which is
+ * accepted only when it turns out to be a native binary rather than a script.
+ *
+ * Skipping the wrapper costs the child nothing. Read from the shipped `bin/codex.js` (0.153.0, the
+ * VM runs 0.152.0): it ends in `spawn(binaryPath, process.argv.slice(2), { stdio: 'inherit', env })`
+ * - argv passes through untouched, and the only additions to the environment are
+ * `CODEX_MANAGED_PACKAGE_ROOT` plus one of `CODEX_MANAGED_BY_{NPM,BUN,PNPM}`. Its own comment says
+ * that detection exists "to give the user a hint about how to update it": update nags, nothing the
+ * binary needs to run. The broker's six-key child environment never carried them anyway.
+ */
+const CODEX_VENDOR_TAIL = '@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex';
+export const CODEX_EXECUTABLE_CANDIDATES = [
+  `/var/lib/kb-shell/home/.local/lib/node_modules/@openai/codex/node_modules/${CODEX_VENDOR_TAIL}`,
+  `/var/lib/kb-shell/home/.local/lib/node_modules/${CODEX_VENDOR_TAIL}`,
+  '/var/lib/kb-shell/home/.local/bin/codex',
+] as const;
+export const PIPE_STDIN_EXEC_CHILD_FD = 3;
+export const PIPE_STDIN_SHIM_CHILD_FD = 4;
 export const LINUX_CHILD_ENV_KEYS = ['HOME', 'PATH', 'LANG', 'TERM', 'COLUMNS', 'LINES'] as const;
 /**
  * Runtime-directory + state-file facts the BROKER PROCESS checks at boot. It carries no copy of the
@@ -232,6 +271,19 @@ export type BrokerLaunchSpec = {
   env: Record<(typeof LINUX_CHILD_ENV_KEYS)[number], string>;
   cols: number;
   rows: number;
+  /**
+   * What kind of fd 0 the child is given. Derived below from `recipe.mode`, NOT carried on the wire:
+   * the dashboard sends a recipe, the broker decides how to hold that child's stdin.
+   *
+   * `tty` - fd 0/1/2 are all the pty slave, the shape an interactive shell needs.
+   * `pipe` - fd 0 is a pipe, fd 1/2 stay on the pty slave. Both headless CLIs REFUSE a tty on stdin:
+   * `claude -p` exits 1 with "Input must be provided either through stdin or as a prompt argument
+   * when using --print" (observed on the VM, run-a9bdd60f, the first real claude launch), and
+   * `codex exec -` names stdin as the prompt source by definition. Passing the prompt as argv is not
+   * the alternative - it is single-turn, and it would put the work order in a `ps` listing, which
+   * `control/claudeWorkerAdapter.ts` forbids outright.
+   */
+  stdinMode: 'tty' | 'pipe';
 };
 
 export function resolveLinuxRoot(rootId: SafeRootId): string {
@@ -272,7 +324,11 @@ export function buildBrokerLaunch(
     throw new FdPinnedPathError('terminal size is out of range');
   }
   const cwd = absoluteCwd(rootId, relative);
-  const common = { cwd, env: childEnvironment(size), cols: size.cols, rows: size.rows };
+  // The one place stdin mode is decided, for every launcher at once. It keys off the MODE, not off a
+  // list of launcher names, so a headless launcher added later inherits the pipe by declaring itself
+  // headless rather than by someone remembering to edit a second table.
+  const stdinMode: BrokerLaunchSpec['stdinMode'] = recipe.mode === 'headless-json' ? 'pipe' : 'tty';
+  const common = { cwd, env: childEnvironment(size), cols: size.cols, rows: size.rows, stdinMode };
   if (recipe.launcher === 'shell') return { executable: '/bin/bash', args: [], ...common };
   if (!MODEL_PREFIXES[recipe.launcher].test(recipe.model!)) {
     throw new FdPinnedPathError('recipe model does not belong to this launcher');
@@ -356,7 +412,27 @@ export type PinnedBrokerLaunch = {
   launch: BrokerLaunchSpec;
   executableFd: number;
   cwdFd: number;
+  /** The CLI's own name, for the child's argv[0] once the executable is a bare descriptor. */
+  argv0: string;
+  /** True when `executableFd` is a script INTERPRETER rather than the CLI itself. */
+  shebang: boolean;
   close(): Promise<void>;
+};
+
+/**
+ * The pinned pipe-stdin exec hop, pinned ONCE at broker start and held for the broker's lifetime.
+ *
+ * Pinning it per launch would re-walk `/usr/bin/python3` on every agent session for no gain; pinning
+ * it at boot means the descriptors were taken before any session existed to race them, and every
+ * later launch execs the inode the boot-time walk validated.
+ */
+export type PinnedPipeStdinExec = {
+  /** `/proc/self/fd/<n>` for the interpreter - what `child_process.spawn` actually execs. */
+  interpreter: string;
+  interpreterFd: number;
+  /** The shim source. Passed down a stdio slot, never by a pathname the child re-resolves. */
+  shimFd: number;
+  close(): void;
 };
 
 /** The service accounts every metadata rule in the walk below is written against. */
@@ -516,6 +592,37 @@ function beginPinWalk(identities: PinIdentities, fs: PinningFileSystem): PinWalk
   };
 }
 
+/** An entrypoint the walk accepted, with the bytes that say whether it is a script. */
+type ResolvedEntrypoint = { fd: number; path: string; prefix: string };
+
+/**
+ * The launcher's real entrypoint, resolved through the walk and NOWHERE else. One list, one order,
+ * one caller-visible result, so `pinBrokerLaunch` and `pinnableLauncher` cannot disagree about which
+ * file a launcher means - the moment they do, the probe advertises a launcher that create refuses.
+ *
+ * A native candidate always beats a script one. If every candidate that opened turned out to be a
+ * script, the FIRST such is returned rather than an error: the tty path has always run those (badly),
+ * and it is `spawnBrokerChild` and the probe - not this walk - that decide a script is unusable.
+ */
+function resolveEntrypoint(executable: string, walk: PinWalk, fs: PinningFileSystem): ResolvedEntrypoint {
+  const candidates = executable === CODEX_EXECUTABLE_CANDIDATES[2]
+    ? CODEX_EXECUTABLE_CANDIDATES : [executable];
+  let script: ResolvedEntrypoint | null = null;
+  let refusal: unknown = null;
+  for (const candidate of candidates) {
+    let opened: ResolvedEntrypoint;
+    try {
+      const fd = walk.openAbsolute(candidate, 'file', APPROVED_EXECUTABLE_ROOTS);
+      opened = { fd, path: candidate, prefix: Buffer.from(fs.read(fd, 256)).toString('utf8') };
+    } catch (error) { refusal = error; continue; }
+    if (!opened.prefix.startsWith('#!')) return opened;
+    if (script === null) script = opened;
+  }
+  if (script !== null) return script;
+  throw refusal instanceof FdPinnedPathError ? refusal
+    : new FdPinnedPathError('no approved entrypoint for this launcher');
+}
+
 export async function pinBrokerLaunch(
   launch: BrokerLaunchSpec,
   identities: PinIdentities,
@@ -532,9 +639,12 @@ export async function pinBrokerLaunch(
   try {
     const cwdRoot = Object.values(LINUX_ROOTS).find((root) => isWithin(launch.cwd, root))!;
     const cwdFd = walk.openAbsolute(launch.cwd, 'directory', [cwdRoot]);
-    const entrypointFd = walk.openAbsolute(launch.executable, 'file', APPROVED_EXECUTABLE_ROOTS);
+    const entrypoint = resolveEntrypoint(launch.executable, walk, fs);
+    // The recheck sweep still runs before anything is USED: the prefix above was read off a
+    // descriptor this walk holds, and a component swapped since it was opened fails here.
     walk.verifyRechecks();
-    const prefix = Buffer.from(fs.read(entrypointFd, 256)).toString('utf8');
+    const entrypointFd = entrypoint.fd;
+    const prefix = entrypoint.prefix;
     let executableFd = entrypointFd;
     let args = launch.args;
     if (prefix.startsWith('#!')) {
@@ -553,11 +663,63 @@ export async function pinBrokerLaunch(
       },
       executableFd,
       cwdFd,
+      argv0: path.posix.basename(launch.executable),
+      shebang: executableFd !== entrypointFd,
       close: async () => walk.closeHeld(),
     };
   } catch (error) {
     walk.closeHeld();
     throw error instanceof FdPinnedPathError ? error : new FdPinnedPathError('fd-pinned launch refused');
+  }
+}
+
+/**
+ * Pin the pipe-stdin exec hop: `/usr/bin/python3` through the SAME walk `pinBrokerLaunch` uses (same
+ * O_NOFOLLOW component-by-component descent, same ownership/mode matrix, same symlink depth limit and
+ * recheck sweep - `/usr/bin/python3` is a root-owned symlink to a versioned binary on every distro we
+ * deploy, and the walk resolves it exactly as it resolves any other), plus a plain open of the shim.
+ *
+ * The shim is NOT walked, deliberately. Its path is derived from the broker's own module location,
+ * not from anything on the wire, and it lives beside `main.js` in the release the systemd unit
+ * already execs by path on a `ProtectSystem=strict` mount. An attacker who can rewrite it has already
+ * replaced the broker itself, so a metadata check there would be theatre; what matters is that the
+ * child receives it as a descriptor this function opened rather than as a name it re-resolves.
+ */
+export function pinPipeStdinExec(
+  shimPath: string,
+  identities: PinIdentities,
+  fs: PinningFileSystem = productionPinningFs,
+): PinnedPipeStdinExec {
+  const walk = beginPinWalk(identities, fs);
+  let shimFd: number | null = null;
+  try {
+    const interpreterFd = walk.openAbsolute(PIPE_STDIN_INTERPRETER, 'file', APPROVED_EXECUTABLE_ROOTS);
+    walk.verifyRechecks();
+    shimFd = fs.open(shimPath, fsConstants.O_RDONLY);
+    // The shim is code this broker is about to run as itself, so anyone who can WRITE it owns the
+    // broker's children. Group- and other-writable is refused outright; the owner must be root (the
+    // release on the VM) or the broker's own account, which could rewrite the payload regardless and
+    // so buys an attacker nothing. Checked on the DESCRIPTOR already opened, never by a second
+    // pathname lookup.
+    const shim = fs.identity(shimFd);
+    if (shim.kind !== 'file' || (shim.mode & 0o022) !== 0
+        || ![identities.rootUid, identities.shellUid].includes(shim.uid)) {
+      throw new FdPinnedPathError('pipe-stdin exec shim ownership or mode is unsafe');
+    }
+    return {
+      interpreter: `/proc/self/fd/${interpreterFd}`,
+      interpreterFd,
+      shimFd,
+      close: () => {
+        if (shimFd !== null) { try { fs.close(shimFd); } catch { /* already closed */ } }
+        walk.closeHeld();
+      },
+    };
+  } catch (error) {
+    if (shimFd !== null) { try { fs.close(shimFd); } catch { /* already closed */ } }
+    walk.closeHeld();
+    throw error instanceof FdPinnedPathError ? error
+      : new FdPinnedPathError('pipe-stdin exec shim could not be pinned');
   }
 }
 
@@ -598,11 +760,18 @@ export function launcherExecutable(launcher: SessionLauncher): string {
  * FAIL CLOSED, without exception. Every refusal, every errno, every unexpected throw returns `false`.
  * There is no error this function can see that means "the launcher is probably fine": the entire point
  * of the enumeration is that a launcher it names is one an operator may be routed onto.
+ *
+ * `headlessReady` is the caller's answer to "did the boot-time pipe-stdin exec pin succeed?". Every
+ * agent launch the dashboard makes is `headless-json`, so a claude or codex that cannot run headless
+ * is one create WILL refuse, and advertising it is the same lie as advertising a missing binary. The
+ * shebang rule is the other half of the same precondition, applied here rather than inferred: a
+ * script entrypoint is refused by `spawnBrokerChild` for the agent launchers, so it is refused here.
  */
 export async function pinnableLauncher(
   launcher: SessionLauncher,
   identities: PinIdentities,
   fs: PinningFileSystem = productionPinningFs,
+  headlessReady = true,
 ): Promise<boolean> {
   let executable: string;
   let walk: PinWalk;
@@ -611,12 +780,14 @@ export async function pinnableLauncher(
     if (!APPROVED_EXECUTABLE_ROOTS.some((root) => isWithin(executable, root))) return false;
     walk = beginPinWalk(identities, fs);
   } catch { return false; }
+  const headless = launcher !== 'shell';
   try {
-    const entrypointFd = walk.openAbsolute(executable, 'file', APPROVED_EXECUTABLE_ROOTS);
+    if (headless && !headlessReady) return false;
+    const entrypoint = resolveEntrypoint(executable, walk, fs);
     walk.verifyRechecks();
-    const prefix = Buffer.from(fs.read(entrypointFd, 256)).toString('utf8');
-    if (prefix.startsWith('#!')) {
-      const interpreter = shebangInterpreter(prefix);
+    if (entrypoint.prefix.startsWith('#!')) {
+      if (headless) return false;
+      const interpreter = shebangInterpreter(entrypoint.prefix);
       if (interpreter === null) return false;
       walk.openAbsolute(interpreter, 'file', APPROVED_EXECUTABLE_ROOTS);
     }
@@ -639,11 +810,13 @@ export async function pinnableLauncher(
 export async function enumerateBrokerLaunchers(
   identities: PinIdentities,
   fs: PinningFileSystem = productionPinningFs,
+  headlessReady = true,
 ): Promise<SessionLauncher[]> {
   const available: SessionLauncher[] = [];
   for (const launcher of ['shell', 'claude', 'codex'] as const) {
     let pinnable = false;
-    try { pinnable = await pinnableLauncher(launcher, identities, fs); } catch { pinnable = false; }
+    try { pinnable = await pinnableLauncher(launcher, identities, fs, headlessReady); }
+    catch { pinnable = false; }
     if (pinnable) available.push(launcher);
   }
   return available;
