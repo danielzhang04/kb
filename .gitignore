@@ -39,3 +39,4 @@ dashboard/.artifacts/
 
 # figment anchor images staged for pod uploads (image bulk stays untracked)
 orgs/figment/pipeline/train/runs/anchors/
+orgs/figment/research/10sorlabs-package/

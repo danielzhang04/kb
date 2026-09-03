@@ -74,10 +74,14 @@ are first-class views, not add-ons.
   Fold it into learning, research, infrastructure, and structuring across the board: read every
   module read-only, summarise into `research/r14-10sorlabs-package.md` (module map, workflows,
   settings, playbooks, tool list), and turn what applies into our own manifests and templates.
-  Rules: it is licensed course content — notes and derived implementations only, no verbatim
-  redistribution in the repo; every linked package/install command is verified on its registry
-  before use (the `npx eromify-mcp` lesson); its "skin enhancer" default is the setting we turn
-  off, per stage 5.
+  Operator ruling: the build terminal has FREE REIN over the package — comb every module,
+  follow every external link, download the package's own files (workflows, configs, guides,
+  playbooks, infra notes) into `orgs/figment/research/10sorlabs-package/` (gitignored bulk;
+  notes committed), watch and analyse the videos (claude-video-vision skill), and use all of
+  it for research, building, infrastructure, and structuring. Rules: licensed content — notes
+  and derived implementations in the repo, no verbatim redistribution; every linked package or
+  install command is verified on its registry before use (the `npx eromify-mcp` lesson); its
+  "skin enhancer" default is the setting we turn off, per stage 5.
 - **Template catalogue** — Eromify's, 10sorlabs', and other public template and format
   catalogues studied as patterns and re-implemented natively (carousel types, posting
   templates, content mixes); nothing installed from them.
