@@ -60,11 +60,11 @@ vendor line until an operator has a legitimate non-evasion need and approves spe
 | Surface | Current supported path / ceiling | Implementation rule |
 | --- | --- | --- |
 | Publish | Image, video/Reel, and mixed carousel (up to 10 children); public HTTPS media is fetched by Meta. (`C2`, 2026-09-03) | Create containers close to schedule time; poll video status; publish idempotently. |
-| Stories | Official collection describes Stories as Business-only on the Facebook-Login route. (`C1`, 2026-09-03) | Treat as version/route acceptance test; native posting is fallback for stickers/audio. |
+| Stories | **Correction (2026-09-03 claim-check):** current official docs support `media_type=STORIES` under Content Publishing generally, with no stated Facebook-Login/Business-only restriction; queried back via `media_product_type`, not `media_type`. [Content Publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing/) (was: `C1`, a Postman mirror, wrongly read as Business/Facebook-Login-only) | Treat as version/route acceptance test; native posting is fallback for stickers/audio. |
 | Quota | 100 API-published posts per rolling 24 hours per professional account; carousel counts once; `content_publishing_limit` exposes use. (`C2`, 2026-09-03) | Query per account; never hard-code a shared global allowance. |
-| AI label | `is_ai_generated` is supplied at media-container creation; set it on the carousel parent. (`C4`, 2026-09-03) | Required publisher invariant; fail closed if missing. |
+| AI label | `is_ai_generated` is supplied at media-container creation; set it on the carousel parent (not available on carousel children). (`C4`, 2026-09-03; confirmed on official [IG Media reference](https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media/)) | Required publisher invariant; fail closed if missing. |
 | Insights | Account/media endpoints expose compatible organic measures such as reach, views/plays, accounts engaged, interactions, follows, profile/link actions and media likes/comments/shares/saves; exact allowlist varies by media type/version. (`C1`, 2026-09-03) | Persist raw response + API version; pull daily and at 24–48h after publish. |
-| Not established | The official publishing materials reviewed do not establish API support for Collab posts, Trial Reels, adding Instagram-library music/trending audio, or Story stickers/interactivity. (`C2`, `C14`, 2026-09-03) | Do not promise them; route to a native operator queue or omit. |
+| Not established | **Correction (2026-09-03 claim-check):** Collab posts and Trial Reels ARE API-supported — a `collaborators` parameter on media containers (Reels only, not Stories) and a `trial_params` parameter (`graduation_strategy`: `MANUAL`/`SS_PERFORMANCE`) are both documented at [Content Publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing/) and [Collaborators reference](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-media/collaborators). Only Instagram-library/trending audio and Story stickers/interactivity remain genuinely unsupported — music must be baked into the uploaded video file. (was: `C2`, `C14`, wrongly listing Collab/Trial Reels as unsupported) | Do not promise library audio or Story stickers; do offer Collab and Trial Reels through the API. Route only audio/stickers to a native operator queue. |
 
 ## 3. Capability matrix
 
@@ -74,8 +74,9 @@ vendor line until an operator has a legitimate non-evasion need and approves spe
 | Convert to professional, link Page, configure profile/settings | Partial configuration surface only | Operator only | No scripted creation/verification |
 | OAuth/connect an owned professional account | Yes, after operator consent | Operator may complete consent | Never capture credentials/cookies in repo |
 | Single image, Reel/video, carousel | Yes (`C2`) | Fallback only | — |
-| Story without sticker/music | Route/version dependent; Business Facebook-Login documented (`C1`) | Operator native fallback | — |
-| Library/trending audio, sticker/link/poll/GIF effects, collab or Trial-Reel UI | Not established (`C14`) | Operator creates/approves natively | Do not automate UI at scale |
+| Story without sticker/music | Supported generally via Content Publishing (`media_type=STORIES`); no login-route restriction documented as of 2026-09-03 claim-check ([Content Publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing/); was: `C1`) | Operator native fallback for stickers/music only | — |
+| Collab posts, Trial Reels | **Correction (2026-09-03 claim-check):** API-supported via `collaborators` and `trial_params` parameters (was wrongly listed as not established, `C14`) | Graph API | — |
+| Library/trending audio, sticker/link/poll/GIF effects | Not established (`C14`) | Operator creates/approves natively | Do not automate UI at scale |
 | Comments on own media / permitted inbound DMs | Yes where scoped (`C1`) | Human inbox for exceptions | No auto-like/follow/mass-comment behavior |
 | Inbound DM response | Yes only inside applicable messaging policy window (`C13`) | Human Agent manually inside its permitted window | No unsolicited promotional blasts |
 | Account/media insights | Yes (`C1`) | — | — |
@@ -150,16 +151,16 @@ separately. Short.io and Bitly both document link-level click reporting (`C15`, 
 
 | ID | Claim | Source URL | Source date / checked | Confidence |
 | --- | --- | --- | --- | --- |
-| C1 | Meta’s current collection distinguishes Facebook Login (linked Page required) from Instagram Login; both target professional Business/Creator accounts and list their scopes/access modes. | [Meta Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api) | live collection, checked 2026-09-03 | High |
-| C2 | Publishing supports images, Reels/videos and carousels; public media hosting, 100 posts/24h and quota endpoint are documented. | [Meta Publish Content](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-ab559ffb-8e2c-4b0a-b43a-5737b6d2f672) | live collection, checked 2026-09-03 | High |
-| C3 | Standard access is for accounts an app owns/manages; Advanced is needed for accounts it does not own/manage. | [Meta API collection—messaging requirements](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-ab559ffb-8e2c-4b0a-b43a-5737b6d2f672) | live collection, checked 2026-09-03 | High |
-| C4 | `is_ai_generated` was added at container creation; carousel disclosure belongs on the parent. | [Instagram Platform release note mirror](https://releasebot.io/updates/meta/instagram-platform) | 2026-06-22; checked 2026-09-03 | Medium—verify in exact API version before launch |
+| C1 | Meta’s current collection distinguishes Facebook Login (linked Page required) from Instagram Login; both target professional Business/Creator accounts and list their scopes/access modes. **Claim-check 2026-09-03: core distinction VERIFIED against official docs, but this source was also (wrongly) used to claim Stories is Facebook-Login/Business-only — corrected in §2/§3 using [official Content Publishing docs](https://developers.facebook.com/docs/instagram-platform/content-publishing/), which document `media_type=STORIES` with no login-route restriction.** | [Meta Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api) (mirror); official: [Instagram API with Instagram Login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/) | live collection, checked 2026-09-03 | High |
+| C2 | Publishing supports images, Reels/videos and carousels; public media hosting, 100 posts/24h and quota endpoint are documented. Claim-check 2026-09-03: VERIFIED against official docs. | [Meta Publish Content](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-ab559ffb-8e2c-4b0a-b43a-5737b6d2f672) (mirror); official: [Content Publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing/) | live collection, checked 2026-09-03 | High |
+| C3 | Standard access is for accounts an app owns/manages; Advanced is needed for accounts it does not own/manage. Claim-check 2026-09-03: VERIFIED. | [Meta API collection—messaging requirements](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api?entity=request-23987686-ab559ffb-8e2c-4b0a-b43a-5737b6d2f672) (mirror); official: [Instagram Platform Overview](https://developers.facebook.com/docs/instagram-platform/overview/) | live collection, checked 2026-09-03 | High |
+| C4 | `is_ai_generated` was added at container creation; carousel disclosure belongs on the parent (not available on carousel children). Claim-check 2026-09-03: VERIFIED against the official reference — upgraded from Medium to High confidence. | [Instagram Platform release note mirror](https://releasebot.io/updates/meta/instagram-platform) (secondary); official: [IG Media reference](https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media/) | 2026-06-22; checked 2026-09-03 | High |
 | C5 | Account/media insights and compatible metric/request surfaces are documented in Meta’s live collection. | [Meta Insights requests](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api) | live collection, checked 2026-09-03 | High |
 | C10 | Instagram’s help describes loss/recovery of linked email or phone, not a unique-email/phone-per-account rule. | [Instagram Help Centre](https://www.facebook.com/help/instagram/358911864194456?locale=en_GB) | live help page, checked 2026-09-03 | Medium |
 | C11 | Video selfie is a live identity/recovery mechanism, may take up to two business days, and may be necessary to regain access. | [Instagram Help Centre](https://www.facebook.com/help/1053588012132894/) | live help page, checked 2026-09-03 | High |
 | C12 | EU AI Act Article 50 transparency obligations apply from 2026-08-02; guidance covers generated content/deepfakes. | [European Commission guidance](https://digital-strategy.ec.europa.eu/en/policies/guidelines-ai-transparency-obligations) | 2026-08-06 update; checked 2026-09-03 | High |
 | C13 | Automated Instagram messaging is limited to a 24-hour window after contact interaction; ManyChat suppresses messages outside it and describes a manual 7-day path. | [ManyChat messaging windows](https://help.manychat.com/hc/en-us/articles/23358636027932-Understanding-messaging-windows) | 2026-08-27; checked 2026-09-03 | Medium—vendor summary of Meta policy |
-| C14 | Library audio is unavailable in one published Meta Business Suite user report; official collection does not document stickers/collabs/trial reels as Content Publishing features. | [Practitioner report](https://www.reddit.com/r/FacebookAds/comments/1o3l3uk/) | 2025 report; checked 2026-09-03 | Low for absence claims; acceptance-test each feature |
+| C14 | Library audio is unavailable in one published Meta Business Suite user report. **Claim-check 2026-09-03: WRONG that Collabs/Trial Reels are undocumented — the official [Content Publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing/) guide documents a `trial_params` parameter for Trial Reels and a `collaborators` parameter ([reference](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-media/collaborators)) for Collab posts on Reels. Only library/trending audio and Story stickers/interactivity remain genuinely unsupported by the API.** | [Practitioner report](https://www.reddit.com/r/FacebookAds/comments/1o3l3uk/) (audio-only evidence); official: [Content Publishing](https://developers.facebook.com/docs/instagram-platform/content-publishing/) | 2025 report; checked 2026-09-03 | Low for absence claims; corrected for Collabs/Trial Reels — acceptance-test audio/stickers only |
 | C15 | Short.io documents link/domain statistics; Bitly documents link click series/summaries. | [Short.io API FAQ](https://docs.short.io/articles/api-reference/Technical%20questions/how-to-use-the-short.io-api) · [Bitly metrics tutorial](https://dev.bitly.com/docs/tutorials/retrieve-metrics/) | live docs, checked 2026-09-03 | High |
 | C16 | instagrapi documentation says inconsistent device/session/IP history can trigger rate limiting or challenges and describes fresh credential login. | [instagrapi best practices](https://github.com/subzeroid/instagrapi/blob/master/docs/usage-guide/best-practices.md) | live repo, checked 2026-09-03 | High for library behaviour/risk signal |
 | C17 | Meta’s Business Suite video demonstrates scheduling Facebook/Instagram feed posts and Stories. | [Meta for Business video](https://www.youtube.com/watch?v=PQjvbXyMhkM) | 2022-09-09; checked 2026-09-03 | Medium—product surface can change |
@@ -172,7 +173,7 @@ separately. Short.io and Bitly both document link-level click reporting (`C15`, 
 | C24 | Playwright is Apache-2.0. | [Playwright repository](https://github.com/microsoft/playwright) | live repo, checked 2026-09-03 | High |
 | C25 | Browserless supports Playwright/Puppeteer, persisted sessions, a free tier and paid plans; commercial licensing caveat is documented. | [pricing](https://www.browserless.io/pricing) · [repository](https://github.com/browserless/browserless) | live pages, checked 2026-09-03 | High |
 | C26 | Multilogin sells cloud/local profiles and proxy traffic; Pro starts $11/mo monthly. | [Multilogin pricing](https://multilogin.com/pricing) | live pricing, checked 2026-09-03 | High |
-| C27 | GoLogin defines profiles as separate fingerprints/cookies/history/settings, offers proxy options and lists paid plans from $9/mo. | [GoLogin FAQ](https://gologin.com/faq/) · [pricing](https://support.gologin.com/en/articles/14617029-pricing) | 2026 pricing/help, checked 2026-09-03 | High |
+| C27 | GoLogin defines profiles as separate fingerprints/cookies/history/settings, offers proxy options and lists paid plans from $9/mo. **Claim-check 2026-09-03: PARTLY — $9/mo is the monthly-billing rate; GoLogin's actual advertised floor is $4.5/mo on annual billing, cheaper than stated.** | [GoLogin FAQ](https://gologin.com/faq/) · [pricing](https://support.gologin.com/en/articles/14617029-pricing) | 2026 pricing/help, checked 2026-09-03 | High |
 | C28 | AdsPower markets browser profiles that mimic fingerprint parameters and configure proxies. | [AdsPower pricing](https://www.adspower.com/pricing) | live pricing, checked 2026-09-03 | High |
 | C29 | Dolphin Anty markets fingerprint spoofing/browser profiles; its free tier supplies 10 profiles. | [Dolphin tariff update](https://dolphin-anty.com/blog/en/dolphin-anty-changes-to-free-and-base-tariffs/) | 2026 update, checked 2026-09-03 | Medium |
 | C30 | Camoufox is MPL-2.0 and explicitly markets anti-detection/fingerprint injection with Playwright compatibility. | [Camoufox repository](https://github.com/daijro/camoufox) | live repo, checked 2026-09-03 | High |
@@ -184,3 +185,37 @@ Build the shared-app, per-account OAuth/insights/publish contract first and test
 operator-provisioned Business account. Prove container creation, AI label, quota query, publish,
 and a daily insights snapshot. Do not buy accounts, SIMs, proxies, anti-detect browsers or a
 scheduler until that supported test passes and an operator selects a residual-native workflow.
+
+## Claim-check (2026-09-03, sonnet)
+
+Independent verification against cited sources plus official `developers.facebook.com` docs
+where the citation was a mirror (Postman, releasebot.io) or a third-party summary. Full verdict
+table: `claimcheck-r19.md` (reviewer scratchpad).
+
+**Counts:** 24 Verified · 2 Partly (C1, C27) · 1 Wrong (C14) · 0 Unverified, of 27 register rows (C1–C5, C10–C31).
+
+**Corrections applied above:** the Stories-availability claim (§2, §3 — was sourced to a Postman
+mirror via C1, wrongly read as Facebook-Login/Business-only; official docs show no login-route
+restriction) and the Collab-posts/Trial-Reels "not established" claim (§2, §3, and the C14 row —
+both are in fact API-supported via `collaborators` and `trial_params` parameters; only
+library/trending audio and Story stickers remain genuinely unsupported). C4's source was upgraded
+from a release-note mirror to the official IG Media reference (Medium→High confidence). C27's
+GoLogin floor price was corrected from "$9/mo" to "$4.5/mo (annual)."
+
+**Sourcing-hygiene finding:** the brief asked for official Meta docs first, then agency/tool docs.
+The highest-load-bearing rows (C1–C5) cited a Postman mirror instead of `developers.facebook.com`
+directly, and that mirror is where both substantive errors above trace back to. Official URLs are
+now added inline next to the corrected claims.
+
+**Omissions vs. the brief (not corrected in-line — flagged for the operator/next pass):**
+1. Brief Q3 asked for agency/creator playbooks on running 10–50 accounts (Reddit/agency posts).
+   §5/§3 assert "no compliant public playbook was found" on the strength of one Reddit thread that
+   is actually about Business-Suite audio availability, not multi-account operating patterns — the
+   conclusion is asserted, not demonstrated as searched.
+2. Brief Q3 asked for warm-up-schedule and action-limit claims (even if unverifiable) — r19 states
+   the policy position (don't do it) but doesn't characterize what agency-side sources actually
+   claim, unlabeled as unverified.
+3. Brief Q3 asked for a per-account SIM/eSIM cost line; r19's provisioning table gives "$0
+   incremental if an existing number is permitted" rather than an illustrative market price,
+   unlike the proxy/tool cost lines it does price (C26–C29).
+4. Register hygiene: claim IDs C6–C9 are skipped with no note explaining the gap.
