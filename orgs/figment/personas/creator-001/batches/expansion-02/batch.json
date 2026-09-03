@@ -1,0 +1,612 @@
+{
+ "schema_version": "figment/batch@1",
+ "batch_id": "expansion-02",
+ "persona_id": "creator-001",
+ "allocation_sha256": "1d4621a3ebfebf8d530b06819256de4664712f5e16a3dc9df44fc8200c53c853",
+ "stage": "awaiting-eye-gate-a",
+ "pod_runs": [
+  {
+   "shard_id": "shard-01",
+   "run_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-01\\run.json",
+   "manifest_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-01\\manifest.json",
+   "cell_ids": [
+    "exp02-s001",
+    "exp02-s002",
+    "exp02-s003",
+    "exp02-s004",
+    "exp02-s005",
+    "exp02-s006",
+    "exp02-s007",
+    "exp02-s008",
+    "exp02-s009",
+    "exp02-s010"
+   ],
+   "status": "harvested",
+   "cost_usd": 0.383598
+  },
+  {
+   "shard_id": "shard-02",
+   "run_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-02\\run.json",
+   "manifest_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-02\\manifest.json",
+   "cell_ids": [
+    "exp02-s011",
+    "exp02-s012",
+    "exp02-s013",
+    "exp02-s014",
+    "exp02-s015",
+    "exp02-s016",
+    "exp02-s017",
+    "exp02-s018",
+    "exp02-s019",
+    "exp02-s020"
+   ],
+   "status": "harvested",
+   "cost_usd": 0.386312
+  },
+  {
+   "shard_id": "shard-03",
+   "run_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-03\\run.json",
+   "manifest_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-03\\manifest.json",
+   "cell_ids": [
+    "exp02-s021",
+    "exp02-s022",
+    "exp02-s023",
+    "exp02-s024",
+    "exp02-s025",
+    "exp02-s026",
+    "exp02-s027",
+    "exp02-s028",
+    "exp02-s029",
+    "exp02-s030"
+   ],
+   "status": "harvested",
+   "cost_usd": 0.359882
+  },
+  {
+   "shard_id": "shard-04",
+   "run_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-04\\run.json",
+   "manifest_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-04\\manifest.json",
+   "cell_ids": [
+    "exp02-s031",
+    "exp02-s032",
+    "exp02-s033",
+    "exp02-s034",
+    "exp02-s035",
+    "exp02-s036",
+    "exp02-s037",
+    "exp02-s038",
+    "exp02-s039",
+    "exp02-s040"
+   ],
+   "status": "harvested",
+   "cost_usd": 0.382577
+  },
+  {
+   "shard_id": "shard-05",
+   "run_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-05\\run.json",
+   "manifest_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-05\\manifest.json",
+   "cell_ids": [
+    "exp02-r001",
+    "exp02-r002",
+    "exp02-r003",
+    "exp02-r004",
+    "exp02-r005",
+    "exp02-r006",
+    "exp02-r007",
+    "exp02-r008",
+    "exp02-r009",
+    "exp02-r010"
+   ],
+   "status": "harvested",
+   "cost_usd": 0.387186
+  },
+  {
+   "shard_id": "shard-06",
+   "run_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-06\\run.json",
+   "manifest_json_path": "orgs\\figment\\pipeline\\expand\\runs\\out\\creator-001-expansion-02-shard-06\\manifest.json",
+   "cell_ids": [
+    "exp02-r011",
+    "exp02-r012",
+    "exp02-r013",
+    "exp02-r014",
+    "exp02-r015",
+    "exp02-r016",
+    "exp02-r017",
+    "exp02-r018",
+    "exp02-r019",
+    "exp02-r020"
+   ],
+   "status": "harvested",
+   "cost_usd": 0.384858
+  }
+ ],
+ "cells": [
+  {
+   "cell_id": "exp02-s001",
+   "stratum_id": "strat-01",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s002",
+   "stratum_id": "strat-02",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s003",
+   "stratum_id": "strat-03",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s004",
+   "stratum_id": "strat-04",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s005",
+   "stratum_id": "strat-05",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s006",
+   "stratum_id": "strat-06",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s007",
+   "stratum_id": "strat-07",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s008",
+   "stratum_id": "strat-08",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s009",
+   "stratum_id": "strat-09",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s010",
+   "stratum_id": "strat-10",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s011",
+   "stratum_id": "strat-11",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s012",
+   "stratum_id": "strat-12",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s013",
+   "stratum_id": "strat-13",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s014",
+   "stratum_id": "strat-14",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s015",
+   "stratum_id": "strat-15",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s016",
+   "stratum_id": "strat-16",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s017",
+   "stratum_id": "strat-17",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s018",
+   "stratum_id": "strat-18",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s019",
+   "stratum_id": "strat-19",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s020",
+   "stratum_id": "strat-20",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s021",
+   "stratum_id": "strat-21",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s022",
+   "stratum_id": "strat-22",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s023",
+   "stratum_id": "strat-23",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s024",
+   "stratum_id": "strat-24",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s025",
+   "stratum_id": "strat-25",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s026",
+   "stratum_id": "strat-26",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s027",
+   "stratum_id": "strat-27",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s028",
+   "stratum_id": "strat-28",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s029",
+   "stratum_id": "strat-29",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s030",
+   "stratum_id": "strat-30",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s031",
+   "stratum_id": "strat-31",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s032",
+   "stratum_id": "strat-32",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s033",
+   "stratum_id": "strat-33",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s034",
+   "stratum_id": "strat-34",
+   "state": "quarantined",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false,
+   "rejected_reason": "no-face"
+  },
+  {
+   "cell_id": "exp02-s035",
+   "stratum_id": "strat-35",
+   "state": "quarantined",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false,
+   "rejected_reason": "no-face"
+  },
+  {
+   "cell_id": "exp02-s036",
+   "stratum_id": "strat-36",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s037",
+   "stratum_id": "strat-37",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s038",
+   "stratum_id": "strat-38",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s039",
+   "stratum_id": "strat-39",
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-s040",
+   "stratum_id": "strat-40",
+   "state": "quarantined",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false,
+   "rejected_reason": "no-face"
+  },
+  {
+   "cell_id": "exp02-r001",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r002",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r003",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r004",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r005",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r006",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r007",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r008",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r009",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r010",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r011",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r012",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r013",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r014",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r015",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r016",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r017",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r018",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r019",
+   "stratum_id": null,
+   "state": "scored",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false
+  },
+  {
+   "cell_id": "exp02-r020",
+   "stratum_id": null,
+   "state": "quarantined",
+   "review_status": "unreviewed",
+   "parked_reasons": [],
+   "safety_failed": false,
+   "rejected_reason": "no-face"
+  }
+ ],
+ "cost_usd": 2.284413,
+ "created_at": "2026-09-03T21:35:43+00:00",
+ "updated_at": "2026-09-03T21:42:52+00:00"
+}

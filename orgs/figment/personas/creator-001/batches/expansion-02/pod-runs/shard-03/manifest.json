@@ -1,0 +1,64 @@
+{
+  "images": [
+    {
+      "image_id": "c001-exp02-s021",
+      "path": "c001-exp02-s021.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s022",
+      "path": "c001-exp02-s022.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s023",
+      "path": "c001-exp02-s023.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s024",
+      "path": "c001-exp02-s024.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s025",
+      "path": "c001-exp02-s025.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s026",
+      "path": "c001-exp02-s026.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s027",
+      "path": "c001-exp02-s027.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s028",
+      "path": "c001-exp02-s028.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s029",
+      "path": "c001-exp02-s029.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp02-s030",
+      "path": "c001-exp02-s030.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    }
+  ]
+}
