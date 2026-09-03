@@ -114,9 +114,9 @@ export interface PtyRouteContext {
   allowedOrigins: AllowedOrigins;
   /** Installed as the SECOND `onRequest` hook, so a refused origin is never rate-accounted. */
   rateLimitHook?: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
-  /** The one v2 session registry (W3 `createSessionRecordRegistry`) for the process. */
+  /** The one v3 session registry (W3 `createSessionRecordRegistry`) for the process. */
   registry: SessionRegistryPort;
-  /** The one v2 document port - read for the exact composite `revision` every reply carries. */
+  /** The one v3 document port - read for the exact composite `revision` every reply carries. */
   persistence: SessionPersistence;
   /** The browser-session-ref store; the second half of every principal comes from it. */
   browserSessionRefs?: BrowserSessionRefManager;

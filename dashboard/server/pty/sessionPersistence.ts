@@ -25,12 +25,13 @@ import type {
   ObservedExit,
   OperationReceipt,
   PtySessionsDocumentV2,
+  PtySessionsDocumentV3,
   SessionRecord,
   SessionRecordBase,
 } from './contracts.ts';
 import type { HostRefusalCode, PortResult } from './contracts.ts';
 
-export const PTY_SESSIONS_SCHEMA = 'kb.pty-sessions/v2' as const;
+export const PTY_SESSIONS_SCHEMA = 'kb.pty-sessions/v3' as const;
 export const MAX_PTY_DOCUMENT_BYTES = 4_000_000;
 export const MAX_RETAINED_SESSIONS = 500;
 export const MAX_ATTEMPT_BINDINGS = 500;
@@ -197,10 +198,12 @@ function assertSessionRecord(value: unknown): asserts value is SessionRecord {
 
 function assertAttemptBinding(value: unknown): asserts value is AttemptBinding {
   const item = object(value);
-  if (item === null || !exactKeys(item, ['operator', 'runRef', 'attemptRef', 'managedSessionRef', 'sessionId', 'createdAt'])
+  const keys = ['operator', 'runRef', 'attemptRef', 'managedSessionRef', 'sessionId', 'createdAt'];
+  if (item === null || !(exactKeys(item, keys) || exactKeys(item, [...keys, 'retired']))
     || !boundedText(item.operator, 160) || !safeRef(item.runRef) || !safeRef(item.attemptRef)
     || !safeRef(item.managedSessionRef) || typeof item.sessionId !== 'string'
-    || !SESSION_ID_RE.test(item.sessionId) || !timestamp(item.createdAt)) fail();
+    || !SESSION_ID_RE.test(item.sessionId) || !timestamp(item.createdAt)
+    || ('retired' in item && item.retired !== true)) fail();
 }
 
 function assertReceipt(value: unknown): asserts value is OperationReceipt {
@@ -268,11 +271,14 @@ function assertArchiveKey(value: unknown): asserts value is ArchiveKeyEntry {
     || !(item.reason === null || typeof item.reason === 'string')) fail();
 }
 
-export function assertPtySessionsDocumentV2(value: unknown): asserts value is PtySessionsDocumentV2 {
+export function assertPtySessionsDocumentV3(value: unknown): asserts value is PtySessionsDocumentV3 {
   const document = object(value);
-  if (document === null || !exactKeys(document, ['schema', 'revision', 'sessions', 'attemptBindings',
-    'operationReceipts', 'attemptOperations', 'legacyRuns', 'legacyArchiveKeys'])
+  const keys = ['schema', 'revision', 'sessions', 'attemptBindings',
+    'operationReceipts', 'attemptOperations', 'legacyRuns', 'legacyArchiveKeys', 'epochId'];
+  if (document === null || !exactKeys(document, keys)
     || document.schema !== PTY_SESSIONS_SCHEMA
+    || (document.epochId !== null
+      && (typeof document.epochId !== 'string' || !EPOCH_ID_RE.test(document.epochId)))
     || !safeInteger(document.revision) || !Array.isArray(document.sessions)
     || !Array.isArray(document.attemptBindings) || !Array.isArray(document.operationReceipts)
     || object(document.attemptOperations) === null
@@ -293,9 +299,10 @@ export function assertPtySessionsDocumentV2(value: unknown): asserts value is Pt
 
   const unique = (values: unknown[]): boolean => new Set(values).size === values.length;
   if (!unique(document.sessions.map((item) => item.sessionId))
-    || !unique(document.sessions.map((item) => item.operationKey))
-    || !unique(document.attemptBindings.map((item) => item.attemptRef))
-    || !unique(document.attemptBindings.map((item) => item.managedSessionRef))
+    || !unique(document.sessions.filter((item) => item.state !== 'abandoned' && item.state !== 'exited')
+      .map((item) => item.operationKey))
+    || !unique(document.attemptBindings.filter((item) => item.retired !== true).map((item) => item.attemptRef))
+    || !unique(document.attemptBindings.filter((item) => item.retired !== true).map((item) => item.managedSessionRef))
     || !unique(document.attemptBindings.map((item) => item.sessionId))
     || !unique(document.operationReceipts.map((item) => item.operationKey))
     || !unique(document.legacyRuns.map((item) => item.sessionRunRef))
@@ -315,7 +322,9 @@ export function assertPtySessionsDocumentV2(value: unknown): asserts value is Pt
       || (session.provenance === 'manual' ? receipt.attemptRef !== null : receipt.attemptRef !== session.attemptRef)) fail();
   }
   for (const operation of Object.values(document.attemptOperations as Record<string, AttemptOperationRecord>)) {
-    if (operation.sessionId !== null && !sessionsById.has(operation.sessionId)) fail();
+    if (operation.sessionId !== null && !sessionsById.has(operation.sessionId)) {
+      fail(`PTY session document is invalid: attempt operation '${operation.operationKey}' references missing session record '${operation.sessionId}'`);
+    }
   }
   for (let index = 1; index < document.sessions.length; index += 1) {
     if (Date.parse(document.sessions[index - 1]!.startedAt) > Date.parse(document.sessions[index]!.startedAt)) fail();
@@ -323,14 +332,33 @@ export function assertPtySessionsDocumentV2(value: unknown): asserts value is Pt
   if (Buffer.byteLength(JSON.stringify(document), 'utf8') + 1 > MAX_PTY_DOCUMENT_BYTES) fail();
 }
 
+export const validatePtySessionsDocumentV3 = (value: unknown): value is PtySessionsDocumentV3 => {
+  try { assertPtySessionsDocumentV3(value); return true; } catch { return false; }
+};
+
+export function assertPtySessionsDocumentV2(value: unknown): asserts value is PtySessionsDocumentV2 {
+  const document = object(value);
+  const keys = ['schema', 'revision', 'sessions', 'attemptBindings',
+    'operationReceipts', 'attemptOperations', 'legacyRuns', 'legacyArchiveKeys'];
+  if (document === null || !exactKeys(document, keys) || document.schema !== 'kb.pty-sessions/v2'
+    || !Array.isArray(document.attemptBindings)) fail();
+  for (const binding of document.attemptBindings) {
+    const item = object(binding);
+    if (item === null || !exactKeys(item,
+      ['operator', 'runRef', 'attemptRef', 'managedSessionRef', 'sessionId', 'createdAt'])) fail();
+  }
+  assertPtySessionsDocumentV3({ ...structuredClone(document), schema: PTY_SESSIONS_SCHEMA, epochId: null });
+}
+
 export const validatePtySessionsDocumentV2 = (value: unknown): value is PtySessionsDocumentV2 => {
   try { assertPtySessionsDocumentV2(value); return true; } catch { return false; }
 };
 
-export function createEmptyPtySessionsDocument(): PtySessionsDocumentV2 {
+export function createEmptyPtySessionsDocument(): PtySessionsDocumentV3 {
   return {
     schema: PTY_SESSIONS_SCHEMA,
     revision: 0,
+    epochId: null,
     sessions: [],
     attemptBindings: [],
     operationReceipts: [],
@@ -344,14 +372,14 @@ export function createEmptyPtySessionsDocument(): PtySessionsDocumentV2 {
  * Sessions are stored in non-decreasing `startedAt` order (the validator's invariant), so a launch
  * whose `boundAt` arrives out of order must be spliced into place, never appended (D5).
  */
-export function insertSessionRecord(document: PtySessionsDocumentV2, record: SessionRecord): void {
+export function insertSessionRecord(document: PtySessionsDocumentV3, record: SessionRecord): void {
   const startedAt = Date.parse(record.startedAt);
   let index = document.sessions.length;
   while (index > 0 && Date.parse(document.sessions[index - 1]!.startedAt) > startedAt) index -= 1;
   document.sessions.splice(index, 0, record);
 }
 
-export function enforcePtySessionRetention(document: PtySessionsDocumentV2): void {
+export function enforcePtySessionRetention(document: PtySessionsDocumentV3): void {
   while (document.sessions.length > MAX_RETAINED_SESSIONS) {
     const index = document.sessions.findIndex((item) => item.state === 'exited' || item.state === 'abandoned');
     if (index < 0) throw new PtySessionPersistenceError('capacity', 'live PTY sessions exceed retention cap');
@@ -359,7 +387,7 @@ export function enforcePtySessionRetention(document: PtySessionsDocumentV2): voi
     const removedId = removed?.sessionId;
     document.attemptBindings = document.attemptBindings.filter((item) => item.sessionId !== removedId);
     // Every row that names the evicted session goes with it, or the referential checks in
-    // assertPtySessionsDocumentV2 would refuse the document forever at the retention boundary.
+    // assertPtySessionsDocumentV3 would refuse the document forever at the retention boundary.
     document.operationReceipts = document.operationReceipts.filter((item) => item.sessionId !== removedId);
     for (const [key, operation] of Object.entries(document.attemptOperations)) {
       if (operation.sessionId === removedId) delete document.attemptOperations[key];
@@ -406,7 +434,7 @@ export function enforcePtySessionRetention(document: PtySessionsDocumentV2): voi
 export type OperationReceiptReplay = { receipt: OperationReceipt; replayed: boolean };
 
 export function beginOperationReceipt(
-  document: PtySessionsDocumentV2,
+  document: PtySessionsDocumentV3,
   input: Pick<OperationReceipt, 'operationKey' | 'requestHash' | 'attemptRef' | 'createdAt'>,
 ): PortResult<OperationReceiptReplay> {
   const existing = document.operationReceipts.find((receipt) => receipt.operationKey === input.operationKey);
@@ -431,7 +459,7 @@ export function beginOperationReceipt(
 }
 
 export function settleOperationReceipt(
-  document: PtySessionsDocumentV2,
+  document: PtySessionsDocumentV3,
   input: {
     operationKey: string;
     requestHash: string;
@@ -474,7 +502,7 @@ function nextRevision(record: SessionRecord): number {
 }
 
 export function applyEpochAbandonment(
-  document: PtySessionsDocumentV2,
+  document: PtySessionsDocumentV3,
   epochId: string,
   reason: 'epoch-lost' | 'daemon-restart' | 'start-recovery',
   observedAt: string,
@@ -485,7 +513,7 @@ export function applyEpochAbandonment(
     if (record.epochId !== epochId || !ACTIVE_STATES.has(record.state)) continue;
     const exit: ObservedExit = {
       sessionId: record.sessionId,
-      sequence: Math.min(Number.MAX_SAFE_INTEGER, record.transcript.lastSequence + 1),
+      sequence: record.transcript.lastSequence,
       exitCode: null,
       signal: null,
       reason: 'abandoned',
@@ -506,7 +534,7 @@ export function applyEpochAbandonment(
 }
 
 export function applyObservedSessionExit(
-  document: PtySessionsDocumentV2,
+  document: PtySessionsDocumentV3,
   exit: ObservedExit,
   expectedEpochId: string,
 ): boolean {
@@ -526,8 +554,8 @@ export function applyObservedSessionExit(
 }
 
 export interface SessionPersistence {
-  read(): PtySessionsDocumentV2;
-  mutate<R>(expectedRevision: number | null, callback: (document: PtySessionsDocumentV2) => R | Promise<R>):
+  read(): PtySessionsDocumentV3;
+  mutate<R>(expectedRevision: number | null, callback: (document: PtySessionsDocumentV3) => R | Promise<R>):
     Promise<{ revision: number; value: R }>;
 }
 
@@ -535,12 +563,12 @@ export function createSessionPersistence(stateRoot: string): SessionPersistence 
   if (!isAbsolute(stateRoot) || stateRoot.includes('\0')) {
     throw new PtySessionPersistenceError('invalid-input', 'PTY state root is invalid');
   }
-  let document: AtomicJsonDocument<PtySessionsDocumentV2> | null = null;
-  const atomic = (): AtomicJsonDocument<PtySessionsDocumentV2> => {
+  let document: AtomicJsonDocument<PtySessionsDocumentV3> | null = null;
+  const atomic = (): AtomicJsonDocument<PtySessionsDocumentV3> => {
     document ??= createAtomicJsonDocument({
       path: join(resolve(stateRoot), 'pty', 'session-runs.json'),
       empty: createEmptyPtySessionsDocument,
-      validate: assertPtySessionsDocumentV2,
+      validate: assertPtySessionsDocumentV3,
       error: (message) => new PtySessionPersistenceError('document-unavailable', message),
       maxBytes: MAX_PTY_DOCUMENT_BYTES,
     });
@@ -558,7 +586,7 @@ export function createSessionPersistence(stateRoot: string): SessionPersistence 
       const value = await callback(draft);
       enforcePtySessionRetention(draft);
       draft.revision += 1;
-      assertPtySessionsDocumentV2(draft);
+      assertPtySessionsDocumentV3(draft);
       return { revision: draft.revision, value };
     }),
   };
@@ -579,6 +607,8 @@ export interface TranscriptRetention {
    */
   retainedBytes?(sessionId: string): number;
 }
+
+export const sessionTranscriptPath = (sessionId: string): string => `pty/transcripts/${sessionId}.raw`;
 
 export interface TranscriptRetentionFs {
   rename(source: string, destination: string): void;
@@ -623,7 +653,7 @@ export function createTranscriptRetention(
           closeSync(appendDescriptor);
         }
         return {
-          path: `pty/transcripts/${sessionId}.raw`,
+          path: sessionTranscriptPath(sessionId),
           bytes: currentBytes + data.byteLength,
           truncated: false,
           lastSequence: sequence + data.byteLength,
@@ -646,7 +676,7 @@ export function createTranscriptRetention(
         if (existsSync(temp)) rmSync(temp, { force: true });
       }
       return {
-        path: `pty/transcripts/${sessionId}.raw`,
+        path: sessionTranscriptPath(sessionId),
         bytes: retained.byteLength,
         truncated: true,
         lastSequence: sequence + data.byteLength,

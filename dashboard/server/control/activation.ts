@@ -35,8 +35,8 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { LINUX_ROOTS } from '../pty/fdPinnedPaths.ts';
 import { createAttemptSessionAdapter } from './attemptSessionAdapter.ts';
+import type { SessionRecordRegistry } from '../pty/sessionRecord.ts';
 import type {
-  AttemptBindingPort,
   AttemptExecutionPort,
   SessionHost,
 } from '../pty/contracts.ts';
@@ -297,12 +297,12 @@ export interface BuildActivatedExecutionOptions {
   attemptBudget?: ExecutionBudget;
   maxConcurrency?: number;
   /**
-   * The one platform PTY host and the attempt-binding store that owns `kb.pty-sessions/v2`. Both come
+   * The one platform PTY host and the attempt-binding store that owns `kb.pty-sessions/v3`. Both come
    * from the surface, which already probed the host and opened the document. With either absent the
    * attempt port is `null` and no Run attempt can start — a real posture, not a fallback path.
    */
   sessionHost?: SessionHost;
-  attemptBindings?: AttemptBindingPort;
+  attemptBindings?: SessionRecordRegistry;
   /**
    * Reads settled usage micro-dollars for one terminal stage attempt, for the fleet-ledger post-run seam.
    * Wave-A default (omitted) is 0 — the faithful subscription value (the worker reports $0 with no
@@ -482,14 +482,16 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     if (entry.runtime !== runtime) throw new ActivationError('worker session chain runtime differs from its profile');
     return entry.sessionId;
   };
-  // The real attempt authority. It owns the two-phase start (host create -> durable receipt -> result
-  // projection) and the session-chain store both runtime adapters resolve resume refs from, so a resumed
+  // The real attempt authority. The session registry owns one atomic start (host create -> durable
+  // session/binding/receipt/operation transition); this port owns prompt delivery and result projection.
+  // The session-chain store lets both runtime adapters resolve resume refs, so a resumed
   // attempt reuses the recorded provider session. With no host or binding store it is `null`: no attempt
   // can start, and both adapters refuse before any declaration reaches a port.
   const attemptPort: AttemptExecutionPort | null = options.sessionHost && options.attemptBindings
     ? deps.createAttemptPort({
       host: options.sessionHost,
-      bindings: options.attemptBindings,
+      sessionRecords: options.attemptBindings,
+      log: (message) => console.warn(`[attempt-session] ${message}`),
       resolveClaudePolicy: deps.createToolPolicyResolver(),
       // The recipe carries the tool cap only by NAME; this proves the broker's recipe table reproduces
       // the policy the dashboard just computed before that name is allowed onto a declaration ([C-S2]).

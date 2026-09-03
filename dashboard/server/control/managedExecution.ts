@@ -19,7 +19,7 @@ import type { ExecutionCancellationController, ManagerAdapter } from './executio
 
 /**
  * The worker adapter, at spawn, hands us `(operationKey, cancel)` where `operationKey` is the attempt's
- * stable `automatic-attempt:<attemptRef>` key (see `execution.ts#executeAttemptUnsafe`). The cancellation
+ * stable automatic-attempt or iteration-turn key (see `execution.ts#executeAttemptUnsafe`). The cancellation
  * controller later reaps a still-running worker by that same key. This registry is the only shared state
  * between the two seams.
  */
@@ -106,8 +106,8 @@ export interface BrokerCancellationControllerOptions {
 
 /**
  * The injected, idempotent stop authority. `cancelManager` is a no-op: the metadata-only manager owns
- * no child, so there is no process to signal. `cancelWorker` maps the attempt reference to its
- * `automatic-attempt:<attemptRef>` operationKey, cancels the attempt session through the attempt port
+ * no child, so there is no process to signal. `cancelWorker` receives the exact operation key used at
+ * launch, cancels the attempt session through the attempt port
  * (an unknown key is a refusal, never a throw) and invokes the worker adapter's registered idempotent
  * cancel; an unknown reference is a no-op on both.
  */
@@ -119,7 +119,7 @@ export function createBrokerCancellationController(
       // Metadata-only manager: the engine coordinates the DAG in-process and owns no manager child.
     },
     async cancelWorker(input) {
-      const operationKey = `automatic-attempt:${input.attemptRef}`;
+      const operationKey = input.attemptOperationKey;
       await options.attemptPort?.cancel({ operationKey, reason: 'operator cancelled the run' });
       options.registry.cancel(operationKey);
     },

@@ -275,6 +275,20 @@ function acceptedRunDetail(
 }
 
 describe('control client run and retention writes', () => {
+  it('decodes managed sessions across the optional attempt operation key rollout', () => {
+    const withoutKey = acceptedRunDetail('published', 'approval', 'approved');
+    withoutKey.sessions = [{
+      sessionRef: 'session-1', runRef: 'run-1', stageRef: 'stage-1', attemptRef: 'attempt-1',
+      role: 'worker', generation: 1, predecessorSessionRef: null, runtime: 'codex', model: 'gpt-5.6-sol',
+      state: 'pending', version: 1, createdAt: 'now', updatedAt: 'now',
+    }];
+    expect(decodeRunDetail(withoutKey)?.sessions[0]?.attemptOperationKey).toBeUndefined();
+
+    const withKey = structuredClone(withoutKey);
+    withKey.sessions[0].attemptOperationKey = 'automatic-attempt:attempt-1';
+    expect(decodeRunDetail(withKey)?.sessions[0]?.attemptOperationKey).toBe('automatic-attempt:attempt-1');
+  });
+
   it('retains complete iteration loop request receipt and residue fields from run detail', async () => {
     const residue = {
       unresolvedFindings: [{ findingId: 'finding-1', criterionId: 'quality', severity: 'blocking', summary: 'Missing source.', evidencePaths: ['draft.md'] }],

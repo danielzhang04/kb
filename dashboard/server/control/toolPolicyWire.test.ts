@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAttemptToolPolicyIdResolver,
   createWorkflowToolPolicyResolver,
@@ -6,13 +9,12 @@ import {
 } from './claudeLaunchPolicy.ts';
 import { createAttemptSessionAdapter } from './attemptSessionAdapter.ts';
 import { mapWindowsLaunchRecipe } from '../pty/launcherProfiles.ts';
+import { createSessionRecordRegistry } from '../pty/sessionRecord.ts';
+import { createSessionPersistence, createTranscriptRetention } from '../pty/sessionPersistence.ts';
 import type { ExecutionProfile } from './policy.ts';
 import type { ProposalStage } from './proposal.ts';
 import type {
   ApprovedAttemptDeclaration,
-  AttemptBinding,
-  AttemptBindingPort,
-  AttemptOperationRecord,
   HostStartReceipt,
   ObservedExit,
   PortResult,
@@ -108,23 +110,27 @@ function recordingHost(): { host: SessionHost; requests: SessionHostRequest[] } 
   return { host, requests };
 }
 
-function noBindings(): AttemptBindingPort {
-  return {
-    async bind() { return { ok: true as const, value: { revision: 1 } }; },
-    async readOperation(): Promise<AttemptOperationRecord | null> { return null; },
-    async writeOperation(record: AttemptOperationRecord) { return { ok: true as const, value: record }; },
-    byRun(): readonly AttemptBinding[] { return []; },
-    bySession() { return null; },
-  } as unknown as AttemptBindingPort;
-}
-
 describe('the end-to-end wire: proposal profile -> resolved policy -> recipe table entry', () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
   it('names a recipe-table entry that reproduces the policy the dashboard resolved', async () => {
     const resolveClaudePolicy = createWorkflowToolPolicyResolver({ profiles: PROFILES });
     const { host, requests } = recordingHost();
+    // The registry is part of the production wiring now: it owns the host create, so a stub in its place
+    // would prove nothing about which recipe reaches the host. This is the real one, over real files.
+    const stateRoot = mkdtempSync(join(tmpdir(), 'tool-policy-wire-'));
+    roots.push(stateRoot);
     const adapter = createAttemptSessionAdapter({
       host,
-      bindings: noBindings(),
+      sessionRecords: createSessionRecordRegistry({
+        host,
+        hostKind: 'desktop',
+        persistence: createSessionPersistence(stateRoot),
+        transcript: createTranscriptRetention(stateRoot),
+      }),
       resolveClaudePolicy,
       // The PRODUCTION wiring, byte-for-byte as `activation.ts` installs it.
       resolveClaudePolicyId: createAttemptToolPolicyIdResolver(
@@ -134,9 +140,8 @@ describe('the end-to-end wire: proposal profile -> resolved policy -> recipe tab
     });
 
     adapter.begin(declaration('implementation'));
-    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    await vi.waitFor(() => { expect(requests).toHaveLength(1); }, { timeout: 5_000, interval: 10 });
 
-    expect(requests).toHaveLength(1);
     const { recipe } = requests[0];
     // The declaration carries a NAME, never argv.
     expect(recipe.toolPolicyId).toBe('implementation');

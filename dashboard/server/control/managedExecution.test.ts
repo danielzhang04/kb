@@ -38,6 +38,7 @@ function cancellationInput(overrides: Record<string, unknown> = {}) {
     runRef: 'run-1',
     sessionRef: 'session-1',
     attemptRef: 'attempt-1',
+    attemptOperationKey: 'automatic-attempt:attempt-1',
     intent: 'run-cancel' as const,
     ...overrides,
   };
@@ -133,9 +134,32 @@ describe('createBrokerCancellationController', () => {
       },
     };
     const controller = createBrokerCancellationController({ attemptPort, registry });
-    await controller.cancelWorker(cancellationInput({ attemptRef: 'attempt-42' }) as never);
+    await controller.cancelWorker(cancellationInput({
+      attemptRef: 'attempt-42', attemptOperationKey: 'automatic-attempt:attempt-42',
+    }) as never);
     expect(cancelled).toEqual(['automatic-attempt:attempt-42']);
     expect(portKeys).toEqual(['automatic-attempt:attempt-42']);
+  });
+
+  it('cancelWorker uses the exact iteration-turn operationKey used to launch the worker', async () => {
+    const cancelled: string[] = [];
+    const portKeys: string[] = [];
+    const controller = createBrokerCancellationController({
+      registry: { cancel(operationKey: string) { cancelled.push(operationKey); } },
+      attemptPort: {
+        async cancel(input: { operationKey: string; reason: string }) {
+          portKeys.push(input.operationKey);
+          return { ok: true as const, value: {} as never };
+        },
+      },
+    });
+
+    await controller.cancelWorker(cancellationInput({
+      attemptRef: 'attempt-iteration', attemptOperationKey: 'iteration-turn:request-42',
+    }) as never);
+
+    expect(cancelled).toEqual(['iteration-turn:request-42']);
+    expect(portKeys).toEqual(['iteration-turn:request-42']);
   });
 
   it('cancelManager signals nothing: the metadata-only manager owns no child', async () => {

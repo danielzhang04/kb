@@ -14,10 +14,13 @@ import type {
   PortResult,
   SessionDataFrame,
   SessionHost,
+  SessionHostKind,
   SessionRecord,
   SessionRegistryPort,
   SessionSink,
   SessionSummary,
+  StartRunSessionInput,
+  StartRunSessionReceipt,
 } from './contracts.ts';
 import {
   MAX_PRINCIPAL_LIVE_SESSIONS,
@@ -29,6 +32,7 @@ import {
   applyObservedSessionExit,
   beginOperationReceipt,
   insertSessionRecord,
+  sessionTranscriptPath,
   settleOperationReceipt,
 } from './sessionPersistence.ts';
 import type { SessionPersistence, TranscriptRetention } from './sessionPersistence.ts';
@@ -133,20 +137,16 @@ export function createAttachmentClosure(
 export type DeploymentSessionCloser = (sessionIds: readonly string[]) =>
   Promise<PortResult<{ closed: string[] }>>;
 
-export interface PersistRunSessionInput {
-  record: SessionRecord;
-  binding: AttemptBinding;
-  receipt: OperationReceipt;
-}
-
 export interface SessionRecordRegistry extends SessionRegistryPort, AttemptBindingPort {
-  persistRunSession(input: PersistRunSessionInput): Promise<PortResult<{ revision: number }>>;
+  startRunSession(input: StartRunSessionInput): Promise<PortResult<StartRunSessionReceipt>>;
+  activateEpoch(epochId: string): Promise<PortResult<{ abandoned: number; revision: number }>>;
   abandonEpoch(epochId: string, reason: 'epoch-lost' | 'daemon-restart' | 'start-recovery'):
     Promise<PortResult<{ abandoned: number; revision: number }>>;
 }
 
 export interface SessionRecordRegistryDeps {
   host: SessionHost;
+  hostKind?: SessionHostKind;
   persistence: SessionPersistence;
   now?: () => string;
   makeOperationKey?: () => string;
@@ -157,12 +157,29 @@ export interface SessionRecordRegistryDeps {
   /** Receives the only cross-controller closer; it is deliberately absent from the returned registry. */
   installDeploymentCloser?: (closer: DeploymentSessionCloser) => void;
   onBackgroundError?: (error: unknown) => void;
+  log?: (message: string) => void;
 }
 
 const ACTIVE_SESSION_STATES = new Set(['starting', 'live', 'closing']);
 const SESSION_ID = /^pty-[0-9a-f]{32}$/;
 const ATTACHMENT_ID = /^att-[0-9a-f]{32}$/;
 const OPERATION_KEY = /^op-[0-9a-f]{64}$/;
+const EARLY_FRAME_LIMIT = 64;
+const EARLY_FRAME_BYTE_LIMIT = 1_048_576;
+const UNSAFE_DISPLAY_TEXT_RE = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u2028\u2029]/gu;
+
+function boundedDisplayName(value: string, fallback: string, maxBytes = 80): string {
+  const safe = value.replace(UNSAFE_DISPLAY_TEXT_RE, ' ').replace(/\s+/gu, ' ').trim() || fallback;
+  let result = '';
+  let bytes = 0;
+  for (const character of safe) {
+    const characterBytes = Buffer.byteLength(character, 'utf8');
+    if (bytes + characterBytes > maxBytes) break;
+    result += character;
+    bytes += characterBytes;
+  }
+  return result;
+}
 
 function internal<T>(): PortResult<T> {
   return { ok: false, refusal: 'internal', detail: 'session operation failed' };
@@ -204,6 +221,7 @@ function validManualInput(input: ApprovedManualCreate): boolean {
 /** Pure-policy registry over the one injected v2 persistence port and one injected host. */
 export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): SessionRecordRegistry {
   const now = deps.now ?? (() => new Date().toISOString());
+  const hostKind = deps.hostKind ?? (process.platform === 'win32' ? 'desktop' : 'vm');
   const makeOperationKey = deps.makeOperationKey
     ?? (() => `op-${randomBytes(32).toString('hex')}`);
   const transcriptQueues = new Map<string, Promise<void>>();
@@ -222,56 +240,65 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
    * numbers BYTES. This is the one place the translation happens, so the offset a browser holds, the
    * offset the retention writer is handed, and the offset the replay reader serves are the same number.
    *
-   * The same host frame reaches every sink of a session (the registry's own transcript sink and one per
-   * attachment), and the hosts differ in how: the Windows host hands the SAME object to each attachment
-   * from independent async queues, the Linux broker builds a fresh object per sink inside one
-   * synchronous loop. Minting is therefore idempotent twice over — by frame identity (`minted`) and by
-   * host sequence (`lastHostSequence`) — because counting one frame's bytes twice would shift every
-   * later offset off the transcript for good.
+   * Each host sink gets one converter, so replay starts at zero while a sink that joins live resumes
+   * from the durable transcript total. Fresh objects delivered to multiple sinks cannot double-count.
    */
-  const offsets = new Map<string, { total: number; lastHostSequence: number; lastOffset: number }>();
-  const minted = new WeakMap<SessionDataFrame, number>();
-
-  const mintOffset = (frame: SessionDataFrame): number => {
-    const known = minted.get(frame);
-    if (known !== undefined) return known;
-    let state = offsets.get(frame.sessionId);
-    if (state === undefined) {
-      // A record that already holds bytes (a re-created registry over live persistence) resumes its
-      // stream where the transcript ends; a fresh session starts at offset 0. `lastSequence` is trusted
-      // as a byte total, but a record written by an earlier build may have stored a FRAME COUNTER there
-      // instead — a cumulative byte total can never be smaller than what is still retained on disk, so
-      // the baseline is whichever of the two is larger.
-      const record = deps.persistence.read().sessions.find((item) => item.sessionId === frame.sessionId);
+  const createCursorSpace = (): {
+    data(frame: SessionDataFrame): SessionDataFrame;
+    exit(exit: ObservedExit): ObservedExit;
+    resume(sessionId: string): void;
+  } => {
+    let sessionId: string | null = null;
+    let nextOffset = 0;
+    let lastHostSequence = -1;
+    let lastOffset = 0;
+    let sawData = false;
+    const storedOffset = (targetSessionId: string): number => {
+      const record = deps.persistence.read().sessions.find((item) => item.sessionId === targetSessionId);
       const stored = record !== undefined && Number.isSafeInteger(record.transcript.lastSequence)
         ? Math.max(0, record.transcript.lastSequence) : 0;
       let retained = 0;
       try {
-        retained = deps.transcript?.retainedBytes?.(frame.sessionId) ?? 0;
+        retained = deps.transcript?.retainedBytes?.(targetSessionId) ?? 0;
       } catch (error) {
         deps.onBackgroundError?.(error);
-        retained = 0;
       }
-      const resume = Number.isSafeInteger(retained) && retained > stored ? retained : stored;
-      state = { total: resume, lastHostSequence: -1, lastOffset: resume };
-      offsets.set(frame.sessionId, state);
-    }
-    if (frame.sequence <= state.lastHostSequence) {
-      minted.set(frame, state.lastOffset);
-      return state.lastOffset;
-    }
-    const offset = state.total;
-    state.total = Math.min(Number.MAX_SAFE_INTEGER, offset + Buffer.byteLength(frame.data, 'base64'));
-    state.lastHostSequence = frame.sequence;
-    state.lastOffset = offset;
-    minted.set(frame, offset);
-    return offset;
-  };
-
-  /** The frame every sink sees: the host's own frame counter is never forwarded past this point. */
-  const inCursorSpace = (frame: SessionDataFrame): SessionDataFrame => {
-    const offset = mintOffset(frame);
-    return frame.sequence === offset ? frame : { ...frame, sequence: offset };
+      return Number.isSafeInteger(retained) && retained > stored ? retained : stored;
+    };
+    const resume = (targetSessionId: string): void => {
+      if (sessionId === targetSessionId) return;
+      sessionId = targetSessionId;
+      nextOffset = storedOffset(targetSessionId);
+      lastHostSequence = -1;
+      lastOffset = 0;
+      sawData = false;
+    };
+    const initialize = (frame: SessionDataFrame): void => {
+      resume(frame.sessionId);
+      if (frame.replay) {
+        if (!sawData) nextOffset = 0;
+      }
+    };
+    return {
+      data(frame) {
+        initialize(frame);
+        if (frame.sequence <= lastHostSequence) {
+          return frame.sequence === lastOffset ? frame : { ...frame, sequence: lastOffset };
+        }
+        const offset = nextOffset;
+        nextOffset = Math.min(Number.MAX_SAFE_INTEGER,
+          nextOffset + Buffer.byteLength(frame.data, 'base64'));
+        lastHostSequence = frame.sequence;
+        lastOffset = offset;
+        sawData = true;
+        return frame.sequence === offset ? frame : { ...frame, sequence: offset };
+      },
+      exit(observed) {
+        resume(observed.sessionId);
+        return observed.sequence === nextOffset ? observed : { ...observed, sequence: nextOffset };
+      },
+      resume,
+    };
   };
 
   const updateTranscript = (frame: SessionDataFrame): Promise<void> => {
@@ -305,9 +332,16 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
   };
 
   const observeExit = async (exit: ObservedExit, epochId: string): Promise<void> => {
-    // The cursor state dies with the session; the record keeps the byte total for the replay reader.
-    offsets.delete(exit.sessionId);
     await deps.persistence.mutate(null, (document) => applyObservedSessionExit(document, exit, epochId));
+  };
+
+  const observeHostExit = async (exit: ObservedExit, epochId: string): Promise<void> => {
+    if (exit.reason !== 'abandoned') {
+      await observeExit(exit, epochId);
+      return;
+    }
+    await deps.persistence.mutate(null, (document) =>
+      applyEpochAbandonment(document, epochId, 'epoch-lost', exit.observedAt));
   };
 
   /**
@@ -365,6 +399,10 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
       let recordReady = false;
       let discardFrames = false;
       const pendingFrames: SessionDataFrame[] = [];
+      let pendingFrameBytes = 0;
+      let pendingFrameDrops = 0;
+      let pendingExit: ObservedExit | null = null;
+      const cursorSpace = createCursorSpace();
       try {
         const probe = await deps.host.probe();
         if (!probe.available || !probe.launchers.includes(input.launcher) || !probe.roots.includes(input.rootId)) {
@@ -393,11 +431,25 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
             if (discardFrames) return;
             // Minting happens HERE, before the frame is queued or persisted: a frame that waits for the
             // record must still hold the offset of the moment it was produced.
-            const stamped = inCursorSpace(frame);
+            const stamped = cursorSpace.data(frame);
             if (recordReady) background(updateTranscript(stamped));
-            else pendingFrames.push(structuredClone(stamped));
+            else {
+              const bytes = Buffer.byteLength(stamped.data, 'base64');
+              if (pendingFrames.length < EARLY_FRAME_LIMIT
+                && pendingFrameBytes + bytes <= EARLY_FRAME_BYTE_LIMIT) {
+                pendingFrames.push(structuredClone(stamped));
+                pendingFrameBytes += bytes;
+              } else {
+                pendingFrameDrops += 1;
+              }
+            }
           },
-          exit: (exit) => { if (!discardFrames && receiptEpoch !== null) background(observeExit(exit, receiptEpoch)); },
+          exit: (exit) => {
+            if (discardFrames) return;
+            const stamped = cursorSpace.exit(exit);
+            if (receiptEpoch === null) pendingExit = structuredClone(stamped);
+            else background(observeHostExit(stamped, receiptEpoch));
+          },
           closed: () => false,
         };
         // The host owns capacity now that it is told who is asking; the registry keeps only
@@ -425,12 +477,21 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
         }
         receiptEpoch = receipt.value.epochId;
         launched = { operationKey, requestHash, sessionId: receipt.value.sessionId, epochId: receipt.value.epochId };
-        const existing = deps.persistence.read().sessions.find((record) => record.operationKey === operationKey);
+        const activated = await registry.activateEpoch(receipt.value.epochId);
+        if (!activated.ok) throw new Error(activated.detail ?? activated.refusal);
+        const matching = deps.persistence.read().sessions.filter((record) => record.operationKey === operationKey);
+        // Operation keys are unique only while non-terminal. Prefer that row; after it terminates, the
+        // newest historical row is the host replay identity, never the oldest retired incarnation.
+        const existing = matching.find((record) => live(record)) ?? matching.at(-1);
         if (receipt.value.replayed && existing !== undefined) {
           recordReady = true;
           launched = null;
           for (const frame of pendingFrames.splice(0)) background(updateTranscript(frame));
-          background(launch.exit.then((exit) => observeExit(exit, receipt.value.epochId)));
+          if (pendingExit !== null) background(observeHostExit(pendingExit, receipt.value.epochId));
+          if (pendingFrameDrops > 0) {
+            deps.log?.(`host=${operationKey} early-output-frames-dropped=${pendingFrameDrops}`);
+          }
+          background(launch.exit.then((exit) => observeHostExit(cursorSpace.exit(exit), receipt.value.epochId)));
           return { ok: true, value: summarizeSessionRecord(existing) };
         }
         const record: SessionRecord = {
@@ -444,11 +505,11 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
           relativeCwd: input.relativeCwd,
           name: input.launcher === 'shell' ? 'Shell' : input.launcher === 'claude' ? 'Claude' : 'Codex',
           attachmentIds: [],
-          transcript: { path: `pty/transcripts/${receipt.value.sessionId}.raw`, bytes: 0,
+          transcript: { path: sessionTranscriptPath(receipt.value.sessionId), bytes: 0,
             truncated: false, lastSequence: 0 },
           startedAt: receipt.value.boundAt,
           endedAt: null,
-          revision: receipt.value.revision,
+          revision: 1,
           provenance: 'manual',
           controller: { ...principal },
           state: 'live',
@@ -472,7 +533,11 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
         recordReady = true;
         launched = null;
         for (const frame of pendingFrames.splice(0)) background(updateTranscript(frame));
-        background(launch.exit.then((exit) => observeExit(exit, receipt.value.epochId)));
+        if (pendingExit !== null) background(observeHostExit(pendingExit, receipt.value.epochId));
+        if (pendingFrameDrops > 0) {
+          deps.log?.(`host=${operationKey} early-output-frames-dropped=${pendingFrameDrops}`);
+        }
+        background(launch.exit.then((exit) => observeHostExit(cursorSpace.exit(exit), receipt.value.epochId)));
         return { ok: true, value: summarizeSessionRecord(record) };
       } catch (error) {
         deps.onBackgroundError?.(error);
@@ -521,9 +586,11 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
           return { ok: false, refusal: 'capacity', detail: null };
         }
         let detached = false;
+        const cursorSpace = createCursorSpace();
+        cursorSpace.resume(sessionId);
         const guardedSink: SessionSink = {
-          data: (frame) => { if (!detached) sink.data(inCursorSpace(frame)); },
-          exit: (exit) => { if (!detached) sink.exit(exit); },
+          data: (frame) => { if (!detached) sink.data(cursorSpace.data(frame)); },
+          exit: (exit) => { if (!detached) sink.exit(cursorSpace.exit(exit)); },
           closed: () => detached || sink.closed(),
         };
         const attached = await deps.host.attach(sessionId, guardedSink);
@@ -611,9 +678,36 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
       try {
         const record = authorize(principal, sessionId);
         if (record === null || !live(record)) return { ok: false, refusal: 'not-found', detail: 'session not found' };
-        const closed = await deps.host.close(sessionId);
-        if (!closed.ok) return closed;
-        await observeExit(closed.value, record.epochId);
+        let closed: Awaited<ReturnType<SessionHost['close']>>;
+        try {
+          closed = await deps.host.close(sessionId);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          deps.onBackgroundError?.(error);
+          await observeHostExit({
+            sessionId,
+            sequence: record.transcript.lastSequence,
+            exitCode: null,
+            signal: null,
+            reason: 'closed',
+            observedAt: now(),
+          }, record.epochId);
+          return { ok: false, refusal: 'internal', detail };
+        }
+        if (!closed.ok) {
+          deps.onBackgroundError?.(new Error(
+            `session close refused (${closed.refusal}) for ${sessionId}: ${closed.detail ?? ''}`));
+          await observeHostExit({
+            sessionId,
+            sequence: record.transcript.lastSequence,
+            exitCode: null,
+            signal: null,
+            reason: 'closed',
+            observedAt: now(),
+          }, record.epochId);
+          return closed;
+        }
+        await observeHostExit({ ...closed.value, sequence: record.transcript.lastSequence }, record.epochId);
         return closed;
       } catch (error) { return reportInternal(error); }
     },
@@ -641,48 +735,11 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
       } catch (error) { return reportInternal(error); }
     },
 
-    async bind(input) {
-      try {
-        const result = await deps.persistence.mutate(input.expectedRevision, (document) => {
-          const record = document.sessions.find((item) => item.sessionId === input.sessionId);
-          if (record === undefined || record.provenance !== 'run' || record.operator !== input.operator
-            || record.runRef !== input.runRef || record.attemptRef !== input.attemptRef
-            || record.managedSessionRef !== input.managedSessionRef) {
-            return { ok: false, refusal: 'not-found', detail: 'session not found' } as PortResult<{ revision: number }>;
-          }
-          const duplicate = document.attemptBindings.find((binding) => binding.attemptRef === input.attemptRef
-            || binding.managedSessionRef === input.managedSessionRef || binding.sessionId === input.sessionId);
-          if (duplicate !== undefined) {
-            const replayed = duplicate.operator === input.operator && duplicate.runRef === input.runRef
-              && duplicate.attemptRef === input.attemptRef && duplicate.managedSessionRef === input.managedSessionRef
-              && duplicate.sessionId === input.sessionId;
-            return replayed
-              ? { ok: true, value: { revision: document.revision } } as PortResult<{ revision: number }>
-              : { ok: false, refusal: 'binding-conflict', detail: 'attempt binding conflict' } as PortResult<{ revision: number }>;
-          }
-          document.attemptBindings.push({
-            operator: input.operator,
-            runRef: input.runRef,
-            attemptRef: input.attemptRef,
-            managedSessionRef: input.managedSessionRef,
-            sessionId: input.sessionId,
-            createdAt: now(),
-          });
-          return { ok: true, value: { revision: document.revision + 1 } } as PortResult<{ revision: number }>;
-        });
-        return result.value;
-      } catch (error) {
-        const code = (error as { code?: unknown }).code;
-        return code === 'revision-conflict'
-          ? { ok: false, refusal: 'binding-conflict', detail: 'attempt binding revision conflict' }
-          : reportInternal(error);
-      }
-    },
-
     byAttempt(operator, attemptRef) {
       try {
-        return structuredClone(deps.persistence.read().attemptBindings.find((binding) =>
-          binding.operator === operator && binding.attemptRef === attemptRef) ?? null);
+        const matches = deps.persistence.read().attemptBindings.filter((binding) =>
+          binding.operator === operator && binding.attemptRef === attemptRef);
+        return structuredClone(matches.find((binding) => binding.retired !== true) ?? matches.at(-1) ?? null);
       } catch (error) {
         deps.onBackgroundError?.(error);
         return null;
@@ -700,7 +757,7 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
     },
 
     byRun(operator, runRef) {
-      // Durable order IS attempt order: bindings are appended at bind time and never reordered, so a
+      // Durable order IS attempt order: bindings are appended at atomic start time and never reordered, so a
       // single document read reconstructs Run selection after a restart with no in-memory index.
       try {
         return structuredClone(deps.persistence.read().attemptBindings.filter((binding) =>
@@ -741,6 +798,14 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
         };
         const result = await deps.persistence.mutate(null, (document) => {
           const stored = document.attemptOperations[record.operationKey];
+          if (record.sessionId !== null
+            && !document.sessions.some((session) => session.sessionId === record.sessionId)) {
+            return {
+              ok: false,
+              refusal: 'internal',
+              detail: `attempt operation references missing session record '${record.sessionId}'`,
+            } as PortResult<AttemptOperationRecord>;
+          }
           if (expectedRevision === null) {
             if (stored !== undefined) return conflict;
           } else if (stored === undefined || stored.revision !== expectedRevision) {
@@ -758,40 +823,493 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
       } catch (error) { return reportInternal(error); }
     },
 
-    async persistRunSession(input) {
-      try {
-        if (input.record.provenance !== 'run' || input.record.controller !== null
-          || input.record.sessionId !== input.binding.sessionId
-          || input.record.operator !== input.binding.operator || input.record.runRef !== input.binding.runRef
-          || input.record.attemptRef !== input.binding.attemptRef
-          || input.record.managedSessionRef !== input.binding.managedSessionRef
-          || input.receipt.operationKey !== input.record.operationKey
-          || input.receipt.requestHash !== input.record.requestHash) {
-          return { ok: false, refusal: 'invalid-request', detail: 'run session record set is inconsistent' };
+    async startRunSession(input) {
+      if (!OPERATION_KEY.test(input.hostOperationKey) || !/^[0-9a-f]{64}$/u.test(input.requestHash)
+        || input.rootId !== 'worktrees' || !Number.isSafeInteger(input.size.cols)
+        || !Number.isSafeInteger(input.size.rows)) {
+        return { ok: false, refusal: 'invalid-request', detail: 'run session start is invalid' };
+      }
+
+      type StartRefusal = { ok: false; refusal: import('../../shared/ptyProtocol.ts').HostRefusalCode;
+        detail: string | null };
+      const operationRefusal = (operation: AttemptOperationRecord | undefined): StartRefusal | null => {
+        if (operation === undefined) {
+          return { ok: false, refusal: 'internal', detail: 'run session start has no write-ahead operation' };
         }
-        const result = await deps.persistence.mutate(null, (document) => {
-          const collisions = document.sessions.some((item) => item.sessionId === input.record.sessionId
-            || item.operationKey === input.record.operationKey)
-            || document.attemptBindings.some((item) => item.sessionId === input.binding.sessionId
-              || item.attemptRef === input.binding.attemptRef || item.managedSessionRef === input.binding.managedSessionRef)
-            || document.operationReceipts.some((item) => item.operationKey === input.receipt.operationKey);
-          if (collisions) return ({
+        if (operation.requestHash !== input.requestHash || operation.attemptRef !== input.attemptRef) {
+          return { ok: false, refusal: 'binding-conflict', detail: 'attempt operation identity conflict' };
+        }
+        if (operation.status === 'cancelled') {
+          return { ok: false, refusal: 'cancelled', detail: 'attempt operation was durably cancelled' };
+        }
+        if (operation.status === 'failed' || operation.status === 'completed') {
+          return {
             ok: false,
-            refusal: 'binding-conflict',
-            detail: 'run session binding conflict',
-          } as PortResult<{ revision: number }>);
-          insertSessionRecord(document, structuredClone(input.record));
-          document.attemptBindings.push(structuredClone(input.binding));
-          document.operationReceipts.push(structuredClone(input.receipt));
-          return { ok: true, value: { revision: document.revision + 1 } } as PortResult<{ revision: number }>;
+            refusal: operation.status === 'failed' ? (operation.receipt?.refusal ?? 'internal') : 'binding-conflict',
+            detail: `attempt operation already ${operation.status}`,
+          };
+        }
+        return null;
+      };
+
+      try {
+        const before = deps.persistence.read();
+        const refused = operationRefusal(before.attemptOperations[input.hostOperationKey]);
+        if (refused !== null) return refused;
+      } catch (error) {
+        return reportInternal(error);
+      }
+
+      let resolveExit!: (exit: ObservedExit) => void;
+      const exit = new Promise<ObservedExit>((resolve) => { resolveExit = resolve; });
+      let launchedSessionId: string | null = null;
+      let receiptEpochId: string | null = null;
+      let recordReady = false;
+      let flushing = false;
+      let discardFrames = false;
+      let earlyFrameBytes = 0;
+      let earlyFrameDrops = 0;
+      const earlyFrames: SessionDataFrame[] = [];
+      let terminalObserved: ObservedExit | null = null;
+      let terminalWork: Promise<void> | null = null;
+      let launchExitRejected = false;
+      const cursorSpace = createCursorSpace();
+
+      const persistTerminal = (): Promise<void> => {
+        if (!recordReady || receiptEpochId === null || terminalObserved === null) return Promise.resolve();
+        if (terminalWork !== null) return terminalWork;
+        const observed = structuredClone(terminalObserved);
+        terminalWork = (async () => {
+          try {
+            const queued = transcriptQueues.get(observed.sessionId);
+            if (queued !== undefined) await queued.catch(() => undefined);
+            await observeHostExit(observed, receiptEpochId!);
+          } catch (error) {
+            deps.onBackgroundError?.(error);
+          }
+          try { input.sink.exit(structuredClone(observed)); } catch (error) { deps.onBackgroundError?.(error); }
+          resolveExit(observed);
+        })();
+        return terminalWork;
+      };
+
+      const observeTerminal = (observed: ObservedExit): Promise<void> => {
+        if (terminalObserved === null) terminalObserved = structuredClone(observed);
+        return persistTerminal();
+      };
+
+      const sink: SessionSink = {
+        data(frame) {
+          if (discardFrames) return;
+          const stamped = cursorSpace.data(frame);
+          const bytes = Buffer.byteLength(stamped.data, 'base64');
+          if (recordReady && !flushing) {
+            background(updateTranscript(stamped));
+          } else if (earlyFrames.length < EARLY_FRAME_LIMIT
+            && earlyFrameBytes + bytes <= EARLY_FRAME_BYTE_LIMIT) {
+            earlyFrames.push(structuredClone(stamped));
+            earlyFrameBytes += bytes;
+          } else {
+            earlyFrameDrops += 1;
+          }
+          try { input.sink.data(stamped); } catch (error) { deps.onBackgroundError?.(error); }
+        },
+        exit(observed) { void observeTerminal(cursorSpace.exit(observed)); },
+        closed() {
+          if (terminalObserved !== null) return true;
+          try { return input.sink.closed(); } catch (error) { deps.onBackgroundError?.(error); return false; }
+        },
+      };
+
+      const failPendingOperation = async (code: import('../../shared/ptyProtocol.ts').HostRefusalCode): Promise<void> => {
+        try {
+          await deps.persistence.mutate(null, (document) => {
+            const operation = document.attemptOperations[input.hostOperationKey];
+            if (operation === undefined || operation.requestHash !== input.requestHash
+              || operation.attemptRef !== input.attemptRef || operation.status !== 'pending'
+              || operation.revision >= Number.MAX_SAFE_INTEGER) return;
+            const settledAt = now();
+            operation.status = code === 'cancelled' ? 'cancelled' : 'failed';
+            operation.receipt = {
+              operationKey: input.hostOperationKey,
+              requestHash: input.requestHash,
+              status: code === 'cancelled' ? 'cancelled' : 'failed',
+              sessionId: operation.sessionId,
+              attemptRef: input.attemptRef,
+              refusal: code,
+              createdAt: operation.receipt?.createdAt ?? settledAt,
+              settledAt,
+            };
+            operation.revision += 1;
+            operation.updatedAt = settledAt;
+          });
+        } catch (error) {
+          deps.onBackgroundError?.(error);
+        }
+      };
+
+      let launch: ReturnType<SessionHost['create']>;
+      try {
+        launch = deps.host.create({
+          operationKey: input.hostOperationKey,
+          principal: hostRequestPrincipal({ provenance: 'run', operator: input.operator, controller: null }),
+          recipe: input.recipe,
+          rootId: input.rootId,
+          relativeCwd: input.relativeCwd,
+          cols: input.size.cols,
+          rows: input.size.rows,
+        }, sink);
+      } catch (error) {
+        deps.onBackgroundError?.(error);
+        await failPendingOperation('internal');
+        return internal();
+      }
+      void launch.exit.then(
+        (observed) => { void observeTerminal(cursorSpace.exit(observed)); },
+        () => {
+          launchExitRejected = true;
+          if (launchedSessionId !== null) {
+            void observeTerminal(cursorSpace.exit({
+              sessionId: launchedSessionId,
+              sequence: 0,
+              exitCode: null,
+              signal: null,
+              reason: 'abandoned',
+              observedAt: now(),
+            }));
+          }
+        },
+      );
+
+      let hostReceipt: Awaited<typeof launch.receipt>;
+      try {
+        hostReceipt = await launch.receipt;
+      } catch (error) {
+        deps.onBackgroundError?.(error);
+        await failPendingOperation('internal');
+        return internal();
+      }
+      if (!hostReceipt.ok) {
+        discardFrames = true;
+        earlyFrames.splice(0);
+        await failPendingOperation(hostReceipt.refusal);
+        return hostReceipt;
+      }
+      launchedSessionId = hostReceipt.value.sessionId;
+      receiptEpochId = hostReceipt.value.epochId;
+      if (launchExitRejected && terminalObserved === null) {
+        terminalObserved = cursorSpace.exit({
+          sessionId: launchedSessionId,
+          sequence: 0,
+          exitCode: null,
+          signal: null,
+          reason: 'abandoned',
+          observedAt: now(),
         });
-        return result.value;
-      } catch (error) { return reportInternal(error); }
+      }
+      const receipt: OperationReceipt = {
+        operationKey: input.hostOperationKey,
+        requestHash: input.requestHash,
+        status: 'bound',
+        sessionId: launchedSessionId,
+        attemptRef: input.attemptRef,
+        refusal: null,
+        createdAt: hostReceipt.value.boundAt,
+        settledAt: hostReceipt.value.boundAt,
+      };
+      const binding: AttemptBinding = {
+        operator: input.operator,
+        runRef: input.runRef,
+        attemptRef: input.attemptRef,
+        managedSessionRef: input.managedSessionRef,
+        sessionId: launchedSessionId,
+        createdAt: hostReceipt.value.boundAt,
+      };
+      const record: SessionRecord = {
+        sessionId: launchedSessionId,
+        operationKey: input.hostOperationKey,
+        requestHash: input.requestHash,
+        recipeDigest: hash(input.recipe),
+        launcher: input.recipe.launcher,
+        host: hostKind,
+        rootId: input.rootId,
+        relativeCwd: input.relativeCwd,
+        name: boundedDisplayName(input.displayName, input.recipe.launcher),
+        attachmentIds: [],
+        transcript: {
+          path: sessionTranscriptPath(launchedSessionId),
+          bytes: 0,
+          truncated: false,
+          lastSequence: 0,
+        },
+        startedAt: hostReceipt.value.boundAt,
+        endedAt: null,
+        revision: 1,
+        provenance: 'run',
+        controller: null,
+        operator: input.operator,
+        runRef: input.runRef,
+        attemptRef: input.attemptRef,
+        managedSessionRef: input.managedSessionRef,
+        state: 'live',
+        epochId: receiptEpochId,
+        exit: null,
+      };
+
+      const identityReplay = (document: ReturnType<SessionPersistence['read']>): SessionRecord | null => {
+        const storedRecord = document.sessions.find((item) => item.sessionId === record.sessionId);
+        const storedBinding = document.attemptBindings.find((item) => item.sessionId === binding.sessionId);
+        const storedReceipt = document.operationReceipts.find((item) => item.operationKey === receipt.operationKey);
+        const operation = document.attemptOperations[input.hostOperationKey];
+        return storedRecord !== undefined && storedBinding !== undefined && storedReceipt !== undefined
+          && storedRecord.operationKey === record.operationKey && storedRecord.requestHash === record.requestHash
+          && storedRecord.provenance === 'run' && storedRecord.operator === record.operator
+          && storedRecord.runRef === record.runRef && storedRecord.attemptRef === record.attemptRef
+          && storedRecord.managedSessionRef === record.managedSessionRef
+          && storedBinding.retired !== true && storedBinding.operator === binding.operator
+          && storedBinding.runRef === binding.runRef && storedBinding.attemptRef === binding.attemptRef
+          && storedBinding.managedSessionRef === binding.managedSessionRef
+          && storedReceipt.requestHash === receipt.requestHash && storedReceipt.sessionId === receipt.sessionId
+          && storedReceipt.attemptRef === receipt.attemptRef && operation !== undefined
+          && operation.requestHash === input.requestHash && operation.attemptRef === input.attemptRef
+          && operation.status === 'bound' && operation.sessionId === record.sessionId
+          ? storedRecord : null;
+      };
+
+      const finishStart = async (
+        storedRecord: SessionRecord,
+        documentRevision: number,
+        replayed: boolean,
+      ): Promise<PortResult<StartRunSessionReceipt>> => {
+        recordReady = true;
+        flushing = true;
+        while (earlyFrames.length > 0) {
+          const frame = earlyFrames.shift();
+          if (frame !== undefined) await updateTranscript(frame);
+        }
+        flushing = false;
+        if (earlyFrameDrops > 0) {
+          deps.log?.(`host=${input.hostOperationKey} early-output-frames-dropped=${earlyFrameDrops}`);
+        }
+        await persistTerminal();
+        const current = deps.persistence.read().sessions.find((item) => item.sessionId === storedRecord.sessionId)
+          ?? storedRecord;
+        let closePromise: Promise<PortResult<ObservedExit>> | null = null;
+        const close = (): Promise<PortResult<ObservedExit>> => {
+          if (closePromise !== null) return closePromise;
+          closePromise = (async () => {
+            try {
+              const closed = await deps.host.close(storedRecord.sessionId);
+              if (closed.ok) await observeTerminal(cursorSpace.exit(closed.value));
+              else {
+                deps.onBackgroundError?.(new Error(
+                  `session close refused (${closed.refusal}) for ${storedRecord.sessionId}: ${closed.detail ?? ''}`));
+                await observeTerminal(cursorSpace.exit({
+                  sessionId: storedRecord.sessionId,
+                  sequence: current.transcript.lastSequence,
+                  exitCode: null,
+                  signal: null,
+                  reason: 'closed',
+                  observedAt: now(),
+                }));
+              }
+              return closed;
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : String(error);
+              deps.onBackgroundError?.(error);
+              await observeTerminal(cursorSpace.exit({
+                sessionId: storedRecord.sessionId,
+                sequence: current.transcript.lastSequence,
+                exitCode: null,
+                signal: null,
+                reason: 'closed',
+                observedAt: now(),
+              }));
+              return { ok: false, refusal: 'internal', detail };
+            }
+          })();
+          return closePromise;
+        };
+        return {
+          ok: true,
+          value: {
+            sessionId: storedRecord.sessionId,
+            epochId: storedRecord.epochId,
+            outputCursor: current.transcript.lastSequence,
+            replayed,
+            documentRevision,
+            exit,
+            close,
+          },
+        };
+      };
+
+      const compensate = async (failed: StartRefusal): Promise<PortResult<StartRunSessionReceipt>> => {
+        let observed = terminalObserved;
+        try {
+          const closed = await deps.host.close(record.sessionId);
+          if (closed.ok) observed ??= cursorSpace.exit(closed.value);
+          else {
+            deps.onBackgroundError?.(new Error(
+              `compensating close refused (${closed.refusal}) for ${record.sessionId}: ${closed.detail ?? ''}`));
+          }
+        } catch (error) {
+          deps.onBackgroundError?.(error);
+        }
+        observed ??= cursorSpace.exit({
+          sessionId: record.sessionId,
+          sequence: record.transcript.lastSequence,
+          exitCode: null,
+          signal: null,
+          reason: 'closed',
+          observedAt: now(),
+        });
+        terminalObserved = observed;
+        discardFrames = true;
+        earlyFrames.splice(0);
+        // The terminal row and the operation settlement are SEPARATE mutates. The document refuses an
+        // `exited` row whose exit reason is `abandoned` (a dropped socket, or the launch-exit rejection
+        // synthesizer above), and one combined mutate meant that refusal threw away the operation
+        // settlement too, leaving the key `pending` forever with no row to explain it.
+        const terminal: SessionRecord = observed.reason === 'abandoned'
+          ? {
+            ...record,
+            attachmentIds: [],
+            state: 'abandoned',
+            abandonReason: 'start-recovery',
+            endedAt: observed.observedAt,
+            revision: Math.min(Number.MAX_SAFE_INTEGER, record.revision + 1),
+            exit: { ...observed, reason: 'abandoned' },
+          }
+          : {
+            ...record,
+            attachmentIds: [],
+            state: 'exited',
+            endedAt: observed.observedAt,
+            revision: Math.min(Number.MAX_SAFE_INTEGER, record.revision + 1),
+            exit: observed,
+          };
+        try {
+          await deps.persistence.mutate(null, (document) => {
+            if (document.sessions.some((item) => item.sessionId === record.sessionId)) return;
+            insertSessionRecord(document, structuredClone(terminal));
+          });
+        } catch (error) {
+          deps.onBackgroundError?.(error);
+        }
+        try {
+          await deps.persistence.mutate(null, (document) => {
+            const operation = document.attemptOperations[input.hostOperationKey];
+            if (operation === undefined || operation.status !== 'pending'
+              || operation.requestHash !== input.requestHash || operation.attemptRef !== input.attemptRef
+              || operation.revision >= Number.MAX_SAFE_INTEGER) return;
+            const settledStatus = failed.refusal === 'cancelled' ? 'cancelled' : 'failed';
+            operation.status = settledStatus;
+            operation.sessionId = record.sessionId;
+            operation.receipt = { ...receipt, status: settledStatus, refusal: failed.refusal, settledAt: now() };
+            operation.revision += 1;
+            operation.updatedAt = now();
+          });
+        } catch (error) {
+          deps.onBackgroundError?.(error);
+        }
+        recordReady = true;
+        await persistTerminal();
+        return failed;
+      };
+
+      try {
+        if (hostReceipt.value.operationKey !== input.hostOperationKey
+          || !Number.isSafeInteger(hostReceipt.value.outputSequence)
+          || hostReceipt.value.outputSequence < 0) {
+          return compensate({ ok: false, refusal: 'internal', detail: 'host start receipt is invalid' });
+        }
+        if ((deps.persistence.read().epochId ?? null) !== receiptEpochId) {
+          const activated = await registry.activateEpoch(receiptEpochId);
+          if (!activated.ok) return compensate(activated);
+        }
+        const snapshot = deps.persistence.read();
+        const replayRecord = identityReplay(snapshot);
+        if (replayRecord !== null) return finishStart(replayRecord, snapshot.revision, true);
+
+        const mutation = await deps.persistence.mutate(null, (document) => {
+          const operation = document.attemptOperations[input.hostOperationKey];
+          const refused = operationRefusal(operation);
+          if (refused !== null) return refused;
+          const replay = identityReplay(document);
+          if (replay !== null) return { ok: true, value: replay } as PortResult<SessionRecord>;
+          const priorRecords = document.sessions.filter((item) => item.operationKey === record.operationKey
+            && item.sessionId !== record.sessionId);
+          const retireable = priorRecords.every((item) => (item.state === 'abandoned' || item.state === 'exited')
+            && item.requestHash === record.requestHash && item.provenance === 'run'
+            && item.operator === record.operator && item.runRef === record.runRef
+            && item.attemptRef === record.attemptRef && item.managedSessionRef === record.managedSessionRef);
+          if (!retireable) {
+            return { ok: false, refusal: 'binding-conflict', detail: 'run session binding conflict' } as PortResult<SessionRecord>;
+          }
+          if (priorRecords.length > 0) {
+            const retiredIds = new Set(priorRecords.map((item) => item.sessionId));
+            document.attemptBindings = document.attemptBindings.map((item) =>
+              retiredIds.has(item.sessionId) ? { ...item, retired: true } : item);
+            document.operationReceipts = document.operationReceipts.filter((item) =>
+              item.operationKey !== receipt.operationKey);
+          }
+          const collision = document.sessions.some((item) => item.sessionId === record.sessionId)
+            || document.attemptBindings.some((item) => item.sessionId === binding.sessionId
+              || (item.retired !== true && (item.attemptRef === binding.attemptRef
+                || item.managedSessionRef === binding.managedSessionRef)))
+            || document.operationReceipts.some((item) => item.operationKey === receipt.operationKey);
+          if (collision || operation === undefined || operation.revision >= Number.MAX_SAFE_INTEGER) {
+            return { ok: false, refusal: 'binding-conflict', detail: 'run session binding conflict' } as PortResult<SessionRecord>;
+          }
+          const settledReceipt = {
+            ...receipt,
+            createdAt: operation.receipt?.createdAt ?? receipt.createdAt,
+          };
+          insertSessionRecord(document, structuredClone(record));
+          document.attemptBindings.push(structuredClone(binding));
+          document.operationReceipts.push(structuredClone(settledReceipt));
+          operation.status = 'bound';
+          operation.sessionId = record.sessionId;
+          operation.receipt = structuredClone(settledReceipt);
+          operation.revision += 1;
+          operation.updatedAt = now();
+          return { ok: true, value: structuredClone(record) } as PortResult<SessionRecord>;
+        });
+        if (!mutation.value.ok) return compensate(mutation.value);
+        return finishStart(mutation.value.value, mutation.revision, hostReceipt.value.replayed);
+      } catch (error) {
+        deps.onBackgroundError?.(error);
+        return compensate({ ok: false, refusal: 'internal', detail: 'session operation failed' });
+      }
     },
 
     async abandonEpoch(epochId, reason) {
       try {
         const result = await deps.persistence.mutate(null, (document) => applyEpochAbandonment(document, epochId, reason, now()));
+        return { ok: true, value: { abandoned: result.value, revision: result.revision } };
+      } catch (error) { return reportInternal(error); }
+    },
+
+    async activateEpoch(epochId) {
+      try {
+        const snapshot = deps.persistence.read();
+        if (snapshot.epochId === epochId) {
+          return { ok: true, value: { abandoned: 0, revision: snapshot.revision } };
+        }
+        const result = await deps.persistence.mutate(null, (document) => {
+          if (document.epochId === epochId) return 0;
+          const staleEpochs = new Set(document.sessions
+            .filter((record) => live(record) && record.epochId !== epochId)
+            .map((record) => record.epochId));
+          let abandoned = 0;
+          const observedAt = now();
+          for (const staleEpochId of staleEpochs) {
+            abandoned += applyEpochAbandonment(document, staleEpochId, 'daemon-restart', observedAt);
+          }
+          document.epochId = epochId;
+          return abandoned;
+        });
         return { ok: true, value: { abandoned: result.value, revision: result.revision } };
       } catch (error) { return reportInternal(error); }
     },
@@ -809,9 +1327,36 @@ export function createSessionRecordRegistry(deps: SessionRecordRegistryDeps): Se
     }
     const closed: string[] = [];
     for (const record of records as SessionRecord[]) {
-      const result = await deps.host.close(record.sessionId);
-      if (!result.ok) return result;
-      await observeExit(result.value, record.epochId);
+      let result: Awaited<ReturnType<SessionHost['close']>>;
+      try {
+        result = await deps.host.close(record.sessionId);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        deps.onBackgroundError?.(error);
+        await observeHostExit({
+          sessionId: record.sessionId,
+          sequence: record.transcript.lastSequence,
+          exitCode: null,
+          signal: null,
+          reason: 'closed',
+          observedAt: now(),
+        }, record.epochId);
+        return { ok: false, refusal: 'internal', detail };
+      }
+      if (!result.ok) {
+        deps.onBackgroundError?.(new Error(
+          `deployment close refused (${result.refusal}) for ${record.sessionId}: ${result.detail ?? ''}`));
+        await observeHostExit({
+          sessionId: record.sessionId,
+          sequence: record.transcript.lastSequence,
+          exitCode: null,
+          signal: null,
+          reason: 'closed',
+          observedAt: now(),
+        }, record.epochId);
+        return result;
+      }
+      await observeHostExit({ ...result.value, sequence: record.transcript.lastSequence }, record.epochId);
       closed.push(record.sessionId);
     }
     return { ok: true, value: { closed } };

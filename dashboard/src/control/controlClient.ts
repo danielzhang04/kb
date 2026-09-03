@@ -202,6 +202,7 @@ export interface ManagedSessionDto {
   predecessorSessionRef: string | null;
   runtime: string;
   model: string;
+  attemptOperationKey?: string | null;
   state: ManagedSessionState;
   version: number;
   createdAt: string;
@@ -1096,7 +1097,7 @@ const managedSessionDto: WireValidator = (value) => exactDto(value, {
   sessionRef: wireString, runRef: wireString, stageRef: nullable(wireString), attemptRef: nullable(wireString),
   role: wireString, generation: wireNumber, predecessorSessionRef: nullable(wireString), runtime: wireString,
   model: wireString, state: wireString, version: wireNumber, createdAt: wireString, updatedAt: wireString,
-});
+}, { attemptOperationKey: nullable(wireString) });
 const humanResponseDto: WireValidator = (value) => exactDto(value, {
   requestRevision: wireNumber, decision: wireString, response: nullable(wireString), respondedAt: wireString,
 });

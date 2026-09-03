@@ -529,6 +529,8 @@ export interface Attempt {
 
 export interface ManagedSession {
   sessionRef: string;
+  /** Exact durable attempt-start key selected when this worker session was created. */
+  attemptOperationKey?: string | null;
   runRef: string;
   stageRef: string | null;
   attemptRef: string | null;

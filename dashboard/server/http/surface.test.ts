@@ -29,8 +29,10 @@ import { stagingGit } from '../testFixtures/stagingGit.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type {
-  HostLaunch, ObservedExit, PtyCapabilityProbe, SessionHost, SessionHostRequest, SessionSink,
+  HostLaunch, ObservedExit, PtyCapabilityProbe, SessionHost, SessionHostRequest, SessionRecord, SessionSink,
 } from '../pty/contracts.ts';
+import { assertPtySessionsDocumentV3, createEmptyPtySessionsDocument } from '../pty/sessionPersistence.ts';
+import type { SessionPersistence } from '../pty/sessionPersistence.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { AttemptIoAppend } from '../control/attemptIo.ts';
 import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
@@ -120,15 +122,15 @@ function recordingSessionHost(): {
     receipt: Promise.resolve({
       ok: true,
       value: {
-        operationKey: 'op-surface-test', sessionId: HOST_SESSION_ID, epochId: 'epoch-surface-test',
-        revision: 1, boundAt: '2026-08-22T00:00:00.000Z', replayed: false,
+        operationKey: 'op-surface-test', sessionId: HOST_SESSION_ID, epochId: `epoch-${'1'.repeat(32)}`,
+        outputSequence: 1, boundAt: '2026-08-22T00:00:00.000Z', replayed: false,
       },
     }),
     exit: Promise.resolve(exit),
   };
   const probe = vi.fn(async (): Promise<PtyCapabilityProbe> => ({
     available: true, host: 'desktop', transport: 'local-node-pty',
-    launchers: ['shell'], roots: ['repo'], epochId: 'epoch-surface-test',
+    launchers: ['shell'], roots: ['repo'], epochId: `epoch-${'1'.repeat(32)}`,
     checkedAt: '2026-08-22T00:00:00.000Z',
   }));
   const create = vi.fn((_request: SessionHostRequest, _sink: SessionSink) => launch);
@@ -140,7 +142,7 @@ function recordingSessionHost(): {
     ({ ok: true as const, value: size }));
   const close = vi.fn(async (_sessionId: string) => ({ ok: true as const, value: exit }));
   const listEpoch = vi.fn(async () =>
-    ({ ok: true as const, value: { epochId: 'epoch-surface-test', sessionIds: [HOST_SESSION_ID] } }));
+    ({ ok: true as const, value: { epochId: `epoch-${'1'.repeat(32)}`, sessionIds: [HOST_SESSION_ID] } }));
   const drain = vi.fn(async (epochId: string) =>
     ({ ok: true as const, value: { epochId, closed: [HOST_SESSION_ID], alreadyGone: [] } }));
   return {
@@ -235,6 +237,66 @@ describe('write surface — composition chain', () => {
     expect(ctx.ptySessionRegistry).toBeDefined();
     expect(ctx.ptySessionRuns).toBeDefined();
     expect(ctx.closeDeploymentPtySessions).toBeDefined();
+  });
+
+  it('does not probe or mutate the persisted epoch before readiness', async () => {
+    const previousEpochId = `epoch-${'2'.repeat(32)}`;
+    let document = createEmptyPtySessionsDocument();
+    document.epochId = previousEpochId;
+    document.sessions.push({
+      sessionId: HOST_SESSION_ID,
+      operationKey: `op-${'3'.repeat(64)}`,
+      requestHash: '4'.repeat(64),
+      recipeDigest: '5'.repeat(64),
+      launcher: 'claude',
+      host: 'desktop',
+      rootId: 'repo',
+      relativeCwd: '',
+      name: 'Prior attempt',
+      attachmentIds: [],
+      transcript: { path: `pty/transcripts/${HOST_SESSION_ID}.raw`, bytes: 0, truncated: false, lastSequence: 0 },
+      startedAt: '2026-08-22T00:00:00.000Z',
+      endedAt: null,
+      revision: 1,
+      provenance: 'run',
+      controller: null,
+      operator: 'operator',
+      runRef: 'run-prior',
+      attemptRef: 'attempt-prior',
+      managedSessionRef: 'session-prior',
+      state: 'live',
+      epochId: previousEpochId,
+      exit: null,
+    } satisfies SessionRecord);
+    const persistence: SessionPersistence = {
+      read: () => structuredClone(document),
+      mutate: async (_expectedRevision, callback) => {
+        const draft = structuredClone(document);
+        const value = await callback(draft);
+        draft.revision += 1;
+        assertPtySessionsDocumentV3(draft);
+        document = draft;
+        return { revision: draft.revision, value };
+      },
+    };
+    const injected = recordingSessionHost();
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: injected.host,
+      ptyPersistence: persistence,
+    });
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+
+    await app.ready();
+
+    expect(injected.probe).not.toHaveBeenCalled();
+    expect(document.epochId).toBe(previousEpochId);
+    expect(document.sessions[0]).toMatchObject({
+      state: 'live',
+      endedAt: null,
+      exit: null,
+    });
   });
 
   it('resolves outbox publication once and recovers the anchor before readiness', async () => {

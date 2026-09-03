@@ -105,6 +105,7 @@ const QUEUE_BRIDGE_INTERVAL_MS = 15_000;
 /** Stable, detail-free refusal for manual Terminal PTY opens at the host boundary. */
 export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
 
+
 /**
  * Put the fleet preamble on the platform {@link SessionHost} itself, not only on one HTTP route. The
  * browser route may deliberately check twice; the second check closes the gap for every registry caller
@@ -206,9 +207,10 @@ export function makeSurfaceContext(
   // in-process, Linux speaks the socket-activated broker protocol as an unprivileged client. The fleet
   // preamble wraps it, so every `create` — browser terminal or Run-scoped attempt — passes the gate.
   // Construction spawns nothing, connects to nothing, and runs no preamble; only `create` does.
+  const ptyHostKind: 'desktop' | 'vm' = process.platform === 'win32' ? 'desktop' : 'vm';
   const underlyingPtySessionHost: SessionHost | undefined = capabilities.pty
     ? (overrides.ptySessionHost
-      ?? (process.platform === 'win32'
+      ?? (ptyHostKind === 'desktop'
         ? createWindowsSessionHost({
           epochId: randomUUID(),
           roots: { repo: repoRoot, worktrees: resolvePath(stateRoot, 'worktrees') },
@@ -233,14 +235,11 @@ export function makeSurfaceContext(
     : undefined;
   // Session runs + transcripts (leg 2). Construction is INERT: the store's JSON document is created
   // lazily and the recorder only touches disk once a session is actually taped, so building a context
-  // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
-  // REGISTRATION instead, the one moment that happens exactly once per daemon boot.
-  // ONE v2 PTY document (`kb.pty-sessions/v2`) for the whole daemon: session records, attempt bindings,
+  // which every server test does, writes nothing. PTY epoch activation is lazy on the first host receipt.
+  // ONE v3 PTY document (`kb.pty-sessions/v3`) for the whole daemon: session records, attempt bindings,
   // operation receipts AND the legacy session-run rows share its lock and its revision counter. Building
-  // it is inert (the file is opened lazily). A daemon still holding a v1 `kb.pty-session-runs/v1`
-  // document migrates through W3's `sessionMigration` — backup first, ambiguity aborts with v1 left
-  // authoritative — which is awaited exactly once, lazily, before the first write (at boot that is the
-  // session-run routes' `live` -> `abandoned` sweep), so composition itself still touches no filesystem.
+  // it is inert (the file is opened lazily). A daemon still holding an older PTY document migrates
+  // through `sessionMigration`: backup first, ambiguity aborts with the old source authoritative.
   const ptyPersistence = capabilities.pty
     ? (overrides.ptyPersistence ?? createSessionPersistence(stateRoot))
     : undefined;
@@ -255,8 +254,18 @@ export function makeSurfaceContext(
   const ptySessionRegistry = capabilities.pty && ptySessionHost && ptyPersistence
     ? (overrides.ptySessionRegistry ?? createSessionRecordRegistry({
       host: ptySessionHost,
+      // The host the sessions actually run on, so a record never claims the wrong one. It was threaded
+      // to the execution activation instead, where nothing read it.
+      hostKind: ptyHostKind,
       persistence: ptyPersistence,
       transcript: createTranscriptRetention(stateRoot),
+      // Without these the registry is SILENT in production: a compensating close refusal, a swallowed
+      // compensation, and the dropped-early-frames warning all had nowhere to go. Neither carries prompt,
+      // recipe or key contents.
+      onBackgroundError: (error) => {
+        console.warn('[pty-registry]', error instanceof Error ? error.message : String(error));
+      },
+      log: (message) => { console.warn(`[pty-registry] ${message}`); },
       // A Run-controller claim is authorized by the CONTROL plane, not by the PTY document: the
       // registry may only hand a session to a browser whose operator can already read that run, and
       // it CASes against the run version that read returned. An unreadable run resolves to `null`,
@@ -443,7 +452,7 @@ export function makeSurfaceContext(
         ? { ok: false, refusal: 'unavailable', detail: 'no session host' }
         : deploymentSessionCloser(sessionIds),
     ptyPersistence,
-    // One ref table per process, reading the v2 document so a ref already spent as a session controller
+    // One ref table per process, reading the v3 document so a ref already spent as a session controller
     // can never be re-minted for a second browser.
     browserSessionRefs: overrides.browserSessionRefs
       ?? createBrowserSessionRefStore(ptyPersistence ? { persistence: ptyPersistence } : {}),
@@ -483,7 +492,7 @@ export function makeSurfaceContext(
       env: activation.env,
       buildOptions: {
         controlStore, repoRoot, stateRoot,
-        // The attempt port is built from the SAME probed host and v2 document the browser PTY routes
+        // The attempt port is built from the SAME probed host and v3 document the browser PTY routes
         // use, so a Run attempt and a Terminal session are the same kind of record on the same host.
         sessionHost: ptySessionHost, attemptBindings: ptySessionRegistry,
         // The ONE reconciliation publisher composed above, threaded to the canonical result integrator so

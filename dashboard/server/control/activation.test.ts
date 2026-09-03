@@ -294,10 +294,11 @@ describe('buildActivatedExecution — gate ON', () => {
   it('constructs under the single dashboard-engine subject (D1) and the CANONICAL result integrator (D4)', () => {
     const deps = spyDeps();
     buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
-    // D1: the attempt port is built on the surface's own probed host and v2 binding document, so a Run
-    // attempt is the same kind of record on the same host as a Terminal session.
+    // D1: the attempt port is built on the surface's own probed host and the ONE session-record
+    // registry, so a Run attempt is the same kind of record on the same host as a Terminal session.
+    // (`bindings` became `sessionRecords` when the registry took ownership of the atomic start.)
     expect(deps.createAttemptPort).toHaveBeenCalledWith(expect.objectContaining({
-      host: expect.anything(), bindings: expect.anything(), repoRoot: '/repo',
+      host: expect.anything(), sessionRecords: expect.anything(), repoRoot: '/repo',
     }));
     // D4: the engine's result integrator is the canonical git integrator, keyed to the ops repo root.
     expect(deps.createResults).toHaveBeenCalledWith(expect.objectContaining({ repoRoot: '/repo', coordinationRoot: '/repo' }));

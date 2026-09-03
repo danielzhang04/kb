@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AttemptOperationRecord, BrowserPrincipal, PtySessionsDocumentV2, SessionHost,
+import type { AttemptOperationRecord, BrowserPrincipal, PtySessionsDocumentV3, SessionHost,
   SessionHostRequest, SessionRecord, SessionSink } from './contracts.ts';
 import { RUN_CONTROLLER_NULL_BROWSER_SESSION_REF } from './contracts.ts';
 import {
@@ -16,7 +16,7 @@ import {
   summarizeSessionRecord,
 } from './sessionRecord.ts';
 import {
-  assertPtySessionsDocumentV2,
+  assertPtySessionsDocumentV3,
   createEmptyPtySessionsDocument,
   createTranscriptRetention,
   enforcePtySessionRetention,
@@ -184,7 +184,7 @@ describe('composite-principal session policy', () => {
           const value = await callback(draft);
           enforcePtySessionRetention(draft);
           draft.revision += 1;
-          assertPtySessionsDocumentV2(draft);
+          assertPtySessionsDocumentV3(draft);
           state.document = draft;
           result = { revision: draft.revision, value };
         });
@@ -210,7 +210,7 @@ describe('composite-principal session policy', () => {
         const sessionId = `pty-${serial.toString(16).padStart(32, '0')}`;
         sink.data({ sessionId, sequence: 1, encoding: 'base64', data: 'eA==', replay: false });
         return { receipt: Promise.resolve({ ok: true as const, value: { operationKey: request.operationKey,
-          sessionId, epochId: `epoch-${'e'.repeat(32)}`, revision: 0, boundAt: NOW, replayed: false } }),
+          sessionId, epochId: `epoch-${'e'.repeat(32)}`, outputSequence: 0, boundAt: NOW, replayed: false } }),
           exit: new Promise<never>(() => undefined) };
       },
       close,
@@ -249,6 +249,7 @@ describe('composite-principal session policy', () => {
     // The refused create never reached the host: capacity is decided before the host call.
     expect(requests).toHaveLength(8);
     expect(state.document.sessions.filter((record) => record.controller?.operator === 'alice')).toHaveLength(8);
+    expect(state.document.epochId).toBe(`epoch-${'e'.repeat(32)}`);
 
     // A different browser session of the same operator keeps its own bucket.
     await expect(registry.create(ALICE_B, MANUAL_REQUEST)).resolves.toMatchObject({ ok: true });
@@ -271,6 +272,147 @@ describe('composite-principal session policy', () => {
     expect(requests[0]?.principal).toEqual(ALICE_A);
   });
 
+  it('replays the non-terminal manual incarnation instead of the oldest terminal row', async () => {
+    const operationKey = `op-${'6'.repeat(64)}`;
+    const epochId = `epoch-${'7'.repeat(32)}`;
+    const oldSessionId = `pty-${'8'.repeat(32)}`;
+    const liveSessionId = `pty-${'9'.repeat(32)}`;
+    const base = {
+      operationKey,
+      requestHash: 'a'.repeat(64),
+      recipeDigest: 'b'.repeat(64),
+      launcher: 'shell' as const,
+      host: 'desktop' as const,
+      rootId: 'repo' as const,
+      relativeCwd: '',
+      name: 'Shell',
+      attachmentIds: [],
+      transcript: { path: `pty/transcripts/${oldSessionId}.raw`, bytes: 0, truncated: false, lastSequence: 0 },
+      revision: 1,
+      provenance: 'manual' as const,
+      controller: ALICE_A,
+      epochId,
+    };
+    const seed = createEmptyPtySessionsDocument();
+    seed.epochId = epochId;
+    seed.sessions.push({
+      ...base,
+      sessionId: oldSessionId,
+      startedAt: '2026-08-23T11:00:00.000Z',
+      endedAt: '2026-08-23T11:30:00.000Z',
+      state: 'exited',
+      exit: { sessionId: oldSessionId, sequence: 1, exitCode: 0, signal: null,
+        reason: 'exited', observedAt: '2026-08-23T11:30:00.000Z' },
+    }, {
+      ...base,
+      sessionId: liveSessionId,
+      transcript: { ...base.transcript, path: `pty/transcripts/${liveSessionId}.raw` },
+      startedAt: NOW,
+      endedAt: null,
+      state: 'live',
+      exit: null,
+    });
+    const { persistence } = validatingPersistence(seed);
+    const host = {
+      probe: async () => ({ available: true as const, host: 'desktop' as const,
+        transport: 'local-node-pty' as const, launchers: ['shell' as const], roots: ['repo' as const],
+        epochId, checkedAt: NOW }),
+      create: () => ({
+        receipt: Promise.resolve({ ok: true as const, value: {
+          operationKey, sessionId: liveSessionId, epochId, outputSequence: 0, boundAt: NOW, replayed: true,
+        } }),
+        exit: new Promise<never>(() => undefined),
+      }),
+    } as unknown as SessionHost;
+    const registry = createSessionRecordRegistry({
+      persistence,
+      host,
+      now: () => NOW,
+      makeOperationKey: () => operationKey,
+    });
+
+    await expect(registry.create(ALICE_A, MANUAL_REQUEST)).resolves.toMatchObject({
+      ok: true,
+      value: { sessionId: liveSessionId, state: 'live' },
+    });
+  });
+
+  it('records an abandoned start compensation as an abandoned row and still settles the operation', async () => {
+    // The compensating path runs with whatever exit it OBSERVED, and a dropped socket (or a rejected
+    // launch-exit promise, as here) observes `abandoned`. The document refuses an `exited` row whose exit
+    // reason is `abandoned`, so writing the row and the operation settlement in ONE mutate threw the
+    // settlement away with the row and left the key `pending` forever, with nothing to explain it.
+    const epochId = `epoch-${'e'.repeat(32)}`;
+    const hostOperationKey = `op-${'7'.repeat(64)}`;
+    const requestHash = '8'.repeat(64);
+    const sessionId = `pty-${'9'.repeat(32)}`;
+    const seed = createEmptyPtySessionsDocument();
+    seed.epochId = epochId;
+    seed.attemptOperations[hostOperationKey] = {
+      operationKey: hostOperationKey,
+      requestHash,
+      status: 'pending',
+      promptsDelivered: 0,
+      sessionId: null,
+      attemptRef: 'attempt-a',
+      receipt: null,
+      revision: 1,
+      updatedAt: NOW,
+    };
+    // A receipt already standing on this key makes the binding mutate refuse AFTER the host created the
+    // session, which is exactly the window compensation exists for.
+    seed.operationReceipts.push({
+      operationKey: hostOperationKey,
+      requestHash,
+      status: 'failed',
+      sessionId: null,
+      attemptRef: 'attempt-a',
+      refusal: 'internal',
+      createdAt: NOW,
+      settledAt: NOW,
+    });
+    const { persistence, state } = validatingPersistence(seed);
+    const closed = vi.fn(async () => ({ ok: false as const, refusal: 'not-found' as const, detail: null }));
+    const host = {
+      probe: async () => ({ available: true as const, host: 'vm' as const,
+        transport: 'unix-broker' as const, launchers: ['claude' as const], roots: ['worktrees' as const],
+        epochId, checkedAt: NOW }),
+      create: () => ({
+        receipt: Promise.resolve({ ok: true as const, value: { operationKey: hostOperationKey, sessionId,
+          epochId, outputSequence: 0, boundAt: NOW, replayed: false } }),
+        exit: Promise.reject(new Error('host launch exit rejected')),
+      }),
+      close: closed,
+    } as unknown as SessionHost;
+    const registry = createSessionRecordRegistry({ persistence, host, hostKind: 'vm', now: () => NOW });
+
+    const sink: SessionSink = { data() {}, exit() {}, closed: () => false };
+    await expect(registry.startRunSession({
+      operator: 'alice',
+      runRef: 'run-a',
+      attemptRef: 'attempt-a',
+      managedSessionRef: 'managed-a',
+      hostOperationKey,
+      requestHash,
+      recipe: { launcher: 'claude', mode: 'headless-json', model: null, toolPolicyId: 'research',
+        sandbox: 'claude-policy' },
+      rootId: 'worktrees',
+      relativeCwd: 'run-a',
+      size: { cols: 80, rows: 24 },
+      displayName: 'Run A',
+      sink,
+    })).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
+
+    expect(closed).toHaveBeenCalledWith(sessionId);
+    expect(state.document.sessions.find((item) => item.sessionId === sessionId)).toMatchObject({
+      state: 'abandoned', abandonReason: 'start-recovery', exit: { reason: 'abandoned' },
+    });
+    // The settlement survived the row it was written beside.
+    expect(state.document.attemptOperations[hostOperationKey]).toMatchObject({
+      status: 'failed', sessionId, receipt: { status: 'failed', refusal: 'binding-conflict' },
+    });
+  });
+
   it('mints every data sequence as a byte offset, exactly once per host frame across all sinks', async () => {
     // [C-R6] W0 amendment #3. The host numbers frames 1, 2, 3; the wire numbers BYTES. Two sinks see
     // every frame (the registry's transcript sink and the attachment's), and the two hosts deliver
@@ -289,7 +431,7 @@ describe('composite-principal session policy', () => {
         hostSink = sink;
         sessionId = `pty-${'a'.repeat(32)}`;
         return { receipt: Promise.resolve({ ok: true as const, value: { operationKey: request.operationKey,
-          sessionId, epochId: `epoch-${'e'.repeat(32)}`, revision: 0, boundAt: NOW, replayed: false } }),
+          sessionId, epochId: `epoch-${'e'.repeat(32)}`, outputSequence: 0, boundAt: NOW, replayed: false } }),
           exit: new Promise<never>(() => undefined) };
       },
       attach: async (_id: string, sink: SessionSink) => {
@@ -360,7 +502,7 @@ describe('composite-principal session policy', () => {
     }
 
     /** Same inline CAS shape as the other registry tests in this file — no strict-validator overhead. */
-    function simplePersistence(seed: PtySessionsDocumentV2): SessionPersistence {
+    function simplePersistence(seed: PtySessionsDocumentV3): SessionPersistence {
       let document = seed;
       let mutation = Promise.resolve();
       return {
@@ -617,7 +759,7 @@ describe('composite-principal session policy', () => {
         const sessionId = `pty-${serial.toString(16).padStart(32, '0')}`;
         return {
           receipt: Promise.resolve({ ok: true, value: { operationKey: request.operationKey, sessionId,
-            epochId: `epoch-${'e'.repeat(32)}`, revision: 0, boundAt: NOW, replayed: false } }),
+            epochId: `epoch-${'e'.repeat(32)}`, outputSequence: 0, boundAt: NOW, replayed: false } }),
           exit: new Promise(() => undefined),
         };
       },
