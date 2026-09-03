@@ -665,3 +665,25 @@
   drift/script card until the shard is read.
 - Dashboards regenerated (executive.md + handover.md) with corrected card attribution
   (6a7c0ebf umbrella drift, unchanged; 6a605ebb missing-script).
+
+## 2026-09-03 nightly-review (card 6a9911bd-44f336fd)
+- Clean run. preamble OK, pyyaml OK, sync_skills --check clean. Dispatched 1 card
+  (nightly-review), executed it acts-alone (T1), regenerated both dashboards, card -> done.
+  Push path recorded in the run summary.
+- SAME SLIP, THIRD TIME (09-01, 09-03): at step 2b I edited 6a605ebb (the script-absence card)
+  with a fresh drift block BEFORE reading this shard. The shard's standing rule caught it: the
+  drift UMBRELLA is 6a7c0ebf, NOT 6a605ebb, and you never churn a drift card. Reverted with
+  `git checkout -- queue/inbox/6a605ebb-d86dff79.md`. Net ops writes stayed clean:
+  dashboards + memory + ledger + the executed cadence card only.
+- DRIFT ACTUALLY SHRANK this run: main-copy `sync_daemon_dirs.py --check` now reports just 1
+  ops-only path (orgs/kb-ops/workflows/acceptance-run.md) vs 11 on 08-18 — the desktop `--sync`
+  clearly ran since, reconciling the 10 faceless-youtube main->ops paths. The sole remaining
+  path is exactly what umbrella 6a7c0ebf already documents (back-port-vs-prune, human call), so
+  actionable core is UNCHANGED -> filed/churned NOTHING. Reported the shrink in the dashboards
+  only (dashboards regenerate in full, they don't churn cards). Issue #2 (script absent on ops)
+  still open per 6a605ebb; worked around via the origin/main copy again.
+- ELEVATED FIX (still not internalized after 3 runs): on a fresh cloud clone, READ THIS SHARD
+  IMMEDIATELY AFTER PREAMBLE, before step 2b. Do NOT touch any drift/script card until the shard
+  is read. The routine reads memory at WO4, which is too late for the step-2b drift-card decision.
+- Anomaly noted for the desk: stale working card 6a6bc3dd-5494006b (kb-ops iter-smoke-t2,
+  codex-worker, T1) idle ~5 weeks in working/ — stranded-archiver or human walk-back candidate.
