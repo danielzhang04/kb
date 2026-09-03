@@ -306,3 +306,39 @@ deploy) and the three CI PRs (run the workflow's steps once on WSL). Rule: befor
 - [ ] P5 iteration-loop-demo complete (codex proven)
 - [ ] P6 opus evidence audit PASS; memory + STATE + handoff updated
 - [ ] P7 D-1 drain-cadence design PR (codex plan → opus review), after Gate 4
+
+## 2026-09-03 OVERNIGHT (Daniel asleep from ~07:35 ET) — everything parked at PRs; MORNING CHECKLIST at the end
+
+**What landed overnight (no merges, no deploys, no Inbox actions — all Daniel's):**
+- **PR #159** `claude/headless-stdin-pipe` @ f600ca9c — the Gate-4 blocker fix. Headless (`headless-json`)
+  launches get stdin on a PIPE and stdout/stderr on the PTY slave via a root-owned Python exec shim
+  (`dashboard/server/pty/pipeStdinExec.py`, packed in the broker archive, run `python3 -I`): fresh blocking
+  tty, TIOCSCTTY, closes every fd but 0/1/2 + the pinned CLI fd (FD_CLOEXEC), `execv('/proc/self/fd/<cli>')`.
+  `/usr/bin/python3` pinned once at broker start. **VM fact found by the review: codex's npm entrypoint is a
+  `#!/usr/bin/env node` wrapper** — a pinned-descriptor exec cannot run it (and the tty path was already
+  silently broken). codex now pins the NATIVE ELF at
+  `~/.local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex`
+  through a fixed candidate list shared by the capability probe and create (probe drops claude/codex when
+  python3 is missing: never advertise what create refuses). Three opus review rounds (BLOCKED 7 → MERGEABLE +7
+  folded → MERGEABLE +3 folded). Evidence: WSL real-broker harness 55/55 six consecutive runs (asserts
+  STDIN_TTY=0, PTMX=0 FDS=0,1,2,3, CTTY=yes, NONBLOCK=0 + 1 MiB burst exact, STDIN_TTY=1 for shell); Windows
+  tsc 0 both projects, 435 green; `scripts/vm_launch_preflight.sh` (updated in the PR) run on the VM: codex
+  native resolves, python3 ok, only FAIL = shim not yet deployed (expected). Runbook addendum included.
+- **PR #158** `claude/p4e-residue` @ 271e006f — W22 residue (timeout-synthesized exit now reaches attached
+  sinks exactly once; exact refusal text pins both sides of the mid-sequence boundary; compensating-close
+  refusals reported; guarded fan-out). Three commits, three opus rounds, READY.
+- **PR #157** — drain-cadence PLAN (docs only, D-1): split the alarm from the ceremony; needs Daniel's ruling.
+- Files touched by #158 and #159 are disjoint; merge in any order; ONE deploy after both.
+- New follow-up P10: `p3DeletionClosure` needs >5 s for git spawns on Windows (12/12 with a 30 s cap).
+
+**MORNING CHECKLIST (Daniel, in order):**
+1. Merge #159 and #158 (and #157 whenever; no deploy needed for it).
+2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File "<scratchpad>\morning-rebuild.ps1"` — builds the
+   release from origin/main on WSL (refuses if origin/main lacks f600ca9c / 271e006f), copies tarball +
+   attestation to `<scratchpad>\release\`, rewrites `deploy-pty-fix.ps1`'s `$Sha`/`$BrokerDigest` defaults
+   and prints the deploy command. (scratchpad = `C:\Users\danie\AppData\Local\Temp\claude\C--Users-danie-kb\4dd42e67-0f8b-4af6-8b11-3b12053e0b5c\scratchpad`)
+3. Close every dashboard Terminal tab; run the printed `deploy-pty-fix.ps1 -SigningKey <your key path>`
+   (release first, broker by MANIFEST digest, daemon restart last, admission probe 404).
+4. Say "deployed" — boss runs the preflight on the VM (expects CLEAN now), relaunches Gate 4a
+   (`acceptance-run`, sonnet driver + journal monitor), and pings you one Inbox gate at a time.
+5. Gate 4b (`iteration-loop-demo`) follows; codex launches are now expected to work (native-binary pin).
