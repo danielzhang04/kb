@@ -3953,7 +3953,7 @@ describe('operator cross-subject authority', () => {
 });
 
 describe('Dashboard v3 run and gate routes', () => {
-  function seededSurface() {
+  function seededSurface(contextOverrides: Record<string, unknown> = {}) {
     let id = 0;
     const store = createInMemoryControlPlaneStore({ newId: () => `dv3-${++id}` });
     const created = store.createProposalRevision('dashboard-engine', {
@@ -4028,6 +4028,10 @@ describe('Dashboard v3 run and gate routes', () => {
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+      // W47: last, so a case can drop the `credentials: () => []` stub and fall through to the
+      // PRODUCTION default (`() => resolveCredentials()` over process.env) instead of a composition
+      // override. See the W47 describe below.
+      ...contextOverrides,
     }));
     return {
       app, store, hubBus, attemptIo, providerAttemptRef: providerAttempt.value.attemptRef,
@@ -4201,6 +4205,77 @@ describe('Dashboard v3 run and gate routes', () => {
         ok: true, value: { state: 'open', response: null },
       });
     } finally { await fixture.app.close(); }
+  });
+
+  /**
+   * W47 - the T3 ceremony over the REAL credential store, with NO composition override.
+   *
+   * Every prior tailnet ceremony case injected `credentials: () => [CRED]`, so `ceremonyModeAdmits`
+   * was only ever proved against a stub; in production `resolveCredentials()` reads exactly one
+   * variable (auth/credentialStore.ts) that tailnet mode used to refuse to boot with, which is why the
+   * first VM acceptance run parked at a `403 ceremony-unavailable` approval gate nobody could clear.
+   * These two cases drop the stub entirely: `credentials: undefined` falls through to the production
+   * default `() => resolveCredentials()` over `process.env`, and `webAuthnConfig` likewise falls
+   * through to `resolveWebAuthnConfig()`. RED ON REVERT: restore the blanket tailnet retirement (or
+   * re-narrow `ceremonyModeAdmits` to win32-desktop) and the 200 case goes 403.
+   */
+  describe('W47 tailnet T3 ceremony over the real credential store', () => {
+    const REAL_ENV = {
+      DASHBOARD_RP_ORIGIN: ORIGIN,
+      DASHBOARD_WEBAUTHN_CREDENTIALS: '[{"id":"cred-1","publicKey":"AQID","counter":0}]',
+    };
+    let saved: Record<string, string | undefined> = {};
+
+    function realCredentialSurface(env: Record<string, string | undefined>) {
+      saved = { DASHBOARD_RP_ORIGIN: process.env.DASHBOARD_RP_ORIGIN, DASHBOARD_WEBAUTHN_CREDENTIALS: process.env.DASHBOARD_WEBAUTHN_CREDENTIALS };
+      for (const [name, value] of Object.entries(env)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      // No `credentials` and no `webAuthnConfig` key survives: both resolve from process.env exactly
+      // as the daemon does.
+      return seededSurface({ authMode: 'tailnet', credentials: undefined, webAuthnConfig: undefined });
+    }
+
+    afterEach(() => {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    });
+
+    it('tailnet + a provisioned DASHBOARD_WEBAUTHN_CREDENTIALS issues the challenge (200 + ceremonyId)', async () => {
+      const fixture = realCredentialSurface(REAL_ENV);
+      try {
+        const challenge = await fixture.app.inject({
+          method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond/challenge`,
+          headers: headers(fixture.operatorToken), payload: {
+            expectedRevision: fixture.request.revision, decision: 'approved', response: null,
+          },
+        });
+        expect(challenge.statusCode, challenge.body).toBe(200);
+        const body = challenge.json() as { ceremonyId: string; options: { allowCredentials?: Array<{ id: string }> }; challengeExpiresAt: string };
+        expect(typeof body.ceremonyId).toBe('string');
+        expect(body.ceremonyId.length).toBeGreaterThan(0);
+        expect(typeof body.challengeExpiresAt).toBe('string');
+        // The allowlist came from the env-provisioned store, not from a test double.
+        expect(body.options.allowCredentials?.map((entry) => entry.id)).toEqual(['cred-1']);
+      } finally { await fixture.app.close(); }
+    });
+
+    it('tailnet with NO provisioned credentials still refuses 403 ceremony-unavailable (unchanged)', async () => {
+      const fixture = realCredentialSurface({ ...REAL_ENV, DASHBOARD_WEBAUTHN_CREDENTIALS: undefined });
+      try {
+        const challenge = await fixture.app.inject({
+          method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond/challenge`,
+          headers: headers(fixture.operatorToken), payload: {
+            expectedRevision: fixture.request.revision, decision: 'approved', response: null,
+          },
+        });
+        expect(challenge.statusCode).toBe(403);
+        expect(challenge.json()).toEqual({ error: 'ceremony-unavailable' });
+      } finally { await fixture.app.close(); }
+    });
   });
 });
 

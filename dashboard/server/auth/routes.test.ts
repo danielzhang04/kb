@@ -64,13 +64,78 @@ describe('auth ceremony routes', () => {
     rmSync(testStateRoot, { recursive: true, force: true });
   });
 
-  it.each(['tailnet', 'win32-desktop'] as const)('reports only the %s auth mode', async (authMode) => {
+  it.each(['tailnet', 'win32-desktop'] as const)('reports the %s auth mode and a fail-closed ceremonyAvailable', async (authMode) => {
     ({ app } = buildApp({ authMode }));
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/context' });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ mode: authMode });
+    // W47: with no provisioned credential the answer is `false` in BOTH modes - the same predicate the
+    // T3 challenge routes enforce, so the client never renders an Approve the routes would refuse.
+    expect(res.json()).toEqual({ mode: authMode, ceremonyAvailable: false });
+  });
+
+  it.each(['tailnet', 'win32-desktop'] as const)('W47: %s + a provisioned credential reports ceremonyAvailable true', async (authMode) => {
+    // RED ON REVERT: drop `ceremonyAvailable` from the route (or re-narrow `ceremonyModeAdmits` to
+    // win32-desktop) and the tailnet case fails - which is exactly the client-side half of the defect
+    // that parked the first VM acceptance run at an unapprovable T3 gate.
+    ({ app } = buildApp({ authMode, credentials: () => [{ id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 }] }));
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/context' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ mode: authMode, ceremonyAvailable: true });
+    // It never leaks the store: no id, no key material, no count.
+    expect(res.body).not.toContain('cred-1');
+  });
+
+  /**
+   * W47 [review item 3]: WHO may run a ceremony.
+   *
+   * win32-desktop keeps them public - the assertion IS the credential there, so a session gate would
+   * be circular. tailnet has no circularity (the transport proves the operator first), and tailnet
+   * membership on the VM is root-equivalent, so a public enrolment route would let ANY tailnet
+   * principal drive a registration against the VM's RP. RED ON REVERT: drop `ceremonyGate` from the
+   * four routes in auth/routes.ts and the refusal case below returns 200/503 instead of 403.
+   */
+  describe('W47 tailnet ceremony routes sit behind the operator identity gate', () => {
+    const CEREMONY_ROUTES = [
+      '/api/auth/register/options', '/api/auth/register/verify',
+      '/api/auth/assert/options', '/api/auth/assert/verify',
+    ] as const;
+    const deny = { authenticate: () => ({ ok: false as const, reason: 'identity-not-allowed' as const }) };
+    const allow = {
+      authenticate: () => ({ ok: true as const, subject: 'operator', attribution: { login: 'daniel@x' } }),
+    };
+
+    it.each(CEREMONY_ROUTES)('refuses %s for a non-operator tailnet identity', async (url) => {
+      ({ app } = buildApp({ authMode: 'tailnet', sessionConfig: { ...SESSION, operatorAuth: deny } }));
+      const res = await app.inject({ method: 'POST', url, payload: {} });
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'forbidden', reason: 'identity-not-allowed' });
+    });
+
+    it('admits the pinned operator to the register ceremony once an RP origin is set', async () => {
+      ({ app } = buildApp({ authMode: 'tailnet', sessionConfig: { ...SESSION, operatorAuth: allow } }));
+      const res = await app.inject({ method: 'POST', url: '/api/auth/register/options', payload: {} });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(typeof res.json().ceremonyId).toBe('string');
+    });
+
+    it('leaves /api/auth/context public in tailnet mode - it is the boot discovery call', async () => {
+      ({ app } = buildApp({ authMode: 'tailnet', sessionConfig: { ...SESSION, operatorAuth: deny } }));
+      const res = await app.inject({ method: 'GET', url: '/api/auth/context' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ mode: 'tailnet', ceremonyAvailable: false });
+    });
+
+    it.each(CEREMONY_ROUTES)('leaves %s PUBLIC in win32-desktop mode (unchanged)', async (url) => {
+      // No operatorAuth, no bearer: the gate must not exist in this mode, or nobody could sign in.
+      ({ app } = buildApp({ authMode: 'win32-desktop' }));
+      const res = await app.inject({ method: 'POST', url, payload: {} });
+      expect(res.statusCode).not.toBe(401);
+      expect(res.statusCode).not.toBe(403);
+    });
   });
 
   it('a genuinely unknown ceremonyId is refused as bad-ceremony', async () => {

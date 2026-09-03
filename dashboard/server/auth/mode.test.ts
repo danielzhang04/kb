@@ -55,6 +55,13 @@ describe('resolveTailnetConfig', () => {
   });
 });
 
+/** W47: a tailnet env carrying the re-admitted, correctly-pinned passkey pair. */
+const PASSKEY_TAILNET = {
+  ...TAILNET,
+  DASHBOARD_RP_ORIGIN: 'https://kb.command.ts.net',
+  DASHBOARD_WEBAUTHN_CREDENTIALS: '[{"id":"cred-1","publicKey":"AQID","counter":0}]',
+};
+
 describe('assertAuthModeBoot', () => {
   it('is a no-op in win32 desktop mode on any platform or bind host', () => {
     expect(assertAuthModeBoot({ env: {}, bindHost: '0.0.0.0', platform: 'win32' })).toBe('win32-desktop');
@@ -91,17 +98,61 @@ describe('assertAuthModeBoot', () => {
       .toThrow(AuthModeError);
   });
 
-  it('SECURITY: REFUSES to start when a retired WebAuthn env is still present in tailnet mode', () => {
-    // Defense in depth beyond the python ExecStartPre closed set: if both were set, a passkey unlock
-    // could flip the latch source tailnet->passkey and re-open the two historical repair paths.
-    for (const stale of ['DASHBOARD_RP_ORIGIN', 'DASHBOARD_WEBAUTHN_CREDENTIALS']) {
+  // W47 - the CONSTRAINED tailnet passkey channel replaces the blanket retirement this case used to
+  // assert. RED ON REVERT: restore `RETIRED_IN_TAILNET` and the three admitting cases below fail (a
+  // valid pair, and the origin-only enrolment posture, would be refused); drop the constraint entirely
+  // and the mismatched-origin, credentials-only and zero-credential cases fail.
+  it('W47: BOTH ABSENT stays legal - the default VM posture is unchanged', () => {
+    expect(assertAuthModeBoot({ env: TAILNET, bindHost: '127.0.0.1', platform: 'linux' })).toBe('tailnet');
+  });
+
+  it('W47: admits a valid RP-origin + credential PAIR in tailnet mode', () => {
+    expect(assertAuthModeBoot({ env: PASSKEY_TAILNET, bindHost: '127.0.0.1', platform: 'linux' })).toBe('tailnet');
+  });
+
+  it('W47 SECURITY: REFUSES a DASHBOARD_RP_ORIGIN that is not exactly https://<tailnet host>', () => {
+    for (const wrong of [
+      'https://evil.ts.net', 'http://kb.command.ts.net', 'https://kb.command.ts.net/',
+      'https://kb.command.ts.net:443', 'HTTPS://kb.command.ts.net',
+    ]) {
       expect(() => assertAuthModeBoot({
-        env: { ...TAILNET, [stale]: 'x' }, bindHost: '127.0.0.1', platform: 'linux',
-      })).toThrow(new RegExp(stale));
+        env: { ...PASSKEY_TAILNET, DASHBOARD_RP_ORIGIN: wrong }, bindHost: '127.0.0.1', platform: 'linux',
+      })).toThrow(/DASHBOARD_RP_ORIGIN to equal https:\/\/kb\.command\.ts\.net exactly/);
     }
   });
 
-  it('leaves a retired WebAuthn env untouched in win32-desktop mode (it is that mode\'s own config)', () => {
+  it('W47: RP ORIGIN ALONE is legal - the enrolment posture, which grants nothing', () => {
+    // The register ceremony needs an RP origin and is the only way to obtain a credential, so this
+    // state must boot. It confers no authority: the store is empty, so ceremonyAvailable is false and
+    // every T3 challenge answers 403 (proved in auth/routes.test.ts and control/routes.test.ts).
+    const { DASHBOARD_WEBAUTHN_CREDENTIALS: _creds, ...originOnly } = PASSKEY_TAILNET;
+    expect(assertAuthModeBoot({ env: originOnly, bindHost: '127.0.0.1', platform: 'linux' })).toBe('tailnet');
+  });
+
+  it('W47 SECURITY: REFUSES credentials WITHOUT an RP origin - a store that can pin no RP-ID', () => {
+    const { DASHBOARD_RP_ORIGIN: _origin, ...credsOnly } = PASSKEY_TAILNET;
+    expect(() => assertAuthModeBoot({ env: credsOnly, bindHost: '127.0.0.1', platform: 'linux' }))
+      .toThrow(/requires DASHBOARD_RP_ORIGIN whenever DASHBOARD_WEBAUTHN_CREDENTIALS is set/);
+  });
+
+  it('W47 SECURITY: the origin-equality rule applies to an origin-ONLY env too', () => {
+    const { DASHBOARD_WEBAUTHN_CREDENTIALS: _creds, ...originOnly } = PASSKEY_TAILNET;
+    expect(() => assertAuthModeBoot({
+      env: { ...originOnly, DASHBOARD_RP_ORIGIN: 'https://evil.ts.net' }, bindHost: '127.0.0.1', platform: 'linux',
+    })).toThrow(/to equal https:\/\/kb\.command\.ts\.net exactly/);
+  });
+
+  it('W47 SECURITY: REFUSES a credentials value that resolves to ZERO credentials', () => {
+    // Exactly the values `resolveCredentials()` maps to []: a daemon that "has" the channel but could
+    // never verify an assertion must not boot claiming it.
+    for (const bad of ['[]', 'not-json', '{"id":"a","publicKey":"b"}', '[{"id":"a"}]', '[null]']) {
+      expect(() => assertAuthModeBoot({
+        env: { ...PASSKEY_TAILNET, DASHBOARD_WEBAUTHN_CREDENTIALS: bad }, bindHost: '127.0.0.1', platform: 'linux',
+      })).toThrow(AuthModeError);
+    }
+  });
+
+  it('W47: the constraint is tailnet-only - win32-desktop owns these two vars outright', () => {
     expect(assertAuthModeBoot({
       env: { DASHBOARD_RP_ORIGIN: 'https://x.ts.net' }, bindHost: '127.0.0.1', platform: 'linux',
     })).toBe('win32-desktop');

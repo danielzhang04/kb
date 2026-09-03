@@ -28,10 +28,23 @@ const fakeBrowser: WebAuthnBrowserLike = {
 
 describe('fetchAuthContext', () => {
   it.each(['win32-desktop', 'tailnet'] as const)('accepts the server auth mode %s', async (mode) => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ mode }));
+    const fetchImpl = vi.fn(async () => jsonResponse({ mode, ceremonyAvailable: true }));
 
-    await expect(fetchAuthContext(fetchImpl as unknown as typeof fetch)).resolves.toEqual({ mode });
+    await expect(fetchAuthContext(fetchImpl as unknown as typeof fetch))
+      .resolves.toEqual({ mode, ceremonyAvailable: true });
     expect(fetchImpl).toHaveBeenCalledWith('/api/auth/context', { method: 'GET' });
+  });
+
+  it.each([
+    { ceremonyAvailable: false },
+    {},
+    { ceremonyAvailable: 'yes' },
+    { ceremonyAvailable: 1 },
+  ])('W47: reads ceremonyAvailable fail-closed from %o', async (extra) => {
+    // Only a literal `true` enables the T3 Approve control. An older daemon that omits the field, or a
+    // truthy-but-not-boolean value, reads false - the client can only be MORE restrictive than the routes.
+    const context = await fetchAuthContext(async () => jsonResponse({ mode: 'tailnet', ...extra }));
+    expect(context).toEqual({ mode: 'tailnet', ceremonyAvailable: false });
   });
 
   it.each([

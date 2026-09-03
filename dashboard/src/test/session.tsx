@@ -11,7 +11,7 @@ import {
   type SessionProviderDeps,
 } from '../lib/sessionContext';
 
-const TEST_AUTH_CONTEXT = { mode: 'win32-desktop' as const };
+const TEST_AUTH_CONTEXT = { mode: 'win32-desktop' as const, ceremonyAvailable: true };
 
 type TestSignIn = NonNullable<SessionProviderDeps['signIn']>;
 

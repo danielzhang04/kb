@@ -245,6 +245,124 @@ new-work route until a drain runs, whether or not anyone touched the VM in betwe
 - **P7** — the 24h drain ceiling in §e degrades admission daily with only a signed manual ceremony;
   auto-drain or a no-fleet-pause receipt path is owed as a follow-up PR.
 
+- **Run gates are not projected into the Inbox (W47 follow-up).** An open T3 `approval` on a run is
+  reachable only by navigating to that run's inspector; Inbox does not list it, so a parked run is
+  invisible until someone goes looking. Deliberately out of W47's scope - it is a projection, not an
+  authorization change - and owed as a separate PR.
+- **The iteration-gates resolve route (W47 follow-up).** It resolves a gate without the
+  `ceremonyModeAdmits` + credential check the human-request and deployment challenge routes enforce, so
+  the two T3 paths disagree about what D2.13 requires. A governance inconsistency, not a W47 defect;
+  it needs its own card and its own ruling before code moves.
+
+## h. One-time: register Daniel's passkey against the VM RP (W47)
+
+**Why.** The first complete acceptance run parked at a T3 `approval` gate nobody could clear:
+`POST /api/control/human-requests/:ref/respond/challenge` answered `403 ceremony-unavailable` because
+`ctx.credentials()` was `[]` by construction. `resolveCredentials()` reads exactly one variable
+(`DASHBOARD_WEBAUTHN_CREDENTIALS`, `dashboard/server/auth/credentialStore.ts`), and tailnet mode used
+to REFUSE TO BOOT if it or `DASHBOARD_RP_ORIGIN` was set. `governance/risk-tiers.md` D2.13 says a T3
+decision travels a WebAuthn-signed channel only, so the fix is a constrained channel, never a bypass.
+
+**The three legal postures in tailnet mode** (`auth/mode.ts#assertTailnetPasskeyChannel`, mirrored by
+`deploy/validate_vm_runtime.py#_validate_passkey_channel`):
+
+| `DASHBOARD_RP_ORIGIN` | `DASHBOARD_WEBAUTHN_CREDENTIALS` | boot | T3 gates |
+| --- | --- | --- | --- |
+| absent | absent | OK (today's default) | unavailable |
+| set | absent | OK (**enrolment posture**) | unavailable |
+| set | set | OK | approvable |
+| absent | set | **REFUSED** | - |
+
+When set, the RP origin must be EXACTLY `https://<DASHBOARD_TAILNET_HOST>` and the credential JSON
+must parse to at least one entry. The enrolment posture grants nothing: an empty store means
+`ceremonyAvailable` is false, every T3 challenge is `403 ceremony-unavailable`, and `assert/verify` is
+`401` with no credential to match. Credentials without an origin refuse because a store that can pin no
+RP-ID can never verify anything while still looking provisioned.
+
+**The execution latch is untouched.** Tailnet arms it at boot with `source: 'tailnet'` and `unlock()`
+short-circuits on an already-constructed execution, so no passkey assertion can ever re-source it
+(proved byte-identically in `dashboard/server/control/activation.test.ts`).
+
+**There is NO registration page.** Neither mode ships one; enrolment has always been a deliberate
+out-of-band human step (`credentialStore.ts` never writes a store, per CLAUDE.md's credential ceiling).
+`/api/auth/register/verify` REPORTS the material; it never trusts it. A human installs it. In tailnet
+mode the four ceremony routes sit behind the operator identity gate (peer-uid + the pinned
+`DASHBOARD_TAILNET_OPERATOR`), so only Daniel's browser can drive the ceremony; `/api/auth/context`
+stays public in both modes.
+
+```bash
+# ON THE VM, as root. PHASE 1 - the RP origin ONLY, installed as a DROP-IN. Never edit the fragment:
+# deploy/bootstrap_vm.py re-renders it on every converge and would drop the line (assert_unit_env_complete
+# refuses a fragment carrying either name). The drop-in's CONTENT is pinned too - validate_vm_runtime.py
+# refuses anything but a [Service] header plus these Environment= names, so it can never widen the sandbox.
+install -d -m 0755 /etc/systemd/system/kb-dashboard.service.d
+cat > /etc/systemd/system/kb-dashboard.service.d/passkey.conf <<'CONF'
+[Service]
+# W47 T3 passkey channel. PUBLIC keys only - see deploy/validate_vm_runtime.py PASSKEY_UNIT_ENV.
+Environment=DASHBOARD_RP_ORIGIN=https://kb.tail82dd4f.ts.net
+CONF
+chmod 0644 /etc/systemd/system/kb-dashboard.service.d/passkey.conf
+systemctl daemon-reload && systemctl restart kb-dashboard
+systemctl is-active kb-dashboard   # ExecStartPre runs the W47 checks; a bad value fails loudly here
+```
+
+Then, in Daniel's browser, on `https://kb.tail82dd4f.ts.net` (the tab must be on that exact origin -
+the routes are origin-guarded, the RP-ID is derived from it, and the operator gate reads this
+connection's tailnet identity), open DevTools and run:
+
+```js
+// PHASE 2 - the Windows Hello ceremony. Paste as one block.
+const j = async (u, b) => (await fetch(u, {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(b||{})})).json();
+const { ceremonyId, options } = await j('/api/auth/register/options');
+// SimpleWebAuthn's startRegistration is not on the page; drive the platform API directly.
+const dec = s => Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
+const enc = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const cred = await navigator.credentials.create({ publicKey: {
+  ...options,
+  challenge: dec(options.challenge),
+  user: { ...options.user, id: dec(options.user.id) },
+  excludeCredentials: (options.excludeCredentials||[]).map(c => ({...c, id: dec(c.id)})),
+}});
+const out = await j('/api/auth/register/verify', { ceremonyId, response: {
+  id: cred.id, rawId: enc(cred.rawId), type: cred.type,
+  response: {
+    clientDataJSON: enc(cred.response.clientDataJSON),
+    attestationObject: enc(cred.response.attestationObject),
+    transports: cred.response.getTransports ? cred.response.getTransports() : [],
+  },
+  clientExtensionResults: cred.getClientExtensionResults(),
+}});
+// out.verified must be true. Copy the ONE-LINE JSON array below into the drop-in.
+console.log(JSON.stringify([out.credential]));
+```
+
+```bash
+# ON THE VM, as root. PHASE 3 - APPEND the credentials line to the drop-in, verbatim, on one line.
+# Keep the surrounding single quotes: systemd Environment= is shlex-split and the JSON contains commas.
+cat >> /etc/systemd/system/kb-dashboard.service.d/passkey.conf <<'CONF'
+Environment=DASHBOARD_WEBAUTHN_CREDENTIALS='<PASTE>'
+CONF
+systemctl daemon-reload && systemctl restart kb-dashboard
+curl -s https://kb.tail82dd4f.ts.net/api/auth/context   # expect {"mode":"tailnet","ceremonyAvailable":true}
+sudo /opt/kb-releases/current/scripts/vm_launch_preflight.sh https://kb.tail82dd4f.ts.net
+```
+
+Then approve the parked gate in the UI: Run -> inspector -> the T3 gate now renders an enabled
+Approve instead of "Passkey ceremony unavailable", and clicking it runs the Windows Hello ceremony.
+
+**Owed to Daniel (human-edited, do NOT let an agent write it):** re-pin
+`governance/webauthn-credentials.yaml`. It still records the 2026-07-17 desktop enrolment -
+`rp-id: localhost`, `origin: http://localhost:5317` - and its own header says "Re-enroll + re-pin when
+moving to ts.net". The new pin is `rp-id: kb.tail82dd4f.ts.net`, `origin:
+https://kb.tail82dd4f.ts.net`, plus the new `credential-id` (and its `x`/`y`, which are the COSE
+coordinates inside the `publicKey` this ceremony returned). Whether the localhost entry stays as a
+second row is Daniel's call: it is the desktop dashboard's own root of trust, not stale drift.
+
+**Rollback.** `rm /etc/systemd/system/kb-dashboard.service.d/passkey.conf && systemctl daemon-reload &&
+systemctl restart kb-dashboard`. That returns the VM to the both-absent default posture, which is a
+legal boot; the only thing lost is T3 gate approval in the UI. To roll back only the credential
+(keeping enrolment reachable), delete just the `DASHBOARD_WEBAUTHN_CREDENTIALS` line.
+
 ## Addendum 2026-09-03 10:22Z: the CLI's own stdin rule (found by the first real launch)
 
 With every layer above fixed, the first real `claude` attempt on the VM started, received its prompt over the

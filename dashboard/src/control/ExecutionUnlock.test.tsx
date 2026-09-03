@@ -19,7 +19,7 @@ import { ControlApiError } from './controlClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession, SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
 
-const win32Context = async () => ({ mode: 'win32-desktop' as const });
+const win32Context = async () => ({ mode: 'win32-desktop' as const, ceremonyAvailable: true });
 
 /** The one unlock: a stored fresh bearer the provider reads on mount. */
 function unlocked(ui: React.ReactElement): React.ReactElement {
@@ -143,7 +143,7 @@ describe('ExecutionUnlock — execution arms with the sign-in', () => {
   it('treats tailnet execution as armed at boot without reading or unlocking the latch', async () => {
     const armingClient = client(vi.fn(async () => PASSKEY_UNLOCKED), [LOCKED]);
     render(
-      <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' }) }}>
+      <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' as const, ceremonyAvailable: false }) }}>
         <ExecutionArmingProvider client={armingClient}><ExecutionUnlock /></ExecutionArmingProvider>
       </SessionProvider>,
     );

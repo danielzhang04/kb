@@ -28,7 +28,7 @@ afterEach(() => {
 
 function unlocked(ui: React.ReactElement): React.ReactElement {
   persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
-  return <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'win32-desktop' }) }}>{ui}</SessionProvider>;
+  return <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'win32-desktop' as const, ceremonyAvailable: true }) }}>{ui}</SessionProvider>;
 }
 
 function detail(overrides: Partial<RunDetailDto> = {}): RunDetailDto {
@@ -117,6 +117,43 @@ describe('Dashboard v3 Run view', () => {
     expect(screen.getByRole('button', { name: 'Details' }).getAttribute('aria-expanded')).toBe('false');
   });
 
+  // W47: the T3 Approve control follows the SERVER's `ceremonyAvailable` (from /api/auth/context), not
+  // the auth mode. RED ON REVERT: put back `ceremonyAvailable={session.mode === 'win32-desktop'}` in
+  // RunDetail.tsx and the tailnet+available case below fails - Approve stays disabled and the
+  // "Passkey ceremony unavailable" notice stays rendered, which is exactly what parked the first VM
+  // acceptance run at an approval gate nobody could clear.
+  it.each([
+    { mode: 'tailnet' as const, ceremonyAvailable: true, enabled: true },
+    { mode: 'tailnet' as const, ceremonyAvailable: false, enabled: false },
+    { mode: 'win32-desktop' as const, ceremonyAvailable: true, enabled: true },
+    { mode: 'win32-desktop' as const, ceremonyAvailable: false, enabled: false },
+  ])('W47: the T3 Approve control follows server ceremonyAvailable ($mode/$ceremonyAvailable)', async (probe) => {
+    const t3 = humanRequest('request-t3', 'approval', 'Deployment approval');
+    vi.stubGlobal('EventSource', class {
+      addEventListener(): void { /* no-op */ }
+      close(): void { /* no-op */ }
+    });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/events?')) return new Response(JSON.stringify({
+        revision: 'a'.repeat(64), items: events, nextCursor: null,
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, value: detail({ humanRequests: [t3] }) }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
+    render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode: probe.mode, ceremonyAvailable: probe.ceremonyAvailable }) }}>
+      <RunDetail runRef="run-1" fetchImpl={fetchImpl} />
+    </SessionProvider>);
+    expect(await screen.findByText('Deployment approval')).toBeTruthy();
+    await waitFor(() => {
+      const approve = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
+      expect(approve.disabled).toBe(!probe.enabled);
+    });
+    expect(Boolean(screen.queryByText('Passkey ceremony unavailable'))).toBe(!probe.enabled);
+  });
+
   it('lists two open gates in server order and leaves one run attention after resolving the ordinary gate', async () => {
     const t3 = humanRequest('request-t3', 'approval', 'Deployment approval');
     const ordinary = humanRequest('request-ordinary', 'input', 'Operator input');
@@ -146,7 +183,7 @@ describe('Dashboard v3 Run view', () => {
     });
 
     persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
-    render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' }) }}>
+    render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' as const, ceremonyAvailable: false }) }}>
       <RunDetail runRef="run-1" fetchImpl={fetchImpl} />
     </SessionProvider>);
     expect(await screen.findByText('Deployment approval')).toBeTruthy();

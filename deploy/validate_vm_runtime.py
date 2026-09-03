@@ -27,17 +27,39 @@ CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTI
 # DASHBOARD_TAILNET_PROXY_UID}; this validator runs the SAME pairwise check against the unit env so a bad
 # pair fails one loud ExecStartPre instead of the first node request.
 EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR", "DASHBOARD_DESKTOP_HELPER_ORIGIN", "DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_NODE_PROXY_UID"}
-OPTIONAL_UNIT_ENV: set[str] = set()
+# W47: the CONSTRAINED tailnet passkey channel. These two are OPTIONAL, not forbidden - see
+# PASSKEY_UNIT_ENV below and dashboard/server/auth/mode.ts#assertTailnetPasskeyChannel, whose rules
+# this validator mirrors so a bad pair fails one loud ExecStartPre instead of the first T3 gate.
+OPTIONAL_UNIT_ENV: set[str] = {"DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS"}
 # DASHBOARD_TAILNET_OPERATOR is REQUIRED (Daniel, 2026-08-18), not optional: tailnet membership on this VM
 # is root-equivalent, so the operator identity must be pinned rather than defaulting to "any tailnet
 # principal". DASHBOARD_DEV_ORIGIN is deliberately NOT here at all: it is a win32-desktop-only convenience,
 # and under tailnet's AMBIENT auth an allowlisted dev origin would grant operator authority to any page
 # served from it. A unit that sets it fails the closed-set check.
 TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
-# DASHBOARD_RP_ORIGIN and DASHBOARD_WEBAUTHN_CREDENTIALS are deliberately in NEITHER set. Tailnet mode
-# retires the WebAuthn unit channel, so a unit still carrying them is stale drift and must FAIL the
-# closed-set check rather than be tolerated. With no sanctioned public-key name left, CREDENTIAL_ENV_NAME
-# now applies without exception — which is what rejects a lingering DASHBOARD_WEBAUTHN_CREDENTIALS.
+# W47 - DASHBOARD_RP_ORIGIN + DASHBOARD_WEBAUTHN_CREDENTIALS: the re-admitted, CONSTRAINED tailnet
+# passkey channel. The cutover retired both (docs/specs/2026-08-18-cutover-end-state.md:310-333), which
+# made governance/risk-tiers.md D2.13 unsatisfiable on this VM: a T3 item declaring `ceremony: webauthn`
+# needs a provisioned credential, `resolveCredentials()` reads only DASHBOARD_WEBAUTHN_CREDENTIALS, and
+# a unit carrying it could not boot. They are now OPTIONAL under exactly three rules, checked by
+# _validate_passkey_channel and mirrored from the dashboard's own boot assertion:
+#   1. Both absent is the default posture. DASHBOARD_RP_ORIGIN alone is the ENROLMENT posture and is
+#      legal (it grants nothing: the empty store means every T3 challenge still answers 403).
+#      DASHBOARD_WEBAUTHN_CREDENTIALS alone is a refusal - no RP origin means no RP-ID to verify under.
+#   2. Whenever set, DASHBOARD_RP_ORIGIN == "https://<DASHBOARD_TAILNET_HOST>" exactly.
+#   3. Whenever set, DASHBOARD_WEBAUTHN_CREDENTIALS parses to >= 1 {id, publicKey} entry.
+#
+# CREDENTIAL_ENV_NAME exemption, stated plainly because the name matches the regex: this variable holds
+# WebAuthn PUBLIC keys ONLY - the same material the pre-cutover unit carried and documented as public
+# (docs/specs/2026-08-18-cutover-end-state.md:180-181). A public key is not a secret: possessing it lets
+# nobody assert, because the assertion is signed by a private key that never leaves the authenticator
+# hardware. It is exempted by NAME, and by name only; every other CREDENTIAL_ENV_NAME match, including
+# any future DASHBOARD_*_SECRET/TOKEN, is still forbidden. Its VALUE is never printed by this module.
+PASSKEY_UNIT_ENV = ("DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS")
+CREDENTIAL_ENV_EXEMPT = frozenset({"DASHBOARD_WEBAUTHN_CREDENTIALS"})
+# systemd drop-in carrying the passkey pair, so the operator installs it without editing the fragment
+# bootstrap re-renders. EXACTLY one path is trusted; any other drop-in is still untrusted drift.
+PASSKEY_DROP_IN = "/etc/systemd/system/kb-dashboard.service.d/passkey.conf"
 TAILNET_HOST_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
 EXPECTED_AUTH_MODE = "tailnet"
 STATIC_SHOW = {"Id", "Names", "Slice", "FragmentPath", "DropInPaths", "User", "Group", "ExecStart", "WorkingDirectory", "EnvironmentFiles", "UnsetEnvironment", "KillMode", "UMask", "ReadOnlyPaths", "ReadWritePaths"}
@@ -278,8 +300,93 @@ def _validate_proxy_uid_pair(environment: dict[str, str]) -> None:
         raise RuntimeError("dashboard unit DASHBOARD_NODE_PROXY_UID must be distinct from 0 and the tailnet proxy uid")
 
 
+def _validate_passkey_drop_in(path: Path) -> None:
+    """W47: admitting a drop-in path widened the unit's trust boundary, so the FILE is pinned too, not
+    just its name. A systemd drop-in can set ANY [Service] directive - ExecStartPre=, NoNewPrivileges=,
+    SupplementaryGroups=, BindPaths=, CapabilityBoundingSet=, User= - which would let a passkey.conf
+    quietly undo the sandbox this validator spends the rest of its length proving. So the only content
+    allowed here is a [Service] header plus Environment= assignments naming PASSKEY_UNIT_ENV members
+    (blank lines and # comments ignored). Any other directive, section, or environment name refuses.
+    Values are never echoed: a refusal names the DIRECTIVE, never what it was set to."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RuntimeError(f"dashboard unit passkey drop-in is unreadable: {path}") from error
+    except UnicodeDecodeError as error:
+        raise RuntimeError(f"dashboard unit passkey drop-in is not UTF-8: {path}") from error
+    seen_service = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith(";"):
+            continue
+        if line.startswith("["):
+            if line != "[Service]":
+                raise RuntimeError(f"passkey drop-in may only carry a [Service] section; found {line}")
+            seen_service = True
+            continue
+        if not seen_service:
+            raise RuntimeError("passkey drop-in has a directive before its [Service] header")
+        directive, separator, _value = line.partition("=")
+        if not separator or directive.strip() != "Environment":
+            raise RuntimeError(
+                "passkey drop-in may only carry Environment= assignments; found directive "
+                + (directive.strip() or line)
+            )
+        for name in _unit_environment(line):
+            if name not in PASSKEY_UNIT_ENV:
+                raise RuntimeError(f"passkey drop-in may only assign {'/'.join(PASSKEY_UNIT_ENV)}; found {name}")
+
+
+def _validate_passkey_channel(environment: dict[str, str]) -> None:
+    """The SAME posture rules the dashboard makes at boot (W47,
+    dashboard/server/auth/mode.ts#assertTailnetPasskeyChannel). Absent from the unit is the default
+    posture and passes silently. Nothing here is printed: only presence and shape are inspected."""
+    origin, credentials = (environment.get(name, "").strip() for name in PASSKEY_UNIT_ENV)
+    if not origin and not credentials:
+        return
+    # RP origin ALONE is legal: it is the enrolment posture (the register ceremony needs an RP origin,
+    # and is the only way to obtain a credential). It grants nothing - the store is empty, so the
+    # dashboard reports ceremonyAvailable false and every T3 challenge answers 403. Credentials ALONE
+    # refuse: no RP origin means no RP-ID, so nothing could ever verify against that store.
+    if credentials and not origin:
+        raise RuntimeError(
+            "dashboard unit must set DASHBOARD_RP_ORIGIN whenever DASHBOARD_WEBAUTHN_CREDENTIALS is set "
+            "(a credential store with no RP origin cannot pin an RP-ID, so no assertion could ever verify)"
+        )
+    expected = "https://" + environment["DASHBOARD_TAILNET_HOST"]
+    if origin != expected:
+        raise RuntimeError(f"dashboard unit DASHBOARD_RP_ORIGIN must equal {expected} exactly")
+    if credentials and _provisioned_credential_count(credentials) < 1:
+        raise RuntimeError(
+            "dashboard unit DASHBOARD_WEBAUTHN_CREDENTIALS must parse to at least one "
+            "{id, publicKey} credential"
+        )
+
+
+def _provisioned_credential_count(raw: str) -> int:
+    """Mirror of resolveCredentials' parse (dashboard/server/auth/credentialStore.ts): a non-array,
+    unparseable, or shape-invalid entry counts zero, so this refuses exactly the values that would
+    leave ctx.credentials() empty. Returns a COUNT; it never decodes or echoes key material."""
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        return 0
+    if not isinstance(parsed, list):
+        return 0
+    return sum(
+        1 for entry in parsed
+        if isinstance(entry, dict)
+        and isinstance(entry.get("id"), str)
+        and isinstance(entry.get("publicKey"), str)
+    )
+
+
 def validate_environment(env: dict[str, str]) -> None:
-    present = sorted(name for name in env if name in FORBIDDEN_ENV or CREDENTIAL_ENV_NAME.search(name))
+    present = sorted(
+        name for name in env
+        if name in FORBIDDEN_ENV
+        or (CREDENTIAL_ENV_NAME.search(name) and name not in CREDENTIAL_ENV_EXEMPT)
+    )
     if present:
         raise RuntimeError("forbidden VM credential channel: " + ",".join(present))
 
@@ -365,8 +472,14 @@ def _unit_environment(text: str) -> dict[str, str]:
 def validate_static_unit(show: dict[str, str], text: str) -> None:
     if set(show) != STATIC_SHOW:
         raise RuntimeError("static unit fields are incomplete")
-    if show["FragmentPath"] != "/etc/systemd/system/kb-dashboard.service" or show["DropInPaths"]:
-        raise RuntimeError("dashboard unit fragment or drop-ins are untrusted")
+    if show["FragmentPath"] != "/etc/systemd/system/kb-dashboard.service":
+        raise RuntimeError("dashboard unit fragment is untrusted")
+    # W47: exactly one drop-in is trusted - the passkey pair's. Anything else is stale or hostile drift.
+    drop_ins = show["DropInPaths"].split()
+    if not set(drop_ins).issubset({PASSKEY_DROP_IN}):
+        raise RuntimeError("dashboard unit drop-ins are untrusted: " + ",".join(sorted(drop_ins)))
+    if PASSKEY_DROP_IN in drop_ins:
+        _validate_passkey_drop_in(Path(PASSKEY_DROP_IN))
     if show["Id"] != "kb-dashboard.service" or set(show["Names"].split()) != {"kb-dashboard.service"} or show["Slice"] != "system.slice":
         raise RuntimeError("dashboard unit or slice naming mismatch")
     expected = {"User": "kb-dashboard", "Group": "kb-dashboard", "WorkingDirectory": "/opt/kb-releases/current/dashboard", "KillMode": "control-group"}
@@ -379,7 +492,11 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
         raise RuntimeError("effective unit executable mismatch")
     environment = _unit_environment(text)
     assigned = set(environment)
-    forbidden = sorted(name for name in assigned if name in FORBIDDEN_ENV or CREDENTIAL_ENV_NAME.search(name))
+    forbidden = sorted(
+        name for name in assigned
+        if name in FORBIDDEN_ENV
+        or (CREDENTIAL_ENV_NAME.search(name) and name not in CREDENTIAL_ENV_EXEMPT)
+    )
     if forbidden:
         raise RuntimeError("dashboard unit assigns a forbidden credential name: " + ",".join(forbidden))
     if not EXPECTED_UNIT_ENV.issubset(assigned) or not assigned.difference(EXPECTED_UNIT_ENV).issubset(OPTIONAL_UNIT_ENV):
@@ -397,6 +514,7 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
     if TAILNET_OPERATOR_PATTERN.fullmatch(environment["DASHBOARD_TAILNET_OPERATOR"]) is None:
         raise RuntimeError("dashboard unit tailnet operator is invalid")
     _validate_proxy_uid_pair(environment)
+    _validate_passkey_channel(environment)
     unset = set(show["UnsetEnvironment"].split())
     missing = sorted(FORBIDDEN_ENV.difference(unset))
     if missing:

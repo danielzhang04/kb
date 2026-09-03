@@ -100,12 +100,130 @@ def test_effective_unit_rejects_an_invalid_operator(value):
         validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
-@pytest.mark.parametrize("name", ["DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS"])
-def test_effective_unit_rejects_retired_webauthn_environment(name):
-    """Tailnet mode retires the WebAuthn unit channel; a unit still carrying it is stale, not optional."""
-    text = VALID_UNIT_TEXT + f"Environment={name}=whatever\n"
-    with pytest.raises(RuntimeError):
+# --- W47: the CONSTRAINED tailnet passkey channel --------------------------------------------------
+# These replace test_effective_unit_rejects_retired_webauthn_environment, which asserted the blanket
+# retirement that made a T3 `ceremony: webauthn` gate unapprovable on the VM. RED ON REVERT: put both
+# names back outside EXPECTED_UNIT_ENV | OPTIONAL_UNIT_ENV and the accepting case below fails; drop
+# _validate_passkey_channel and the mismatched-origin / lone-var / zero-credential cases fail.
+PASSKEY_UNIT_TEXT = VALID_UNIT_TEXT + (
+    "Environment=DASHBOARD_RP_ORIGIN=https://kb.command.ts.net\n"
+    'Environment=DASHBOARD_WEBAUTHN_CREDENTIALS=\'[{"id":"cred-1","publicKey":"AQID","counter":0}]\'\n'
+)
+
+
+def test_w47_unit_accepts_a_correctly_pinned_passkey_pair():
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), PASSKEY_UNIT_TEXT)
+
+
+def test_w47_unit_accepts_the_pair_being_wholly_absent():
+    """Both absent is the default posture and must stay legal, byte for byte."""
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def _without(name):
+    return "".join(line + "\n" for line in PASSKEY_UNIT_TEXT.splitlines() if f"Environment={name}=" not in line)
+
+
+def test_w47_unit_accepts_an_rp_origin_with_no_credentials_yet():
+    """The ENROLMENT posture: the register ceremony needs an RP origin and is the only way to obtain
+    a credential. It grants nothing - the empty store keeps every T3 challenge at 403."""
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), _without("DASHBOARD_WEBAUTHN_CREDENTIALS"))
+
+
+def test_w47_unit_rejects_credentials_without_an_rp_origin():
+    """A store with no RP origin can pin no RP-ID, so nothing could ever verify against it."""
+    with pytest.raises(RuntimeError, match="whenever DASHBOARD_WEBAUTHN_CREDENTIALS is set"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), _without("DASHBOARD_RP_ORIGIN"))
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://evil.ts.net",
+        "http://kb.command.ts.net",
+        "https://kb.command.ts.net/",
+        "https://kb.command.ts.net:443",
+    ],
+)
+def test_w47_unit_rejects_an_rp_origin_that_is_not_the_serve_host(origin):
+    text = PASSKEY_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_RP_ORIGIN=https://kb.command.ts.net\n",
+        f"Environment=DASHBOARD_RP_ORIGIN={origin}\n",
+    )
+    with pytest.raises(RuntimeError, match="must equal https://kb.command.ts.net exactly"):
         validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("value", ["[]", "not-json", '\'{"id":"a","publicKey":"b"}\'', '\'[{"id":"a"}]\'', "\'[null]\'"])
+def test_w47_unit_rejects_credentials_that_resolve_to_zero(value):
+    """Exactly the values resolveCredentials() maps to []: the channel would be unusable."""
+    text = PASSKEY_UNIT_TEXT.replace(
+        'Environment=DASHBOARD_WEBAUTHN_CREDENTIALS=\'[{"id":"cred-1","publicKey":"AQID","counter":0}]\'\n',
+        f"Environment=DASHBOARD_WEBAUTHN_CREDENTIALS={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="at least one"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_w47_static_unit_reads_the_named_dropin_when_present(monkeypatch):
+    """Only the passkey drop-in path is admitted, and its CONTENT is validated too - not just its
+    name. RED ON REVERT: delete the _validate_passkey_drop_in call in validate_static_unit and this
+    fails (nothing would read the file), along with every directive case below."""
+    show = valid_static_unit()
+    show["DropInPaths"] = validate_vm_runtime.PASSKEY_DROP_IN
+    seen = []
+    monkeypatch.setattr(validate_vm_runtime, "_validate_passkey_drop_in", lambda path: seen.append(path))
+    validate_vm_runtime.validate_static_unit(show, PASSKEY_UNIT_TEXT)
+    assert seen == [Path(validate_vm_runtime.PASSKEY_DROP_IN)]
+
+
+CLEAN_DROP_IN = (
+    "[Service]\n"
+    "# W47 T3 passkey channel. PUBLIC keys only.\n"
+    "Environment=DASHBOARD_RP_ORIGIN=https://kb.command.ts.net\n"
+    'Environment=DASHBOARD_WEBAUTHN_CREDENTIALS=\'[{"id":"cred-1","publicKey":"AQID"}]\'\n'
+)
+
+
+def test_w47_dropin_accepts_a_service_header_and_passkey_environment_only(tmp_path):
+    path = tmp_path / "passkey.conf"
+    path.write_text(CLEAN_DROP_IN, encoding="utf-8")
+    validate_vm_runtime._validate_passkey_drop_in(path)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "ExecStartPre=/bin/sh -c whoami\n",
+        "NoNewPrivileges=no\n",
+        "SupplementaryGroups=root\n",
+        "BindPaths=/etc:/etc\n",
+        "CapabilityBoundingSet=CAP_SYS_ADMIN\n",
+        "User=root\n",
+        "Environment=DASHBOARD_EXECUTION_ACTIVATED=1\n",
+        "[Install]\n",
+    ],
+)
+def test_w47_dropin_refuses_any_other_directive_or_section(tmp_path, extra):
+    """Admitting a drop-in path widened the unit trust boundary, so the FILE is pinned too. A
+    drop-in can set ANY [Service] directive, which would let passkey.conf quietly undo the sandbox
+    the rest of this validator spends its length proving."""
+    path = tmp_path / "passkey.conf"
+    path.write_text(CLEAN_DROP_IN + extra, encoding="utf-8")
+    with pytest.raises(RuntimeError, match="passkey drop-in"):
+        validate_vm_runtime._validate_passkey_drop_in(path)
+
+
+def test_w47_dropin_refuses_a_directive_before_its_service_header(tmp_path):
+    path = tmp_path / "passkey.conf"
+    path.write_text("Environment=DASHBOARD_RP_ORIGIN=https://x\n[Service]\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="before its"):
+        validate_vm_runtime._validate_passkey_drop_in(path)
+
+
+def test_w47_dropin_refuses_an_unreadable_file(tmp_path):
+    with pytest.raises(RuntimeError, match="unreadable"):
+        validate_vm_runtime._validate_passkey_drop_in(tmp_path / "absent.conf")
 
 
 def valid_static_unit():
@@ -323,10 +441,15 @@ def test_static_phase_rejects_other_credential_named_unit_environment():
             validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
-def test_environment_has_no_sanctioned_credential_exemption_left():
-    """With the WebAuthn public-key channel retired, CREDENTIAL_ENV_NAME applies without exception."""
-    with pytest.raises(RuntimeError, match="DASHBOARD_WEBAUTHN_CREDENTIALS"):
-        validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": "anything"})
+def test_w47_credential_env_exemption_is_exactly_one_name():
+    """DASHBOARD_WEBAUTHN_CREDENTIALS holds WebAuthn PUBLIC keys only, so it is exempt from
+    CREDENTIAL_ENV_NAME BY NAME. Nothing else is: every other match, including a look-alike, still
+    fails. RED ON REVERT: widen CREDENTIAL_ENV_EXEMPT and the second half of this test fails."""
+    validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": "anything"})
+    assert validate_vm_runtime.CREDENTIAL_ENV_EXEMPT == frozenset({"DASHBOARD_WEBAUTHN_CREDENTIALS"})
+    for name in ("DASHBOARD_WEBAUTHN_CREDENTIALS_PRIVATE", "DASHBOARD_PASSKEY_SECRET", "MY_CREDENTIAL"):
+        with pytest.raises(RuntimeError, match=name):
+            validate_vm_runtime.validate_environment({name: "present"})
 
 
 def test_environment_accepts_the_tailnet_names():
