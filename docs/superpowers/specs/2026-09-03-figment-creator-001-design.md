@@ -1,6 +1,6 @@
 # figment creator-001 — end-to-end design (stages 1–9, voice, explicit-tier machine, dashboard)
 
-**v2, 2026-09-03** — folds all 26 findings of `REVIEW-2026-09-03-creator-001-design.md` under the operator rulings of the same date, and reconciles S2/S3/S5/S6 with `research/r15b-training.md` and `research/r15b-generation.md`. v1's verdict was REJECT; §11 lists what moved.
+**v2, 2026-09-03** — folds all 26 findings of `REVIEW-2026-09-03-creator-001-design.md` **and all 13 findings (N1–N13) plus the 12 partial closures of `REVIEW2-2026-09-03-creator-001-design.md`**, both under the operator's rulings of the same date, and reconciles S2/S3/S5/S6 with `research/r15b-training.md`, `research/r15b-generation.md` and `research/r15b-edit-motion.md` (all three now claim-checked at commit `57221caf`). v1's verdict was REJECT; the first pass's verdict on this document was also REJECT (14 closed / 12 partial / 0 unaddressed of the 26, plus 13 new findings); §11 lists what moved across both passes.
 
 Written 2026-09-03 on branch `claude/figment`. Derives from `orgs/figment/MANDATE.md`; binds under `orgs/figment/pipeline/GUARDRAILS.md`; obeys `CLAUDE.md` (branches, cards, memory), `governance/risk-tiers.md`, `governance/card-schema.md`, `governance/model-routing.yaml`.
 
@@ -17,24 +17,25 @@ Every file this spec rests on. **claim-checked** = a second pass verified each l
 | `research/r14`, `r15` | checked | 10sorlabs module map; workflow settings, dataset-tester, SOP rules, compliance rejections |
 | `research/r15b-training.md` | **pending** | modules 11/10/05/04 recovered settings: rank↔LR pairing, 250-step cadence, 12 checkpoints, Qwen3-VL caption doctrine, 2-photo→~30-image fan-out at denoise 0.23 |
 | `research/r15b-generation.md` | **pending** | modules 09/06/03/02 recovered settings: FaceDetailer band 0.15–0.35, two-pass refine at 0.35, persona-LoRA strength band 0.65–0.80, turbo-recipe warning |
-| `research/r15b-edit-motion.md` | **ABSENT — in flight** | modules 07/08/14 (editing, motion control). S6's motion block and S5's edit-pass row are marked *pending r15b-edit-motion* |
+| `research/r15b-edit-motion.md` | **checked** (commit `57221caf`) | modules 07/08/14 (editing, motion control). S5/S6 reconciled below: module 07/08's swap-LoRA-strength-1.0 / 6-step motion cfg-1 / 512×896×81 @16 fps / 24 GB VRAM-floor recipe is recorded as a **challenger** data point against our klein-4B (image) / Wan-2.2 (video) stack, never copied in as a direct setting — different base models, different trainer |
 | `research/10sorlabs-package/<module>/transcript.txt` | 2 of 9 produced (`10_dataset_generator_v2`, `11_lora_training_krea`) | faster-whisper transcripts of modules 02/04/05/06/07/08/09/10/11; a follow-up claim-check folds them and may amend the rows marked *r15b* |
 | `research/r16` | checked | stage-5 pass chain, QA scorer shortlist, licence verdicts |
 | `research/r17` | checked | stage-6 video chain, video gates, reel manifest schema, voice chain |
 | `research/r18` | checked | content taxonomy, carousel/reel templates, cadence, KPIs, Graph API fields |
 | `research/r19` | checked | API-first N-account operating model, provisioning, capability matrix, risk register |
 | `pipeline/pod/README.md`, `runpod_run.py`, `REVIEW-e-2026-09-03.md` | code + review | manifest schema, spend guards, exit-path guarantee, 21 open defects |
-| `personas/creator-001/batches/composite-0{1,2,3}/*/run.json` | checked | measured (not estimated) per-cell and first-job timing on a 4090, the source of S2's pod-shard sizing |
+| `orgs/figment/personas/creator-001/composite-0{1,2,3}/run.json` (current path; migrates under P1 to `personas/creator-001/batches/<id>/`, §2.3) | checked | measured (not estimated) per-cell and first-job timing on a 4090, the source of S2's pod-shard sizing |
 | `pipeline/train/*`, `pipeline/calibrate/`, `pipeline/qa_stamp.py`, `pipeline/reuse-from-fyt.md` | code | training scaffolding, identity scoring, grid driver, review stamp, FYT reuse map |
 | `agents/fyt-runner.md`, `agents/fyt-checker.md`, FYT `.claude/skills/README.md` | code | gates-first conductor shape, single-writer rule, three-state stamp, spend law |
 | `docs/superpowers/specs/2026-08-04-dashboard-ux-overhaul-design.md` | spec | the five kb dashboard surfaces this spec extends |
 
-**The research gate (finding 1).** MANDATE §Operating principles requires the package pass — module 11 training and module 10 dataset generation especially — folded into this spec **before any expansion or LoRA pod runs**. v1 recorded the gap and then wrongly narrowed its blast radius to S3/S6. **That claim is withdrawn**: the gap also reached S2's fan-out doctrine, S3's caption doctrine, S5's face-repair and refine bands, and S6's motion block. Two of the three reports now exist and are folded below (rows marked *r15b*); `r15b-edit-motion.md` does not.
+**The research gate (finding 1).** MANDATE §Operating principles requires the package pass — module 11 training and module 10 dataset generation especially — folded into this spec **before any expansion or LoRA pod runs**. v1 recorded the gap and then wrongly narrowed its blast radius to S3/S6. **That claim is withdrawn**: the gap also reached S2's fan-out doctrine, S3's caption doctrine, S5's face-repair and refine bands, and S6's motion block. All three reports now exist, are claim-checked at commit `57221caf`, and are folded below (rows marked *r15b*) — including S5/S6's reconciliation against modules 07/08.
 
-> **P3 (the first live create) is GATE-BLOCKED on all three r15b reports being present,
-> claim-checked, and S2/S3/S6 reconciled in this document.** Two of three conditions are met for
-> S2/S3/S5; the S6 motion block and the S5 edit-pass row stay *pending r15b-edit-motion*. §11
-> records every v2 change made under r15b.
+> **P3 (the first live create) was GATE-BLOCKED on all three r15b reports being present,
+> claim-checked, and S2/S3/S6 reconciled in this document — that condition is now satisfied.**
+> §11 records every v2 change made under r15b. P3 remains blocked on the two conditions in §2.7/§9
+> that are independent of research: the approved T2 spend card (N2/N3) and SHA-matched
+> P0R/P2R live-safe verdicts (N7).
 
 ## 1. Goal and success conditions
 
@@ -44,8 +45,8 @@ Every file this spec rests on. **claim-checked** = a second pass verified each l
 
 | # | Success condition | How it is proven |
 |---|---|---|
-| C1 | An identity set of ≥40 curated cells reads as one woman, with **every one of the 40 angle×distance×light strata represented at least once** | `identity_check.py` anchor cosine ≥ the persona floor on every cell; DINO cohesion reported; the curation invariant refuses `approved` while any stratum is empty; operator eye-gate `verified` on the board with all six rulings axes filled |
-| C2 | A persona LoRA holds that identity on held-out prompts it never trained on. **LoRA v1 is a provisional clothed close/half-body proof**; the production Instagram LoRA additionally requires the S2c full-body set | dataset-tester grid (fixed seed/prompt/sampler, LoRA the only variable) + 6 held-out prompts × 2 seeds; operator picks a checkpoint; the two-tier acceptance test in S2c/SX-T |
+| C1 | An identity set of ≥40 curated cells reads as one woman, with **every one of the 40 angle×distance×light strata represented at least once** | `identity_check.py` anchor cosine ≥ the persona floor on every cell; DINO cohesion reported; the curation invariant refuses `approved` while any stratum is empty; operator eye-gate `verified` on the board with all **seven** rulings axes filled |
+| C2 | A persona LoRA holds that identity on held-out prompts it never trained on. **LoRA v1 (P7) is a provisional clothed close/half-body proof trained on S2 only**; **LoRA v2 (P7b) is the production Instagram LoRA**, trained on S2 ∪ S2b ∪ S2c and checkpoint-ranked at **GATE B2** | dataset-tester grid (fixed seed/prompt/sampler, LoRA the only variable) + 6 held-out prompts × 2 seeds; operator picks a checkpoint at GATE B (v1) and GATE B2 (v2); the two-tier acceptance test in S2c/SX-T |
 | C3 | Register lock reproduces the operator taste anchor on demand | register-proof grid: 12 cells at locked settings, operator `verified` |
 | C4 | Stage-5 passes add texture without smoothing, relighting or drifting identity | 12-cell A/B (r16 §4): identity above floor, crop Laplacian/local-variance up, no clipping, blinded eye-gate prefers the passed cell |
 | C5 | A 5–8 s clip holds the face under motion | r17 gates 1–4: decode, per-frame ArcFace median/min/slope, flicker spikes, eye-gate |
@@ -70,7 +71,7 @@ Every file this spec rests on. **claim-checked** = a second pass verified each l
 
 | Component | Path | Kind | Status |
 |---|---|---|---|
-| Pod harness (lease, spend, transport, artifacts) | `pipeline/pod/runpod_run.py` | existing, 21 open defects | extend |
+| Pod harness (lease, spend, transport, artifacts) | `pipeline/pod/runpod_run.py` | existing — fixes committed at `4efea0de`, `f5ba643b`; 152 pod+train tests green; REVIEW-e findings 1–17 and 20 fixed, **18/19/21 deferred to P0** (finding N7) | extend |
 | Expansion builder | `pipeline/expand/build_expansion_set.py` | new (generalises `train/build_identity_set.py`) | new |
 | Lifecycle reducer (sole writer of cell `state`) | `pipeline/expand/batch_state.py` | new | new |
 | Gate records (sole writer of `gate.json`) | `pipeline/gates.py` | new | new |
@@ -104,14 +105,15 @@ identity:
   # every learned threshold is a lifecycle object, never a bare number (finding 24)
   floor:
     anchor_cosine_p5: {status: uncalibrated, value: <provisional>, calibration_set_sha: null, locked_by_gate: null}
-    min_face_px:      {status: locked, value: 600, calibration_set_sha: null, locked_by_gate: deterministic}
+    min_face_px:      {status: uncalibrated, value: 600, calibration_set_sha: null, locked_by_gate: null}   # N10 — locked at GATE A from the labelled 60-cell expansion-02 set, never pre-locked
 body_target: {source: identity-spec#body, exemplars: [g02, g07]}
 grammar:                       # finding 8 — build_expansion_set.py GENERATES the allocation from this
   angles:    [front, three-quarter-l, three-quarter-r, profile-l, near-back]
   distances: [close, half]
   lights:    [flat-white, window-day, lamp-night, on-camera-flash]
   wardrobe_families: [corset-bustier, cami-chains, oversized-tee, knit-cardigan, going-out-mini]
-  allocation: {strata: 40, replicates: 20, replicate_policy: rotate-wardrobe-over-strata, seed_policy: fixed-per-cell}
+  traversal_order: [angle, distance, light]    # partial closure #8 — the builder's fixed enumeration order
+  allocation: {strata: 40, replicates: 20, replicate_scope: half-body-strata-only, replicate_policy: alt-wardrobe-new-seed, seed_policy: fixed-per-cell}
 register:
   spec: {path: ../../pipeline/look-spec-v2.md, sha256: <sha>, section: "0"}
   settings: {makeup: abg-glam-v1, skin: texture-visible, light: [flat-white, window-day, lamp-night, on-camera-flash], wardrobe_families: <grammar.wardrobe_families>}
@@ -123,7 +125,14 @@ tiers:
   explicit:  {store: <operator-local path, never in repo>, compute: operator-hardware-only}
 ```
 
-**Cell-grammar arithmetic (finding 8).** 5 angles × 2 distances × 4 lights = **40 strata**, one cell each. The remaining **20 cells are named replicates**: `build_expansion_set.py` walks a fixed subset of the 40 strata in a fixed order, rotating the five wardrobe families, and emits 20 replicate rows with fixed per-cell seeds. 40 + 20 = 60, sharded 10/10/10/10/10/10 across **6 ephemeral pods** (§S2 Run shape — sizing is measured, not estimated). The allocation is generated, never hand-typed, and the emitted table is committed beside the manifests so a re-run is byte-reproducible. Wardrobe families for expansion-02 are **clothed only** (corset/bustier top, cami + layered chains, oversized tee, knit cardigan, going-out mini dress) — swimwear is S2b's batch, not this one.
+**Cell-grammar arithmetic and the builder's contract (partial closure #8).** 5 angles × 2 distances × 4 lights = **40 strata**, one cell each — a primary wardrobe family assigned per stratum. `build_expansion_set.py` MUST satisfy this contract:
+
+1. Enumerate the 40 base strata **angle-major, then distance, then light** (outer loop angle, middle loop distance, inner loop light) — this fixed order is what makes a re-run byte-reproducible.
+2. The **20 replicates are exactly the 20 half-body strata** — the subset of the 40 where `distance == half` (5 angles × 4 lights = 20, walked in the same angle-major/distance/light order, distance already fixed at `half`). Close-distance strata are never replicated.
+3. Each replicate re-renders its stratum with a **wardrobe family different from that stratum's primary assignment** (a deterministic rotation over the remaining four families) and a **newly fixed seed distinct from the primary cell's seed** — never the primary's wardrobe or seed repeated.
+4. 40 + 20 = 60, sharded 10/10/10/10/10/10 across **6 ephemeral pods** (§S2 Run shape — sizing is measured, not estimated).
+
+The emitted allocation table is generated, never hand-typed, and committed beside the manifests. Wardrobe families for expansion-02 are **clothed only** (corset/bustier top, cami + layered chains, oversized tee, knit cardigan, going-out mini dress) — swimwear is S2b's batch, not this one.
 
 | Record | File | Key fields | Written by |
 |---|---|---|---|
@@ -150,7 +159,7 @@ orgs/figment/
 
 Tracked: manifests, `batch.json`, `scores.json`, `run.json`, review rulings, code, docs. Gitignored bulk (append to root `.gitignore` beside the existing figment rules): `personas/*/anchors/`, `personas/*/batches/*/images/`, `personas/*/batches/*/rejected/`, `pipeline/*/runs/*/out/`, `*/board.html`.
 
-Anchor bulk currently sits at `personas/anchors/gemini-batch-01/` (identity-spec) and is staged for pod upload under `pipeline/train/runs/_uploads/` (the path the existing gitignore rule covers is `pipeline/train/runs/anchors/`). P1 moves it to `personas/creator-001/anchors/`, updates the gitignore rule, and makes `persona.yaml` the single place any runner resolves a reference path from — the current three-location spread is how the `g04` vs `g01` reference-set drift (REVIEW-e condition 3) survived to a committed manifest.
+Anchor bulk currently sits at `personas/anchors/gemini-batch-01/` (identity-spec) and is staged for pod upload under `pipeline/train/runs/_uploads/` (the path the existing gitignore rule covers is `pipeline/train/runs/anchors/`). P1 moves it to `personas/creator-001/anchors/`, updates the gitignore rule, and makes `persona.yaml` the single place any runner resolves a reference path from — the current three-location spread is how the `g04` vs `g01` reference-set drift (REVIEW-e condition 3) survived to a committed manifest. The same migration applies to the composite evidence (finding N13, §0's evidence table): it lives today at `orgs/figment/personas/creator-001/composite-0{1,2,3}/run.json`, not under a `batches/` segment, and P1/P2 are what first write into the `batches/<batch-id>/` layout this section describes.
 
 ### 2.4 Cell lifecycle — two orthogonal axes, one writer each (findings 6, 7)
 
@@ -205,16 +214,24 @@ Agents build, test and review the explicit machine **on clothed fixtures**. The 
 
 ### 2.7 Spend controls (layered, all fail-closed)
 
-0. **An approved T2 spend card exists on `ops` before the first create** (finding 2). Every live pod
-is T2 under `contract.md`; a gate that arrives after the money is spent is not a gate. §6 gives the exact card payload.
+0. **An approved T2 build card exists on `ops` before every tonight build phase, and an approved T2
+   spend card exists before the first create** (finding N2). Every live pod is T2 under
+   `contract.md`; a gate that arrives after the money is spent is not a gate. The boss issues both —
+   Codex dispatches write their own card automatically from the dispatch brief, Claude-agent
+   dispatches get a card the boss writes before dispatch. §6 gives the exact spend-card payload.
 1. `--max-usd` required on every live pod run; the manifest rate is distrusted after create and the
    real `adjustedCostPerHr` is re-checked against it (`pod/README.md` §Spend ceilings).
 2. Daily guard: `governance/budget.yaml` `daily_usd_limit: 10.00` vs today's cost ledger. A day
 carrying both an expansion run and a training pod breaches it — the operator raises it for the run (MANDATE §Budget) or the runs are split across days.
 3. Arc cap: `--arc-cap-usd 50` summing every `ledgers/cost/figment-*.tsv` row; refuses a create that
    would exceed.
-4. Wall-clock: `max_minutes` ≤ the hard `DEFAULT_MAX_MINUTES` 60. **See S3 — this ceiling cannot
-   contain a real LoRA run and is amended there, for the training path only.**
+4. Wall-clock (**corrected, finding N7**): the harness's global default at HEAD is `DEFAULT_MAX_MINUTES: 840`
+   (14 h) — 60 minutes was **never a harness rule**, it was a v1 assumption. There is no global
+   60-minute ceiling and no separate `TRAINING_MAX_MINUTES` constant. **Every manifest and its CLI
+   `--max-minutes` carry their own bound**, tighter than the 840-minute default, matched to that
+   stage's measured shape: expansion-02 (S2) uses `max_minutes: 72` (§S2 Run shape, finding N1); the
+   training path (S3) uses `max_minutes: 180` (§S3 Wall-clock defect). A breach still stops the run —
+   nothing silently extends any bound.
 5. Zero platform spend, always: no boosts, subscriptions, PPV, tips or "free trials" (GUARDRAILS
    §research browsing). r15 §5b's boost ladder is recorded as an operator playbook, never built.
 6. **No billed storage outside the pod lease** (finding 3). No `network_volume_id`, no persistent
@@ -242,17 +259,17 @@ Common to every row: **reuse** = pod harness lease/spend/teardown, `qa_stamp.py`
 | Inputs | 3 reference JPEGs; `pipeline/train/workflows/klein4b_multiref_api.json`; persona register settings |
 | Outputs | 60 generated cells → `batch.json` (6 `pod_runs[]` rows) + `scores.json` + board; curated set of 40 |
 | Base | FLUX.2 klein 4B **Base** (Apache-2.0), `Comfy-Org/flux2-klein-4B` diffusion model + `qwen_3_4b` encoder + `flux2-vae` (r11 §7 arm B, sizes confirmed) |
-| Cell grammar | 5 angles × 2 distances (close, half-body) × 4 lights = **40 strata, one cell each**, plus **20 named replicates** rotating the five clothed wardrobe families over those strata at fixed seeds = 60. Generated by `build_expansion_set.py` from `persona.grammar` (§2.2), never hand-typed. **Full-body cells are S2c**, never a single full-frame swap (identity-spec §Rule for expansion: face-pixel density governs swap quality) |
+| Cell grammar | 5 angles × 2 distances (close, half-body) × 4 lights = **40 strata, one cell each**, plus **20 named replicates — exactly the 20 half-body strata, each re-rendered with a different wardrobe family than its primary and a newly fixed seed** (§2.2, partial closure #8) = 60. Generated by `build_expansion_set.py` from `persona.grammar` (§2.2), never hand-typed. **Full-body cells are S2c**, never a single full-frame swap (identity-spec §Rule for expansion: face-pixel density governs swap quality) |
 | Prompt doctrine | one prompt per cell with an explicit *do-not-alter* identity clause (r15 §3b; corroborated as the package's standing guard by **r15b-training** module 04/10 — an identity-lock clause is appended to every fan-out prompt), face angle stated explicitly, 80–250 words, exclusions inside the positive prompt, braced-alternative template as the generator (r15 §6b) |
 | **r15b reconciliation** | module 10 (the *current* dataset path) fans 2 reference photos out to ~30 images by **identity-preserving edit at denoise 0.23**, not fresh generation, over two fixed 15-prompt angle/pose templates. Our expansion is the same shape at wider coverage (3 references, 60 cells) on a different base. Adopted: the low-denoise identity-preserving edit band and the identity-lock clause. **Not adopted:** module 10's FLUX.2-klein-**9B** + Qwen3-8B stack and its `euler/beta`, 4-step, cfg-1 recipe — that is a distilled-turbo signature and must never be copied onto klein 4B **Base** (r15b-generation §What maps) |
 | Manifest keys | pod schema: `models[]`, `workflow`, `seed_fields:[noise_seed]`, `uploads[]`, `jobs[]{seed,output_name,expected_images,substitutions[]}`, `job_timeout_seconds`, `readiness_timeout_seconds`, `max_minutes`, `avoid_machine_hosts`. **No `network_volume_id`** |
-| **Run shape (load-bearing, measured not estimated)** | expansion-01's shape (24 jobs × `job_timeout_seconds: 900`, readiness 1200, `max_minutes: 30`) **cannot finish** (REVIEW-e finding 5). `composite-01/02/03` `run.json` on a 4090 measure the real cost: a 3-reference klein 4B Base multi-ref cell at 1024×1280/50 steps takes **157–165 s steady state**, and **the first job of a pod takes 215–260 s** (cold model warm-up inside the job, distinct from pod readiness). Under the corrected preflight — `max_minutes×60 ≥ readiness + N×job_timeout + 300 s teardown` — and the hard 60-minute cap: `job_timeout_seconds: 240` (clears the measured first-job band with headroom), `readiness_timeout_seconds: 900`, `max_minutes: 60` → 900 + 10×240 + 300 = **3 600 s = the full 60-minute cap**, so **10 cells is the most one pod can hold**. expansion-02 runs as **6 fresh ephemeral pods × 10 cells = 60 cells** |
+| **Run shape (load-bearing, measured not estimated; corrected, finding N1)** | expansion-01's shape (24 jobs × `job_timeout_seconds: 900`, readiness 1200, `max_minutes: 30`) **cannot finish** (REVIEW-e finding 5). `composite-01/02/03` `run.json` on a 4090 measure the real cost: a 3-reference klein 4B Base multi-ref cell at 1024×1280/50 steps takes **157–165 s steady state**, and **the first job of a pod measures 260.449 s** (cold model warm-up inside the job, distinct from pod readiness) — a 240 s timeout does not clear that band, which is REVIEW2's decisive blocker N1. Corrected: `job_timeout_seconds: 300` (clears the measured 260.449 s first-job cold band), `readiness_timeout_seconds: 900`, `max_minutes: 72` → 900 + 10×300 + 300 = **4 200 s against a 4 320 s budget, 120 s of slack** for a placement retry. `DEFAULT_MAX_MINUTES` at HEAD is 840, so 72 is legal (finding N7) — this is a per-manifest bound, not a global exception. expansion-02 still runs as **6 fresh ephemeral pods × 10 cells = 60 cells**, unchanged shape, corrected timeouts |
 | **Cold start, every pod** (finding 3) | all six pods download the three model files cold. **900 s is the budgeted cold-readiness allowance**; if a pod's real readiness exceeds it the harness already fails closed (readiness timeout → terminate-and-verify), which is the intended behaviour, not a regression. The download costs **time inside the lease, not storage money** — that is the whole reason no persistent volume is used |
 | QA / scoring | `identity_check.py` (FaceNet anchor cosine, DINO cohesion, **fail-closed on no face**) + crop Laplacian, clipped fraction, garment classifier, OCR gate. **During expansion-02 the scorers emit raw values only** (finding 24): no learned threshold routes a cell. The only automatic quarantine routes are the deterministic no-face check and the three operator-ruled safety axes (§2.4a). Thresholds leave `status: uncalibrated` until 60 labelled outputs lock them and a different-model review approves the scorer |
 | Human gate | **GATE A. STOP.** Blind board (`build_grading_board.py --blind` over `blind_pool.py`), operator rulings across all seven axes → `qa_stamp.py` → `gate.json`. Nothing proceeds to S3 without `verified` on ≥40 cells **and** every one of the 40 strata represented |
-| Cost | `--max-usd 0.90` per pod; 6 pods; planned ≈ $3.30 at $0.80/h, ceiling $5.40. Approved T2 spend card on `ops` before the first create (§6) |
-| Tests | manifest preflight refuses a job budget that cannot fit `max_minutes`; **60 unique cell ids; exactly 10 jobs per shard; all 40 strata covered; replicate seeds fixed and reproducible; the curation invariant refuses approval while any stratum is empty**; every job's substitutions resolve; interruption tests after shards 1, 3 and 5 prove resume launches only the missing shards and never reuses a stale gate record; `--dry-run` produces the full prompt set at zero cost |
-| Review | **P2R** — different-model review of `build_expansion_set.py`, the safety-axis schema and every scorer change, at the SHA that will execute, before the first live run |
+| Cost (corrected, finding N1) | `--max-usd 1.00` per pod (72 min at $0.80/h = $0.96, headroom to the cap); 6 pods; ceiling **$6.00**; planned ≈ $3.50 (real runs finish near the 157–165 s steady-state rate, not the full budget). Today's ledger already carries $0.87, so worst case is $6.87 against the $10 daily guard (§10 Q3). Approved T2 spend card on `ops` before the first create (§6) |
+| Tests | manifest preflight refuses a job budget that cannot fit `max_minutes: 72`; **60 unique cell ids; exactly 10 jobs per shard; all 40 strata covered; replicate seeds fixed and reproducible and distinct from their primary cell's seed; every replicate's wardrobe family differs from its stratum's primary; the curation invariant refuses approval while any stratum is empty**; every job's substitutions resolve; interruption tests after shards 1, 3 and 5 prove resume launches only the missing shards and never reuses a stale gate record; `--dry-run` produces the full prompt set at zero cost |
+| Review (reordered, finding N4) | **P2R**, scheduled *after* P2 — different-model review of the **union** of P1's QA/scorer/schema changes and P2's `build_expansion_set.py`, allocation table and manifests, at the SHAs that will execute, before the first live run. P2R gates only P3, never P2 |
 | New vs reuse | new: expansion builder, grammar table, reducer, gate records, safety axes, board wiring. reuse: harness, scorer core, stamp, board generator |
 
 ### S2b — Swimwear/lingerie tier extension (separate batch)
@@ -264,8 +281,8 @@ MANDATE §3 puts minimally-clothed body in the LoRA's scope, so this is built �
 | | |
 |---|---|
 | Why | MANDATE §3 scopes the LoRA to "every camera angle and distance … body shape and proportions". S2 and S2b are close/half-body only, so **LoRA v1 is explicitly a provisional clothed close/half-body proof** and is labelled that way in `persona.lora.tier`. A production Instagram LoRA needs this batch |
-| Shape | 16–20 full-body cells: the same 5 angles × 4 lights at `distance: full`, clothed wardrobe families only, generated **from an approved LoRA-v1 or S2-curated cell as the reference**, never as a single full-frame identity swap (identity-spec: face-pixel density governs swap quality) |
-| Extra QA | face-pixel floor is the binding scorer here — a full-body frame that falls under `min_face_px` is quarantined deterministically, not argued about |
+| Shape | 16–20 full-body cells: the same 5 angles × 4 lights at `distance: full`, clothed wardrobe families only, generated **from an approved LoRA-v1 or S2-curated cell as the reference**, never as a single full-frame identity swap (identity-spec: face-pixel density governs swap quality). Runs **after GATE B** (the picked LoRA v1 checkpoint), alongside S2b (finding N6) |
+| Extra QA (corrected, finding N10) | face-pixel floor is the binding scorer here, **but only hard-routes once `min_face_px` is locked at GATE A with a `calibration_set_sha` from the labelled 60-cell expansion-02 set matching S2c's own calibration SHA**. Before that lock, or on a SHA mismatch, a full-body frame under the provisional 600 px value routes to review, not automatic quarantine |
 | Human gate | **GATE A3.** Own blind board, own rulings, own `gate.json`. LoRA v2 (production) trains on S2 ∪ S2b ∪ S2c |
 | Cost | `--max-usd 0.90`, one pod run |
 | Acceptance (two-tier, with SX-T) | the identity holds across **clothed close, clothed half, clothed full** on held-out prompts (this spec's scope), and — on operator hardware only — across the explicit-tier set via SX-T. The two halves are never trained, stored or judged in the same place |
@@ -278,14 +295,14 @@ MANDATE §3 puts minimally-clothed body in the LoRA's scope, so this is built �
 | Outputs | checkpoints every 250 steps + final `<trigger>.safetensors`, `adapter.json`, run config copy |
 | Trainer | diffusion-pipe on klein 4B **Base** — upstream states the distilled variant will not train well (r11 §7) |
 | **Caption doctrine (r15b — v1 was wrong)** | **full-sentence auto-captions, prefixed with the trigger token.** v1 ruled `<trigger> woman` on r15 §4's reading that the package captions class-token-only. r15b-training resolves it: the single-word `woman` caption is **module 04, the package's own documented legacy mistake**; the current module 11 captions the dataset with a local VLM (**Qwen3-VL-8B-Instruct**, float8, max res 512, 128 new tokens) producing full descriptive sentences per image, and r15b lists "do not adopt single-word captioning" among its adoptions. Our doctrine: Qwen3-VL-class auto-caption per image, trigger token prepended (diffusion-pipe inference needs the handle), operator spot-check of 5 captions before the run |
-| **Step / checkpoint / rank reconciliation (r15b)** | committed template says `max_steps 1600 / save_every_n_steps 200 / rank 32 / lr 5e-5`. r15b-training reads module 11's live UI: **rank 32, LR 1e-4, AdamW8Bit, batch 1, grad-accum 1, 3000 steps, save every 250, buckets 512/768/1024, "max saves to keep" bumped to 15** → the 12 checkpoints (250…2750 + final) that the ranking harness compares. Module 05's cheap arm pairs **rank 16 with LR 2.5e-4** on a single 512 bucket. Adopt for our run: `max_steps 3000`, `save_every_n_steps 250`, **keep all 12 checkpoints** ("max saves to keep" ≥ 12 is the easy operational miss r15b flags — a lower cap silently discards early checkpoints the ranking harness needs), rank 32 / LR 1e-4 / bs 1, buckets 512/768/1024. These are a different trainer's numbers on a different base, so they are the *starting* recipe and **the dataset-tester remains the arbiter**; the rank-16/LR-2.5e-4 single-bucket arm is the documented cheap fallback if the run does not fit its budget |
-| **Wall-clock defect (findings 13, 20)** | 3 000 steps at rank 32, multi-bucket, bs 1 on a 4090 is 50–100 min (module 05 measured 1.20 it/s at rank 16/512 on an A100, so this band is the honest one). Raising `max_minutes` alone is **not** enough: the shipped manifest also polls the completion marker for `job_timeout_seconds: 2700` (45 min) and would kill a healthy run first. The full fix, all four values together: `job_timeout_seconds: 6000`, `readiness_timeout_seconds: 1200`, `max_minutes: 180`, and CLI `--max-minutes 180`, with a preflight that proves `1200 + 6000 + 300 = 7500 ≤ 10800`. `TRAINING_MAX_MINUTES: 180` applies **only** when `training` is present in the manifest; `DEFAULT_MAX_MINUTES` stays 60 for image runs; `--max-usd` is re-derived from the approved READY rate and the arc cap still binds. Nothing silently extends any bound — a breach stops the run. **Corroboration:** the template was edited to `max_minutes: 70` during v1's drafting, but the harness takes the **minimum** of CLI, manifest and `DEFAULT_MAX_MINUTES`, so 70 clamps to 60; the template edit is necessary and not sufficient, the constant must move too. **This is gated on Q4** (§10) plus an approved T2 code card |
+| **Step / checkpoint / rank reconciliation (r15b — corrected, finding N5)** | committed template says `max_steps 1600 / save_every_n_steps 200 / rank 32 / lr 5e-5`. r15b-training reads module 11's live UI: **rank 32, LR 1e-4, AdamW8Bit, batch 1, grad-accum 1, 3000 steps, save every 250, buckets 512/768/1024, "max saves to keep" bumped to 15** → the 12 checkpoints (250…2750 + final) that the ranking harness compares, measured across a **77-minute training run** with **cache-text-embeddings on and sampling disabled** (r15b-training records both as load-bearing to that timing — turn sampling back on and the run is slower; leave cache off and it is slower again). r15b-training's own teaching material separately recommends **5000 steps for a production run**; module 11's demo used 3000 — **these are different numbers for different purposes, not a contradiction**. Module 05's cheap arm pairs **rank 16 with LR 2.5e-4** on a single 512 bucket (measured on an **L40S**, not an A100 — v1's citation was wrong). Adopt for our run: `max_steps 3000` as the **demo-parity starting recipe** (5000 is the taught production target, tried only if the dataset-tester and the arc budget both support the longer run), `save_every_n_steps 250`, **keep all 12 checkpoints** ("max saves to keep" ≥ 12 is the easy operational miss r15b flags — a lower cap silently discards early checkpoints the ranking harness needs), rank 32 / LR 1e-4 / bs 1, buckets 512/768/1024, cache-text-embeddings on, sampling disabled during training. **Never use a turbo/distilled recipe with the training adapter** (r15b-training's own doctrine). These are a different trainer's numbers on a different base, so they are the *starting* recipe and **the dataset-tester remains the arbiter**; the rank-16/LR-2.5e-4 single-bucket arm is the documented cheap fallback if the run does not fit its budget |
+| **Wall-clock defect (findings 13, 20; corrected, finding N7)** | 3 000 steps at rank 32, multi-bucket, bs 1 on a 4090 is 50–100 min (module 05 measured 1.20 it/s at rank 16/512 on an **L40S**, corrected from v1's A100 misattribution — module 11's own 77-minute run at the fuller rank-32 recipe is the more directly comparable figure). Raising `max_minutes` alone is **not** enough: the shipped manifest also polls the completion marker for `job_timeout_seconds: 2700` (45 min) and would kill a healthy run first. The fix, all four values together: `job_timeout_seconds: 6000`, `readiness_timeout_seconds: 1200`, `max_minutes: 180`, and CLI `--max-minutes 180`, with a preflight that proves `1200 + 6000 + 300 = 7500 ≤ 10800`. **There is no `TRAINING_MAX_MINUTES` constant** (deleted, finding N7) — HEAD's actual `DEFAULT_MAX_MINUTES` is **840** (14 h), not a hard 60-minute global; 180 is simply this manifest's own tighter bound, exactly like expansion-02's `max_minutes: 72` (§S2). `--max-usd` is re-derived from the approved READY rate and the arc cap still binds. Nothing silently extends any bound — a breach stops the run. This wall-clock fix is gated on Q4 (§10) plus an approved T2 code card |
 | Dataset tester (r15b) | port of module 11's ranking harness: **fixed seed, fixed prompt, fixed sampler, fixed resolution; the LoRA checkpoint is the only free variable.** One ComfyUI graph, **12 parallel** `UNETLoader→LoraLoader→KSampler` branches joined by `BatchImages`, `expected_images` = branch count, one job per held-out prompt. Their own harness pins seed 1595 and one fully-written prompt — the pattern transfers; their `res_2s`/`beta`, 4-step, cfg-1 sampler pairing does **not** (turbo-specific, r15b-generation) |
 | Held-out test | 6 prompts × 2 seeds never present in training; identity floor + adult-read + register adherence scored separately (r12 §10) |
 | Human gate | **GATE B. STOP.** Operator picks the checkpoint from the ranked grid; the pick is written as a `gate.json` record bound to the checkpoint's sha256 |
 | Cost | training `--max-usd 2.40`; tester `--max-usd 0.40` |
-| Tests | REVIEW-e's named tests 3, 4, 5, **8**, 7, 9, 10, 12, 14 (all training-path); a `TRAINING_MAX_MINUTES` preflight test; the shell-injection regression for finding 8; and a separately approved **throwaway-pod upload contract test** proving ComfyUI's `/upload/image` accepts `.txt`, `.toml` and `_dataset.ready`, with its run and ledger evidence recorded before the training verdict flips |
-| Review | **blocking.** REVIEW-e's verdict is "SAFE TO RUN LIVE for a training pod: **NO**" until findings 3 (truncated artifact accepted), 4 (one proxy blip kills the run), 5 (impossible max_minutes) and 8 (unquoted placeholders interpolated into a root-run shell script) are fixed and re-reviewed by a different model. No training pod runs before that |
+| Tests | REVIEW-e's named tests 3, 4, 5, **8**, 7, 9, 10, 12, 14 (all training-path); a preflight test proving the training manifest's own `job_timeout_seconds: 6000` / `readiness_timeout_seconds: 1200` / `max_minutes: 180` satisfy `1200 + 6000 + 300 ≤ 10800` (no named constant, finding N7); the shell-injection regression for finding 8; and a separately approved **throwaway-pod upload contract test** proving ComfyUI's `/upload/image` accepts `.txt`, `.toml` and `_dataset.ready`, with its run and ledger evidence recorded before the training verdict flips |
+| Review | **blocking (finding N7).** REVIEW-e's original verdict was "SAFE TO RUN LIVE for a training pod: **NO**" until findings 3 (truncated artifact accepted), 4 (one proxy blip kills the run), 5 (impossible max_minutes) and 8 (unquoted placeholders interpolated into a root-run shell script) are fixed and re-reviewed. Findings 1–17 and 20 are now fixed at `4efea0de`/`f5ba643b` and P0R (sonnet) has re-reviewed: **expansion-02 live-safe YES** (the slack condition N1 satisfies), **training pod YES with conditions**. Findings 18/19/21 are deferred to the remaining P0. **An opus P0R pass is still owed before any training pod runs** — sonnet's YES is necessary, not sufficient |
 | New vs reuse | new: dataset tester + `rank_checkpoints.py`, training-path harness fixes. reuse: templates, start script, upload/artifact transport |
 
 ### S4 — Register lock
@@ -309,7 +326,7 @@ Ordered chain (r16 §1), each stage a switchable manifest branch retaining every
 | Order | Pass | Choice and why |
 |---|---|---|
 | 0 | Base render | klein 4B Base + persona LoRA + register settings; native graph. **Persona-LoRA strength band 0.65–0.80** (r15b-generation: their persona band is 0.65–0.80, style/detail LoRAs 0.65–1.50, on independent per-LoRA sliders); klein 4B Base is a full-diffusion model, so its own step/cfg values apply — **never** the 4-step/cfg-1 turbo recipe |
-| 1 | Conditional face repair *(band corroborated; node choice pending r15b-edit-motion)* | **native klein 4B Base edit template via `ReferenceLatent`**, 0.20–0.35 intervention, only when the face crop is small or the detector flags it. r15b-generation measures the package's FaceDetailer across modules 06/09 at **denoise 0.15–0.35, bbox_threshold 0.40–0.50, sam_threshold 0.80–0.93** — our 0.20–0.35 sits inside that band, which is the corroboration v1 lacked. Impact FaceDetailer stays *not* the default: r16 records the Subpack repo is **AGPL-3.0**, and the only FLUX.2 evidence targets klein **9B**. The editing modules (07/08) are unread — revisit this row when `r15b-edit-motion.md` lands |
+| 1 | Conditional face repair *(band corroborated, node choice confirmed — r15b-edit-motion reconciled, finding N5)* | **native klein 4B Base edit template via `ReferenceLatent`**, 0.20–0.35 intervention, only when the face crop is small or the detector flags it. r15b-generation measures the package's FaceDetailer across modules 06/09 at **denoise 0.15–0.35, bbox_threshold 0.40–0.50, sam_threshold 0.80–0.93** — our 0.20–0.35 sits inside that band. Impact FaceDetailer stays *not* the default: r16 records the Subpack repo is **AGPL-3.0**, and the only FLUX.2 evidence targets klein **9B**. Modules 07/08's own edit stack (swap-LoRA strength 1.0, denoise-and-repaint over a different node graph) is now read via r15b-edit-motion and recorded as a **challenger reference point**, not adopted — it targets a different base/trainer combination than klein 4B Base |
 | 2 | Identity/register gate | `identity_check.py`; fail closed on no face; log crop and score **before** any upscale |
 | 3 | Pixel upscale | Real-ESRGAN x4plus (BSD-3), **2× then downsample** to delivery size. NMKD and 4x-UltraSharp rejected (unverified / CC-BY-NC-SA-4.0, r16 §3) |
 | 4 | Refine pass *(r15b, new in v2)* | second low-denoise sampler pass at **denoise 0.35** immediately after the upscale-and-normalize step. r15b-generation records this two-pass structure (base at denoise 1.0 → model upscale → scale-down normalize → refine at 0.15–0.35) as the package's standard shape across modules 06 and 09; v1 had no refine pass at all |
@@ -326,19 +343,19 @@ Ordered chain (r16 §1), each stage a switchable manifest branch retaining every
 | Cost | `--max-usd 1.10` for the A/B |
 | Licence law | every external node enters as a **pinned commit**; every model as `{repo_id, filename, destination_dir}` with a recorded licence. Unpinned `git clone` + `pip install -r requirements.txt` is the eromify-mcp shape at one remove (r15 §2d) and is refused |
 
-### S6 — Video with passes  ·  **motion block pending `r15b-edit-motion.md`**
+### S6 — Video with passes  ·  **motion block reconciled against `r15b-edit-motion.md` (finding N5)**
 
-The three rows marked *pending* below rest on r14/r17's chapter-level reading of modules 07/08/14, not on the module videos themselves. `r15b-edit-motion.md` is the missing third report; **P10 does not run until it lands and is claim-checked**, and this block is re-reconciled at that point.
+The rows below now read modules 07/08/14 directly, at commit `57221caf`, not just r14/r17's chapter-level summary. Modules 07/08's own recipe (swap-LoRA strength **1.0**, motion sampler **6 steps, cfg 1**, resolution **512×896×81 @ 16 fps**, **24 GB VRAM floor**) is recorded as a **challenger data point against our Wan 2.2 TI2V-5B stack, never copied in as a direct setting** — it targets a different base model and a different trainer, exactly like S5's module 07/08 reconciliation above.
 
 | | |
 |---|---|
-| Base | Wan 2.2 **TI2V-5B** on a 4090 for the proof (Apache-2.0, official 24-GB offload path); **Animate-14B** on 48 GB for driver-clip shots; A14B only after 5B establishes the QA path |
-| Start-frame doctrine *(pending r15b-edit-motion)* | persona-swap the first frame from the driver, then animate (r14 §08/§14 via r17 §1). Driver requirements: one visible adult, stable light/background, continuous 5–8 s motion, unobscured face/hands, no cuts/whip-pans |
+| Base | Wan 2.2 **TI2V-5B** on a 4090 for the proof (Apache-2.0, official 24-GB offload path); **Animate-14B** on 48 GB for driver-clip shots; A14B only after 5B establishes the QA path. Module 07/08's 24 GB floor at 512×896×81/16fps is a challenger reference point for a future higher-resolution arm, not this proof's target |
+| Start-frame doctrine | persona-swap the first frame from the driver, then animate (r14 §08/§14 via r17 §1, now corroborated directly by r15b-edit-motion). Driver requirements: one visible adult, stable light/background, continuous 5–8 s motion, unobscured face/hands, no cuts/whip-pans |
 | Gates (all four, in order) | (1) decode frames, record count/fps/seed/workflow/model SHA; (2) per-frame ArcFace anchor cosine — median, minimum, slope, worst-frame thumbnails, thresholds locked only after a 20-clip labelled set; (3) adjacent-frame embedding delta + optical-flow residual, inspect the top five spikes for flicker/identity jump/hands/teeth/gloss; (4) only then RIFE (if needed) and SeedVR2, then repeat 1–3 plus an eye gate. **Quarantine, never "repair until pass."** |
 | Not a video pass | FaceDetailer — its own docs say it is not a video detailing node; per-frame repainting creates flicker |
-| Reel template *(pending r15b-edit-motion for the motion-control fields)* | the r17 §2 YAML schema as an editable manifest (`id, tier, aspect_ratio, duration_s, hook, beats[], driver, identity, generation, cuts[], loop, overlay, audio, qa`) |
-| Human gate | eye-gate on every clip, recorded in `gate.json`; no auto-publish |
-| **Cost — correct notation** (finding 19) | **invocation:** `--max-usd 0.50 --max-minutes <derived>` per proof run (both are CLI flags; `max_usd` is *not* a manifest field). **Manifest:** `price_usd_per_hour`, `max_minutes`, `readiness_timeout_seconds`, `job_timeout_seconds`. The exact values go on the T2 card and into the dry-run transcript before the create. Planned $0.70 across the two proofs |
+| Reel template | the r17 §2 YAML schema as an editable manifest (`id, tier, aspect_ratio, duration_s, hook, beats[], driver, identity, generation, cuts[], loop, overlay, audio, qa`); the motion-control fields now read directly from r15b-edit-motion (module 07/08's 6-step/cfg-1 motion sampler is recorded as a challenger, not wired in as this schema's default) |
+| Human gate | **GATE D2** — eye-gate on every clip, recorded in `gate.json` as `gate_id: GATE-D2` (finding N12); no auto-publish |
+| **Cost — correct notation** (finding 19) | **invocation:** `--max-usd 0.50 --max-minutes <derived>` per proof run (both are CLI flags; `max_usd` is *not* a manifest field). **Manifest:** `price_usd_per_hour`, `max_minutes`, `readiness_timeout_seconds`, `job_timeout_seconds`. The exact values go on the T2 card and into the dry-run transcript before the create. **Two proof invocations at `--max-usd 0.50` each = a $1.00 ceiling (finding N8), not $0.70** |
 | Tests | frame-QA scorer unit tests on synthetic frame sequences; manifest schema validation; dry-run |
 | Review | adversarial review of the frame-QA scorer (identity-scoring unit) before live |
 
@@ -460,13 +477,13 @@ Existing surfaces absorb the rest: gates are Inbox items deep-linked to the run;
 | `figment-checker` | `inspect` | `claude-opus-5` | `worker:claude:claude-opus-5` (+ `…:claude-fable-5`) | — grades | **every Instagram-tier** verdict: identity gate, register proof, pass A/B, video gates, compliance, the `qa_stamp.py` write / never authors what it grades, and never touches **anything explicit-tier** (finding 17) |
 | `figment-expand` | `work` | `claude-sonnet-5` | `worker:claude:claude-sonnet-5` (+ `…:claude-opus-5`) | **S2, S2b, S2c** | builds and runs its manifests / never stamps a gate that unblocks its own work |
 | `figment-train` | `work` | `claude-sonnet-5` | `worker:claude:claude-sonnet-5` (+ `…:claude-opus-5`) | **S3, S4** | same |
-| `figment-render` | `work` | `claude-sonnet-5` | `worker:claude:claude-sonnet-5` (+ `…:claude-opus-5`) | **S5, S6** | same |
+| `figment-render` | `work` | `claude-sonnet-5` | `worker:claude:claude-sonnet-5` (+ `…:claude-opus-5`) | **S5, S6, SV** (partial closure #21 — the voice chain has no dedicated agent; it is figment-render's scope) | same |
 | `figment-content` | `work` | `claude-sonnet-5` | `worker:claude:claude-sonnet-5` (+ `…:claude-opus-5`) | **S7** + templates | same |
 | `figment-poster` | `work` | `claude-opus-5` | `worker:claude:claude-opus-5` (no downgrade) | **S8** | container creation, quota query, publish, audit, disclosure preflight / never publishes without a T3 token, touches credentials, or warms an account |
 | `figment-analyst` | `work` | `claude-sonnet-5` | `worker:claude:claude-sonnet-5` (+ `…:claude-opus-5`) | **S9** + insights/token-health cadences | pull, warehouse, KPIs, optimiser **proposals** / never edits the live mix |
 | `figment-researcher` | `work` | `claude-sonnet-5` | `worker:claude:claude-sonnet-5` (+ `…:claude-haiku-4-5`) | the four research cadences (§4) | reports and claim-checks / never acts on findings, never follows or engages |
 
-`runtime: claude` and `projects: [figment]` on all nine. One `workflows/figment-creator.md` declares the stage graph, and the cards it emits validate against `card-schema.md` (P4e's exit test).
+`runtime: claude`, `projects: [figment]`, and **`runner-bound: true`** (partial closure #21 — these are per-run craft/gate agents in the fyt-story/fyt-checker shape, not a general-purpose utility, so they bind to a runner the same way) on all nine; each also carries a concrete `id: figment-<name>` and a one-line `description`, matching every field `card-schema.md` and the profile registry consume. One `orgs/figment/workflows/figment-creator.md` (finding N13 — a project workflow lives under `orgs/<project>/workflows/`, not repo-root `workflows/`) declares the stage graph, and the cards it emits validate against `card-schema.md` (P4e's exit test).
 
 **The roster additions are deliberate.** FYT's core law is "a stage never holds the gate that blocks its own work", so `figment-checker` holds the verdicts in fresh context. And with the runner and checker both barred from craft, v1 left S2–S7 with **no executor at all**; the four craft agents fill that hole.
 
@@ -475,31 +492,65 @@ Existing surfaces absorb the rest: gates are Inbox items deep-linked to the run;
 ```
 anchor (closed) → GATE S spend card approved (operator, T2, BEFORE the first create)
   → expansion-02 → GATE A identity grid (operator)
-  → S2b swimwear → GATE A2 · S2c full-body → GATE A3
-  → LoRA train → dataset-tester rank → GATE B checkpoint pick (operator)
+  → LoRA v1 train (S2 only) → dataset-tester rank → GATE B checkpoint pick (operator)
+  → S2b swimwear → GATE A2 · S2c full-body (from the GATE-B checkpoint) → GATE A3
+  → LoRA v2 train (S2 ∪ S2b ∪ S2c) → dataset-tester rank → GATE B2 checkpoint pick (operator)
   → register grids → GATE C register proof (operator)
   → pass A/B → GATE D pass promotion (blinded eye-gate)
+  → video V1/V2 proofs → GATE D2 video eye-gate (operator)
   → week plan → GATE E week-plan approval (operator; this is the generation spend authorization)
   → batch generate → QA board → GATE F batch approval (operator)
   → schedule → GATE G publish approval (operator, T3 token) → post → measure → optimiser proposal
   → GATE H mix change (operator)
 ```
 
+**LoRA v1 vs v2 (finding N6).** P7 trains LoRA v1 from S2 alone, after GATE A and the training-path
+harness fixes (P5) — it is the provisional clothed close/half-body proof (C2). P6/P6b (swimwear,
+full-body) now run *after* GATE B, using the picked v1 checkpoint as S2c's reference generator. P7b
+trains the production LoRA v2 on S2 ∪ S2b ∪ S2c and ranks it the same way, gated by **GATE B2**; P8
+(register grids) depends on B2, not B.
+
 Every gate writes a `gate.json` record (§2.2) bound to its subject's sha256. **A downstream gate reopens automatically when its subject changes** — a re-run expansion invalidates GATE A, a re-picked checkpoint invalidates GATE C, and so on — so a resumed runner can never mistake a stale approval for a current one.
 
 **Cards.** One card per stage, per `governance/card-schema.md`, filed on `ops` in dependency order, one at a time, never before the parent's gate passes. `owner` set by the dispatcher; `## Evidence` is inert data; `## Result` carries the stage output paths. Coordination writes follow the CLAUDE.md rule (`git pull --rebase origin ops` immediately before, push immediately after; from the main checkout, commit on a temp branch from `origin/ops` and `git push origin <sha>:ops`).
 
-**The expansion-02 spend card (GATE S).** The operator gave explicit approval in the boss session on 2026-09-03 for launching expansion-02 tonight, within the $10 daily budget — $0.87 of which is already spent today, leaving $9.13 before the P3 ceiling and the daily guard even touch. That ruling is implemented as a card, not as an assumption: a **T2 spend card in `queue/` on `ops`, written BEFORE the first create**, `owner: claude-boss`, `project: figment`, `risk-tier: T2`, whose Work order states
+**The expansion-02 spend card (GATE S), schema-valid (findings N2/N3).** The operator ruled in the
+boss session on 2026-09-03 (approx 07:20): *"Launch expansion-02 (Recommended)"*, *"This is a one
+shot. I will be away, you should be running yourself async"*, and *"You are approved for $10"* — that
+verbatim text, with its timestamp, is the card's human-minted `approval` value, not merely a citation
+in `## Evidence`. The card is filed in `queue/` on `ops`, written **BEFORE the first create**, with:
 
-1. all six manifest paths, explicitly listed;
-2. 10 cells per pod, 6 pods, 60 cells;
-3. `--max-usd 0.90` and `--max-minutes 60` per pod;
-4. the cumulative arc spend read from `ledgers/cost/figment-*.tsv` **before each of the six creates**;
-5. the stop rule — **any run whose ledger row disagrees with its `run.json` stops the series**, and the
-   remaining creates do not happen (this is also a `wakes-me-up` condition in `contract.md`);
-6. a citation of the operator ruling of 2026-09-03 that authorises the spend.
+- `owner: figment-expand` — the declared S2 executor (§6 roster). Until P4e lands the nine agent
+  declarations, the boss terminal **executes this card as `figment-expand`**, stated explicitly in the
+  card body so ownership is auditable even before the agent files exist.
+- `role: work`, `risk-tier: T2`, `project: figment`.
+- `runtime: claude`, `model: claude-sonnet-5` (figment-expand's declared `default-profile`, §6).
+- `depends-on:` the P0R and P2R card ids (both must be `done` with a live-safe verdict before this
+  card's owner may create pod #1).
+- `approval:` the operator's verbatim ruling text above, with its 2026-09-03 ~07:20 timestamp.
+- an `## Evidence` section carrying the same ruling as a citation — inert data, kept in addition to,
+  never instead of, the `approval` field.
+- a Work order stating:
+  1. all six manifest paths, explicitly listed;
+  2. 10 cells per pod, 6 pods, 60 cells;
+  3. `--max-usd 1.00` and `--max-minutes 72` per pod (finding N1);
+  4. the cumulative arc spend read from `ledgers/cost/figment-*.tsv` **before each of the six creates**;
+  5. the stop rule — **any run whose ledger row disagrees with its `run.json` stops the series**, and
+     the remaining creates do not happen (this is also a `wakes-me-up` condition in `contract.md`);
+  6. today's ledger already carries $0.87; worst case tonight is 6 × $1.00 = $6.00, so $6.87 total,
+     under the $10 daily guard.
 
-The card is the artefact that makes the approval auditable after the fact. Without it on `ops` before create #1, P3 does not start.
+The card is the artefact that makes the approval auditable after the fact. Without a schema-valid
+card on `ops`, with a non-null `approval`, before create #1, P3 does not start.
+
+**Every other tonight phase is also T2 build-carded (finding N2).** P1, P2, P2R, P4b, P4e and P4f are
+not gate-independent — none is on `contract.md`'s T1 acts-alone list, and P4b (taxonomy/templates) is
+named T2 explicitly. Each runs under its own T2 build card on `ops`, issued the same way: a Codex
+dispatch writes its card automatically from the dispatch brief; a Claude-agent dispatch gets a card the
+boss writes before dispatch. The same operator ruling above — "you should be running yourself async,"
+"$10" — is the pre-approval evidence carried into each of those cards' `## Evidence`, and each card's
+own `approval` is minted per its own dispatch, not inherited silently. §9 relabels every affected phase
+`GATE-BLOCKED (T2 build card)`.
 
 ## 7. Error handling — fail-closed rules
 
@@ -531,54 +582,55 @@ The card is the artefact that makes the approval auditable after the fact. Witho
 | Live proof | one bounded run per stage with `--max-usd`, `--max-minutes`, and post-run ledger reconciliation against `run.json` | §9 |
 | Visual QA | mandatory on every generated image (GUARDRAIL 4); blinded board for every promotion decision | `blind_pool.py` + `build_grading_board.py` |
 | Adversarial review | different model/session, before live, for every spend-controlling, identity-scoring or posting unit; research claim-checked. **The review must be of the fix, at the SHA that will execute** — v1 leaned on REVIEW-e, which reviewed the *old defects*, not their fixes or the identity scorer. Hence the explicit **P0R** and **P2R** phases, and the rule that **P3 consumes only review files whose verdict is live-safe and whose reviewed SHA equals the executed files' SHA** | `pipeline/<stage>/REVIEW-*.md` |
-| Baseline hygiene | pytest basetemp must resolve outside the working tree — the documented command currently reads 38 passed / 81 errors purely from an ACL-locked in-repo `pytest-of-danie/` (REVIEW-e finding 1). A red baseline is what gets waved through before a spend run; fix it before anything else |
+| Baseline hygiene | pytest basetemp must resolve outside the working tree (REVIEW-e finding 1) — **fixed**: `py -3 -m pytest orgs/figment/pipeline/pod/tests orgs/figment/pipeline/train/tests -q -p no:cacheprovider` reads **152 passed** at HEAD (finding N7), not the stale 38 passed / 81 errors an ACL-locked in-repo `pytest-of-danie/` produced. Re-verify this exact command green before every spend run |
 
 ## 9. Build order
 
-Each phase is one plan task, with an exact target list and its own acceptance criteria. **GATE-INDEPENDENT** phases need no operator decision. **GATE-BLOCKED** phases wait on a named gate.
+Each phase is one plan task, with an exact target list and its own acceptance criteria. **GATE-INDEPENDENT** phases need no operator decision. **GATE-BLOCKED (T2 build card)** phases still need no operator *decision* but run under a boss-issued T2 build card per `contract.md` (finding N2) — Codex dispatches write their own card from the dispatch brief; Claude-agent dispatches get a card the boss writes before dispatch. **GATE-BLOCKED (\<gate\>)** phases wait on a named operator gate. Every row states its **Owner**, **Test**, and **Reviewer** (finding N9, partial closure #25); `codex authors are reviewed by Claude and vice versa` where no more specific reviewer is named.
 
-| # | Phase (one plan task each) | Gate status | Tonight? | Ceiling |
-|---|---|---|---|---|
-| P0 | Harness baseline + expansion-blast-radius fixes: REVIEW-e findings 1, 2, 6, 11, 13, 15, 16, 17, **18**, 19 + the finding-5 preflight arithmetic; green suite with basetemp outside the tree | GATE-INDEPENDENT | **yes** | $0 |
-| **P0R** | Different-model review of the P0 diff **at its SHA** + the green focused suite; verdict file under `pipeline/pod/REVIEW-*.md` | GATE-BLOCKED (P0) | **yes** | $0 |
-| P1 | `persona.yaml` schema (grammar table, threshold lifecycle objects, disclosure + readiness fields) + creator-001 record + `batch.json`/`pod_runs[]`/cell/score/`gate.json` writers + `expand/batch_state.py` reducer + **§2.4a safety-axis rulings schema and `qa_stamp.py` rejection** + gitignore extension | GATE-INDEPENDENT | **yes** | $0 |
-| **P2R** | Different-model review of every scorer and QA-schema change at its SHA + focused tests. Gates both P2 and P3; re-runs if P2 touches any scorer file | GATE-BLOCKED (P1) | **yes** | $0 |
-| P2 | `expand/build_expansion_set.py` + the generated 60-cell allocation + **6 ephemeral-pod manifests** (10 cells each, `job_timeout_seconds: 240`, readiness 900, ruled reference set `g01/g02/g07`, `_uploads/` created, **no network volume**) + board wiring + `--dry-run` transcript. Must not modify a scorer file | GATE-BLOCKED (P0R, P1, P2R) | **yes** | $0 |
-| P3 | expansion-02 live runs → score → blind board → **GATE A** | **GATE-BLOCKED** — (a) all three r15b reports present + claim-checked + §0 reconciliation done, (b) the approved **T2 spend card on `ops`**, (c) P0R and P2R verdicts live-safe at the executed SHA | **yes, only after its gates** | $5.40 |
-| P4a | Stage-5 pass manifests, pinned node/model list with licences, `passes/build_pass_manifest.py` (**no scorer file**) | GATE-INDEPENDENT | no | $0 |
-| P4b | Stage-7 `content/taxonomy.yaml` + CT-1…7 / RT-1…6 templates as data | GATE-INDEPENDENT | **yes** | $0 |
-| P4c | Account + post schemas and fixtures, including the four disclosure fields and the readiness record | GATE-BLOCKED (P1) | no | $0 |
-| P4d | Insight schema + warehouse fixtures | GATE-BLOCKED (P4c) | no | $0 |
-| P4e | The nine agent declarations + `workflows/figment-creator.md`; emitted cards validate against `card-schema.md` | GATE-INDEPENDENT | **yes** | $0 |
-| P4f | `orgs/figment/HEARTBEAT.md` cadences at their corrected tiers + org-file consistency | GATE-INDEPENDENT | **yes** | $0 |
-| P5 | Training-path harness fixes (REVIEW-e findings 3, 4, 5, **8**, 7, 9, 10, 12, 14) + `TRAINING_MAX_MINUTES` + the four training bounds + throwaway-pod upload contract test + dataset tester + different-model re-review flipping REVIEW-e's training verdict | **GATE-BLOCKED (Q4 operator decision + approved T2 code card)** | no | $0 |
-| P6 | S2b swimwear batch → **GATE A2** | GATE-BLOCKED (GATE A) | no | $0.60 |
-| P6b | S2c full-body second pass → **GATE A3** | GATE-BLOCKED (GATE A) | no | $0.90 |
-| P7 | LoRA v1 train + checkpoint rank → **GATE B** | GATE-BLOCKED (GATE A, GATE A3, P5) | no | $2.80 |
-| P8 | Register grids → **GATE C** | GATE-BLOCKED (GATE B) | no | $0.80 |
-| P9 | Pass A/B 12 cells → **GATE D** | GATE-BLOCKED (GATE C) | no | $1.10 |
-| P10 | Video V1 + V2 proofs → eye-gate | GATE-BLOCKED (GATE D, **`r15b-edit-motion.md` claim-checked**) | no | $0.70 |
-| P11 | Test 0: operator-provisioned IG account, Meta app, OAuth grant; prove container + AI label + quota + publish + one insights snapshot | GATE-BLOCKED (operator provisioning, Q2) | no | $0 |
-| **P11b** | Two-account isolation proof: fixture persona 002 + fixture account, dry-run the whole DAG with data-only differences, two isolated queues, expire one grant, assert only that account pauses and exactly one operator task is filed while the other keeps running. **This is the acceptance gate for calling the platform N-account-ready** | GATE-BLOCKED (P11) | no | $0 |
-| P12 | Week plan → **GATE E** → batch generate → QA board → **GATE F** → schedule → **GATE G** → post → measure | GATE-BLOCKED (GATE D, P11) | no | $2.00 |
-| P13 | Optimiser + weekly cadence → **GATE H** | GATE-BLOCKED (P12, +7 d data) | no | $0 |
-| P14a | Voice manifest/schema + persona voice brief | GATE-BLOCKED (Q8) | no | $0 |
-| P14b | Non-cloning synthetic-candidate generator: selection + licence review | GATE-BLOCKED (P14a) | no | $0 |
-| P14c | Generate the 20 synthetic candidates | GATE-BLOCKED (P14b) | no | $0.20 |
-| P14d | Ear-gate 3 + reference-clip capture with exact transcript | GATE-BLOCKED (P14c) | no | $0 |
-| P14e | Clone into CosyVoice 3 and Chatterbox, A/B | GATE-BLOCKED (P14d) | no | $0.20 |
-| P14f | Blind ABX against 20 consented CC-licensed clips, ≥5 raters | GATE-BLOCKED (P14e) | no | $0 |
-| P14g | LatentSync lip-sync proof onto an approved clip + identity/flicker re-QA | GATE-BLOCKED (P14f, GATE D) | no | $0.20 |
-| P15a | Explicit-tier template grammar + taxonomy engine on **clothed fixtures**, empty vocabulary | GATE-INDEPENDENT | no | $0 |
-| P15b | Sealed local-adapter call contract returning opaque gate metadata only, with its fixtures and tests | GATE-BLOCKED (P15a) | no | $0 |
-| P15c | Operator gate-record path + separate store naming; no content crosses into the repo | GATE-BLOCKED (P15b) | no | $0 |
-| P15d | Paid-platform adapter — **only after written platform confirmation** (Q9) | GATE-BLOCKED (Q9) | no | $0 |
-| P15e | **SX-T**: operator-only owned-hardware explicit adapter training + its acceptance test + separate store | GATE-BLOCKED (Q7, operator hardware) | no | $0 |
-| P16 | `Studio` dashboard surface: the six views in §5 at their exact routes, each with its acceptance test | GATE-BLOCKED (operator prioritising dashboard UI work) | no | $0 |
+| # | Phase (one plan task each) | Owner | Test | Reviewer | Gate status | Tonight? | Ceiling |
+|---|---|---|---|---|---|---|---|
+| P0 | Harness baseline + expansion-blast-radius fixes. **Findings 1–17, 20 already fixed at `4efea0de`/`f5ba643b`** (finding N7); remaining scope is REVIEW-e findings **18, 19, 21** + confirming the finding-5 preflight arithmetic against N1's numbers | build worker (codex\|claude) | `py -3 -m pytest pipeline/pod/tests -k "finding_18 or finding_19 or finding_21"` | P0R | GATE-BLOCKED (T2 build card) | **yes** | $0 |
+| **P0R** | **A sonnet P0R pass on findings 1–17/20 is already done** (finding N7: expansion-02 live-safe YES, training pod YES with conditions) — tonight's P0R is a **new, incremental pass reviewing only tonight's P0 diff** (findings 18/19/21) **at its SHA** + the green 152-test focused suite; verdict file under `pipeline/pod/REVIEW-*.md`. **An opus pass over the full P0 diff is still owed before any training pod**, separate from tonight's scope | different-model reviewer (sonnet tonight; opus owed pre-training) | `py -3 -m pytest orgs/figment/pipeline/pod/tests orgs/figment/pipeline/train/tests -q -p no:cacheprovider` | — (self) | GATE-BLOCKED (P0) | **yes** | $0 |
+| P1 | `persona.yaml` schema (grammar table, threshold lifecycle objects, disclosure + readiness fields) + creator-001 record + `batch.json`/`pod_runs[]`/cell/score/`gate.json` writers + `expand/batch_state.py` reducer + **§2.4a safety-axis rulings schema and `qa_stamp.py` rejection** + gitignore extension | build worker (codex\|claude) | `pytest pipeline/expand/tests pipeline/train/tests -k "schema or reducer or gate_hash or safety_axis"` | P2R (deferred, finding N4) | GATE-BLOCKED (T2 build card) | **yes** | $0 |
+| P2 | `expand/build_expansion_set.py` + the generated 60-cell allocation (builder's contract, partial closure #8) + **6 ephemeral-pod manifests** (10 cells each, `job_timeout_seconds: 300`, readiness 900, `max_minutes: 72`, ruled reference set `g01/g02/g07`, `_uploads/` created, **no network volume**, finding N1) + board wiring + `--dry-run` transcript. Must not modify a scorer file | figment-expand | `pytest pipeline/expand/tests -k "allocation or manifest_preflight or dry_run"` | P2R | GATE-BLOCKED (P0R, P1; T2 build card) | **yes** | $0 |
+| **P2R** | Different-model review, **after P2** (finding N4), of the **union** of P1's QA/scorer/schema changes and P2's builder/allocation/manifests, at their executing SHAs, plus focused tests. Gates only **P3** | figment-checker (Claude, different model/session than the P1+P2 author) | reviews the P1+P2 focused-test transcripts above; no new tests of its own | — (self) | GATE-BLOCKED (P1, P2; T2 build card) | **yes** | $0 |
+| P3 | expansion-02 live runs → score → blind board → **GATE A** | figment-expand (boss terminal executes as this agent until P4e lands, finding N3) | live run; post-run ledger reconciliation against `run.json` | figment-checker (GATE A eye-gate) | **GATE-BLOCKED** — (a) all three r15b reports present + claim-checked + §0/S2/S3/S5/S6 reconciliation done (satisfied, finding N5), (b) the approved **schema-valid T2 spend card on `ops`** (findings N2/N3), (c) P0R and P2R verdicts live-safe at the executed SHA | **yes, only after its gates** | **$6.00** |
+| P4a | Stage-5 pass manifests, pinned node/model list with licences, `passes/build_pass_manifest.py` (**no scorer file**) | figment-render | `pytest pipeline/passes/tests -k manifest` | figment-checker | GATE-INDEPENDENT | no | $0 |
+| P4b | Stage-7 `content/taxonomy.yaml` + CT-1…7 / RT-1…6 templates as data | build worker (codex\|claude) | `pytest pipeline/content/tests -k "taxonomy or template or mix or aspect"` | opposite runtime from the author (finding N9) | GATE-BLOCKED (T2 build card) | **yes** | $0 |
+| P4c | Account + post schemas and fixtures, including the four disclosure fields and the readiness record | figment-poster | `pytest pipeline/publish/tests -k "schema or disclosure or readiness"` | figment-checker | GATE-BLOCKED (P1) | no | $0 |
+| P4d | Insight schema + warehouse fixtures | figment-analyst | `pytest pipeline/insights/tests -k schema` | figment-checker | GATE-BLOCKED (P4c) | no | $0 |
+| P4e | The nine agent declarations (each with a concrete `id`, `role`, `runtime: claude`, `model`, `default-profile`/`allowed-profiles`, `projects: [figment]`, `runner-bound: true`, `description` — partial closure #21) + `orgs/figment/workflows/figment-creator.md` (finding N13); emitted cards validate against `card-schema.md` | build worker (codex\|claude) | card-schema validation over the 9 declarations + the workflow's emitted-card shapes | **the existing `grader` agent** (finding N9 — not a declaration this task just created) | GATE-BLOCKED (T2 build card) | **yes** | $0 |
+| P4f | `orgs/figment/HEARTBEAT.md` cadences at their corrected tiers — **exactly the §4 cadence rows, nothing else** (partial closure #10) | build worker (codex\|claude) | `pytest pipeline/tests -k "cadence_tier or cadence_schedule"` | opposite runtime from the author (finding N9) | GATE-BLOCKED (T2 build card) | **yes** | $0 |
+| P5 | Training-path harness fixes (REVIEW-e findings 3, 4, 5, **8**, 7, 9, 10, 12, 14) + the four training bounds (`job_timeout_seconds: 6000`, `readiness_timeout_seconds: 1200`, `max_minutes: 180`, CLI `--max-minutes 180` — **no `TRAINING_MAX_MINUTES` constant**, finding N7) + throwaway-pod upload contract test + dataset tester | build worker (codex\|claude) | `pytest pipeline/pod/tests pipeline/train/tests -k "finding_3 or finding_4 or finding_5 or finding_8 or upload_contract"` | opposite runtime, **plus the opus P0R pass** before the training verdict flips (finding N7) | **GATE-BLOCKED (Q4 operator decision + approved T2 code card)** | no | $0 |
+| **P7** | LoRA **v1** train, from **S2 only**, + checkpoint rank → **GATE B** (finding N6 — v1 no longer waits on A3) | figment-train | `pytest pipeline/train/tests -k "caption or step_checkpoint or dataset_tester"` | figment-checker (GATE B checkpoint pick) | GATE-BLOCKED (GATE A, P5) | no | $2.80 |
+| P6 | S2b swimwear batch → **GATE A2** — **now runs after GATE B** (finding N6) | figment-expand | `pytest pipeline/expand/tests -k swimwear` | figment-checker (GATE A2 eye-gate) | GATE-BLOCKED (GATE B) | no | $0.60 |
+| P6b | S2c full-body second pass, from the GATE-B checkpoint → **GATE A3** — **now runs after GATE B** (finding N6) | figment-expand | `pytest pipeline/expand/tests -k full_body` | figment-checker (GATE A3 eye-gate) | GATE-BLOCKED (GATE B) | no | $0.90 |
+| **P7b** | **LoRA v2 (production) train, on S2 ∪ S2b ∪ S2c**, + checkpoint rank → **GATE B2** (new phase, finding N6) | figment-train | `pytest pipeline/train/tests -k "lora_v2 or checkpoint_rank"` | figment-checker (GATE B2 checkpoint pick) | GATE-BLOCKED (GATE A2, GATE A3, GATE B) | no | $2.80 |
+| P8 | Register grids → **GATE C** — **now depends on GATE B2**, not B (finding N6) | figment-train | `pytest pipeline/register/tests -k "grid or identity_floor"` | figment-checker (GATE C register proof) | GATE-BLOCKED (GATE B2) | no | $0.80 |
+| P9 | Pass A/B 12 cells → **GATE D** | figment-render | `pytest pipeline/passes/tests -k ab_promotion` | figment-checker (GATE D blinded eye-gate) | GATE-BLOCKED (GATE C) | no | $1.10 |
+| P10 | Video V1 + V2 proofs → **GATE D2** (finding N12) | figment-render | `pytest pipeline/video/tests -k "frame_qa or manifest_schema"` | figment-checker (GATE D2 eye-gate) | GATE-BLOCKED (GATE D) | no | **$1.00** (finding N8) |
+| P11 | Test 0: operator-provisioned IG account, Meta app, OAuth grant; prove container + AI label + quota + publish + one insights snapshot | figment-poster | live proof against a real test account | operator (Test 0 is operator-provisioned) | GATE-BLOCKED (operator provisioning, Q2) | no | $0 |
+| **P11b** | Two-account isolation proof: fixture persona 002 + fixture account, dry-run the whole DAG with data-only differences, two isolated queues, expire one grant, assert only that account pauses and exactly one operator task is filed while the other keeps running. **This is the acceptance gate for calling the platform N-account-ready** | figment-poster | `pytest pipeline/publish/tests -k isolation` | figment-checker | GATE-BLOCKED (P11) | no | $0 |
+| P12 | Week plan → **GATE E** → batch generate → QA board → **GATE F** → schedule → **GATE G** → post → measure | figment-poster | `pytest pipeline/publish/tests -k "week_plan or schedule or idempotency"` | figment-checker (GATE F); operator T3 token (GATE G) | GATE-BLOCKED (GATE D, GATE D2, P11) | no | $2.00 |
+| P13 | Optimiser + weekly cadence → **GATE H** | figment-analyst | `pytest pipeline/insights/tests -k "kpi or proposal_determinism"` | figment-checker (GATE H proposal review) | GATE-BLOCKED (P12, +7 d data) | no | $0 |
+| P14a | Voice manifest/schema + persona voice brief | figment-render (SV, partial closure #21) | `pytest pipeline/voice/tests -k manifest` | figment-checker | GATE-BLOCKED (Q8) | no | $0 |
+| P14b | Non-cloning synthetic-candidate generator: selection + licence review | figment-render | `pytest pipeline/voice/tests -k "candidate_gen or licence"` | figment-checker | GATE-BLOCKED (P14a) | no | $0 |
+| P14c | Generate the 20 synthetic candidates | figment-render | live proof; no unit test | figment-checker | GATE-BLOCKED (P14b) | no | $0.20 |
+| P14d | Ear-gate 3 + reference-clip capture with exact transcript | figment-render | `pytest pipeline/voice/tests -k ear_gate` | figment-checker | GATE-BLOCKED (P14c) | no | $0 |
+| P14e | Clone into CosyVoice 3 and Chatterbox, A/B | figment-render | live proof; no unit test | figment-checker | GATE-BLOCKED (P14d) | no | $0.20 |
+| P14f | Blind ABX against 20 consented CC-licensed clips, ≥5 raters | figment-render | ≥5-rater blind ABX; no unit test | figment-checker | GATE-BLOCKED (P14e) | no | $0 |
+| P14g | LatentSync lip-sync proof onto an approved clip + identity/flicker re-QA | figment-render | `pytest pipeline/video/tests -k lipsync_flicker` | figment-checker | GATE-BLOCKED (P14f, GATE D) | no | $0.20 |
+| P15a | Explicit-tier template grammar + taxonomy engine on **clothed fixtures**, empty vocabulary | figment-content | `pytest pipeline/explicit/tests -k "grammar or taxonomy"` | figment-checker | GATE-INDEPENDENT | no | $0 |
+| P15b | Sealed local-adapter call contract returning opaque gate metadata only, with its fixtures and tests | figment-runner (gate-metadata contract owner) | `pytest pipeline/explicit/tests -k adapter_contract` | figment-checker | GATE-BLOCKED (P15a) | no | $0 |
+| P15c | Operator gate-record path + separate store naming; no content crosses into the repo | figment-runner | `pytest pipeline/explicit/tests -k store_naming` | figment-checker | GATE-BLOCKED (P15b) | no | $0 |
+| P15d | Paid-platform adapter — **only after written platform confirmation** (Q9) | figment-poster | dry-run against fixtures once Q9 clears | figment-checker | GATE-BLOCKED (Q9) | no | $0 |
+| P15e | **SX-T**: operator-only owned-hardware explicit adapter training + its acceptance test + separate store | **operator only — never an agent** (contract T4) | operator's own held-out acceptance protocol | operator | GATE-BLOCKED (Q7, operator hardware) | no | $0 |
+| P16 | `Studio` dashboard surface: the six views in §5 at their exact routes, each with its acceptance test | figment-runner (no dedicated Studio agent — ordinary kb dashboard build) | per-view acceptance test, §5 table | figment-checker + operator UX review | GATE-BLOCKED (operator prioritising dashboard UI work) | no | $0 |
 
-**Safe parallel set for tonight:** `P0 ∥ P1 ∥ P4b ∥ P4e ∥ P4f`. Then **P0R** on P0's diff and **P2R** on P1's schema; **P2** after P0 + P1 + P2R; **P3 last**, and only after all three of its gates. Any task touching `identity_check.py`, a shared schema, or an org coordination file is serialized — never run beside another task that touches the same file.
+**Safe parallel set for tonight:** `P0 ∥ P1 ∥ P4b ∥ P4e ∥ P4f`, each under its own T2 build card (finding N2). Then **P0R** on P0's diff; **P2** after P0R + P1; **P2R** reviews the union of P1 + P2 at their executing SHAs (finding N4) and gates only **P3**; **P3 last**, and only after all three of its gates. Any task touching `identity_check.py`, a shared schema, or an org coordination file is serialized — never run beside another task that touches the same file.
 
-**Planned arc ceiling ≈ $14.90 against the $50 cap** (expected spend roughly half that, since ceilings budget the full `max_minutes` and runs finish sooner), leaving wide headroom for re-runs. Tonight's spend is capped at $5.40 (P3 only); with $0.87 already spent today that is $6.27 against the $10 daily guard. Every run passes `--max-usd`, and the arc guard sums `ledgers/cost/figment-*.tsv` before every create. **No line item in this table carries recurring storage** — that is the point of finding 3's ephemeral-pod ruling.
+**Arc ceilings (corrected, findings N1/N8).** Future-work invocation ceiling: `$6.00 (P3) + $0.60 (P6) + $0.90 (P6b) + $2.80 (P7) + $2.80 (P7b) + $0.80 (P8) + $1.10 (P9) + $1.00 (P10) + $2.00 (P12) + $0.20×3 (P14c/e/g) = $18.60`. Already-incurred arc spend to date is $2.845268 (`ledgers/cost/figment-*.tsv`), so the **running arc ceiling is ≈ $21.45**, still well under the $50 cap. **Tonight's spend is capped at $6.00 (P3 only, 6 pods × $1.00 max-usd)**; with $0.87 already spent today that is **$6.87 against the $10 daily guard** (§10 Q3). Every run passes `--max-usd`, and the arc guard sums `ledgers/cost/figment-*.tsv` before every create. **No line item in this table carries recurring storage** — that is the point of finding 3's ephemeral-pod ruling.
 
 ## 10. Open questions for the operator
 
@@ -588,10 +640,10 @@ Only the ones research cannot settle. Q10 (the dashboard) is **removed** — §5
 |---|---|---|---|
 | 1 | Persona name, handle, home city, the bio disclosure line, and the link-in-bio door | — (operator's authorship) | S7 templates, S8 profile setup |
 | 2 | Which Instagram professional account is Test 0, and when | — | P11, P11b, and therefore all of S8/S9 |
-| 3 | Raise `governance/budget.yaml` `daily_usd_limit` (currently 10.00) for run days, or split expansion and training across days? | tonight's $5.40 (plus $0.87 already spent = $6.27) fits inside the current $10; a raise is only needed on a day carrying both an expansion and a training pod | P3, P7 |
-| 4 | Training wall clock: approve `TRAINING_MAX_MINUTES: 180` (with `job_timeout_seconds: 6000`, readiness 1200, `--max-minutes 180`) for the training path only, or require checkpoint-resume across 60-minute pods? | **180-minute single-pod training.** Checkpoint-resume is rejected: it requires uploading artifacts back into a pod and doubles exactly the transport surface REVIEW-e findings 3/4/6 already indict | P5, P7 |
+| 3 | Raise `governance/budget.yaml` `daily_usd_limit` (currently 10.00) for run days, or split expansion and training across days? | tonight's $6.00 (6 pods × `--max-usd 1.00`, finding N1) plus $0.87 already spent = **$6.87**, still inside the current $10; a raise is only needed on a day carrying both an expansion and a training pod | P3, P7 |
+| 4 | Training wall clock: approve the training manifest's own bound — `job_timeout_seconds: 6000`, `readiness_timeout_seconds: 1200`, `max_minutes: 180`, CLI `--max-minutes 180` — or require checkpoint-resume across shorter pods? **Note (finding N7): this is a per-manifest bound, not a named global exception** — HEAD's `DEFAULT_MAX_MINUTES` is already 840, so no `TRAINING_MAX_MINUTES` constant is needed or proposed | **180-minute single-pod training.** Checkpoint-resume is rejected: it requires uploading artifacts back into a pod and doubles exactly the transport surface REVIEW-e findings 3/4/6 already indict | P5, P7 |
 | 5 | Register: settings-only for v1, or spend 180–300 pod-minutes on a separate register LoRA (r12 §10 rank 6)? | settings-only for v1 — the LoRA option costs a large fraction of the arc and r12 §11 records no published measurement of persona+register interference | P8 |
-| 6 | Do swimwear/lingerie cells enter LoRA v1, or v2 after the clothed identity test passes? | v2 — keeps LoRA v1 to one variable against three recorded clothing-render failures | P6, P7 |
+| 6 | Do swimwear/lingerie cells enter LoRA v1, or v2 after the clothed identity test passes? | v2 (**P7b**, finding N6) — keeps LoRA v1 to one variable against three recorded clothing-render failures | P6, P7b |
 | 7 | Explicit tier: which owned GPU, and when | — | P15e |
 | 8 | Voice language and accent for creator-001 — CosyVoice 3 ranks first partly for Cantonese coverage; for English-only, Chatterbox may win the ABX | decide language first; the model choice follows from it | P14a–g |
 | 9 | Fanvue written confirmation (still open in MANDATE §What exists today) | — | P15d, the paid-tier arc |
@@ -604,14 +656,17 @@ Only the ones research cannot settle. Q10 (the dashboard) is **removed** — §5
 |---|---|---|---|
 | S3 caption doctrine | `<trigger> woman`, class-token-only | **full-sentence VLM auto-captions (Qwen3-VL class), trigger prepended**; single-word captioning is the package's own documented legacy mistake (module 04), superseded by module 11 | r15b-training §11, §04, adopt-list 3 and 9 |
 | S3 rank / LR | rank 32 / lr 5e-5, "video-only, provisional" | **rank 32 @ LR 1e-4, AdamW8Bit, bs 1, buckets 512/768/1024**, with rank 16 @ 2.5e-4 single-bucket as the cheap fallback arm | r15b-training §11, §05, adopt-list 7 |
-| S3 steps / checkpoints | `max_steps 2000`, save 250 → 8 checkpoints | **`max_steps 3000`, save 250 → 12 checkpoints (250…2750 + final), keep all 12** | r15b-training §11, adopt-list 4 |
+| S3 steps / checkpoints | `max_steps 2000`, save 250 → 8 checkpoints | **`max_steps 3000`, save 250 → 12 checkpoints (250…2750 + final), keep all 12**, as the demo-parity starting recipe — **r15b-training's own teaching material separately recommends 5000 steps for a production run**; 3000 vs 5000 are two different numbers for two different purposes, not a contradiction | r15b-training §11, adopt-list 4; finding N5 |
+| S3 GPU citation | module 05's 1.20 it/s figure attributed to an A100 | **corrected to an L40S** — v1 misattributed the measurement | r15b-training §05; finding N5 |
+| S3 training-run facts | unstated | **module 11's actual run took 77 minutes**, with **cache-text-embeddings on** and **sampling disabled** during training (both load-bearing to that timing); doctrine: **never use a turbo/distilled recipe with the training adapter** | r15b-training §11; finding N5 |
 | S3 dataset tester | "8–12 parallel branches" | **12 parallel branches, one fixed prompt + fixed seed**, their sampler pairing explicitly not adopted | r15b-training §11 |
 | S2 fan-out doctrine | unstated | the current package path is a **low-denoise (~0.23) identity-preserving edit** over fixed angle/pose templates, with an identity-lock clause on every prompt — adopted; its klein-**9B**/turbo stack is not | r15b-training §10 |
 | S5 pass 0 | no LoRA strength band | **persona-LoRA strength 0.65–0.80** on independent per-LoRA sliders; never copy turbo step/cfg onto a Base model | r15b-generation §06, §09 |
 | S5 pass 1 | 0.20–0.35 asserted without corroboration | same band, now **corroborated** by the measured FaceDetailer band 0.15–0.35 (bbox 0.40–0.50, sam 0.80–0.93) | r15b-generation §06, §09 |
 | S5 pass 4 | no refine pass existed | **new refine pass at denoise 0.35 after upscale-and-normalize** — the package's standard two-pass structure | r15b-generation adopt-list 3 |
 | S5 de-gloss | direction only | the anti-"AI look" negative-prompt shape, **re-written in our own words** (licensed text) | r15b-generation §06 |
-| S6 motion block | rested on r14/r17 chapter reading | **explicitly marked pending `r15b-edit-motion.md`**; P10 gated on it | §0 |
+| S5/S6 module 07/08 findings | modules 07/08/14 unread; S6 motion block pending | **read and reconciled**: swap-LoRA strength 1.0, motion sampler 6 steps/cfg 1, resolution 512×896×81 @16 fps, 24 GB VRAM floor — recorded as **challenger reference points against our klein-4B/Wan-2.2 stack, never adopted as direct settings** (different base, different trainer) | r15b-edit-motion, commit `57221caf`; finding N5 |
+| S6 motion block | rested on r14/r17 chapter reading, marked pending `r15b-edit-motion.md` | **claim-checked and reconciled**; P10 no longer gated on the report landing (it has); video human eye-gate named **GATE D2** everywhere | §0; finding N5; finding N12 |
 
 ### 11b. Deviations from the seeded decisions (carried forward from v1, amended)
 
@@ -620,7 +675,7 @@ Only the ones research cannot settle. Q10 (the dashboard) is **removed** — §5
 | Every stage is a pod-harness manifest | **Modified** — GPU stages only; stages 7–9 reuse the loader, not the pod-lease schema | a posting job has no GPU, readiness or teardown semantics |
 | `generated → scored → curated\|rejected → approved → …` | **Modified** — `quarantined` split from `culled`, and `review_status` made orthogonal to `state` with one named writer each | GUARDRAIL 4 requires quarantine-and-regenerate; curation surplus is not a failure; and mapping `parked` into a terminal state destroys the honest "not yet" |
 | Swimwear/lingerie inside expansion-02 | **Modified** — own batch S2b, own gate, out of LoRA v1 | three recurrences of silent clothing-render failure; keeps LoRA v1 to one variable |
-| LoRA covers every distance and both tiers | **Split** — LoRA v1 is a provisional clothed close/half proof; **S2c** adds full-body before a production LoRA; **SX-T** owns the explicit-tier adapter on operator hardware | v1 had no phase producing the mandated full-body or unclothed coverage, so its LoRA was not the two-tier identity the mandate asks for |
+| LoRA covers every distance and both tiers | **Split, then closed (finding N6)** — LoRA v1 (P7) is a provisional clothed close/half proof from S2 only; S2c/S2b now run *after* GATE B, using the v1 checkpoint as reference; **P7b trains production LoRA v2 on S2 ∪ S2b ∪ S2c**, ranked at **GATE B2**, which P8 now depends on; **SX-T** owns the explicit-tier adapter on operator hardware | v1 had no phase producing the mandated full-body or unclothed coverage, and no phase trained the production LoRA at all — P7b closes that gap |
 | Checkpoints every 250 steps | **Adopted, template corrected** — `max_steps 3000`, `save_every_n_steps 250`, keep all 12 | the committed template says 200/1600; module 11's live UI shows 3000 steps at a 250 cadence producing 12 checkpoints |
 | Single-word/trigger caption doctrine | **Reversed in v2** — full-sentence VLM auto-captions with the trigger prepended | see §11a: single-word captioning is the package's superseded legacy path, not its doctrine |
 | Model cache on a `network_volume_id` | **Deleted** — six fresh ephemeral pods, 900 s budgeted cold readiness | recurring billed storage the harness neither provisions, deletes nor ledgers would make the $50 arc proof false |
@@ -632,9 +687,13 @@ Only the ones research cannot settle. Q10 (the dashboard) is **removed** — §5
 | Stage-5 "skin enhancer = DetailBoost-style sampler option" | **Modified** — Detail Daemon (MIT) is the default; RES4LYF DetailBoost is a licence-gated hold | r15 identifies DetailBoost as the package's enhancer but does not licence-check RES4LYF; r16 does not cover it |
 | Stage-5 "conditional face repair" | **Specified** — native klein 4B Base `ReferenceLatent` edit, not FaceDetailer | Impact Subpack is AGPL-3.0 and the only FLUX.2 evidence targets klein 9B |
 | Browser residual for the native gap | **Narrowed** — library/trending audio and Story stickers only | r19's claim-check: Collab posts and Trial Reels are API-supported (`collaborators`, `trial_params`) |
-| Agents: runner, researcher, poster, analyst | **Extended** — `figment-checker` plus four craft agents (`-expand`, `-train`, `-render`, `-content`), with a declaration matrix and risk tier moved off the role field onto the card | FYT's core law: a stage never holds the gate that blocks its own work, and neither does its dispatcher — which left S2–S7 with no executor until the craft agents existed |
-| Pod cost ceiling stated per stage | **Adopted, plus two hard findings** — expansion-02 must split across 6 pods of 10 cells (measured job time, not estimated) to fit the 60-minute cap; a real LoRA run cannot fit it at all, and needs all four bounds moved together, not just `max_minutes` | REVIEW-e finding 5 arithmetic against `DEFAULT_MAX_MINUTES`; `composite-01/02/03` `run.json` timing; the marker-poll timeout would kill a healthy run first |
+| Agents: runner, researcher, poster, analyst | **Extended** — `figment-checker` plus five craft agents (`-expand`, `-train`, `-render` (now also SV, partial closure #21), `-content`), all `runner-bound: true`, with a declaration matrix and risk tier moved off the role field onto the card | FYT's core law: a stage never holds the gate that blocks its own work, and neither does its dispatcher — which left S2–S7 with no executor until the craft agents existed |
+| Pod cost ceiling stated per stage | **Corrected twice (findings 5, N1)** — expansion-02 splits across 6 pods of 10 cells (measured job time, not estimated): first drafted against a 60-minute hard cap (`job_timeout_seconds: 240`), then N1 showed 240 s does not clear the measured 260.449 s cold-job band. Corrected to `job_timeout_seconds: 300`, `max_minutes: 72` (900+10×300+300 = 4200 s against a 4320 s budget, 120 s slack), legal because `DEFAULT_MAX_MINUTES` is 840, not 60 (finding N7); a real LoRA run needs all four bounds moved together, not just `max_minutes` | REVIEW2 N1 arithmetic against `composite-01/02/03` `run.json` timing (the 260.449 s first job); `DEFAULT_MAX_MINUTES` re-read at HEAD; the marker-poll timeout would kill a healthy run first |
 | `chain[]` as a pod-manifest key | **Corrected** — builder input compiled by `passes/build_pass_manifest.py` into README-supported keys | an undocumented manifest key is silently ignored, which would produce a false pass-chain proof |
-| `max_usd` written as a manifest field (S6) | **Corrected** — `--max-usd` and `--max-minutes` are CLI; the manifest carries `price_usd_per_hour`, `max_minutes` and the timeouts | copying the research notation into a manifest establishes no spend guard at all |
+| `max_usd` written as a manifest field (S6) | **Corrected** — `--max-usd` and `--max-minutes` are CLI; the manifest carries `price_usd_per_hour`, `max_minutes` and the timeouts. **P10's two `--max-usd 0.50` proof invocations sum to a $1.00 ceiling** (finding N8), not the $0.70 v2 first printed | copying the research notation into a manifest establishes no spend guard at all; REVIEW2 finding N8 caught the addition error |
 | N-account readiness proven by prose | **Corrected** — P11b is an executable acceptance gate (fixture persona 002, two queues, expired-grant fault injection) | success condition P5 had no phase producing it |
+| Tonight's build phases labelled GATE-INDEPENDENT | **Relabelled `GATE-BLOCKED (T2 build card)`** — P1, P2, P2R, P4b, P4e, P4f all run under a boss-issued T2 build card (finding N2); none is on `contract.md`'s T1 acts-alone list | a review brief authorizing analysis is not an approval to execute a build phase; the operator's async-run ruling is the pre-approval, carded per phase, not assumed globally |
+| Expansion-02 spend card owner/approval | **Corrected** — `owner: figment-expand` (not `claude-boss`), with the boss terminal executing as that agent until P4e lands stated explicitly; `approval` carries the operator's verbatim ruling text and timestamp, not just a citation (finding N3) | the prior owner conflicted with the declared S2 executor, and the schema's human-minted `approval` field was left null |
+| Harness baseline vs implementation | **Corrected** — HEAD carries 152 green pod+train tests, `DEFAULT_MAX_MINUTES: 840`, and REVIEW-e 1–17/20 fixed at `4efea0de`/`f5ba643b`; findings 18/19/21 remain, folded into a narrowed P0 | v1 described a stale baseline (21 open defects, a hard 60-minute default); building P0/P5 against it would edit a fiction (finding N7) |
+| `TRAINING_MAX_MINUTES` as a named constant | **Deleted** — the training path sets `max_minutes: 180` directly on its own manifest+CLI, the same way expansion sets `max_minutes: 72`; no global exception is needed because there is no hard 60-minute global to except from (finding N7) | HEAD's actual global default is 840 minutes; inventing a constant over a fictional 60-minute default would have shipped dead code |
 | Everything else | **Adopted** | — |
