@@ -1307,6 +1307,44 @@ describe('registry-owned attempt session adapter', () => {
     });
   });
 
+  it('refuses an exit observed mid-sequence, between the two approved Claude prompts', async () => {
+    // `declaration()` carries `instructionMarkdown`, so a claude attempt with no resume ref prepares
+    // exactly two prompts: the agent-binding prompt, then the work-order prompt. Finishing the host
+    // right after the FIRST write puts the exit strictly between the two, which is the only case that
+    // must refuse: every byte the declaration approved is not yet in the session.
+    const host = new MemorySessionHost();
+    host.finishAfterWrite = 0;
+    const bindings = new MemoryBindings();
+    const adapter = createAttemptSessionAdapter({ host, bindings });
+    const input = declaration();
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'session exited during approved prompt delivery',
+    });
+    await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
+    expect(host.writes).toHaveLength(1);
+  });
+
+  it('does NOT refuse an exit observed right after the LAST approved Claude prompt is accepted', async () => {
+    // Mirror of the case above: every byte the declaration approved is already in the session by the
+    // time the exit is observed, so this is the attempt running, not a start failure.
+    const host = new MemorySessionHost();
+    host.finishAfterWrite = 1;
+    const bindings = new MemoryBindings();
+    const adapter = createAttemptSessionAdapter({ host, bindings });
+    const input = declaration();
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+    expect(host.writes).toHaveLength(2);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
+      promptsDelivered: 2,
+    });
+  });
+
   it('shares exact duplicates, conflicts changed operation requests, and never re-runs a completed operation', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();

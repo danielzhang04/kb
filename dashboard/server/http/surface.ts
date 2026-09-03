@@ -276,8 +276,7 @@ export function makeSurfaceContext(
   const ptySessionRegistry = capabilities.pty && ptySessionHost && ptyPersistence
     ? (overrides.ptySessionRegistry ?? createSessionRecordRegistry({
       host: ptySessionHost,
-      // The host the sessions actually run on, so a record never claims the wrong one. It was threaded
-      // to the execution activation instead, where nothing read it.
+      // Makes the host explicit at the wiring site rather than inferred.
       hostKind: ptyHostKind,
       persistence: ptyPersistence,
       transcript: createTranscriptRetention(stateRoot),
@@ -285,7 +284,7 @@ export function makeSurfaceContext(
       // compensation, and the dropped-early-frames warning all had nowhere to go. Neither carries prompt,
       // recipe or key contents.
       onBackgroundError: (error) => {
-        console.warn('[pty-registry]', error instanceof Error ? error.message : String(error));
+        console.warn(`[pty-registry] ${error instanceof Error ? error.message : String(error)}`);
       },
       log: (message) => { console.warn(`[pty-registry] ${message}`); },
       // A Run-controller claim is authorized by the CONTROL plane, not by the PTY document: the
