@@ -451,7 +451,7 @@
         {
           "node_id": "4",
           "field": "text",
-          "value": "The same woman as the reference, identical face; turn her head fifteen degrees to her left, eyes still on the lens; same room, same light."
+          "value": "The same woman as the reference, identical face; turn her head slightly left, both eyes visible, on the lens; same room, same light."
         },
         {
           "node_id": "6",
@@ -478,7 +478,7 @@
         {
           "node_id": "4",
           "field": "text",
-          "value": "The same woman as the reference, identical face; turn her head fifteen degrees to her right, look slightly past the lens; same room, same light."
+          "value": "The same woman as the reference, identical face; turn her head slightly right, both eyes visible, looking past the lens; same room, same light."
         },
         {
           "node_id": "6",
@@ -559,7 +559,7 @@
         {
           "node_id": "4",
           "field": "text",
-          "value": "The same woman as the reference, identical face; turn her head thirty degrees to her left, eyes still on the lens; same room, same light."
+          "value": "The same woman as the reference, identical face; turn her head a quarter turn left, face toward camera, both eyes visible; same room, same light."
         },
         {
           "node_id": "6",
@@ -586,7 +586,7 @@
         {
           "node_id": "4",
           "field": "text",
-          "value": "The same woman as the reference, identical face; turn her head thirty degrees to her right, chin a little lower; same room, same light."
+          "value": "The same woman as the reference, identical face; turn her head a quarter turn right, face toward camera, both eyes visible; same room, same light."
         },
         {
           "node_id": "6",

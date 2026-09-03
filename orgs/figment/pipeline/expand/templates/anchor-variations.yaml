@@ -17,15 +17,15 @@
       "template_id": "T02",
       "axis": "turn--15",
       "denoise": 0.2,
-      "variation_clause": "Her head is turned fifteen degrees to her left, eyes still on the lens.",
-      "edit_action": "turn her head fifteen degrees to her left, eyes still on the lens"
+      "variation_clause": "Her head is turned slightly to her left, both eyes still visible and on the lens.",
+      "edit_action": "turn her head slightly left, both eyes visible, on the lens"
     },
     {
       "template_id": "T03",
       "axis": "turn-+15-gaze",
       "denoise": 0.2,
-      "variation_clause": "Her head is turned fifteen degrees to her right, looking slightly past the lens.",
-      "edit_action": "turn her head fifteen degrees to her right, look slightly past the lens"
+      "variation_clause": "Her head is turned slightly to her right, both eyes visible, looking just past the lens.",
+      "edit_action": "turn her head slightly right, both eyes visible, looking past the lens"
     },
     {
       "template_id": "T04",
@@ -45,15 +45,15 @@
       "template_id": "T06",
       "axis": "turn--30",
       "denoise": 0.28,
-      "variation_clause": "Her head is turned thirty degrees to her left, eyes still on the lens.",
-      "edit_action": "turn her head thirty degrees to her left, eyes still on the lens"
+      "variation_clause": "Her head is turned a quarter turn to her left, face mostly toward the camera, both eyes visible.",
+      "edit_action": "turn her head a quarter turn left, face toward camera, both eyes visible"
     },
     {
       "template_id": "T07",
       "axis": "turn-+30",
       "denoise": 0.28,
-      "variation_clause": "Her head is turned thirty degrees to her right, chin a little lower.",
-      "edit_action": "turn her head thirty degrees to her right, chin a little lower"
+      "variation_clause": "Her head is turned a quarter turn to her right, face mostly toward the camera, both eyes visible.",
+      "edit_action": "turn her head a quarter turn right, face toward camera, both eyes visible"
     },
     {
       "template_id": "T08",
