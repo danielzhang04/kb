@@ -40,6 +40,19 @@ Source batch: `personas/anchors/gemini-batch-01/g01..g08.jpg` (untracked image b
 - Identity across seeds is stable (composite-01 ×3, composite-02 g06 ×2): the klein
   reference path holds the face; the LoRA will have consistent material.
 
+## Anchor set of record (operator pick, 2026-09-03 06:50)
+
+- **Primary face anchors:** `personas/anchors/gemini-batch-01/g04.jpg`, `g01.jpg`, `g07.jpg`.
+- **Composite confirmations (secondary, derived):**
+  `personas/creator-001/composite-02/c001-comp02-body-g06-seed-100001.png` (B4),
+  `personas/creator-001/composite-03/c001-comp03-body-g06-seed-200002.png` (C5),
+  `personas/creator-001/composite-03/c001-comp03-body-g02-seed-200002.png` (C2, the one clean
+  full-body composite = body exemplar alongside g02/g07).
+- Everything else in composite-01/02/03 is rejected (mask-like face, drifted identity, or
+  makeup artifacts). Do not use rejected cells as references.
+- Expansion: from the primary anchors at half-body/close framing, body toward the g02/g07
+  build, curated hard; full-body via a second pass; then the LoRA.
+
 ## Next
 
 1. Identity expansion on FLUX.2 klein 4B Base: 3 face refs (g04, g01, g07) → balanced multi-view
